@@ -22491,6 +22491,28 @@
       "previous": "Halaman sebelumnya",
       "next": "Halaman seterusnya",
       "firstPage": "Kembali ke halaman pertama"
+    },
+    "greetingSend": {
+      "unnamed": "Rakan sekerja",
+      "birthdayMessage": "Selamat hari lahir, {name}!",
+      "anniversaryMessage": "Tahniah atas ulang tahun perkhidmatan anda, {name}!",
+      "sayHi": "Beri ucapan",
+      "cheer": "Ucap tahniah",
+      "title": "Hantar ucapan",
+      "help": "Semak dan sunting mesej anda, kemudian pilih Hantar.",
+      "recipient": "Kepada {name}",
+      "message": "Mesej anda",
+      "count": "{count} / {max} aksara",
+      "invalid": "Masukkan mesej sepanjang 1 hingga {max} aksara.",
+      "uncertain": "Kami tidak dapat mengesahkan sama ada ucapan ini telah dihantar. Cuba lagi untuk menyemak ucapan yang sama.",
+      "sameRetry": "Untuk mengelakkan penghantaran berganda, cubaan semula menggunakan mesej yang sama.",
+      "erased": "Ucapan ini tidak lagi tersedia.",
+      "sent": "Ucapan dihantar.",
+      "close": "Tutup",
+      "cancel": "Batal",
+      "sending": "Menghantar…",
+      "retry": "Semak dan cuba lagi",
+      "send": "Hantar"
     }
   }
 }

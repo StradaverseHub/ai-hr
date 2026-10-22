@@ -22491,6 +22491,28 @@
       "previous": "Previous page",
       "next": "Next page",
       "firstPage": "Return to first page"
+    },
+    "greetingSend": {
+      "unnamed": "Colleague",
+      "birthdayMessage": "Wishing you a happy birthday, {name}!",
+      "anniversaryMessage": "Congratulations on your work anniversary, {name}!",
+      "sayHi": "Say hi",
+      "cheer": "Cheer",
+      "title": "Send a greeting",
+      "help": "Review and edit your message, then choose Send.",
+      "recipient": "To {name}",
+      "message": "Your message",
+      "count": "{count} / {max} characters",
+      "invalid": "Enter a message of 1 to {max} characters.",
+      "uncertain": "We could not confirm whether this greeting was sent. Try again to check the same greeting.",
+      "sameRetry": "To avoid sending it twice, retries use the same message.",
+      "erased": "This greeting is no longer available.",
+      "sent": "Greeting sent.",
+      "close": "Close",
+      "cancel": "Cancel",
+      "sending": "Sending…",
+      "retry": "Check and retry",
+      "send": "Send"
     }
   }
 }

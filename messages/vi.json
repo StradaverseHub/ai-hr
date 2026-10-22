@@ -22491,6 +22491,28 @@
       "previous": "Trang trước",
       "next": "Trang sau",
       "firstPage": "Về trang đầu"
+    },
+    "greetingSend": {
+      "unnamed": "Đồng nghiệp",
+      "birthdayMessage": "Chúc mừng sinh nhật, {name}!",
+      "anniversaryMessage": "Chúc mừng ngày kỷ niệm làm việc của bạn, {name}!",
+      "sayHi": "Gửi lời chúc",
+      "cheer": "Chúc mừng",
+      "title": "Gửi lời chúc",
+      "help": "Xem lại và chỉnh sửa tin nhắn, rồi chọn Gửi.",
+      "recipient": "Đến {name}",
+      "message": "Tin nhắn của bạn",
+      "count": "{count} / {max} ký tự",
+      "invalid": "Nhập tin nhắn từ 1 đến {max} ký tự.",
+      "uncertain": "Chưa thể xác nhận lời chúc đã được gửi hay chưa. Hãy thử lại để kiểm tra cùng lời chúc.",
+      "sameRetry": "Để tránh gửi hai lần, lần thử lại sử dụng cùng tin nhắn.",
+      "erased": "Lời chúc này không còn khả dụng.",
+      "sent": "Đã gửi lời chúc.",
+      "close": "Đóng",
+      "cancel": "Hủy",
+      "sending": "Đang gửi…",
+      "retry": "Kiểm tra và thử lại",
+      "send": "Gửi"
     }
   }
 }

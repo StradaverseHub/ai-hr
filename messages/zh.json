@@ -22491,6 +22491,28 @@
       "previous": "上一页",
       "next": "下一页",
       "firstPage": "返回第一页"
+    },
+    "greetingSend": {
+      "unnamed": "同事",
+      "birthdayMessage": "{name}，祝你生日快乐！",
+      "anniversaryMessage": "{name}，祝贺你的入职周年！",
+      "sayHi": "送上祝福",
+      "cheer": "祝贺",
+      "title": "发送祝福",
+      "help": "查看并编辑留言，然后选择“发送”。",
+      "recipient": "收件人：{name}",
+      "message": "你的留言",
+      "count": "{count} / {max} 个字符",
+      "invalid": "请输入 1 至 {max} 个字符的留言。",
+      "uncertain": "暂时无法确认祝福是否已发送。请重试以核查同一条祝福。",
+      "sameRetry": "为避免重复发送，重试将使用同一条留言。",
+      "erased": "这条祝福已不可用。",
+      "sent": "祝福已发送。",
+      "close": "关闭",
+      "cancel": "取消",
+      "sending": "正在发送…",
+      "retry": "核查并重试",
+      "send": "发送"
     }
   }
 }
