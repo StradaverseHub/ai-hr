@@ -31,11 +31,11 @@ function object(raw:unknown,keys:readonly string[]):Record<string,unknown>{
 /** A bounded plain-text message. Preserve Unicode and internal spacing; never truncate or interpret
  * markup. Reject malformed Unicode and controls rather than hashing a lossy encoding of the text. */
 export function homeGreetingMessage(raw:unknown):string{
- if(typeof raw!=='string'||raw.length>2*HOME_GREETING_MAX_CHARACTERS)return invalid();
+ if(typeof raw!=='string'||raw.length>2*HOME_GREETING_MAX_CHARACTERS
+  ||/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(raw)
+  ||/[\uD800-\uDFFF]/u.test(raw))return invalid();
  const message=raw.replace(/\r\n?/g,'\n').trim();
- if(!message||Array.from(message).length>HOME_GREETING_MAX_CHARACTERS
-  ||/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(message)
-  ||/[\uD800-\uDFFF]/u.test(message))return invalid();
+ if(!message||Array.from(message).length>HOME_GREETING_MAX_CHARACTERS)return invalid();
  return message;
 }
 export function validateHomeGreetingCommand(raw:unknown):HomeGreetingCommand{

@@ -27,7 +27,7 @@ describe('explicit Home greeting command boundary',()=>{
  });
  it('bounds Unicode by characters and refuses lossy or invisible control input',()=>{
   expect(homeGreetingMessage('🎉'.repeat(500))).toHaveLength(1000);
-  for(const text of ['', ' \n ', '🎉'.repeat(501), 'A'.repeat(501), 'hello\u0000world', '\uD800', '\uDC00'])
+  for(const text of ['', ' \n ', '🎉'.repeat(501), 'A'.repeat(501), 'hello\u0000world', '\u000Bhello', 'hello\u000C', '\uD800', '\uDC00'])
    expect(()=>homeGreetingMessage(text)).toThrow();
  });
  it('binds both terminal receipt states to this exact sender and retry without exposing content',()=>{
