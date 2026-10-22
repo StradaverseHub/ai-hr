@@ -4402,12 +4402,13 @@ export function listAttendanceCorrections(
         clockChanges: attendanceCorrection.clockChanges,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
-        // ADR-0069 / R45 3707cba9 — surface the "Actual vs Approved" OT comparison the decide path already
-        // computes. systemOtMinutes = the OT the engine derived from the day's real clockings (the row's
-        // stored figure); otApprovalCalculation = the company rule that turns it + the request into the
-        // approved figure. The approver page previews the resolved figure with resolveApprovedOt().
+        // A request's frozen method is independent of today's company configuration.
+        // Request visibility alone never grants the raw subject/day comparison.
         systemOtMinutes: attendance.otMinutes,
-        otApprovalCalculation: attendancePolicy.otApprovalCalculation,
+        otApprovalCalculation: sql<OtApprovalMethod | null>`case when ${attendancePolicyRequestContract.kind}='epoch'
+          then ${attendancePolicyRequestContract.manualApprovalMethod} else ${attendancePolicy.otApprovalCalculation} end`,
+        submittedPolicyBound: sql<boolean>`${attendancePolicyRequestContract.policyBinding} is not null`,
+        canReadRawComparison: sql<boolean>`${attendance.id} is not null and app.can_see_employment(${attendanceCorrection.employmentId})`,
       })
       .from(attendanceCorrection)
       .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`, sql`true`)
@@ -4418,6 +4419,9 @@ export function listAttendanceCorrections(
           eq(attendance.attendanceDate, attendanceCorrection.attendanceDate),
         ),
       )
+      .leftJoin(attendancePolicyRequestContract, and(
+        eq(attendancePolicyRequestContract.correctionId, attendanceCorrection.id),
+        eq(attendancePolicyRequestContract.tenantId, attendanceCorrection.tenantId)))
       .leftJoin(attendancePolicy, sql`${attendancePolicy.companyId}=subject.company_id`)
       .where(
         and(
@@ -4439,6 +4443,32 @@ export function listAttendanceCorrections(
     const visibleIds = new Set([...genericVisible, ...v2Visible, ...v3Visible].map(r => r.id));
     const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
+    const comparisons = new Map<string, Promise<number | null>>();
+    const comparisonFor = (r: typeof visible[number]) => {
+      const key = `${r.employmentId}:${r.attendanceDate}`;
+      let pending = comparisons.get(key);
+      if (!pending) {
+        pending = (async () => {
+          const raw = await attendancePolicyRawInputTx(tx, ctx, { employmentId: r.employmentId, date: r.attendanceDate });
+          if (raw.state === 'unavailable') return null;
+          if (raw.state !== 'policy') return r.systemOtMinutes;
+          const comparison = attendancePolicySystemEligibleMinutes(raw.context, raw.work);
+          return comparison.state === 'known' ? comparison.minutes : null;
+        })();
+        comparisons.set(key, pending);
+      }
+      return pending;
+    };
+    for (const row of visible) {
+      if (row.requestedOtMinutes == null || row.status !== 'pending') continue;
+      if (!row.canReadRawComparison) { row.systemOtMinutes = null; continue; }
+      // Proposed labels are not captured instants. A policy correction preview cannot
+      // claim the current captured day's count as the result of those proposed changes.
+      if (row.submittedPolicyBound && (row.proposedCheckIn != null || row.proposedCheckOut != null)) {
+        row.systemOtMinutes = null; continue;
+      }
+      row.systemOtMinutes = await comparisonFor(row);
+    }
     return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 3 ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }

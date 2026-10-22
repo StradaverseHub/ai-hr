@@ -10,7 +10,7 @@ import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
-import {requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
+import {requestAttendanceCorrection,decideAttendanceCorrection,listAttendanceCorrections} from '../packs/attendance/service';
 import {setAttendancePolicy,ensureStandardRule,checkInTx,checkOutTx,canonicalOvertimeInputTx} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -72,6 +72,8 @@ describe('owner-issued final workflow receipt',()=>{
     await (direction==='in'?checkInTx:checkOutTx)(worker.ctx,{employmentId:worker.employmentId,date:day(0),time,clockCaptureId:capture.id,preciseOrder:true});
    }
   });
+  const [preview]=await listAttendanceCorrections(f.first.ctx,{requestId:f.id,status:'pending'});
+  expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:0});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id))).toEqual([]);
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
@@ -128,6 +130,8 @@ describe('owner-issued final workflow receipt',()=>{
   const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,f.id));
   expect(contract.manualApprovalMethod).toBe('requested');
   await setting('system_calculated');
+  const [preview]=await listAttendanceCorrections(f.first.ctx,{requestId:f.id,status:'pending'});
+  expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:null});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
   const [request]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,f.id));
