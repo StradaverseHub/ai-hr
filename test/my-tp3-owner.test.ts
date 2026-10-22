@@ -1,13 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {hireEmployee} from '../core/org';
 import {saveMyTp3Draft,submitMyTp3,myTp3History,saveTp3,deriveAccumulatorSeed,type MyTp3WriteInput} from '../packs/payroll/service';
 import {requirePackFor} from '../localization/registry';
 import * as schema from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
 async function employee(withProfile=true) {
@@ -19,6 +20,13 @@ async function employee(withProfile=true) {
 }
 const stat=async(personId:string)=>(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,personId)))[0];
 const records=async(personId:string)=>owner.db.select().from(schema.employeeTp3).where(eq(schema.employeeTp3.personId,personId)).orderBy(schema.employeeTp3.assessmentYear,schema.employeeTp3.id);
+async function pgRefusal(operation:()=>Promise<unknown>,code:string,message?:string) {
+ let failure:unknown;
+ try{await operation();}catch(error){failure=error;}
+ expect(failure,'the raw application-role operation must fail').toBeDefined();
+ expect(pgSqlState(failure)).toBe(code);
+ if(message)expect(pgErrorChain(failure).map(error=>error.message).join('\n')).toContain(message);
+}
 describe('own TP3 private draft and atomic publication',()=>{
  it('keeps draft input private and outside both the canonical master and Payroll projection',async()=>{const e=await employee(),before=await stat(e.personId);const saved=await saveMyTp3Draft(e.ctx,e.input);expect(saved.revision).toBe(1);expect(await records(e.personId)).toEqual([]);expect(await stat(e.personId)).toEqual(before);const history=await myTp3History(e.ctx);expect(history.records).toEqual([]);expect(history.drafts).toEqual([expect.objectContaining({id:saved.id,revision:1,deductionMonth:null,submittedAt:null,declarationAccepted:false})]);});
  it('requires an explicit declaration and the exact saved revision, then uses the shared financial projection',async()=>{
@@ -36,4 +44,24 @@ describe('own TP3 private draft and atomic publication',()=>{
   const held=await employee();await requirePackFor('MY').statutory.setTp3(adminCtx(base),{personId:held.personId,tp3Year:held.input.assessmentYear+1,tp3NetRemuneration:111,tp3EpfClaimed:22,tp3PcbPaid:3});const before=await stat(held.personId);await submitMyTp3(held.ctx,{...held.input,declarationAccepted:true});expect(await stat(held.personId)).toEqual(before);expect((await myTp3History(held.ctx)).drafts[0].projectionOutcome).toMatchObject({applied:false,reason:'laterYearHoldsColumns',heldBy:held.input.assessmentYear+1});
  });
  it('rolls back a canonical publication when the shared Payroll projection fails',async()=>{const e=await employee();await saveMyTp3Draft(e.ctx,e.input);const before=await stat(e.personId);await owner.client`CREATE FUNCTION public.board2_refuse_tp3_projection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tp3_year IS DISTINCT FROM OLD.tp3_year THEN RAISE EXCEPTION 'Fictional projection rollback'; END IF; RETURN NEW; END $$`;await owner.client`CREATE TRIGGER board2_refuse_tp3_projection BEFORE UPDATE ON employee_statutory_my FOR EACH ROW EXECUTE FUNCTION public.board2_refuse_tp3_projection()`;try{await expect(submitMyTp3(e.ctx,{...e.input,expectedRevision:1,declarationAccepted:true})).rejects.toThrow();expect(await records(e.personId)).toEqual([]);expect(await stat(e.personId)).toEqual(before);expect((await myTp3History(e.ctx)).drafts[0]).toMatchObject({revision:1,submittedAt:null});}finally{await owner.client`DROP TRIGGER board2_refuse_tp3_projection ON employee_statutory_my`;await owner.client`DROP FUNCTION public.board2_refuse_tp3_projection()`;}});
+ it('denies direct draft mutation at the database privilege boundary, even for the actual owner',async()=>{
+  const e=await employee(),saved=await saveMyTp3Draft(e.ctx,e.input),before=await myTp3History(e.ctx);
+  for(const statement of [sql`update public.employee_tp3_draft set revision=revision+1 where id=${saved.id}::uuid`,sql`delete from public.employee_tp3_draft where id=${saved.id}::uuid`,sql`insert into public.employee_tp3_draft select * from public.employee_tp3_draft where id=${saved.id}::uuid`]){
+   await pgRefusal(()=>withTenant(e.ctx,tx=>tx.execute(statement)),'42501');
+  }
+  expect(await myTp3History(e.ctx)).toEqual(before);
+ });
+ it('refuses to commit a raw canonical insertion without its transaction-bound projection',async()=>{
+  const e=await employee(),saved=await saveMyTp3Draft(e.ctx,{...e.input,declarationAccepted:true}),before=await stat(e.personId),draft=(await myTp3History(e.ctx)).drafts[0];
+  await pgRefusal(()=>withTenant(e.ctx,tx=>tx.execute(sql`select app.my_tp3_insert(${saved.id}::uuid,${draft.revision},${draft.deductionMonth}::smallint,${JSON.stringify(draft.previousEmployers)}::jsonb,${JSON.stringify(draft.payload)}::jsonb)`)),'P0001','TP3 form and projection must commit together');
+  expect(await records(e.personId)).toEqual([]);expect(await stat(e.personId)).toEqual(before);
+  expect((await myTp3History(e.ctx)).drafts[0]).toMatchObject({id:saved.id,revision:1,submittedAt:null,canonicalId:null});
+ });
+ it('refuses raw foreign-employment writes and projection calls without an active submission',async()=>{
+  const e=await employee(),foreign=await employee(),saved=await saveMyTp3Draft(e.ctx,e.input),draft=(await myTp3History(e.ctx)).drafts[0],before=await stat(e.personId);
+  await pgRefusal(()=>withTenant(e.ctx,tx=>tx.execute(sql`select app.my_tp3_save_draft(${foreign.employmentId}::uuid,${e.input.assessmentYear},0,null::smallint,${JSON.stringify(draft.previousEmployers)}::jsonb,${JSON.stringify(draft.payload)}::jsonb,false)`)),'P0001','TP3 own employment required');
+  await pgRefusal(()=>withTenant(e.ctx,tx=>tx.execute(sql`select app.my_tp3_projection(${saved.id}::uuid,null::jsonb)`)),'P0001','TP3 active submission required');
+  expect(await records(e.personId)).toEqual([]);expect(await records(foreign.personId)).toEqual([]);expect(await stat(e.personId)).toEqual(before);
+  expect((await myTp3History(e.ctx)).drafts[0]).toMatchObject({revision:1,submittedAt:null});
+ });
 });
