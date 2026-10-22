@@ -36,12 +36,18 @@ export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecut
  // raw:null is the legitimate future-plan case and carries no worked-day proof.
  const raw=final.raw;
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return refuse('rawEffectUnavailable');
- const trace=current.trace;
+ const trace=current.trace,retainedTrace=raw.trace;
+ if(!retainedTrace||typeof retainedTrace!=='object'||Array.isArray(retainedTrace))return refuse('rawEffectUnavailable');
+ // The calculation reference is written AFTER the raw final effect. It belongs to the independent
+ // financial owner, not physical work. Compare every retained raw field while excluding only that
+ // separately owned marker; current financial consumers must revalidate their own calculation.
+ const {overtimePattern:retainedCalculation,...retainedRawTrace}=retainedTrace;
+ const {overtimePattern:currentCalculation,...currentRawTrace}=trace??{};
  if(!binding||!trace||!isDeepStrictEqual(trace.executionPolicy,binding)
   ||raw.attendanceId!==current.attendanceId||raw.checkIn!==current.checkInAt||raw.checkOut!==current.checkOutAt
   ||raw.workedMinutes!==current.workedMinutes||raw.lateMinutes!==current.lateMinutes
   ||raw.earlyOutMinutes!==current.earlyOutMinutes||raw.dayType!==current.dayType
-  ||!isDeepStrictEqual(raw.trace,trace))return refuse('rawEffectUnavailable');
+  ||!isDeepStrictEqual(retainedRawTrace,currentRawTrace))return refuse('rawEffectUnavailable');
  if(source?.state!=='known'||source.clocks.length<2||source.clocks.length>128
   ||raw.punchCount!==source.clocks.length||!Array.isArray(raw.punches)
   ||raw.punches.length!==source.clocks.length)return refuse('captureSetMismatch');

@@ -258,6 +258,12 @@ describe('independent captured raw clock replay',()=>{
   const changed=structuredClone(x.request);if(changed.finalReceipt.state!=='recorded')throw Error('fixture');
   changed.finalReceipt.raw=null;expect(x.read(changed)).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
  });
+ it('keeps post-effect financial markers separate from exact retained physical raw agreement',()=>{
+  const x=rawAgreementFixture();x.current.trace={...x.trace,overtimePattern:{status:'refused',reason:'sourceUnavailable'}};
+  expect(x.read()).toMatchObject({state:'known',authority:'retainedRawAgreementOnly'});
+  x.current.trace={...x.current.trace,punch:{...x.current.trace.punch,workedMinutes:999}};
+  expect(x.read()).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
+ });
  it('refuses changed, omitted, duplicated and equal-count replaced capture identities in retained final effects',()=>{
   const x=rawAgreementFixture();
   for(const field of ['clock_capture_id','id','direction','punch_at']){

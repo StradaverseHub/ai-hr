@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {attendancePolicyFinalRawAgreement} from '../packs/attendance/policy-final-raw-input';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {createShift,assignDefaultShift} from '../core/roster';
@@ -149,6 +150,19 @@ describe('owner-issued final workflow receipt',()=>{
   expect(missing.plannedWindow).toBeNull();
   await expect(owner.db.update(s.attendancePolicyRequestContract).set({plannedWindow:{from:1,to:2}})
    .where(eq(s.attendancePolicyRequestContract.correctionId,overnight.correctionId))).rejects.toThrow();
+ });
+ it('retains the frozen legacy effect body and private execution ACL behind the scoped dispatcher',async()=>{
+  const frozen=readFileSync('db/migrations/0548_attendance_hierarchy_approval.sql','utf8');
+  const start=frozen.indexOf('CREATE FUNCTION app.attendance_workflow_final_effect(');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const bodyStart=frozen.indexOf('AS $$',start),end=frozen.indexOf('$$;',bodyStart+5);
+  expect(bodyStart).toBeGreaterThan(start);expect(end).toBeGreaterThan(bodyStart+1000);
+  const body=frozen.slice(bodyStart+5,end);
+  const [row]=await owner.db.execute(sql`select p.prosrc,
+   has_function_privilege('ai_hr_app','app.attendance_workflow_legacy_labels_final_effect(uuid,integer)','EXECUTE') as legacy_callable,
+   has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as dispatcher_callable
+   from pg_proc p where p.oid='app.attendance_workflow_legacy_labels_final_effect(uuid,integer)'::regprocedure`);
+  expect(row).toEqual({prosrc:body,legacy_callable:false,dispatcher_callable:false});
  });
  it('does not grant application writes to receipts or permit owner rewriting',async()=>{
   const f=await fixture();
