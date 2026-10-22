@@ -36,8 +36,12 @@ describe('canonical policy schedule and work source projection',()=>{
  it('uses explicit shift grace supplied by the canonical resolver and preserves early-out grace semantics',()=>{
   const c=context();c.resolvedClock={...c.resolvedClock,lateGraceMinutes:3,earlyGraceMinutes:4};
   expect(attendancePolicyWorkInput(c,clocks([[545,1070]]))).toMatchObject({state:'known',lateMinutes:2,earlyOutMinutes:6});
+  // OT placement cannot overwrite the independently proved clock-boundary configuration.
   c.placement=attendancePolicySchedulePlacement({...schedule(),includeGraceInEarlyOut:true},policy());
-  expect(attendancePolicyWorkInput(c,clocks([[545,1070]]))).toMatchObject({earlyOutMinutes:10});
+  expect(attendancePolicyWorkInput(c,clocks([[545,1070]]))).toMatchObject({earlyOutMinutes:6});
+  const including=context({...schedule(),includeGraceInEarlyOut:true});
+  including.resolvedClock={...including.resolvedClock,lateGraceMinutes:3,earlyGraceMinutes:4};
+  expect(attendancePolicyWorkInput(including,clocks([[545,1070]]))).toMatchObject({earlyOutMinutes:10});
  });
  it('keeps unpaid positions once, paid breaks separate, and selected before/after switches independent',()=>{
   const s={...schedule(),breakPeriods:[...schedule().breakPeriods!,{start:'10:30',end:'10:45',paid:true}]};const p=policy();p.overtime.beforeShift=false;
