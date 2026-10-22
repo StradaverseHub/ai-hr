@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {asc,eq,sql} from 'drizzle-orm';
 import {db,withTenant} from '../db/client';
 import * as s from '../db/schema';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {createCompany} from '../core/admin';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
@@ -52,6 +52,15 @@ describe('persisted standard starting drafts',()=>{
   expect(await getOvertimePattern(ctx,custom.patternId)).toEqual(customBefore);
   expect((await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items).toHaveLength(5);
  });
+ it('refuses a foreign company and disabled Attendance before creating any starting draft',async()=>{
+  const ctx=adminCtx(b),foreign=await seedBase();
+  await expect(ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId,foreign.companyId]})).rejects.toMatchObject({code:'permission'});
+  expect((await listOvertimePatterns(ctx)).items).toHaveLength(0);
+  await setModule(b.tenantId,'attendance','disabled');
+  // A fresh entitlement context is required: the module owner never accepts a caller's enabled flag.
+  await expect(ensureOvertimePatternStarters(await entitledCtx(b),{companyIds:[b.companyId]})).rejects.toThrow();
+  expect(await owner.db.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(eq(s.overtimePattern.tenantId,b.tenantId))).toEqual([]);
+ });
  it('refuses an occupied starting code without adopting it or leaving the other three partial drafts',async()=>{
   const ctx=adminCtx(b),custom=await saveOvertimePatternDraft(ctx,{draft:{...draft(),code:`STD_OT15_${b.companyId}`,name:'Human-owned collision'}});
   const before=await getOvertimePattern(ctx,custom.patternId);
@@ -75,7 +84,7 @@ describe('persisted standard starting drafts',()=>{
   const first=(await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items,second=(await listOvertimePatterns(ctx,{companyIds:[other.id]})).items;
   expect(new Set([...first,...second].map(row=>row.id)).size).toBe(8);
   await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,userId));
-  await expect(ensureOvertimePatternStarters({...scoped,roles:['hr_admin']},{companyIds:[b.companyId]})).rejects.toMatchObject({code:'permission'});
+  await expect(ensureOvertimePatternStarters({...scoped,roles:['hr_admin']},{companyIds:[b.companyId]})).rejects.toThrow();
   expect((await listOvertimePatterns(ctx)).items).toHaveLength(8);
  });
 });

@@ -107,7 +107,8 @@ or weaken their guards to get a successful calculation.
 ## Persisted standard starting entries
 
 The workspace initializes missing standard entries through an authenticated POST after mount, under
-its existing configuration lock and current company authority. A rendering GET or link prefetch does
+the shared Access/profile barrier, verified current principal, existing configuration lock and current
+company authority. A rendering GET or link prefetch does
 not write configuration. Each tenant/company/starter tuple has a stable namespaced UUID and code.
 Repeated visits and concurrent tabs create the same four identities; subsequent edits and archival
 are retained. A collision refuses atomically rather than adopting or rewriting an existing pattern.

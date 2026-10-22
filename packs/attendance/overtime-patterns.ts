@@ -130,6 +130,10 @@ function starterIdentity(tenantId:string,companyId:string,key:string){
 /** The workspace invokes this as an authenticated mutation, never while rendering/prefetching GET.
  * Only missing entries are created. Existing edits, versions, assignments and archives are untouched. */
 export function ensureOvertimePatternStarters(ctx:SessionContext,p:{companyIds:string[]}){return withAttendanceTenant(ctx,async tx=>{
+ // Same Access/profile barrier as current principal/relationship writers, before configuration locks.
+ await tx.execute(sql`select app.access_profile_policy_write_lock()`);
+ const [principal]=await tx.execute(sql`select app.principal_snapshot_current() as allowed`) as unknown as {allowed:boolean}[];
+ if(!ctx.userId||!principal?.allowed)fail('permission','Your administrator access changed. Reload before preparing drafts.');
  await lockConfiguration(tx,ctx);await configurationReader(tx);
  if(!p||!Array.isArray(p.companyIds))fail('invalid','Choose the companies for these starting drafts.');
  const companies=await administerCompanies(tx,ctx,bounded(p.companyIds,500));
