@@ -81,3 +81,5 @@ export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-
 export {lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from './policy-import-input';
 
 export {attendancePolicyTraceBinding} from './policy-trace-binding';
+
+export {attendancePolicySystemEligibleMinutes} from './policy-execution-proposal';

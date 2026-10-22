@@ -4,10 +4,10 @@ import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {AttendancePolicyDayClass} from '../../lib/attendance-group-policy';
 import {attendancePolicyPlanInput,type PolicyPlanInput} from './policy-plan-input';
 import type {PolicyApprovalInput} from './policy-approval-input';
-import {intersectAttendancePolicyIntervals} from '../../lib/attendance-policy-intervals';
+import {attendancePolicyIntervalMinutes,intersectAttendancePolicyIntervals} from '../../lib/attendance-policy-intervals';
 import type {PolicyWorkInput} from './policy-work-input';
 import type {PolicyFormulaInput,PolicyDurationFormulaInput} from './policy-formula-input';
-import {deriveAttendancePolicyDurationProposal,type PolicyDurationProposal} from './policy-duration';
+import {deriveAttendancePolicyDurationProposal,selectAttendancePolicyCandidate,type PolicyDurationProposal} from './policy-duration';
 
 export type PolicyExecutionProposal=
  |{state:'unavailable';authority:'proposalOnly';reason:'contextUnavailable'|'activationUnavailable'|'workUnavailable'|'approvalReceiptRequired'|'plannedProofRequired'|'formulaUnavailable'|'formulaBindingMismatch'}
@@ -16,6 +16,21 @@ export type PolicyExecutionProposal=
    formulaParts:{date:string;dayClass:AttendancePolicyDayClass;versionId:string;definitionDigest:string}[];
    /** The complete dated approval set stays bound even if redundant windows normalize away. */
    planEvidence?:Extract<PolicyPlanInput,{state:'known'}>};
+
+/** Actual captured eligibility for the existing four scalar approval methods, before the
+ * once-only group duration finalization. This is not an approved/payable duration or method choice. */
+export function attendancePolicySystemEligibleMinutes(context:AttendancePolicyExecutionContext|undefined,work:PolicyWorkInput|undefined){
+ const refuse=(reason:'contextUnavailable'|'workUnavailable'|'lateEvidenceUnavailable')=>
+  ({state:'unavailable' as const,authority:'policyActualComparisonOnly' as const,reason});
+ if(context?.state!=='policy')return refuse('contextUnavailable');
+ if(work?.state!=='known')return refuse('workUnavailable');
+ if(!context.selected.policy.overtime.enabled)return {state:'known' as const,authority:'policyActualComparisonOnly' as const,minutes:0};
+ const selection=selectAttendancePolicyCandidate({eligibleIntervals:work.eligibleActualIntervals,unpaidIntervals:work.unpaidIntervals,
+  lateOffsetIntervals:work.lateOffsetIntervals,offsetLateness:context.selected.policy.overtime.offsetLateness,periodMinutes:work.periodMinutes});
+ if(selection.state!=='known')return refuse(selection.reason);
+ return {state:'known' as const,authority:'policyActualComparisonOnly' as const,
+  minutes:attendancePolicyIntervalMinutes(selection.afterOffset.intervals,work.periodMinutes)};
+}
 
 export function attendancePolicyExecutionProposal(context:AttendancePolicyExecutionContext|undefined,
  work:PolicyWorkInput|undefined,formulas:PolicyFormulaInput|undefined,

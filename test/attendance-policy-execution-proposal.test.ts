@@ -10,7 +10,7 @@ import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySu
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {attendancePolicySchedulePlacement} from '../core/attendance-policy-schedule';
-import {attendancePolicyExecutionProposal as propose,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
+import {attendancePolicyExecutionProposal as propose,attendancePolicyDurationExecutionProposal,attendancePolicySystemEligibleMinutes} from '../packs/attendance/policy-execution-proposal';
 import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
 import type {PolicyWorkInput} from '../packs/attendance/policy-work-input';
 import type {PolicyFormulaInput} from '../packs/attendance/policy-formula-input';
@@ -61,6 +61,20 @@ function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:numb
  return attendancePolicyApprovalInput(f.context.selected,rows,contracts,receipts);
 }
 describe('canonical source composition into the shared policy duration proposal',()=>{
+ it('uses one pre-finalization eligibility count for Manual comparisons without applying group rounding or caps twice',()=>{
+  const f=fixture();f.context.selected.policy.overtime.approval='manual';
+  expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toEqual({state:'known',authority:'policyActualComparisonOnly',minutes:40});
+  f.context.selected.policy.overtime.days.normal.maximumMinutes=10;
+  expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toMatchObject({state:'known',minutes:40});
+  f.context.selected.policy.overtime.offsetLateness=true;
+  if(f.work.state!=='known')throw Error('Expected known source');f.work.lateOffsetIntervals=[{from:500,to:510}];
+  expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toMatchObject({state:'known',minutes:30});
+  f.work.unpaidIntervals=[{from:1420,to:1430}];
+  expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toMatchObject({state:'known',minutes:20});
+  f.context.selected.policy.overtime.enabled=false;
+  expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toMatchObject({state:'known',minutes:0});
+  expect(attendancePolicySystemEligibleMinutes(f.context,undefined)).toMatchObject({state:'unavailable',reason:'workUnavailable'});
+ });
  it('uses the selected formula direction and rounds once across two dates without minting extra clock coverage',()=>{
   const f=fixture(),before=structuredClone(f),result=propose(f.context,f.work,f.formulas);
   expect(result).toMatchObject({state:'proposed',authority:'proposalOnly',policyRevisionId:id(3),duration:{status:'calculated',payableMinutes:60,

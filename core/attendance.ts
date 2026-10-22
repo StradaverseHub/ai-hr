@@ -8,7 +8,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -3974,10 +3974,18 @@ export async function decideAttendanceCorrection(
               ),
             )
             .limit(1);
-          systemOtForComparison =
-            existing?.checkInAt != null
-              ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt, cor.attendanceDate).otMinutes
-              : null;
+          if(existing?.checkInAt!=null){
+            const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(raw.state==='unavailable')throw Error('Canonical overtime comparison inputs are unavailable.');
+            if(raw.state==='policy'){
+              const comparison=attendancePolicySystemEligibleMinutes(raw.context,raw.work);
+              if(comparison.state!=='known'&&otApprovalMethod!=='requested')
+                throw Error('Captured overtime eligibility is unavailable for this decision.');
+              // Requested-only approval retains an unknown comparison as unknown; it is not a
+              // fabricated zero or positioned/payment authority. Other methods require the count.
+              systemOtForComparison=comparison.state==='known'?comparison.minutes:null;
+            }else systemOtForComparison=deriveAttendance(sched,existing.checkInAt,existing.checkOutAt,cor.attendanceDate).otMinutes;
+          }else systemOtForComparison=null;
         }
         // The deferred branch above has already set approvedOtMinutes to the agreed (requested) figure and
         // deliberately does NOT resolve — there is nothing to resolve against until the day is worked.

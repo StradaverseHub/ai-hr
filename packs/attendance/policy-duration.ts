@@ -38,6 +38,19 @@ export type PolicyDurationProposal=
      /** Explicit count with no fabricated clock/date placement; pricing needs a separate bound contract. */
      unplacedPayableMinutes:number;steps:PolicyOvertimeDurationStep[]}[];payableMinutes:number};
 
+/** Shared eligibility selection before any class threshold, rounding or maximum. It neither
+ * approves a request nor supplies payable minutes. Manual comparisons and final duration use
+ * this same break/late-offset owner so group duration rules cannot be applied twice. */
+export function selectAttendancePolicyCandidate(input:{eligibleIntervals:readonly AttendancePolicyInterval[];
+ unpaidIntervals:readonly AttendancePolicyInterval[];lateOffsetIntervals:readonly AttendancePolicyInterval[]|null;
+ offsetLateness:boolean;periodMinutes:number}){
+ const bound=input.periodMinutes,breaks=union(input.unpaidIntervals,bound);
+ if(input.offsetLateness&&input.lateOffsetIntervals===null)return {state:'unavailable' as const,reason:'lateEvidenceUnavailable' as const};
+ const lateMinutes=input.offsetLateness?minutes(subtract(input.lateOffsetIntervals!,breaks,bound),bound):0;
+ const candidate=subtract(input.eligibleIntervals,breaks,bound),afterOffset=offset(candidate,lateMinutes,bound);
+ return {state:'known' as const,candidate,afterOffset,lateMinutes};
+}
+
 export function deriveAttendancePolicyDurationProposal(input:PolicyDurationProposalInput):PolicyDurationProposal{
  overtimeDate(input.sourceDate,'sourceDate');overtimeUuid(input.companyId,'companyId');
  const bound=input.periodMinutes,policy=validateAttendanceGroupPolicy(input.policy,bound);
@@ -59,17 +72,10 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
   if(input.eligiblePlannedIntervals===null)return refuse('plannedEvidenceUnavailable');
   planned=subtract(input.eligiblePlannedIntervals,breaks,bound);
  }
- let lateMinutes=0;
- if(policy.overtime.offsetLateness){
-  if(input.lateOffsetIntervals===null)return refuse('lateEvidenceUnavailable');
-  // A measured minute removed as unpaid break cannot also consume an OT lateness offset.
-  lateMinutes=minutes(subtract(input.lateOffsetIntervals,breaks,bound),bound);
- }
- const actualAfterBreaks=subtract(actual,breaks,bound);
- // Offset once on the selected candidate basis before the method's approval restriction. Actual and
- // Intersect use actual eligibility; Pre-Approved uses evidenced plan eligibility on an established day.
- const candidate=input.method==='preApproved'?planned!:actualAfterBreaks;
- const afterOffset=offset(candidate,lateMinutes,bound);
+ const selection=selectAttendancePolicyCandidate({eligibleIntervals:input.method==='preApproved'?input.eligiblePlannedIntervals!:actual,
+  unpaidIntervals:breaks,lateOffsetIntervals:input.lateOffsetIntervals,offsetLateness:policy.overtime.offsetLateness,periodMinutes:bound});
+ if(selection.state!=='known')return refuse(selection.reason);
+ const {candidate,afterOffset,lateMinutes}=selection;
  const selected=input.method==='intersect'?intersect(afterOffset.intervals,planned!,bound):afterOffset.intervals;
  const selectionSteps:PolicyDurationSelectionStep[]=[
   {kind:'breaks',basis:input.method==='preApproved'?'approvedPlan':'actual',
