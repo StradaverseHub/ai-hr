@@ -1,5 +1,6 @@
 /** Actual storage transaction, default availability, stale-writer and runtime-refusal contracts. */
 import {randomUUID} from 'node:crypto';
+import postgres from 'postgres';
 import {beforeAll,beforeEach,afterAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
@@ -36,6 +37,16 @@ it('publishes the exact three source bindings atomically, preserves actual role/
  for(const row of before.configuration)expect(after.configuration.find(next=>next.tenant_id===row.tenant_id)?.revision).not.toBe(row.revision);
  expect(await workforceCompanies(adminCtx(b))).toEqual(scope);
  expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:false,tenantsFenced:0});expect(await snapshot()).toEqual(after);
+});
+it('publishes array bindings and object audits through the plain standalone installer connection',async()=>{
+ const standalone=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:1});
+ try{
+  expect(await publishWorkforceCapabilities(standalone)).toMatchObject({changed:true,capabilities:3});
+  const shapes=await owner.client`select id,jsonb_typeof(bindings) as shape from access_capability where id=any(${ids}::text[]) order by id`;
+  expect(shapes.map(row=>row.shape)).toEqual(['array','array','array']);
+  const audits=await owner.client`select jsonb_typeof(payload) as shape,payload->>'bindingsSha256' as hash from domain_event where event_type='access-configuration.capabilities-published' order by tenant_id,id`;
+  expect(audits.length).toBeGreaterThan(0);expect(audits.every(row=>row.shape==='object'&&row.hash===WORKFORCE_CAPABILITY_BINDINGS_SHA256)).toBe(true);
+ }finally{await standalone.end({timeout:3});}
 });
 it.each(['partial','unknown'])('refuses a %s catalogue without changing any other row or event',async kind=>{
  if(kind==='partial')await owner.client`update access_capability set supported=true,bindings='[{"owner":"foreign-fixture","operation":"unknown"}]'::jsonb where id='workforce.view'`;
