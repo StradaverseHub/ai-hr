@@ -1,11 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections} from '../core/attendance';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows} from '../core/attendance-workflow';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {createNotificationEmailService} from '../deploy/identity-email/notifications';
@@ -51,6 +51,71 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('keeps the submitted sources and evidence after future configuration changes; rejection is terminal',async()=>{const f=await fixture(),before=await detail(f);await saveAttendanceWorkflow(f.root,{...f.input,stages:[f.input.stages[1]]},f.template.lineageId);await decide(f,f.second,'0:1','rejected');const current=await detail(f);expect(current.workflow!.stages).toEqual(before.workflow!.stages);expect(current.workflow!.templateVersion).toBe(1);expect(current.application.status).toBe('rejected');await expect(decide(f,f.first,'0:0')).rejects.toThrow();expect((await day(f)).checkInAt).toBe('08:00:00');});
  it('refuses self/duplicate identities and a caller-supplied administrator role that is absent from actual grants',async()=>{const f=await fixture();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[{kind:'specific_employee',employmentIds:[f.worker.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[...f.input.stages[0].sources,{kind:'specific_employee',employmentIds:[f.first.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow({...f.second.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},{...f.input,code:'FORGED',active:false})).rejects.toThrow();});
  it('explains no linked login and then exposes only the genuinely eligible named ID after linking',async()=>{const root=adminCtx(base);await hireEmployee(root,{person:{fullName:'Fictional unlinked worker'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});const empty=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(empty.approverEmployees).toEqual([]);expect(empty.approverAvailability).toBe('noLinkedLogin');const linked=await actor('Fictional linked approver');const populated=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(populated.approverAvailability).toBe('available');expect(populated.approverEmployees).toEqual([expect.objectContaining({id:linked.employmentId,name:'Fictional linked approver'})]);});
+});
+describe('v4 final effects require fresh real-actor writes and the actual target day',()=>{
+ async function readyForFinal(){
+  const f=await fixture('all_required');
+  await decide(f,f.second,'0:1');await decide(f,f.first,'0:0');
+  expect((await detail(f)).workflow!.currentStage).toBe(1);
+  return f;
+ }
+ async function rawFinal(tx:Tx,f:Fixture){
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${base.tenantId+':'+f.worker.employmentId},0))`);
+  await tx.execute(sql`select id from public.attendance_correction where id=${f.id}::uuid for update`);
+  const result=await decideAttendanceWorkflowStageTx(tx,f.hr.ctx,{correctionId:f.id,employmentId:f.worker.employmentId,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
+  expect(result).toMatchObject({final:true,versionedFinalEffect:true});
+  await tx.execute(sql`select app.attendance_workflow_begin_effect(${f.id}::uuid)`);
+ }
+ it('loses its exact-day capability when the final participant writing savepoint is released',async()=>{
+  const f=await readyForFinal(),before=await detail(f),beforeDay=await day(f);
+  let observedRelease=false;
+  await expect(withTenant(f.hr.ctx,async tx=>{
+   await tx.execute(sql`savepoint board2_v4_final_participant`);
+   await rawFinal(tx,f);
+   const [live]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as exact,
+    app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date+1) as wrong_day,
+    app.attendance_workflow_effect_scope(${f.second.employmentId}::uuid,${f.on}::date) as wrong_subject`) as unknown as {exact:boolean;wrong_day:boolean;wrong_subject:boolean}[];
+   expect(live).toEqual({exact:true,wrong_day:false,wrong_subject:false});
+   await tx.execute(sql`release savepoint board2_v4_final_participant`);
+   const [released]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as allowed`) as unknown as {allowed:boolean}[];
+   expect(released.allowed).toBe(false);observedRelease=true;
+   throw new Error('Rollback after observing released v4 write refusal');
+  })).rejects.toThrow('Rollback after observing released v4 write refusal');
+  expect(observedRelease).toBe(true);
+  const after=await detail(f);
+  expect(after.application.status).toBe('pending');
+  expect(after.workflow!.participantDecisions).toEqual(before.workflow!.participantDecisions);
+  expect(after.workflow!.decisions).toEqual(before.workflow!.decisions);
+  expect(await day(f)).toEqual(beforeDay);
+ });
+ it('refuses a fabricated effect audit event when no actual target-day result was written',async()=>{
+  const f=await readyForFinal(),before=await detail(f),beforeDay=await day(f);
+  await expect(withTenant(f.hr.ctx,async tx=>{
+   await rawFinal(tx,f);
+   await tx.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'attendance-correction',aggregateId:f.id,eventType:'attendance-correction.effect.recorded',actorType:'user',actorId:f.hr.ctx.userId!,subjectEmploymentId:f.worker.employmentId,payload:{forged:true}});
+   await tx.update(schema.attendanceCorrection).set({status:'approved',decidedByEmploymentId:f.hr.employmentId,decidedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,f.id));
+  })).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:expect.stringContaining('verified canonical target-day effect')})});
+  const after=await detail(f);
+  expect(after.application.status).toBe('pending');
+  expect(after.workflow!.participantDecisions).toEqual(before.workflow!.participantDecisions);
+  expect(after.workflow!.decisions).toEqual(before.workflow!.decisions);
+  expect(await day(f)).toEqual(beforeDay);
+  expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,f.id),eq(schema.domainEvent.eventType,'attendance-correction.effect.recorded')))).toEqual([]);
+ });
+ it('does not revive committed final approval by reinstalling its request hint',async()=>{
+  const f=await readyForFinal();
+  await decideAttendanceCorrection(f.hr.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
+  const before=await detail(f),beforeDay=await day(f);
+  expect(before.application.status).toBe('approved');expect(beforeDay.checkInAt).toBe('09:00:00');
+  const [replay]=await withTenant(f.hr.ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.attendance_workflow_effect',${f.id},true)`);
+   return tx.execute(sql`select app.principal_snapshot_current() as live_principal,app.attendance_workflow_effect_scope(${f.worker.employmentId}::uuid,${f.on}::date) as allowed`);
+  }) as unknown as {live_principal:boolean;allowed:boolean}[];
+  expect(replay).toEqual({live_principal:true,allowed:false});
+  await expect(withTenant(f.hr.ctx,tx=>tx.execute(sql`select app.attendance_workflow_begin_effect(${f.id}::uuid)`))).rejects.toThrow();
+  expect((await detail(f)).workflow!.decisions).toEqual(before.workflow!.decisions);
+  expect(await day(f)).toEqual(beforeDay);
+ });
 });
 describe('retirement preserves dependencies and requires a fresh revision',()=>{
  it('refuses a pending dependency in an older version and preserves its frozen route',async()=>{const f=await fixture(),before=await detail(f);const newer=await saveAttendanceWorkflow(f.root,{...f.input,name:'Fictional next version'},f.template.lineageId);await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,newer.version)).rejects.toMatchObject({code:'inUse'});expect((await detail(f)).workflow!.stages).toEqual(before.workflow!.stages);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({version:2})]);});
