@@ -5,12 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { workflowEmailDatabaseGrants } from './database';
 import { notificationEmailLink } from '../../lib/notification-email-model';
+import { attendanceCcUpgradeReady } from './workflow-capability';
 declare const WORKFLOW_EMAIL_AGENT_BASE64:string;
 declare const WORKFLOW_EMAIL_AGENT_SHA256:string;
 const envPath='/etc/aihr-keycloak/email-agent.env',runtime='/usr/local/lib/aihr-identity-email';
 async function trusted(path:string,directory=false){const s=await lstat(path);if(s.uid!==0||(s.mode&0o022)!==0||(directory?!s.isDirectory():!s.isFile()))throw new Error('Untrusted private installation path');}
 function parseEnv(input:string){const result:Record<string,string>={};for(const line of input.split('\n')){if(!line||line.startsWith('#'))continue;const at=line.indexOf('=');if(at<1)throw new Error('Invalid private environment');const key=line.slice(0,at),value=line.slice(at+1);if(key in result)throw new Error('Duplicate private environment setting');result[key]=value;}return result;}
-function status():Promise<boolean>{return new Promise(resolve=>{const req=request({socketPath:'/run/aihr-identity-email.sock',path:'/v1/notifications',method:'POST',headers:{'content-type':'application/json'},timeout:12_000},res=>{let body='';res.on('data',c=>{body+=c;if(body.length>4096)res.destroy();});res.on('end',()=>{try{resolve(res.statusCode===200&&JSON.parse(body).version===1);}catch{resolve(false);}});res.on('error',()=>resolve(false));});req.on('timeout',()=>req.destroy());req.on('error',()=>resolve(false));req.end('{"op":"status"}');});}
+function status():Promise<boolean>{return new Promise(resolve=>{const req=request({socketPath:'/run/aihr-identity-email.sock',path:'/v1/notifications',method:'POST',headers:{'content-type':'application/json'},timeout:12_000},res=>{let body='';res.on('data',c=>{body+=c;if(body.length>4096)res.destroy();});res.on('end',()=>{try{resolve(attendanceCcUpgradeReady(res.statusCode,JSON.parse(body)));}catch{resolve(false);}});res.on('error',()=>resolve(false));});req.on('timeout',()=>req.destroy());req.on('error',()=>resolve(false));req.end('{"op":"status"}');});}
 async function main(){
  if(process.getuid?.()!==0)throw new Error('Root required');
  for(const path of ['/usr','/usr/local','/usr/local/lib',runtime,'/etc/aihr-keycloak'])await trusted(path,true);
