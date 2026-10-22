@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
 import {recordedAttendanceGroupPolicyTx} from './policy-selection';
+import {recordedPolicyClockSourceTx} from './policy-clock-input';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
@@ -119,6 +120,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     readOvertimePersonnelContextTx(tx, ctx, p),
   ]);
   if (assignments.length !== 1 || assignments[0].companyId !== proof!.companyId || punches.length > 128 || decisions.length > 500) unavailable();
+  const policyClockSource=selectedPolicy?await recordedPolicyClockSourceTx(tx,ctx,{attendanceId:day.id,employmentId:p.employmentId,date:p.date,punches}):undefined;
   const assigned = assignments[0], salary = salaries.length === 1 ? salaries[0] : null;
   const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
   const attendanceProvenance = (field: string): OvertimeProvenance => ({owner: 'attendance', reference: day.id + ':' + field, asOf: p.date, basis: 'recorded'});
@@ -158,10 +160,11 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
   const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
-  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
+  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
+    ...(selectedPolicy?{policyClockSource}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyClockSource}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The

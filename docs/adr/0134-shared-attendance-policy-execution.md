@@ -224,6 +224,21 @@ policy arithmetic, acceptance evidence or permission to release the four items. 
 zero and payable outcomes, immutable parts, approvals and independent financial replay remain required.
 The prepared routing regressions remain unrun while Feedback Automation owns the shared resources.
 
+## Retained physical capture source
+
+A dated-policy input snapshot reads the existing capture receipt for every effective punch and binds
+its tenant, employment, attendance day, direction and saved clock label. It retains the actual server
+instant and absolute milliseconds on the already established HR-local source timeline, with a three-day
+bound. It does not infer an overnight date from a label, creation order or `created_at`. Manual/imported
+clocks without these receipts remain explicitly unavailable here until their own canonical positioned
+proof branch is implemented. Their raw records remain unchanged.
+
+These source-only facts participate in the same input digest, preparation/re-read freshness and immutable
+calculation evidence. They contain no photo, location, private message or salary content. Milliseconds
+are preserved for minimum-gap checking; the existing integer-seconds adapter cannot be fed a prematurely
+rounded instant. Pairing, Full Flexi owner selection, grace, positioned breaks, approval, policy parts and
+financial replay still remain unfinished. Retaining capture provenance establishes no payable effect.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.
