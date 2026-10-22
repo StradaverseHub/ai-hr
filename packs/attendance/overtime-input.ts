@@ -1,6 +1,6 @@
 import {replayAttendancePolicyRawClocks} from './policy-clock-replay';
-import {attendancePolicyExecutionProposal} from './policy-execution-proposal';
-import {attendancePolicyFormulaInputTx} from './policy-formula-input';
+import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyFormulaInputTx,attendancePolicyDurationFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
@@ -104,12 +104,12 @@ export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContex
  * subject RLS and never elevates salary access merely to verify price-independent duration. */
 export async function canonicalOvertimeToilInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   assertModuleGate(ctx, 'toil');
-  const snapshot=await readCanonicalInputsTx(tx,ctx,p);
+  const snapshot=await readCanonicalInputsTx(tx,ctx,p,'duration');
   // The staged policy result has no independent cash/duration replay or final-effect receipt yet.
   if(snapshot.attendanceGroupPolicy)unavailable();
   return snapshot;
 }
-async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
+async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}, purpose:'money'|'duration'='money'): Promise<CanonicalOvertimeSnapshot> {
   if (!isCalendarDate(p.date) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.employmentId)) unavailable();
   const proof = (await provenCompanyDatesTx(tx, [p])).get(p.employmentId + '|' + p.date);
   if (!proof?.companyId) unavailable();
@@ -121,7 +121,9 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const selectedPolicy=policySelection.state==='policy'?policySelection.selected:undefined;
   const [assignments, salaries, punches, decisions, context] = await Promise.all([
     tx.select().from(assignment).where(and(eq(assignment.tenantId, ctx.tenantId), eq(assignment.employmentId, p.employmentId), isNull(assignment.supersededAt), lte(assignment.validFrom, p.date), or(isNull(assignment.validTo), gt(assignment.validTo, p.date)))).orderBy(asc(assignment.validFrom), asc(assignment.id)).limit(2),
-    tx.select().from(compensation).where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, p.employmentId), compensationEffectiveOn(p.date))).orderBy(asc(compensation.validFrom), asc(compensation.id)).limit(2),
+    // Dated group policies already own duration independently of salary. Legacy formulas keep
+    // their existing source contract, including any explicitly configured duration fact dependency.
+    selectedPolicy&&purpose==='duration'?Promise.resolve([]):tx.select().from(compensation).where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, p.employmentId), compensationEffectiveOn(p.date))).orderBy(asc(compensation.validFrom), asc(compensation.id)).limit(2),
     tx.select().from(attendancePunch).where(and(eq(attendancePunch.tenantId, ctx.tenantId), eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.punchAt), asc(attendancePunch.id)).limit(129),
     tx.select().from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId, ctx.tenantId), eq(attendanceCorrection.employmentId, p.employmentId), eq(attendanceCorrection.attendanceDate, p.date))).orderBy(desc(attendanceCorrection.decidedAt), desc(attendanceCorrection.createdAt), desc(attendanceCorrection.id)).limit(501),
     readOvertimePersonnelContextTx(tx, ctx, p),
@@ -207,14 +209,19 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     facts.lateMinutes=measured?.state==='known'?minute(measured.minutes,attendanceProvenance('policyLateMinutes:'+selectedPolicy.id))
       :unknown(measured?.state==='suppressed'?'policyLatenessSuppressed':measured?.state==='notApplicable'?'fixedClockNotApplicable':'policyClockBoundaryUnavailable');
   }
-  const policyFormulaInput=selectedPolicy?await attendancePolicyFormulaInputTx(tx,ctx,{sourceDate:p.date,policy:selectedPolicy,
-    calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}):undefined;
-  const policyExecutionProposal=selectedPolicy?attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput,policyApprovalInput,ctx.tenantId):undefined;
+  const formulaSource=selectedPolicy?{sourceDate:p.date,policy:selectedPolicy,
+    calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}:undefined;
+  const policyFormulaInput=formulaSource&&purpose==='money'?await attendancePolicyFormulaInputTx(tx,ctx,formulaSource):undefined;
+  const policyDurationFormulaInput=formulaSource&&purpose==='duration'?await attendancePolicyDurationFormulaInputTx(tx,ctx,formulaSource):undefined;
+  const policyExecutionProposal=selectedPolicy?(purpose==='duration'
+    ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId)
+    :attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput,policyApprovalInput,ctx.tenantId)):undefined;
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
     ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyExecutionProposal}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal,
+      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{})}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -229,6 +236,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     },
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
-      ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput}:{} )}),
+      ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput,
+        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{})}:{} )}),
   };
 }

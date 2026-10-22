@@ -11,7 +11,7 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
+import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -66,6 +66,29 @@ function part(f:Fixture,calculationId:string,sequence=0):typeof s.attendanceOver
   durationEvidence:{authority:'proposalOnly',steps:[]}};
 }
 describe('immutable non-payable policy part storage',()=>{
+ it('reads policy TOIL duration without salary or cash earning mappings and retains the settlement refusal',async()=>{
+  const f=await fixture('auto');await setModule(b.tenantId,'toil','active');const actor=adminCtx(b);
+  const forbidden:string[]=[];let reads=0;
+  await withTenant(actor,async tx=>{
+   const guarded=new Proxy(tx,{get(target,key){
+    if(key==='select')return (...args:Parameters<Tx['select']>)=>{
+     const query=target.select(...args);
+     return new Proxy(query,{get(builder,property){
+      if(property==='from')return (table:unknown)=>{
+       reads++;
+       if(table===s.compensation||table===s.payComponent){forbidden.push(table===s.compensation?'salary':'cashMapping');throw Error('Forbidden policy TOIL price dependency');}
+       return builder.from(table as Parameters<typeof builder.from>[0]);
+      };
+      const value=Reflect.get(builder,property,builder);return typeof value==='function'?value.bind(builder):value;
+     }});
+    };
+    const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+   }}) as Tx;
+   await expect(canonicalOvertimeToilInputTx(guarded,actor,{employmentId:f.employmentId,date:day(2)})).rejects.toThrow('Recorded overtime inputs are unavailable for this employee and date.');
+  });
+  expect(reads).toBeGreaterThan(0);expect(forbidden).toEqual([]);
+ });
+
  it('permits a current self subject barrier without configuration authority, and denies unrelated or revoked principals',async()=>{
   const f=await fixture(),userId=await createAppUser(b.tenantId,f.personId,'employee');
   const self:SessionContext={...ctx,userId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
