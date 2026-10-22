@@ -9,10 +9,48 @@ could bypass hidden-own-photo handling. The unapplied0579 repair adds a restrict
 SELECT policy without broadening the existing row policy. Canonical byte, existence and bulk owners
 also use actual SQL login ownership for hidden-own-photo filtering. The regression uses real
 restricted-runtime queries and the real route with its session lookup bound to actual fixture
-principals. The source repair still requires focused verification, actual app acceptance and both
-final restricted-owner upgrades before release; prior failed receipts remain preserved.
+principals. Focused restricted-runtime verification and the actual app hide/reopen/restore journey
+now pass. Both final restricted-owner upgrades and the authentic release gate remain required;
+prior failed receipts remain preserved. This is not a production deployment claim.
 
-Status: implementation in progress; source draft only; no migration execution or release yet.
+Status: implementation and local acceptance in progress; production remains unchanged. Historical
+draft paragraphs below describe the implementation sequence, not current execution receipts.
+
+### Enforcement owner boundaries
+
+The supported-permission catalogue must describe these bounded purposes rather than implying that
+a Workforce grant creates an HR role or financial authority. Its default availability is still off
+for the three domain capabilities while the remaining acceptance and final upgrades are completed.
+
+| Purpose | Canonical application consumers | Independent SQL boundary |
+| --- | --- | --- |
+| Workforce view | `requireWorkforceAccess`, `workforceViewScope`, purpose-bound `core/read`, `workforceRecord`, Personnel list/filter/count/export | `access_workforce_projection_company`, fixed list/record projections; no widening of shared employment/person visibility sets |
+| Positive Workforce maintenance | `workforceEditor`, `maintainWorkforceRecord`, fixed Employee ID command; 31 profile, 9 Qualification, 6 Emergency and 20 Family fields | Fixed command admission, exact field sets, revision CAS, private value intent and immutable event completion; no raw personnel or financial row grant |
+| Existing HR maintenance | `workforce-commands`, canonical hire/info/assignment/transfer/reporting/blacklist/termination, imports/drafts/Movement, direct photo and document writers | Actual legacy HR/company floor plus effective permission; structural/lifecycle and profile/register guards also enforce raw writes |
+| Eligible profile review | Profile queue/detail, named routing, proposal/photo routes, decisions and reasoned reassignment | Actual current HR principal, recorded route, company scope, effective review and no-self decision floor; a review grant never creates HR status |
+| Access administration | Access editor/read/preview/commit, legacy role/account/invitation changes | One tenant barrier, fresh ceiling/revision, protected durable recovery administrator, bounded canonical audit |
+
+Independent owners remain explicit exceptions, not bypass flags. Employee own-profile/contact,
+the ordinary directory and canonical avatar retain actual-login ownership/relationship checks.
+Approved ESS changes, Rewards grade posting and accepted resignations retain their separate decision
+owners and exact transaction witnesses. Privacy erasure retains the real selected-company HR floor,
+the unchanged finite erasure policy and atomic effect/audit proof. Payroll, statutory, Reports and
+onboarding keep their existing specialised authority. The fixed due-Movement and Family relief jobs
+require actual storage-owner credentials; a claimed null-user HR context cannot inherit that course.
+
+The real-principal default-conversion matrix compares dormant and available configurations for
+global/scoped HR, specialist roles, ordinary employees and an actual administrative reporting-line
+manager. It pins positive scope controls, preserves the independent directory and role rows, and
+reuses a cached context after actual role revocation. Its local database cases pass; this does not
+substitute for the final populated upgrades, whole release gate or production arrival.
+
+Policy-form section identity uses canonical tab/section keys. Translated headings are display only:
+three distinct sections shared headings in all six catalogues and disappeared from the old form,
+causing a correct server refusal. The regression fails on that form and passes with all 37 canonical
+section controls. The real app now saves/reopens Photo Hide, refuses the subject's photo route,
+preserves the independent current-HR photo course and restores the subject's 64×64 photo after the
+view-only setting is saved again. Hidden-value redaction in browser inspection is not submission
+evidence; the saved policy, actual routes and rendered result establish this outcome.
 
 The approved Security plan is not an editable copy of Function Access. The existing grid is a reference over route guards; record authority also lives in SQL, service owners, dated organisation relationships and specialised payroll/onboarding permissions. A role-to-group wrapper alone cannot satisfy individual-deny precedence over the actual operations.
 
