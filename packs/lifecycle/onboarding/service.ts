@@ -994,8 +994,14 @@ export async function sweepOnboarding(ctx: SessionContext) {
     });
 }
 /** Refresh canonical Personnel changes without manufacturing employment or re-running approvals. */
-export async function refreshOnboardingPersonnel(ctx: SessionContext) {
-    return withTenant(ctx, async (tx) => {
+export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:typeof withTenant=withTenant) {
+    return runTenant(ctx, async (tx) => {
+        // A scheduled refresh has no login. Its restricted storage-owner connection is authority;
+        // caller-supplied HR role text on the application connection is not a service identity.
+        if(!ctx.userId){
+            const [principal]=rows<{owner:boolean}>(await tx.execute(sql`select current_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolsuper) as owner`));
+            if(!principal?.owner)M.fail('Scheduled Personnel synchronisation requires the storage owner.', 'forbidden');
+        }
         const [{ ok }] = rows<{
             ok: boolean;
         }>(await tx.execute(sql `select app.is_group_admin() as ok`));

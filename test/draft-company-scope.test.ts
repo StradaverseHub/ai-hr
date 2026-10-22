@@ -365,6 +365,7 @@ describe('§4 the database fences drafts by company (migration 0510)', () => {
       .returning({ id: schema.appUser.id });
     const own = await insertDraft(B, 'Authored In B', { createdByPersonId: p.id });
     const ownNone = await insertDraft(null, 'Authored Unplaced', { createdByPersonId: p.id });
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role:'hr_admin',companyId:A});
     const author = adminOfA(p.id, u.id);
     expect((await getEmployeeDraft(author, own))?.id).toBe(own);
     expect((await getEmployeeDraft(author, ownNone))?.id).toBe(ownNone);
@@ -384,6 +385,7 @@ describe('§4 the database fences drafts by company (migration 0510)', () => {
       .insert(schema.appUser)
       .values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: p.id })
       .returning({ id: schema.appUser.id });
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role:'hr_admin',companyId:A});
     const author = adminOfA(p.id, u.id);
     await expect(
       saveEmployeeDraft(author, { data: { profile: { fullName: 'Into B' }, employment: { companyId: B } }, currentStep: 1 }),

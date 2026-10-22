@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * Employment History — Movement tab redesign (78853b97).
  *
@@ -491,6 +492,6 @@ describe('createMovementEvent — the New Event dispatcher', () => {
         { tenantId: b.tenantId, userId: b.adminUserId, roles: ['employee'] },
         { employmentId: hire.employmentId, kind: 'secondment', effectiveDate: '2026-05-01' },
       ),
-    ).rejects.toThrow(/only an admin/i);
+    ).rejects.toBeInstanceOf(WorkforceAccessError);
   });
 });

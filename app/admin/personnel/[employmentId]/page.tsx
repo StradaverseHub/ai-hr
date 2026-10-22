@@ -247,7 +247,11 @@ export default async function EmployeePage({
   }>;
 }) {
   const {s,scopeIds}=await requireWorkforceAccess();
-  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={(await params).employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
+  const { employmentId } = await params;
+  // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(employmentId)) notFound();
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -279,7 +283,6 @@ export default async function EmployeePage({
    * TP3 and the zakat summary read the country statutory profile, and leave encashment is Leave's.
    */
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
-  const { employmentId } = await params;
   // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
@@ -329,9 +332,6 @@ export default async function EmployeePage({
   // and it is what refuses a well-formed id belonging to a company outside the session's scope. This
   // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(employmentId)) notFound();
-
   const emp = await employeeDetail(s,employmentId,'workforce');
   if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');

@@ -104,7 +104,7 @@ describe('My Absence: mutations stay on /leave; My Profile has its approved read
   });
 
   it('cf588903: /me?tab=leave selects the own read-only Leave panel; actual leave workflows stay on /leave',()=>{
-    expect(mePage).not.toContain("if (spTab === 'leave')");expect(mePage).toContain('href="/leave"');expect(mePage).toContain('leave:facts.modules.leave?leavePanel:null');
+    expect(mePage).not.toContain("if (spTab === 'leave')");expect(mePage).toContain('href="/leave"');expect(mePage).toContain('leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null');
     const facts=read('core/profile-view.ts');expect(facts).toContain('leaveBalancesTx(tx,ctx,employmentId');expect(facts).toContain('leaveEntitlementBreakdownTx(tx,employmentId');
     expect(mePage).not.toContain('action={myRequestLeave}');expect(leavePage).toContain('<RequestLeaveDialog');
   });

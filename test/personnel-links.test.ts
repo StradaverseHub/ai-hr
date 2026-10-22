@@ -64,7 +64,7 @@ describe('People → Personnel: routes exist where expected', () => {
     expect(() => read('app/personnel/[employmentId]/page.tsx')).not.toThrow();
   });
 
-  it('the admin management surface lives under /admin/personnel and requires admin', () => {
+  it('the Workforce management surface lives under /admin/personnel and requires its purpose-bound access', () => {
     // c002b3c3 — THIS ASSERTION HAD STOPPED GUARDING AND STILL PASSED, which is the worst way for a
     // guard to fail. The detail page moved from requireAdmin() to scopedAdmin() (which CALLS requireAdmin,
     // so the posture is unchanged), and the old `includes('requireAdmin')` kept going green off three
@@ -74,9 +74,9 @@ describe('People → Personnel: routes exist where expected', () => {
     // it again; and either gate is accepted, matching test/function-access.test.ts's own GUARD_RE.
     const stripComments = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/.*$/gm, '');
-    const guarded = (path: string) => /\b(requireAdmin|scopedAdmin)\s*\(/.test(stripComments(read(path)));
-    expect(guarded('app/admin/personnel/page.tsx'), 'listing page is admin-gated').toBe(true);
-    expect(guarded('app/admin/personnel/[employmentId]/page.tsx'), 'detail page is admin-gated').toBe(true);
+    const guarded = (path: string) => /\brequireWorkforceAccess\s*\(/.test(stripComments(read(path)));
+    expect(guarded('app/admin/personnel/page.tsx'), 'listing page is Workforce-gated').toBe(true);
+    expect(guarded('app/admin/personnel/[employmentId]/page.tsx'), 'detail page is Workforce-gated').toBe(true);
   });
 
   it('the guard assertion above cannot be satisfied by a comment', () => {

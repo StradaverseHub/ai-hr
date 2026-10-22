@@ -213,7 +213,7 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('<FilterPanel');
     expect(src).toContain('dataTour="people-search"');
     // It searches the whole reachable set, narrowed by the active company context — not the page.
-    expect(src).toContain('listEmployees(session, scopeIds)');
+    expect(src).toContain('listWorkforcePickOptions(session, scopeIds)');
   });
 
   it('the profile mounts it and keeps the open tab across the jump', () => {
@@ -224,8 +224,8 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     // NO NEW READ: the switcher list is the already-loaded listEmployees set, narrowed by scope.
     expect(src).toContain('scopeIds.includes(e.companyId)');
     // …and the route's own guard is untouched: this is what refuses an out-of-scope id.
-    expect(src).toContain('const emp = await employeeDetail(s, employmentId);');
-    expect(src).toContain('if (!emp) notFound();');
+    expect(src).toContain('const emp = await employeeDetail(s,employmentId,'workforce');');
+    expect(src).toContain('if(!emp)return <WorkforceScopedRecord');
   });
 
   it('a MALFORMED employmentId 404s instead of 500ing, and the shape check never replaces the scope check', () => {
@@ -237,8 +237,9 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('if (!UUID_RE.test(employmentId)) notFound();');
     // ORDER MATTERS: the shape check is a pre-filter, not the guard. `employeeDetail` must still run
     // for every well-formed id — that is what refuses one belonging to another company.
+    expect(src.indexOf('UUID_RE.test(employmentId)')).toBeLessThan(src.indexOf('if(!isAdmin(s))return <WorkforceScopedRecord'));
     expect(src.indexOf('UUID_RE.test(employmentId)')).toBeLessThan(
-      src.indexOf('const emp = await employeeDetail(s, employmentId);'),
+      src.indexOf('const emp = await employeeDetail(s,employmentId,'workforce');'),
     );
   });
 

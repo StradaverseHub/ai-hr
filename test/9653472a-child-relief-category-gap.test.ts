@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isChildReliefEligible, childReliefGridFromFamily } from '../core/dependents';
+import {familyGridComplete} from '../lib/family-child-relief-rule';
 import { hasCategoryGap } from '../core/child-relief-review';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -187,7 +188,8 @@ describe('9653472a · (e) the gate that makes the gap matter is untouched', () =
   it('the grid is still stored only when every eligible child carries a category', () => {
     // If a later round "fixes" the gap by deriving a partial grid, this list stops meaning anything and
     // the employee it was meant to help loses relief. That is the near miss r344 recorded.
-    expect(src('core/dependents.ts')).toContain('built.categorised === built.eligible');
+    expect(src('core/dependents.ts')).toContain('familyGridComplete(built.eligible,built.categorised)');
+    expect(familyGridComplete(2,1)).toBe(false);expect(familyGridComplete(2,2)).toBe(true);expect(familyGridComplete(0,0)).toBe(false);
     expect(src('core/dependents.ts')).toContain('? built.grid : null');
   });
 });

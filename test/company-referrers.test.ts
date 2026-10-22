@@ -367,7 +367,7 @@ const CASES: Case[] = [
       const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
       const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: id, code: 'REWARD', name: 'Rewards unit' }).returning();
       const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
-      await owner.db.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today });
+      await withTenant(ADMIN(),tx=>tx.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today }));
     },
   },
   {

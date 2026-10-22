@@ -58,9 +58,12 @@ describe('2f889bae: Pay items rows reach the item page', () => {
     expect(personnel).toMatch(/MID-MONTH/);
   });
 
-  it('both screens sit behind the same guard, so the link cannot lead somewhere the viewer is refused', () => {
+  it('the finite non-HR record exits before Payroll links; their destination keeps its admin guard', () => {
     // Verified rather than assumed: revision 1 listed this as unverified.
-    expect(personnel).toMatch(/scopedAdmin\(\)/);
+    expect(personnel).toContain('await requireWorkforceAccess()');
+    const exit=personnel.indexOf('if(!isAdmin(s))return <WorkforceScopedRecord');
+    expect(exit).toBeGreaterThan(-1);
+    expect(personnel.indexOf('const payrollOn = isModuleEnabledOrFalse')).toBeGreaterThan(exit);
     const destination = readFileSync(join(root, 'app/payroll/transactions/fixed/[id]/page.tsx'), 'utf8');
     expect(destination).toMatch(/scopedAdmin\(\)/);
   });

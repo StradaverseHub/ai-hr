@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
  *
@@ -465,7 +466,7 @@ describe('c063eea9 — validation and refusals', () => {
     const manager: SessionContext = { ...ctx(), roles: ['manager'] };
     await expect(
       correctHireDetails(manager, { employmentId: id, changes: { departmentId: hr }, reason: REASON }),
-    ).rejects.toThrow('Only an admin can correct hire details.');
+    ).rejects.toBeInstanceOf(WorkforceAccessError);
     await expect(
       correctHireDetails(ctx(), { employmentId: id, changes: { departmentId: hr }, reason: '   ' }),
     ).rejects.toBeInstanceOf(HireCorrectionReasonRequiredError);
@@ -476,7 +477,8 @@ describe('c063eea9 — validation and refusals', () => {
       correctHireDetails(ctx(), { employmentId: id, changes: { departmentId: null }, reason: REASON }),
     ).rejects.toThrow('Department is required.');
     expect((await allVersions(id)).every((v) => v.supersededAt === null)).toBe(true);
-    // super_admin passes the role gate.
+    // super_admin passes only when the current login actually holds that role.
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:b.adminUserId,role:'super_admin'});
     await correctHireDetails({ ...ctx(), roles: ['super_admin'] }, { employmentId: id, changes: { departmentId: hr }, reason: REASON });
     expect((await liveVersions(id))[0].departmentId).toBe(hr);
   });
