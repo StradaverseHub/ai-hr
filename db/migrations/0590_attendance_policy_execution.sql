@@ -516,3 +516,167 @@ END $$;
 REVOKE ALL ON FUNCTION app.guard_attendance_policy_settlement_stage() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aa_attendance_policy_settlement_stage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
  FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_settlement_stage();
+
+--> statement-breakpoint
+-- Derived reservation integrity on the EXISTING settlement, never a second payment ledger.
+-- Old tuples stay NULL/unmodified. New legacy claims conservatively retain their possible bounded
+-- three-day source envelope; this does not assert that they worked or were paid every such minute.
+-- A new policy claim needs exact allocated coverage. It may not overlap another policy claim or
+-- even potentially overlap a legacy claim whose physical count attribution is unavailable.
+ALTER TABLE public.overtime_source_settlement
+ ADD COLUMN coverage_employment_id uuid REFERENCES public.employment(id) ON DELETE RESTRICT,
+ ADD COLUMN coverage_calculation_id uuid REFERENCES public.attendance_overtime_calculation(id) ON DELETE RESTRICT,
+ ADD COLUMN coverage_kind text,
+ ADD COLUMN reservation_coverage int8multirange,
+ ADD CONSTRAINT overtime_settlement_coverage_shape_ck CHECK(
+  (coverage_employment_id IS NULL AND coverage_calculation_id IS NULL AND coverage_kind IS NULL AND reservation_coverage IS NULL)
+  OR(coverage_employment_id IS NOT NULL AND coverage_kind IS NOT NULL AND coverage_kind IN('legacyUnknown','policyPhysical') AND reservation_coverage IS NOT NULL
+   AND NOT isempty(reservation_coverage) AND(coverage_kind='legacyUnknown' OR coverage_calculation_id IS NOT NULL)));
+-- btree_gist is already installed by0001. Company and cash/TOIL mode deliberately are NOT keys.
+ALTER TABLE public.overtime_source_settlement ADD CONSTRAINT overtime_policy_physical_no_overlap
+ EXCLUDE USING gist(tenant_id WITH =,coverage_employment_id WITH =,reservation_coverage WITH &&)
+ WHERE(released_at IS NULL AND coverage_kind='policyPhysical');
+-- <> makes only mixed legacy/policy pairs conflict. Legacy/legacy keeps its existing treatment.
+ALTER TABLE public.overtime_source_settlement ADD CONSTRAINT overtime_policy_legacy_possible_overlap
+ EXCLUDE USING gist(tenant_id WITH =,coverage_employment_id WITH =,coverage_kind WITH <>,reservation_coverage WITH &&)
+ WHERE(released_at IS NULL AND coverage_kind IS NOT NULL);
+--> statement-breakpoint
+CREATE FUNCTION app.capture_overtime_settlement_coverage() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.attendance_overtime_source;header public.attendance_overtime_calculation;
+ part public.attendance_overtime_policy_part;proof jsonb;duration jsonb;item jsonb;class_row jsonb;
+ from_text text;to_text text;lo integer;hi integer;part_total integer;total integer:=0;part_count integer:=0;
+ epoch_ms bigint;span int8range;ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
+BEGIN
+ IF TG_OP='UPDATE' THEN
+  IF(NEW.coverage_employment_id,NEW.coverage_calculation_id,NEW.coverage_kind,NEW.reservation_coverage)
+   IS DISTINCT FROM(OLD.coverage_employment_id,OLD.coverage_calculation_id,OLD.coverage_kind,OLD.reservation_coverage) THEN
+   RAISE EXCEPTION 'Reservation coverage is immutable; use the canonical release owner' USING ERRCODE='23514';END IF;
+  -- Original0551 guards still own release, closed Payroll and reversed TOIL/FK teardown checks.
+  RETURN NEW;
+ END IF;
+ IF NEW.coverage_employment_id IS NOT NULL OR NEW.coverage_calculation_id IS NOT NULL
+  OR NEW.coverage_kind IS NOT NULL OR NEW.reservation_coverage IS NOT NULL THEN
+  RAISE EXCEPTION 'Only the settlement owner derives reservation coverage' USING ERRCODE='42501';END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Current settlement principal required' USING ERRCODE='42501';END IF;
+ SELECT * INTO source FROM public.attendance_overtime_source WHERE id=NEW.source_id
+  AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+ IF NOT FOUND OR(app.overtime_attendance_visible(source.tenant_id,source.employment_id,source.attendance_date)
+  OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN
+  RAISE EXCEPTION 'Settlement source is outside current authority' USING ERRCODE='42501';END IF;
+ -- Same canonical employee key as Attendance/Payroll/TOIL. Re-read AFTER waiting and retain the
+ -- source row lock through commit; exclusion constraints independently arbitrate concurrent inserts.
+ PERFORM pg_advisory_xact_lock(hashtextextended(source.tenant_id::text||':'||source.employment_id::text,0));
+ SELECT * INTO source FROM public.attendance_overtime_source WHERE id=NEW.source_id
+  AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id FOR SHARE;
+ IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE
+  OR(app.overtime_attendance_visible(source.tenant_id,source.employment_id,source.attendance_date)
+   OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN
+  RAISE EXCEPTION 'Settlement authority changed while waiting' USING ERRCODE='42501';END IF;
+ NEW.coverage_employment_id:=source.employment_id;
+ epoch_ms:=(extract(epoch FROM(source.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint;
+ IF source.current_calculation_id IS NOT NULL THEN
+  SELECT * INTO header FROM public.attendance_overtime_calculation WHERE id=source.current_calculation_id
+   AND source_id=source.id AND tenant_id=source.tenant_id AND company_id=source.company_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Current reservation calculation is unavailable' USING ERRCODE='23514';END IF;
+ END IF;
+ IF header.binding_kind IS DISTINCT FROM 'attendanceGroupPolicy' THEN
+  NEW.coverage_kind:='legacyUnknown';NEW.coverage_calculation_id:=NULL;
+  NEW.reservation_coverage:=int8multirange(int8range(epoch_ms,epoch_ms+259200000,'[)'));
+  RETURN NEW;
+ END IF;
+ -- This additional guard does NOT remove the earlier unconditional staged-policy payment fence.
+ IF header.outcome<>'ready' OR header.duration_outcome<>'ready' OR NOT header.transferable
+  OR header.approval_status NOT IN('approved','notRequired') OR header.policy_part_count<1
+  OR header.payable_numerator IS NULL OR header.payable_denominator IS NULL THEN
+  RAISE EXCEPTION 'Complete payable policy execution is required before physical reservation' USING ERRCODE='23514';END IF;
+ SELECT evidence->'policyCoverage',evidence#>'{policyExecutionProposal,duration}' INTO proof,duration
+  FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id
+   AND tenant_id=source.tenant_id AND company_id=source.company_id;
+ IF NOT FOUND OR proof->>'state' IS DISTINCT FROM 'prepared'
+  OR proof->>'authority' IS DISTINCT FROM 'coverageProposalOnly'
+  OR proof#>>'{identity,tenantId}' IS DISTINCT FROM source.tenant_id::text
+  OR proof#>>'{identity,companyId}' IS DISTINCT FROM source.company_id::text
+  OR proof#>>'{identity,employmentId}' IS DISTINCT FROM source.employment_id::text
+  OR proof#>>'{identity,sourceId}' IS DISTINCT FROM source.id::text
+  OR proof#>>'{identity,calculationId}' IS DISTINCT FROM header.id::text
+  OR proof#>>'{identity,date}' IS DISTINCT FROM source.attendance_date::text
+  OR proof->>'basis' IS NULL OR proof->>'basis' NOT IN('actual','approvedPlan')
+  OR proof->>'basis' IS DISTINCT FROM duration->>'intervalBasis'
+  OR duration->>'status' IS DISTINCT FROM 'calculated'
+  OR jsonb_typeof(proof->'intervals') IS DISTINCT FROM 'array'
+  OR jsonb_typeof(duration->'classes') IS DISTINCT FROM 'array' THEN
+  RAISE EXCEPTION 'Exact immutable reservation evidence is required' USING ERRCODE='23514';END IF;
+ IF jsonb_array_length(proof->'intervals')>4320 OR jsonb_array_length(duration->'classes')<1 OR jsonb_array_length(duration->'classes')>5 THEN
+  RAISE EXCEPTION 'Reservation evidence exceeds its canonical bound' USING ERRCODE='23514';END IF;
+ FOR class_row IN SELECT value FROM jsonb_array_elements(duration->'classes') LOOP
+  IF(class_row->>'unplacedPayableMinutes') IS DISTINCT FROM '0' THEN
+   RAISE EXCEPTION 'Unplaced rounded counts require separate proved coverage' USING ERRCODE='23514';END IF;
+ END LOOP;
+ FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id
+  AND tenant_id=source.tenant_id AND company_id=source.company_id ORDER BY sequence LOOP
+  IF part.sequence<>part_count OR part.input_digest<>header.input_digest
+   OR jsonb_typeof(part.duration_evidence->'allocatedIntervals') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(part.duration_evidence->'allocatedIntervals')>4320 THEN
+   RAISE EXCEPTION 'Complete ordered policy allocations are required' USING ERRCODE='23514';END IF;
+  part_count:=part_count+1;part_total:=0;
+  FOR item IN SELECT value FROM jsonb_array_elements(part.duration_evidence->'allocatedIntervals') LOOP
+   from_text:=item->>'from';to_text:=item->>'to';
+   IF from_text IS NULL OR to_text IS NULL OR from_text!~'^[0-9]{1,4}$' OR to_text!~'^[0-9]{1,4}$' THEN
+    RAISE EXCEPTION 'Invalid allocated physical interval' USING ERRCODE='23514';END IF;
+   lo:=from_text::integer;hi:=to_text::integer;
+   IF lo<0 OR lo>=hi OR hi>4320 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(part.source_intervals) AS original(value)
+    WHERE(original.value->>'from')::integer<=lo AND(original.value->>'to')::integer>=hi) THEN
+    RAISE EXCEPTION 'Allocated physical interval lacks source coverage' USING ERRCODE='23514';END IF;
+   span:=int8range(epoch_ms+lo::bigint*60000,epoch_ms+hi::bigint*60000,'[)');
+   IF ranges&&span THEN RAISE EXCEPTION 'Policy allocations overlap within their parent' USING ERRCODE='23514';END IF;
+   ranges:=ranges+int8multirange(span);part_total:=part_total+hi-lo;
+  END LOOP;
+  IF part_total<>part.allocated_payable_minutes THEN
+   RAISE EXCEPTION 'Physical allocation count changed' USING ERRCODE='23514';END IF;
+  total:=total+part_total;
+ END LOOP;
+ IF part_count<>header.policy_part_count OR total<=0
+  OR header.payable_numerator!~'^[0-9]{1,80}$' OR header.payable_denominator!~'^[0-9]{1,80}$'
+  OR header.payable_denominator::numeric<=0
+  OR header.payable_numerator::numeric<>total::numeric*header.payable_denominator::numeric
+  OR(duration->>'payableMinutes') IS DISTINCT FROM total::text THEN
+  RAISE EXCEPTION 'Every payable minute needs exact complete physical coverage' USING ERRCODE='23514';END IF;
+ FOR item IN SELECT value FROM jsonb_array_elements(proof->'intervals') LOOP
+  from_text:=item->>'fromEpochMillisecond';to_text:=item->>'toEpochMillisecond';
+  IF from_text IS NULL OR to_text IS NULL OR from_text!~'^-?[0-9]{1,16}$' OR to_text!~'^-?[0-9]{1,16}$'
+   OR from_text::bigint>=to_text::bigint THEN
+   RAISE EXCEPTION 'Invalid recorded physical coverage' USING ERRCODE='23514';END IF;
+  span:=int8range(from_text::bigint,to_text::bigint,'[)');
+  IF recorded&&span THEN RAISE EXCEPTION 'Recorded physical coverage overlaps itself' USING ERRCODE='23514';END IF;
+  recorded:=recorded+int8multirange(span);
+ END LOOP;
+ IF recorded IS DISTINCT FROM ranges THEN
+  RAISE EXCEPTION 'Recorded coverage does not replay from all dated parts' USING ERRCODE='23514';END IF;
+ -- Rows predating this migration retain all-NULL metadata. Never backfill/rewrite paid history;
+ -- conservatively refuse new policy overlap with their possible bounded source period instead.
+ IF EXISTS(SELECT 1 FROM public.overtime_source_settlement old_claim
+  JOIN public.attendance_overtime_source old_source ON old_source.id=old_claim.source_id AND old_source.tenant_id=old_claim.tenant_id
+  WHERE old_claim.tenant_id=source.tenant_id AND old_source.employment_id=source.employment_id
+   AND old_source.attendance_date BETWEEN source.attendance_date-2 AND source.attendance_date+2
+   AND old_claim.released_at IS NULL AND old_claim.coverage_kind IS NULL
+   AND ranges&&int8range((extract(epoch FROM(old_source.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint,
+    (extract(epoch FROM(old_source.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint+259200000,'[)')) THEN
+  RAISE EXCEPTION 'An older active reservation has unknown potentially overlapping physical coverage' USING ERRCODE='23514';END IF;
+ NEW.coverage_kind:='policyPhysical';NEW.coverage_calculation_id:=header.id;NEW.reservation_coverage:=ranges;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.capture_overtime_settlement_coverage() FROM PUBLIC,ai_hr_app;
+-- Restricted migration owners must be able to check hidden same-employment reservations inside
+-- the checked definer hook. Use its actual function owner, which may differ from restored table
+-- owners. The application role gains no additional table or function authority.
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation',
+  'attendance_overtime_calculation_evidence','attendance_overtime_policy_part','overtime_source_settlement'] LOOP
+  EXECUTE format('CREATE POLICY overtime_coverage_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',table_name,'app.capture_overtime_settlement_coverage()');
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE TRIGGER a0_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
+ FOR EACH ROW EXECUTE FUNCTION app.capture_overtime_settlement_coverage();

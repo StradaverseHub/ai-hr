@@ -59,6 +59,9 @@ const bytea = customType<{ data: Buffer; driver: Buffer }>({
   },
 });
 
+/** Database-owned range text; applications never supply reservation coverage. */
+const int8multirange=customType<{data:string;driver:string}>({dataType(){return 'int8multirange';}});
+
 // ───────────────────────────── Enums ─────────────────────────────
 
 // Partner roles (ADR-0049) are ADDITIVE specialist roles beside hr_admin: each administers only
@@ -10645,6 +10648,9 @@ export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
   amountMinorUnits:text('amount_minor_units').notNull(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_overtime_line_key_uq').on(t.calculationId,t.lineKey)]);
 export const overtimeSourceSettlement = pgTable('overtime_source_settlement', {
+  coverageEmploymentId:uuid('coverage_employment_id').references(()=>employment.id,{onDelete:'restrict'}),
+  coverageCalculationId:uuid('coverage_calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  coverageKind:text('coverage_kind').$type<'legacyUnknown'|'policyPhysical'>(),reservationCoverage:int8multirange('reservation_coverage'),
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
   ownerReference:jsonb('owner_reference').notNull().$type<{type:'payroll_batch'|'toil_accrual';id:string}>(),mode:text('mode').notNull().$type<'cash'|'toil'>(),calculationId:uuid('calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   payrollBatchId:uuid('payroll_batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),toilAccrualId:uuid('toil_accrual_id').references(()=>toilAccrual.id,{onDelete:'set null'}),
