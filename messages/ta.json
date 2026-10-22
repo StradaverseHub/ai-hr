@@ -22485,7 +22485,7 @@
       "window": "{from}–{to} · கோலாலம்பூர் தேதிகள்",
       "birthday": "பிறந்தநாள்",
       "anniversary": "பணி ஆண்டு நிறைவு",
-      "anniversaryYears": "{count} ஆண்டுகள் பணி",
+      "anniversaryYears": "{count, plural, one {# ஆண்டு பணி} other {# ஆண்டுகள் பணி}}",
       "total": "{count} கொண்டாட்டங்கள்",
       "pagination": "கொண்டாட்டப் பக்கங்கள்",
       "previous": "முந்தைய பக்கம்",
