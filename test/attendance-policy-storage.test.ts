@@ -1,3 +1,4 @@
+import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
@@ -25,12 +26,12 @@ const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z'
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 
-async function capturedClock(employmentId:string,date:string,direction:'in'|'out',time:string,captureDate=date){
+async function capturedClock(employmentId:string,date:string,direction:'in'|'out',time:string,captureDate=date,millisecond=0){
  const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId,attendanceDate:date,
-  direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
+  direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource'){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -83,8 +84,8 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
  }
  const sourceOffset=currentManual?0:2;
- await capturedClock(worker.employmentId,day(sourceOffset),'in','23:50:00');
- await capturedClock(worker.employmentId,day(sourceOffset),'out','00:10:00',day(sourceOffset+1));
+ await capturedClock(worker.employmentId,day(sourceOffset),'in','23:50:00',day(sourceOffset),captureMillisecond);
+ await capturedClock(worker.employmentId,day(sourceOffset),'out','00:10:00',day(sourceOffset+1),captureMillisecond);
  return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -270,6 +271,32 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(attendancePolicyCashReplay(snapshot));
   expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);
+ });
+
+ it('binds original captured milliseconds separately from the existing minute count attribution',async()=>{
+  const f=await fixture('auto','12','actual',false,undefined,555),p={employmentId:f.employmentId,date:day(2)};
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional original millisecond count coverage'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!reviewed?.calculation)throw Error('Expected staged parent');
+  const identity={tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,sourceId:reviewed.source.id,
+   calculationId:reviewed.calculation.id,date:p.date};
+  const coverage=attendancePolicyCapturedCoverageProposal(identity,snapshot);
+  expect(coverage).toMatchObject({state:'prepared',countBasis:'capturedBoundaryFloor',minutes:20});
+  if(coverage.state!=='prepared')throw Error('Expected captured source attribution');
+  const midnight=Date.parse(p.date+'T00:00:00+08:00');
+  expect(coverage.intervals).toEqual([{fromEpochMillisecond:midnight+1430*60000+555,toEpochMillisecond:midnight+1450*60000}]);
+  expect(coverage.allocations.map(row=>row.minutes)).toEqual([10,10]);
+  expect(coverage.allocations.every(row=>row.captureInEpochMillisecond===midnight+1430*60000+555
+   &&row.captureOutEpochMillisecond===midnight+1450*60000+555)).toBe(true);
+  expect(coverage.intervals.reduce((n,row)=>n+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(20*60000-555);
+  expect(reviewed.evidence?.evidence.policyCapturedCoverage).toEqual(coverage);
+  const substituted=structuredClone(snapshot);if(substituted.policyClockSource?.state!=='known')throw Error('Expected captures');
+  substituted.policyClockSource.clocks[0].captureId=randomUUID();
+  expect(attendancePolicyCapturedCoverageProposal(identity,substituted)).toMatchObject({state:'unavailable'});
+  expect(reviewed.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});expect(reviewed.lines).toEqual([]);
  });
 
  it('uses each dated child salary and binds next-day pay changes without changing duration',async()=>{
@@ -555,7 +582,7 @@ describe('immutable non-payable policy part storage',()=>{
   const normal=await withTenant(ctx,async tx=>{const {saved}=await header(tx,f,0,{bindingKind:undefined,policyRevisionId:null});return saved;});
   expect(normal).toMatchObject({bindingKind:'assignedPattern',policyRevisionId:null,policyPartCount:0,outcome:'refused',transferable:false});
   // The independent fixture uses another source rather than rewriting the immutable header.
-  await capturedClock(f.employmentId,day(3),'in','23:50:00');
+  await capturedClock(f.employmentId,day(3),'in','23:50:00',day(sourceOffset),captureMillisecond);
   const policy=await withTenant(ctx,async tx=>{
    const source=await lockOvertimeSourceTx(tx,ctx,{employmentId:f.employmentId,date:day(3)});
    const [saved]=await tx.insert(s.attendanceOvertimeCalculation).values({...normal,id:randomUUID(),sourceId:source.id,ordinal:source.revision+1,

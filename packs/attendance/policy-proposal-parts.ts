@@ -1,3 +1,4 @@
+import {attendancePolicyCapturedCoverageProposal} from './policy-captured-coverage';
 import {attendancePolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
 import {attendancePolicyCoverageProposal} from './policy-coverage';
@@ -92,6 +93,8 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    ||!isDeepStrictEqual(stored.policyPricingProposal,attendancePolicyPricingProposal(replaySnapshot)))return false;
   const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
   if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;
+  if(!isDeepStrictEqual(stored.policyCapturedCoverage,attendancePolicyCapturedCoverageProposal(
+   {tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},replaySnapshot)))return false;
   const expected=materializeAttendancePolicyProposalParts(input);
   if(expected===null||expected.length!==header.policyPartCount)return false;
   return rows.every((row,index)=>{

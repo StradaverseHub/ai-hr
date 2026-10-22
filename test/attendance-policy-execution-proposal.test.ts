@@ -1,3 +1,4 @@
+import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {selectAttendancePolicyManualPositions} from '../packs/attendance/policy-manual-duration';
 import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
 import {attendancePolicyCashReplay} from '../packs/attendance/policy-cash-replay';
@@ -199,6 +200,7 @@ describe('complete immutable proposal replay',()=>{
   const snapshot={input:evidence.inputs,resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,attendanceGroupPolicy:f.context.selected,
    policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal} as unknown as CanonicalOvertimeSnapshot;
   const completeEvidence={...evidence,evidence:{...evidence.evidence,
+   policyCapturedCoverage:attendancePolicyCapturedCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},snapshot),
    policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyCashReplay:attendancePolicyCashReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot)}};
   expect(completeEvidence.evidence.policyDurationReplay.state).toBe('unavailable');
   expect(completeEvidence.evidence.policyPricingProposal.state).toBe('unavailable');
