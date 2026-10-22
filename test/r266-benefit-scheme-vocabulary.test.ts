@@ -271,24 +271,13 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
     expect(explainerAt).toBeLessThan(earningAt);
   });
 
-  it('the Benefit Scheme card renders the note in BOTH states and the empty-state link to the Leave types screen', () => {
+  it('39306a9e r2 removes the Personnel scheme readout while retaining its canonical owner', () => {
     const src = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(src).toContain("tScheme('derivedNote')");
-    expect(src).toContain("tScheme('derivedNoteEmpty')");
-    expect(src).toContain("tScheme('setUpSchemes')");
-    // m3 — both links to the Leave types screen resolve through the module's one list of addresses.
-    const start = src.indexOf('id="section-benefit-scheme"');
-    const end = src.indexOf('\n  ) : null;', start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start + 300);
-    const card = src.slice(start, end);
-    expect(card.length).toBeGreaterThan(300);
-    expect(src).toContain('{benefitSchemeCard}');
-    expect((card.match(/href=\{leaveConfigScreenHref\('leaveTypes'\)\}/g) ?? []).length).toBe(2);
-    expect(card).not.toContain('href="/admin/leave-config/types"');
-    // Still read-only: no form, no action, no input on the card.
-    expect(card).not.toMatch(/<form|<input|<select|action=/);
-    expect((card.match(/data-testid="benefit-scheme-derived-note"/g) ?? []).length).toBe(2);
+    expect(src).not.toContain('section-benefit-scheme');
+    expect(src).not.toContain('benefitSchemeView(');
+    expect(src).not.toContain('benefitSchemeCard');
+    expect(read('core/entitlement-scheme-view.ts')).toContain('export');
+    expect(src).toContain('{gradeCard}');
   });
 
   it('the schemes list has its own "Scheme name" header and the block carries the intro and the naming tip', () => {
