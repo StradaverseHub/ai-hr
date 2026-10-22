@@ -671,6 +671,7 @@ export type OvertimePolicyAllocatedPrice=
  |{state:'proposed';authority:'pricingProposalOnly';durationOwner:'attendanceGroupPolicy';minutes:number;
    source:OvertimeSource;patternVersionId:string;policyBinding:OvertimePolicyBinding['policyBinding'];
    currency:{code:string;minorScale:number};amountMinorUnits:string;lines:OvertimeLine[];trace:OvertimeTrace[];
+   moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][]};
    /** Original duration configuration remains visible, but cannot run a second time at pricing. */
    retainedDurationConfiguration:{eligibleMinutes:OvertimePattern['eligibleMinutes'];cap:OvertimePattern['durationCap'];
     rounding:OvertimePattern['durationRounding'];minuteDeductionIds:string[]}};
@@ -719,7 +720,7 @@ function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAlloc
  const {pattern,stage}=prepared;
  return {state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:Number(prepared.total.n),
   source:result.source,patternVersionId:result.patternVersionId,policyBinding:stage.input.policyBinding,
-  currency:stage.input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,
+  currency:stage.input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,moneyScope:{kind:'singleAllocation'},
   retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
    minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
 }
@@ -749,7 +750,7 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
    ||parts.some(p=>JSON.stringify(p.pattern)!==definition||p.stage.input.patternVersionId!==parent.patternVersionId
     ||JSON.stringify(p.stage.input.source)!==source||JSON.stringify(p.stage.input.currency)!==currency
     ||p.stage.input.policyBinding.revisionId!==parent.policyBinding.revisionId))return refuse('parentScopeUnavailable');
-  const segments=parts.flatMap(p=>p.stage.input.segments),ids=new Set(segments.map(s=>s.id));
+  const segments=parts.flatMap(p=>p.stage.input.layer==='raw'?p.stage.input.segments:[]),ids=new Set(segments.map(s=>s.id));
   if(ids.size!==segments.length||JSON.stringify(segments)!==JSON.stringify(parent.segments))return refuse('parentScopeUnavailable');
   let end:bigint|null=null;const dates=new Set<string>();
   for(const p of parts){
@@ -781,7 +782,8 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
    const own=new Set(p.stage.work.map(w=>w.id)),lines=result.lines.filter(l=>own.has(l.segmentId));
    const value=allocatedPriceProjection(p,{...result,...p.stage.identity,payableMinutes:exact(p.total,'minutes'),lines,
     amountMinorUnits:lines.reduce((n,l)=>n+BigInt(l.amountMinorUnits),BigInt('0')).toString()});
-   if(value.state!=='proposed')return refuse('formulaUnavailable');projected.push(value);
+   if(value.state!=='proposed')return refuse('formulaUnavailable');
+   projected.push({...value,moneyScope:{kind:'parent',amountMinorUnits:result.amountMinorUnits,partBindings:parts.map(part=>part.stage.input.policyBinding)}});
   }
   if(projected.reduce((n,p)=>n+BigInt(p.amountMinorUnits),BigInt('0'))!==BigInt(result.amountMinorUnits))return refuse('formulaUnavailable');
   return {state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:result.amountMinorUnits,currency:parent.currency,parts:projected,trace:result.trace};

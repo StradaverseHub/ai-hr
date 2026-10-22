@@ -141,6 +141,7 @@ describe('one central parent money scope over dated allocations',()=>{
   expect(result).toMatchObject({state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:'400'});
   if(result.state!=='proposed')throw Error('Expected parent price');
   expect(result.parts.map(p=>p.amountMinorUnits)).toEqual(['200','200']);
+  expect(result.parts.every(p=>p.moneyScope.kind==='parent'&&p.moneyScope.amountMinorUnits==='400')).toBe(true);
   expect(result.trace.filter(t=>t.id==='paymentCap')).toHaveLength(1);
   expect(Object.hasOwn(result,'transferable')).toBe(false);expect(parseRecordedOvertimePolicyEvaluation(result)).toBeNull();
   expect({p,f}).toEqual(before);
@@ -158,7 +159,7 @@ describe('one central parent money scope over dated allocations',()=>{
   if(first.payment.method!=='hourly')throw Error('Hourly fixture');
   first.to='10';first.payment.multiplier={id:'one_multiplier',type:'literal',unit:'scalar',value:'1'};
   p.rates[0].tiers.push({...structuredClone(first),id:'second_tier',from:'10',to:null,
-   payment:{...first.payment,rate:{id:'next_rate',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'}}});
+   payment:{...first.payment,multiplier:{id:'second_multiplier',type:'literal',unit:'scalar',value:'1'},rate:{id:'next_rate',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'}}});
   const result=parentPrice(p);expect(result).toMatchObject({state:'proposed',amountMinorUnits:'600'});
   if(result.state!=='proposed')throw Error('Expected parent price');expect(result.parts.map(p=>p.amountMinorUnits)).toEqual(['200','400']);
  });

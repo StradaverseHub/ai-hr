@@ -60,7 +60,7 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
    // scoped to each actual dated segment. Distinct formula scopes remain explicit refusal.
    const first=dated[0],count=dated.reduce((n,row)=>n+(row.input.approval.minutes.state==='known'?Number(row.input.approval.minutes.value):0),0);
    if(dated.some(row=>row.definitionDigest!==first.definitionDigest))return refuse('pricingScopeUnavailable');
-   const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,facts:snapshot.input.facts,
+   const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,layer:'raw',sessionGranularity:'recorded',facts:snapshot.input.facts,
     segments:dated.flatMap(row=>row.input.layer==='raw'?row.input.segments:[]),resources:snapshot.input.resources,
     approval:{...first.input.approval,minutes:{state:'known',value:String(count),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}}};
    const priced=evaluateOvertimePolicyAllocatedParentPrice(parent,dated.map(row=>({pattern:row.pattern,input:row.input})));
