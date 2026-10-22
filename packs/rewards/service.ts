@@ -23,6 +23,9 @@ export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';
 export class RewardError extends Error { constructor(message: string) { super(message); this.name = 'RewardError'; } }
 const idSchema = z.uuid();
+// Match the canonical catalogue display used by setup and shared policy targets. Legacy name is
+// retained data, not an alternative label for the same unit once a review has been created.
+const businessUnitDisplayName = sql<string>`coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`;
 const moneyToCents = (v: string) => Math.round(Number(v) * 100);
 const digest = (unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[]) => createHash('sha256').update(JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })).digest('hex');
 
@@ -79,7 +82,7 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
     const hiddenBlocks = calculated.flags.filter(f => f.entryId && !visibleIds.has(f.entryId) && f.severity === 'block').length;
     if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
-    const [bu] = await tx.select({ name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await tx.select({ id: rewardDecision.id, action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, actorId: rewardDecision.actorId, reason: rewardDecision.reason, createdAt: rewardDecision.createdAt, revision: rewardDecision.revision }).from(rewardDecision).where(eq(rewardDecision.unitId, unitId)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id));
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
@@ -98,9 +101,9 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnit.name, status: rewardUnit.status, revision: rewardUnit.revision })
+    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
-      .where(inArray(rewardUnit.companyId, companyIds)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnit.name));
+      .where(inArray(rewardUnit.companyId, companyIds)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
   });
 }
 
@@ -108,7 +111,7 @@ export async function rewardSetupChoices(ctx: SessionContext, companyIds: string
   return withRewardsTenant(ctx, async tx => {
     const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds),sql`app.reward_admin(${company.id})`,options.sharedPolicy?eq(company.currency,'MYR'):undefined)).orderBy(asc(company.legalName)) : [];
     if (!companies.length) return { companies: [], units: [], users: [], cycles: [] };
-    const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:sql<string>`coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id));
+    const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:businessUnitDisplayName, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id));
     const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).where(and(isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
     const cycles = await tx.select({ id: rewardCycle.id, name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).orderBy(desc(rewardCycle.year), asc(rewardCycle.name));
     return { companies, units, users, cycles };
@@ -125,7 +128,7 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
     if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
     const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
-    const [bu] = await tx.select({ name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     const members = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const [originRow]=await tx.execute<{origin:{versionId:string;revision:number;name:string;changed:boolean}|null}>(sql`select app.reward_policy_unit_origin(${unitId}::uuid) as origin`);
     return { unit, cycle, name: bu?.name ?? 'Business unit', members,policyOrigin:originRow?.origin??null,
@@ -485,7 +488,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
 export async function pendingRewardReviews(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, status: rewardUnit.status, name: businessUnit.name, cycle: rewardCycle.name })
+    return tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, status: rewardUnit.status, name: businessUnitDisplayName, cycle: rewardCycle.name })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(inArray(rewardUnit.companyId, companyIds), sql`${rewardUnit.status} in ('bg','gr','ctro','ec')`, sql`${rewardUnit.status} in (select app.reward_roles(${rewardUnit.id}))`))
       .orderBy(asc(rewardUnit.createdAt), asc(rewardUnit.id));

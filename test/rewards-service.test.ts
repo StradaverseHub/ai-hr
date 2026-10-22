@@ -5,7 +5,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotifications } from '../core/notifications';
@@ -46,6 +46,22 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     for (const role of ['bg', 'gr', 'ctro', 'ec'] as const) await decideRewardUnit(actors[role]!, unitId, rev, 'approve', 'Reviewed recommendations');
     return rev;
   }
+  it.each([
+    ['  Current Rewards unit  ', 'Current Rewards unit'],
+    ['', 'HQ'],
+    [null, 'HQ'],
+  ] as const)('uses the canonical unit label or code across setup, review, configuration and pending work (%s)', async (label, expected) => {
+    // Actual app reproduction: the selector showed the current label while both review headings
+    // and the review list showed a different legacy name for this same retained unit UUID.
+    const before = await view();
+    await owner.db.update(schema.businessUnit).set({ label, name: 'Legacy unit name must not display' }).where(eq(schema.businessUnit.id, before.unit.businessUnitId));
+    expect((await rewardSetupChoices(admin, [b.companyId])).units.find(row => row.id === before.unit.businessUnitId)?.name).toBe(expected);
+    expect((await listRewardUnits(admin, [b.companyId])).find(row => row.id === unitId)?.unit).toBe(expected);
+    expect((await getRewardConfiguration(admin, unitId)).name).toBe(expected);
+    expect((await view()).name).toBe(expected);
+    await decideRewardUnit(actors.bu!, unitId, before.unit.revision, 'submit', 'Fictional canonical unit display acceptance');
+    expect((await pendingRewardReviews(actors.bg!, [b.companyId])).find(row => row.id === unitId)?.name).toBe(expected);
+  });
   it('previews and saves named membership without exposing pay or changing recommendations', async () => {
     const before = await view();
     const selection = { employmentIds: [employmentId], adoptLegacy: false };
