@@ -49,7 +49,7 @@ import {
   resolveRequestApprover,
 } from '../lib/profile-requestable-fields';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { employeeStatutoryMy, person, profileChangeRequest, tenantSetting } from '../db/schema';
+import { domainEvent, employeeStatutoryMy, person, profileChangeRequest, tenantSetting } from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -590,10 +590,9 @@ describe('r261 — who approves, and the two things that setting must never do',
 
   it('NOBODY DECIDES THEIR OWN REQUEST, under either setting', async () => {
     /**
-     * `assertCanDecide`'s self-ban runs BEFORE any role or setting is consulted, which is why it is the
-     * floor rather than a branch of the ceiling — and why the answer cannot depend on the configuration.
-     * (The one documented exception, untouched by this round, is `super_admin`'s sole-admin escape
-     * hatch, which exists so a one-person company is not locked out of its own approvals.)
+     * The independent review reader now excludes own requests before loading proposals. Its exact
+     * not-visible refusal is expected; neither approver setting may make a decision or change the
+     * request, master record or immutable request history.
      */
     const selfPerson = await hire('SelfServing');
     const selfAdmin: SessionContext = {
@@ -607,12 +606,19 @@ describe('r261 — who approves, and the two things that setting must never do',
       employmentId: selfPerson.employmentId,
       proposed: { preferredName: 'Myself' },
     });
+    const snapshot=async()=>({
+      request:await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId)),
+      master:await masterSnapshot(selfPerson.personId),
+      history:await owner.db.select().from(domainEvent).where(eq(domainEvent.aggregateId,requestId)).orderBy(domainEvent.id),
+    });
+    const before=await snapshot();
     for (const value of ['admin', 'group_admin'] as const) {
       await setTenantSetting(groupAdminCtx(), { key: PROFILE_REQUEST_APPROVER_SETTING_KEY, value });
       await expect(
         decideProfileChange(await freshCtx(selfAdmin), { requestId, decision: 'approved' }),
         `self-approval must be banned under '${value}'`,
-      ).rejects.toMatchObject({code:'permission'});
+      ).rejects.toThrow('profile change request not found (or not visible)');
+      expect(await snapshot(),`no self-decision effects under '${value}'`).toEqual(before);
     }
     const [p] = await owner.db.select().from(person).where(eq(person.id, selfPerson.personId));
     expect(p.preferredName, 'nothing applied').toBeNull();
