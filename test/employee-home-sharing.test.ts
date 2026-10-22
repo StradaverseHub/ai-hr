@@ -15,6 +15,7 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,typ
 let b:Base,caller:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>caller}));
 const {GET:teamGET}=await import('../app/api/home/team/route');
+const {GET:celebrationGET}=await import('../app/api/home/celebrations/route');
 const today=()=>todayInKualaLumpur();
 const add=(d:string,n:number)=>new Date(Date.parse(d+'T12:00:00Z')+n*86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -119,11 +120,21 @@ describe('minimal Home sharing under actual application RLS',()=>{
   expect(result.items).toEqual([{employmentId:peer.employmentId,name:'Fictional celebration',date:today(),kind:'anniversary',years:4},
    {employmentId:peer.employmentId,name:'Fictional celebration',date:today(),kind:'birthday',years:null}]);
   for(const key of ['2000'+today().slice(4),'dateOfBirth','personId','hideBirthday','hideAnniversary'])expect(JSON.stringify(result)).not.toContain(key);
+  caller=own.ctx;
+  const response=await celebrationGET(new Request('http://localhost/api/home/celebrations?employmentId='+own.employmentId));
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({version:1,employmentId:own.employmentId,page:result});
+  expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('vary')).toBe('Cookie, Authorization');
+  for(const query of ['','employmentId=x&employmentId=y','employmentId=x&companyId='+b.companyId,'employmentId=x&after=',
+   'employmentId=x&after=2026-02-31|birthday|'+peer.employmentId,'employmentId=x&after=a&after=b'])
+   expect((await celebrationGET(new Request('http://localhost/api/home/celebrations?'+query))).status).toBe(400);
+  expect((await celebrationGET(new Request('http://localhost/api/home/celebrations?employmentId='+peer.employmentId))).status).toBe(403);
   const secondLogin:SessionContext={...peer.ctx,userId:await createAppUser(b.tenantId,peer.personId,'employee')};
   await saveOwnHomePersonPrivacy(secondLogin,{expectedOrdinal:0,hideBirthday:true,hideAnniversary:false});
   expect((await readHomeCelebrationPage(own.ctx,own.employmentId)).items.map(row=>row.kind)).toEqual(['anniversary']);
   await saveOwnHomePersonPrivacy(peer.ctx,{expectedOrdinal:1,hideBirthday:true,hideAnniversary:true});
   expect((await readHomeCelebrationPage(own.ctx,own.employmentId)).items).toEqual([]);
+  const hidden=await celebrationGET(new Request('http://localhost/api/home/celebrations?employmentId='+own.employmentId));
+  expect(await hidden.json()).toMatchObject({page:{items:[],total:0}});
   expect(await withTenant(own.ctx,tx=>tx.select().from(s.employeeHomePersonPrivacyRevision))).toEqual([]);
   await saveOwnHomePersonPrivacy(secondLogin,{expectedOrdinal:2,hideBirthday:false,hideAnniversary:false});
   expect((await readHomeCelebrationPage(own.ctx,own.employmentId)).total).toBe(2);

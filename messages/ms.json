@@ -22471,6 +22471,26 @@
       "previous": "Halaman sebelumnya",
       "next": "Halaman seterusnya",
       "firstPage": "Kembali ke halaman pertama"
+    },
+    "celebrations": {
+      "title": "Detik Istimewa",
+      "loading": "Memuatkan sambutan yang dikongsi…",
+      "failed": "Sambutan yang dikongsi tidak dapat dimuatkan.",
+      "timeout": "Sambutan yang dikongsi mengambil masa terlalu lama untuk dimuatkan.",
+      "retry": "Cuba lagi",
+      "refresh": "Muat semula",
+      "off": "Perkongsian sambutan dimatikan untuk Home ini.",
+      "empty": "Tiada sambutan yang dikongsi dalam tempoh ini.",
+      "unnamed": "Rakan sekerja",
+      "window": "{from}–{to} · Tarikh Kuala Lumpur",
+      "birthday": "Hari lahir",
+      "anniversary": "Ulang tahun perkhidmatan",
+      "anniversaryYears": "{count} tahun perkhidmatan",
+      "total": "{count} sambutan",
+      "pagination": "Halaman sambutan",
+      "previous": "Halaman sebelumnya",
+      "next": "Halaman seterusnya",
+      "firstPage": "Kembali ke halaman pertama"
     }
   }
 }

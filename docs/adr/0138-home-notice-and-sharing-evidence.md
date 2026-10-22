@@ -246,6 +246,23 @@ silently treating a hidden choice as absent. No BYPASSRLS or owner membership is
 These readers have no send side effect; the explicit editable greeting/notification journey remains
 required. Read-model source and draft tests alone establish no runtime or interface acceptance.
 
+The independently delivered celebration card consumes that same projection with a selected-employment
+envelope and private/no-store transport. It distinguishes sharing off, a successful empty period and a
+failed read. A failed continuation or a subject change removes the prior names; the first-page action
+can recover from a cursor invalidated by an opt-out. The displayed window explicitly uses Kuala Lumpur
+civil dates, while locale formatting changes only the labels. Birthday rows carry no age; an anniversary
+without a proven common service count has no invented count. Reading and paging remain side-effect free.
+This read-only presentation does not complete the still-required editable greeting and explicit Send.
+
+The fictional local Team/Calendar walkthrough on `603dcbe3c` demonstrated a23-person cohort across
+20+3 pages, one-person deduplication across two employments, six approved-leave people with a five-name
+preview and a six-name expanded list, selected-company isolation, and an HR-saved default-off version
+reopened by the employee. Mobile keyboard navigation scrolled the dialog actions into view. All six
+locale DOMs rendered at a measured390px without page overflow; native pixel review covered English.
+It did not demonstrate all supported browser engines, performance budgets, all locale visual states,
+synchronized revocation races, full Home acceptance or a deployment. The existing theme toggle retained
+the dark class during this walkthrough, so no light-theme PASS is attributed to that evidence.
+
 Person-wide celebration opt-outs have a separate immutable revision owner in `0583`. A current
 actual login can read and append choices only for its linked person, even when the login also has
 HR authority. Birthday and anniversary choices are separate. Both logins for one person see the

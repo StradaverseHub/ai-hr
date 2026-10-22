@@ -15,6 +15,7 @@ import {HomeCalendarCard} from './calendar-card';
 import {HomeTodayCard} from './today-card';
 import {HomeSummaryOverview} from './summary-overview';
 import {HomeTeamCard} from './team-card';
+import {HomeCelebrationsCard} from './celebrations-card';
 import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
@@ -33,6 +34,7 @@ export async function EmployeePersonalHome({session,employmentId}:{session:Sessi
   tasks:<HomeTasksCard employmentId={selected}/>,
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
   team:<HomeTeamCard key={selected} employmentId={selected}/>,
+  celebrations:<HomeCelebrationsCard key={selected} employmentId={selected}/>,
   calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar,validateHomeTeamResponse} from '../lib/employee-home-sharing';
+import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeCelebrationResponse,validateHomeTeamCalendar,validateHomeTeamResponse} from '../lib/employee-home-sharing';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const id='62063128-fdc5-4a0e-87d7-1892257dbb10';
 const today=todayInKualaLumpur(),to=new Date(Date.parse(today+'T12:00:00Z')+7*86400000).toISOString().slice(0,10);
@@ -32,6 +32,15 @@ describe('Home sharing transport boundaries',()=>{
   expect(validateHomeTeamResponse({version:1,employmentId:'own',page:team()},'own').page).toEqual(team());
   for(const value of [{version:1,employmentId:'foreign',page:team()},{version:1,employmentId:'own',page:team(),salary:1000},
    {version:1,employmentId:'own',page:{...team(),items:[{...member,presence:'full_day'}]}}])expect(()=>validateHomeTeamResponse(value,'own')).toThrow();
+ });
+ it('binds celebration transport to the selected own employment and rejects personal content at both boundaries',()=>{
+  const response={version:1,employmentId:'own',page:celebrations()};
+  expect(validateHomeCelebrationResponse(response,'own')).toEqual(response);
+  for(const value of [{...response,employmentId:'foreign'},{...response,greetingBody:'Private'},
+   {...response,page:{...celebrations(),items:[{...event,birthYear:2000}]}},
+   {...response,page:{...celebrations(),items:[{...event,personId:id}]}},
+   {...response,page:{...celebrations(),items:[{...event,years:26}]}}])
+   expect(()=>validateHomeCelebrationResponse(value,'own')).toThrow();
  });
  it('never interprets unavailable calendar coverage as zero or serializes richer peer rows',()=>{
   const day={date:today,available:false,totalPeople:null,items:[],nextCursor:null};

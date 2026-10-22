@@ -84,3 +84,8 @@ export function validateHomeCelebrationPage(raw:unknown):HomeCelebrationPage{
   ||next!==null&&next!==keys.at(-1))return fail();
  return result;
 }
+export function validateHomeCelebrationResponse(raw:unknown,employmentId:string){
+ const value=object(raw,['version','employmentId','page']);
+ if(value.version!==1||value.employmentId!==employmentId)return fail();
+ return {version:1 as const,employmentId,page:validateHomeCelebrationPage(value.page)};
+}

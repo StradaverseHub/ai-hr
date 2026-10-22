@@ -22471,6 +22471,26 @@
       "previous": "Trang trước",
       "next": "Trang tiếp",
       "firstPage": "Về trang đầu"
+    },
+    "celebrations": {
+      "title": "Khoảnh khắc nhỏ",
+      "loading": "Đang tải dịp kỷ niệm được chia sẻ…",
+      "failed": "Không thể tải dịp kỷ niệm được chia sẻ.",
+      "timeout": "Tải dịp kỷ niệm được chia sẻ mất quá nhiều thời gian.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "off": "Chia sẻ dịp kỷ niệm đã tắt cho trang này.",
+      "empty": "Không có dịp kỷ niệm được chia sẻ trong khoảng này.",
+      "unnamed": "Đồng nghiệp",
+      "window": "{from}–{to} · Ngày tại Kuala Lumpur",
+      "birthday": "Sinh nhật",
+      "anniversary": "Kỷ niệm ngày làm việc",
+      "anniversaryYears": "{count} năm làm việc",
+      "total": "{count} dịp kỷ niệm",
+      "pagination": "Các trang dịp kỷ niệm",
+      "previous": "Trang trước",
+      "next": "Trang sau",
+      "firstPage": "Về trang đầu"
     }
   }
 }

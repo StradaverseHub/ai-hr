@@ -22471,6 +22471,26 @@
       "previous": "Previous page",
       "next": "Next page",
       "firstPage": "Return to first page"
+    },
+    "celebrations": {
+      "title": "Little Moments",
+      "loading": "Loading shared celebrations…",
+      "failed": "Shared celebrations could not be loaded.",
+      "timeout": "Shared celebrations took too long to load.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "off": "Celebration sharing is off for this Home.",
+      "empty": "No shared celebrations in this period.",
+      "unnamed": "Colleague",
+      "window": "{from}–{to} · Kuala Lumpur dates",
+      "birthday": "Birthday",
+      "anniversary": "Work anniversary",
+      "anniversaryYears": "{count, plural, one {# year of service} other {# years of service}}",
+      "total": "{count, plural, one {# celebration} other {# celebrations}}",
+      "pagination": "Celebration pages",
+      "previous": "Previous page",
+      "next": "Next page",
+      "firstPage": "Return to first page"
     }
   }
 }

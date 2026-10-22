@@ -22471,6 +22471,26 @@
       "previous": "上一页",
       "next": "下一页",
       "firstPage": "返回第一页"
+    },
+    "celebrations": {
+      "title": "小小庆祝",
+      "loading": "正在加载共享的庆祝事项…",
+      "failed": "无法加载共享的庆祝事项。",
+      "timeout": "加载共享庆祝事项超时。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "off": "此主页的庆祝共享已关闭。",
+      "empty": "此期间没有共享的庆祝事项。",
+      "unnamed": "同事",
+      "window": "{from}至{to} · 吉隆坡日期",
+      "birthday": "生日",
+      "anniversary": "入职周年",
+      "anniversaryYears": "入职 {count} 周年",
+      "total": "{count} 项庆祝事项",
+      "pagination": "庆祝事项分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "firstPage": "返回第一页"
     }
   }
 }
