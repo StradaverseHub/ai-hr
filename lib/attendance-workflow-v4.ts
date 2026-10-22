@@ -58,7 +58,9 @@ export function parseAttendanceV4Route(raw:unknown):AttendanceV4Route {
 }
 export function validateAttendanceV4Workflow(raw:unknown):AttendanceV4WorkflowInput {
  if(!object(raw)||Object.keys(raw).some(key=>!['companyId','applicationType','routingVersion','code','name','description','priority','criteria','stages','cc','active'].includes(key)))fail(null);
- const common=validateAttendanceWorkflow({...raw,routingVersion:2,stages:[{name:'Level 1',level:{kind:'direct_manager',employmentId:null,alternates:[]}}]} as AttendanceWorkflowInput);
+ // The shared metadata validator remains the input boundary, as for the v3 adapter.
+ const legacyInput=raw as AttendanceWorkflowInput;
+ const common=validateAttendanceWorkflow({...legacyInput,routingVersion:2,stages:[{name:'Level 1',level:{kind:'direct_manager',employmentId:null,alternates:[]}}]});
  return {...common,...parseAttendanceV4Route({routingVersion:4,stages:raw.stages,cc:raw.cc})};
 }
 export async function resolveAttendanceV4Route(raw:unknown,applicant:AttendanceV3Identity,resolver:AttendanceV3Resolver&{ccAddress:(identity:AttendanceV3Identity)=>Promise<string|null>}):Promise<AttendanceV4FrozenRoute> {

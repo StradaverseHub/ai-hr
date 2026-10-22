@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {parseAttendanceV4Route,resolveAttendanceV4Route,attendanceV4LevelProgress,attendanceCcAddress,type AttendanceV4Route} from '../lib/attendance-workflow-v4';
+import {parseAttendanceV4Route,resolveAttendanceV4Route,validateAttendanceV4Workflow,attendanceV4LevelProgress,attendanceCcAddress,type AttendanceV4Route} from '../lib/attendance-workflow-v4';
 import type {AttendanceV3Identity,AttendanceV3ParticipantDecision} from '../lib/attendance-workflow-v3';
 const uuid=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const identity=(n:number):AttendanceV3Identity=>({employmentId:uuid(n),personId:uuid(n+100),userId:uuid(n+200),name:`Fictional ${n}`});
@@ -8,6 +8,11 @@ const route=(mode:'any_one'|'all_required'|'sequential'='all_required'):Attendan
 const resolver={superior:async(depth:number)=>({ok:true as const,identity:depth===1?superior:second}),selectedEmployee:async(id:string)=>({ok:true as const,identity:id===applicant.employmentId?applicant:named}),hasHrAlternative:async()=>true,ccAddress:async(actor:AttendanceV3Identity)=>`fictional-${actor.employmentId.slice(-2)}@example.invalid`};
 const evidence=(slot:string,actor:AttendanceV3Identity,decision:'approved'|'rejected'='approved'):AttendanceV3ParticipantDecision=>({slot,decision,actualPersonId:actor.personId,actualUserId:actor.userId});
 describe('explicit v4 multiple-source approval',()=>{
+ it('keeps common metadata and assignment validation at the canonical owner',()=>{
+  const input={...route(),companyId:uuid(90),applicationType:'irregularity',code:'V4',name:' Fictional mixed approval ',priority:100,criteria:{departmentIds:[uuid(91),uuid(91)]},active:true};
+  expect(validateAttendanceV4Workflow(input)).toMatchObject({routingVersion:4,name:'Fictional mixed approval',criteria:{departmentIds:[uuid(91)]},stages:input.stages});
+  for(const patch of [{priority:-1},{companyId:'company-name'},{criteria:{invented:['one']}},{criteria:{departmentIds:['department-name']}}])expect(()=>validateAttendanceV4Workflow({...input,...patch})).toThrow();
+ });
  it('freezes ordered source provenance and keeps superior depth independent of level ordinal',async()=>{
   const input=route();input.stages[0].sources=[{kind:'direct_manager',depth:2},{kind:'direct_manager',depth:1}];
   const frozen=await resolveAttendanceV4Route(input,applicant,resolver);
