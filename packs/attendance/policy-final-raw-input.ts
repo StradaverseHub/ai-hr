@@ -41,7 +41,7 @@ export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecut
  // The calculation reference is written AFTER the raw final effect. It belongs to the independent
  // financial owner, not physical work. Compare every retained raw field while excluding only that
  // separately owned marker; current financial consumers must revalidate their own calculation.
- const {overtimePattern:retainedCalculation,...retainedRawTrace}=retainedTrace;
+ const retainedRawTrace=Object.fromEntries(Object.entries(retainedTrace).filter(([key])=>key!=='overtimePattern'));
  const {overtimePattern:currentCalculation,...currentRawTrace}=trace;
  if(!binding||!trace||!isDeepStrictEqual(trace.executionPolicy,binding)
   ||raw.attendanceId!==current.attendanceId||raw.checkIn!==current.checkInAt||raw.checkOut!==current.checkOutAt
