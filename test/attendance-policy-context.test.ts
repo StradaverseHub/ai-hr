@@ -216,6 +216,15 @@ describe('dated-policy raw writer routing',()=>{
   expect(saved.calcTrace?.punch).toMatchObject({inAbs:570,outAbs:1080,spanMinutes:390,workedMinutes:390,
    calculationIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}],intervalSource:'closedPunchPairs'});
   expect(saved.calcTrace?.lateness).toMatchObject({minutes:20,graceMinutes:10});expect(saved.calcTrace?.overtime).toBeNull();
+  const current=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(current.policyClockReview).toMatchObject({state:'known',evidence:{complete:true,requiresReview:false,
+   minuteIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}]}});
+  expect(current.policyWorkInput).toMatchObject({state:'known',workedIntervals:[{from:570,to:720},{from:840,to:1080}]});
+  expect(current.input.facts.actualWorkingMinutes).toMatchObject({state:'known',value:'390'});
+  await owner.db.update(s.attendance).set({workedMinutes:510}).where(eq(s.attendance.id,saved.id));
+  const changed=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(changed.policyClockReview).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
+  expect(changed.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('keeps manual labels visible in the raw log but clears unproved durations and deductions',async()=>{

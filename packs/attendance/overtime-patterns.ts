@@ -18,7 +18,7 @@ import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
-import type {PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import type {PolicyRawClockReplay} from './policy-clock-replay';
 import {validateAttendanceGroupPolicy} from '../../lib/attendance-group-policy';
 import {labelUsableByCompany,visibleLabelIdsCondition} from '../../core/system-labels';
 import {OVERTIME_STARTERS,overtimeStarterSeed} from '../../lib/overtime-pattern-starters';
@@ -40,9 +40,7 @@ export type OvertimeSetupOption={id:string;label:string};
 export type OvertimePatternSetup={companies:{id:string;name:string;currency:string;minorScale:number}[];employees:{id:string;companyId:string;employeeCode:string|null;name:string}[];employeeNextCursor:string|null;earningItems:OvertimeSetupOption[];choices:Partial<Record<OvertimeField,OvertimeSetupOption[]>>;readerLimitations:string[]};
 type DistributiveInput<T>=T extends OvertimeInput?Omit<T,'mode'|'patternVersionId'|'assignmentId'>:never;
 export type CanonicalOvertimeInput=DistributiveInput<OvertimeInput>;
-export type CanonicalOvertimeSnapshot={input:CanonicalOvertimeInput;resolvedLegacyRuleId:string|null;referenceDigest:string;attendanceGroupPolicy?:ResolvedAttendanceGroupPolicy;policyExecutionContext?:AttendancePolicyExecutionContext;policyClockSource?:RecordedPolicyClockSource;policyClockMeasurements?:PolicyClockMeasurements;policyWorkInput?:PolicyWorkInput;policyApprovalInput?:PolicyApprovalInput;policyFormulaInput?:PolicyFormulaInput;policyExecutionProposal?:PolicyExecutionProposal;policyClockReview?:
- {authority:'proposalOnly';state:'unavailable';reason:'sourceUnavailable'|'scheduleOwnerUnavailable'}|
- {authority:'proposalOnly';state:'known';evidence:PolicyClockMillisecondEvidence}};
+export type CanonicalOvertimeSnapshot={input:CanonicalOvertimeInput;resolvedLegacyRuleId:string|null;referenceDigest:string;attendanceGroupPolicy?:ResolvedAttendanceGroupPolicy;policyExecutionContext?:AttendancePolicyExecutionContext;policyClockSource?:RecordedPolicyClockSource;policyClockMeasurements?:PolicyClockMeasurements;policyWorkInput?:PolicyWorkInput;policyApprovalInput?:PolicyApprovalInput;policyFormulaInput?:PolicyFormulaInput;policyExecutionProposal?:PolicyExecutionProposal;policyClockReview?:PolicyRawClockReplay};
 export type CanonicalOvertimeReader=(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string})=>Promise<CanonicalOvertimeSnapshot>;
 declare const preparedBrand:unique symbol;
 export type PreparedOvertimeCalculation={readonly [preparedBrand]:true};

@@ -1,3 +1,4 @@
+import {replayAttendancePolicyRawClocks} from './policy-clock-replay';
 import {attendancePolicyExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
@@ -9,7 +10,6 @@ import {and, asc, desc, eq, gt, inArray, isNull, lte, or, sql} from 'drizzle-orm
 import type {SessionContext, Tx} from '../../db/client';
 import {recordedAttendanceGroupPolicyTx} from './policy-selection';
 import {recordedPolicyClockSourceTx} from './policy-clock-input';
-import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 import {assignment, attendance, attendanceCorrection, attendancePolicyRequestContract, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
@@ -190,17 +190,9 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   // New policy proofs retain exact timestamp strings and original plan labels. Keep the existing
   // legacy digest contract unchanged; neither labels nor a digest establish final-effect authority.
   const approvalDigest = fingerprint(policyApprovalInput??otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
-  // This review is deliberately limited to an explicitly recorded fixed-clock owner. Full Flexi,
-  // duration-only and unavailable schedule ownership retain their existing dedicated processor.
-  let policyClockReview:CanonicalOvertimeSnapshot['policyClockReview'];
-  if(selectedPolicy){
-    if(policyClockSource?.state!=='known')policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'sourceUnavailable'};
-    else if(policyExecutionContext?.state!=='policy'||policyExecutionContext.schedule.durationOnly||policyExecutionContext.schedule.flexiDuration
-      ||trace?.schedule.fixedClockApplicable!==true||trace.punch.intervalSource!=='elapsedEnvelope')
-      policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'scheduleOwnerUnavailable'};
-    else policyClockReview={authority:'proposalOnly',state:'known',
-      evidence:attendancePolicyClockMillisecondEvidence(policyClockSource.clocks,selectedPolicy.policy.clock,4320)};
-  }
+  // Replay actual capture receipts and the stored raw projection independently. The selected
+  // pairing may be closed pairs or First-In/Last-Out; neither permits a mismatched stored envelope.
+  const policyClockReview=selectedPolicy?replayAttendancePolicyRawClocks(policyExecutionContext,policyClockSource,trace,day):undefined;
   const policyClockMeasurements=selectedPolicy?attendancePolicyClockMeasurements(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   const policyWorkInput=selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   if(selectedPolicy){

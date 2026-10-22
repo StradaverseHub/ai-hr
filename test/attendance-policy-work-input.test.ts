@@ -6,6 +6,9 @@ import {attendancePolicyClockMeasurements} from '../packs/attendance/policy-cloc
 import {attendancePolicyClockMillisecondEvidence} from '../lib/attendance-policy-clocks';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
+import {replayAttendancePolicyRawClocks} from '../packs/attendance/policy-clock-replay';
+import {attendancePolicyRawDay} from '../packs/attendance/policy-raw-day';
+import type {AttendanceTraceV1} from '../core/attendance-trace';
 const policy=():AttendanceGroupPolicy=>({version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:10,earlyGraceMinutes:15,skipLatenessIfIncomplete:true},
  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:true,approval:'auto',autoMethod:'actual',rounding:{mode:'none',step:null},
  days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}});
@@ -205,5 +208,57 @@ describe('proven policy clock boundaries on incomplete records',()=>{
   expect(attendancePolicyClockMeasurements(undefined,clocks([[570,1200]]))).toMatchObject({state:'unavailable',reason:'scheduleUnavailable'});
   expect(attendancePolicyClockMeasurements(context({...schedule(),durationOnly:true}),clocks([[570,1200]])))
    .toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+ });
+});
+
+
+describe('independent captured raw clock replay',()=>{
+ function recorded(pairs:[number,number][],s=schedule(),p=policy()){
+  const c=context(s,p),base=Date.parse(c.date+'T00:00:00+08:00');
+  const values=pairs.flatMap(([a,b],i)=>[{id:'in_'+i,direction:'in' as const,atMilliseconds:a*60000},
+   {id:'out_'+i,direction:'out' as const,atMilliseconds:b*60000}]);
+  const source={state:'known' as const,authority:'sourceOnly' as const,timeZone:c.timeZone,periodMilliseconds:4320*60000,
+   clocks:values.map(row=>({...row,captureId:'capture_'+row.id,recordedAt:new Date(base+row.atMilliseconds).toISOString()}))};
+  const proof=attendancePolicyClockMillisecondEvidence(source.clocks,c.resolvedClock,4320);
+  // Minimal schedule template: the writer replaces every measured field before it is replayed.
+  const template={v:1,schedule:{ruleId:c.schedule.ruleId,dayType:s.dayType,breakSpanned:null},
+   punch:{inAbs:0,outAbs:null,spanMinutes:null,workedMinutes:null},lateness:null,earlyOut:null,
+   latenessDeduction:null,earlyOutDeduction:null,overtime:null} as AttendanceTraceV1;
+  const row=attendancePolicyRawDay({state:'policy',attendanceId:'fixture',context:c,source,clocks:proof,
+   measurements:attendancePolicyClockMeasurements(c,proof),work:attendancePolicyWorkInput(c,proof)},
+   {rule:{id:c.schedule.ruleId,applyDeductions:false} as Parameters<typeof attendancePolicyRawDay>[1]['rule'],template,
+    dayType:s.dayType,halfDayBefore:780,fallbackIn:null,fallbackOut:null});
+  return {c,source,row:{...row,dayType:s.dayType},trace:row.calcTrace!};
+ }
+ it('replays closed pairs rather than rejecting Auto or accepting their elapsed gap',()=>{
+  const x=recorded([[540,720],[840,1080]]);
+  expect(x.row.workedMinutes).toBe(420);
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,x.trace,x.row)).toMatchObject({state:'known',
+   evidence:{minuteIntervals:[{inAbs:540,outAbs:720},{inAbs:840,outAbs:1080}]}});
+  const changed=structuredClone(x.trace);changed.punch.calculationIntervals=[{inAbs:540,outAbs:1080}];changed.punch.spanMinutes=540;
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,changed,x.row)).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
+ });
+ it('rejects altered stored counts, raw labels and penalty facts even when capture receipts exist',()=>{
+  const x=recorded([[540,720],[840,1080]]);
+  for(const changed of [{...x.row,workedMinutes:421},{...x.row,checkOutAt:'18:00:01'},{...x.row,underMinutes:0},{...x.row,lateMinutes:1}])
+   expect(replayAttendancePolicyRawClocks(x.c,x.source,x.trace,changed)).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
+  expect(replayAttendancePolicyRawClocks(x.c,{state:'unavailable',authority:'sourceOnly',reason:'missingCapture'},x.trace,x.row))
+   .toMatchObject({state:'unavailable',reason:'sourceUnavailable'});
+ });
+ it('retains explicit First-In/Last-Out semantics while refusing a different recorded pairing',()=>{
+  const p=policy();p.clock.pairing='firstInLastOut';const x=recorded([[540,720],[840,1080]],schedule(),p);
+  expect(x.row.workedMinutes).toBe(480);
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,x.trace,x.row)).toMatchObject({state:'known',evidence:{minuteIntervals:[{inAbs:540,outAbs:1080}]}});
+  const changed=structuredClone(x.trace);changed.punch.intervalSource='closedPunchPairs';
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,changed,x.row)).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
+ });
+ it('replays flexi raw counts without turning count-only breaks into positioned financial coverage',()=>{
+  for(const s of [{...schedule(),flexiDuration:true},{...schedule(),flexibleBreakMinutes:30},
+   {...schedule(),durationOnly:true,flexiDuration:true,start:null,end:null,breakPeriods:null}]){
+   const x=recorded([[540,720],[840,1080]],s),review=replayAttendancePolicyRawClocks(x.c,x.source,x.trace,x.row);
+   expect(review.state).toBe('known');
+   if(review.state!=='known')throw Error('Expected raw clock proof');
+   expect(attendancePolicyWorkInput(x.c,review.evidence).state).toBe('unavailable');
+  }
  });
 });
