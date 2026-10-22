@@ -9,6 +9,7 @@ import {hireEmployee,setReportingLine} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {workforceCompanies} from '../core/workforce-access';
 import {listEmployees} from '../core/read';
+import {publishWorkforceCapabilities} from '../deploy/access/publish-workforce-capabilities';
 
 let b:Base;
 beforeAll(migrateTestDb);
@@ -26,7 +27,8 @@ async function principal(role:Role,companyId:string|null,personId?:string):Promi
  return {...adminCtx(b),userId:user.id,personId,roles:[role],grants:[{role,companyId}]};
 }
 async function enabled(value:boolean){
- await owner.db.execute(sql`update access_capability set supported=${value},bindings=${JSON.stringify(value?[{owner:'isolated-default-conversion-matrix',operation:'read-maintain-review'}]:[])}::jsonb where id in ('workforce.view','workforce.maintain','profile.review')`);
+ if(value)await publishWorkforceCapabilities(owner.client);
+ else await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain','profile.review')`);
 }
 async function facts(ctx:SessionContext,companies:string[],employmentId:string){
  const result=[];

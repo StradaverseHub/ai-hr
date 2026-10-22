@@ -1,5 +1,26 @@
 # ADR-0135 — Configurable access has one effective-permission interpretation
 
+### Explicit installation publication
+
+The three bounded Workforce/view, Workforce/maintenance and Profile/review capabilities are published
+by one explicit restricted storage-owner installation command, separate from customer permission
+editing. The fixed versioned manifest names their existing SQL, service, page, export and photo owners.
+The installer requires exact applied prerequisite hashes, actual owner identity and restricted role
+flags. There is no runtime definer, new raw grant or caller-supplied manifest.
+
+One transaction accepts only the known dormant catalogue or this exact published version. It locks
+tenant insertion before sorted tenant Access/profile barriers, checks initialized active tenants,
+updates the three catalogue bindings, advances real preview revisions and physical writer generations,
+and appends bounded system audits. A partial/unknown version or failed audit refuses atomically.
+Role assignments, groups, memberships, overrides and default grants remain unchanged. Exact repeat
+publication is idempotent. The real default-conversion matrix will use this installation owner rather
+than a synthetic binding label.
+
+This is newly integrated source, not passing installation evidence. Focused SQL/role/concurrency cases,
+both final populated restricted-owner upgrades, complete experience outcomes and the authentic release
+gate remain required before production publication. Production availability remains off until that
+explicit post-release command succeeds.
+
 The shared canonical avatar route retains its independent self/admin/administrative-directory
 authority; a Workforce denial does not silently revoke that separate course, and a bounded Workforce
 grant does not grant arbitrary photo bytes. An executed current-principal consumer probe exposed

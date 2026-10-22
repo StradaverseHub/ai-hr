@@ -1,6 +1,7 @@
 /**
- * Transactional access-edit orchestration. Draft page/actions use the private SQL owner.
- * Domain capabilities remain unavailable until their complete consumer bindings are implemented.
+ * Transactional access-edit orchestration. Page/actions use the private SQL owner.
+ * Domain capability availability is installed separately by the restricted storage-owner publisher;
+ * customer permission editing cannot publish unsupported capabilities or invent enforcement bindings.
  */
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
