@@ -1,4 +1,5 @@
 /** Source-eligibility fixtures only: these rows are not a payroll calculation or a PDF parity witness. */
+import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -11,7 +12,7 @@ let base:Base;
 const year=()=>todayInKualaLumpur().slice(0,4);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
 async function own(role:'employee'|'hr_admin'='employee') {
- const hired=await hireEmployee(adminCtx(base),{person:{fullName:'Fictional EA metadata employee'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${Number(year())-2}-01-01`});
+ const hired=await hireEmployee(adminCtx(base),{person:{fullName:'Fictional EA metadata employee',primaryEmail:`${randomUUID()}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${Number(year())-2}-01-01`});
  const userId=await createAppUser(base.tenantId,hired.personId,role),ctx:SessionContext={...adminCtx(base),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:base.companyId}]};return{...hired,ctx};
 }
 async function source(employee:Awaited<ReturnType<typeof own>>,period:string,status:'draft'|'processed'|'closed'='closed',releasedAt:Date|null=null,companyId=base.companyId) {

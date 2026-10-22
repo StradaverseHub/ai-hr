@@ -30,7 +30,7 @@ describe('monthly Mine TP1 shares canonical records, revisions and employer cons
   expect((await listMyTp1Declarations(e.ctx)).map(row=>[row.deductionMonth,row.tp1Amount,row.versions])).toEqual([[1,150,1],[2,200,1],[null,50,1]]);
   const [savedEvent]=await owner.db.select({at:domainEvent.occurredAt}).from(domainEvent)
    .where(and(eq(domainEvent.aggregateId,jan.id),eq(domainEvent.eventType,'tp1.draft.saved')))
-   .orderBy(desc(domainEvent.sequence)).limit(1);
+   .orderBy(desc(domainEvent.occurredAt),desc(domainEvent.id)).limit(1);
   expect(savedEvent).toBeDefined();
   expect((await listMyTp1Declarations(e.ctx)).find(row=>row.id===jan.id)?.lastSavedAt).toEqual(savedEvent.at);
  });

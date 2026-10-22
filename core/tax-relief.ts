@@ -1857,9 +1857,9 @@ function validateMyTp1Write(p:Tp1WriteInput) {
   if(p.assessmentYear<Number(todayInKualaLumpur().slice(0,4)))throw new TaxReliefError('Past assessment years are read-only.');
   if(typeof p.expectedRevision!=='string'||!p.expectedRevision)throw new Tp1ChangedError();
 }
-export function saveMyTp1Draft(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
+export async function saveMyTp1Draft(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
   validateMyTp1Write(p);return saveTp1DraftForPersonId(ctx,requirePerson(ctx),p,true);
 }
-export function submitMyTp1(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
+export async function submitMyTp1(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
   validateMyTp1Write(p);return submitTp1ForPersonId(ctx,requirePerson(ctx),p,true);
 }

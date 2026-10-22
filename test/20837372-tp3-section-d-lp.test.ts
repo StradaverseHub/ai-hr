@@ -713,7 +713,10 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
     const tp3Src = readFileSync(join(ROOT, 'components/tp3-declaration-fields.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
-    expect(tp3Src, 'a <select>, not a number box').toMatch(/<select\s[\s\S]*?name="deductionMonth"/);
+    expect(tp3Src, 'a <select>, not a number box').toMatch(/<Select\s[\s\S]*?name="deductionMonth"/);
+    expect(tp3Src).toContain("const Select=mode==='personal'?Tp3PersonalSelect:'select'");
+    const personalSelect=readFileSync(join(ROOT,'components/tp3-personal-fields.tsx'),'utf8');
+    expect(personalSelect).toMatch(/return <select \{\.\.\.props\} value=\{value\}/);
     expect(tp3Src, 'the VALUE is the number; only the label is the month name').toMatch(
       /value=\{String\(m\.value\)\}/,
     );
