@@ -1,5 +1,7 @@
 import {materializeAttendancePolicyProposalParts as materialize,recordedAttendancePolicyProposalPartsMatch as matches} from '../packs/attendance/policy-proposal-parts';
 import {describe,expect,it} from 'vitest';
+import {attendancePolicyPlanInput} from '../packs/attendance/policy-plan-input';
+import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySubmissionSourceRow,type PolicyFinalReceiptSourceRow} from '../packs/attendance/policy-approval-input';
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {attendancePolicySchedulePlacement} from '../core/attendance-policy-schedule';
@@ -29,6 +31,28 @@ function fixture(){
  const formulas:Extract<PolicyFormulaInput,{state:'known'}>={state:'known',authority:'sourceOnly',references:[date,next].map(date=>({state:'known',date,
   dayClass:'normal',moneyDay:'workday',versionId:id(4),definition,definitionDigest:'a'.repeat(64),activeState:{id:id(7),sequence:1,effectiveFrom:'2026-10-22'},earningReferences:[]}))};
  return {context,work,formulas};
+}
+/** Pure receipt fixtures only; actual DB transition ownership is covered separately. */
+function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:number}[]){
+ const rows:PolicyApprovalSourceRow[]=[],contracts:PolicySubmissionSourceRow[]=[],receipts:PolicyFinalReceiptSourceRow[]=[];
+ const label=(minute:number)=>String(Math.floor(minute%1440/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0')+':00';
+ for(const [index,window]of windows.entries()){
+  const correctionId=id(100+index),requestId=id(200+index),minutes=window.to-window.from,start=label(window.from),end=label(window.to);
+  const plan={version:1,basis:'startDateEarlierEndNextDay',sourceDate:f.context.date,startLabel:start,endLabel:end,
+   from:window.from,to:window.to,requestedMinutes:minutes};
+  rows.push({id:correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
+   createdAt:new Date('2026-10-22T01:00:00.000Z'),status:'approved',requestedOtMinutes:minutes,approvedOtMinutes:minutes,
+   otApprovalMethod:'smaller_of',decidedByEmploymentId:id(9),decidedAt:new Date('2026-10-22T02:00:00.000Z'),
+   appliedAt:null,cancelledAt:null,plannedStartTime:start,plannedEndTime:end,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null});
+  contracts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
+   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,recordedAt:new Date('2026-10-22T01:00:00.000Z')});
+  receipts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
+   companyId:f.context.companyId,workflowRequestId:requestId,actorUserId:id(9),authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
+   requestEvidence:{requestedMinutes:minutes,approvedMinutes:minutes,method:'smaller_of',plannedStartLabel:start,plannedEndLabel:end,checkIn:null,checkOut:null,clockChanges:null},
+   workflowEvidence:{requestId,routingVersion:2,stageCount:1,completion:{request_id:requestId,tenant_id:id(8),actual_user_id:id(9),stage_index:0,decision:'approved',resulting_status:'approved'},participants:[],submittedPlan:plan},
+   rawEvidence:null,recordedAt:new Date('2026-10-22T02:00:00.000Z')});
+ }
+ return attendancePolicyApprovalInput(f.context.selected,rows,contracts,receipts);
 }
 describe('canonical source composition into the shared policy duration proposal',()=>{
  it('uses the selected formula direction and rounds once across two dates without minting extra clock coverage',()=>{
@@ -144,5 +168,52 @@ describe('complete immutable proposal replay',()=>{
   expect(matches(f.source,f.header,{...f.evidence,evidence:{...f.evidence.evidence,policyExecutionProposal:{}}},f.parts)).toBe(false);
   expect(matches(f.source,f.header,{...f.evidence,inputs:{...f.evidence.inputs,source:{...f.evidence.inputs.source,attendanceId:id(11)}}},f.parts)).toBe(false);
   expect(matches(f.source,f.header,{...f.evidence,calculationId:id(11)},f.parts)).toBe(false);
+ });
+});
+
+
+describe('complete positioned-plan source and shared duration replay',()=>{
+ it('unions overlapping approved windows before counting and retains every distinct workflow reference',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='preApproved';
+  const approvals=approvedPlans(f,[{from:1410,to:1470},{from:1425,to:1485}]);
+  expect(attendancePolicyPlanInput(f.context,approvals,id(8))).toMatchObject({state:'known',intervals:[{from:1410,to:1485}],references:[{correctionId:id(100)},{correctionId:id(101)}]});
+  const result=propose(f.context,f.work,f.formulas,approvals,id(8));
+  expect(result).toMatchObject({state:'proposed',duration:{status:'calculated',intervalBasis:'approvedPlan',payableMinutes:75}});
+ });
+ it('binds redundant approval references even when omitting one would leave the same normalized minutes',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='preApproved';
+  const approvals=approvedPlans(f,[{from:1410,to:1470},{from:1420,to:1460}]);
+  const proposal=propose(f.context,f.work,f.formulas,approvals,id(8));
+  const input={source:{employmentId:f.context.employmentId,date:f.context.date,tenantId:id(8)},policy:f.context.selected,
+   context:f.context,work:f.work,formulas:f.formulas,approvals,proposal};
+  expect(materialize(input)).toHaveLength(2);
+  const omitted=structuredClone(approvals);omitted.requests.pop();
+  expect(materialize({...input,approvals:omitted})).toBeNull();
+ });
+ it('uses real intersection: equal actual and plan counts can have no shared physical minute',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';
+  const approvals=approvedPlans(f,[{from:1320,to:1360}]);
+  expect(propose(f.context,f.work,f.formulas,approvals,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:0,parts:[]}});
+  const overlap=approvedPlans(f,[{from:1410,to:1470}]);
+  expect(propose(f.context,f.work,f.formulas,overlap,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:60,classes:[{eligibleMinutes:40,unplacedPayableMinutes:20}]}});
+ });
+ it('refuses the whole set for a different tenant, incomplete final proof or unproved frozen epoch',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';
+  const approvals=approvedPlans(f,[{from:1410,to:1470}]);
+  expect(propose(f.context,f.work,f.formulas,approvals,id(99))).toMatchObject({state:'unavailable',reason:'plannedProofRequired'});
+  const contract=approvals.requests[0].submissionContract;if(contract.state!=='recorded')throw Error('Expected fixture receipt');
+  contract.visibleEpoch=2;
+  expect(attendancePolicyPlanInput(f.context,approvals,id(8))).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});
+ });
+ it('replays all planned parts and rejects a missing or altered approval source',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';
+  const approvals=approvedPlans(f,[{from:1410,to:1470}]),proposal=propose(f.context,f.work,f.formulas,approvals,id(8));
+  const input={source:{employmentId:f.context.employmentId,date:f.context.date,tenantId:id(8)},policy:f.context.selected,
+   context:f.context,work:f.work,formulas:f.formulas,approvals,proposal};
+  expect(materialize(input)).toHaveLength(2);
+  expect(materialize({...input,approvals:undefined})).toBeNull();
+  const changed=structuredClone(approvals),plan=changed.requests[0].positionedPlan;
+  if(plan.state!=='recorded')throw Error('Expected positioned fixture');plan.intervals[0].to++;
+  expect(materialize({...input,approvals:changed})).toBeNull();
  });
 });

@@ -4,14 +4,15 @@ import {isDeepStrictEqual} from 'node:util';
 import type {attendanceOvertimePolicyPart,attendanceOvertimeCalculation,attendanceOvertimeSource} from '../../db/schema';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
+import type {PolicyApprovalInput} from './policy-approval-input';
 import type {PolicyWorkInput} from './policy-work-input';
 import type {PolicyFormulaInput} from './policy-formula-input';
 import {attendancePolicyExecutionProposal,type PolicyExecutionProposal} from './policy-execution-proposal';
 
 export type PolicyProposalStoragePart=Pick<typeof attendanceOvertimePolicyPart.$inferInsert,
  'sequence'|'calendarDate'|'dayClass'|'moneyDay'|'versionId'|'rawMinutes'|'allocatedPayableMinutes'|'sourceIntervals'|'calendarReferences'|'durationEvidence'>;
-export type PolicyProposalPartSource={source:{employmentId:string;date:string};policy?:ResolvedAttendanceGroupPolicy;
- context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;proposal?:PolicyExecutionProposal};
+export type PolicyProposalPartSource={source:{employmentId:string;date:string;tenantId?:string};policy?:ResolvedAttendanceGroupPolicy;
+ context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;approvals?:PolicyApprovalInput;proposal?:PolicyExecutionProposal};
 
 /** Null rejects inconsistent prepared evidence. Empty means no complete proposal to materialize.
  * Rounding remainder stays on the parent's class evidence, never an invented child clock/date. */
@@ -21,7 +22,7 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
  const context=input.context;
  if(context?.state==='policy'&&(context.employmentId!==input.source.employmentId||context.date!==input.source.date
   ||context.companyId!==input.policy.companyId||!isDeepStrictEqual(context.selected,input.policy)))return null;
- const expected=attendancePolicyExecutionProposal(context,input.work,input.formulas);
+ const expected=attendancePolicyExecutionProposal(context,input.work,input.formulas,input.approvals,input.source.tenantId);
  if(!isDeepStrictEqual(expected,input.proposal))return null;
  if(expected.state!=='proposed'||expected.duration.status!=='calculated')return [];
  if(expected.policyRevisionId!==input.policy.id||expected.duration.parts.length>3
@@ -62,9 +63,10 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    ||inputSource.attendanceId!==source.attendanceId||inputSource.date!==source.attendanceDate
    ||inputSource.inputDigest!==header.inputDigest||inputSource.approvalDigest!==header.approvalDigest)return false;
   const stored=row.evidence as Record<string,unknown>;
-  const input:PolicyProposalPartSource={source:{employmentId:source.employmentId,date:source.attendanceDate},
+  const input:PolicyProposalPartSource={source:{employmentId:source.employmentId,date:source.attendanceDate,tenantId:source.tenantId},
    policy:stored.attendanceGroupPolicy as PolicyProposalPartSource['policy'],context:stored.policyExecutionContext as PolicyProposalPartSource['context'],
    work:stored.policyWorkInput as PolicyProposalPartSource['work'],formulas:stored.policyFormulaInput as PolicyProposalPartSource['formulas'],
+   approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
    proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
   const expected=materializeAttendancePolicyProposalParts(input);

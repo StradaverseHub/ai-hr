@@ -209,7 +209,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   }
   const policyFormulaInput=selectedPolicy?await attendancePolicyFormulaInputTx(tx,ctx,{sourceDate:p.date,policy:selectedPolicy,
     calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}):undefined;
-  const policyExecutionProposal=selectedPolicy?attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput):undefined;
+  const policyExecutionProposal=selectedPolicy?attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput,policyApprovalInput,ctx.tenantId):undefined;
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
     ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyExecutionProposal}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
