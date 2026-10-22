@@ -1,4 +1,5 @@
 /** Canonical source projection only. Final-effect receipts and the financial replay remain separate. */
+import {fullFlexiBreakMinutes} from '../../lib/full-flexi-time';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 import {attendancePolicyIntervalMinutes as minutes,subtractAttendancePolicyIntervals as subtract,intersectAttendancePolicyIntervals as intersect,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
@@ -18,12 +19,22 @@ export function attendancePolicyNetWorkedMinutes(work:PolicyWorkInput|undefined)
 }
 
 /** Raw work does not depend on OT eligibility or lateness-offset allocation. Its independent
- * positive unpaid-window proof must still bind complete, unflagged captured physical intervals.
+ * positive unpaid-window proof (or existing Full Flexi duration owner) must bind complete,
+ * unflagged captured physical intervals.
  * Explicit refusal is never bypassed by the older full-placement compatibility fallback. */
 export function attendancePolicyRawWorkedMinutes(context:AttendancePolicyExecutionContext|undefined,clocks:PolicyClockMillisecondEvidence|undefined):number|null{
  if(context?.state!=='policy'||!clocks||!clocks.complete||clocks.requiresReview
   ||clocks.checkInMillisecond===null||clocks.checkOutMillisecond===null)return null;
+ // Full Flexi has no fixed shift anchors. Preserve its existing duration/break-count owner,
+ // supplying captured absolute pairs/envelope selected by the explicit clock policy. A count
+ // allowance does not become a positioned unpaid window or eligible/payable OT coverage.
  const placement=context.workPlacement??context.placement;
+ if(context.schedule.durationOnly){
+  if(placement.state!=='unavailable'||placement.reason!=='durationOwner')return null;
+  const gross=clocks.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0);
+  return Math.max(0,gross-fullFlexiBreakMinutes(clocks.minuteIntervals,context.schedule.breakPeriods,
+   context.schedule.breakMinutes,context.schedule.flexibleBreakMinutes));
+ }
  if(placement.state!=='known')return null;
  const physical=union(clocks.minuteIntervals.map(row=>({from:row.inAbs,to:row.outAbs})),4320);
  return minutes(subtract(physical,placement.unpaidWindows,4320),4320);

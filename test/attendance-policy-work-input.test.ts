@@ -71,6 +71,19 @@ describe('canonical policy schedule and work source projection',()=>{
 });
 
 describe('independent clock boundary and break ownership',()=>{
+ it('preserves Full Flexi raw duration and its existing break allowances without fixed-clock penalties or OT placement',()=>{
+  const full={...schedule(),start:null,end:null,durationOnly:true,flexiDuration:true,breakPeriods:null};
+  const proof=clocks([[540,720],[780,1080]]),c=context(full);
+  expect(attendancePolicyRawWorkedMinutes(c,proof)).toBe(420);
+  expect(attendancePolicyRawWorkedMinutes(context({...full,breakPeriods:[{start:'12:00',end:'13:00'}]}),proof)).toBe(480);
+  expect(attendancePolicyRawWorkedMinutes(context({...full,flexibleBreakMinutes:30}),proof)).toBe(450);
+  expect(attendancePolicyRawWorkedMinutes(c,clocks([[540,720]]))).toBe(180);
+  expect(attendancePolicyRawWorkedMinutes(c,clocks([[1320,1800]]))).toBe(420);
+  expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(attendancePolicyClockMeasurements(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  const open=attendancePolicyClockMillisecondEvidence([{id:'open',atMilliseconds:540*60000,direction:'in'}],c.resolvedClock,4320);
+  expect(attendancePolicyRawWorkedMinutes(c,open)).toBeNull();
+ });
  it('retains proved raw net work when an OT window still requires count attribution',()=>{
   const s={...schedule(),otWindows:[{startTime:'18:00',endTime:'21:00',maxMinutes:30}]},c=context(s),proof=clocks([[480,1200]]);
   expect(c.placement).toMatchObject({state:'unavailable',reason:'windowCountAttributionRequired'});

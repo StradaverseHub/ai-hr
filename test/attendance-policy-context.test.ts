@@ -73,6 +73,24 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('uses the existing Full Flexi raw duration owner with captured pairs and retains no fixed-clock penalties',async()=>{
+  const f=await fixture();
+  const sh=await createShift(ctx,{...f.shiftInput,code:'FULL_'+randomUUID().slice(0,6),type:'full_flexi',normalMinutesOverride:480,
+   breakMinutes:30,flexibleBreakMinutes:30});
+  await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
+  // Fictional stored-capture runtime fixture, not an actual-app or production receipt.
+  for(const [direction,time] of [['in','09:00:00'],['out','12:00:00'],['in','13:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:450,underMinutes:30,status:'present',lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:480,workedMinutes:450,workBasis:'fullFlexiDurationOwner',
+   calculationIntervals:[{inAbs:540,outAbs:720},{inAbs:780,outAbs:1080}]});
+  expect(saved.calcTrace?.overtime).toBeNull();
+ });
  it('uses the same policy unknowns for range/calendar recompute and editor previews without mutating labels',async()=>{
   const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
   await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
