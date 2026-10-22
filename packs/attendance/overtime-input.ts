@@ -4,12 +4,12 @@ import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput} from './policy-work-input';
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
 import {createHash} from 'node:crypto';
-import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
+import {and, asc, desc, eq, gt, inArray, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
 import {recordedAttendanceGroupPolicyTx} from './policy-selection';
 import {recordedPolicyClockSourceTx} from './policy-clock-input';
 import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
-import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
+import {assignment, attendance, attendanceCorrection, attendancePolicyRequestContract, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
 import {isAttendanceTrace} from '../../core/attendance-trace';
@@ -182,7 +182,10 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   // original path still consumes them; a new formula requires deliberate review/clearance first.
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
-  const policyApprovalInput=selectedPolicy?attendancePolicyApprovalInput(selectedPolicy,otDecisions):undefined;
+  const policyContracts=selectedPolicy&&otDecisions.length?await tx.select().from(attendancePolicyRequestContract)
+    .where(and(eq(attendancePolicyRequestContract.tenantId,ctx.tenantId),inArray(attendancePolicyRequestContract.correctionId,otDecisions.map(row=>row.id))))
+    .orderBy(asc(attendancePolicyRequestContract.correctionId)).limit(501):[];
+  const policyApprovalInput=selectedPolicy?attendancePolicyApprovalInput(selectedPolicy,otDecisions,policyContracts):undefined;
   // New policy proofs retain exact timestamp strings and original plan labels. Keep the existing
   // legacy digest contract unchanged; neither labels nor a digest establish final-effect authority.
   const approvalDigest = fingerprint(policyApprovalInput??otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));

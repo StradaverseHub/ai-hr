@@ -345,3 +345,12 @@ proofs. Existing approval audit/scalar/labels cannot fill these gaps. Epoch-zero
 establish a new activation proof. This composition does not make a proposal payable: the SQL staging
 fence, canonical record marker and independent Payroll/TOIL refusal remain until the receipt, complete
 part writer and financial replay implementation and verification are finished.
+
+
+The new policy approval-source projection retains the actual owner-issued submission receipt alongside
+its original application and decision, including frozen tenant, subject/date, employer, epoch and exact
+recorded instant. It reads only receipts for those RLS-visible applications. These receipt facts join
+the new policy approval digest and immutable evidence; the legacy digest contract remains unchanged.
+Missing, explicitly unavailable and identity-mismatched receipts remain distinct. None is converted to
+legacy admission, a planned physical window or a final approval. The final-effect receipt is still a
+separate unimplemented capability and policy payment remains refused.

@@ -197,6 +197,9 @@ describe('dated-policy raw writer routing',()=>{
   const [storedPolicy]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
   expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,companyId:b.companyId});expect(receipt.visibleEpoch).toBeGreaterThan(0);
   await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await clock(f.employmentId,day(1));
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.policyApprovalInput?.requests.find(row=>row.id===request.id)?.submissionContract).toMatchObject({state:'recorded',correctionId:request.id,
+   tenantId:b.tenantId,employmentId:f.employmentId,date:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,recordedAt:receipt.recordedAt.toISOString()});
   expect(await detected(f.employmentId,day(1))).toBe(true);
   expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
  });
