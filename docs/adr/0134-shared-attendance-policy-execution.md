@@ -92,11 +92,37 @@ existing cutoff/ownership proof must refuse explicitly until canonical evidence 
 
 This is a financial-owner change and requires the classifier's full verification path, fresh migration
 checks, populated restricted-owner rehearsal and actual app journeys before release. It does not make
-the existing policy prototype complete. New storage belongs to the centrally reserved, still-unapplied
-0581 migration; applied production migrations remain unchanged. Home owns 0582. The original unshipped
+the existing policy prototype complete. New execution storage belongs to reserved, still-unapplied
+0590; the original 0581 policy-history migration is frozen and remains unchanged. Home owns 0582. The original unshipped
 0576/0577 feature allocations were moved so Feedback Automation can release independently: Security
 owns the standalone shared current-principal proof in 0576, followed by its 0578–0580 reservations.
 Attendance and Home consume that one helper definition; they do not recreate it.
+
+## Execution storage staging and migration order
+
+Feedback Automation centrally reserved 0590 at `1791900000070`. To preserve the user's deployment order
+(Feedback Automation, Board 1, Board 2), Board 2 retired its unregistered/unapplied 0587–0589 reservations
+and moved those three drafts to 0591–0593. No retired entry belongs in the journal. Board 1 must not ship
+unfinished Board 2 SQL merely to cross its watermark. The eventual ascending union is the deployed
+Security prefix, Board 1's 0581–0586 and 0590, then Board 2's later release. 0590 remains unregistered and
+unapplied while this implementation is incomplete.
+
+The first storage stage adds an explicit binding discriminator and immutable date/class/version parts
+under the existing calculation and source. Existing calculations receive the unambiguous assignment
+discriminator; the original 0551 identity check, evidence guard and settlement remain intact. Policy
+headers are deliberately constrained to refused, non-transferable outcomes at this stage. A prepared
+proposal cannot become cash or TOIL by asserting an approval field. This is an implementation boundary,
+not completion of the approved execution/Payroll scope; it must be replaced by the complete canonical
+receipt and independent financial replay contract before those outcomes can be enabled.
+
+Each part retains parent-relative whole-minute intervals, calendar references and the exact central
+version selected by that policy day classification. Part counts are declared by the header, checked
+at commit for a contiguous complete set, and checked for overlapping parent intervals. A rounded count
+without physical allocation remains in the proposal's class-level evidence; it is not given a fictional
+part/date or added to a part's positioned allocation. Database constraints establish storage structure,
+not the truth of calendar-reference strings or final-effect authority. Canonical readers and receipt
+writers must still establish and freeze those facts; actual DB probes, migrations and app journeys are
+unrun while the shared resource reservation remains with Feedback Automation.
 
 UNKNOWN pending implementation investigation: complete planned-window placement for existing request
 types; exact cross-source coverage representation for ordinary and Full Flexi evidence; provenance

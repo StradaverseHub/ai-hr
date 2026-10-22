@@ -5,7 +5,9 @@ import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,P
 import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
-import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
+import type {AttendanceGroupPolicy,AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+import type {AttendancePolicyInterval} from '../lib/attendance-policy-intervals';
+import type {PolicyMoneyDay} from '../lib/attendance-policy-calendar';
 import type {EmployeeHomeConfiguration} from '../lib/employee-home';
 /**
  * Slice 0 schema — "the spine".
@@ -10596,10 +10598,26 @@ export const attendanceOvertimeSource = pgTable('attendance_overtime_source', {
 export const attendanceOvertimeCalculation = pgTable('attendance_overtime_calculation', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
   versionId:uuid('version_id').references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),assignmentId:uuid('assignment_id').references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),
+  bindingKind:text('binding_kind').notNull().default('assignedPattern').$type<'assignedPattern'|'attendanceGroupPolicy'>(),
+  policyRevisionId:uuid('policy_revision_id').references(()=>attendanceGroupPolicyRevision.id,{onDelete:'restrict'}),
+  policyPartCount:integer('policy_part_count').notNull().default(0),
   ordinal:integer('ordinal').notNull(),inputDigest:text('input_digest').notNull(),approvalDigest:text('approval_digest').notNull(),referenceDigest:text('reference_digest').notNull(),
   outcome:text('outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),currency:text('currency').notNull(),minorScale:integer('minor_scale').notNull(),
   durationInputDigest:text('duration_input_digest'),durationOutcome:text('duration_outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),approvalStatus:text('approval_status').notNull(),transferable:boolean('transferable').notNull(),payableNumerator:text('payable_numerator'),payableDenominator:text('payable_denominator'),reason:text('reason').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_overtime_calculation_ordinal_uq').on(t.sourceId,t.ordinal),index('attendance_overtime_calculation_source_idx').on(t.tenantId,t.sourceId)]);
+/** Staged, non-payable policy proposals beneath the SAME immutable parent calculation/source.
+ * SQL0590 retains the existing assignment contract and refuses policy cash readiness. */
+export const attendanceOvertimePolicyPart = pgTable('attendance_overtime_policy_part', {
+  calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),
+  sequence:integer('sequence').notNull(),calendarDate:date('calendar_date').notNull(),
+  dayClass:text('day_class').notNull().$type<AttendancePolicyDayClass>(),moneyDay:text('money_day').notNull().$type<PolicyMoneyDay>(),
+  versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),inputDigest:text('input_digest').notNull(),
+  rawMinutes:integer('raw_minutes').notNull(),allocatedPayableMinutes:integer('allocated_payable_minutes').notNull(),
+  sourceIntervals:jsonb('source_intervals').notNull().$type<AttendancePolicyInterval[]>(),calendarReferences:jsonb('calendar_references').notNull().$type<string[]>(),
+  durationEvidence:jsonb('duration_evidence').notNull().$type<Record<string,unknown>&{authority:'proposalOnly'}>(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.calculationId,t.sequence]}),uniqueIndex('attendance_ot_policy_part_date_uq').on(t.calculationId,t.calendarDate),
+  index('attendance_overtime_policy_part_scope_idx').on(t.tenantId,t.companyId,t.calculationId)]);
 export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   lineKey:text('line_key').notNull(),sequence:integer('sequence').notNull(),componentId:uuid('component_id').notNull().references(()=>payComponent.id,{onDelete:'restrict'}),
