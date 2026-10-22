@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -190,18 +190,21 @@ describe('dated-policy raw writer routing',()=>{
   expect(await read()).toEqual(before);
  });
  it('reconciles proposed-pair correction labels before storing its actual effect and event figures',async()=>{
-  const f=await fixture();await f.save();
-  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),checkIn:'09:30',checkOut:'18:00',
+  const f=await fixture();await f.save();const target=day(1);
+  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(target+'T12:00:00+08:00'));
+  try{
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:target,checkIn:'09:30',checkOut:'18:00',
    reason:'Fictional proposed-pair correction without captured instants'});
   await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
-  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,target)));
   expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,lateDeductMinutes:null,otMinutes:null});
   const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
   expect(punches.filter(row=>!row.voidedAt).map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);
-  const effects=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,request.correctionId),eq(s.domainEvent.eventType,'attendance-correction.effect.recorded')));
+  const effects=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,request.correctionId),eq(s.domainEvent.eventType,'attendance-correction.effect.recorded'))).orderBy(asc(s.domainEvent.id));
   expect(effects).toHaveLength(1);expect(effects[0].payload).toMatchObject({after:{workedMinutes:null,otMinutes:null}});
-  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,saved.id),eq(s.domainEvent.eventType,'attendance.amended')));
-  expect(events.at(-1)?.payload).toMatchObject({workedMinutes:null,otMinutes:null});
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,saved.id),eq(s.domainEvent.eventType,'attendance.amended'))).orderBy(asc(s.domainEvent.id));
+  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({workedMinutes:null,otMinutes:null});
+  }finally{vi.useRealTimers();}
  });
  it('writes the sum of captured physical pairs and matching raw trace, without legacy OT or scalar approval',async()=>{
   const f=await fixture();await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:0});await f.save();
@@ -222,7 +225,7 @@ describe('dated-policy raw writer routing',()=>{
    minuteIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}]}});
   expect(current.policyWorkInput).toMatchObject({state:'known',workedIntervals:[{from:570,to:720},{from:840,to:1080}]});
   expect(current.input.facts.actualWorkingMinutes).toMatchObject({state:'known',value:'390'});
-  await owner.db.update(s.attendance).set({workedMinutes:510}).where(eq(s.attendance.id,saved.id));
+  await withTenant(ctx,tx=>tx.update(s.attendance).set({workedMinutes:510}).where(eq(s.attendance.id,saved.id)));
   const changed=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(changed.policyClockReview).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
   expect(changed.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
@@ -268,16 +271,23 @@ describe('dated-policy raw writer routing',()=>{
  async function clock(employmentId:string,date:string){
   await checkIn(ctx,{employmentId,date,time:'09:00'});await checkOut(ctx,{employmentId,date,time:'20:00'});
  }
+ async function capturedClock(employmentId:string,date:string){
+  for(const [direction,time] of [['in','09:00:00'],['out','20:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId,attendanceDate:date,
+    direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(date+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+ }
  it('keeps an uncovered date legacy but fences a dated policy without losing its actual punches',async()=>{
   const f=await fixture(),configured=await f.save();
-  await clock(f.employmentId,day());
+  await capturedClock(f.employmentId,day());
   expect(await detected(f.employmentId,day())).toBe(false);
   expect((await row(f.employmentId,day())).calcTrace?.overtimePattern).toBeUndefined();
   expect(await covered(f.employmentId,day())).toEqual([]);
-  await clock(f.employmentId,day(1));
+  await capturedClock(f.employmentId,day(1));
   const saved=await row(f.employmentId,day(1));
   expect(saved).toMatchObject({checkInAt:'09:00:00',checkOutAt:'20:00:00'});
-  expect(saved.calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect(saved.calcTrace?.overtimePattern).toMatchObject({status:'recorded'});
   const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id)).orderBy(asc(s.attendancePunch.punchAt),asc(s.attendancePunch.id));
   expect(punches.map(punch=>({time:punch.punchAt,direction:punch.direction}))).toEqual([{time:'09:00:00',direction:'in'},{time:'20:00:00',direction:'out'}]);
   expect(await detected(f.employmentId,day(1))).toBe(true);
@@ -287,14 +297,13 @@ describe('dated-policy raw writer routing',()=>{
   expect(snapshot.attendanceGroupPolicy).toMatchObject({id:configured.id,companyId:b.companyId,ruleId:f.ruleId,ordinal:1});
   expect(snapshot.policyExecutionContext).toMatchObject({state:'policy',selected:{id:configured.id},resolvedClock:{lateGraceMinutes:10,earlyGraceMinutes:15},
    schedule:{shiftId:f.shiftId,normalMinutes:480,breakMinutes:60,durationOnly:false},calendar:[{date:day(1),state:'known',dayClass:'normal'}]});
-  // The manual fixture has no physical capture receipts. Labels and insertion dates cannot invent
-  // absolute midnight placement or turn a scalar approval into captured work.
-  expect(snapshot.policyClockSource).toEqual({state:'unavailable',authority:'sourceOnly',reason:'missingCapture'});
-  expect(snapshot.policyClockReview).toEqual({state:'unavailable',authority:'proposalOnly',reason:'sourceUnavailable'});
-  expect(snapshot.policyClockMeasurements).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
-  expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
+  // Genuine capture proves clocks; the scalar break still cannot establish positioned financial work.
+  expect(snapshot.policyClockSource).toMatchObject({state:'known',authority:'sourceOnly'});
+  expect(snapshot.policyClockReview).toMatchObject({state:'known',authority:'proposalOnly'});
+  expect(snapshot.policyClockMeasurements).toMatchObject({state:'measured',lateIn:{state:'known',minutes:0},earlyOut:{state:'known',minutes:0}});
+  expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'positionedScheduleUnavailable'});
   expect(snapshot.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
-  expect(snapshot.input.facts.lateMinutes).toMatchObject({state:'unknown'});
+  expect(snapshot.input.facts.lateMinutes).toMatchObject({state:'known',value:'0'});
   expect(snapshot.policyFormulaInput).toEqual({state:'disabled',authority:'sourceOnly',references:[]});
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
@@ -312,7 +321,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('rejects a newly superseded prepared policy, then retains both immutable versions after a fresh recalculation',async()=>{
-  const f=await fixture(),first=await f.save();await clock(f.employmentId,day(3));
+  const f=await fixture(),first=await f.save();await capturedClock(f.employmentId,day(3));
   const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
   expect(before?.calculation?.policyRevisionId).toBe(first.id);
   let secondId='';const api=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
@@ -335,7 +344,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('refuses a changed live schedule context instead of attaching its new windows to the recorded raw result',async()=>{
-  const f=await fixture();await f.save();await clock(f.employmentId,day(1));
+  const f=await fixture();await f.save();await capturedClock(f.employmentId,day(1));
   const before=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(before.policyExecutionContext?.state).toBe('policy');const rawBefore=await row(f.employmentId,day(1));
   await updateShift(ctx,{shiftId:f.shiftId,...f.shiftInput,startTime:'10:00',endTime:'19:00'});
@@ -386,12 +395,12 @@ describe('dated-policy raw writer routing',()=>{
   const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.id));
   const [storedPolicy]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
   expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,companyId:b.companyId});expect(receipt.visibleEpoch).toBeGreaterThan(0);
-  await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await clock(f.employmentId,day(1));
+  await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await capturedClock(f.employmentId,day(1));
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.policyApprovalInput?.requests.find(row=>row.id===request.id)?.submissionContract).toMatchObject({state:'recorded',correctionId:request.id,
    tenantId:b.tenantId,employmentId:f.employmentId,date:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,recordedAt:receipt.recordedAt.toISOString()});
   expect(await detected(f.employmentId,day(1))).toBe(true);
-  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toMatchObject({status:'recorded'});
  });
  it('serializes a concurrent submission after the actual policy commit instead of inferring from timestamps',async()=>{
   const f=await fixture();let release!:()=>void,inserted!:()=>void,rejected!:(error:unknown)=>void;
@@ -438,16 +447,16 @@ describe('dated-policy raw writer routing',()=>{
   const old=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional original legacy plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:old.correctionId,decision:'approved'});
-  const revision=await f.save();await clock(f.employmentId,day(1));
-  expect(await detected(f.employmentId,day(1))).toBe(false);
+  const revision=await f.save();
   const next=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
    reason:'Fictional new policy application',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:next.correctionId,decision:'approved'});
+  await capturedClock(f.employmentId,day(1));
   expect(await detected(f.employmentId,day(1))).toBe(true);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.attendanceGroupPolicy?.id).toBe(revision.id);
   const [original]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
-  expect(original.status).toBe('approved');expect(original.appliedAt).not.toBeNull();
+  expect(original.status).toBe('approved');expect(original.appliedAt).toBeNull();
  });
  it('does not downgrade an application under an earlier new-policy revision into legacy mode',async()=>{
   const f=await fixture();await f.save();
@@ -455,10 +464,10 @@ describe('dated-policy raw writer routing',()=>{
    reason:'Fictional existing new-policy application',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
   const changed=policy();changed.clock.pairing='firstInLastOut';const next=await f.save(changed,1,day(2));
-  await clock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
+  await capturedClock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
   expect(snapshot.attendanceGroupPolicy?.id).toBe(next.id);
-  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern).toMatchObject({status:'recorded'});
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('reasserts an already approved scalar plan without turning it into policy execution evidence',async()=>{
@@ -466,19 +475,19 @@ describe('dated-policy raw writer routing',()=>{
   const requested=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional policy routing plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
   await decideAttendanceCorrection(ctx,{correctionId:requested.correctionId,decision:'approved'});
-  await clock(f.employmentId,day(1));
+  await capturedClock(f.employmentId,day(1));
   const [first]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
-  expect(first.appliedAt).not.toBeNull();
+  expect(first.appliedAt).toBeNull();
   await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'21:00'});
   await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'22:00'});
   const [again]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
   expect(again.appliedAt).toEqual(first.appliedAt);expect(again.approvedOtMinutes).toBe(first.approvedOtMinutes);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.policyApprovalInput).toMatchObject({authority:'sourceOnly',mode:'manual',requests:[{id:requested.correctionId,
-   createdAt:again.createdAt.toISOString(),decidedAt:again.decidedAt!.toISOString(),appliedAt:again.appliedAt!.toISOString(),
+   createdAt:again.createdAt.toISOString(),decidedAt:again.decidedAt!.toISOString(),appliedAt:null,
    method:again.otApprovalMethod,decidedByEmploymentId:again.decidedByEmploymentId,
    plannedWindow:{authority:'auditOnly',startLabel:'18:00:00',endLabel:'20:00:00'}}]});
-  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toMatchObject({status:'recorded'});
   expect(await covered(f.employmentId,day(1))).toMatchObject([{coverage:'calculation',outcome:'refused'}]);
   const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(asc(s.attendanceOvertimeCalculation.sourceId),asc(s.attendanceOvertimeCalculation.ordinal));
   expect(calculations.length).toBeGreaterThan(1);

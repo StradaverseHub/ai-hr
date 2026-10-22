@@ -28,6 +28,9 @@ describe('installed policy reservation exclusion definitions',()=>{
  it('retains no directly executable coverage-mint capability for the application role',async()=>{
   const [row]=await owner.client<{allowed:boolean}[]>`select has_function_privilege('ai_hr_app','app.capture_overtime_settlement_coverage()','EXECUTE') as allowed`;
   expect(row.allowed).toBe(false);
+  const triggers=await owner.client<{tgname:string}[]>`select tgname from pg_trigger where tgrelid='public.overtime_source_settlement'::regclass
+   and tgname in('aa_attendance_policy_settlement_stage','ab_overtime_settlement_coverage') and not tgisinternal order by tgname`;
+  expect(triggers.map(trigger=>trigger.tgname)).toEqual(['aa_attendance_policy_settlement_stage','ab_overtime_settlement_coverage']);
   const columns=await owner.client<{attname:string}[]>`select attname from pg_attribute where attrelid='public.overtime_source_settlement'::regclass
    and attname in('coverage_employment_id','coverage_calculation_id','coverage_kind','reservation_coverage') and not attisdropped order by attname`;
   expect(columns.map(row=>row.attname)).toEqual(['coverage_calculation_id','coverage_employment_id','coverage_kind','reservation_coverage']);

@@ -74,7 +74,7 @@ describe('immutable non-payable policy part storage',()=>{
   await barrier(self);
   await expect(withTenant(self,tx=>tx.execute(sql`select app.lock_overtime_configuration(${b.tenantId}::uuid)`))).rejects.toThrow();
   const [after]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));expect(after).toEqual(before);
-  const other=await hireEmployee(ctx,{person:{fullName:'Fictional unrelated barrier subject'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
+  const other=await hireEmployee(ctx,{person:{fullName:'Fictional unrelated barrier subject',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
   await expect(barrier(self,other.employmentId)).rejects.toThrow();
   await expect(barrier(adminCtx(await seedBase()))).rejects.toThrow();
   await owner.db.delete(s.roleAssignment).where(and(eq(s.roleAssignment.appUserId,userId),eq(s.roleAssignment.tenantId,b.tenantId)));

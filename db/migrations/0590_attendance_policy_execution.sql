@@ -678,5 +678,6 @@ DO $$ DECLARE table_name text;BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER a0_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
+-- Preserve the explicit staged-payment admission refusal before derived coverage validation.
+CREATE TRIGGER ab_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
  FOR EACH ROW EXECUTE FUNCTION app.capture_overtime_settlement_coverage();
