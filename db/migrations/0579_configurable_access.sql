@@ -2952,6 +2952,8 @@ ALTER TABLE app.access_privacy_value_intent ENABLE ROW LEVEL SECURITY;
 
 --> statement-breakpoint
 -- This finite witness authorizes only the existing privacy owner's calculated NULLs/deletes.
+-- Authority is administrative for the selected employment company (ADR-0009), never
+-- coarse admin in another company combined with structural read visibility here.
 -- No caller supplies a row image, field patch, clock, principal, role or completed-audit flag.
 CREATE FUNCTION app.access_privacy_erasure_begin(p_employment uuid,p_scope text,p_request_ref text,p_reason text) RETURNS timestamptz
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -2966,7 +2968,7 @@ BEGIN
  IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure principal unavailable' USING ERRCODE='42501'; END IF;
  SELECT * INTO selected FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() FOR UPDATE;
- IF NOT FOUND OR app.can_see_employment(selected.id) IS NOT TRUE THEN
+ IF NOT FOUND OR app.can_admin_employment(selected.id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
  -- Same calendar-year rollover as Date.setUTCFullYear: 29-Feb rolls to 1-Mar in a non-leap year.
  -- Both owners use this admission's one actual timestamp and the one declared retention duration.
@@ -3039,7 +3041,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
   SELECT 1 FROM app.access_privacy_value_intent i JOIN public.domain_event e ON e.id=i.event_id
   WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id()
-   AND app.can_see_employment(i.employment_id) AND i.kind=p_kind AND i.row_id=COALESCE(p_after->>'id',p_before->>'id')::uuid
+   AND app.can_admin_employment(i.employment_id) AND i.kind=p_kind AND i.row_id=COALESCE(p_after->>'id',p_before->>'id')::uuid
    AND i.before_hash=encode(sha256(convert_to((p_before-'updated_at')::text,'UTF8')),'hex')
    AND i.after_hash=encode(sha256(convert_to((p_after-'updated_at')::text,'UTF8')),'hex')
    AND e.tenant_id=i.tenant_id AND e.aggregate_type='person' AND e.aggregate_id=i.person_id AND e.subject_employment_id=i.employment_id
@@ -3079,7 +3081,7 @@ BEGIN
   AND i.user_id=NEW.user_id AND i.kind=NEW.kind AND i.row_id=NEW.row_id;
  IF NOT FOUND OR intent.event_id IS NULL OR intent.user_id IS DISTINCT FROM app.current_user_id()
   OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE
-  OR app.can_see_employment(intent.employment_id) IS NOT TRUE THEN
+  OR app.can_admin_employment(intent.employment_id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure incomplete' USING ERRCODE='42501'; END IF;
  table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' END;
  EXECUTE format('SELECT to_jsonb(r) FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2',table_name) INTO actual USING intent.row_id,intent.tenant_id;
