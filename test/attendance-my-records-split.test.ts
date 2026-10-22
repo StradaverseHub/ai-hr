@@ -625,8 +625,8 @@ describe('67268d83 — canonical statuses, three flags, and a bounded range', ()
     // THE REFUSAL IS A REFUSAL, NOT A CLAMP. A clamped range would show a record the reader did not ask
     // for while looking exactly like the one they did — the truncation defect moved one step later. So the
     // read must be conditional on there being no refusal.
-    expect(src, 'the range read is skipped entirely when the range was refused').toMatch(
-      /range\.refusal\s*\?\s*\{rows:\[\],error:undefined\}\s*:\s*await attendanceForEmploymentRange\(/,
+    expect(src, 'both record and holiday reads are skipped entirely when the range was refused').toMatch(
+      /range\.refusal\s*\?\s*\{rows:\[\],originals:\[\],replacements:\[\],error:undefined\}\s*:\s*await Promise\.all\(\[attendanceForEmploymentRange\([^;]+personalCalendarHolidayContext\(/,
     );
     expect(src, 'and the reader is told why, with the limit in the sentence').toContain(
       "t('myRecords.rangeTooLong'",
