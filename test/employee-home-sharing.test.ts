@@ -46,9 +46,9 @@ describe('minimal Home sharing under actual application RLS',()=>{
   for(const key of ['personId','dateOfBirth','salary','reason','office','wfh'])expect(JSON.stringify(result)).not.toContain(key);
  });
  it('uses approved leave rather than a pending request or inferred office/WFH status',async()=>{
-  const own=await worker('Fictional viewer'),peer=await worker('Fictional on leave'),date=add(today(),1);
+  const own=await worker('Fictional viewer'),peer=await worker('Fictional on leave'),date=today();
   await configure('department');
-  const [type]=await owner.db.insert(s.leaveType).values({tenantId:b.tenantId,name:'Fictional shared presence',code:'HP_'+randomUUID().slice(0,6),
+  const [type]=await owner.db.insert(s.leaveType).values({tenantId:b.tenantId,name:'Fictional shared presence',code:'HP_'+randomUUID().slice(0,6).toUpperCase(),
    counting:'calendar_days',paid:true,visibleToEmployee:true,role:'annual'}).returning();
   await owner.db.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:peer.employmentId,leaveTypeId:type.id,
    entryType:'accrual',days:'20',effectiveOn:today().slice(0,4)+'-01-01'});
@@ -79,7 +79,7 @@ describe('minimal Home sharing under actual application RLS',()=>{
   const second=await readHomeTeamPage(own.ctx,own.employmentId,{after:first.nextCursor!,limit:2});
   expect(second.totalEmployments).toBe(3);expect(second.items.map(row=>row.employmentId)).toEqual([peers[2].employmentId]);expect(second.nextCursor).toBeNull();
   await expect(readHomeTeamPage(own.ctx,own.employmentId,{after:randomUUID()})).rejects.toThrow();
-  await owner.db.update(s.employment).set({blacklistedAt:new Date()}).where(eq(s.employment.id,peers[1].employmentId));
+  await owner.db.update(s.employment).set({blacklistedAt:today()}).where(eq(s.employment.id,peers[1].employmentId));
   await expect(readHomeTeamPage(own.ctx,own.employmentId,{after:first.nextCursor!})).rejects.toThrow();
   await expect(readHomeTeamPage(own.ctx,peers[0].employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,own.ctx.userId!));
