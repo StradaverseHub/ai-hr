@@ -1,4 +1,5 @@
 /** Actual storage transaction, default availability, stale-writer and runtime-refusal contracts. */
+import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
@@ -31,7 +32,7 @@ it('publishes the exact three source bindings atomically, preserves actual role/
  const after=await snapshot();for(const key of ['grants','memberships','overrides','roles','users']as const)expect(after[key]).toEqual(before[key]);
  for(const expected of WORKFORCE_CAPABILITY_BINDINGS)expect(after.catalog.find(row=>row.id===expected.id)).toMatchObject({...expected,supported:true});
  for(const previous of before.catalog.filter(row=>!ids.includes(row.id)))expect(after.catalog.find(row=>row.id===previous.id)).toEqual(previous);
- for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+1n));
+ for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+BigInt(1)));
  for(const row of before.configuration)expect(after.configuration.find(next=>next.tenant_id===row.tenant_id)?.revision).not.toBe(row.revision);
  expect(await workforceCompanies(adminCtx(b))).toEqual(scope);
  expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:false,tenantsFenced:0});expect(await snapshot()).toEqual(after);
@@ -47,7 +48,7 @@ it('refuses runtime publication and a claimed owner GUC without installing a def
  expect(await snapshot()).toEqual(before);
 });
 it('refuses an active tenant without initialized recovery defaults instead of inventing a grant or administrator',async()=>{
- const [other]=await owner.db.insert(tenant).values({name:'Fictional uninitialized publication tenant'}).returning({id:tenant.id});
+ const [other]=await owner.db.insert(tenant).values({name:'Fictional uninitialized publication tenant',workosOrgId:'fictional-uninitialized-'+randomUUID()}).returning({id:tenant.id});
  await owner.db.insert(appUser).values({tenantId:other.id,workosUserId:'fictional-publication-without-recovery'});
  const before=await snapshot();await expect(publishWorkforceCapabilities(owner.client)).rejects.toThrow('Workforce capability installation refused');expect(await snapshot()).toEqual(before);
 });
