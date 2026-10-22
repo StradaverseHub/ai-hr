@@ -77,6 +77,8 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
   const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,
    attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
    policyApprovalInput:input.approvals,policyRawEffectSource:input.rawEffect,policyExecutionProposal:input.proposal,
+   // Preserve an explicit duration-source refusal; absent legacy metadata keeps its original fallback.
+   policyDurationFormulaInput:stored.policyDurationFormulaInput as CanonicalOvertimeSnapshot['policyDurationFormulaInput'],
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
