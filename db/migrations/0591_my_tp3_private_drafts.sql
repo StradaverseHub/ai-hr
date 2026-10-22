@@ -1,5 +1,6 @@
 -- Private, unsubmitted input; Payroll still consumes only the canonical employee_tp3 projection.
--- Reserved Board2@1791900000067. Register only with the ascending 0576-0586 union.
+-- Reserved Board2 0591@1791900000071. Register after the reviewed lower union through Board1 0590.
+-- Former draft reservation 0587 was retired without registration or application.
 CREATE TABLE public.employee_tp3_draft (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  person_id uuid NOT NULL REFERENCES public.person(id),employment_id uuid NOT NULL REFERENCES public.employment(id),

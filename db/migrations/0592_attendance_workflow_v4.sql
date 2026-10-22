@@ -1,4 +1,5 @@
--- Board 2 reservation: 0588@1791900000068. Draft, not registered or applied.
+-- Board 2 reservation: 0592@1791900000072. Draft, not registered or applied.
+-- Former draft reservation 0588 was retired without registration or application.
 -- Explicit v4 mixed sources; the immutable participant ledger/final-effect proof stays authoritative.
 ALTER TABLE public.attendance_workflow_template DROP CONSTRAINT attendance_workflow_template_routing_version_check;
 ALTER TABLE public.attendance_workflow_template ADD CONSTRAINT attendance_workflow_template_routing_version_check CHECK(routing_version IN (1,2,3,4));

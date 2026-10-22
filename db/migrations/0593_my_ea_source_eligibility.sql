@@ -1,5 +1,6 @@
 -- Own-service metadata only. Does not grant access to an unreleased payslip or change admin EA rules.
--- Registration is deferred until the centrally reserved 0576-0588 union is present in order.
+-- Reserved Board2 0593@1791900000073. Register after the reviewed lower union through 0592.
+-- Former draft reservation 0589 was retired without registration or application.
 CREATE FUNCTION app.my_ea_source_options()
 RETURNS TABLE(employment_id uuid, employee_code text, company_id uuid, company text,
  country text, year text, available boolean, is_current boolean)
