@@ -34,7 +34,6 @@ async function main(){
  const {actorOf,appendEvent}=await import('../db/events');
  const {resolveEntitlementsTx}=await import('../core/entitlements');
  const {createCompany,createDepartment,updateCompany}=await import('../core/admin');
- const {upsertCompanyStatutoryAuthority}=await import('../core/statutory-authority');
  const {hireEmployee,setReportingLine}=await import('../core/org');
  const {setCompensation}=await import('../core/comp');
  const attendance=await import('../packs/attendance/service');
@@ -120,7 +119,7 @@ async function main(){
   if(!statutory||statutoryKeys.some(key=>statutory[key]!==statutoryReferences[key]))await requirePackFor('MY').companyStatutory.set(hrContext,{companyId:company.id,...statutoryReferences});
   const signatory={signatoryPersonId:hr.personId,phone:'+60 3 0000 0000',email:'board2-approved-company-hr@example.invalid'};
   const [authority]=await owner.db.select().from(s.companyStatutoryAuthority).where(and(eq(s.companyStatutoryAuthority.companyId,company.id),eq(s.companyStatutoryAuthority.authority,'lhdn')));
-  if(!authority)await upsertCompanyStatutoryAuthority(hrContext,{companyId:company.id,authority:'lhdn',...signatory});
+  if(!authority)await payroll.upsertCompanyStatutoryAuthority(hrContext,{companyId:company.id,authority:'lhdn',...signatory});
   else if(authority.signatoryPersonId!==signatory.signatoryPersonId||authority.phone!==signatory.phone||authority.email!==signatory.email)throw new Error('Existing fixture signatory changed; preserving it.');
   const unlinked=await login('unlinked',null,company.id,'employee');
   const paid=[applicant,manager,named,hr];
