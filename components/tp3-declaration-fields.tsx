@@ -4,6 +4,7 @@ import {deriveAccumulatorSeed,tp3EpfReliefCap,tp3ExemptionOverLimits,tp3LineNumb
 import {amountField,employerNameField,employerTinField,subField} from '@/lib/tp3-form-input';
 import {tp3LineFigures} from '@/lib/tp3-line-figures';
 import {timeInKualaLumpur} from '@/lib/hr-date';
+import {Tp3PersonalInput,Tp3PersonalSelect,Tp3PersonalDeclaration} from '@/components/tp3-personal-fields';
 const box=(value:number|undefined)=>value==null||value===0?'':String(value);
 /** Full canonical TP3 sections. Personal mode receives a sanitized record and omits HR notes. */
 export async function Tp3DeclarationFields({record,identity,selectedYear,mode='admin',declarationAccepted}:{record:Tp3Record|null;identity:Tp3Identity;selectedYear:number;mode?:'admin'|'personal';declarationAccepted?:boolean}) {
@@ -15,7 +16,9 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
  const MONTH_OPTIONS=Array.from({length:12},(_,i)=>({value:i+1,label:monthFmt.format(new Date(Date.UTC(2000,i,1)))}));
  const money=(value:number|null)=>value==null?'—':value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
  const Fig=({v}:{v:number|null})=><span className="w-28 pt-2 text-right text-sm tabular-nums text-muted-foreground">{v==null?'':money(v)}</span>;
- const MoneyInput=({name,value}:{name:string;value:number|undefined})=><input type="number" step="0.01" min="0" name={name} defaultValue={box(value)} className={`${inputCls} w-40 max-w-full text-right tabular-nums`}/>;
+ const Input=mode==='personal'?Tp3PersonalInput:'input';
+ const Select=mode==='personal'?Tp3PersonalSelect:'select';
+ const MoneyInput=({name,value}:{name:string;value:number|undefined})=><Input type="number" step="0.01" min="0" name={name} defaultValue={box(value)} className={`${inputCls} w-40 max-w-full text-right tabular-nums`}/>;
  return <>
               {/* ── The form's own DEDUCTION MONTH / DEDUCTION YEAR boxes ── */}
               <Card className="p-4">
@@ -35,7 +38,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                       catalogue check cannot tell a wrong month name from a right one. */}
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium">{t('deductionMonthLabel')}</span>
-                    <select
+                    <Select
                       name="deductionMonth"
                       defaultValue={record?.deductionMonth == null ? '' : String(record.deductionMonth)}
                       className={`${inputCls} w-44`}
@@ -48,7 +51,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                           {m.label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <div className="block text-sm">
                     <span className="mb-1 block font-medium">{t('deductionYearLabel')}</span>
@@ -72,13 +75,13 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                           <span className="mb-1 block font-medium">
                             A{i * 2 + 1} · {t('tp3.employerNameSlot', { n: i + 1 })}
                           </span>
-                          <input name={employerNameField(i + 1)} defaultValue={e?.name ?? ''} className={inputCls} />
+                          <Input name={employerNameField(i + 1)} defaultValue={e?.name ?? ''} className={inputCls} />
                         </label>
                         <label className="block w-64 text-sm">
                           <span className="mb-1 block font-medium">
                             A{i * 2 + 2} · {t('tp3.employerTinSlot')}
                           </span>
-                          <input name={employerTinField(i + 1)} defaultValue={e?.tin ?? ''} className={inputCls} />
+                          <Input name={employerTinField(i + 1)} defaultValue={e?.tin ?? ''} className={inputCls} />
                         </label>
                       </div>
                     );
@@ -369,13 +372,13 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                       submitted, so presence can never answer this. */}
                   <input type="hidden" name="declarationAccepted" value="no" />
                   <label className="flex items-center gap-2 text-sm">
-                    <input
+                    {mode==='personal'?<Tp3PersonalDeclaration defaultChecked={declarationAccepted??(record?.declaredAt != null)} className="size-4"/>:<input
                       type="checkbox"
                       name="declarationAccepted"
                       value="yes"
                       defaultChecked={declarationAccepted??(record?.declaredAt != null)}
                       className="size-4"
-                    />
+                    />}
                     {t('tp3.declarationTick')}
                   </label>
                   {record?.declaredAt ? (
