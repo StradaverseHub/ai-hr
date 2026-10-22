@@ -5,7 +5,7 @@ import type {Locale} from '../i18n/config';
 const text:Record<Locale,Record<HomeTemplateKey,string>>={
  en:{greetingMorning:'Good morning, {name}.',greetingAfternoon:'Good afternoon, {name}.',greetingEvening:'Good evening, {name}.',
   greetingBirthday:'Happy birthday, {name}!',greetingFirstDay:'Welcome, {name}!',greetingAnniversary:'Happy work anniversary, {name} — {years} years!',greetingReturn:'Welcome back, {name}.',
-  tasksPending:'Waiting for you: {count} tasks.',leaveApproved:'Your leave on {dates} is approved.',holidayComing:'{name} is on {date}.',paydayComing:'Scheduled payday: {date}.',payslipReady:'Your payslip for {period} is ready.',calm:'Nothing needs your attention today.'},
+  tasksPending:'Tasks waiting for you: {count}.',leaveApproved:'Your leave on {dates} is approved.',holidayComing:'{name} is on {date}.',paydayComing:'Scheduled payday: {date}.',payslipReady:'Your payslip for {period} is ready.',calm:'Nothing needs your attention today.'},
  ms:{greetingMorning:'Selamat pagi, {name}.',greetingAfternoon:'Selamat tengah hari, {name}.',greetingEvening:'Selamat petang, {name}.',
   greetingBirthday:'Selamat hari lahir, {name}!',greetingFirstDay:'Selamat datang, {name}!',greetingAnniversary:'Selamat ulang tahun perkhidmatan, {name} — {years} tahun!',greetingReturn:'Selamat kembali, {name}.',
   tasksPending:'Menunggu anda: {count} tugasan.',leaveApproved:'Cuti anda pada {dates} telah diluluskan.',holidayComing:'{name} pada {date}.',paydayComing:'Tarikh gaji yang dijadualkan: {date}.',payslipReady:'Slip gaji anda untuk {period} sudah tersedia.',calm:'Tiada perkara yang memerlukan perhatian anda hari ini.'},

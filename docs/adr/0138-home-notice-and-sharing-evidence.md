@@ -192,6 +192,8 @@ payroll rule. Display preferences never shift those civil dates. Tentative holid
 as confirmed. A published slip is described as ready, never newly unread or paid into a bank account;
 the current metadata owner does not establish a reading/newness timestamp.
 
+Actionable work ranks before informational reminders even when no deadline is recorded; this does
+not describe it as overdue. The task owner alone supplies actual deadlines and overdue facts.
 At most four actual sentences are rendered; a second sentence is never invented to meet a quota.
 Only a successful read with no candidates can render the configured calm sentence. Disabling all
 positive templates cannot turn existing work into an empty-day assertion. The summary has a separate

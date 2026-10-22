@@ -34,13 +34,18 @@ describe('Own Home deterministic summary and current action capability',()=>{
   state.holidays.mockResolvedValue([{id:'holiday-1',date:offset(3),name:'Fictional holiday',tentative:false,active:true}]);
   state.payroll.mockResolvedValue({payslips:[{id:'published',period:today.slice(0,7),amount:'private salary'}],nextPayment:{date:offset(4),amount:'private salary'}});
   state.types.mockResolvedValue([{id:'eligible'}]);state.claims.mockResolvedValue(true);state.profile.mockResolvedValue({editable:new Set(['person.firstName'])});
-  const result=await read();expect(result.items).toHaveLength(4);expect(result.items[0]).toMatchObject({key:'tasks',message:'Waiting for you: 2 tasks.'});expect(result.calm).toBeNull();
+  const result=await read();expect(result.items).toHaveLength(4);expect(result.items[0]).toMatchObject({key:'tasks',message:'Tasks waiting for you: 2.'});expect(result.calm).toBeNull();
   expect(JSON.stringify(result)).not.toMatch(/private|medical|amount|subjectName/);expect(result.quickActions.every(row=>row.reason===null)).toBe(true);
   expect(state.payroll).toHaveBeenCalledWith(ctx,'own');expect(state.claims).toHaveBeenCalledWith(ctx,'own');
  });
  it('does not invent a calm day when HR disabled the templates for existing facts',async()=>{
   const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue({total:1,overdue:0});
   expect(await read()).toMatchObject({items:[],calm:null});
+ });
+ it('places one pending action before a payday reminder without inventing an overdue deadline',async()=>{
+  state.tasks.mockResolvedValue({total:1,overdue:0});state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(1)}});
+  const result=await read();expect(result.items.map(row=>row.key)).toEqual(['tasks','payday']);expect(result.items[0].message).toBe('Tasks waiting for you: 1.');
+  expect(result.items[0].message).not.toMatch(/overdue|urgent|due today/i);
  });
  it('keeps distant/tentative facts out of near-term reminders and uses a retained replacement date',async()=>{
   state.leave.mockResolvedValue({requestId:'distant',date:offset(8)});state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(8)}});

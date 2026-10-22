@@ -38,7 +38,9 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  ]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
  const candidates:HomeSummaryCandidate[]=[];
- if(tasks.total>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:tasks.overdue>0?'urgent':'reminder',destination:'tasks',values:{count:tasks.total}});
+ // Actionable work precedes informational reminders. This is presentation ranking, not an invented
+ // due date or overdue assertion; the task owner alone supplies those facts in Waiting for You.
+ if(tasks.total>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:'urgent',destination:'tasks',values:{count:tasks.total}});
  if(leave&&leave.date<=through)candidates.push({key:'leave:'+leave.requestId,templateKey:'leaveApproved',importance:'goodNews',destination:'leave',values:{dates:date(leave.date)}});
  const holiday=[...holidays.filter(row=>!row.tentative&&row.active).map(row=>({key:'holiday:'+row.id,date:row.date,name:row.name})),
   ...replacements.map(row=>({key:'replacement:'+row.id,date:row.replacementDate,name:replacementHolidayName}))]
