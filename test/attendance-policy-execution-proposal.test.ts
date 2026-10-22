@@ -6,7 +6,8 @@ import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySu
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {attendancePolicySchedulePlacement} from '../core/attendance-policy-schedule';
-import {attendancePolicyExecutionProposal as propose} from '../packs/attendance/policy-execution-proposal';
+import {attendancePolicyExecutionProposal as propose,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
+import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
 import type {PolicyWorkInput} from '../packs/attendance/policy-work-input';
 import type {PolicyFormulaInput} from '../packs/attendance/policy-formula-input';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
@@ -62,6 +63,17 @@ describe('canonical source composition into the shared policy duration proposal'
    classes:[{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20}],parts:[{date,allocatedPayableMinutes:20,allocations:[{from:1420,to:1440}]},{date:next,allocatedPayableMinutes:20,allocations:[{from:1440,to:1460}]}]},
    formulaParts:[{date,versionId:id(4)},{date:next,versionId:id(4)}]});
   expect(Object.hasOwn(result,'transferable')).toBe(false);expect(f).toEqual(before);
+ });
+ it('uses the same once-rounded duration for TOIL without cash earning references',()=>{
+  const f=fixture(),durationFormula=attendancePolicyDurationFormulaProjection(f.formulas);
+  const result=attendancePolicyDurationExecutionProposal(f.context,f.work,durationFormula);
+  expect(result).toEqual(propose(f.context,f.work,f.formulas));
+  expect(result).toMatchObject({state:'proposed',authority:'proposalOnly',duration:{status:'calculated',payableMinutes:60,
+   classes:[{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20}]}});
+  expect(Object.hasOwn(result,'transferable')).toBe(false);
+  f.context.selected.policy.overtime.approval='manual';
+  expect(attendancePolicyDurationExecutionProposal(f.context,f.work,durationFormula))
+   .toMatchObject({state:'unavailable',reason:'approvalReceiptRequired'});
  });
  it('uses the central latest count choice across the complete class instead of a per-date cap',()=>{
   const f=fixture();f.context.selected.policy.overtime.days.normal.maximumMinutes=10;
