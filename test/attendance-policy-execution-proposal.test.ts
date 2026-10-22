@@ -1,4 +1,4 @@
-import {materializeAttendancePolicyProposalParts as materialize} from '../packs/attendance/policy-proposal-parts';
+import {materializeAttendancePolicyProposalParts as materialize,recordedAttendancePolicyProposalPartsMatch as matches} from '../packs/attendance/policy-proposal-parts';
 import {describe,expect,it} from 'vitest';
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
@@ -101,5 +101,48 @@ describe('complete non-payable proposal materialization',()=>{
   expect(materialize({...f,source:{...f.source,date:next}})).toBeNull();
   f.context.calendar[1]={state:'unknown',date:next,reason:'holidayDesignationUnavailable'};f.proposal=propose(f.context,f.work,f.formulas);
   expect(materialize(f)).toEqual([]);expect(materialize({source:f.source})).toEqual([]);
+ });
+});
+
+
+describe('complete immutable proposal replay',()=>{
+ function stored(){
+  const f=fixture(),proposal=propose(f.context,f.work,f.formulas),source={id:id(8),attendanceId:id(12),tenantId:id(9),companyId:f.context.companyId,employmentId:f.context.employmentId,attendanceDate:date};
+  const rows=materialize({source:{employmentId:source.employmentId,date},policy:f.context.selected,context:f.context,work:f.work,formulas:f.formulas,proposal});
+  if(!rows)throw Error('Expected a complete source proposal');
+  const header={id:id(10),sourceId:source.id,tenantId:source.tenantId,companyId:source.companyId,bindingKind:'attendanceGroupPolicy' as const,
+   policyRevisionId:f.context.selected.id,policyPartCount:rows.length,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64)};
+  const parts=rows.map(row=>({...row,calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,inputDigest:header.inputDigest}));
+  const evidence={calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,
+   inputs:{mode:'actual',assignmentId:null,patternVersionId:null,source:{tenantId:source.tenantId,employmentId:source.employmentId,
+    attendanceId:source.attendanceId,date,inputDigest:header.inputDigest,approvalDigest:header.approvalDigest}},
+   evidence:{attendanceGroupPolicy:f.context.selected,policyExecutionContext:f.context,policyWorkInput:f.work,policyFormulaInput:f.formulas,policyExecutionProposal:proposal}};
+  return {source,header,parts,evidence};
+ }
+ it('accepts the entire exact historical proposal without mutating it or granting transfer authority',()=>{
+  const f=stored(),before=structuredClone(f);expect(matches(f.source,f.header,f.evidence,f.parts)).toBe(true);expect(f).toEqual(before);
+  expect(Object.hasOwn(f.evidence,'transferable')).toBe(false);
+ });
+ it('rejects omission, reordering and every changed parent binding',()=>{
+  const f=stored();expect(matches(f.source,f.header,f.evidence,f.parts.slice(0,1))).toBe(false);
+  expect(matches(f.source,f.header,f.evidence,[...f.parts].reverse())).toBe(false);
+  for(const field of ['sourceId','tenantId','companyId','policyRevisionId','inputDigest','approvalDigest'] as const){
+   expect(matches(f.source,{...f.header,[field]:id(11)},f.evidence,f.parts)).toBe(false);
+  }
+  expect(matches({...f.source,employmentId:id(11)},f.header,f.evidence,f.parts)).toBe(false);
+ });
+ it('refuses changed stored business fields instead of accepting a valid digest alone',()=>{
+  for(const field of ['tenantId','companyId','calculationId','inputDigest','versionId','calendarDate','dayClass','rawMinutes','allocatedPayableMinutes','calendarReferences','sourceIntervals','durationEvidence'] as const){
+   const f=stored(),row=f.parts[0];
+   const changed={...row,[field]:typeof row[field]==='number'?999:Array.isArray(row[field])?[]:'substituted'};
+   expect(matches(f.source,f.header,f.evidence,[changed,...f.parts.slice(1)] as typeof f.parts)).toBe(false);
+  }
+ });
+ it('refuses inconsistent stored source evidence and malformed JSON as one unavailable parent',()=>{
+  const f=stored();expect(matches(f.source,f.header,null,f.parts)).toBe(false);
+  expect(matches(f.source,f.header,{...f.evidence,evidence:{...f.evidence.evidence,policyWorkInput:null}},f.parts)).toBe(false);
+  expect(matches(f.source,f.header,{...f.evidence,evidence:{...f.evidence.evidence,policyExecutionProposal:{}}},f.parts)).toBe(false);
+  expect(matches(f.source,f.header,{...f.evidence,inputs:{...f.evidence.inputs,source:{...f.evidence.inputs.source,attendanceId:id(11)}}},f.parts)).toBe(false);
+  expect(matches(f.source,f.header,{...f.evidence,calculationId:id(11)},f.parts)).toBe(false);
  });
 });

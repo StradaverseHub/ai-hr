@@ -1,7 +1,7 @@
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
  * generate payment lines or settle cash/TOIL. Parent identities/digests are bound by the writer. */
 import {isDeepStrictEqual} from 'node:util';
-import type {attendanceOvertimePolicyPart} from '../../db/schema';
+import type {attendanceOvertimePolicyPart,attendanceOvertimeCalculation,attendanceOvertimeSource} from '../../db/schema';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {PolicyWorkInput} from './policy-work-input';
@@ -37,4 +37,45 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
     parentClass:part.dayClass,allocatedIntervals:part.allocations.map(row=>({...row}))}});
  }
  return parts;
+}
+
+
+type StoredPolicyParent=Pick<typeof attendanceOvertimeSource.$inferSelect,'id'|'tenantId'|'companyId'|'employmentId'|'attendanceDate'|'attendanceId'>;
+type StoredPolicyCalculation=Pick<typeof attendanceOvertimeCalculation.$inferSelect,'id'|'sourceId'|'tenantId'|'companyId'|'bindingKind'|'policyRevisionId'|'policyPartCount'|'inputDigest'|'approvalDigest'>;
+type StoredPolicyPart=Omit<typeof attendanceOvertimePolicyPart.$inferSelect,'createdAt'>;
+/** Historical evidence replay only. This establishes neither current freshness nor financial authority.
+ * Malformed JSON, any omitted part, and any changed business field refuse the entire parent. */
+export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyParent,header:StoredPolicyCalculation,
+ evidence:unknown,rows:readonly StoredPolicyPart[]):boolean{
+ try{
+  if(header.bindingKind!=='attendanceGroupPolicy'||header.sourceId!==source.id||header.tenantId!==source.tenantId
+   ||header.companyId!==source.companyId||!header.policyRevisionId||!Number.isSafeInteger(header.policyPartCount)
+   ||header.policyPartCount<0||header.policyPartCount>3||rows.length!==header.policyPartCount)return false;
+  if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))return false;
+  const row=evidence as Record<string,unknown>;
+  if(row.calculationId!==header.id||row.tenantId!==source.tenantId||row.companyId!==source.companyId
+   ||!row.inputs||typeof row.inputs!=='object'||Array.isArray(row.inputs)
+   ||!row.evidence||typeof row.evidence!=='object'||Array.isArray(row.evidence))return false;
+  const inputs=row.inputs as Record<string,unknown>,inputSource=inputs.source as Record<string,unknown>|undefined;
+  if(inputs.mode!=='actual'||inputs.assignmentId!==null||inputs.patternVersionId!==null||!inputSource
+   ||inputSource.tenantId!==source.tenantId||inputSource.employmentId!==source.employmentId
+   ||inputSource.attendanceId!==source.attendanceId||inputSource.date!==source.attendanceDate
+   ||inputSource.inputDigest!==header.inputDigest||inputSource.approvalDigest!==header.approvalDigest)return false;
+  const stored=row.evidence as Record<string,unknown>;
+  const input:PolicyProposalPartSource={source:{employmentId:source.employmentId,date:source.attendanceDate},
+   policy:stored.attendanceGroupPolicy as PolicyProposalPartSource['policy'],context:stored.policyExecutionContext as PolicyProposalPartSource['context'],
+   work:stored.policyWorkInput as PolicyProposalPartSource['work'],formulas:stored.policyFormulaInput as PolicyProposalPartSource['formulas'],
+   proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
+  if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
+  const expected=materializeAttendancePolicyProposalParts(input);
+  if(expected===null||expected.length!==header.policyPartCount)return false;
+  return rows.every((row,index)=>{
+   if(row.calculationId!==header.id||row.tenantId!==source.tenantId||row.companyId!==source.companyId
+    ||row.inputDigest!==header.inputDigest||row.sequence!==index)return false;
+   const part:PolicyProposalStoragePart={sequence:row.sequence,calendarDate:row.calendarDate,dayClass:row.dayClass,
+    moneyDay:row.moneyDay,versionId:row.versionId,rawMinutes:row.rawMinutes,allocatedPayableMinutes:row.allocatedPayableMinutes,
+    sourceIntervals:row.sourceIntervals,calendarReferences:row.calendarReferences,durationEvidence:row.durationEvidence};
+   return isDeepStrictEqual(part,expected[index]);
+  });
+ }catch{return false;}
 }

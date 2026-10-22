@@ -374,3 +374,13 @@ The legacy preparation branch keeps its existing reads/locks. Runtime lock order
 storage and real-clock/approval/Payroll journeys still need verification after the resource handover.
 The injected prepared-source writer fixture establishes only its stated structure, not capture truth
 or final-effect authority. This is not the required payable part writer or independent financial replay.
+
+
+The financially scoped immutable calculation reader now retrieves the entire declared ordered proposal
+part set and recomputes it from its stored source evidence before returning a policy record. Every
+parent/part identity, count, date, version, digest, interval, allocation and calendar/duration evidence
+must agree. Missing, malformed or altered parts make the whole record unavailable; a digest alone is
+insufficient. This historical proposal comparison does not prove current source freshness, final-effect
+authority, money, TOIL or cross-parent settlement coverage. Those existing financial fences remain.
+Legacy assignment records keep their existing reader shape and semantics. The new prepared runtime
+reader/storage probes remain unrun until the explicit resource handover.
