@@ -1,8 +1,8 @@
 /** Canonical source-to-central-price composition only; not financial approval or settlement. */
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 import {attendancePolicyDurationReplay} from './policy-duration-replay';
-import {evaluateOvertimePolicyAllocatedPrice,type OvertimePolicyAllocatedPrice} from '../../lib/overtime-pattern-evaluate';
-import type {OvertimeInput,OvertimeFact} from '../../lib/overtime-pattern-model';
+import {evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePolicyAllocatedParentPrice,type OvertimePolicyAllocatedPrice} from '../../lib/overtime-pattern-evaluate';
+import type {OvertimeInput,OvertimeFact,OvertimePattern} from '../../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../../lib/overtime-pattern-binding';
 export type PolicyPricingProposal=
  |{state:'unavailable';authority:'policyPricingProposalOnly';reason:'durationUnavailable'|'formulaUnavailable'|'sourcePlacementUnavailable'|'pricingScopeUnavailable'|'partPricingUnavailable'|'datedFactsUnavailable'}
@@ -16,18 +16,12 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   if(formulas?.state!=='known')return refuse('formulaUnavailable');
   if(snapshot.input.layer!=='raw'||snapshot.input.sessionGranularity!=='recorded')return refuse('sourcePlacementUnavailable');
   const base=Date.parse(snapshot.input.source.date+'T00:00:00+08:00')/1000,parts:Extract<PolicyPricingProposal,{state:'proposed'}>['parts']=[];
-  const pricedPartCount=proposal.duration.parts.filter(part=>part.allocatedPayableMinutes>0).length;
+  const dated:{sequence:number;date:string;definitionDigest:string;pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>}[]=[];
   let total=BigInt('0');
   for(const [sequence,part]of proposal.duration.parts.entries()){
    if(part.allocatedPayableMinutes===0)continue;
    const refs=formulas.references.filter(row=>row.date===part.date),formula=refs[0];
    if(refs.length!==1||formula.state!=='known'||formula.dayClass!==part.dayClass||formula.moneyDay!==part.moneyDay)return refuse('formulaUnavailable');
-   // Parent caps, mapping-total rounding, session charges/counters and shared monetary
-   // resources must run in one central money scope. Separate child evaluations cannot
-   // establish that scope, even when each child is independently valid.
-   if(pricedPartCount>1&&(formula.definition.paymentCap!==null||formula.definition.moneyRounding.stage==='dayMapping'
-    ||formula.definition.deductions.some(r=>r.unit==='money')
-    ||formula.definition.rates.some(r=>r.accumulation==='session'||r.tiers.some(t=>t.payment.method!=='hourly'&&t.payment.basis==='session'))))return refuse('pricingScopeUnavailable');
    const fact=<T>(value:T):OvertimeFact<T>=>({state:'known',value,provenance:{owner:'attendance',reference:snapshot.input.source.attendanceId+':policy:'+part.date,asOf:snapshot.input.source.date,basis:'recorded'}});
    const segments:Extract<OvertimeInput<OvertimePolicyBinding>,{layer:'raw'}>['segments']=[];
    for(const allocation of part.allocations){
@@ -54,9 +48,25 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
     facts:{...snapshot.input.facts,...salary,dayType:fact(part.moneyDay)},segments,
     resources:snapshot.input.resources.filter(r=>r.basis==='day'||sessions.has(r.sessionId!)),
     approval:{status:'notRequired',minutes:fact(String(part.allocatedPayableMinutes)),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}};
-   const pricing=evaluateOvertimePolicyAllocatedPrice(formula.definition,input);
+   dated.push({sequence,date:part.date,definitionDigest:formula.definitionDigest,pattern:formula.definition,input});
+  }
+  if(dated.length===1){
+   const row=dated[0],pricing=evaluateOvertimePolicyAllocatedPrice(row.pattern,row.input);
    if(pricing.state!=='proposed')return refuse('partPricingUnavailable');
-   total+=BigInt(pricing.amountMinorUnits);parts.push({sequence,date:part.date,definitionDigest:formula.definitionDigest,pricing});
+   total=BigInt(pricing.amountMinorUnits);parts.push({sequence:row.sequence,date:row.date,definitionDigest:row.definitionDigest,pricing});
+  }else if(dated.length>1){
+   // Every dated allocation is independently checked. The SAME central money engine owns
+   // parent counters, charges, resource consumption, cap and rounding once, with rate facts
+   // scoped to each actual dated segment. Distinct formula scopes remain explicit refusal.
+   const first=dated[0],count=dated.reduce((n,row)=>n+(row.input.approval.minutes.state==='known'?Number(row.input.approval.minutes.value):0),0);
+   if(dated.some(row=>row.definitionDigest!==first.definitionDigest))return refuse('pricingScopeUnavailable');
+   const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,facts:snapshot.input.facts,
+    segments:dated.flatMap(row=>row.input.layer==='raw'?row.input.segments:[]),resources:snapshot.input.resources,
+    approval:{...first.input.approval,minutes:{state:'known',value:String(count),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}}};
+   const priced=evaluateOvertimePolicyAllocatedParentPrice(parent,dated.map(row=>({pattern:row.pattern,input:row.input})));
+   if(priced.state!=='proposed')return refuse('pricingScopeUnavailable');
+   total=BigInt(priced.amountMinorUnits);
+   for(const [index,row]of dated.entries())parts.push({sequence:row.sequence,date:row.date,definitionDigest:row.definitionDigest,pricing:priced.parts[index]});
   }
   return {state:'proposed',authority:'policyPricingProposalOnly',durationDigest:replay.digest,currency:{...snapshot.input.currency},amountMinorUnits:String(total),parts};
  }catch{return refuse('sourcePlacementUnavailable');}

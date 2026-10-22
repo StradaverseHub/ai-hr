@@ -1,6 +1,6 @@
 /** Pure formula proposals. No row, policy activation, approval, source reservation or payment. */
 import {describe,expect,it} from 'vitest';
-import {evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
+import {evaluateOvertimePolicyAllocatedParentPrice,evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
 import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation,parseRecordedOvertimePolicyEvaluation,parseRecordedOvertimePolicyDurationEvaluation} from '../lib/overtime-pattern-result';
 import {overtimeSourceKey,type OvertimeFact,type OvertimeInput,type OvertimePattern} from '../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../lib/overtime-pattern-binding';
@@ -114,5 +114,88 @@ describe('central pricing of finalized group-policy allocations',()=>{
    {id:'minutes',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'minutes_when',type:'constant',value:true},amount:{id:'minutes_amount',unit:'minutes',type:'literal',value:'30'}},
    {id:'money',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'money_when',type:'constant',value:true},amount:{id:'money_amount',unit:'money',type:'literal',value:'5',currency:'MYR'}}];
   expect(evaluateOvertimePolicyAllocatedPrice(conflict,positionedPolicy())).toMatchObject({state:'unavailable',reason:'formulaUnavailable'});
+ });
+});
+
+function parentAllocations(){
+ const parts=[0,1].map(offset=>{
+  const input=positionedPolicy();if(input.layer!=='raw')throw Error('Raw fixture required');
+  const calendarDate=offset===0?date:'2024-03-01';
+  input.policyBinding={...input.policyBinding,dayClass:'normal',calendarDate,dayOffset:offset as 0|1};
+  input.approval.minutes=fact('10','approval');input.facts.actualWorkingMinutes=fact('10');
+  input.segments=[{...input.segments[0],id:'parent_part_'+offset,sessionId:'one_real_session',rawMinutes:fact('10'),approvedMinutes:fact('10','approval'),
+   clock:fact({startEpochSeconds:String(Date.parse(calendarDate+(offset===0?'T23:50:00+08:00':'T00:00:00+08:00'))/1000),
+    localDate:calendarDate,localStartSecond:offset===0?85800:0,elapsedSeconds:600})}];return input;
+ });
+ const parent:OvertimeInput<OvertimePolicyBinding>={...parts[0],facts:assigned().facts,segments:parts.flatMap(p=>p.layer==='raw'?p.segments:[]),
+  approval:{...parts[0].approval,minutes:fact('20','approval')}};
+ return {parts,parent};
+}
+function parentPrice(pattern:OvertimePattern,fixture=parentAllocations()){
+ return evaluateOvertimePolicyAllocatedParentPrice(fixture.parent,fixture.parts.map(input=>({pattern,input})));
+}
+describe('one central parent money scope over dated allocations',()=>{
+ it('applies a cap once and keeps exact dated parts nontransferable proposals',()=>{
+  const p=definition();p.paymentCap={id:'parent_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
+  const f=parentAllocations(),before=structuredClone({p,f}),result=parentPrice(p,f);
+  expect(result).toMatchObject({state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:'400'});
+  if(result.state!=='proposed')throw Error('Expected parent price');
+  expect(result.parts.map(p=>p.amountMinorUnits)).toEqual(['200','200']);
+  expect(result.trace.filter(t=>t.id==='paymentCap')).toHaveLength(1);
+  expect(Object.hasOwn(result,'transferable')).toBe(false);expect(parseRecordedOvertimePolicyEvaluation(result)).toBeNull();
+  expect({p,f}).toEqual(before);
+ });
+ it('rounds one mapping total after combining half-cent dated lines',()=>{
+  const p=definition(),payment=p.rates[0].tiers[0].payment;if(payment.method!=='hourly')throw Error('Hourly fixture');
+  payment.rate={id:'half_cent_rate',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'0.02'};
+  const result=parentPrice(p);expect(result).toMatchObject({state:'proposed',amountMinorUnits:'1'});
+  if(result.state!=='proposed')throw Error('Expected parent price');
+  expect(result.parts.map(p=>p.amountMinorUnits).sort()).toEqual(['0','1']);
+  expect(result.trace.filter(t=>t.kind==='rounding'&&t.id==='money')).toHaveLength(1);
+ });
+ it.each(['day','session'] as const)('retains one %s tier counter across midnight',accumulation=>{
+  const p=definition(),first=p.rates[0].tiers[0];p.rates[0].accumulation=accumulation;
+  if(first.payment.method!=='hourly')throw Error('Hourly fixture');
+  first.to='10';first.payment.multiplier={id:'one_multiplier',type:'literal',unit:'scalar',value:'1'};
+  p.rates[0].tiers.push({...structuredClone(first),id:'second_tier',from:'10',to:null,
+   payment:{...first.payment,rate:{id:'next_rate',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'}}});
+  const result=parentPrice(p);expect(result).toMatchObject({state:'proposed',amountMinorUnits:'600'});
+  if(result.state!=='proposed')throw Error('Expected parent price');expect(result.parts.map(p=>p.amountMinorUnits)).toEqual(['200','400']);
+ });
+ it.each(['day','session'] as const)('deduplicates a once-per-%s fixed charge across dated parts',basis=>{
+  const p=definition();p.rates[0].tiers[0].payment={method:'flat',basis,chargeId:'one_charge',amount:{id:'charge_amount',type:'literal',unit:'money',currency:'MYR',value:'25'}};
+  const result=parentPrice(p);expect(result).toMatchObject({state:'proposed',amountMinorUnits:'2500'});
+  if(result.state!=='proposed')throw Error('Expected parent price');expect(result.trace.some(t=>t.kind==='charge'&&t.data.deduplicated===true)).toBe(true);
+ });
+ it('prices each segment from its dated salary while a parent cap uses canonical source-day facts',()=>{
+  const p=definition(),f=parentAllocations();
+  p.rates[0].tiers[0].payment={method:'hourly',rate:{id:'dated_rate',type:'hourlyRate',unit:'moneyPerHour',
+   base:{id:'dated_base',type:'field',unit:'money',field:'basicSalary'},divisorMinutes:{id:'hour_divisor',type:'literal',unit:'minutes',value:'60'}},
+   multiplier:{id:'salary_multiplier',type:'literal',unit:'scalar',value:'1'}};
+  f.parts[0].facts.basicSalary=fact('12','payroll');f.parts[1].facts.basicSalary=fact('24','payroll');
+  f.parent.facts.basicSalary=fact('4','payroll');
+  expect(parentPrice(p,f)).toMatchObject({state:'proposed',amountMinorUnits:'600'});
+  p.paymentCap={id:'source_day_cap',type:'field',unit:'money',field:'basicSalary'};
+  expect(parentPrice(p,f)).toMatchObject({state:'proposed',amountMinorUnits:'400'});
+ });
+ it('consumes a shared monetary resource once across the complete parent',()=>{
+  const p=definition(),f=parentAllocations();
+  const r={id:'shared_resource',resource:'postOtBreak',evidence:'measured' as const,basis:'day' as const,sessionId:null,sourceKeys:['same_parent_source'],measure:{unit:'minutes' as const,quantity:fact('30')}};
+  f.parent.resources=[r];for(const input of f.parts)input.resources=[r];
+  p.deductions=[{id:'one_money_deduction',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'deduct_when',type:'constant',value:true},
+   amount:{id:'deduct_amount',type:'literal',unit:'money',currency:'MYR',value:'1'}}];
+  expect(parentPrice(p,f)).toMatchObject({state:'proposed',amountMinorUnits:'500'});
+ });
+ it('refuses incompatible versions, source substitution, incomplete parents and overlapping captures',()=>{
+  const p=definition();
+  for(const mutate of [
+   (f:ReturnType<typeof parentAllocations>)=>{f.parts[1].patternVersionId=uuid(99);},
+   (f:ReturnType<typeof parentAllocations>)=>{f.parts[1].source={...f.parts[1].source,inputDigest:'c'.repeat(64)};},
+   (f:ReturnType<typeof parentAllocations>)=>{f.parent.segments=f.parent.segments.slice(0,1);},
+   (f:ReturnType<typeof parentAllocations>)=>{f.parts[1]=structuredClone(f.parts[0]);},
+   (f:ReturnType<typeof parentAllocations>)=>{f.parent.approval.minutes=fact('19','approval');},
+  ]){const f=parentAllocations();mutate(f);expect(parentPrice(p,f).state).toBe('unavailable');}
+  const f=parentAllocations(),changed=structuredClone(p);changed.moneyRounding.mode='down';
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[{pattern:p,input:f.parts[0]},{pattern:changed,input:f.parts[1]}]).state).toBe('unavailable');
  });
 });

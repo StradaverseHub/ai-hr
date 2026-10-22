@@ -308,20 +308,23 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
- it.each(['cap','dayMapping'] as const)('refuses resetting whole-parent %s in dated child pricing',async moneyScope=>{
+ it.each(['cap','dayMapping'] as const)('prices whole-parent %s once across dated child allocations',async moneyScope=>{
   // Both formulas are genuinely activated and both dated allocations derive from actual
   // captured work. A parent cap of 4 must not become two caps; two half-cent slices must
   // not independently round to two cents when the parent mapping owns one cent.
   const f=await fixture('auto',moneyScope==='cap'?'12':'0.02','actual',false,moneyScope),p={employmentId:f.employmentId,date:day(2)};
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
   expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:20});
-  expect(attendancePolicyPricingProposal(snapshot)).toEqual({state:'unavailable',authority:'policyPricingProposalOnly',reason:'pricingScopeUnavailable'});
-  expect(attendancePolicyCashReplay(snapshot).state).toBe('unavailable');
+  const pricing=attendancePolicyPricingProposal(snapshot);
+  expect(pricing).toMatchObject({state:'proposed',amountMinorUnits:moneyScope==='cap'?'400':'1'});
+  if(pricing.state!=='proposed')throw Error('Expected one central parent money proposal');
+  expect(pricing.parts.map(p=>p.pricing.amountMinorUnits).sort()).toEqual(moneyScope==='cap'?['200','200']:['0','1']);
+  expect(attendancePolicyCashReplay(snapshot)).toMatchObject({state:'known',amountMinorUnits:moneyScope==='cap'?'400':'1'});
   const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
   await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
-   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional unsupported parent money scope'})).toMatchObject({status:'recorded'});});
+   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional one-parent money scope'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
-  expect(reviewed?.evidence?.evidence.policyPricingProposal).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
+  expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
   expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });

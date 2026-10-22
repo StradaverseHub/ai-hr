@@ -407,6 +407,80 @@ function allocate(work: Work[], amount: Q, capacity: (w: Work) => Q, write: (w: 
     if (remaining.n > BigInt('0'))
         fail('source', 'allocation', 'Canonical allocation capacity is insufficient.');
 }
+function computedScope(e:Engine,rawTotal:Q|null,eligibleTotal:Q|null,dayApproval:Q){
+    return (group: Work[]) => { e.clockScope = group; e.computed = { ...(rawTotal ? { rawMinutes: sum(group.map(w => w.raw!)) } : {}), ...(eligibleTotal ? { eligibleMinutes: sum(group.map(w => w.eligible!)) } : {}), approvedMinutes: min(dayApproval, sum(group.map(w => w.approved))), payableMinutes: sum(group.map(w => w.payable)) }; };
+}
+/** One consumption ledger shared by duration and monetary deductions within this engine scope. */
+function deductionScope<B extends OvertimeBinding>(pattern:OvertimePattern,input:OvertimeInput<B>,e:Engine,work:Work[],setComputed:(group:Work[])=>void){
+
+    const consumed = new Map<string, {
+        unit: 'minutes' | 'money';
+        requested: Q;
+        target: string | null;
+        keys: string[];
+    }>();
+    function deductions(unit: 'minutes' | 'money', lines: OvertimeLine[]) {
+        for (const rule of pattern.deductions.filter(d => d.unit === unit)) {
+            const scopes = rule.basis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
+            for (const group of scopes) {
+                setComputed(group);
+                const over = rule.basis === 'day' ? {} : scopedFacts(group);
+                const resources = input.resources.filter(r => r.resource === rule.resource && r.basis === rule.basis && (rule.basis === 'day' || r.sessionId === group[0].sessionId));
+                if (!resources.length) {
+                    if (e.condition(rule.when, over))
+                        fail('unknown', rule.id, 'The configured deduction resource has no canonical evidence.');
+                    continue;
+                }
+                for (const resource of resources) {
+                    delete e.computed.resourceMinutes;
+                    delete e.computed.resourceMoney;
+                    if (resource.measure.quantity.state === 'unknown' && !e.condition(rule.when, over)) {
+                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false, quantityUnknownButConditionFalse: true });
+                        continue;
+                    }
+                    const measure = decimal(e.value(resource.measure.quantity, resource.id));
+                    delete e.computed.resourceMinutes;
+                    delete e.computed.resourceMoney;
+                    e.computed[resource.measure.unit === 'minutes' ? 'resourceMinutes' : 'resourceMoney'] = measure;
+                    if (!e.condition(rule.when, over) || measure.n === BigInt('0')) {
+                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false });
+                        continue;
+                    }
+                    const requested = nonnegative(e.expression(rule.amount, over), rule.id), prior = resource.sourceKeys.map(key => consumed.get(key)).filter((v): v is NonNullable<typeof v> => !!v), target = rule.targetEarningItemId ?? null;
+                    if (prior.length) {
+                        const same = prior.length === resource.sourceKeys.length && prior.every(p => p.unit === unit && p.target === target && compare(p.requested, requested) === 0 && p.keys.length === resource.sourceKeys.length && p.keys.every(k => resource.sourceKeys.includes(k)));
+                        if (!same)
+                            fail('deductionConflict', rule.id, 'The same deduction source has conflicting amounts, units, targets or overlapping identities.');
+                        e.emit('deduction', rule.id, { resourceId: resource.id, sourceKeys: resource.sourceKeys, deduplicated: true, requested: exact(requested, unit) });
+                        continue;
+                    }
+                    for (const key of resource.sourceKeys)
+                        consumed.set(key, { unit, requested, target, keys: resource.sourceKeys });
+                    let applied: Q;
+                    if (unit === 'minutes') {
+                        const available = sum(group.map(w => w.payable));
+                        applied = min(available, requested);
+                        allocate(group, sub(available, applied), w => w.payable, (w, v) => { w.payable = v; }, pattern.durationAllocation);
+                        setComputed(group);
+                    }
+                    else {
+                        const selected = lines.filter(l => l.mapping.earningItemId === target && (rule.basis === 'day' || l.sessionId === group[0].sessionId));
+                        if (!selected.length && requested.n > BigInt('0'))
+                            fail('uncovered', rule.id, 'The money deduction target has no matched earning line.');
+                        const quantities = selected.map(l => q(BigInt(l.adjusted.numerator), BigInt(l.adjusted.denominator))), available = sum(quantities);
+                        applied = min(available, requested);
+                        const factor = available.n ? div(sub(available, applied), available) : ZERO;
+                        for (let i = 0; i < selected.length; i++)
+                            selected[i].adjusted = exact(mul(quantities[i], factor), 'money');
+                    }
+                    e.emit('deduction', rule.id, { resourceId: resource.id, basis: rule.basis, sessionId: rule.basis === 'session' ? group[0].sessionId : null, appliedSourceKeys: resource.sourceKeys, evidence: resource.evidence, quantity: resource.measure, requested: exact(requested, unit), applied: exact(applied, unit), unit, target });
+                }
+            }
+        }
+    }
+
+    return deductions;
+}
 function safeIdentity<B extends OvertimeBinding>(input:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>) {
     const zero = '00000000-0000-0000-0000-000000000000', digest = '0'.repeat(64);
     const source: OvertimeSource = { tenantId: zero, employmentId: zero, attendanceId: zero, date: '1970-01-01', inputDigest: digest, approvalDigest: digest };
@@ -517,72 +591,8 @@ function runDurationStage<B extends OvertimeBinding>(rawPattern:OvertimePattern,
         w.approvalAllocated = w.payable;
     e.emit('duration', 'dayApproval', { before: exact(beforeApproval, 'minutes'), bound: exact(dayApproval, 'minutes'), after: exact(sum(work.map(w => w.payable)), 'minutes'), allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.payable, 'minutes') })) });
     const eligibleTotal = input.layer === 'raw' ? sum(work.map(w => w.eligible!)) : null;
-    const setComputed = (group: Work[]) => { e.clockScope = group; e.computed = { ...(rawTotal ? { rawMinutes: sum(group.map(w => w.raw!)) } : {}), ...(eligibleTotal ? { eligibleMinutes: sum(group.map(w => w.eligible!)) } : {}), approvedMinutes: min(dayApproval, sum(group.map(w => w.approved))), payableMinutes: sum(group.map(w => w.payable)) }; };
-    const consumed = new Map<string, {
-        unit: 'minutes' | 'money';
-        requested: Q;
-        target: string | null;
-        keys: string[];
-    }>();
-    function deductions(unit: 'minutes' | 'money', lines: OvertimeLine[]) {
-        for (const rule of pattern.deductions.filter(d => d.unit === unit)) {
-            const scopes = rule.basis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
-            for (const group of scopes) {
-                setComputed(group);
-                const over = rule.basis === 'day' ? {} : scopedFacts(group);
-                const resources = input.resources.filter(r => r.resource === rule.resource && r.basis === rule.basis && (rule.basis === 'day' || r.sessionId === group[0].sessionId));
-                if (!resources.length) {
-                    if (e.condition(rule.when, over))
-                        fail('unknown', rule.id, 'The configured deduction resource has no canonical evidence.');
-                    continue;
-                }
-                for (const resource of resources) {
-                    delete e.computed.resourceMinutes;
-                    delete e.computed.resourceMoney;
-                    if (resource.measure.quantity.state === 'unknown' && !e.condition(rule.when, over)) {
-                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false, quantityUnknownButConditionFalse: true });
-                        continue;
-                    }
-                    const measure = decimal(e.value(resource.measure.quantity, resource.id));
-                    delete e.computed.resourceMinutes;
-                    delete e.computed.resourceMoney;
-                    e.computed[resource.measure.unit === 'minutes' ? 'resourceMinutes' : 'resourceMoney'] = measure;
-                    if (!e.condition(rule.when, over) || measure.n === BigInt('0')) {
-                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false });
-                        continue;
-                    }
-                    const requested = nonnegative(e.expression(rule.amount, over), rule.id), prior = resource.sourceKeys.map(key => consumed.get(key)).filter((v): v is NonNullable<typeof v> => !!v), target = rule.targetEarningItemId ?? null;
-                    if (prior.length) {
-                        const same = prior.length === resource.sourceKeys.length && prior.every(p => p.unit === unit && p.target === target && compare(p.requested, requested) === 0 && p.keys.length === resource.sourceKeys.length && p.keys.every(k => resource.sourceKeys.includes(k)));
-                        if (!same)
-                            fail('deductionConflict', rule.id, 'The same deduction source has conflicting amounts, units, targets or overlapping identities.');
-                        e.emit('deduction', rule.id, { resourceId: resource.id, sourceKeys: resource.sourceKeys, deduplicated: true, requested: exact(requested, unit) });
-                        continue;
-                    }
-                    for (const key of resource.sourceKeys)
-                        consumed.set(key, { unit, requested, target, keys: resource.sourceKeys });
-                    let applied: Q;
-                    if (unit === 'minutes') {
-                        const available = sum(group.map(w => w.payable));
-                        applied = min(available, requested);
-                        allocate(group, sub(available, applied), w => w.payable, (w, v) => { w.payable = v; }, pattern.durationAllocation);
-                        setComputed(group);
-                    }
-                    else {
-                        const selected = lines.filter(l => l.mapping.earningItemId === target && (rule.basis === 'day' || l.sessionId === group[0].sessionId));
-                        if (!selected.length && requested.n > BigInt('0'))
-                            fail('uncovered', rule.id, 'The money deduction target has no matched earning line.');
-                        const quantities = selected.map(l => q(BigInt(l.adjusted.numerator), BigInt(l.adjusted.denominator))), available = sum(quantities);
-                        applied = min(available, requested);
-                        const factor = available.n ? div(sub(available, applied), available) : ZERO;
-                        for (let i = 0; i < selected.length; i++)
-                            selected[i].adjusted = exact(mul(quantities[i], factor), 'money');
-                    }
-                    e.emit('deduction', rule.id, { resourceId: resource.id, basis: rule.basis, sessionId: rule.basis === 'session' ? group[0].sessionId : null, appliedSourceKeys: resource.sourceKeys, evidence: resource.evidence, quantity: resource.measure, requested: exact(requested, unit), applied: exact(applied, unit), unit, target });
-                }
-            }
-        }
-    }
+    const setComputed = computedScope(e,rawTotal,eligibleTotal,dayApproval);
+    const deductions = deductionScope(pattern,input,e,work,setComputed);
     deductions('minutes', []);
     if (pattern.durationRounding) {
         for (const group of contexts) {
@@ -667,18 +677,21 @@ export type OvertimePolicyAllocatedPrice=
 /** Price an already finalized, physically positioned policy allocation through the SAME money
  * engine. The caller must bind all dated parts to its canonical duration/approval source first.
  * This API emits no ready/transferable calculation and grants no financial capability. */
-export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
- const unavailable=(reason:Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedPrice=>
-  ({state:'unavailable',authority:'pricingProposalOnly',reason});
- try{
-  const pattern=validateOvertimePattern(rawPattern),input=validateOvertimePolicyInput(rawInput);
-  // Preserve the original resource conflict fence across the duration/pricing boundary.
+function policyPriceResourcesAvailable(pattern:OvertimePattern,input:OvertimeInput<OvertimePolicyBinding>):boolean{
   if(pattern.deductions.some(a=>a.unit==='minutes'&&pattern.deductions.some(b=>b.unit==='money'&&b.resource===a.resource&&b.basis===a.basis)))
-   return unavailable('formulaUnavailable');
+   return false;
   const minuteKeys=new Set(input.resources.filter(resource=>pattern.deductions.some(rule=>rule.unit==='minutes'
    &&rule.resource===resource.resource&&rule.basis===resource.basis)).flatMap(resource=>resource.sourceKeys));
   if(input.resources.some(resource=>pattern.deductions.some(rule=>rule.unit==='money'&&rule.resource===resource.resource
-   &&rule.basis===resource.basis)&&resource.sourceKeys.some(key=>minuteKeys.has(key))))return unavailable('formulaUnavailable');
+   &&rule.basis===resource.basis)&&resource.sourceKeys.some(key=>minuteKeys.has(key))))return false;
+ return true;
+}
+function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>){
+ const unavailable=(reason:Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>['reason']):Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>=>
+  ({state:'unavailable',authority:'pricingProposalOnly',reason});
+ try{
+  const pattern=validateOvertimePattern(rawPattern),input=validateOvertimePolicyInput(rawInput);
+  if(!policyPriceResourcesAvailable(pattern,input))return unavailable('formulaUnavailable');
   if(input.layer!=='raw'||input.mode!=='actual'||input.sessionGranularity!=='recorded')return unavailable('allocationUnavailable');
   let total=ZERO;
   for(const segment of input.segments){
@@ -690,20 +703,89 @@ export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,
   }
   if(total.n<=BigInt('0')||total.d!==BigInt('1')||total.n>BigInt(Number.MAX_SAFE_INTEGER)
    ||input.approval.minutes.state!=='known'||compare(total,decimal(input.approval.minutes.value))!==0)return unavailable('allocationUnavailable');
-  // The group duration owner already applied thresholds, approval limits, deductions and rounding.
-  // Preserve the immutable original definition; derive only the central engine's pricing view.
   const pricing:OvertimePattern={...pattern,eligibleMinutes:null,durationCap:null,durationRounding:null,
    deductions:pattern.deductions.filter(rule=>rule.unit==='money')};
-  const result=evaluateOvertimePolicyPart(pricing,input);
-  if(result.status==='refused')return unavailable('formulaUnavailable');
-  if(compare(total,q(BigInt(result.payableMinutes.numerator),BigInt(result.payableMinutes.denominator)))!==0)
-   return unavailable('durationChanged');
-  return {state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:Number(total.n),
-   source:result.source,patternVersionId:result.patternVersionId,policyBinding:input.policyBinding,
-   currency:input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,
-   retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
-    minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
+  let stage:ReturnType<typeof runDurationStage<OvertimePolicyBinding>>;
+  try{stage=runDurationStage(pricing,input,()=>{},overtimePolicyBinding);}
+  catch{return unavailable('formulaUnavailable');}
+  if(compare(total,sum(stage.work.map(w=>w.payable)))!==0)return unavailable('durationChanged');
+  return {state:'known' as const,pattern,total,stage};
  }catch{return unavailable('allocationUnavailable');}
+}
+function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAllocatedStage>,{state:'known'}>,result:OvertimeEvaluation<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
+ if(result.status==='refused')return {state:'unavailable',authority:'pricingProposalOnly',reason:'formulaUnavailable'};
+ if(compare(prepared.total,q(BigInt(result.payableMinutes.numerator),BigInt(result.payableMinutes.denominator)))!==0)
+  return {state:'unavailable',authority:'pricingProposalOnly',reason:'durationChanged'};
+ const {pattern,stage}=prepared;
+ return {state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:Number(prepared.total.n),
+  source:result.source,patternVersionId:result.patternVersionId,policyBinding:stage.input.policyBinding,
+  currency:stage.input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,
+  retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
+   minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
+}
+export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
+ const prepared=policyAllocatedStage(rawPattern,rawInput);if(prepared.state==='unavailable')return prepared;
+ try{return allocatedPriceProjection(prepared,priceOvertimeStage(prepared.stage));}
+ catch{return {state:'unavailable',authority:'pricingProposalOnly',reason:'formulaUnavailable'};}
+}
+export type OvertimePolicyAllocatedParentPrice=
+ |{state:'unavailable';authority:'parentPricingProposalOnly';reason:'allocationUnavailable'|'parentScopeUnavailable'|'formulaUnavailable'}
+ |{state:'proposed';authority:'parentPricingProposalOnly';amountMinorUnits:string;currency:{code:string;minorScale:number};
+   parts:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[];trace:OvertimeTrace[]};
+/** One central money evaluation over complete dated allocations of the SAME immutable formula.
+ * Dated facts belong to each physical segment; aggregate rules retain canonical parent facts.
+ * Incompatible versions/definitions refuse rather than inventing a shared cap or charge policy.
+ * This emits proposal evidence only, never a transferable calculation or settlement authority. */
+export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>}[]):OvertimePolicyAllocatedParentPrice{
+ const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
+  ({state:'unavailable',authority:'parentPricingProposalOnly',reason});
+ try{
+  if(rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
+  const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input));
+  if(prepared.some(p=>p.state!=='known'))return refuse('allocationUnavailable');
+  const parts=prepared.filter((p):p is Extract<typeof p,{state:'known'}>=>p.state==='known'),first=parts[0];
+  const definition=JSON.stringify(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
+  if(parent.layer!=='raw'||parent.mode!=='actual'||parent.sessionGranularity!=='recorded'
+   ||parts.some(p=>JSON.stringify(p.pattern)!==definition||p.stage.input.patternVersionId!==parent.patternVersionId
+    ||JSON.stringify(p.stage.input.source)!==source||JSON.stringify(p.stage.input.currency)!==currency
+    ||p.stage.input.policyBinding.revisionId!==parent.policyBinding.revisionId))return refuse('parentScopeUnavailable');
+  const segments=parts.flatMap(p=>p.stage.input.segments),ids=new Set(segments.map(s=>s.id));
+  if(ids.size!==segments.length||JSON.stringify(segments)!==JSON.stringify(parent.segments))return refuse('parentScopeUnavailable');
+  let end:bigint|null=null;const dates=new Set<string>();
+  for(const p of parts){
+   const date=p.stage.input.policyBinding.calendarDate;
+   if(dates.has(date))return refuse('parentScopeUnavailable');dates.add(date);
+   for(const w of p.stage.work){
+    if(w.clock.state!=='known'||w.clock.value.localDate!==date)return refuse('allocationUnavailable');
+    const start=BigInt(w.clock.value.startEpochSeconds);if(end!==null&&start<end)return refuse('allocationUnavailable');
+    end=start+BigInt(w.clock.value.elapsedSeconds);
+   }
+   if(p.stage.input.resources.some(r=>!parent.resources.some(pr=>JSON.stringify(pr)===JSON.stringify(r))))return refuse('parentScopeUnavailable');
+  }
+  const total=sum(parts.map(p=>p.total));
+  if(parent.approval.minutes.state!=='known'||compare(total,decimal(parent.approval.minutes.value))!==0
+   ||!['approved','notRequired'].includes(parent.approval.status))return refuse('allocationUnavailable');
+  if(!policyPriceResourcesAvailable(first.pattern,parent)||parent.approval.provenance.owner==='sample'||parent.approval.provenance.basis==='sample')return refuse('parentScopeUnavailable');
+  const work=parts.flatMap(p=>p.stage.work).map((w,index)=>({...w,index}));
+  const e=new Engine(first.stage.pattern,'actual',parent.facts,parent.source.date);
+  if(parent.facts.employmentId&&e.field('employmentId',{})!==parent.source.employmentId)return refuse('parentScopeUnavailable');
+  const setComputed=computedScope(e,total,total,total),deductions=deductionScope(first.stage.pattern,parent,e,work,setComputed);
+  const dated=new Map(parts.flatMap(p=>p.stage.work.map(w=>[w.id,p.stage.input.facts] as const)));
+  e.emit('duration','parentAllocatedPricing',{source:parent.source,parts:parts.map(p=>({binding:p.stage.input.policyBinding,patternVersionId:p.stage.input.patternVersionId,
+   facts:p.stage.input.facts,segments:p.stage.input.segments,validationTrace:p.stage.e.trace})),parentFacts:parent.facts,resources:parent.resources});
+  const stage={pattern:first.stage.pattern,input:parent,identity:{source:parent.source,patternVersionId:parent.patternVersionId,...overtimePolicyBinding.read(parent,parent.source.date)},
+   e,work,rawTotal:total,eligibleTotal:total,canonicalApproved:total,dayApproval:total,setComputed,deductions};
+  const result=priceOvertimeStage(stage,dated);if(result.status==='refused')return refuse('formulaUnavailable');
+  const projected:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[]=[];
+  for(const p of parts){
+   const own=new Set(p.stage.work.map(w=>w.id)),lines=result.lines.filter(l=>own.has(l.segmentId));
+   const value=allocatedPriceProjection(p,{...result,...p.stage.identity,payableMinutes:exact(p.total,'minutes'),lines,
+    amountMinorUnits:lines.reduce((n,l)=>n+BigInt(l.amountMinorUnits),BigInt('0')).toString()});
+   if(value.state!=='proposed')return refuse('formulaUnavailable');projected.push(value);
+  }
+  if(projected.reduce((n,p)=>n+BigInt(p.amountMinorUnits),BigInt('0'))!==BigInt(result.amountMinorUnits))return refuse('formulaUnavailable');
+  return {state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:result.amountMinorUnits,currency:parent.currency,parts:projected,trace:result.trace};
+ }catch{return refuse('allocationUnavailable');}
 }
 function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,rawInput:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>):OvertimeEvaluation<B>{
     let engine: Engine | undefined;
@@ -720,7 +802,7 @@ function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,raw
 
 /** Shared money owner over an already established internal duration stage.
  * Private extraction only: no caller-supplied stage, new policy authority or settlement API. */
-function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>):OvertimeEvaluation<B>{
+function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>,datedFacts?:ReadonlyMap<string,OvertimeFacts>):OvertimeEvaluation<B>{
         const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
         const identity = stage.identity;
         if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
@@ -738,7 +820,7 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             for (const rate of pattern.rates) {
                 let match: 'true' | 'false' | 'unknown' = 'false';
                 try {
-                    if (e.condition(rate.when, { dayType: w.dayType })) {
+                    if (e.condition(rate.when, { ...datedFacts?.get(w.id), dayType: w.dayType })) {
                         if (!rate.timeBand)
                             match = 'true';
                         else if (localSecond === null)
@@ -836,12 +918,12 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
                 let gross: Q;
                 const payment = tier.payment;
                 if (payment.method === 'hourly') {
-                    const rateValue = nonnegative(e.expression(payment.rate, { dayType: w.dayType }), tier.id), multiplier = nonnegative(e.expression(payment.multiplier, { dayType: w.dayType }), tier.id);
+                    const rateValue = nonnegative(e.expression(payment.rate, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id), multiplier = nonnegative(e.expression(payment.multiplier, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id);
                     gross = div(mul(mul(rateValue, multiplier), amountMinutes), SIXTY);
                 }
                 else {
                     e.computed.payableMinutes = payment.basis === 'day' ? sum(work.map(w => w.payable)) : payment.basis === 'session' ? sum(work.filter(x => x.sessionId === w.sessionId).map(x => x.payable)) : payment.basis === 'tier' ? (rate.tierMode === 'whole' ? whole : max(ZERO, sub(min(whole, tier.to === null ? whole : decimal(tier.to)), decimal(tier.from)))) : amountMinutes;
-                    gross = nonnegative(e.expression(payment.amount, { dayType: w.dayType }), tier.id);
+                    gross = nonnegative(e.expression(payment.amount, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id);
                     const suffix = payment.basis === 'day' ? 'day' : payment.basis === 'session' ? w.sessionId : payment.basis === 'tier' ? tier.id + '/' + (rate.accumulation === 'session' ? w.sessionId : 'day') : w.id + '/' + slice.ordinal + '/' + part;
                     const chargeKey = payment.chargeId + '/' + payment.basis + '/' + suffix, previous = charges.get(chargeKey);
                     if (previous) {
