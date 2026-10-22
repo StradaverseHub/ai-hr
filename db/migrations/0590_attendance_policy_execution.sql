@@ -648,7 +648,10 @@ BEGIN
  proof:=data->'policyCapturedCoverage';clock_source:=data->'policyClockSource';
  IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM 'capturedCountCoverageProposalOnly'
   OR proof->>'countBasis' IS DISTINCT FROM 'capturedBoundaryFloor' OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
-  OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
+  OR coalesce(proof->>'durationDigest','')!~'^[0-9a-f]{64}$' OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
+  OR data#>>'{attendanceGroupPolicy,id}' IS DISTINCT FROM header.policy_revision_id::text
+  OR data#>>'{policyExecutionProposal,state}' IS DISTINCT FROM 'proposed' OR data#>>'{policyExecutionProposal,policyRevisionId}' IS DISTINCT FROM header.policy_revision_id::text
+  OR data#>>'{policyExecutionProposal,duration,status}' IS DISTINCT FROM 'calculated'
   OR proof#>>'{identity,tenantId}' IS DISTINCT FROM source.tenant_id::text OR proof#>>'{identity,companyId}' IS DISTINCT FROM source.company_id::text
   OR proof#>>'{identity,employmentId}' IS DISTINCT FROM source.employment_id::text OR proof#>>'{identity,sourceId}' IS DISTINCT FROM source.id::text
   OR proof#>>'{identity,calculationId}' IS DISTINCT FROM header.id::text OR proof#>>'{identity,date}' IS DISTINCT FROM source.attendance_date::text
@@ -669,7 +672,7 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_clock_capture c ON c.id=p.clock_capture_id AND c.tenant_id=p.tenant_id
    WHERE p.id=(clock_row->>'id')::uuid AND c.id=(clock_row->>'captureId')::uuid AND p.tenant_id=source.tenant_id AND p.attendance_id=source.attendance_id
     AND p.employment_id=source.employment_id AND c.employment_id=source.employment_id AND p.attendance_date=source.attendance_date AND c.attendance_date=source.attendance_date
-    AND p.voided_at IS NULL AND p.direction::text=clock_row->>'direction' AND c.direction::text=p.direction::text
+    AND p.direction::text=clock_row->>'direction' AND c.direction::text=p.direction::text
     AND clock_row->>'atMilliseconds'=(floor(extract(epoch FROM c.server_recorded_at)*1000)::bigint-epoch_ms)::text
     AND clock_row->>'recordedAt'=to_char(date_trunc('milliseconds',c.server_recorded_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
     AND left(p.punch_at::text,8)=to_char(c.server_recorded_at AT TIME ZONE 'Asia/Kuala_Lumpur','HH24:MI:SS')) THEN
@@ -692,8 +695,8 @@ BEGIN
     RAISE EXCEPTION 'Invalid dated captured count allocation' USING ERRCODE='23514';END IF;
    lo:=(item->>'fromMinute')::integer;hi:=(item->>'toMinute')::integer;
    IF lo>=hi OR hi>4320 OR item->>'minutes' IS DISTINCT FROM(hi-lo)::text THEN RAISE EXCEPTION 'Captured quantity changed' USING ERRCODE='23514';END IF;
-   SELECT * INTO pin FROM public.attendance_punch WHERE id=(item->>'inPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='in' AND voided_at IS NULL;
-   SELECT * INTO pout FROM public.attendance_punch WHERE id=(item->>'outPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='out' AND voided_at IS NULL;
+   SELECT * INTO pin FROM public.attendance_punch WHERE id=(item->>'inPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='in';
+   SELECT * INTO pout FROM public.attendance_punch WHERE id=(item->>'outPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='out';
    SELECT * INTO cin FROM public.attendance_clock_capture WHERE id=pin.clock_capture_id AND id=(item->>'inCaptureId')::uuid AND tenant_id=source.tenant_id;
    SELECT * INTO cout FROM public.attendance_clock_capture WHERE id=pout.clock_capture_id AND id=(item->>'outCaptureId')::uuid AND tenant_id=source.tenant_id;
    IF cin.id IS NULL OR cout.id IS NULL OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(clock_source->'clocks') x WHERE x->>'id'=pin.id::text AND x->>'captureId'=cin.id::text)

@@ -304,6 +304,36 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});expect(reviewed.lines).toEqual([]);
  });
 
+ it.each(['capture','boundary','count','missingClock'] as const)('refuses forged %s capture evidence at actual deferred app-write commit',async kind=>{
+  const f=await fixture('auto','12','actual',false,undefined,555),p={employmentId:f.employmentId,date:day(2)};
+  const original=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!original?.calculation||!original.evidence||!original.policyParts)throw Error('Expected actual staged captured source');
+  const acl=await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_policy_captured_coverage(uuid)','EXECUTE') as allowed`);
+  expect(acl[0].allowed).toBe(false);
+  let attempted='';
+  await expect(withTenant(ctx,async tx=>{
+   const {saved}=await header(tx,f,original.policyParts!.length,{inputDigest:original.calculation!.inputDigest,
+    approvalDigest:original.calculation!.approvalDigest,referenceDigest:original.calculation!.referenceDigest});attempted=saved.id;
+   const evidence=structuredClone(original.evidence!);
+   const proof=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
+    sourceId:saved.sourceId,calculationId:saved.id,date:p.date},await canonicalOvertimeInputTx(tx,ctx,p));
+   if(proof.state!=='prepared')throw Error('Expected original captured geometry');
+   if(kind==='capture')proof.allocations[0].inCaptureId=randomUUID();
+   if(kind==='boundary')proof.allocations[0].fromEpochMillisecond--;
+   if(kind==='count')proof.allocations[0].minutes++;
+   if(kind==='missingClock'){
+    const source=evidence.evidence.policyClockSource;if(!source||typeof source!=='object'||!('clocks' in source)||!Array.isArray(source.clocks))throw Error('Expected full source clocks');
+    source.clocks.pop();
+   }
+   evidence.evidence.policyCapturedCoverage=proof;
+   await tx.insert(s.attendanceOvertimeCalculationEvidence).values({calculationId:saved.id,tenantId:b.tenantId,companyId:b.companyId,
+    inputs:evidence.inputs,evidence:evidence.evidence});
+   await tx.insert(s.attendanceOvertimePolicyPart).values(original.policyParts!.map(({createdAt,...row})=>({...row,calculationId:saved.id})));
+  })).rejects.toThrow();
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,original.source.id))).toEqual([]);
+ });
+
  it('uses each dated child salary and binds next-day pay changes without changing duration',async()=>{
   const f=await fixture('auto');
   const [first,second]=await owner.db.insert(s.compensation).values([
