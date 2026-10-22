@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
-import {roleAssignment} from '../db/schema';
+import {roleAssignment,personPhoto} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {revokeRole} from '../core/admin';
 import {getPersonPhoto,hasPersonPhoto,employmentPhotoIds,setPersonPhoto} from '../core/person-photo';
@@ -67,9 +67,11 @@ describe('current-principal and independent-purpose canonical photo consumers',(
   expect(await getPersonPhoto(stranger.ctx,subject.personId)).toBeNull();
   expect((await getPersonPhoto(admin(),subject.personId))?.content).toEqual(bytes);
   const forged={...stranger.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
-  expect(await getPersonPhoto(forged,subject.personId)).toBeNull();
-  expect(await hasPersonPhoto(forged,subject.personId)).toBe(false);
-  expect(await employmentPhotoIds(forged,[subject.employmentId])).toEqual(new Map());
+  const observed={photo:await getPersonPhoto(forged,subject.personId),present:await hasPersonPhoto(forged,subject.personId),
+   bulk:[...await employmentPhotoIds(forged,[subject.employmentId])],
+   raw:await withTenant(forged,tx=>tx.select({id:personPhoto.id}).from(personPhoto).where(eq(personPhoto.personId,subject.personId))),
+   routeStatus:(await request(forged,subject.personId)).status};
+  expect(observed).toEqual({photo:null,present:false,bulk:[],raw:[],routeStatus:404});
  });
  it('refuses an actual cached HR role after its real grant is removed, including a matching held ETag',async()=>{
   const subject=await photo(),reviewer=await hired('Fictional revoked photo reader','hr_admin');
@@ -86,7 +88,7 @@ describe('current-principal and independent-purpose canonical photo consumers',(
  });
  it('applies hidden-own-photo policy using actual login ownership rather than a substituted JS Person',async()=>{
   const subject=await photo();expect((await getPersonPhoto(subject.ctx,subject.personId))?.content).toEqual(bytes);
-  const fields=Object.fromEntries(essVisibleFields().map(field=>[field.id,field.id==='profile.personal_details.photo'?'hidden':'viewOnly']));
+  const fields=Object.fromEntries(essVisibleFields().map(field=>[field.id,field.id==='profile.personal_details.photo'?'hide':'viewOnly']));
   await saveProfileVisibilityPolicy(admin(),{policy:{version:3,fields,primaryOnly:[]},withdrawnReason:'Fictional hidden own photo acceptance'});
   expect(await getPersonPhoto(subject.ctx,subject.personId)).toBeNull();
   expect(await getPersonPhoto({...subject.ctx,personId:randomUUID()},subject.personId)).toBeNull();
