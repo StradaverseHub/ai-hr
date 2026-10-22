@@ -236,8 +236,12 @@ proof branch is implemented. Their raw records remain unchanged.
 These source-only facts participate in the same input digest, preparation/re-read freshness and immutable
 calculation evidence. They contain no photo, location, private message or salary content. Milliseconds
 are preserved for minimum-gap checking; the existing integer-seconds adapter cannot be fed a prematurely
-rounded instant. Pairing, Full Flexi owner selection, grace, positioned breaks, approval, policy parts and
-financial replay still remain unfinished. Retaining capture provenance establishes no payable effect.
+rounded instant. A millisecond adapter now checks close/duplicate/pair evidence before minute projection. The canonical
+snapshot retains this proposal review only for an explicitly recorded fixed-clock/elapsed-envelope owner;
+Full Flexi, duration-only and unproved owner kinds are not passed through that generic pairing branch.
+A 59.950-second gap across midnight remains close even where flooring both instants to seconds would
+make it appear to be 60 seconds. Actual worked-result writes, Full Flexi owner integration, grace,
+positioned breaks, approval, policy parts and financial replay still remain unfinished. Retaining capture provenance establishes no payable effect.
 
 ## Required implementation and evidence
 

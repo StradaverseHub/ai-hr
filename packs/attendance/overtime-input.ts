@@ -4,6 +4,7 @@ import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
 import {recordedAttendanceGroupPolicyTx} from './policy-selection';
 import {recordedPolicyClockSourceTx} from './policy-clock-input';
+import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
@@ -160,11 +161,21 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
   const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
+  // This review is deliberately limited to an explicitly recorded fixed-clock owner. Full Flexi,
+  // duration-only and unavailable schedule ownership retain their existing dedicated processor.
+  let policyClockReview:CanonicalOvertimeSnapshot['policyClockReview'];
+  if(selectedPolicy){
+    if(policyClockSource?.state!=='known')policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'sourceUnavailable'};
+    else if(trace?.schedule.fixedClockApplicable!==true||trace.punch.intervalSource!=='elapsedEnvelope')
+      policyClockReview={authority:'proposalOnly',state:'unavailable',reason:'scheduleOwnerUnavailable'};
+    else policyClockReview={authority:'proposalOnly',state:'known',
+      evidence:attendancePolicyClockMillisecondEvidence(policyClockSource.clocks,selectedPolicy.policy.clock,4320)};
+  }
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyClockSource}:{})});
+    ...(selectedPolicy?{policyClockSource,policyClockReview}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyClockSource}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyClockSource,policyClockReview}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The

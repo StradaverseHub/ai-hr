@@ -70,3 +70,24 @@ export function attendancePolicyClockSecondEvidence(raw:readonly PolicyClockSeco
   minuteIntervals:result.intervals.map(interval=>({inAbs:Math.floor(interval.inAbs/60),outAbs:Math.floor(interval.outAbs/60)}))
    .filter(interval=>interval.inAbs<interval.outAbs)};
 }
+
+export type PolicyClockMillisecond={id:string;atMilliseconds:number;direction:'in'|'out'};
+export type PolicyClockMillisecondEvidence={
+ complete:boolean;requiresReview:boolean;flags:PolicyClockFlag[];
+ checkInMillisecond:number|null;checkOutMillisecond:number|null;
+ intervals:{inMillisecond:number;outMillisecond:number}[];minuteIntervals:ClosedClockInterval[];
+};
+/** Actual capture receipts carry milliseconds. Check gaps/pairing at that precision before the
+ * canonical whole-minute boundary projection; second truncation may turn 59.950s into 60s. */
+export function attendancePolicyClockMillisecondEvidence(raw:readonly PolicyClockMillisecond[],
+ policy:AttendanceGroupPolicy['clock'],periodMinutes:number):PolicyClockMillisecondEvidence{
+ validatePolicy(policy,periodMinutes,raw.length);
+ for(const clock of raw)if(!Number.isSafeInteger(clock.atMilliseconds))throw Error('Canonical milliseconds must be whole exact milliseconds.');
+ const result=evidence(raw.map(clock=>({id:clock.id,at:clock.atMilliseconds,direction:clock.direction})),
+  policy.pairing,policy.minimumIntervalMinutes*60000,periodMinutes*60000);
+ return {complete:result.complete,requiresReview:result.requiresReview,flags:result.flags,
+  checkInMillisecond:result.checkInAbs,checkOutMillisecond:result.checkOutAbs,
+  intervals:result.intervals.map(interval=>({inMillisecond:interval.inAbs,outMillisecond:interval.outAbs})),
+  minuteIntervals:result.intervals.map(interval=>({inAbs:Math.floor(interval.inAbs/60000),outAbs:Math.floor(interval.outAbs/60000)}))
+   .filter(interval=>interval.inAbs<interval.outAbs)};
+}

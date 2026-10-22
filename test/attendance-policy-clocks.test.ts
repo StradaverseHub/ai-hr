@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {attendancePolicyClockEvidence,attendancePolicyClockSecondEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
+import {attendancePolicyClockEvidence,attendancePolicyClockSecondEvidence,attendancePolicyClockMillisecondEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
 import {fullFlexiIntervals} from '../lib/full-flexi-time';
 import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 const policy=(pairing:AttendanceGroupPolicy['clock']['pairing']='auto'):AttendanceGroupPolicy['clock']=>({pairing,minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false});
@@ -77,5 +77,34 @@ describe('canonical second precision before payroll-minute projection',()=>{
   for(const at of [-1,0.5,NaN,Infinity,86401])expect(()=>attendancePolicyClockSecondEvidence([seconds('a',at,'in')],policy(),1440)).toThrow();
   for(const id of ['', ' ', 42 as never])expect(()=>attendancePolicyClockSecondEvidence([seconds(id,32400,'in')],policy(),1440)).toThrow();
   expect(()=>attendancePolicyClockSecondEvidence([seconds('a',32400,'in'),seconds('a',36000,'out')],policy(),1440)).toThrow();
+ });
+});
+
+describe('captured millisecond precision before minute projection',()=>{
+ const ms=(id:string,atMilliseconds:number,direction:'in'|'out')=>({id,atMilliseconds,direction});
+ it('refuses 59.950 seconds even when premature second truncation would report an accepted minute',()=>{
+  const p={...policy(),minimumIntervalMinutes:1},clocks=[ms('a',86399950,'in'),ms('b',86459900,'out')];
+  expect(attendancePolicyClockMillisecondEvidence(clocks,p,2880)).toMatchObject({complete:false,requiresReview:true,
+   flags:[{kind:'close',clockIds:['a','b']}],intervals:[],minuteIntervals:[]});
+  // Adversarial comparison is against the actual earlier adapter, not a hypothetical second owner.
+  expect(attendancePolicyClockSecondEvidence(clocks.map(clock=>({id:clock.id,direction:clock.direction,atSeconds:Math.floor(clock.atMilliseconds/1000)})),p,2880).complete).toBe(true);
+ });
+ it('accepts an exact minute and preserves actual midnight offsets and whole-minute boundary arithmetic',()=>{
+  expect(attendancePolicyClockMillisecondEvidence([ms('a',86399950,'in'),ms('b',86459950,'out')],{...policy(),minimumIntervalMinutes:1},2880))
+   .toMatchObject({complete:true,flags:[],intervals:[{inMillisecond:86399950,outMillisecond:86459950}],minuteIntervals:[{inAbs:1439,outAbs:1440}]});
+ });
+ it('does not mistake distinct milliseconds within one second for exact duplicates',()=>{
+  expect(attendancePolicyClockMillisecondEvidence([ms('a',32400001,'in'),ms('b',32400999,'out')],policy(),1440))
+   .toMatchObject({complete:true,flags:[],intervals:[{inMillisecond:32400001,outMillisecond:32400999}],minuteIntervals:[]});
+ });
+ it.each(['auto','firstInLastOut'] as const)('preserves established second/minute %s behaviour without mutating raw records',pairing=>{
+  const input=day.map(clock=>ms(clock.id,clock.at*60000,clock.direction)),before=structuredClone(input);
+  const actual=attendancePolicyClockMillisecondEvidence(input,policy(pairing),1440);
+  expect(actual.minuteIntervals).toEqual(attendancePolicyClockEvidence(day,policy(pairing),1440).intervals);expect(input).toEqual(before);
+ });
+ it('retains duplicate/unmatched flags and refuses fractional or invalid millisecond positions',()=>{
+  const actual=attendancePolicyClockMillisecondEvidence([ms('a',32400001,'in'),ms('b',32400001,'in'),ms('c',36000000,'out')],policy(),1440);
+  expect(actual.flags.map(flag=>flag.kind)).toEqual(['duplicate','unmatched']);expect(actual.minuteIntervals).toEqual([]);
+  for(const value of [-1,0.5,NaN,Infinity,86400001])expect(()=>attendancePolicyClockMillisecondEvidence([ms('a',value,'in')],policy(),1440)).toThrow();
  });
 });

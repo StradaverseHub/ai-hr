@@ -100,6 +100,7 @@ describe('dated-policy raw writer routing',()=>{
   // The manual fixture has no physical capture receipts. Labels and insertion dates cannot invent
   // absolute midnight placement or turn a scalar approval into captured work.
   expect(snapshot.policyClockSource).toEqual({state:'unavailable',authority:'sourceOnly',reason:'missingCapture'});
+  expect(snapshot.policyClockReview).toEqual({state:'unavailable',authority:'proposalOnly',reason:'sourceUnavailable'});
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
    versionId:null,assignmentId:null,outcome:'refused',durationOutcome:'refused',transferable:false,payableNumerator:null,payableDenominator:null});
