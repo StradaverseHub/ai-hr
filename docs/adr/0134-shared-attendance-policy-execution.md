@@ -123,6 +123,12 @@ in the same transaction. Database/lifecycle and actual-app verification remain r
 
 ## Shared duration proposal sequencing
 
+The dated policy mutation also joins the shared Access/profile barrier before checking current scope
+and taking the overtime configuration lock. A queued edit must re-prove authority after a preceding
+revocation. This uses the same canonical helper as starter initialization; it does not define another
+authority lock or alter the frozen SQL. The prepared concurrent grant-revocation test remains unrun
+until the shared resource handover.
+
 `packs/attendance/policy-duration.ts` coordinates the existing interval, partition and duration owners.
 It receives canonical worked coverage, already selected actual/plan eligibility, positioned unpaid breaks,
 net measured lateness placement, the resolved calendar and the selected central versions' explicit

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {and,asc,eq} from 'drizzle-orm';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
@@ -18,6 +18,10 @@ const policy=():AttendanceGroupPolicy=>({version:1,clock:{pairing:'auto',minimum
  overtime:{enabled:false,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
  days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}});
 const input=()=>({companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:plus(1),reason:'Fictional forward policy',policy:policy()});
+async function until(label:string,check:()=>Promise<boolean>){
+ for(let attempt=0;attempt<200;attempt++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}
+ throw Error('Did not observe '+label);
+}
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);ruleId=(await ensureStandardRule(ctx)).id;});
 describe('future attendance execution policy history',()=>{
@@ -104,6 +108,43 @@ describe('future attendance execution policy history',()=>{
   for(const key of ATTENDANCE_POLICY_DAY_CLASSES)invalid.overtime.days[key].patternVersionId=randomUUID();
   await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),policy:invalid})).rejects.toThrow();
   expect(await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).toEqual([]);
+ });
+ it.each([false,true])('joins the Access barrier before saving, with an earlier revocation=%s',async revoke=>{
+  // Hold the canonical tenant authority advisory through commit. A second connection must wait
+  // before it can persist a policy; revocation commits before that command rechecks its authority.
+  let release!:()=>void,acquired!:()=>void;
+  const resume=new Promise<void>(resolve=>{release=resolve;}),held=new Promise<void>(resolve=>{acquired=resolve;});
+  const barrier=owner.db.transaction(async tx=>{
+   await tx.execute(sql`SET LOCAL statement_timeout='10s'`);
+   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+   acquired();await resume;
+   if(revoke)await tx.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  });
+  const barrierResult=barrier.then(()=>({status:'fulfilled' as const}),reason=>({status:'rejected' as const,reason}));
+  let saving:ReturnType<typeof scheduleAttendanceGroupPolicy>|undefined;
+  try{
+   await Promise.race([held,barrierResult.then(()=>{throw Error('Authority fixture ended before acquiring its barrier');})]);
+   saving=scheduleAttendanceGroupPolicy(ctx,input());
+   const result=saving.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+   await until('policy writer waiting at the Access/profile barrier',async()=>{
+    const [row]=await owner.db.execute<{waiting:boolean}>(sql`SELECT EXISTS(
+     SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid
+     WHERE a.datname=current_database() AND l.locktype='advisory' AND NOT l.granted
+      AND a.query LIKE '%select app.access_profile_policy_write_lock()%') AS waiting`);
+    return row.waiting;
+   });
+   expect(await owner.db.select({id:s.attendanceGroupPolicyRevision.id}).from(s.attendanceGroupPolicyRevision)
+    .where(eq(s.attendanceGroupPolicyRevision.ruleId,ruleId))).toEqual([]);
+   release();expect((await barrierResult).status).toBe('fulfilled');
+   expect((await result).status).toBe(revoke?'rejected':'fulfilled');
+   const history=await owner.db.select({ordinal:s.attendanceGroupPolicyRevision.ordinal}).from(s.attendanceGroupPolicyRevision)
+    .where(eq(s.attendanceGroupPolicyRevision.ruleId,ruleId)).orderBy(asc(s.attendanceGroupPolicyRevision.ordinal));
+   expect(history).toEqual(revoke?[]:[{ordinal:1}]);
+   const events=await owner.db.select({type:s.domainEvent.eventType}).from(s.domainEvent)
+    .where(and(eq(s.domainEvent.aggregateId,ruleId),eq(s.domainEvent.eventType,'attendance-rule.policy.scheduled')))
+    .orderBy(asc(s.domainEvent.sequence));
+   expect(events).toEqual(revoke?[]:[{type:'attendance-rule.policy.scheduled'}]);
+  }finally{release();await Promise.allSettled([barrier,...(saving?[saving]:[])]);}
  });
  it('accepts a narrowed live company subtree and rejects forged global or foreign grants in raw SQL as well as the service',async()=>{
   const [child]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional permitted policy child',parentCompanyId:b.companyId}).returning();

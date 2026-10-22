@@ -47,6 +47,9 @@ export async function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{compan
  const effectiveFrom=attendanceGroupPolicyActivationDate(p.effectiveFrom,todayInKualaLumpur());
  const policy=validateAttendanceGroupPolicy(p.policy,4320);
  return withAttendanceTenant(ctx,async tx=>{
+  // Access/profile authority writers take this barrier before their data locks. Recheck current
+  // scope after waiting for them, then take the central overtime configuration lock below.
+  await tx.execute(sql`select app.access_profile_policy_write_lock()`);
   await adminCompany(tx,ctx,p.companyId);
   // Same serial configuration lock as the central pattern owner and its DB trigger.
   await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
