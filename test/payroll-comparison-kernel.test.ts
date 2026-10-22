@@ -77,6 +77,76 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
+  it('keeps an actual mid-month exit and the same person later rehired as separate paid employments',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
+    await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:'termination',effectiveDate:currentPeriod+'-10',
+      endDate:currentPeriod+'-10',terminationReasonCode:'redundancy',remarks:'Fictional report lifecycle'});
+    const rehire=await hireEmployee(ctx,{person:{id:f.employee.personId},companyId:b.companyId,departmentId:b.deptA,
+      employmentType:'full_time',hiredOn:currentPeriod+'-20',employeeCode:'COMPARE-REHIRE'});
+    await setCompensation(ctx,{employmentId:rehire.employmentId,basicSalary:3300,effectiveFrom:currentPeriod+'-20'});
+    await generatePayslips(ctx,{batchId:f.current.batchId});const before=await payrollSnapshot();
+    const view=await run(f.report.id),exported=await run(f.report.id,'export');
+    expect(view.result.available).toBe(true);expect(view.result.rows).toHaveLength(2);
+    expect(new Set(view.result.rows.map(row=>row.employmentId))).toEqual(new Set([f.employee.employmentId,rehire.employmentId]));
+    const oldPaid=before.results.find(row=>row.batchId===f.current.batchId&&row.employmentId===f.employee.employmentId),
+      newPaid=before.results.find(row=>row.batchId===f.current.batchId&&row.employmentId===rehire.employmentId);
+    expect(oldPaid).toBeDefined();expect(newPaid).toBeDefined();
+    expect(view.result.rows.find(row=>row.employmentId===f.employee.employmentId)).toMatchObject({previous:'3000.00',
+      current:oldPaid!.basicSalary,reason:{reason:'proratedLeaving',effectiveDate:currentPeriod+'-10',prorated:true}});
+    expect(view.result.rows.find(row=>row.employmentId===rehire.employmentId)).toMatchObject({previous:'0.00',
+      current:newPaid!.basicSalary,previousPresent:false,currentPresent:true,variancePct:null,
+      reason:{reason:'newHire',effectiveDate:currentPeriod+'-20',prorated:true}});
+    expect(view.result.summary).toMatchObject({previousHeadcount:1,currentHeadcount:2,joiners:1,leavers:1});
+    expect(exported.result.rows).toEqual(view.result.rows);expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('keeps actual transferred employer segments dated and suppresses the transfer claim in a one-company scope',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
+    const [destination]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional comparison destination',country:'MY',currency:'MYR'}).returning();
+    const [dept]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:destination.id,name:'Fictional destination team'}).returning();
+    const priorDestination=await createBatch(ctx,{companyId:destination.id,payPeriod:previousPeriod});
+    await generatePayslips(ctx,{batchId:priorDestination.batchId});await closeBatch(ctx,{batchId:priorDestination.batchId});
+    await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:'entityTransfer',effectiveDate:currentPeriod+'-11',companyId:destination.id,departmentId:dept.id});
+    const receiving=await createBatch(ctx,{companyId:destination.id,payPeriod:currentPeriod});
+    await generatePayslips(ctx,{batchId:f.current.batchId});await generatePayslips(ctx,{batchId:receiving.batchId});
+    const before=await payrollSnapshot(),scope=[b.companyId,destination.id];
+    const result=await runPayrollComparisonReport(ctx,scope,{id:f.report.id,verb:'export',filters:{currentPeriod,previousPeriod}});
+    expect(result.result.available).toBe(true);expect(result.result.rows).toHaveLength(2);
+    for(const [companyId,batchId] of [[b.companyId,f.current.batchId],[destination.id,receiving.batchId]]){
+      const paid=before.results.find(row=>row.batchId===batchId&&row.employmentId===f.employee.employmentId);expect(paid).toBeDefined();
+      expect(result.result.rows.find(row=>row.companyId===companyId)).toMatchObject({employmentId:f.employee.employmentId,current:paid!.basicSalary,
+        reason:{reason:'transfer',effectiveDate:currentPeriod+'-11'}});
+    }
+    const outgoing=result.result.rows.find(row=>row.companyId===b.companyId)!,incoming=result.result.rows.find(row=>row.companyId===destination.id)!;
+    expect(outgoing.departmentId).toBe(b.deptA);expect(incoming.departmentId).toBe(dept.id);
+    const limited=await run(f.report.id);expect(limited.result.available).toBe(true);expect(limited.result.rows).toHaveLength(1);
+    expect(limited.result.rows[0].companyId).toBe(b.companyId);expect(limited.result.rows[0].reason.reason).not.toBe('transfer');
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('keeps actual saved currencies in separate totals after both company settings change',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});await generatePayslips(ctx,{batchId:f.current.batchId});
+    const [foreignUnit]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional second currency',country:'MY',currency:'SGD'}).returning();
+    const [dept]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:foreignUnit.id,name:'Fictional second currency team'}).returning();
+    const other=await hireEmployee(ctx,{person:{fullName:'Fictional second currency employee',primaryEmail:randomUUID()+'@example.invalid'},
+      companyId:foreignUnit.id,departmentId:dept.id,employmentType:'full_time',hiredOn:previousPeriod+'-01'});
+    await setCompensation(ctx,{employmentId:other.employmentId,basicSalary:100,effectiveFrom:previousPeriod+'-01'});
+    await requirePackFor('MY').statutory.set(ctx,{personId:other.personId,icNumber:'900101011235'});
+    const previous=await createBatch(ctx,{companyId:foreignUnit.id,payPeriod:previousPeriod});await generatePayslips(ctx,{batchId:previous.batchId});await closeBatch(ctx,{batchId:previous.batchId});
+    const current=await createBatch(ctx,{companyId:foreignUnit.id,payPeriod:currentPeriod});await generatePayslips(ctx,{batchId:current.batchId});
+    await owner.db.update(s.company).set({currency:'USD'}).where(eq(s.company.id,foreignUnit.id));
+    await owner.db.update(s.company).set({currency:'EUR'}).where(eq(s.company.id,b.companyId));
+    const before=await payrollSnapshot(),result=await runPayrollComparisonReport(ctx,[b.companyId,foreignUnit.id],{id:f.report.id,verb:'export',filters:{currentPeriod,previousPeriod,onlyVariances:false}});
+    expect(result.result.available).toBe(true);expect(result.result.rows).toHaveLength(2);
+    expect(result.result.summary!.totals).toEqual(expect.arrayContaining([
+      expect.objectContaining({currency:'MYR',previous:'3000.00',current:'3000.00',variance:'0.00'}),
+      expect.objectContaining({currency:'SGD',previous:'100.00',current:'100.00',variance:'0.00'}),
+    ]));expect(result.result.summary!.totals).toHaveLength(2);
+    expect(result.result.rows.find(row=>row.employmentId===other.employmentId)?.currency).toBe('SGD');
+    const file=await serializePayrollComparison(result,'xlsx'),book=XLSX.read(file.bytes,{type:'array'}),rows=XLSX.utils.sheet_to_json<Record<string,unknown>>(book.Sheets.Details);
+    expect(new Set(rows.map(row=>row.Currency))).toEqual(new Set(['MYR','SGD']));expect(await payrollSnapshot()).toEqual(before);
+  });
+
   it('counts a generated one-off deduction once using its canonical component amount, preserving the separate signed record',async()=>{
     const f=await fixture({typed:true});
     await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',true);
