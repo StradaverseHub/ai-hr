@@ -22492,6 +22492,20 @@
       "next": "Next page",
       "firstPage": "Return to first page"
     },
+    "greetingDetail": {
+      "title": "Greeting",
+      "back": "Back to Home",
+      "sent": "You sent this greeting.",
+      "received": "This greeting was sent to you.",
+      "choose": "Choose your employment to open this greeting.",
+      "unavailable": "This greeting is unavailable for this employment.",
+      "erased": "The private message has been erased.",
+      "employment": "Employment"
+    },
+    "greetingNotification": {
+      "title": "New greeting",
+      "body": "Open your private greeting."
+    },
     "greetingSend": {
       "unnamed": "Colleague",
       "birthdayMessage": "Wishing you a happy birthday, {name}!",

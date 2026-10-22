@@ -22492,6 +22492,20 @@
       "next": "Trang sau",
       "firstPage": "Về trang đầu"
     },
+    "greetingDetail": {
+      "title": "Lời chúc",
+      "back": "Về Trang chủ",
+      "sent": "Bạn đã gửi lời chúc này.",
+      "received": "Lời chúc này được gửi đến bạn.",
+      "choose": "Chọn hồ sơ việc làm của bạn để mở lời chúc này.",
+      "unavailable": "Lời chúc này không khả dụng cho hồ sơ việc làm này.",
+      "erased": "Tin nhắn riêng tư đã được xóa.",
+      "employment": "Việc làm"
+    },
+    "greetingNotification": {
+      "title": "Lời chúc mới",
+      "body": "Mở lời chúc riêng tư của bạn."
+    },
     "greetingSend": {
       "unnamed": "Đồng nghiệp",
       "birthdayMessage": "Chúc mừng sinh nhật, {name}!",

@@ -22492,6 +22492,20 @@
       "next": "下一页",
       "firstPage": "返回第一页"
     },
+    "greetingDetail": {
+      "title": "祝福",
+      "back": "返回主页",
+      "sent": "这是您发送的祝福。",
+      "received": "这是发给您的祝福。",
+      "choose": "请选择您的任职记录以打开此祝福。",
+      "unavailable": "此任职记录无法查看该祝福。",
+      "erased": "私人消息已被清除。",
+      "employment": "任职记录"
+    },
+    "greetingNotification": {
+      "title": "新祝福",
+      "body": "打开您的私人祝福。"
+    },
     "greetingSend": {
       "unnamed": "同事",
       "birthdayMessage": "{name}，祝你生日快乐！",

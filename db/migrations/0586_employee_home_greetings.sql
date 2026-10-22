@@ -121,7 +121,7 @@ CREATE FUNCTION app.home_greeting_send_begin(p_employment uuid,p_recipient uuid,
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();own_person uuid;target_person uuid;
  policy record;audience text;saved app.home_greeting%ROWTYPE;content app.home_greeting_content%ROWTYPE;
  greeting uuid:=gen_random_uuid();event_id uuid:=gen_random_uuid();at_time timestamptz;person_to_lock uuid;
- digest text:=encode(sha256(convert_to(p_message,'UTF8')),'hex');
+ digest text;
 BEGIN
  -- Join the exact Access/profile barriers before any Person row or Home privacy lock.
  PERFORM app.access_profile_policy_write_lock();
@@ -131,8 +131,13 @@ BEGIN
   OR p_nonce='00000000-0000-0000-0000-000000000000'::uuid OR p_date IS NULL
   OR p_kind IS NULL OR p_kind NOT IN ('birthday','anniversary') OR p_message IS NULL
   OR length(p_message)<1 OR length(p_message)>500 OR btrim(p_message)= ''
+  OR position(chr(13) IN p_message)>0
+  OR p_message IS DISTINCT FROM btrim(p_message,chr(9)||chr(10)||chr(32)||chr(160)||chr(5760)||
+   chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||chr(8200)||chr(8201)||chr(8202)||
+   chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279))
   OR p_message ~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]' THEN
   RAISE EXCEPTION 'Invalid greeting command' USING ERRCODE='22023';END IF;
+ digest:=encode(sha256(convert_to(p_message,'UTF8')),'hex');
  SELECT * INTO policy FROM app._home_peer_policy(p_employment,'celebration');
  IF NOT FOUND THEN RAISE EXCEPTION 'Home context unavailable' USING ERRCODE='42501';END IF;
  own_person:=policy.viewer_person_id;audience:=app.own_home_dashboard_role(p_employment);

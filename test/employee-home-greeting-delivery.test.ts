@@ -53,6 +53,14 @@ function databaseCode(error:unknown):string|undefined{
  }
 }
 describe('explicit Home greeting transaction and private content',()=>{
+ it('rejects noncanonical raw message bodies before hashing/storing an unreadable command',async()=>{
+  const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();
+  for(const message of [' leading space','trailing\u00a0','trailing\ufeff','line\r\nbreak','control\u0001','x'.repeat(501)]){
+   let caught:unknown;try{await sendRaw(own.ctx,{...command(own,target),message});}catch(error){caught=error;}
+   expect(databaseCode(caught)).toBe('22023');
+  }
+  expect(await counts()).toEqual({greetings:0,events:0,notifications:0,intents:0});
+ });
  it('reading creates nothing; explicit edited Send creates exactly one generic notification and private plaintext',async()=>{
   const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();
   expect((await readHomeCelebrationPage(own.ctx,own.employmentId)).items.length).toBeGreaterThan(0);

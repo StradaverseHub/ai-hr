@@ -22492,6 +22492,20 @@
       "next": "Halaman seterusnya",
       "firstPage": "Kembali ke halaman pertama"
     },
+    "greetingDetail": {
+      "title": "Ucapan",
+      "back": "Kembali ke Laman Utama",
+      "sent": "Anda menghantar ucapan ini.",
+      "received": "Ucapan ini dihantar kepada anda.",
+      "choose": "Pilih rekod pekerjaan anda untuk membuka ucapan ini.",
+      "unavailable": "Ucapan ini tidak tersedia untuk rekod pekerjaan ini.",
+      "erased": "Mesej peribadi telah dipadamkan.",
+      "employment": "Pekerjaan"
+    },
+    "greetingNotification": {
+      "title": "Ucapan baharu",
+      "body": "Buka ucapan peribadi anda."
+    },
     "greetingSend": {
       "unnamed": "Rakan sekerja",
       "birthdayMessage": "Selamat hari lahir, {name}!",
