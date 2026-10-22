@@ -8,7 +8,7 @@ import type {RecordedPolicyClockSource} from './policy-clock-input';
 import {attendancePolicyTraceBinding} from './policy-trace-binding';
 import {replayAttendancePolicyRawClocks} from './policy-clock-replay';
 
-type RawCurrent={attendanceId:string;checkInAt:string|null;checkOutAt:string|null;workedMinutes:number|null;
+export type PolicyRawCurrent={attendanceId:string;checkInAt:string|null;checkOutAt:string|null;workedMinutes:number|null;
  lateMinutes:number|null;earlyOutMinutes:number|null;underMinutes:number|null;
  dayType:'workday'|'rest_day'|'holiday'|null;trace:AttendanceTraceV1|null};
 type Request=Pick<PolicyApprovalInput['requests'][number],'id'|'status'|'cancelledAt'|'submissionContract'|'finalReceipt'>;
@@ -21,7 +21,7 @@ export type PolicyFinalRawAgreement=
  * not map requested/system_calculated/smaller_of/greater_of into interval operators. The original
  * submission binding and complete scalar/count allocation owner remain separate prerequisites. */
 export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecutionContext|undefined,
- request:Request,tenantId:string,source:RecordedPolicyClockSource|undefined,current:RawCurrent):PolicyFinalRawAgreement{
+ request:Request,tenantId:string,source:RecordedPolicyClockSource|undefined,current:PolicyRawCurrent):PolicyFinalRawAgreement{
  const refuse=(reason:Extract<PolicyFinalRawAgreement,{state:'unavailable'}>['reason']):PolicyFinalRawAgreement=>
   ({state:'unavailable',authority:'retainedRawAgreementOnly',reason});
  if(context?.state!=='policy'||!tenantId||!current.attendanceId)return refuse('identityUnavailable');

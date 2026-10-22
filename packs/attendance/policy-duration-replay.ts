@@ -36,7 +36,7 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
   const formulas=snapshot.policyDurationFormulaInput!==undefined?snapshot.policyDurationFormulaInput
    :snapshot.policyFormulaInput?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput):undefined;
   if(formulas?.state!=='known')return refuse('sourceUnavailable');
-  const proposal=attendancePolicyDurationExecutionProposal(context,snapshot.policyWorkInput,formulas,snapshot.policyApprovalInput,source.tenantId);
+  const proposal=attendancePolicyDurationExecutionProposal(context,snapshot.policyWorkInput,formulas,snapshot.policyApprovalInput,source.tenantId,snapshot.policyRawEffectSource);
   if(!isDeepStrictEqual(proposal,snapshot.policyExecutionProposal))return refuse('proposalMismatch');
   if(proposal.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('sourceUnavailable');
   const duration=proposal.duration;
@@ -45,6 +45,7 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
    return refuse('countPlacementUnavailable');
   const proof={version:1,source:{tenantId:source.tenantId,employmentId:source.employmentId,attendanceId:source.attendanceId,date:source.date},
    policy,context,clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview,
+   ...(context.selected.policy.overtime.approval==='manual'?{rawEffect:snapshot.policyRawEffectSource}:{}),
    measurements:snapshot.policyClockMeasurements,work:snapshot.policyWorkInput,approvals:snapshot.policyApprovalInput,formulas,proposal};
   // PostgreSQL jsonb does not preserve object-key order. Retain array order (capture and
   // approval sequence), but canonicalize object keys before hashing writer/read-back evidence.

@@ -1,3 +1,4 @@
+import {attendancePolicyManualDurationInput,type PolicyRawEffectSource,type PolicyManualDurationInput} from './policy-manual-duration';
 /** Compose the canonical source projections through the one duration owner. This is arithmetic
  * preparation, not final-effect approval, a payable calculation or a cash/TOIL capability. */
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
@@ -15,7 +16,7 @@ export type PolicyExecutionProposal=
    /** Exact existing formula identities; no assignment is synthesized for these derived parts. */
    formulaParts:{date:string;dayClass:AttendancePolicyDayClass;versionId:string;definitionDigest:string}[];
    /** The complete dated approval set stays bound even if redundant windows normalize away. */
-   planEvidence?:Extract<PolicyPlanInput,{state:'known'}>};
+   planEvidence?:Extract<PolicyPlanInput,{state:'known'}>;manualEvidence?:Extract<PolicyManualDurationInput,{state:'known'}>};
 
 /** Actual captured eligibility for the existing four scalar approval methods, before the
  * once-only group duration finalization. This is not an approved/payable duration or method choice. */
@@ -34,19 +35,19 @@ export function attendancePolicySystemEligibleMinutes(context:AttendancePolicyEx
 
 export function attendancePolicyExecutionProposal(context:AttendancePolicyExecutionContext|undefined,
  work:PolicyWorkInput|undefined,formulas:PolicyFormulaInput|undefined,
- approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
- return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId);
+ approvals?:PolicyApprovalInput,tenantId?:string,rawEffect?:PolicyRawEffectSource):PolicyExecutionProposal{
+ return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId,rawEffect);
 }
 /** TOIL's duration proposal shares the same arithmetic and approval requirements. A duration-only
  * source is not a cash formula/mapping input and cannot be submitted to the money reader API. */
 export function attendancePolicyDurationExecutionProposal(context:AttendancePolicyExecutionContext|undefined,
  work:PolicyWorkInput|undefined,formulas:PolicyDurationFormulaInput|undefined,
- approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
- return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId);
+ approvals?:PolicyApprovalInput,tenantId?:string,rawEffect?:PolicyRawEffectSource):PolicyExecutionProposal{
+ return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId,rawEffect);
 }
 function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContext|undefined,
  work:PolicyWorkInput|undefined,formulas:PolicyFormulaInput|PolicyDurationFormulaInput|undefined,
- approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
+ approvals?:PolicyApprovalInput,tenantId?:string,rawEffect?:PolicyRawEffectSource):PolicyExecutionProposal{
  const unavailable=(reason:Extract<PolicyExecutionProposal,{state:'unavailable'}>['reason']):PolicyExecutionProposal=>({state:'unavailable',authority:'proposalOnly',reason});
  if(context?.state!=='policy')return unavailable('contextUnavailable');
  const {selected}=context;
@@ -54,9 +55,11 @@ function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContex
  if(work?.state!=='known')return unavailable('workUnavailable');
  // Manual still needs its frozen method and complete current-effect consumption. Auto planned
  // methods additionally require the newly owner-issued dated plan set, never scalar/audit labels.
- if(selected.policy.overtime.enabled&&selected.policy.overtime.approval!=='auto')return unavailable('approvalReceiptRequired');
+ const manual=selected.policy.overtime.enabled&&selected.policy.overtime.approval==='manual'
+  ?attendancePolicyManualDurationInput(context,work,approvals,tenantId??'',rawEffect):undefined;
+ if(manual?.state==='unavailable')return unavailable('approvalReceiptRequired');
  let planned:ReturnType<typeof attendancePolicyPlanInput>|undefined;
- const method=selected.policy.overtime.enabled?selected.policy.overtime.autoMethod:'actual';
+ const method=selected.policy.overtime.enabled&&!manual?selected.policy.overtime.autoMethod:'actual';
  if(selected.policy.overtime.enabled&&method!=='actual'){
   planned=attendancePolicyPlanInput(context,approvals,tenantId??'');
   if(planned.state!=='known'||context.placement.state!=='known')return unavailable('plannedProofRequired');
@@ -78,7 +81,8 @@ function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContex
  const duration=deriveAttendancePolicyDurationProposal({sourceDate:context.date,companyId:context.companyId,periodMinutes:work.periodMinutes,
   policy:selected.policy,workedIntervals:work.workedIntervals,eligibleActualIntervals:work.eligibleActualIntervals,
   eligiblePlannedIntervals:plannedIntervals,unpaidIntervals:work.unpaidIntervals,lateOffsetIntervals:work.lateOffsetIntervals,
-  calendar:context.calendar,method,approval:'policyAuto',allocationByClass});
+  calendar:context.calendar,method,approval:manual?.state==='known'?'approved':'policyAuto',allocationByClass,
+  ...(manual?.state==='known'?{manualApprovedIntervals:manual.intervals}:{})});
  const formulaParts:Extract<PolicyExecutionProposal,{state:'proposed'}>['formulaParts']=[];
  if(duration.status==='calculated')for(const part of duration.parts){
   const references=formulas?.state==='known'?formulas.references.filter(row=>row.date===part.date):[];
@@ -88,5 +92,5 @@ function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContex
    ||reference.versionId!==selected.policy.overtime.days[part.dayClass].patternVersionId)return unavailable('formulaBindingMismatch');
   formulaParts.push({date:part.date,dayClass:part.dayClass,versionId:reference.versionId,definitionDigest:reference.definitionDigest});
  }
- return {state:'proposed',authority:'proposalOnly',policyRevisionId:selected.id,duration,formulaParts,...(planned?.state==='known'?{planEvidence:planned}:{})};
+ return {state:'proposed',authority:'proposalOnly',policyRevisionId:selected.id,duration,formulaParts,...(planned?.state==='known'?{planEvidence:planned}:{}),...(manual?.state==='known'?{manualEvidence:manual}:{})};
 }

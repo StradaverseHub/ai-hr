@@ -17,7 +17,7 @@ import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 export type PolicyProposalStoragePart=Pick<typeof attendanceOvertimePolicyPart.$inferInsert,
  'sequence'|'calendarDate'|'dayClass'|'moneyDay'|'versionId'|'rawMinutes'|'allocatedPayableMinutes'|'sourceIntervals'|'calendarReferences'|'durationEvidence'>;
 export type PolicyProposalPartSource={source:{employmentId:string;date:string;tenantId?:string};policy?:ResolvedAttendanceGroupPolicy;
- context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;approvals?:PolicyApprovalInput;proposal?:PolicyExecutionProposal};
+ context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;approvals?:PolicyApprovalInput;proposal?:PolicyExecutionProposal;rawEffect?:CanonicalOvertimeSnapshot['policyRawEffectSource']};
 
 /** Null rejects inconsistent prepared evidence. Empty means no complete proposal to materialize.
  * Rounding remainder stays on the parent's class evidence, never an invented child clock/date. */
@@ -27,7 +27,7 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
  const context=input.context;
  if(context?.state==='policy'&&(context.employmentId!==input.source.employmentId||context.date!==input.source.date
   ||context.companyId!==input.policy.companyId||!isDeepStrictEqual(context.selected,input.policy)))return null;
- const expected=attendancePolicyExecutionProposal(context,input.work,input.formulas,input.approvals,input.source.tenantId);
+ const expected=attendancePolicyExecutionProposal(context,input.work,input.formulas,input.approvals,input.source.tenantId,input.rawEffect);
  if(!isDeepStrictEqual(expected,input.proposal))return null;
  if(expected.state!=='proposed'||expected.duration.status!=='calculated')return [];
  if(expected.policyRevisionId!==input.policy.id||expected.duration.parts.length>3
@@ -72,11 +72,11 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    policy:stored.attendanceGroupPolicy as PolicyProposalPartSource['policy'],context:stored.policyExecutionContext as PolicyProposalPartSource['context'],
    work:stored.policyWorkInput as PolicyProposalPartSource['work'],formulas:stored.policyFormulaInput as PolicyProposalPartSource['formulas'],
    approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
-   proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
+   proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal'],rawEffect:stored.policyRawEffectSource as PolicyProposalPartSource['rawEffect']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
   const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,
    attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
-   policyApprovalInput:input.approvals,policyExecutionProposal:input.proposal,
+   policyApprovalInput:input.approvals,policyRawEffectSource:input.rawEffect,policyExecutionProposal:input.proposal,
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],

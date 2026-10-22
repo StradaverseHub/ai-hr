@@ -22,6 +22,7 @@ export type PolicyDurationProposalInput={
  lateOffsetIntervals:readonly AttendancePolicyInterval[]|null;
  calendar:readonly PolicyCalendarProof[];
  /** A manual workflow supplies its frozen method. Auto must match the selected policy version. */
+ manualApprovedIntervals?:readonly AttendancePolicyInterval[];
  method:PolicyDurationMethod;approval:'approved'|'policyAuto'|'pending'|'rejected'|'unknown';
  allocationByClass:Partial<Record<AttendancePolicyDayClass,'earliest'|'latest'>>;
 };
@@ -29,7 +30,8 @@ export type PolicyDurationSelectionStep=
  |{kind:'disabled';before:number;after:0}
  |{kind:'breaks';basis:'actual'|'approvedPlan';before:number;after:number}
  |{kind:'lateOffset';before:number;after:number;requested:number;applied:number}
- |{kind:'method';method:PolicyDurationMethod;before:number;after:number};
+ |{kind:'method';method:PolicyDurationMethod;before:number;after:number}
+ |{kind:'manualCount';before:number;after:number};
 export type PolicyDurationProposal=
  |{status:'unavailable';reason:'workedEvidenceUnavailable'|'eligibleEvidenceUnavailable'|'approvalUnavailable'|'plannedEvidenceUnavailable'|'lateEvidenceUnavailable'|'calendarUnavailable'|'holidayDesignationUnavailable'|'durationLimitExceeded'|'formulaAllocationUnavailable';date?:string;authority:'proposalOnly'}
  |{status:'calculated';authority:'proposalOnly';intervalBasis:'actual'|'approvedPlan';lateOffsetMinutes:number;selectionSteps:PolicyDurationSelectionStep[];
@@ -76,7 +78,10 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
   unpaidIntervals:breaks,lateOffsetIntervals:input.lateOffsetIntervals,offsetLateness:policy.overtime.offsetLateness,periodMinutes:bound});
  if(selection.state!=='known')return refuse(selection.reason);
  const {candidate,afterOffset,lateMinutes}=selection;
- const selected=input.method==='intersect'?intersect(afterOffset.intervals,planned!,bound):afterOffset.intervals;
+ const methodSelected=input.method==='intersect'?intersect(afterOffset.intervals,planned!,bound):afterOffset.intervals;
+ const selected=input.manualApprovedIntervals===undefined?methodSelected:union(input.manualApprovedIntervals,bound);
+ if(input.manualApprovedIntervals!==undefined&&(policy.overtime.approval!=='manual'||input.approval!=='approved'
+  ||subtract(selected,methodSelected,bound).length))throw Error('Manual approved positions require complete eligible captured coverage.');
  const selectionSteps:PolicyDurationSelectionStep[]=[
   {kind:'breaks',basis:input.method==='preApproved'?'approvedPlan':'actual',
    before:minutes(input.method==='preApproved'?input.eligiblePlannedIntervals!:actual,bound),after:minutes(candidate,bound)},
@@ -89,6 +94,7 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
  if(grouped.status==='unavailable')return {status:'unavailable',authority:'proposalOnly',date:grouped.date,reason:grouped.reason};
  const plannedParts=planned===null?null:partition(planned);
  if(plannedParts?.status==='unavailable')return {status:'unavailable',authority:'proposalOnly',date:plannedParts.date,reason:plannedParts.reason};
+ if(input.manualApprovedIntervals!==undefined)selectionSteps.push({kind:'manualCount',before:minutes(methodSelected,bound),after:minutes(selected,bound)});
  const parts=grouped.parts.map(part=>({...part,allocatedPayableMinutes:0,allocations:[] as AttendancePolicyInterval[]}));
  const classes:Extract<PolicyDurationProposal,{status:'calculated'}>['classes']=[];
  for(const dayClass of [...new Set(parts.map(part=>part.dayClass))]){

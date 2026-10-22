@@ -25,6 +25,17 @@ describe('shared dated-policy duration proposal',()=>{
   expect(result.selectionSteps).toEqual([{kind:'breaks',basis:'actual',before:60,after:45},
    {kind:'lateOffset',before:45,after:25,requested:20,applied:20},{kind:'method',method:'actual',before:25,after:25}]);
  });
+ it('finalizes Manual approved positions once after the same actual break and late selection',()=>{
+  const f=fixture();f.policy.overtime.approval='manual';f.approval='approved';f.policy.overtime.offsetLateness=true;
+  f.unpaidIntervals=[{from:1080,to:1090}];f.lateOffsetIntervals=[{from:540,to:550}];
+  f.manualApprovedIntervals=[{from:1110,to:1140}];f.policy.overtime.rounding={mode:'down',step:15};
+  f.policy.overtime.days.normal.maximumMinutes=25;
+  const result=calculated(f);
+  expect(result).toMatchObject({payableMinutes:25,parts:[{intervals:[{from:1110,to:1140}],allocatedPayableMinutes:25}],
+   classes:[{eligibleMinutes:30,payableMinutes:25,unplacedPayableMinutes:0}]});
+  expect(result.selectionSteps.at(-1)).toEqual({kind:'manualCount',before:40,after:30});
+  expect(()=>deriveAttendancePolicyDurationProposal({...f,manualApprovedIntervals:[{from:1090,to:1140}]})).toThrow('complete eligible captured coverage');
+ });
  it('intersects real positions rather than accepting the smaller of equal disjoint totals',()=>{
   const f=fixture();f.method='intersect';f.policy.overtime.autoMethod='intersect';f.eligiblePlannedIntervals=[{from:1140,to:1200}];
   expect(calculated(f).payableMinutes).toBe(0);

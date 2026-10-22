@@ -1,3 +1,4 @@
+import {attendancePolicyManualDurationInput} from '../packs/attendance/policy-manual-duration';
 import {readFileSync} from 'node:fs';
 import {attendancePolicyFinalRawAgreement} from '../packs/attendance/policy-final-raw-input';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
@@ -47,7 +48,7 @@ describe('owner-issued final workflow receipt',()=>{
     startTime:'09:00',endTime:'18:00',breakMinutes:0,weeklyPattern:[1,2,3,4,5,6,7],ruleId});
    await assignDefaultShift(admin,{employmentId:worker.employmentId,shiftId:shift.id});
    const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,
-    earlyGraceMinutes:0,skipLatenessIfIncomplete:true},overtime:{enabled:false,beforeShift:false,afterShift:true,
+    earlyGraceMinutes:0,skipLatenessIfIncomplete:true},overtime:{enabled:true,beforeShift:false,afterShift:true,
      allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',
      rounding:{mode:'none',step:null},days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,
       {minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}};
@@ -73,7 +74,7 @@ describe('owner-issued final workflow receipt',()=>{
    }
   });
   const [preview]=await listAttendanceCorrections(f.first.ctx,{requestId:f.id,status:'pending'});
-  expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:0});
+  expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:60});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id))).toEqual([]);
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
@@ -89,6 +90,19 @@ describe('owner-issued final workflow receipt',()=>{
   const result=await withTenant(admin,async tx=>{
    const snapshot=await canonicalOvertimeInputTx(tx,admin,{employmentId:f.worker.employmentId,date:day(0)});
    const request=snapshot.policyApprovalInput?.requests.find(row=>row.id===f.id);
+   const manual=attendancePolicyManualDurationInput(snapshot.policyExecutionContext,snapshot.policyWorkInput,
+    snapshot.policyApprovalInput,b.tenantId,snapshot.policyRawEffectSource);
+   expect(manual).toMatchObject({state:'known',authority:'manualCountProposalOnly',method:'requested',systemMinutes:60,
+    approvedMinutes:60,basis:'completeActualCount',intervals:[{from:1080,to:1140}]});
+   const changed=structuredClone(snapshot.policyApprovalInput);
+   if(!changed)throw Error('Expected current approval source');
+   changed.requests[0].approvedMinutes=59;
+   expect(attendancePolicyManualDurationInput(snapshot.policyExecutionContext,snapshot.policyWorkInput,changed,
+    b.tenantId,snapshot.policyRawEffectSource)).toMatchObject({state:'unavailable'});
+   const duplicate=structuredClone(snapshot.policyApprovalInput)!;duplicate.requests.push(structuredClone(duplicate.requests[0]));
+   expect(attendancePolicyManualDurationInput(snapshot.policyExecutionContext,snapshot.policyWorkInput,duplicate,
+    b.tenantId,snapshot.policyRawEffectSource)).toMatchObject({state:'unavailable',reason:'approvalSetUnavailable'});
+
    const [raw]=await tx.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.worker.employmentId),eq(s.attendance.attendanceDate,day(0))));
    if(!request)throw Error('Expected real retained workflow receipt');
    const current={...raw,attendanceId:raw.id,trace:raw.calcTrace};
