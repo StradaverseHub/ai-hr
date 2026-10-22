@@ -283,7 +283,9 @@ BEGIN
    WHERE r.id=(binding->>'revisionId')::uuid AND r.tenant_id=NEW.tenant_id AND r.company_id=v_company;
   IF v_kind<>'epoch' OR NOT FOUND OR bound.effective_from>NEW.attendance_date
    OR bound.activation_epoch>v_epoch OR bound.created_at>clock_timestamp()
-   OR (binding->'activation'->>'recordedAt')::timestamptz IS DISTINCT FROM bound.created_at
+   -- The canonical JS Date reader retains milliseconds; PostgreSQL stores finer precision.
+   -- Compare that same representable projection without rewriting the immutable timestamp.
+   OR (binding->'activation'->>'recordedAt')::timestamptz IS DISTINCT FROM date_trunc('milliseconds',bound.created_at)
    OR binding IS DISTINCT FROM jsonb_build_object('authority','datedPolicyOnly','sourceDate',NEW.attendance_date,
     'employmentId',NEW.employment_id,'companyId',v_company,'revisionId',bound.id,'ruleId',bound.rule_id,
     'ordinal',bound.ordinal,'effectiveFrom',bound.effective_from,'pairing',bound.policy->'clock'->>'pairing',
