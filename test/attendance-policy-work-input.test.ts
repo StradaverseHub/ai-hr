@@ -1,3 +1,4 @@
+import {attendancePolicyFinalRawAgreement} from '../packs/attendance/policy-final-raw-input';
 import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
 /** Pure source geometry only, not real-capture, approval, Payroll or application acceptance. */
 import {describe,expect,it} from 'vitest';
@@ -235,6 +236,50 @@ describe('independent captured raw clock replay',()=>{
     dayType:s.dayType,halfDayBefore:780,fallbackIn:null,fallbackOut:null});
   return {c,source,row:{...row,dayType:s.dayType},trace:row.calcTrace!};
  }
+ function rawAgreementFixture(){
+  const x=recorded([[540,1080]]),id='receipt-fixture',at='2026-10-23T12:00:00.000Z';
+  const request:Parameters<typeof attendancePolicyFinalRawAgreement>[1]={id,status:'approved',cancelledAt:null,
+   submissionContract:{state:'recorded',correctionId:id,tenantId:'tenant-fixture',employmentId:x.c.employmentId,
+    date:x.c.date,companyId:x.c.companyId,kind:'epoch',visibleEpoch:1,manualApprovalMethod:'requested',recordedAt:at},
+   finalReceipt:{state:'recorded',authority:'finalWorkflowDecisionOnly',correctionId:id,workflowRequestId:'workflow-fixture',
+    actorUserId:'actor-fixture',submissionEpoch:1,recordedAt:at,request:{requestedMinutes:60,approvedMinutes:60,method:'requested',
+     plannedStartLabel:null,plannedEndLabel:null,checkIn:null,checkOut:null,clockChanges:null},workflow:{},
+    raw:{attendanceId:'fixture',checkIn:x.row.checkInAt,checkOut:x.row.checkOutAt,workedMinutes:x.row.workedMinutes,
+     lateMinutes:x.row.lateMinutes,earlyOutMinutes:x.row.earlyOutMinutes,dayType:x.row.dayType,trace:x.trace,
+     punchCount:x.source.clocks.length,punches:x.source.clocks.map(clock=>({id:clock.id,clock_capture_id:clock.captureId,
+      direction:clock.direction,punch_at:clock.direction==='in'?'09:00:00':'18:00:00'}))}}};
+  const current={...x.row,attendanceId:'fixture',trace:x.trace};
+  return {...x,request,current,read:(r=request,source=x.source)=>attendancePolicyFinalRawAgreement(x.c,r,'tenant-fixture',source,current)};
+ }
+ it('compares retained raw final effects to independent current capture replay without granting approval or payment',()=>{
+  const x=rawAgreementFixture(),before=structuredClone(x.request),result=x.read();
+  expect(result).toMatchObject({state:'known',authority:'retainedRawAgreementOnly',attendanceId:'fixture',policyRevisionId:x.c.selected.id});
+  expect(result).not.toHaveProperty('transferable');expect(result).not.toHaveProperty('minutes');expect(x.request).toEqual(before);
+  const changed=structuredClone(x.request);if(changed.finalReceipt.state!=='recorded')throw Error('fixture');
+  changed.finalReceipt.raw=null;expect(x.read(changed)).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
+ });
+ it('refuses changed, omitted, duplicated and equal-count replaced capture identities in retained final effects',()=>{
+  const x=rawAgreementFixture();
+  for(const field of ['clock_capture_id','id','direction','punch_at']){
+   const changed=structuredClone(x.request);if(changed.finalReceipt.state!=='recorded'||!changed.finalReceipt.raw)throw Error('fixture');
+   const punches=changed.finalReceipt.raw.punches as Record<string,unknown>[];punches[0][field]='substituted';
+   expect(x.read(changed)).toMatchObject({state:'unavailable',reason:'captureSetMismatch'});
+  }
+  const source=structuredClone(x.source);source.clocks[1].captureId=source.clocks[0].captureId;
+  expect(x.read(x.request,source)).toMatchObject({state:'unavailable',reason:'captureSetMismatch'});
+  const changed=structuredClone(x.request);if(changed.finalReceipt.state!=='recorded'||!changed.finalReceipt.raw)throw Error('fixture');
+  changed.finalReceipt.raw.punchCount=1;expect(x.read(changed)).toMatchObject({state:'unavailable',reason:'captureSetMismatch'});
+ });
+ it('refuses raw receipt substitution, cancellation, changed measurements and changed policy identity even at equal count',()=>{
+  const x=rawAgreementFixture();
+  for(const field of ['attendanceId','trace','workedMinutes','checkIn']){
+   const changed=structuredClone(x.request);if(changed.finalReceipt.state!=='recorded'||!changed.finalReceipt.raw)throw Error('fixture');
+   changed.finalReceipt.raw[field]='substituted';expect(x.read(changed)).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
+  }
+  const cancelled=structuredClone(x.request);cancelled.cancelledAt='2026-10-23T13:00:00.000Z';
+  expect(x.read(cancelled)).toMatchObject({state:'unavailable',reason:'finalReceiptUnavailable'});
+  x.c.selected.id='00000000-0000-4000-8000-000000000099';expect(x.read()).toMatchObject({state:'unavailable',reason:'rawEffectUnavailable'});
+ });
  it('retains an epoch-zero raw policy identity without granting financial activation',()=>{
   const c=context();c.selected.activation.epoch=0;
   expect(attendancePolicyTraceBinding(c)).toMatchObject({authority:'datedPolicyOnly',activation:{epoch:0}});
