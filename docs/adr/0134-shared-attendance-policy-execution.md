@@ -373,6 +373,13 @@ pay. Positioned schedule/capture proofs, actual raw-writer integration and runti
 required. In particular scalar/flexible breaks and duration-only schedules are still unavailable in
 this positioned source branch; the projection never infers their ownership.
 
+New-policy formula input facts now consume net physical work from the captured/pair/break projection,
+subtracting only proved unpaid overlap once. Missing work proof does not fall back to the stored legacy
+outer-envelope total. Lateness uses the independently proved policy boundary measurement; suppressed,
+non-applicable and unavailable measurements remain unknown facts rather than zero. Legacy assignment
+facts retain their original input contract. This does not update raw-day figures or authorize approved
+OT, money or TOIL; the policy calculation and financial fences remain until those owners are complete.
+
 The canonical schedule now supplies an independent fixed-clock boundary proof. A scalar/flexible
 break or count-adjusted overtime window can keep worked/OT placement unavailable without suppressing
 lateness measured from separately proved scheduled and captured boundaries. Complete placement reuses

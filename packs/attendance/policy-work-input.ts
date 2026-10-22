@@ -1,7 +1,7 @@
 /** Canonical source projection only. Final-effect receipts and the financial replay remain separate. */
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
-import {intersectAttendancePolicyIntervals as intersect,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
+import {attendancePolicyIntervalMinutes as minutes,subtractAttendancePolicyIntervals as subtract,intersectAttendancePolicyIntervals as intersect,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 import type {PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 
 export type PolicyWorkInput=
@@ -9,6 +9,13 @@ export type PolicyWorkInput=
  |{state:'known';authority:'sourceOnly';periodMinutes:4320;workedIntervals:AttendancePolicyInterval[];
    eligibleActualIntervals:AttendancePolicyInterval[];unpaidIntervals:AttendancePolicyInterval[];
    lateOffsetIntervals:AttendancePolicyInterval[];lateMinutes:number|null;earlyOutMinutes:number|null};
+
+/** Net physical work for formula facts, not eligible/approved/payable OT. Remove only the proved
+ * unpaid overlap, once; a scalar legacy aggregate cannot fill a missing positioned policy source. */
+export function attendancePolicyNetWorkedMinutes(work:PolicyWorkInput|undefined):number|null{
+ if(work?.state!=='known')return null;
+ return minutes(subtract(work.workedIntervals,work.unpaidIntervals,work.periodMinutes),work.periodMinutes);
+}
 
 /** The canonical snapshot reader supplies both inputs. A posted envelope or scalar approval is never
  * an alternative to the complete exact-clock view, and this projection establishes no approval. */

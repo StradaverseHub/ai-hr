@@ -106,6 +106,8 @@ describe('dated-policy raw writer routing',()=>{
   expect(snapshot.policyClockReview).toEqual({state:'unavailable',authority:'proposalOnly',reason:'sourceUnavailable'});
   expect(snapshot.policyClockMeasurements).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
   expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
+  expect(snapshot.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
+  expect(snapshot.input.facts.lateMinutes).toMatchObject({state:'unknown'});
   expect(snapshot.policyFormulaInput).toEqual({state:'disabled',authority:'sourceOnly',references:[]});
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,

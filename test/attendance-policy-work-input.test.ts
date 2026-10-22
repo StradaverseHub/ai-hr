@@ -1,7 +1,7 @@
 /** Pure source geometry only, not real-capture, approval, Payroll or application acceptance. */
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyClockPlacement,attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
-import {attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
+import {attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
 import {attendancePolicyClockMeasurements} from '../packs/attendance/policy-clock-measurements';
 import {attendancePolicyClockMillisecondEvidence} from '../lib/attendance-policy-clocks';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
@@ -71,6 +71,17 @@ describe('canonical policy schedule and work source projection',()=>{
 });
 
 describe('independent clock boundary and break ownership',()=>{
+ it('counts net physical work from closed pairs, subtracting only overlapping unpaid time once',()=>{
+  const c=context(),proof=clocks([[480,780],[840,1200]]),w=attendancePolicyWorkInput(c,proof);
+  expect(attendancePolicyNetWorkedMinutes(w)).toBe(660);
+  expect(attendancePolicyNetWorkedMinutes(attendancePolicyWorkInput(c,clocks([[480,720],[840,1200]])))).toBe(600);
+  const envelope=attendancePolicyWorkInput(c,clocks([[480,1200]]));
+  expect(attendancePolicyNetWorkedMinutes(envelope)).toBe(660);
+  const partial=attendancePolicyWorkInput(c,clocks([[750,810]]));
+  expect(attendancePolicyNetWorkedMinutes(partial)).toBe(30);
+  expect(attendancePolicyNetWorkedMinutes(undefined)).toBeNull();
+  expect(attendancePolicyNetWorkedMinutes(attendancePolicyWorkInput(context({...schedule(),breakPeriods:null}),proof))).toBeNull();
+ });
  it('measures proved lateness without inventing scalar or flexible break placement',()=>{
   for(const s of [{...schedule(),breakPeriods:null},{...schedule(),flexibleBreakMinutes:60}]){
    const c=context(s),proof=clocks([[570,1050]]);

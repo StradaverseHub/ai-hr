@@ -1,7 +1,7 @@
 import {attendancePolicyExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
-import {attendancePolicyWorkInput} from './policy-work-input';
+import {attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
 import {createHash} from 'node:crypto';
@@ -203,6 +203,15 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   }
   const policyClockMeasurements=selectedPolicy?attendancePolicyClockMeasurements(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   const policyWorkInput=selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
+  if(selectedPolicy){
+    // New policy formula facts consume the exact captured/pair/break source. The old row's outer
+    // envelope is not evidence that the new pairing or incomplete-clock policy actually ran.
+    facts.actualWorkingMinutes=minute(attendancePolicyNetWorkedMinutes(policyWorkInput),
+      attendanceProvenance('policyWorkedMinutes:'+selectedPolicy.id));
+    const measured=policyClockMeasurements?.state==='measured'?policyClockMeasurements.lateIn:undefined;
+    facts.lateMinutes=measured?.state==='known'?minute(measured.minutes,attendanceProvenance('policyLateMinutes:'+selectedPolicy.id))
+      :unknown(measured?.state==='suppressed'?'policyLatenessSuppressed':measured?.state==='notApplicable'?'fixedClockNotApplicable':'policyClockBoundaryUnavailable');
+  }
   const policyFormulaInput=selectedPolicy?await attendancePolicyFormulaInputTx(tx,ctx,{sourceDate:p.date,policy:selectedPolicy,
     calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}):undefined;
   const policyExecutionProposal=selectedPolicy?attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput):undefined;
