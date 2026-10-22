@@ -299,3 +299,9 @@ original Plan OT labels from the canonical application rows. Labels remain expli
 neither a digest nor an old scalar approval supplies approved physical placement. The same source
 projection is retained in refused immutable evidence. Legacy approval digest serialization stays
 unchanged so existing assignment obligations do not silently require recalculation.
+
+The canonical reader re-proves the actual policy identity and reads each dated calendar binding through
+the existing formula/company and earning-item owners. Exact definitions, activation state identity and
+JSON-safe earning-reference stamps join configuration freshness and immutable refused evidence. Missing,
+inactive, foreign, incompatible-currency and unavailable earning references stay explicit. This is a
+source projection, not a replacement assignment, complete part set, independent replay or payment proof.

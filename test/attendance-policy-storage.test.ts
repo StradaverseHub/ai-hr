@@ -10,7 +10,7 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {activateOvertimePattern,checkIn,checkOut,ensureStandardRule,
+import {activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
  lockOvertimeSourceTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -60,6 +60,39 @@ function part(f:Fixture,calculationId:string,sequence=0):typeof s.attendanceOver
   durationEvidence:{authority:'proposalOnly',steps:[]}};
 }
 describe('immutable non-payable policy part storage',()=>{
+ it('retains exact activated formula and earning references without substituting an assignment',async()=>{
+  const f=await fixture(),snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  const source=snapshot.policyFormulaInput;expect(source?.state).toBe('known');if(source?.state!=='known')throw Error('Expected canonical formula source');
+  expect(source.references).toHaveLength(3);
+  for(const reference of source.references){
+   expect(reference.state).toBe('known');if(reference.state!=='known')throw Error('Expected complete dated formula references');
+   expect(reference.versionId).toBe(f.versionId);expect(reference.definition.currency).toEqual({code:'MYR',minorScale:2});
+   expect(reference.activeState).toMatchObject({sequence:1,effectiveFrom:day(1)});expect(reference.earningReferences).toHaveLength(1);
+   expect(reference.earningReferences[0].id).toBe(reference.definition.rates[0].tiers[0].mapping.earningItemId);
+   expect(typeof reference.earningReferences[0].createdAt).toBe('string');
+   expect(Object.hasOwn(reference,'assignmentId')).toBe(false);
+  }
+  const recorded=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  expect(recorded?.calculation).toMatchObject({outcome:'refused',transferable:false,versionId:null,assignmentId:null});
+  expect(recorded?.evidence?.evidence).toMatchObject({policyFormulaInput:source});
+ });
+ it('invalidates a prepared policy snapshot when its referenced formula is stopped, without rewriting old evidence',async()=>{
+  const f=await fixture(),api=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  const snapshotBefore=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  const [version]=await owner.db.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.id,f.versionId));
+  const detail=await getOvertimePattern(ctx,version.patternId),revision=detail!.versions.find(row=>row.id===f.versionId)!.revision;
+  await expect(withTenant(ctx,async tx=>{
+   const prepared=await api.prepareTx(tx,ctx,{employmentId:f.employmentId,date:day(2)});
+   await stopOvertimePatternVersion(ctx,{versionId:f.versionId,expectedRevision:revision,effectiveFrom:day(2),reason:'Fictional prospective formula stop'});
+   return api.recordTx(tx,ctx,{prepared,expectedCurrentRevision:before!.source.revision,reason:'Fictional stale formula source probe'});
+  })).rejects.toMatchObject({code:'stale'});
+  const after=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  expect(after.referenceDigest).not.toBe(snapshotBefore.referenceDigest);
+  expect(after.policyFormulaInput).toMatchObject({state:'known',references:[{state:'unavailable',reason:'formulaInactive'},{state:'unavailable',reason:'formulaInactive'},{state:'unavailable',reason:'formulaInactive'}]});
+  expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}))).toEqual(before);
+ });
+
  it('retains the original assignment discriminator by default and permits an explicit empty refused policy result',async()=>{
   const f=await fixture();
   const normal=await withTenant(ctx,async tx=>{const {saved}=await header(tx,f,0,{bindingKind:undefined,policyRevisionId:null});return saved;});

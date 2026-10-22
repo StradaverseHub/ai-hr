@@ -1,3 +1,4 @@
+import {attendancePolicyFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput} from './policy-work-input';
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
@@ -198,9 +199,11 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyWorkInput=selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
     ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput}:{})});
+  const policyFormulaInput=selectedPolicy?await attendancePolicyFormulaInputTx(tx,ctx,{sourceDate:p.date,policy:selectedPolicy,
+    calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}):undefined;
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput,policyApprovalInput}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput,policyApprovalInput,policyFormulaInput}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -215,6 +218,6 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     },
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
-      ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy}:{} )}),
+      ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput}:{} )}),
   };
 }
