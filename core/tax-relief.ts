@@ -849,7 +849,7 @@ function requirePerson(ctx: SessionContext): string {
 
 /** Mine binds the actual login, not a caller-supplied Person, even when that login also administers Payroll. */
 async function assertMyTp1OwnerTx(tx:Tx,personId:string) {
-  const rows=await tx.execute(sql`select u.id from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() for share`);
+  const rows=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${personId}::uuid) for share`);
   if(!rows.length)throw new TaxReliefError('This account is not linked to this employee profile.');
 }
 
@@ -1538,9 +1538,16 @@ async function saveTp1DraftForPersonId(
           deductionMonth == null
             ? isNull(tp1Relief.deductionMonth)
             : eq(tp1Relief.deductionMonth, deductionMonth),
+          // An older draft is retained history after submission/correction. Reusing it would save
+          // behind the current row and reopen a superseded version instead of the new correction.
+          sql`not exists(select 1 from public.tp1_relief newer
+            where newer.tenant_id=${tp1Relief.tenantId} and newer.person_id=${tp1Relief.personId}
+              and newer.assessment_year=${tp1Relief.assessmentYear}
+              and newer.deduction_month is not distinct from ${tp1Relief.deductionMonth}
+              and (newer.created_at,newer.id)>(${tp1Relief.createdAt},${tp1Relief.id}))`,
         ),
       )
-      .orderBy(desc(tp1Relief.createdAt))
+      .orderBy(desc(tp1Relief.createdAt),desc(tp1Relief.id))
       .limit(1);
     let id: string;
     if (draft) {

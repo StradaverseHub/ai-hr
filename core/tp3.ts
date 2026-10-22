@@ -1259,7 +1259,7 @@ export function myTp3History(ctx:SessionContext):Promise<{records:Tp3Record[];dr
   if(!ctx.personId)return Promise.resolve({records:[],drafts:[]});
   return withTenant(ctx,async tx=>{
     const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
-    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from employee_tp3_draft where person_id=${ctx.personId}::uuid and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
+    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${ctx.personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
     return {records:records.map(personalTp3),drafts};
   });
 }
@@ -1271,7 +1271,7 @@ export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
 export type MyTp3WriteInput=Omit<Tp3WriteInput,'personId'|'remarks'> & {employmentId:string;expectedRevision:number};
 async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit:boolean) {
   if(!ctx.personId||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw new Tp3Error('Reload this TP3 draft before saving.');
-  const [actual]=await tx.execute(sql`select u.id from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() for share`) as unknown as {id:string}[];
+  const [actual]=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid) for share`) as unknown as {id:string}[];
   if(!actual?.id)throw new Tp3Error('This account is not linked to this employee profile.');
   if(submit&&input.declarationAccepted!==true)throw new Tp3Error('Confirm the employee declaration before submitting.');
   const prepared=prepareTp3({...input,personId:ctx.personId,remarks:null});
