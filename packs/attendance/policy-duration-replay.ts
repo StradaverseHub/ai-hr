@@ -60,3 +60,28 @@ export function attendancePolicyCurrentDurationMatches(snapshot:CanonicalOvertim
  const current=attendancePolicyDurationReplay(snapshot);
  return current.state==='known'&&isDeepStrictEqual(current,recorded);
 }
+
+/** Recorded policy approval requirement/status only. This does not establish a live final
+ * effect, ready financial header or settlement authority. Legacy input approval facts remain
+ * intact: their scalar selector cannot replace the new policy's actual approval contract. */
+export function attendancePolicyRecordedApprovalStatus(snapshot:CanonicalOvertimeSnapshot):'approved'|'notRequired'|'pending'|'rejected'|'unknown'{
+ try{
+  const policy=snapshot.attendanceGroupPolicy,context=snapshot.policyExecutionContext;
+  if(!policy||context?.state!=='policy'||!isDeepStrictEqual(context.selected,policy)
+   ||context.employmentId!==snapshot.input.source.employmentId||context.date!==snapshot.input.source.date
+   ||!Number.isSafeInteger(policy.activation.epoch)||policy.activation.epoch<1)return 'unknown';
+  const overtime=policy.policy.overtime;
+  if(!overtime.enabled||overtime.approval==='auto'&&overtime.autoMethod==='actual')return 'notRequired';
+  const proposal=snapshot.policyExecutionProposal;
+  if(attendancePolicyDurationReplay(snapshot).state==='known'&&proposal?.state==='proposed'
+   &&(overtime.approval==='manual'?proposal.manualEvidence!==undefined:proposal.planEvidence!==undefined))return 'approved';
+  const approvals=snapshot.policyApprovalInput;
+  if(!approvals||approvals.policyRevisionId!==policy.id||approvals.mode!==overtime.approval
+   ||approvals.autoMethod!==overtime.autoMethod||!isDeepStrictEqual(approvals.activation,policy.activation))return 'unknown';
+  const active=approvals.requests.filter(row=>row.cancelledAt===null&&row.requestedMinutes!==null);
+  if(active.some(row=>row.status==='pending'))return 'pending';
+  if(active.length&&active.every(row=>row.status==='rejected'))return 'rejected';
+  // An approved scalar row, missing final receipt, or incomplete captured proof is unknown.
+  return 'unknown';
+ }catch{return 'unknown';}
+}

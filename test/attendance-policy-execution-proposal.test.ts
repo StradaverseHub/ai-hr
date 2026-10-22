@@ -187,7 +187,7 @@ describe('complete immutable proposal replay',()=>{
   const rows=materialize({source:{employmentId:source.employmentId,date},policy:f.context.selected,context:f.context,work:f.work,formulas:f.formulas,proposal});
   if(!rows)throw Error('Expected a complete source proposal');
   const header={id:id(10),sourceId:source.id,tenantId:source.tenantId,companyId:source.companyId,bindingKind:'attendanceGroupPolicy' as const,
-   policyRevisionId:f.context.selected.id,policyPartCount:rows.length,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64),referenceDigest:'c'.repeat(64)};
+   policyRevisionId:f.context.selected.id,policyPartCount:rows.length,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64),referenceDigest:'c'.repeat(64),approvalStatus:'notRequired' as const};
   const parts=rows.map(row=>({...row,calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,inputDigest:header.inputDigest}));
   const evidence={calculationId:header.id,tenantId:source.tenantId,companyId:source.companyId,
    inputs:{mode:'actual',assignmentId:null,patternVersionId:null,source:{tenantId:source.tenantId,employmentId:source.employmentId,
@@ -207,6 +207,10 @@ describe('complete immutable proposal replay',()=>{
  it('accepts the entire exact historical proposal without mutating it or granting transfer authority',()=>{
   const f=stored(),before=structuredClone(f);expect(matches(f.source,f.header,f.evidence,f.parts)).toBe(true);expect(f).toEqual(before);
   expect(Object.hasOwn(f.evidence,'transferable')).toBe(false);
+ });
+ it('refuses a changed recorded approval status even when all parts and replay digests match',()=>{
+  const f=stored();expect(matches(f.source,f.header,f.evidence,f.parts)).toBe(true);
+  expect(matches(f.source,{...f.header,approvalStatus:'approved'},f.evidence,f.parts)).toBe(false);
  });
  it('rejects omission, reordering and every changed parent binding',()=>{
   const f=stored();expect(matches(f.source,f.header,f.evidence,f.parts.slice(0,1))).toBe(false);

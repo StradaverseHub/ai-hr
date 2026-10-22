@@ -319,6 +319,33 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
+ it.each(['auto','manual'] as const)('records %s policy approval requirements independently of legacy scalar status',async approval=>{
+  const f=await fixture(approval,'12'),p={employmentId:f.employmentId,date:day(2)};
+  if(approval==='auto'){
+   const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional pending plan reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
+    departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+   await createAppUser(b.tenantId,reviewer.personId,'hr_admin');
+   const userId=await createAppUser(b.tenantId,f.personId,'employee');
+   const employeeCtx:SessionContext={...ctx,userId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+   await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'PENDING_'+randomUUID().slice(0,8),name:'Fictional independent pending plan',
+    applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+    stages:[{name:'Review',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
+   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+   await requestAttendanceCorrection(employeeCtx,{employmentId:f.employmentId,date:p.date,requestedOtMinutes:10,plannedStartTime:'23:50',plannedEndTime:'00:00',
+    requestKind:'self_overtime',reason:'Fictional pending plan cannot change Auto actual approval requirement'});
+  }
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  // Preserve the old scalar source facts; the policy header must use its own real contract.
+  expect(snapshot.input.approval.status).toBe(approval==='auto'?'pending':'notRequired');
+  if(approval==='auto')expect(attendancePolicyCashReplay(snapshot)).toMatchObject({state:'known',minutes:20,amountMinorUnits:'600'});
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional exact policy approval status'})).toMatchObject({status:'recorded'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.calculation).toMatchObject({approvalStatus:approval==='auto'?'notRequired':'unknown',outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+
  it.each(['cap','dayMapping'] as const)('prices whole-parent %s once across dated child allocations',async moneyScope=>{
   // Both formulas are genuinely activated and both dated allocations derive from actual
   // captured work. A parent cap of 4 must not become two caps; two half-cent slices must

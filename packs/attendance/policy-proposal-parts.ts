@@ -11,7 +11,7 @@ import type {PolicyApprovalInput} from './policy-approval-input';
 import type {PolicyWorkInput} from './policy-work-input';
 import type {PolicyFormulaInput} from './policy-formula-input';
 import {attendancePolicyExecutionProposal,type PolicyExecutionProposal} from './policy-execution-proposal';
-import {attendancePolicyDurationReplay} from './policy-duration-replay';
+import {attendancePolicyDurationReplay,attendancePolicyRecordedApprovalStatus} from './policy-duration-replay';
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 
 export type PolicyProposalStoragePart=Pick<typeof attendanceOvertimePolicyPart.$inferInsert,
@@ -47,7 +47,7 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
 
 
 type StoredPolicyParent=Pick<typeof attendanceOvertimeSource.$inferSelect,'id'|'tenantId'|'companyId'|'employmentId'|'attendanceDate'|'attendanceId'>;
-type StoredPolicyCalculation=Pick<typeof attendanceOvertimeCalculation.$inferSelect,'id'|'sourceId'|'tenantId'|'companyId'|'bindingKind'|'policyRevisionId'|'policyPartCount'|'inputDigest'|'approvalDigest'|'referenceDigest'>;
+type StoredPolicyCalculation=Pick<typeof attendanceOvertimeCalculation.$inferSelect,'id'|'sourceId'|'tenantId'|'companyId'|'bindingKind'|'policyRevisionId'|'policyPartCount'|'inputDigest'|'approvalDigest'|'referenceDigest'|'approvalStatus'>;
 type StoredPolicyPart=Omit<typeof attendanceOvertimePolicyPart.$inferSelect,'createdAt'>;
 /** Historical evidence replay only. This establishes neither current freshness nor financial authority.
  * Malformed JSON, any omitted part, and any changed business field refuse the entire parent. */
@@ -81,6 +81,7 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
    policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};
+  if(header.approvalStatus!==attendancePolicyRecordedApprovalStatus(replaySnapshot))return false;
   if(!isDeepStrictEqual(stored.policyCashReplay,attendancePolicyCashReplay(replaySnapshot))
    ||!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot))
    ||!isDeepStrictEqual(stored.policyPricingProposal,attendancePolicyPricingProposal(replaySnapshot)))return false;
