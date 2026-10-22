@@ -20861,7 +20861,10 @@
     "starterPreparing": "Preparing missing standard drafts…",
     "starterPreparationFailed": "The standard drafts could not be prepared. Your existing patterns are unchanged.",
     "retryStarterPreparation": "Try again",
-    "starterDraftHelp": "Missing standard patterns are added to the list as separate company drafts. Open a draft to choose its duration policies, currency, applicable days, hourly basis and earning code. Existing patterns and assignments keep their settings."
+    "starterDraftHelp": "Missing standard patterns are added to the list as separate company drafts. Open a draft to choose its duration policies, currency, applicable days, hourly basis and earning code. Existing patterns and assignments keep their settings.",
+    "starterUnassigned": "Unassigned",
+    "starterFormula": "Hourly rate × {multiplier} × payable hours. The hourly basis and payable hours must be configured before an amount can be calculated.",
+    "starterZeroHelp": "A zero multiplier does not waive applicable country or policy minimum-payment checks."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",

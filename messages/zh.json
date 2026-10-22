@@ -20861,7 +20861,10 @@
     "starterPreparing": "正在准备缺少的标准草稿…",
     "starterPreparationFailed": "无法准备标准草稿。现有模式未作更改。",
     "retryStarterPreparation": "重试",
-    "starterDraftHelp": "缺少的标准模式会作为各公司的独立草稿加入列表。打开草稿以选择时长政策、货币、适用日期、时薪计算基准及收入代码。现有模式和分配保留原有设置。"
+    "starterDraftHelp": "缺少的标准模式会作为各公司的独立草稿加入列表。打开草稿以选择时长政策、货币、适用日期、时薪计算基准及收入代码。现有模式和分配保留原有设置。",
+    "starterUnassigned": "未分配",
+    "starterFormula": "时薪 × {multiplier} × 应付小时数。必须先配置时薪基准和应付小时数，才能计算金额。",
+    "starterZeroHelp": "零倍数不能免除适用的国家或政策最低付款检查。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",

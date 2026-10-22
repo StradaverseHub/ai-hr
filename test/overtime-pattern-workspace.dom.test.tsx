@@ -57,6 +57,18 @@ describe('typed Overtime Pattern editing',()=>{
   expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
  });
 
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows the honest zero-rate starting summary and required choices in %s',locale=>{
+  const errors:unknown[]=[];
+  render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup} starterKey="ot00"/></NextIntlClientProvider>);
+  const words=catalogues[locale].overtimePatterns;
+  expect(screen.getByText('0×')).toBeVisible();expect(screen.getByText(words.status.draft)).toBeVisible();
+  expect(screen.getAllByText(words.notConfigured)).toHaveLength(3);
+  expect(screen.getByText(words.starterUnassigned)).toBeVisible();expect(screen.getByText(words.starterZeroHelp)).toBeVisible();
+  expect(screen.getByText(words.starterFormula.replace('{multiplier}','0'))).toBeVisible();
+  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(errors).toEqual([]);
+ });
  it('reopens a saved starting entry without guessing policies and saves into the original version',async()=>{
   const item=detail();item.versions[0].definition=overtimeStarterSeed('ot00');item.versions[0].name='OT 0.0';
   wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);

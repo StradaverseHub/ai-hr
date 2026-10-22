@@ -41,9 +41,22 @@ function NewOvertimePreparation(props:WorkspaceProps) {
   const [direction,setDirection]=useState<OvertimePattern['durationAllocation']|''>('');
   const [prepared,setPrepared]=useState<OvertimePattern|null>(null);
   if(prepared)return <EditableOvertimeWorkspace {...props} initialDefinition={prepared}/>;
+  const starter=overtimeStarter(props.starterKey);
   return <section className="space-y-4 rounded-xl border border-border bg-card p-5" aria-label={t('sections.basic')}>
     <h2 className="font-semibold">{props.starterKey?overtimeStarter(props.starterKey)?.name:t('sections.basic')}</h2>
-    {props.starterKey?<p className="text-sm text-muted-foreground">{t('starterHelp')}</p>:null}
+    {starter?<div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{t('starterHelp')}</p>
+      <dl className="grid gap-x-6 gap-y-3 rounded-lg border border-border p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <div><dt className="text-muted-foreground">{t('multiplier')}</dt><dd className="mt-1 font-medium">{starter.multiplier}×</dd></div>
+        <div><dt className="text-muted-foreground">{t('statusLabel')}</dt><dd className="mt-1">{t('status.draft')}</dd></div>
+        <div><dt className="text-muted-foreground">{t('fields.dayType')}</dt><dd className="mt-1">{t('notConfigured')}</dd></div>
+        <div><dt className="text-muted-foreground">{t('hourlyRate')}</dt><dd className="mt-1">{t('notConfigured')}</dd></div>
+        <div><dt className="text-muted-foreground">{t('payrollItem')}</dt><dd className="mt-1">{t('notConfigured')}</dd></div>
+        <div><dt className="text-muted-foreground">{t('sections.assignment')}</dt><dd className="mt-1">{t('starterUnassigned')}</dd></div>
+      </dl>
+      <p className="text-sm">{t('starterFormula',{multiplier:starter.multiplier})}</p>
+      {starter.key==='ot00'?<p className="text-sm text-muted-foreground">{t('starterZeroHelp')}</p>:null}
+    </div>:null}
     <Field label={t('eligibilityBasis')}><select className={inputCls} value={basis} onChange={event=>setBasis(event.target.value as typeof basis)}><option value="">{t('choose')}</option><option value="day">{t('bases.day')}</option><option value="session">{t('bases.session')}</option></select></Field><p className="text-sm text-muted-foreground">{t('eligibilityBasisHelp')}</p>
     <Field label={t('durationAllocation')}><select className={inputCls} value={direction} onChange={event=>setDirection(event.target.value as typeof direction)}><option value="">{t('choose')}</option><option value="earliest">{t('earliest')}</option><option value="latest">{t('latest')}</option></select></Field><p className="text-sm text-muted-foreground">{t('durationAllocationHelp')}</p>
     <button type="button" className={btnPrimary} disabled={!basis||!direction} onClick={()=>{if(basis&&direction)setPrepared(props.starterKey?prepareOvertimeStarter(props.starterKey,basis,direction):newPattern(basis,direction));}}>{t('prepareDraft')}</button>

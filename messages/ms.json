@@ -20861,7 +20861,10 @@
     "starterPreparing": "Menyediakan draf standard yang belum ada…",
     "starterPreparationFailed": "Draf standard tidak dapat disediakan. Corak sedia ada anda tidak berubah.",
     "retryStarterPreparation": "Cuba lagi",
-    "starterDraftHelp": "Corak standard yang belum ada ditambah ke senarai sebagai draf berasingan bagi setiap syarikat. Buka draf untuk memilih dasar tempoh, mata wang, hari yang berkenaan, asas kadar sejam dan kod pendapatan. Corak dan penetapan sedia ada mengekalkan tetapannya."
+    "starterDraftHelp": "Corak standard yang belum ada ditambah ke senarai sebagai draf berasingan bagi setiap syarikat. Buka draf untuk memilih dasar tempoh, mata wang, hari yang berkenaan, asas kadar sejam dan kod pendapatan. Corak dan penetapan sedia ada mengekalkan tetapannya.",
+    "starterUnassigned": "Belum ditetapkan",
+    "starterFormula": "Kadar sejam × {multiplier} × jam yang layak dibayar. Asas kadar sejam dan jam yang layak dibayar mesti dikonfigurasi sebelum amaun boleh dikira.",
+    "starterZeroHelp": "Pengganda sifar tidak mengetepikan semakan bayaran minimum negara atau dasar yang berkenaan."
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",

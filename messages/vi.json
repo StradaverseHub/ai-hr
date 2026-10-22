@@ -20861,7 +20861,10 @@
     "starterPreparing": "Đang chuẩn bị các bản nháp tiêu chuẩn còn thiếu…",
     "starterPreparationFailed": "Không thể chuẩn bị bản nháp tiêu chuẩn. Các mẫu hiện có của bạn không thay đổi.",
     "retryStarterPreparation": "Thử lại",
-    "starterDraftHelp": "Các mẫu tiêu chuẩn còn thiếu được thêm vào danh sách dưới dạng bản nháp riêng cho từng công ty. Mở bản nháp để chọn chính sách thời lượng, tiền tệ, ngày áp dụng, cơ sở đơn giá giờ và mã thu nhập. Các mẫu và phân công hiện có giữ nguyên cài đặt."
+    "starterDraftHelp": "Các mẫu tiêu chuẩn còn thiếu được thêm vào danh sách dưới dạng bản nháp riêng cho từng công ty. Mở bản nháp để chọn chính sách thời lượng, tiền tệ, ngày áp dụng, cơ sở đơn giá giờ và mã thu nhập. Các mẫu và phân công hiện có giữ nguyên cài đặt.",
+    "starterUnassigned": "Chưa phân công",
+    "starterFormula": "Đơn giá giờ × {multiplier} × số giờ được trả. Cần cấu hình cơ sở đơn giá giờ và số giờ được trả trước khi tính số tiền.",
+    "starterZeroHelp": "Hệ số bằng không không miễn các kiểm tra mức thanh toán tối thiểu theo quốc gia hoặc chính sách áp dụng."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",
