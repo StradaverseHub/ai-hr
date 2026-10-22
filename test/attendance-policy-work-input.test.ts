@@ -1,3 +1,4 @@
+import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
 /** Pure source geometry only, not real-capture, approval, Payroll or application acceptance. */
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
@@ -234,6 +235,12 @@ describe('independent captured raw clock replay',()=>{
     dayType:s.dayType,halfDayBefore:780,fallbackIn:null,fallbackOut:null});
   return {c,source,row:{...row,dayType:s.dayType},trace:row.calcTrace!};
  }
+ it('retains an epoch-zero raw policy identity without granting financial activation',()=>{
+  const c=context();c.selected.activation.epoch=0;
+  expect(attendancePolicyTraceBinding(c)).toMatchObject({authority:'datedPolicyOnly',activation:{epoch:0}});
+  expect(attendancePolicyWorkInput(c,clocks([[540,1080]]))).toMatchObject({state:'known'});
+  c.selected.activation.epoch=-1;expect(attendancePolicyTraceBinding(c)).toBeNull();
+ });
  it('retains the resolved policy identity and refuses missing or substituted bindings',()=>{
   const x=recorded([[540,1080]]);
   expect(x.trace.executionPolicy).toMatchObject({authority:'datedPolicyOnly',revisionId:x.c.selected.id,
