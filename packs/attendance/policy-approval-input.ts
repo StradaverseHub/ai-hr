@@ -1,5 +1,6 @@
 /** Existing application facts are source evidence, never a new final-effect capability. */
 import {isDeepStrictEqual} from 'node:util';
+import {plannedOvertimeMinutes} from '../../lib/overtime-duration';
 import type {attendanceCorrection,attendancePolicyRequestContract,attendancePolicyFinalReceipt} from '../../db/schema';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 
@@ -54,20 +55,50 @@ function finalReceiptSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyAppro
   workflowRequestId:receipt.workflowRequestId,actorUserId:receipt.actorUserId,submissionEpoch:receipt.submissionEpoch,
   recordedAt:receipt.recordedAt.toISOString(),request:structuredClone(request),workflow:structuredClone(workflow),raw:structuredClone(receipt.rawEvidence)};
 }
+/** Newly issued dated submission + exact completed decision, not an inference from old labels.
+ * This retains approved plan positions only. Current worked-day, policy binding, exclusions,
+ * rounded count allocation and cash/TOIL replay are separate requirements. */
+function positionedPlanSource(row:PolicyApprovalSourceRow,contract:PolicySubmissionSourceRow|undefined,
+ receipt:PolicyFinalReceiptSourceRow|undefined,final:ReturnType<typeof finalReceiptSource>){
+ const refuse=(reason:'submittedPlanMissing'|'finalDecisionUnavailable'|'submittedPlanMismatch'|'partialApprovalUnpositioned')=>
+  ({state:'unavailable' as const,authority:'approvedPlanOnly' as const,reason});
+ const plan=contract?.plannedWindow;
+ if(!plan)return refuse('submittedPlanMissing');
+ if(final.state!=='recorded'||!receipt)return refuse('finalDecisionUnavailable');
+ // Database time columns serialize seconds. Only exact minute endpoints are a dated plan;
+ // fractional seconds or a changed label must not be rounded into a different approved window.
+ const label=(value:string|null)=>value&&/^([01]\d|2[0-3]):[0-5]\d:00$/.test(value)?value.slice(0,5):null;
+ const start=label(row.plannedStartTime),end=label(row.plannedEndTime);
+ const duration=start&&end?plannedOvertimeMinutes(start,end):null;
+ if(duration===null||!start)return refuse('submittedPlanMismatch');
+ const from=Number(start.slice(0,2))*60+Number(start.slice(3));
+ const expected={version:1,basis:'startDateEarlierEndNextDay',sourceDate:row.attendanceDate,
+  startLabel:row.plannedStartTime,endLabel:row.plannedEndTime,from,to:from+duration,requestedMinutes:duration};
+ if(!isDeepStrictEqual(plan,expected)||!isDeepStrictEqual(receipt.workflowEvidence.submittedPlan,plan)
+  ||row.requestedOtMinutes!==duration)return refuse('submittedPlanMismatch');
+ // A scalar smaller approval cannot choose early/late minutes on the employee's behalf.
+ if(row.approvedOtMinutes!==duration)return refuse('partialApprovalUnpositioned');
+ return {state:'recorded' as const,authority:'approvedPlanOnly' as const,correctionId:row.id,
+  workflowRequestId:receipt.workflowRequestId,companyId:receipt.companyId,sourceDate:row.attendanceDate,
+  submissionEpoch:receipt.submissionEpoch,recordedAt:receipt.recordedAt.toISOString(),
+  intervals:[{from,to:from+duration}],submittedPlan:structuredClone(expected)};
+}
 export function attendancePolicyApprovalInput(policy:ResolvedAttendanceGroupPolicy,rows:readonly PolicyApprovalSourceRow[],contracts:readonly PolicySubmissionSourceRow[]=[],receipts:readonly PolicyFinalReceiptSourceRow[]=[]){
  if(rows.length>500||contracts.length>500||receipts.length>500)throw Error('The policy approval source exceeds its bounded application history.');
  const ids=new Set(rows.map(row=>row.id)),byId=new Map(contracts.map(row=>[row.correctionId,row])),finalById=new Map(receipts.map(row=>[row.correctionId,row]));
  if(ids.size!==rows.length||byId.size!==contracts.length||finalById.size!==receipts.length
   ||contracts.some(row=>!ids.has(row.correctionId))||receipts.some(row=>!ids.has(row.correctionId)))throw Error('The policy submission source is ambiguous.');
  return {authority:'sourceOnly' as const,policyRevisionId:policy.id,mode:policy.policy.overtime.approval,
-  autoMethod:policy.policy.overtime.autoMethod,activation:{...policy.activation},requests:rows.map(row=>({
+  autoMethod:policy.policy.overtime.autoMethod,activation:{...policy.activation},requests:rows.map(row=>{
+  const contract=byId.get(row.id),receipt=finalById.get(row.id),final=finalReceiptSource(policy,row,contract,receipt);
+  return ({
    id:row.id,submissionContract:submissionSource(policy,row,byId.get(row.id)),
-   finalReceipt:finalReceiptSource(policy,row,byId.get(row.id),finalById.get(row.id)),createdAt:row.createdAt.toISOString(),status:row.status,requestedMinutes:row.requestedOtMinutes,
+   finalReceipt:final,positionedPlan:positionedPlanSource(row,contract,receipt,final),createdAt:row.createdAt.toISOString(),status:row.status,requestedMinutes:row.requestedOtMinutes,
    approvedMinutes:row.approvedOtMinutes,method:row.otApprovalMethod,decidedByEmploymentId:row.decidedByEmploymentId,
    decidedAt:row.decidedAt?.toISOString()??null,appliedAt:row.appliedAt?.toISOString()??null,cancelledAt:row.cancelledAt?.toISOString()??null,
    // Legacy Plan OT labels were saved as display/audit fields. Preserve them without promoting
    // their apparent interval to a new immutable approved physical window.
    plannedWindow:{authority:'auditOnly' as const,startLabel:row.plannedStartTime,endLabel:row.plannedEndTime},
-  }))};
+  });})};
 }
 export type PolicyApprovalInput=ReturnType<typeof attendancePolicyApprovalInput>;

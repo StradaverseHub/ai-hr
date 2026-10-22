@@ -35,16 +35,32 @@ describe('owner-issued final workflow receipt',()=>{
   const f=await fixture();
   const receipts=()=>owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id));
   expect(await receipts()).toEqual([]);
+  const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,f.id));
+  expect(contract.plannedWindow).toEqual({version:1,basis:'startDateEarlierEndNextDay',sourceDate:day(1),
+   startLabel:'18:00:00',endLabel:'19:00:00',from:1080,to:1140,requestedMinutes:60});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   expect(await receipts()).toEqual([]);
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
   const rows=await receipts();expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({tenantId:b.tenantId,employmentId:f.worker.employmentId,attendanceDate:day(1),companyId:b.companyId,
-   actorUserId:f.last.ctx.userId,authority:'finalWorkflowDecisionOnly',rawEvidence:null,workflowEvidence:{routingVersion:3,stageCount:2}});
+   actorUserId:f.last.ctx.userId,authority:'finalWorkflowDecisionOnly',rawEvidence:null,workflowEvidence:{routingVersion:3,stageCount:2,submittedPlan:contract.plannedWindow}});
   expect(await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.worker.employmentId))).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
   await expect(decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved'})).rejects.toThrow();
   expect(await receipts()).toEqual(rows);
+ });
+ it('retains an explicit overnight start-date plan but never positions a mismatched scalar request',async()=>{
+  const f=await fixture();
+  const submit=async(start:string,end:string,minutes:number,offset:number)=>requestAttendanceCorrection(f.worker.ctx,
+   {employmentId:f.worker.employmentId,date:day(offset),requestedOtMinutes:minutes,plannedStartTime:start,plannedEndTime:end,
+    requestKind:'self_overtime',reason:'Fictional immutable positioned plan'});
+  const overnight=await submit('23:30','01:15',105,2),mismatched=await submit('18:00','19:00',30,3);
+  const [plan]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,overnight.correctionId));
+  expect(plan.plannedWindow).toMatchObject({sourceDate:day(2),from:1410,to:1515,requestedMinutes:105});
+  const [missing]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,mismatched.correctionId));
+  expect(missing.plannedWindow).toBeNull();
+  await expect(owner.db.update(s.attendancePolicyRequestContract).set({plannedWindow:{from:1,to:2}})
+   .where(eq(s.attendancePolicyRequestContract.correctionId,overnight.correctionId))).rejects.toThrow();
  });
  it('does not grant application writes to receipts or permit owner rewriting',async()=>{
   const f=await fixture();

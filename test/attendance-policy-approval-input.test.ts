@@ -12,7 +12,7 @@ function row():PolicyApprovalSourceRow{return {id,tenantId:id,employmentId:id,at
  decidedByEmploymentId:id,decidedAt:new Date('2026-10-22T02:00:00.002Z'),appliedAt:new Date('2026-10-23T12:00:00.003Z'),cancelledAt:null,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null,plannedStartTime:'18:00:00',plannedEndTime:'20:00:00'};}
 function finalFixture(){
  const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-  companyId:id,kind:'epoch',visibleEpoch:1,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+  companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
  const receipt:PolicyFinalReceiptSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
   companyId:id,workflowRequestId:id,actorUserId:id,authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
   requestEvidence:{requestedMinutes:r.requestedOtMinutes,approvedMinutes:r.approvedOtMinutes,method:r.otApprovalMethod,
@@ -50,7 +50,7 @@ describe('canonical policy application source facts',()=>{
  });
  it('retains the exact owner-issued submission contract separately from the final decision',()=>{
   const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-   companyId:id,kind:'epoch',visibleEpoch:1,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+   companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
   const before=structuredClone({p,r,contract}),result=attendancePolicyApprovalInput(p,[r],[contract]);
   expect(result.requests[0].submissionContract).toEqual({state:'recorded',correctionId:id,tenantId:id,employmentId:id,date:r.attendanceDate,
    companyId:id,kind:'epoch',visibleEpoch:1,recordedAt:'2026-10-22T01:00:00.123Z'});
@@ -60,7 +60,7 @@ describe('canonical policy application source facts',()=>{
  });
  it('does not treat missing, unavailable or mismatched submission proof as legacy admission or approval',()=>{
   const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-   companyId:null,kind:'unavailable',visibleEpoch:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+   companyId:null,kind:'unavailable',visibleEpoch:null,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
   expect(attendancePolicyApprovalInput(p,[r]).requests[0].submissionContract).toEqual({state:'missing'});
   expect(attendancePolicyApprovalInput(p,[r],[contract]).requests[0].submissionContract).toMatchObject({state:'recorded',kind:'unavailable',visibleEpoch:null});
   for(const field of ['tenantId','employmentId','attendanceDate'] as const){
@@ -98,6 +98,20 @@ describe('canonical policy application source facts',()=>{
    expect(attendancePolicyApprovalInput(p,[r],[contract],[changed]).requests[0].finalReceipt).toMatchObject({state:'recorded'});
   }
   expect(()=>attendancePolicyApprovalInput(p,[r],[contract],[receipt,receipt])).toThrow('ambiguous');
+ });
+ it('requires a newly owner-issued dated plan and exact final full-window approval',()=>{
+  const {p,r,contract,receipt}=finalFixture();r.approvedOtMinutes=120;receipt.requestEvidence.approvedMinutes=120;
+  const plan={version:1,basis:'startDateEarlierEndNextDay',sourceDate:r.attendanceDate,
+   startLabel:r.plannedStartTime,endLabel:r.plannedEndTime,from:1080,to:1200,requestedMinutes:120};
+  const project=()=>attendancePolicyApprovalInput(p,[r],[contract],[receipt]).requests[0].positionedPlan;
+  expect(project()).toMatchObject({state:'unavailable',reason:'submittedPlanMissing'});
+  contract.plannedWindow=plan;receipt.workflowEvidence.submittedPlan=structuredClone(plan);
+  expect(project()).toMatchObject({state:'recorded',authority:'approvedPlanOnly',sourceDate:r.attendanceDate,intervals:[{from:1080,to:1200}]});
+  r.approvedOtMinutes=90;receipt.requestEvidence.approvedMinutes=90;
+  expect(project()).toMatchObject({state:'unavailable',reason:'partialApprovalUnpositioned'});
+  r.approvedOtMinutes=120;receipt.requestEvidence.approvedMinutes=120;
+  receipt.workflowEvidence.submittedPlan={...plan,from:1081};
+  expect(project()).toMatchObject({state:'unavailable',reason:'submittedPlanMismatch'});
  });
  it('keeps the canonical application-history bound',()=>{
   expect(()=>attendancePolicyApprovalInput(policy(),Array.from({length:501},()=>row()))).toThrow('bounded');

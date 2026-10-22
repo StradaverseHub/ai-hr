@@ -205,6 +205,7 @@ CREATE TABLE public.attendance_policy_request_contract(
  company_id uuid REFERENCES public.company(id) ON DELETE RESTRICT,
  kind text NOT NULL CHECK(kind IN('epoch','unavailable')),
  visible_epoch bigint CHECK(visible_epoch BETWEEN 0 AND 9007199254740991),
+ planned_window jsonb CHECK(planned_window IS NULL OR jsonb_typeof(planned_window)='object'),
  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  CHECK((kind='epoch' AND company_id IS NOT NULL AND visible_epoch IS NOT NULL)
    OR(kind='unavailable' AND company_id IS NULL AND visible_epoch IS NULL)));
@@ -250,6 +251,7 @@ CREATE TRIGGER zz_attendance_policy_activation_epoch BEFORE INSERT ON public.att
 CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
+ plan jsonb;start_min integer;end_min integer;duration_min integer;
 BEGIN
  IF NEW.tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() THEN
   SELECT count(*),min(a.company_id::text)::uuid INTO v_count,v_company
@@ -265,8 +267,23 @@ BEGIN
   END IF;
  END IF;
  IF v_kind='unavailable' THEN v_company:=NULL;v_epoch:=NULL;END IF;
- INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch)
-  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch);
+ -- Only newly submitted explicit minute windows acquire the dated plan contract. Historical
+ -- labels, missing/equal/subminute endpoints and count-only requests cannot acquire one by replay.
+ -- Reuse the existing Plan OT convention: date belongs to start; earlier end is the next day.
+ IF v_kind='epoch' AND NEW.planned_start_time IS NOT NULL AND NEW.planned_end_time IS NOT NULL
+  AND extract(second FROM NEW.planned_start_time)=0 AND extract(second FROM NEW.planned_end_time)=0
+  AND extract(hour FROM NEW.planned_start_time)<24 AND extract(hour FROM NEW.planned_end_time)<24 THEN
+  start_min:=extract(hour FROM NEW.planned_start_time)::integer*60+extract(minute FROM NEW.planned_start_time)::integer;
+  end_min:=extract(hour FROM NEW.planned_end_time)::integer*60+extract(minute FROM NEW.planned_end_time)::integer;
+  duration_min:=(end_min-start_min+1440)%1440;
+  IF duration_min>0 AND NEW.requested_ot_minutes=duration_min THEN
+   plan:=jsonb_build_object('version',1,'basis','startDateEarlierEndNextDay','sourceDate',NEW.attendance_date,
+    'startLabel',NEW.planned_start_time,'endLabel',NEW.planned_end_time,
+    'from',start_min,'to',start_min+duration_min,'requestedMinutes',duration_min);
+  END IF;
+ END IF;
+ INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window)
+  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
@@ -465,7 +482,7 @@ BEGIN
    'plannedStartLabel',NEW.planned_start_time,'plannedEndLabel',NEW.planned_end_time,
    'checkIn',NEW.proposed_check_in,'checkOut',NEW.proposed_check_out,'clockChanges',NEW.clock_changes),
   jsonb_build_object('requestId',w.id,'routingVersion',w.routing_version,'stageCount',jsonb_array_length(w.stages),
-   'completion',to_jsonb(completion),'participants',participants),raw);
+   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window),raw);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;
