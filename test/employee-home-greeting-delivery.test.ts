@@ -43,6 +43,15 @@ async function counts(){const [row]=await owner.db.execute<{greetings:number;eve
  (SELECT count(*)::int FROM domain_event WHERE event_type='employee-home.greeting.sent') AS events,
  (SELECT count(*)::int FROM notification WHERE kind='employee-home.greeting') AS notifications,
  (SELECT count(*)::int FROM app.home_greeting_send_intent) AS intents`);return row;}
+async function until(label:string,check:()=>Promise<boolean>){
+ for(let attempt=0;attempt<200;attempt++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}
+ throw Error('Did not observe '+label);
+}
+function databaseCode(error:unknown):string|undefined{
+ for(let current=error;current&&typeof current==='object';current=(current as {cause?:unknown}).cause){
+  if(typeof (current as {code?:unknown}).code==='string')return (current as {code:string}).code;
+ }
+}
 describe('explicit Home greeting transaction and private content',()=>{
  it('reading creates nothing; explicit edited Send creates exactly one generic notification and private plaintext',async()=>{
   const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();
@@ -135,5 +144,88 @@ describe('explicit Home greeting transaction and private content',()=>{
   const response=await POST(request(p));expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('vary')).toBe('Cookie, Authorization');
   expect(await response.json()).toMatchObject({employmentId:own.employmentId,nonce:p.nonce,state:'sent'});
+ });
+ it.each(['send','erasure'] as const)('serializes an actual raw opt-out before %s without advisory/Person-FK deadlock',async operation=>{
+  const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();const p=command(own,target);
+  if(operation==='erasure')await sendHomeGreeting(own.ctx,p);
+  // Pause AFTER the real privacy BEFORE trigger but BEFORE PostgreSQL's Person FK check. This
+  // reproduces the actual competing lock order without replacing either production business owner.
+  const key=9160086586,blocker=await owner.client.reserve();let privacy:Promise<unknown>|undefined,competing:Promise<unknown>|undefined;
+  try{
+   await blocker.unsafe('SELECT pg_advisory_lock($1::bigint)',[key]);
+   await owner.db.execute(sql.raw(`CREATE FUNCTION app.home586_privacy_pause_test() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.person_id='${target.personId}'::uuid THEN PERFORM pg_advisory_xact_lock(${key}::bigint);END IF;RETURN NEW;END;$$`));
+   await owner.db.execute(sql`REVOKE ALL ON FUNCTION app.home586_privacy_pause_test() FROM PUBLIC,ai_hr_app`);
+   await owner.db.execute(sql`CREATE TRIGGER zz_home586_privacy_pause_test BEFORE INSERT ON employee_home_person_privacy_revision
+    FOR EACH ROW EXECUTE FUNCTION app.home586_privacy_pause_test()`);
+   let privacyPid=0;
+   privacy=withTenant(target.ctx,async tx=>{
+    await tx.execute(sql`SET LOCAL statement_timeout='10s'`);
+    const [pid]=await tx.execute<{pid:number}>(sql`SELECT pg_backend_pid() AS pid`);privacyPid=pid.pid;
+    await tx.insert(s.employeeHomePersonPrivacyRevision).values({tenantId:b.tenantId,personId:target.personId,ordinal:1,
+     hideBirthday:true,hideAnniversary:false,createdByUserId:target.ctx.userId!});
+   });
+   // Attach handlers immediately; intentionally failing old-behaviour probes must not emit an
+   // unhandled rejection before both actual transactions have completed.
+   const privacyResult=privacy.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+   await until('raw privacy insert paused after its canonical trigger',async()=>{
+    if(!privacyPid)return false;
+    const [row]=await owner.db.execute<{waiting:boolean}>(sql`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=${privacyPid} AND locktype='advisory' AND NOT granted) AS waiting`);
+    return row.waiting;
+   });
+   competing=operation==='send'?sendHomeGreeting(own.ctx,p):erasePersonPii(adminCtx(b),{
+    subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'fictional-racing-home586',reason:'Fictional concurrent erasure'});
+   const competingResult=competing.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+   await until('competing canonical command waiting on its real advisory barrier',async()=>{
+    const [row]=await owner.db.execute<{waiting:boolean}>(sql`SELECT EXISTS(SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid
+     WHERE a.datname=current_database() AND a.pid<>${privacyPid} AND l.locktype='advisory' AND NOT l.granted
+      AND (a.query LIKE '%home_greeting_send_begin%' OR a.query LIKE '%home_greeting_erasure_begin%')) AS waiting`);
+    return row.waiting;
+   });
+   await blocker.unsafe('SELECT pg_advisory_unlock($1::bigint)',[key]);
+   const [privacyDone,otherDone]=await Promise.all([privacyResult,competingResult]);
+   expect(privacyDone.status).toBe('fulfilled');
+   if(operation==='send'){
+    expect(otherDone.status).toBe('rejected');
+    expect(otherDone.status==='rejected'?databaseCode(otherDone.reason):null).toBe('42501');
+    expect(await counts()).toEqual({greetings:0,events:0,notifications:0,intents:0});
+   }else{
+    expect(otherDone.status).toBe('fulfilled');
+    if(otherDone.status==='fulfilled')expect(otherDone.value).toMatchObject({erased:expect.arrayContaining(['homeGreetingMessages'])});
+   }
+  }finally{
+   await blocker.unsafe('SELECT pg_advisory_unlock($1::bigint)',[key]);blocker.release();
+   await Promise.allSettled([privacy,competing].filter((value):value is Promise<unknown>=>!!value));
+   await owner.db.execute(sql`DROP TRIGGER IF EXISTS zz_home586_privacy_pause_test ON employee_home_person_privacy_revision`);
+   await owner.db.execute(sql`DROP FUNCTION IF EXISTS app.home586_privacy_pause_test()`);
+  }
+ });
+ it('joins the service privacy barrier before its advisory, while an actual Send owns the Access barrier',async()=>{
+  const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();const p=command(own,target);
+  let releaseSend!:()=>void,accessHeld!:()=>void;
+  const continueSend=new Promise<void>(resolve=>{releaseSend=resolve;}),held=new Promise<void>(resolve=>{accessHeld=resolve;});
+  const sending=withTenant(own.ctx,async tx=>{
+   await tx.execute(sql`SET LOCAL statement_timeout='10s'`);
+   await tx.execute(sql`SELECT app.access_profile_policy_write_lock()`);accessHeld();await continueSend;
+   const [row]=await tx.execute<{receipt:{greetingId:string}}>(sql`SELECT app.home_greeting_send_begin(${p.employmentId}::uuid,
+    ${p.recipientEmploymentId}::uuid,${p.kind},${p.occurrenceDate}::date,${p.nonce}::uuid,${p.message}) AS receipt`);
+   await projectHomeGreetingInTx(tx,row.receipt.greetingId);return row.receipt;
+  });
+  const sendingResult=sending.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+  let privacy:Promise<unknown>|undefined;
+  try{
+   await Promise.race([held,sendingResult.then(()=>{throw Error('Send ended before acquiring its canonical barrier');})]);
+   privacy=saveOwnHomePersonPrivacy(target.ctx,{expectedOrdinal:0,hideBirthday:true,hideAnniversary:false});
+   const privacyResult=privacy.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+   await until('service privacy write waiting before its own advisory',async()=>{
+    const [row]=await owner.db.execute<{waiting:boolean}>(sql`SELECT EXISTS(SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid
+     WHERE a.datname=current_database() AND l.locktype='advisory' AND NOT l.granted AND a.query LIKE '%access_profile_policy_write_lock%') AS waiting`);
+    return row.waiting;
+   });
+   releaseSend();
+   const [sent,changed]=await Promise.all([sendingResult,privacyResult]);
+   expect(sent.status).toBe('fulfilled');expect(changed.status).toBe('fulfilled');
+   expect(await counts()).toEqual({greetings:1,events:1,notifications:1,intents:0});
+  }finally{releaseSend();await Promise.allSettled([sending,...(privacy?[privacy]:[])]);}
  });
 });

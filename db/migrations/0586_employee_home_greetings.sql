@@ -473,3 +473,34 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.home_greeting_read(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.home_greeting_read(uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Join the Access/profile barrier BEFORE the existing person advisory lock and its later FK.
+-- The service joins the same barrier before its own advisory acquisition. All old checks remain.
+CREATE OR REPLACE FUNCTION app.prepare_employee_home_person_privacy_revision() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE previous_ordinal integer;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ IF TG_OP<>'INSERT' THEN
+  RAISE EXCEPTION 'Retain employee celebration privacy history' USING ERRCODE='23514';
+ END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE
+  OR app.is_self_person(NEW.person_id) IS NOT TRUE THEN
+  RAISE EXCEPTION 'The own celebration privacy context is unavailable' USING ERRCODE='42501';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.person p WHERE p.id=NEW.person_id AND p.tenant_id=NEW.tenant_id) THEN
+  RAISE EXCEPTION 'The own celebration privacy context is unavailable' USING ERRCODE='42501';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('home-person-privacy:'||NEW.tenant_id::text||':'||NEW.person_id::text,0));
+ SELECT ordinal INTO previous_ordinal FROM public.employee_home_person_privacy_revision
+  WHERE tenant_id=NEW.tenant_id AND person_id=NEW.person_id ORDER BY ordinal DESC LIMIT 1;
+ IF NEW.ordinal<>coalesce(previous_ordinal,0)+1 THEN
+  RAISE EXCEPTION 'Celebration privacy changed; reload before saving' USING ERRCODE='23514';
+ END IF;
+ -- Actor and time attest this command; direct app SQL cannot impersonate another person or backdate it.
+ NEW.created_by_user_id:=app.current_user_id();NEW.created_at:=clock_timestamp();
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.prepare_employee_home_person_privacy_revision() FROM PUBLIC,ai_hr_app;

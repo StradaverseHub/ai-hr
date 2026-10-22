@@ -30,6 +30,9 @@ export function readOwnHomePersonPrivacy(ctx:SessionContext):Promise<HomePersonP
 export function saveOwnHomePersonPrivacy(ctx:SessionContext,raw:unknown):Promise<HomePersonPrivacy>{
  const input=validateHomePersonPrivacyInput(raw);
  return withTenant(ctx,async tx=>{
+  // Same first barrier as greeting Send/erasure. Taking the person advisory lock first would
+  // invert their Person-row/FK order; the SQL trigger repeats this for direct application inserts.
+  await tx.execute(sql`SELECT app.access_profile_policy_write_lock()`);
   const personId=await ownPersonTx(tx,ctx);if(!personId)throw new HomePersonPrivacyAccessError();
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`home-person-privacy:${ctx.tenantId}:${personId}`},0))`);
   const previous=await currentTx(tx,ctx,personId);
