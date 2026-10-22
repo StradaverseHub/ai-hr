@@ -22,5 +22,8 @@ describe('Home claims destination uses its selected own employment',()=>{
  it.each(['', '8bf4da30-48a9-4a4c-bf18-37649a9863f3',[own]])('refuses explicit unavailable selection %s before any claims read',async employmentId=>{
   await expect(Page({searchParams:Promise.resolve({employmentId})})).rejects.toThrow('notFound');expect(state.types).not.toHaveBeenCalled();expect(state.claims).not.toHaveBeenCalled();expect(state.legacy).not.toHaveBeenCalled();
  });
+ it('does not silently turn an unavailable selected draft into a new claim',async()=>{
+  await expect(Page({searchParams:Promise.resolve({employmentId:own,draft:'unavailable-draft'})})).rejects.toThrow('notFound');
+ });
  it('preserves the established entry point when no subject is supplied',async()=>{await Page({searchParams:Promise.resolve({})});expect(state.legacy).toHaveBeenCalled();expect(state.claims).toHaveBeenCalledWith(expect.anything(),'legacy-first');});
 });

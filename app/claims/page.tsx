@@ -72,6 +72,7 @@ export default async function ClaimsPage({
   const drafts = allClaims.filter((c) => c.status === 'draft');
   const claims = allClaims.filter((c) => c.status !== 'draft');
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
+  if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
     ? {
         id: editing.id,

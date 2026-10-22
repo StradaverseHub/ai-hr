@@ -65,6 +65,7 @@ export default async function MyAttendanceDayPage({
     );
   }
 
+  const subjectDescription=[selected.name,...(typeof sp.employmentId==='string'?[selected.company,selected.employeeCode]:[]),fmtDayDate(date,locale)].filter(Boolean).join(' · ');
   const [rows, punchesByAttendance, requestHistory] = await Promise.all([
     attendanceForEmploymentRange(s, selected.employmentId, date, date),
     attendancePunchesForRange(s, selected.employmentId, date, date),
@@ -85,7 +86,7 @@ export default async function MyAttendanceDayPage({
   if (!row) {
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('dayTitle')} description={`${selected.name} · ${fmtDayDate(date, locale)}`} />
+        <PageHeader title={t('dayTitle')} description={subjectDescription} />
         <Link href={backHref} className="text-sm font-medium text-primary hover:underline">
           ← {t('myDayBack')}
         </Link>
@@ -128,7 +129,7 @@ export default async function MyAttendanceDayPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('dayTitle')} description={`${selected.name} · ${fmtDayDate(date, locale)}`} />
+      <PageHeader title={t('dayTitle')} description={subjectDescription} />
 
       <Link href={backHref} className="inline-block text-sm font-medium text-primary hover:underline">
         ← {t('myDayBack')}

@@ -25,7 +25,7 @@ vi.mock('../packs/attendance/service', async () => ({
 import Page from '../app/attendance/my-records/[date]/page';
 beforeEach(() => {
   vi.clearAllMocks(); state.locale = 'en';
-  state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second'}]);
+  state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second',company:'Fictional second employer',employeeCode:'SECOND'}]);
   state.own.mockResolvedValue({ employmentId: 'manager-own', name: 'Own day' });
   state.rows.mockResolvedValue([{ date: '2025-06-04', attendanceId: 'own-row', status: 'present', context: null, dayType: 'workday', shiftCode: 'AM01', shiftStart: '09:00', shiftEnd: '18:00', scheduledMinutes: 480, workedMinutes: 480, checkInAt: '09:00', checkOutAt: '18:00', lateMinutes: 0, earlyOutMinutes: 0, otMinutes: 0, calcTrace: null }]);
   state.punches.mockResolvedValue(new Map()); state.requests.mockResolvedValue([]);
@@ -53,6 +53,7 @@ describe('employee day render', () => {
   it('retains the selected own subject in reads, Home return and correction form',async()=>{
     const html=await render({employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',home:'1'});
     expect(state.rows).toHaveBeenCalledWith(expect.anything(),'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd','2025-06-04','2025-06-04');expect(state.own).not.toHaveBeenCalled();
+    expect(html).toContain('Fictional second employer');expect(html).toContain('SECOND');
     expect(html).toContain('/?employmentId=8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');expect(html).toContain('name="employmentId" value="8cfa58c2-dd92-4eb6-8f8c-ab19406115fd"');
   });
   it.each(['', 'bfd90e63-c78c-4a10-8c51-56e878f42722', ['8cfa58c2-dd92-4eb6-8f8c-ab19406115fd']])('unavailable explicit selector is not a first-subject fallback: %s',async employmentId=>{

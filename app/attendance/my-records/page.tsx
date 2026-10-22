@@ -201,7 +201,7 @@ export default async function MyAttendanceRecordsPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('myRecords.title')} />
+      <PageHeader title={t('myRecords.title')} description={selectedQuery.employmentId?[me.company,me.employeeCode].filter(Boolean).join(' · '):undefined} />
       <Link href={selectedQuery.employmentId?'/?'+new URLSearchParams(selectedQuery):attendanceCalendarBackHref({}, from)} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← {t('myDayBack')}</Link>
       <ErrorBanner message={sp.error} />
 
