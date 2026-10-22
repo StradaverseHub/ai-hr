@@ -92,6 +92,9 @@ describe('current-principal and independent-purpose canonical photo consumers',(
   await saveProfileVisibilityPolicy(admin(),{policy:{version:3,fields,primaryOnly:[]},withdrawnReason:'Fictional hidden own photo acceptance'});
   expect(await getPersonPhoto(subject.ctx,subject.personId)).toBeNull();
   expect(await getPersonPhoto({...subject.ctx,personId:randomUUID()},subject.personId)).toBeNull();
+  expect(await hasPersonPhoto({...subject.ctx,personId:randomUUID()},subject.personId)).toBe(false);
+  expect(await employmentPhotoIds({...subject.ctx,personId:randomUUID()},[subject.employmentId])).toEqual(new Map());
+  expect((await request({...subject.ctx,personId:randomUUID()},subject.personId)).status).toBe(404);
   expect((await getPersonPhoto(admin(),subject.personId))?.content).toEqual(bytes);
  });
 });

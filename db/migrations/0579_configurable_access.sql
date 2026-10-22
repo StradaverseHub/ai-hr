@@ -3095,3 +3095,9 @@ REVOKE ALL ON FUNCTION app.access_privacy_value_complete() FROM PUBLIC,ai_hr_app
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER access_privacy_value_complete AFTER INSERT ON app.access_privacy_value_intent
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_privacy_value_complete();
+--> statement-breakpoint
+-- Shared avatar bytes retain existing self/admin/administrative-directory authority. Require the
+-- actual current principal as well: stale/forged session grants must not read bytes or existence
+-- through either the canonical route or direct restricted-runtime SQL. This is not a Workforce grant.
+CREATE POLICY access_person_photo_current_read ON person_photo AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.principal_snapshot_current());

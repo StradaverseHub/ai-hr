@@ -174,17 +174,29 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
   });
 }
 
-/** Read a person's photo bytes for the serve route (RLS scopes visibility to can_see_person). */
+/** Shared avatars retain their independent directory/self visibility. The actual login proves
+ * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
+async function photoReadPredicateTx(tx:Tx,ctx:SessionContext){
+  const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
+  if(principal?.current!==true)return sql`false`;
+  if(!isAdmin(ctx)){
+    const policy=await freshProfileEditPolicyTx(tx,ctx);
+    if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
+  }
+  return sql`true`;
+}
+
+/** Read shared photo bytes. RLS repeats the current-principal proof before the route checks ETags. */
 export async function getPersonPhoto(
   ctx: SessionContext,
   personId: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
   return withTenant(ctx, async (tx) => {
-    if(personId===ctx.personId&&!isAdmin(ctx)){const policy=await freshProfileEditPolicyTx(tx,ctx);if(!policy.visible.has('profile.personal_details.photo'))return null;}
+    const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ content: personPhoto.content, fileName: personPhoto.fileName, mimeType: personPhoto.mimeType })
       .from(personPhoto)
-      .where(eq(personPhoto.personId, personId))
+      .where(and(eq(personPhoto.personId, personId),visible))
       .limit(1);
     return row ? { content: row.content, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
@@ -194,10 +206,11 @@ export async function getPersonPhoto(
  *  photo the caller may see (RLS-scoped). */
 export async function hasPersonPhoto(ctx: SessionContext, personId: string): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
+    const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ id: personPhoto.id })
       .from(personPhoto)
-      .where(eq(personPhoto.personId, personId))
+      .where(and(eq(personPhoto.personId, personId),visible))
       .limit(1);
     return row != null;
   });
@@ -241,11 +254,12 @@ export async function employmentPhotoIds(
   const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
   if (ids.length === 0) return new Map();
   return withTenant(ctx, async (tx) => {
+    const visible=await photoReadPredicateTx(tx,ctx);
     const rows = await tx
       .select({ employmentId: employment.id, personId: personPhoto.personId })
       .from(employment)
       .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
-      .where(inArray(employment.id, ids));
+      .where(and(inArray(employment.id, ids),visible));
     return new Map(rows.map((r) => [r.employmentId, r.personId]));
   });
 }

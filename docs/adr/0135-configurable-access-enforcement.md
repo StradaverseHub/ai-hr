@@ -1,5 +1,17 @@
 # ADR-0135 — Configurable access has one effective-permission interpretation
 
+The shared canonical avatar route retains its independent self/admin/administrative-directory
+authority; a Workforce denial does not silently revoke that separate course, and a bounded Workforce
+grant does not grant arbitrary photo bytes. An executed current-principal consumer probe exposed
+forged-role byte/presence/raw-SQL reads and a revoked real HR session receiving 304 for a held ETag.
+A separate executed positive/negative policy case showed that substituting the JavaScript Person
+could bypass hidden-own-photo handling. The unapplied0579 repair adds a restrictive current-principal
+SELECT policy without broadening the existing row policy. Canonical byte, existence and bulk owners
+also use actual SQL login ownership for hidden-own-photo filtering. The regression uses real
+restricted-runtime queries and the real route with its session lookup bound to actual fixture
+principals. The source repair still requires focused verification, actual app acceptance and both
+final restricted-owner upgrades before release; prior failed receipts remain preserved.
+
 Status: implementation in progress; source draft only; no migration execution or release yet.
 
 The approved Security plan is not an editable copy of Function Access. The existing grid is a reference over route guards; record authority also lives in SQL, service owners, dated organisation relationships and specialised payroll/onboarding permissions. A role-to-group wrapper alone cannot satisfy individual-deny precedence over the actual operations.
