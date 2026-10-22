@@ -3326,6 +3326,27 @@
       "when": 1791900000055,
       "tag": "0575_attendance_request_participant_review",
       "breakpoints": true
+    },
+    {
+      "idx": 591,
+      "version": "7",
+      "when": 1791900000071,
+      "tag": "0591_my_tp3_private_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 592,
+      "version": "7",
+      "when": 1791900000072,
+      "tag": "0592_attendance_workflow_v4",
+      "breakpoints": true
+    },
+    {
+      "idx": 593,
+      "version": "7",
+      "when": 1791900000073,
+      "tag": "0593_my_ea_source_eligibility",
+      "breakpoints": true
     }
   ]
 }
