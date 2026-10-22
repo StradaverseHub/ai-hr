@@ -30,7 +30,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource'){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -46,6 +46,17 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  if(fixedHourlyRate!==undefined)tier.payment.rate={id:'fictional_hourly',unit:'moneyPerHour',type:'literal',value:fixedHourlyRate,currency:'MYR'};
  if(moneyScope==='cap')definition.paymentCap={id:'parent_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
  if(moneyScope==='dayMapping')definition.moneyRounding={stage:'dayMapping',mode:'halfUp'};
+ if(moneyScope==='dayTier'||moneyScope==='sessionTier'){
+  definition.rates[0].accumulation=moneyScope==='dayTier'?'day':'session';tier.to='10';
+  tier.payment.multiplier={id:'first_multiplier',type:'literal',unit:'scalar',value:'1'};
+  definition.rates[0].tiers.push({...structuredClone(tier),id:'second_tier',from:'10',to:null,
+   payment:{...tier.payment,rate:{id:'second_rate',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'},
+    multiplier:{id:'second_multiplier',type:'literal',unit:'scalar',value:'1'}}});
+ }
+ if(moneyScope==='dayCharge'||moneyScope==='sessionCharge')tier.payment={method:'flat',basis:moneyScope==='dayCharge'?'day':'session',
+  chargeId:'one_parent_charge',amount:{id:'parent_charge_amount',type:'literal',unit:'money',currency:'MYR',value:'25'}};
+ if(moneyScope==='moneyResource')definition.deductions=[{id:'one_parent_money_resource',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:earning.id,
+  when:{id:'resource_when',type:'constant',value:true},amount:{id:'resource_amount',type:'literal',unit:'money',currency:'MYR',value:'1'}}];
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
@@ -325,6 +336,34 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional one-parent money scope'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+
+ it.each([
+  ['dayTier','600'],['sessionTier','600'],['dayCharge','2500'],['sessionCharge','2500'],['moneyResource','500'],
+ ] as const)('replays a genuine activated %s across both dates in one parent money scope',async(moneyScope,amount)=>{
+  // The canonical capture, effective policy, activated formula and resource reader all run.
+  // No restored policy or disabled trigger is involved in these prospective Auto cases.
+  const f=await fixture('auto','12','actual',false,moneyScope),p={employmentId:f.employmentId,date:day(2)};
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:20});
+  const pricing=attendancePolicyPricingProposal(snapshot),cash=attendancePolicyCashReplay(snapshot);
+  expect(pricing).toMatchObject({state:'proposed',amountMinorUnits:amount});
+  expect(cash).toMatchObject({state:'known',minutes:20,amountMinorUnits:amount});
+  if(pricing.state!=='proposed')throw Error('Expected complete canonical parent price');
+  expect(pricing.parts).toHaveLength(2);
+  expect(pricing.parts.every(part=>part.pricing.moneyScope.kind==='parent'&&part.pricing.moneyScope.amountMinorUnits===amount)).toBe(true);
+  if(moneyScope==='moneyResource'){
+   expect(snapshot.input.resources.find(resource=>resource.resource==='postOtBreak')).toMatchObject({basis:'day',evidence:'policyCapacity',measure:{unit:'minutes',quantity:{state:'known',value:'20'}}});
+   expect(pricing.parts[0].pricing.trace.filter(step=>step.kind==='deduction'&&step.id==='one_parent_money_resource')).toHaveLength(1);
+  }
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional canonical parent money resource journey'})).toMatchObject({status:'recorded'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
+  expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
   expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
