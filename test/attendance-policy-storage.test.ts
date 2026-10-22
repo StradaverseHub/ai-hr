@@ -191,6 +191,25 @@ describe('immutable non-payable policy part storage',()=>{
   expect(attendancePolicyCurrentDurationMatches(refused,proof)).toBe(false);
  });
 
+ it('uses each dated child salary and binds next-day pay changes without changing duration',async()=>{
+  const f=await fixture('auto');
+  const [first,second]=await owner.db.insert(s.compensation).values([
+   {tenantId:b.tenantId,employmentId:f.employmentId,basicSalary:'4000',currency:'MYR',validFrom:day(-10),validTo:day(3)},
+   {tenantId:b.tenantId,employmentId:f.employmentId,basicSalary:'8000',currency:'MYR',validFrom:day(3)},
+  ]).returning();
+  const p={employmentId:f.employmentId,date:day(2)},read=()=>withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  const before=await read(),priced=attendancePolicyPricingProposal(before),duration=attendancePolicyDurationReplay(before);
+  expect(before.policyPricingFacts?.[day(2)].basicSalary).toMatchObject({state:'known',value:'4000.00',provenance:{reference:first.id,asOf:day(2)}});
+  expect(before.policyPricingFacts?.[day(3)].basicSalary).toMatchObject({state:'known',value:'8000.00',provenance:{reference:second.id,asOf:day(3)}});
+  expect(priced).toMatchObject({state:'proposed',amountMinorUnits:'37500'});
+  if(priced.state!=='proposed')throw Error('Expected exact dated pay facts');
+  expect(priced.parts.map(row=>row.pricing.amountMinorUnits)).toEqual(['12500','25000']);
+  await owner.db.update(s.compensation).set({basicSalary:'9000'}).where(eq(s.compensation.id,second.id));
+  const after=await read();expect(attendancePolicyPricingProposal(after)).toMatchObject({state:'proposed',amountMinorUnits:'40625'});
+  expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);expect(after.referenceDigest).not.toBe(before.referenceDigest);
+  expect(attendancePolicyDurationReplay(after)).toEqual(duration);
+ });
+
  it('records and replays exact central pricing for both dated parts without enabling payment',async()=>{
   const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));

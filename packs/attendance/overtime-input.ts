@@ -44,6 +44,15 @@ function sumRecordedMoney(first: string, second: string): string | null {
   return String(value / BigInt('100')) + '.' + String(value % BigInt('100')).padStart(2, '0');
 }
 
+/** One money-fact projection for the actual period-effective compensation owner. */
+function recordedSalaryFacts(salary:typeof compensation.$inferSelect|null,currency:string,date:string):Pick<OvertimeFacts,'basicSalary'|'calculationBase'>{
+ if(!salary||salary.currency!==currency){const reason=salary?'recordedCurrencyMismatch':'recordedCompensationUnavailable';
+  return {basicSalary:unknown(reason),calculationBase:unknown(reason)};}
+ const provenance:OvertimeProvenance={owner:'payroll',reference:salary.id,asOf:date,basis:'effectiveDated'};
+ const base=sumRecordedMoney(salary.basicSalary,salary.monthlyAllowance);
+ return {basicSalary:known(salary.basicSalary,provenance),calculationBase:base===null?unknown('invalidRecordedMoney'):known(base,provenance)};
+}
+
 /** Called at the actual first current-day check-in, never by a client preview or historical import. */
 export async function captureCanonicalOvertimePersonnelContextTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}) {
   assertModuleGate(ctx, 'attendance');
@@ -162,14 +171,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   facts.actualWorkingMinutes = minute(day.workedMinutes, attendanceProvenance('workedMinutes'));
   facts.requiredWorkingMinutes = minute(trace ? trace.schedule.normalMinutesOverride ?? trace.schedule.scheduledMinutes : null, attendanceProvenance('requiredWorkingMinutes'));
   facts.lateMinutes = minute(day.lateMinutes, attendanceProvenance('lateMinutes'));
-  if (salary && salary.currency === entity.currency) {
-    const provenance: OvertimeProvenance = {owner: 'payroll', reference: salary.id, asOf: p.date, basis: 'effectiveDated'};
-    facts.basicSalary = known(salary.basicSalary, provenance);
-    const base = sumRecordedMoney(salary.basicSalary, salary.monthlyAllowance);
-    facts.calculationBase = base == null ? unknown('invalidRecordedMoney') : known(base, provenance);
-  } else {
-    for (const field of ['basicSalary', 'calculationBase'] as const) facts[field] = unknown(salary ? 'recordedCurrencyMismatch' : 'recordedCompensationUnavailable');
-  }
+  Object.assign(facts,recordedSalaryFacts(salary,entity.currency,p.date));
   const work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedIntervals(day, punches)});
   // Use the same latest approved OT-bearing decision the canonical landing owner reasserts. A pending
   // later request does not silently revoke a completed decision; its exact state is included in the digest.
@@ -216,12 +218,27 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyExecutionProposal=selectedPolicy?(purpose==='duration'
     ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId)
     :attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput,policyApprovalInput,ctx.tenantId)):undefined;
+  // A dated child uses its own compensation selection, never the parent shift's salary by guess.
+  // This bounded money-only read does not enter the import path or TOIL duration source.
+  let policyPricingFacts:CanonicalOvertimeSnapshot['policyPricingFacts'];
+  if(selectedPolicy&&purpose==='money'&&policyExecutionContext?.state==='policy'){
+    policyPricingFacts={};
+    const dates=[...new Set(policyExecutionContext.calendar.filter(row=>row.state==='known'&&row.companyId===entity.id).map(row=>row.date))].sort();
+    if(dates.length>3)unavailable();
+    const companies=await provenCompanyDatesTx(tx,dates.map(date=>({employmentId:p.employmentId,date})));
+    for(const date of dates){
+      if(companies.get(p.employmentId+'|'+date)?.companyId!==entity.id)continue;
+      const rows=date===p.date?salaries:await tx.select().from(compensation).where(and(eq(compensation.tenantId,ctx.tenantId),
+        eq(compensation.employmentId,p.employmentId),compensationEffectiveOn(date))).orderBy(asc(compensation.validFrom),asc(compensation.id)).limit(2);
+      policyPricingFacts[date]=recordedSalaryFacts(rows.length===1?rows[0]:null,entity.currency,date);
+    }
+  }
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyExecutionProposal}:{})});
+    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
     ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal,
-      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{})}:{}),
+      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -237,6 +254,6 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
       ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput,
-        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{})}:{} )}),
+        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),
   };
 }

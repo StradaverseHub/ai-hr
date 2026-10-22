@@ -5,7 +5,7 @@ import {evaluateOvertimePolicyAllocatedPrice,type OvertimePolicyAllocatedPrice} 
 import type {OvertimeInput,OvertimeFact} from '../../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../../lib/overtime-pattern-binding';
 export type PolicyPricingProposal=
- |{state:'unavailable';authority:'policyPricingProposalOnly';reason:'durationUnavailable'|'formulaUnavailable'|'sourcePlacementUnavailable'|'pricingScopeUnavailable'|'partPricingUnavailable'}
+ |{state:'unavailable';authority:'policyPricingProposalOnly';reason:'durationUnavailable'|'formulaUnavailable'|'sourcePlacementUnavailable'|'pricingScopeUnavailable'|'partPricingUnavailable'|'datedFactsUnavailable'}
  |{state:'proposed';authority:'policyPricingProposalOnly';durationDigest:string;currency:{code:string;minorScale:number};amountMinorUnits:string;
    parts:{sequence:number;date:string;definitionDigest:string;pricing:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>}[]};
 export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapshot):PolicyPricingProposal{
@@ -43,11 +43,12 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
     if(covered!==allocation.to-allocation.from)return refuse('sourcePlacementUnavailable');
    }
    if(segments.reduce((sum,s)=>sum+(s.rawMinutes.state==='known'?Number(s.rawMinutes.value):0),0)!==part.allocatedPayableMinutes)return refuse('sourcePlacementUnavailable');
-   const sessions=new Set(segments.map(s=>s.sessionId));
+   const sessions=new Set(segments.map(s=>s.sessionId)),salary=snapshot.policyPricingFacts?.[part.date];
+   if(!salary||!Object.hasOwn(salary,'basicSalary')||!Object.hasOwn(salary,'calculationBase'))return refuse('datedFactsUnavailable');
    const input:OvertimeInput<OvertimePolicyBinding>={...snapshot.input,mode:'actual',layer:'raw',sessionGranularity:'recorded',patternVersionId:formula.versionId,assignmentId:null,
     policyBinding:{kind:'attendanceGroupPolicy',revisionId:proposal.policyRevisionId,dayClass:part.dayClass,calendarDate:part.date,
      dayOffset:(Date.parse(part.date+'T00:00:00Z')-Date.parse(snapshot.input.source.date+'T00:00:00Z'))/86400000 as 0|1|2},
-    facts:{...snapshot.input.facts,dayType:fact(part.moneyDay)},segments,
+    facts:{...snapshot.input.facts,...salary,dayType:fact(part.moneyDay)},segments,
     resources:snapshot.input.resources.filter(r=>r.basis==='day'||sessions.has(r.sessionId!)),
     approval:{status:'notRequired',minutes:fact(String(part.allocatedPayableMinutes)),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}};
    const pricing=evaluateOvertimePolicyAllocatedPrice(formula.definition,input);

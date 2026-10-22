@@ -76,6 +76,7 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
   const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:'',
    attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
    policyApprovalInput:input.approvals,policyExecutionProposal:input.proposal,
+   policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
    policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};
