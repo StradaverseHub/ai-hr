@@ -241,7 +241,7 @@ function validateSnapshot(snapshot:CanonicalOvertimeSnapshot,ctx:SessionContext,
    ||snapshot.resolvedLegacyRuleId!==policy.ruleId)fail('unavailable','The dated policy does not bind the recorded employer and Schedule Group.');
   if(!policy.activation)fail('unavailable','The dated policy activation evidence is unavailable.');
   uuid(policy.activation.actorUserId);
-  if(!Number.isFinite(Date.parse(policy.activation.recordedAt))||typeof policy.activation.reason!=='string'||!policy.activation.reason.trim())
+  if(!Number.isSafeInteger(policy.activation.epoch)||policy.activation.epoch<0||!Number.isFinite(Date.parse(policy.activation.recordedAt))||typeof policy.activation.reason!=='string'||!policy.activation.reason.trim())
    fail('unavailable','The dated policy activation evidence is unavailable.');
   validateAttendanceGroupPolicy(policy.policy,4320);
  }

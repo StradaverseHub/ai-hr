@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {and,asc,eq} from 'drizzle-orm';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -169,6 +169,61 @@ describe('dated-policy raw writer routing',()=>{
   await owner.db.delete(s.assignment).where(eq(s.assignment.employmentId,f.employmentId));
   expect(await detected(f.employmentId,day(1))).toBe(true);
   await expect(withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}))).rejects.toMatchObject({code:'unavailable'});
+ });
+ it('records an owner-issued company policy epoch and exposes no application write privilege',async()=>{
+  const f=await fixture();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,reason:'Fictional policy epoch receipt'});
+  const [receipt]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)));
+  expect(receipt).toMatchObject({tenantId:b.tenantId,employmentId:f.employmentId,attendanceDate:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:0});
+  const [privileges]=await owner.db.execute(sql`select
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','SELECT') as readable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','INSERT') as insertable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','UPDATE') as updateable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','DELETE') as deleteable,
+   has_table_privilege('ai_hr_app','app.attendance_policy_company_epoch','SELECT') as epoch_readable,
+   has_function_privilege('ai_hr_app','app.lock_attendance_policy_epoch(uuid,uuid)','EXECUTE') as epoch_callable`);
+  expect(privileges).toEqual({readable:true,insertable:false,updateable:false,deleteable:false,epoch_readable:false,epoch_callable:false});
+  await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyRequestContract).set({visibleEpoch:99})
+   .where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)))).rejects.toThrow();
+  expect(await withTenant(adminCtx(await seedBase()),tx=>tx.select().from(s.attendancePolicyRequestContract)
+   .where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)))).toEqual([]);
+ });
+ it('does not admit a post-policy application to legacy mode through a backdated createdAt field',async()=>{
+  const f=await fixture(),revision=await f.save();
+  const [request]=await withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId:f.employmentId,
+   attendanceDate:day(1),requestedOtMinutes:120,plannedStartTime:'18:00',plannedEndTime:'20:00',
+   reason:'Fictional untrusted timestamp',createdAt:new Date('2000-01-01T00:00:00Z')}).returning());
+  const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.id));
+  const [storedPolicy]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+  expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,companyId:b.companyId});expect(receipt.visibleEpoch).toBeGreaterThan(0);
+  await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await clock(f.employmentId,day(1));
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+ });
+ it('serializes a concurrent submission after the actual policy commit instead of inferring from timestamps',async()=>{
+  const f=await fixture();let release!:()=>void,inserted!:()=>void,rejected!:(error:unknown)=>void;
+  const hold=new Promise<void>(resolve=>{release=resolve;});const reached=new Promise<void>((resolve,reject)=>{inserted=resolve;rejected=reject;});
+  let policyPid=0;
+  const writing=withTenant(ctx,async tx=>{
+   const [pid]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];policyPid=pid.pid;
+   await tx.insert(s.attendanceGroupPolicyRevision).values({tenantId:b.tenantId,companyId:b.companyId,ruleId:f.ruleId,ordinal:1,effectiveFrom:day(1),policy:policy(),
+    reason:'Fictional concurrent policy activation',createdByUserId:ctx.userId!});inserted();await hold;
+  }).catch(error=>{rejected(error);throw error;});
+  try{await reached;}catch(error){await writing.catch(()=>{});throw error;}
+  const submitting=requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,reason:'Fictional concurrent application'});
+  void submitting.catch(()=>{});
+  let observed=false;
+  try{
+   const until=Date.now()+5000;
+   while(Date.now()<until){
+    const [waiting]=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database()
+     and ${policyPid}::integer=any(pg_blocking_pids(pid))) as blocked`) as unknown as {blocked:boolean}[];
+    if(waiting.blocked){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+   }
+  }finally{release();}
+  const [,request]=await Promise.all([writing,submitting]);expect(observed).toBe(true);
+  const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId));
+  expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:1,companyId:b.companyId});
  });
  it('preserves a plan approved before policy activation under its original owner and frozen method',async()=>{
   const f=await fixture();

@@ -22,7 +22,7 @@ function fixture():AttendanceGroupPolicyReview{
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:10,earlyGraceMinutes:15,skipLatenessIfIncomplete:true},
   overtime:{enabled:false,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:true,approval:'manual',autoMethod:'intersect',rounding:{mode:'nearest',step:15},
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map((key,index)=>[key,{minimumMinutes:index*10,maximumMinutes:index===0?0:index===1?null:120,patternVersionId:index===0?id(4):index===2?id(8):null}])) as AttendanceGroupPolicy['overtime']['days']}};
- const revision=(ordinal:number,effectiveFrom:string)=>({id:id(10+ordinal),tenantId:id(1),companyId:id(1),ruleId:id(2),ordinal,effectiveFrom,policy,reason:'Fictional policy review',createdByUserId:id(3),createdAt:new Date()});
+ const revision=(ordinal:number,effectiveFrom:string)=>({id:id(10+ordinal),tenantId:id(1),companyId:id(1),ruleId:id(2),ordinal,activationEpoch:ordinal,effectiveFrom,policy,reason:'Fictional policy review',createdByUserId:id(3),createdAt:new Date()});
  return {rule:{id:id(2),name:'Fictional group',label:null},history:[revision(1,day(-1)),revision(2,day(1))],patterns:[{versionId:id(4),patternId:id(5),name:'Fictional OT',ordinal:3}]};
 }
 function props():OvertimeGroupPolicyReviewProps{return {companies:[{id:id(1),name:'Fictional Company'}],groups:[{id:id(2),name:'Fictional group'}],companyId:id(1),groupId:id(2),review:fixture(),failed:false,today};}

@@ -178,3 +178,107 @@ CREATE POLICY attendance_overtime_policy_part_insert ON public.attendance_overti
   WHERE c.id=attendance_overtime_policy_part.calculation_id AND c.tenant_id=attendance_overtime_policy_part.tenant_id
    AND c.company_id=attendance_overtime_policy_part.company_id
    AND app.overtime_attendance_visible(source.tenant_id,source.employment_id,source.attendance_date)));
+--> statement-breakpoint
+-- A submission contract is NOT an approval or financial capability. The owner records the policy
+-- epoch visible under one company lock; callers cannot backdate a request into legacy processing.
+-- Existing policy rows conservatively receive epoch zero. Existing requests have no receipt and
+-- are legacy only when no applicable epoch-zero policy was already installed at this cutover.
+ALTER TABLE public.attendance_group_policy_revision ADD COLUMN activation_epoch bigint NOT NULL DEFAULT 0
+ CHECK(activation_epoch BETWEEN 0 AND 9007199254740991);
+CREATE UNIQUE INDEX attendance_group_policy_company_epoch_uq
+ ON public.attendance_group_policy_revision(tenant_id,company_id,activation_epoch) WHERE activation_epoch>0;
+CREATE TABLE app.attendance_policy_company_epoch(
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
+ company_id uuid NOT NULL REFERENCES public.company(id) ON DELETE CASCADE,
+ epoch bigint NOT NULL DEFAULT 0 CHECK(epoch BETWEEN 0 AND 9007199254740991),
+ PRIMARY KEY(tenant_id,company_id));
+ALTER TABLE app.attendance_policy_company_epoch ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.attendance_policy_company_epoch FORCE ROW LEVEL SECURITY;
+CREATE POLICY attendance_policy_company_epoch_owner ON app.attendance_policy_company_epoch FOR ALL
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='app.attendance_policy_company_epoch'::regclass)))
+ WITH CHECK(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='app.attendance_policy_company_epoch'::regclass)));
+REVOKE ALL ON app.attendance_policy_company_epoch FROM PUBLIC,ai_hr_app;
+CREATE TABLE public.attendance_policy_request_contract(
+ correction_id uuid PRIMARY KEY REFERENCES public.attendance_correction(id) ON DELETE CASCADE,
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ employment_id uuid NOT NULL REFERENCES public.employment(id),attendance_date date NOT NULL,
+ company_id uuid REFERENCES public.company(id) ON DELETE RESTRICT,
+ kind text NOT NULL CHECK(kind IN('epoch','unavailable')),
+ visible_epoch bigint CHECK(visible_epoch BETWEEN 0 AND 9007199254740991),
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ CHECK((kind='epoch' AND company_id IS NOT NULL AND visible_epoch IS NOT NULL)
+   OR(kind='unavailable' AND company_id IS NULL AND visible_epoch IS NULL)));
+ALTER TABLE public.attendance_policy_request_contract ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_policy_request_contract FORCE ROW LEVEL SECURITY;
+CREATE POLICY attendance_policy_request_contract_owner ON public.attendance_policy_request_contract FOR ALL
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.attendance_policy_request_contract'::regclass)))
+ WITH CHECK(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.attendance_policy_request_contract'::regclass)));
+CREATE POLICY attendance_policy_request_contract_read ON public.attendance_policy_request_contract FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current())
+  AND EXISTS(SELECT 1 FROM public.attendance_correction c WHERE c.id=correction_id AND c.tenant_id=attendance_policy_request_contract.tenant_id));
+REVOKE ALL ON public.attendance_policy_request_contract FROM PUBLIC,ai_hr_app;
+GRANT SELECT ON public.attendance_policy_request_contract TO ai_hr_app;
+REVOKE TRIGGER ON public.attendance_correction FROM ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.lock_attendance_policy_epoch(p_tenant uuid,p_company uuid) RETURNS bigint
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result bigint;
+BEGIN
+ IF p_tenant IS DISTINCT FROM app.current_tenant_id() OR app.attendance_policy_principal_current() IS NOT TRUE
+  OR NOT EXISTS(SELECT 1 FROM public.company WHERE id=p_company AND tenant_id=p_tenant) THEN
+  RAISE EXCEPTION 'Current policy company authority required' USING ERRCODE='42501';END IF;
+ INSERT INTO app.attendance_policy_company_epoch(tenant_id,company_id) VALUES(p_tenant,p_company) ON CONFLICT DO NOTHING;
+ SELECT epoch INTO result FROM app.attendance_policy_company_epoch WHERE tenant_id=p_tenant AND company_id=p_company FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Policy epoch is unavailable' USING ERRCODE='23514';END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.lock_attendance_policy_epoch(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.capture_attendance_policy_activation_epoch() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE previous bigint;
+BEGIN
+ -- The original 0581 guard runs first and retains scoped admin, actor, future date and formula checks.
+ previous:=app.lock_attendance_policy_epoch(NEW.tenant_id,NEW.company_id);
+ IF previous>=9007199254740991 THEN RAISE EXCEPTION 'Policy epoch limit reached' USING ERRCODE='23514';END IF;
+ UPDATE app.attendance_policy_company_epoch SET epoch=previous+1 WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+ NEW.activation_epoch:=previous+1;NEW.created_at:=clock_timestamp();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.capture_attendance_policy_activation_epoch() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zz_attendance_policy_activation_epoch BEFORE INSERT ON public.attendance_group_policy_revision
+ FOR EACH ROW EXECUTE FUNCTION app.capture_attendance_policy_activation_epoch();
+--> statement-breakpoint
+CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
+BEGIN
+ IF NEW.tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() THEN
+  SELECT count(*),min(a.company_id::text)::uuid INTO v_count,v_company
+   FROM public.employment e JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
+   JOIN public.company company ON company.id=a.company_id AND company.tenant_id=e.tenant_id
+   WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND a.superseded_at IS NULL
+    AND a.valid_from<=NEW.attendance_date AND(a.valid_to IS NULL OR a.valid_to>NEW.attendance_date)
+    AND NEW.attendance_date>=e.hired_on AND(e.terminated_on IS NULL OR NEW.attendance_date<=e.terminated_on);
+  IF v_count=1 AND v_company IS NOT NULL THEN
+   v_epoch:=app.lock_attendance_policy_epoch(NEW.tenant_id,v_company);
+   IF app.attendance_policy_principal_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current request principal required' USING ERRCODE='42501';END IF;
+   v_kind:='epoch';
+  END IF;
+ END IF;
+ IF v_kind='unavailable' THEN v_company:=NULL;v_epoch:=NULL;END IF;
+ INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch)
+  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch);
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.capture_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER attendance_policy_submission_contract AFTER INSERT ON public.attendance_correction
+ FOR EACH ROW EXECUTE FUNCTION app.capture_attendance_policy_request_contract();
+CREATE FUNCTION app.guard_attendance_policy_request_contract() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' AND pg_trigger_depth()>1 THEN RETURN NEW;END IF;
+ IF TG_OP='DELETE' AND pg_trigger_depth()>1 AND NOT EXISTS(SELECT 1 FROM public.attendance_correction WHERE id=OLD.correction_id) THEN RETURN OLD;END IF;
+ RAISE EXCEPTION 'Retain the owner-issued immutable application contract' USING ERRCODE='23514';
+END $$;
+REVOKE ALL ON FUNCTION app.guard_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER attendance_policy_request_contract_guard BEFORE INSERT OR UPDATE OR DELETE ON public.attendance_policy_request_contract
+ FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_request_contract();

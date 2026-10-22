@@ -4,7 +4,7 @@ import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow} from '../pac
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import type {ResolvedAttendanceGroupPolicy} from '../core/attendance-group-policy';
 const id='00000000-0000-4000-8000-000000000001';
-function policy():ResolvedAttendanceGroupPolicy{return {id,companyId:id,ruleId:id,ordinal:1,effectiveFrom:'2026-10-23',activation:{actorUserId:id,recordedAt:'2026-10-22T00:00:00.000Z',reason:'Fictional future policy'},policy:{version:1,
+function policy():ResolvedAttendanceGroupPolicy{return {id,companyId:id,ruleId:id,ordinal:1,effectiveFrom:'2026-10-23',activation:{epoch:1,actorUserId:id,recordedAt:'2026-10-22T00:00:00.000Z',reason:'Fictional future policy'},policy:{version:1,
  clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:true},
  overtime:{enabled:true,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
  days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(day=>[day,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}}};}

@@ -3,7 +3,7 @@
  * calculate or settle work. It uses the saved Attendance schedule and dated Personnel employer. */
 import {and,asc,desc,eq,inArray,isNotNull,lte,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {attendance,attendanceCorrection,attendanceGroupPolicyRevision} from '../../db/schema';
+import {attendance,attendanceCorrection,attendanceGroupPolicyRevision,attendancePolicyRequestContract} from '../../db/schema';
 import {isAttendanceTrace} from '../../core/attendance-trace';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
@@ -31,13 +31,19 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
    // Existing submitted work keeps its original approval contract. Choose the SAME effective
    // approved request (or pending request if none is approved) as the legacy landing owner; an
    // older superseded approval must not keep a newer application in legacy mode forever.
-   // Absence is proved against ALL applicable revisions at submission: replacing an already-new
-   // policy must not downgrade one of its applications into the legacy payment path.
+   // The immutable owner-issued receipt records the serialized company policy epoch. Missing
+   // receipts identify pre-0590 requests; epoch-zero policies conservatively keep those out of
+   // legacy mode. An unavailable/mismatched receipt is never permission for legacy payment.
    const [application]=await tx.select({id:attendanceCorrection.id,
-    predatesPolicy:sql<boolean>`not exists(select 1 from public.attendance_group_policy_revision prior
-     where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
-      and prior.effective_from<=${p.date}::date and prior.created_at<=${attendanceCorrection.createdAt})`})
-    .from(attendanceCorrection).innerJoin(attendanceGroupPolicyRevision,and(eq(attendanceGroupPolicyRevision.id,selected.id),eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId)))
+    predatesPolicy:sql<boolean>`(
+     (${attendancePolicyRequestContract.correctionId} is null or(${attendancePolicyRequestContract.kind}='epoch'
+       and ${attendancePolicyRequestContract.companyId}=${selected.companyId}::uuid
+       and ${attendancePolicyRequestContract.employmentId}=${attendanceCorrection.employmentId}
+       and ${attendancePolicyRequestContract.attendanceDate}=${attendanceCorrection.attendanceDate}))
+     and not exists(select 1 from public.attendance_group_policy_revision prior
+      where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
+       and prior.effective_from<=${p.date}::date and prior.activation_epoch<=coalesce(${attendancePolicyRequestContract.visibleEpoch},0)))`})
+    .from(attendanceCorrection).leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId)))
     .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
      eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))
     .orderBy(sql`case when ${attendanceCorrection.status}='approved' then 0 else 1 end`,desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);

@@ -10505,9 +10505,18 @@ export const attendanceGroupPolicyRevision=pgTable('attendance_group_policy_revi
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),ordinal:integer('ordinal').notNull(),
  effectiveFrom:date('effective_from').notNull(),policy:jsonb('policy').$type<AttendanceGroupPolicy>().notNull(),
+ activationEpoch:bigint('activation_epoch',{mode:'number'}).notNull().default(0),
  reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_group_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
  uniqueIndex('attendance_group_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom)]);
+
+/** Owner-issued policy visibility at submission; it is not an approval or final-effect capability. */
+export const attendancePolicyRequestContract=pgTable('attendance_policy_request_contract',{
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),companyId:uuid('company_id').references(()=>company.id,{onDelete:'restrict'}),
+ kind:text('kind').notNull().$type<'epoch'|'unavailable'>(),visibleEpoch:bigint('visible_epoch',{mode:'number'}),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
 
 // ADR-0120: original holidays and employee-specific replacement allocations remain separate.
 export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{

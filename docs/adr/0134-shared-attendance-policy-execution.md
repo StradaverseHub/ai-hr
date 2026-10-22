@@ -306,12 +306,25 @@ JSON-safe earning-reference stamps join configuration freshness and immutable re
 inactive, foreign, incompatible-currency and unavailable earning references stay explicit. This is a
 source projection, not a replacement assignment, complete part set, independent replay or payment proof.
 
-An OT-bearing application submitted before the selected policy was enabled retains its original
-approval/landing contract. Selection uses the same effective approved request, or pending request in
-its absence, as the canonical legacy owner and proves in PostgreSQL that no policy applicable to its attendance
-date existed at submission. A later replacement of an already-new policy cannot downgrade its
-applications into the legacy payment path.
-An older superseded approval cannot force a newer request into legacy mode. This branch is derived
-from actual immutable request history, never a form flag; requests submitted after activation still
-enter the refused policy boundary until the new final-effect contract is complete. It does not rewrite
-an old approval, create a policy receipt, or infer approved physical windows from display labels.
+## Submission contract ownership
+
+A company policy epoch is private owner state, serialized by one row lock shared by policy activation
+and request submission. The draft 0590 appends an immutable receipt to every new Attendance application
+through its parent INSERT trigger. The receipt binds the submitted employment/date, proven dated employer and observed epoch,
+or explicit unavailable state. It contains no approval, amount, body text or invented physical interval.
+Applications cannot write receipts, call the private epoch owner or read its private table.
+
+The original effective approved request, or pending request in its absence, stays on the original
+legacy approval/landing path only when no policy applicable to its actual group/date existed at its
+recorded epoch. A later replacement cannot downgrade an already-new application. Client-settable
+creation timestamps do not establish this branch. The row lock orders a concurrent policy save and
+submission, including a submitter that had to wait for an uncommitted activation.
+
+Requests already present when 0590 is installed have no receipt and use cutover epoch zero. Pre-existing
+policy rows also receive zero and conservatively prevent legacy admission when applicable. A missing
+receipt on a later ordinary application is prevented by the mandatory parent trigger and denied child
+write/delete privileges. Unknown employer/principal receipts or a receipt whose frozen subject/date differs from its parent never authorize legacy processing.
+Receipt erasure follows deletion of its actual parent; other updates/deletes remain refused. Existing
+Attendance writers were reviewed: decision, landing, cancellation and day-adjustment writes update the
+parent's effect fields and never edit this submission receipt. A submission receipt is not a final-effect
+capability; execution, real approval/exception receipts and independent cash/TOIL replay remain required.

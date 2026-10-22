@@ -16,7 +16,7 @@ export type AttendanceGroupPolicyReview={
  history:AttendanceGroupPolicyVersion[];
  patterns:{versionId:string;patternId:string;name:string;ordinal:number}[];
 };
-export type ResolvedAttendanceGroupPolicy={id:string;companyId:string;ruleId:string;ordinal:number;effectiveFrom:string;policy:AttendanceGroupPolicy;activation:{actorUserId:string;recordedAt:string;reason:string}};
+export type ResolvedAttendanceGroupPolicy={id:string;companyId:string;ruleId:string;ordinal:number;effectiveFrom:string;policy:AttendanceGroupPolicy;activation:{epoch:number;actorUserId:string;recordedAt:string;reason:string}};
 async function adminCompany(tx:Tx,ctx:SessionContext,companyId:string):Promise<void>{
  overtimeUuid(companyId,'companyId');
  const [row]=await tx.select({allowed:sql<boolean>`app.attendance_policy_principal_current() AND app.is_admin_for(${company.id})`}).from(company)
@@ -70,7 +70,7 @@ export async function attendanceGroupPolicyOnTx(tx:Tx,ctx:SessionContext,p:{comp
   eq(attendanceGroupPolicyRevision.companyId,p.companyId),eq(attendanceGroupPolicyRevision.ruleId,p.ruleId),lte(attendanceGroupPolicyRevision.effectiveFrom,p.date)))
   .orderBy(desc(attendanceGroupPolicyRevision.effectiveFrom),desc(attendanceGroupPolicyRevision.ordinal)).limit(1);
  if(!row)return null;
- return {id:row.id,companyId:row.companyId,ruleId:row.ruleId,ordinal:row.ordinal,effectiveFrom:row.effectiveFrom,policy:validateAttendanceGroupPolicy(row.policy,4320),activation:{actorUserId:row.createdByUserId,recordedAt:row.createdAt.toISOString(),reason:row.reason}};
+ return {id:row.id,companyId:row.companyId,ruleId:row.ruleId,ordinal:row.ordinal,effectiveFrom:row.effectiveFrom,policy:validateAttendanceGroupPolicy(row.policy,4320),activation:{epoch:row.activationEpoch,actorUserId:row.createdByUserId,recordedAt:row.createdAt.toISOString(),reason:row.reason}};
 }
 export async function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{companyId:string;ruleId:string;expectedOrdinal:number;
  effectiveFrom:string;reason:string;policy:unknown}):Promise<{id:string;ordinal:number;effectiveFrom:string}>{
