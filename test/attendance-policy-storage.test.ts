@@ -68,14 +68,14 @@ function part(f:Fixture,calculationId:string,sequence=0):typeof s.attendanceOver
 describe('immutable non-payable policy part storage',()=>{
  it('reads policy TOIL duration without salary or cash earning mappings and retains the settlement refusal',async()=>{
   const f=await fixture('auto');await setModule(b.tenantId,'toil','active');const actor=adminCtx(b);
-  const forbidden:string[]=[];let reads=0;
+  const forbidden:string[]=[];let reads=0,formulaStateReads=0;
   await withTenant(actor,async tx=>{
    const guarded=new Proxy(tx,{get(target,key){
     if(key==='select')return (...args:Parameters<Tx['select']>)=>{
      const query=target.select(...args);
      return new Proxy(query,{get(builder,property){
       if(property==='from')return (table:unknown)=>{
-       reads++;
+       reads++;if(table===s.overtimePatternVersionState)formulaStateReads++;
        if(table===s.compensation||table===s.payComponent){forbidden.push(table===s.compensation?'salary':'cashMapping');throw Error('Forbidden policy TOIL price dependency');}
        return builder.from(table as Parameters<typeof builder.from>[0]);
       };
@@ -86,7 +86,7 @@ describe('immutable non-payable policy part storage',()=>{
    }}) as Tx;
    await expect(canonicalOvertimeToilInputTx(guarded,actor,{employmentId:f.employmentId,date:day(2)})).rejects.toThrow('Recorded overtime inputs are unavailable for this employee and date.');
   });
-  expect(reads).toBeGreaterThan(0);expect(forbidden).toEqual([]);
+  expect(reads).toBeGreaterThan(0);expect(formulaStateReads).toBeGreaterThan(0);expect(forbidden).toEqual([]);
  });
 
  it('permits a current self subject barrier without configuration authority, and denies unrelated or revoked principals',async()=>{
