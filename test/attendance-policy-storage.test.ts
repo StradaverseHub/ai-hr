@@ -17,7 +17,7 @@ import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
- checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
+ checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
@@ -30,7 +30,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual'){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -47,13 +47,31 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
- await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(1)});
+ await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
   overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding:{mode:'none',step:null},
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
- await capturedClock(worker.employmentId,day(2),'in','23:50:00');
- await capturedClock(worker.employmentId,day(2),'out','00:10:00',day(3));
+ if(currentManual){
+  // Declared historical fixture restoration ONLY: the genuine scheduling API above issued
+  // this positive epoch prospectively. Restore a pre-existing active baseline before any
+  // clock/request/decision so present-day Manual effects can be exercised without time travel.
+  // This does not prove a historical scheduling/activation command, and enables no payment.
+  const [issued]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+  expect(issued.activationEpoch).toBeGreaterThan(0);
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`ALTER TABLE attendance_group_policy_revision DISABLE TRIGGER attendance_group_policy_revision_guard`);
+   await tx.update(s.attendanceGroupPolicyRevision).set({effectiveFrom:day(-1)})
+    .where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+   await tx.execute(sql`ALTER TABLE attendance_group_policy_revision ENABLE TRIGGER attendance_group_policy_revision_guard`);
+  });
+  const guards=await owner.db.execute(sql`select tgenabled from pg_trigger where tgrelid='attendance_group_policy_revision'::regclass
+   and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
+  expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
+ }
+ const sourceOffset=currentManual?0:2;
+ await capturedClock(worker.employmentId,day(sourceOffset),'in','23:50:00');
+ await capturedClock(worker.employmentId,day(sourceOffset),'out','00:10:00',day(sourceOffset+1));
  return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -213,6 +231,42 @@ describe('immutable non-payable policy part storage',()=>{
   expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);expect(after.referenceDigest).not.toBe(before.referenceDigest);
   expect(attendancePolicyDurationReplay(after)).toEqual(duration);
   expect(attendancePolicyCurrentCashMatches(after,cash)).toBe(false);
+ });
+
+ it.each(['requested','system_calculated','smaller_of','greater_of'] as const)('replays current frozen Manual %s counts under a declared restored historical group baseline',async method=>{
+  await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:0,lateAfter:'09:00',
+   halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
+  const f=await fixture('manual','12','actual',true),p={employmentId:f.employmentId,date:day(0)};
+  const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional current Manual reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+  const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin');
+  const reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const employeeUserId=await createAppUser(b.tenantId,f.personId,'employee');
+  const employeeCtx:SessionContext={...ctx,userId:employeeUserId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'MANUAL_'+randomUUID().slice(0,8),name:'Fictional current Manual review',
+   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+   stages:[{name:'Review',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const request=await requestAttendanceCorrection(employeeCtx,{employmentId:f.employmentId,date:p.date,requestedOtMinutes:10,
+   plannedStartTime:'23:50',plannedEndTime:'00:00',requestKind:'self_overtime',reason:'Fictional current complete original ten-minute window'});
+  await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  const expectedMinutes=method==='requested'||method==='smaller_of'?10:20;
+  const [decision]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  expect(decision).toMatchObject({status:'approved',otApprovalMethod:method,approvedOtMinutes:expectedMinutes,appliedAt:null});
+  const [receipt]=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,request.correctionId));
+  expect(receipt.rawEvidence).not.toBeNull();
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(snapshot.policyExecutionProposal).toMatchObject({state:'proposed',manualEvidence:{state:'known',method,systemMinutes:20,
+   approvedMinutes:expectedMinutes,basis:expectedMinutes===10?'completeSubmittedWindow':'completeActualCount'},
+   duration:{status:'calculated',payableMinutes:expectedMinutes}});
+  const cash=attendancePolicyCashReplay(snapshot);expect(cash).toMatchObject({state:'known',minutes:expectedMinutes,amountMinorUnits:expectedMinutes===10?'300':'600'});
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional current Manual count replay'})).toMatchObject({status:'recorded'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
  it.each(['preApproved','intersect'] as const)('replays a real approved %s plan against its exact policy across a later unrelated epoch',async autoMethod=>{
