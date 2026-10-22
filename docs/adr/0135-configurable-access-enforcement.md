@@ -21,6 +21,14 @@ both final populated restricted-owner upgrades, complete experience outcomes and
 gate remain required before production publication. Production availability remains off until that
 explicit post-release command succeeds.
 
+The first actual restricted-owner installer attempt exposed a connection compatibility gap that the
+Drizzle-backed test connection did not cover: plain postgres.js serialized an already serialized
+JSONB parameter again. The database refused the bindings array constraint and rolled back. An exact
+standalone-connection regression reproduces that refusal. Serialized bindings and audit payloads now
+enter as text before conversion to JSONB, so both connection owners have the same representation.
+The original failed upgrade packet and rollback diagnostic remain preserved; the repaired focused
+cases and both restricted-owner publication courses must finish before this becomes release evidence.
+
 The shared canonical avatar route retains its independent self/admin/administrative-directory
 authority; a Workforce denial does not silently revoke that separate course, and a bounded Workforce
 grant does not grant arbitrary photo bytes. An executed current-principal consumer probe exposed

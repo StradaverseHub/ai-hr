@@ -98,8 +98,11 @@ export async function publishWorkforceCapabilities(owner:Sql){
    ) and not exists(select 1 from public.tenant t where not exists(
     select 1 from app.access_profile_write_generation g where g.tenant_id=t.id)) as ready`;
   requireInstallation(readiness?.ready); // Never mint a recovery administrator or default grant here.
+  // Bind serialized JSON as text before converting it. Drizzle replaces the client's JSON
+  // serializer, whereas the standalone installer retains postgres.js's JSON.stringify serializer.
+  // A JSONB-typed parameter would therefore encode these strings twice in the real installer.
   for(const capability of WORKFORCE_CAPABILITY_BINDINGS){
-   const changed=await tx`update public.access_capability set supported=true,bindings=${JSON.stringify(capability.bindings)}::jsonb where id=${capability.id} returning id`;
+   const changed=await tx`update public.access_capability set supported=true,bindings=${JSON.stringify(capability.bindings)}::text::jsonb where id=${capability.id} returning id`;
    requireInstallation(changed.length===1);
   }
   for(const tenant of tenants){
@@ -110,7 +113,7 @@ export async function publishWorkforceCapabilities(owner:Sql){
    if(!revision.length){const bumped=await tx`update app.access_profile_write_generation set generation=generation+1 where tenant_id=${tenant.id}::uuid returning tenant_id`;requireInstallation(bumped.length===1);}
    await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
     values(${tenant.id}::uuid,'access-configuration',${tenant.id}::uuid,'access-configuration.capabilities-published','system',null,
-     ${JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,capabilities:WORKFORCE_CAPABILITY_BINDINGS.map(c=>c.id),legacyRolesChanged:false})}::jsonb)`;
+     ${JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,capabilities:WORKFORCE_CAPABILITY_BINDINGS.map(c=>c.id),legacyRolesChanged:false})}::text::jsonb)`;
   }
   return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:true,capabilities:3,tenantsFenced:tenants.length};
  });
