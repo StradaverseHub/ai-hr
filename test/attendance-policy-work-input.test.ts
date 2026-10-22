@@ -2,6 +2,7 @@
 import {describe,expect,it} from 'vitest';
 import {attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
 import {attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
+import {attendancePolicyClockMeasurements} from '../packs/attendance/policy-clock-measurements';
 import {attendancePolicyClockMillisecondEvidence} from '../lib/attendance-policy-clocks';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
@@ -66,5 +67,55 @@ describe('canonical policy schedule and work source projection',()=>{
   expect(attendancePolicyWorkInput(c,close)).toEqual({state:'unavailable',authority:'sourceOnly',reason:'incompleteClockEvidence'});
   expect(attendancePolicyWorkInput(c,undefined)).toMatchObject({state:'unavailable',reason:'clockEvidenceUnavailable'});
   expect(attendancePolicyWorkInput(undefined,clocks([[480,1200]]))).toMatchObject({state:'unavailable',reason:'scheduleUnavailable'});
+ });
+});
+
+describe('proven policy clock boundaries on incomplete records',()=>{
+ const review=(c:ReturnType<typeof context>,events:{id:string;atMilliseconds:number;direction:'in'|'out'}[])=>(
+  attendancePolicyClockMeasurements(c,attendancePolicyClockMillisecondEvidence(events,c.resolvedClock,4320)));
+ const event=(id:string,minute:number,direction:'in'|'out')=>({id,atMilliseconds:minute*60000,direction});
+ it('suppresses lateness without inventing zero minutes or a late-offset interval when incomplete skipping is on',()=>{
+  const c=context();
+  expect(review(c,[event('in',570,'in')])).toMatchObject({state:'measured',authority:'sourceOnly',complete:false,requiresReview:true,
+   lateIn:{state:'suppressed',reason:'incompleteClock',minutes:null},earlyOut:{state:'unavailable',reason:'incompleteClock',minutes:null},lateOffsetIntervals:null});
+ });
+ it('uses only a proved first In when skipping is off, and never treats an unmatched last In as a departure',()=>{
+  const c=context();c.resolvedClock={...c.resolvedClock,skipLatenessIfIncomplete:false};
+  expect(review(c,[event('in',570,'in'),event('out',900,'out'),event('open',960,'in')])).toMatchObject({
+   complete:false,lateIn:{state:'known',minutes:20},earlyOut:{state:'unavailable',minutes:null},lateOffsetIntervals:[{from:550,to:570}]});
+  expect(review(c,[event('out',900,'out')])).toMatchObject({lateIn:{state:'unavailable',reason:'missingBoundary',minutes:null},lateOffsetIntervals:null});
+  expect(review(c,[event('orphan',500,'out'),event('in',570,'in'),event('out',1200,'out')]))
+   .toMatchObject({lateIn:{state:'unavailable',reason:'arrivalBoundaryUnavailable',minutes:null},lateOffsetIntervals:null});
+  expect(review(c,[event('orphan',570,'out'),event('in',570,'in'),event('out',1200,'out')]))
+   .toMatchObject({lateIn:{state:'unavailable',reason:'arrivalBoundaryUnavailable',minutes:null},lateOffsetIntervals:null});
+ });
+ it('retains close/duplicate review without allowing their boundaries to establish complete work',()=>{
+  const c=context();c.resolvedClock={...c.resolvedClock,minimumIntervalMinutes:5};
+  const events=[event('in',570,'in'),event('out',574,'out')];
+  expect(review(c,events)).toMatchObject({complete:false,requiresReview:true,lateIn:{state:'suppressed',minutes:null}});
+  expect(attendancePolicyWorkInput(c,attendancePolicyClockMillisecondEvidence(events,c.resolvedClock,4320)))
+   .toMatchObject({state:'unavailable',reason:'incompleteClockEvidence'});
+  expect(review(c,[event('one',570,'in'),event('two',570,'in'),event('out',1200,'out')]))
+   .toMatchObject({complete:false,requiresReview:true,lateIn:{state:'suppressed',minutes:null}});
+ });
+ it('restores measured lateness and early-out after actual complete correction evidence, using the same grace owner',()=>{
+  const c=context(),events=[event('in',570,'in'),event('out',1050,'out')],before=structuredClone(c);
+  expect(review(c,events)).toMatchObject({complete:true,requiresReview:false,lateIn:{state:'known',minutes:20},earlyOut:{state:'known',minutes:15},
+   lateOffsetIntervals:[{from:550,to:570}]});
+  expect(c).toEqual(before);
+  expect(review(c,[event('in',550,'in'),event('out',1065,'out')])).toMatchObject({lateIn:{state:'known',minutes:0},earlyOut:{state:'known',minutes:0},lateOffsetIntervals:[]});
+ });
+ it('keeps include-grace and explicit effective shift grace while preserving non-applicable calendar penalties',()=>{
+  const c=context({...schedule(),includeGraceInLateness:true,includeGraceInEarlyOut:true});
+  c.resolvedClock={...c.resolvedClock,lateGraceMinutes:3,earlyGraceMinutes:4};
+  expect(review(c,[event('in',545,'in'),event('out',1070,'out')])).toMatchObject({lateIn:{minutes:5},earlyOut:{minutes:10},lateOffsetIntervals:[{from:540,to:545}]});
+  expect(attendancePolicyClockMeasurements(context({...schedule(),dayType:'holiday'}),clocks([[600,720]])))
+   .toMatchObject({lateIn:{state:'notApplicable',minutes:null},earlyOut:{state:'notApplicable',minutes:null},lateOffsetIntervals:[]});
+ });
+ it('does not replace missing source or schedule ownership with a measured zero',()=>{
+  expect(attendancePolicyClockMeasurements(context(),undefined)).toMatchObject({state:'unavailable',reason:'clockEvidenceUnavailable'});
+  expect(attendancePolicyClockMeasurements(undefined,clocks([[570,1200]]))).toMatchObject({state:'unavailable',reason:'scheduleUnavailable'});
+  expect(attendancePolicyClockMeasurements(context({...schedule(),durationOnly:true}),clocks([[570,1200]])))
+   .toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
  });
 });

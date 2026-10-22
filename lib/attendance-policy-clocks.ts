@@ -74,6 +74,8 @@ export function attendancePolicyClockSecondEvidence(raw:readonly PolicyClockSeco
 export type PolicyClockMillisecond={id:string;atMilliseconds:number;direction:'in'|'out'};
 export type PolicyClockMillisecondEvidence={
  complete:boolean;requiresReview:boolean;flags:PolicyClockFlag[];
+ /** False for an out-first or mixed-direction first instant: a later In is not proof of arrival. */
+ firstInIsArrival:boolean;
  checkInMillisecond:number|null;checkOutMillisecond:number|null;
  intervals:{inMillisecond:number;outMillisecond:number}[];minuteIntervals:ClosedClockInterval[];
 };
@@ -85,7 +87,9 @@ export function attendancePolicyClockMillisecondEvidence(raw:readonly PolicyCloc
  for(const clock of raw)if(!Number.isSafeInteger(clock.atMilliseconds))throw Error('Canonical milliseconds must be whole exact milliseconds.');
  const result=evidence(raw.map(clock=>({id:clock.id,at:clock.atMilliseconds,direction:clock.direction})),
   policy.pairing,policy.minimumIntervalMinutes*60000,periodMinutes*60000);
- return {complete:result.complete,requiresReview:result.requiresReview,flags:result.flags,
+ const firstAt=raw.reduce<number|null>((first,clock)=>first===null?clock.atMilliseconds:Math.min(first,clock.atMilliseconds),null);
+ const firstInIsArrival=firstAt!==null&&raw.filter(clock=>clock.atMilliseconds===firstAt).every(clock=>clock.direction==='in');
+ return {complete:result.complete,requiresReview:result.requiresReview,flags:result.flags,firstInIsArrival,
   checkInMillisecond:result.checkInAbs,checkOutMillisecond:result.checkOutAbs,
   intervals:result.intervals.map(interval=>({inMillisecond:interval.inAbs,outMillisecond:interval.outAbs})),
   minuteIntervals:result.intervals.map(interval=>({inAbs:Math.floor(interval.inAbs/60000),outAbs:Math.floor(interval.outAbs/60000)}))

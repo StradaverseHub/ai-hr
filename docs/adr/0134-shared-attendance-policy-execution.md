@@ -356,6 +356,23 @@ legacy admission, a planned physical window or a final approval. The final-effec
 separate unimplemented capability and policy payment remains refused.
 
 
+## Incomplete boundary measurements
+
+The canonical clock source now retains a separate boundary-measurement projection even when complete
+worked coverage is unavailable. For positioned fixed schedules, incomplete skipping records suppressed
+lateness and no offset interval, rather than asserting zero minutes. With skipping off, only a proved
+first In can measure lateness; an out-first or mixed-direction first instant cannot make a later In
+an arrival proof. A prior Out followed by an unmatched In cannot establish the final
+departure, so early-out remains unavailable until the clocks are complete and unflagged. Non-workday
+penalties remain non-applicable. Complete worked projection uses the same existing lateness/early-out
+arithmetic and this shared measurement, including effective grace and include-grace choices.
+
+These source facts join the input digest and immutable refused evidence. They do not yet change the
+stored raw-day figures or apply wage deductions, establish a final-effect receipt, or authorize work or
+pay. Positioned schedule/capture proofs, actual raw-writer integration and runtime verification remain
+required. In particular scalar/flexible breaks and duration-only schedules are still unavailable in
+this positioned source branch; the projection never infers their ownership.
+
 ## Atomic proposal part materialization
 
 The existing transaction/principal-bound calculation owner can now persist a complete, non-payable

@@ -104,12 +104,13 @@ describe('dated-policy raw writer routing',()=>{
   // absolute midnight placement or turn a scalar approval into captured work.
   expect(snapshot.policyClockSource).toEqual({state:'unavailable',authority:'sourceOnly',reason:'missingCapture'});
   expect(snapshot.policyClockReview).toEqual({state:'unavailable',authority:'proposalOnly',reason:'sourceUnavailable'});
+  expect(snapshot.policyClockMeasurements).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
   expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
   expect(snapshot.policyFormulaInput).toEqual({state:'disabled',authority:'sourceOnly',references:[]});
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
    versionId:null,assignmentId:null,outcome:'refused',durationOutcome:'refused',transferable:false,payableNumerator:null,payableDenominator:null});
-  expect(current?.evidence?.evidence).toMatchObject({attendanceGroupPolicy:snapshot.attendanceGroupPolicy,evaluation:null,duration:null,
+  expect(current?.evidence?.evidence).toMatchObject({attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyClockMeasurements:snapshot.policyClockMeasurements,evaluation:null,duration:null,
    resolution:{status:'refused',issues:[{path:'attendanceGroupPolicy.execution'}]}});
   const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.sourceId,current!.source.id))
    .orderBy(asc(s.attendanceOvertimeCalculation.ordinal));

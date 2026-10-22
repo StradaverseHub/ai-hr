@@ -2,6 +2,7 @@ import {attendancePolicyExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput} from './policy-work-input';
+import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
 import {createHash} from 'node:crypto';
 import {and, asc, desc, eq, gt, inArray, isNull, lte, or, sql} from 'drizzle-orm';
@@ -200,15 +201,16 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     else policyClockReview={authority:'proposalOnly',state:'known',
       evidence:attendancePolicyClockMillisecondEvidence(policyClockSource.clocks,selectedPolicy.policy.clock,4320)};
   }
+  const policyClockMeasurements=selectedPolicy?attendancePolicyClockMeasurements(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   const policyWorkInput=selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   const policyFormulaInput=selectedPolicy?await attendancePolicyFormulaInputTx(tx,ctx,{sourceDate:p.date,policy:selectedPolicy,
     calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}):undefined;
   const policyExecutionProposal=selectedPolicy?attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput):undefined;
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput,policyExecutionProposal}:{})});
+    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyExecutionProposal}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The

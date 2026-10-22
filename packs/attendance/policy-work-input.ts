@@ -1,6 +1,6 @@
 /** Canonical source projection only. Final-effect receipts and the financial replay remain separate. */
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
-import {latenessMinutes,earlyOutMinutes} from '../../core/attendance-calc';
+import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 import {intersectAttendancePolicyIntervals as intersect,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 import type {PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 
@@ -20,13 +20,10 @@ export function attendancePolicyWorkInput(context:AttendancePolicyExecutionConte
  const placement=context.placement;
  if(placement.state!=='known')return refuse('positionedScheduleUnavailable');
  const workedIntervals=union(clocks.minuteIntervals.map(row=>({from:row.inAbs,to:row.outAbs})),4320);
- const first=Math.floor(clocks.checkInMillisecond/60000),last=Math.floor(clocks.checkOutMillisecond/60000);
- const lateMinutes=placement.fixedClock?latenessMinutes({checkInAbs:first,startAbs:placement.scheduled.from,
-  graceMinutes:context.resolvedClock.lateGraceMinutes,includeGrace:placement.includeGraceInLateness}):null;
- const early=placement.fixedClock?earlyOutMinutes({checkOutAbs:last,endAbs:placement.scheduled.to,
-  graceMinutes:context.resolvedClock.earlyGraceMinutes,includeGrace:placement.includeGraceInEarlyOut}):null;
- const lateStart=placement.scheduled.from+(placement.includeGraceInLateness?0:context.resolvedClock.lateGraceMinutes);
+ const measured=attendancePolicyClockMeasurements(context,clocks);
+ if(measured.state!=='measured')return refuse('positionedScheduleUnavailable');
+ if(measured.lateOffsetIntervals===null)return refuse('incompleteClockEvidence');
  return {state:'known',authority:'sourceOnly',periodMinutes:4320,workedIntervals,
   eligibleActualIntervals:intersect(workedIntervals,placement.eligibilityWindows,4320),unpaidIntervals:placement.unpaidWindows.map(row=>({...row})),
-  lateOffsetIntervals:lateMinutes&&first>lateStart?[{from:lateStart,to:first}]:[],lateMinutes,earlyOutMinutes:early};
+  lateOffsetIntervals:measured.lateOffsetIntervals,lateMinutes:measured.lateIn.minutes,earlyOutMinutes:measured.earlyOut.minutes};
 }
