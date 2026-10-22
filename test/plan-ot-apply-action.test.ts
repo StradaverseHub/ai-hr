@@ -29,14 +29,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setAttendancePolicy } from '../core/attendance';
 import type { SessionContext } from '../db/client';
 
 // The action calls getSession() (a request the harness has no equivalent of). ME carries the seeded
-// PERSON, because myEmployment resolves the employment off ctx.personId — that resolution is the thing
+// PERSON and its actual login: myEmployment proves canonical app_user ownership before resolving the employment. That resolution is the thing
 // the action does before anything else, and a context without it would not reach the code under test.
 let ME: SessionContext;
 vi.mock('../lib/session', () => ({ getSession: async () => ME }));
@@ -167,7 +167,7 @@ beforeEach(async () => {
     workingDays: [1, 2, 3, 4, 5],
   });
   employmentId = e.employmentId;
-  ME = { ...a, personId: e.personId };
+  ME = { ...a, userId: await createAppUser(b.tenantId, e.personId, 'employee'), personId: e.personId, roles: ['employee'], grants: undefined };
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────

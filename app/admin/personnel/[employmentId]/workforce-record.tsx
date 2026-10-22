@@ -12,6 +12,7 @@ import {EMPLOYEE_CODE_MAX_LEN} from '@/lib/employee-code';
 import {listWorkforcePickOptions} from '@/core/read';
 import {deriveEmploymentStatus} from '@/core/employment-status';
 import {personnelField} from '@/lib/personnel-field-registry';
+import {personnelInput} from '@/lib/personnel-form-contract';
 import {personnelFieldChoices} from '@/lib/personnel-import-contract';
 import {WORKFORCE_PROFILE_FIELDS} from '@/lib/workforce-record-fields';
 import {formatDmy} from '@/lib/date-display';
@@ -67,7 +68,7 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
     <input type="hidden" name="employmentId" value={employmentId}/>
     <input type="hidden" name="expectedCode" value={JSON.stringify(employment.employeeCode)}/>
     <label className="block text-sm" htmlFor="workforce-employee-code">{list('colCode')}</label>
-    <input id="workforce-employee-code" name="employeeCode" className={inputCls} required maxLength={EMPLOYEE_CODE_MAX_LEN} pattern="[A-Za-z0-9-]{1,30}" defaultValue={employment.employeeCode??''}/>
+    <input {...personnelInput('profile.personal_details.employeecode','record',{manualEmployeeCode:true})} id="workforce-employee-code" className={inputCls} maxLength={EMPLOYEE_CODE_MAX_LEN} pattern="[A-Za-z0-9-]{1,30}" defaultValue={employment.employeeCode??''}/>
     <p className="text-xs text-muted-foreground">{access('workforceCode.hint')}</p>
     <Button type="submit">{access('workforceCode.save')}</Button>
    </form>

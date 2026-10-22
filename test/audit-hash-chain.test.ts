@@ -40,6 +40,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  const initial = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId));
+  expect(initial).toEqual([expect.objectContaining({aggregateType: 'access-configuration', eventType: 'access-configuration.initialized', chainSeq: null})]);
 });
 
 describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
@@ -49,7 +51,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     const rows = await owner.db
       .select({ chainSeq: schema.domainEvent.chainSeq, hash: schema.domainEvent.hash, prevHash: schema.domainEvent.prevHash })
       .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.tenantId, b.tenantId))
+      .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateType, 'test')))
       .orderBy(schema.domainEvent.chainSeq);
     expect(rows.map((r) => r.chainSeq)).toEqual([1, 2, 3]);
     expect(rows[0].prevHash).toBe('GENESIS');
@@ -65,7 +67,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     const [first] = await owner.db
       .select({ id: schema.domainEvent.id })
       .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.tenantId, b.tenantId))
+      .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateType, 'test')))
       .orderBy(schema.domainEvent.chainSeq)
       .limit(1);
     await owner.db.update(schema.domainEvent).set({ payload: { i: 999, tampered: true } }).where(eq(schema.domainEvent.id, first.id));
@@ -94,7 +96,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
       const rows = await owner.db
         .select({ chainSeq: schema.domainEvent.chainSeq, hash: schema.domainEvent.hash })
         .from(schema.domainEvent)
-        .where(eq(schema.domainEvent.tenantId, b.tenantId));
+        .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateType, 'test')));
       expect(rows.length).toBe(2);
       expect(rows.every((r) => r.chainSeq === null && r.hash === null)).toBe(true);
     } finally {
@@ -120,7 +122,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
         const rows = await owner.db
           .select({ chainSeq: schema.domainEvent.chainSeq })
           .from(schema.domainEvent)
-          .where(eq(schema.domainEvent.tenantId, b.tenantId));
+          .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateType, 'test')));
         expect(rows.length).toBeGreaterThan(0);
         expect(rows.every((r) => r.chainSeq === null), `AUDIT_HASH_CHAIN_ENABLED='${value}' must not arm the chain`).toBe(
           true,
@@ -159,7 +161,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     const rows = await owner.db
       .select({ chainSeq: schema.domainEvent.chainSeq })
       .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.tenantId, b.tenantId));
+      .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateType, 'test')));
     const chained = rows.filter((r) => r.chainSeq !== null).map((r) => Number(r.chainSeq)).sort((x, y) => x - y);
     // ALL SEVEN are chained. Before slice 8 this was [1, 2, 3, 4] with three events sitting outside.
     expect(chained, 'the disarm was refused, so no event escaped the chain').toEqual([1, 2, 3, 4, 5, 6, 7]);
@@ -167,7 +169,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     const v = await verifyTenantChain(ctx);
     expect(v.valid).toBe(true);
     expect(v.checked, 'every event is inside the chain').toBe(7);
-    expect(v.unchained, 'nothing was written outside the chain').toBe(0);
+    expect(v.unchained, 'only the proven initialization event predates the chain').toBe(1);
     expect(v.unchainedInsideChain, 'and therefore there is no hole').toBe(0);
   });
 
@@ -191,7 +193,7 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     const v = await verifyTenantChain(ctx);
     expect(v.valid).toBe(true);
     expect(v.checked, 'the chained rows').toBe(2);
-    expect(v.unchained, 'the bare count matches the "dangerous shape" — which is exactly the problem').toBe(3);
+    expect(v.unchained, 'the bare count matches the "dangerous shape" — which is exactly the problem; includes the initialization event').toBe(4);
     expect(
       v.unchainedInsideChain,
       'nothing was recorded after the chain started without being chained, so there is NO hole',
