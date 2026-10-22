@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -12,17 +12,17 @@ import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {erasePersonPii} from '../core/pdpa';
 import {dispatchNotifications,markNotificationRead,projectHomeGreetingInTx} from '../core/notifications';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,caller:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>caller}));
 const {POST}=await import('../app/api/home/greetings/route');
 const today=()=>todayInKualaLumpur();
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();process.env.NOTIFICATIONS_ENABLED='1';b=await seedBase();});
+beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});
 async function worker(name:string,personId?:string){
  const hired=await hireEmployee(adminCtx(b),{person:personId?{id:personId}:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},
   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:String(Number(today().slice(0,4))-4)+today().slice(4)});
- const ctx:SessionContext={...adminCtx(b),userId:await createAppUser(b.tenantId,hired.personId,'employee'),personId:hired.personId,roles:['employee']};
+ const ctx:SessionContext={...await entitledCtx(b,['employee']),userId:await createAppUser(b.tenantId,hired.personId,'employee'),personId:hired.personId};
  await owner.db.update(s.person).set({dateOfBirth:'2000'+today().slice(4)}).where(eq(s.person.id,hired.personId));
  return {...hired,ctx};
 }
@@ -53,6 +53,13 @@ function databaseCode(error:unknown):string|undefined{
  }
 }
 describe('explicit Home greeting transaction and private content',()=>{
+ it('refuses sending when the actual freshly resolved Notifications entitlement is disabled',async()=>{
+  const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();
+  await setModule(b.tenantId,'notifications','disabled');
+  const disabled={...own.ctx,entitlements:(await entitledCtx(b,['employee'])).entitlements};
+  await expect(sendHomeGreeting(disabled,command(own,target))).rejects.toMatchObject({name:'ModuleNotEnabledError'});
+  expect(await counts()).toEqual({greetings:0,events:0,notifications:0,intents:0});
+ });
  it('rejects noncanonical raw message bodies before hashing/storing an unreadable command',async()=>{
   const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();
   for(const message of [' leading space','trailing\u00a0','trailing\ufeff','line\r\nbreak','control\u0001','x'.repeat(501)]){
