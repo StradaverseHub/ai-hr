@@ -15,7 +15,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');});
 async function actor(name:string,role:'employee'|'hr_admin'){
  const person=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
-  departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-20)});
+  departmentId:role==='employee'?b.deptA:b.deptB,employmentType:'full_time',hiredOn:day(-20)});
  const userId=await createAppUser(b.tenantId,person.personId,role);
  const ctx:SessionContext={...adminCtx(b),userId,personId:person.personId,roles:[role],grants:[{role,companyId:b.companyId}]};
  return {...person,ctx};

@@ -24,7 +24,7 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenant
 async function fixture(){
   const ruleId=(await ensureStandardRule(ctx)).id;
   const e=await hireEmployee(ctx,{person:{fullName:'Fictional policy context',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-20)});
-  const shiftInput={code:'CTX_'+randomUUID().slice(0,6),name:'Fictional policy context shift',startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7],ruleId};
+  const shiftInput={code:'CTX_'+randomUUID().slice(0,6),name:'Fictional policy context shift '+randomUUID().slice(0,8),startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7],ruleId};
   const sh=await createShift(ctx,shiftInput);await assignDefaultShift(ctx,{employmentId:e.employmentId,shiftId:sh.id});
   const save=(value=policy(),expectedOrdinal=0,effectiveFrom=day(1))=>scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal,effectiveFrom,reason:'Fictional forward policy selection',policy:value});
   return {...e,ruleId,shiftId:sh.id,shiftInput,save};
@@ -97,7 +97,8 @@ describe('dated-policy raw writer routing',()=>{
   const legacy=rows.find(row=>row.attendanceDate===day(0)),policyDay=rows.find(row=>row.attendanceDate===day(1));
   expect(legacy?.workedMinutes).toBe(480);
   expect(policyDay).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,otMinutes:null,
-   lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,calcTrace:null});
+   lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,
+   calcTrace:{overtimePattern:{status:'refused',reason:'sourceUnavailable'}}});
   expect(await owner.db.select().from(s.attendanceClockCapture)).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
@@ -144,7 +145,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('retains Semi Flexi duration, allowance and half-day owners without fixed-clock penalties',async()=>{
-  const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),type:'semi_flexi',
+  const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),name:f.shiftInput.name+' Semi',type:'semi_flexi',
    startTime:'07:00',endTime:'20:00',normalMinutesOverride:480,breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
   await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
   for(const [direction,time] of [['in','09:00:00'],['out','10:00:00']] as const){
@@ -159,7 +160,7 @@ describe('dated-policy raw writer routing',()=>{
  });
  it('uses the existing Full Flexi raw duration owner with captured pairs and retains no fixed-clock penalties',async()=>{
   const f=await fixture();
-  const sh=await createShift(ctx,{...f.shiftInput,code:'FULL_'+randomUUID().slice(0,6),type:'full_flexi',normalMinutesOverride:480,
+  const sh=await createShift(ctx,{...f.shiftInput,code:'FULL_'+randomUUID().slice(0,6),name:f.shiftInput.name+' Full',type:'full_flexi',normalMinutesOverride:480,
    breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
   await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
   // Fictional stored-capture runtime fixture, not an actual-app or production receipt.
@@ -239,13 +240,13 @@ describe('dated-policy raw writer routing',()=>{
  it('admits only a real current raw subject/day before first-trace configuration serialization',async()=>{
   const f=await fixture();await f.save();
   const lock=(employmentId:string,date:string)=>withTenant(ctx,tx=>tx.execute(sql`select app.lock_attendance_policy_raw_context(${employmentId}::uuid,${date}::date)`));
-  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({code:'23514'});
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({cause:{code:'23514'}});
   await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:00'});
   await owner.db.update(s.attendance).set({calcTrace:null}).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
   await expect(lock(f.employmentId,day(1))).resolves.toBeDefined();
-  await expect(lock(randomUUID(),day(1))).rejects.toMatchObject({code:'42501'});
+  await expect(lock(randomUUID(),day(1))).rejects.toMatchObject({cause:{code:'42501'}});
   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
-  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({code:'42501'});
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({cause:{code:'42501'}});
  });
  it('resolves prospective raw policy inputs without requiring an already-derived trace, and never guesses captures',async()=>{
   const f=await fixture(),saved=await f.save();

@@ -12,7 +12,7 @@ import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
- lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
+ checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
@@ -20,11 +20,16 @@ const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z'
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 
+async function capturedClock(employmentId:string,date:string,direction:'in'|'out',time:string,captureDate=date){
+ const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId,attendanceDate:date,
+  direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
+ return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
+}
 async function fixture(approval:'manual'|'auto'='manual'){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
- const shift=await createShift(ctx,{code:'POLICY_'+randomUUID().slice(0,6),name:'Fictional overnight storage fixture',startTime:'22:00',endTime:'06:00',
+ const shift=await createShift(ctx,{code:'POLICY_'+randomUUID().slice(0,6),name:'Fictional after-shift storage fixture',startTime:'09:00',endTime:'18:00',
   breakMinutes:0,weeklyPattern:[1,2,3,4,5,6,7],ruleId});
  await assignDefaultShift(ctx,{employmentId:worker.employmentId,shiftId:shift.id});
  const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
@@ -41,8 +46,8 @@ async function fixture(approval:'manual'|'auto'='manual'){
   overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod:'actual',rounding:{mode:'none',step:null},
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
- await checkIn(ctx,{employmentId:worker.employmentId,date:day(2),time:'23:50'});
- await checkOut(ctx,{employmentId:worker.employmentId,date:day(2),time:'00:10'});
+ await capturedClock(worker.employmentId,day(2),'in','23:50:00');
+ await capturedClock(worker.employmentId,day(2),'out','00:10:00',day(3));
  return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -219,7 +224,7 @@ describe('immutable non-payable policy part storage',()=>{
   const normal=await withTenant(ctx,async tx=>{const {saved}=await header(tx,f,0,{bindingKind:undefined,policyRevisionId:null});return saved;});
   expect(normal).toMatchObject({bindingKind:'assignedPattern',policyRevisionId:null,policyPartCount:0,outcome:'refused',transferable:false});
   // The independent fixture uses another source rather than rewriting the immutable header.
-  await checkIn(ctx,{employmentId:f.employmentId,date:day(3),time:'23:50'});
+  await capturedClock(f.employmentId,day(3),'in','23:50:00');
   const policy=await withTenant(ctx,async tx=>{
    const source=await lockOvertimeSourceTx(tx,ctx,{employmentId:f.employmentId,date:day(3)});
    const [saved]=await tx.insert(s.attendanceOvertimeCalculation).values({...normal,id:randomUUID(),sourceId:source.id,ordinal:source.revision+1,
