@@ -10,7 +10,7 @@ export type PolicyRawClockReplay=
  |{state:'unavailable';authority:'proposalOnly';reason:'sourceUnavailable'|'scheduleOwnerUnavailable'|'rawSourceMismatch'}
  |{state:'known';authority:'proposalOnly';evidence:PolicyClockMillisecondEvidence};
 type RawDay={checkInAt:string|null;checkOutAt:string|null;workedMinutes:number|null;lateMinutes:number|null;
- earlyOutMinutes:number|null;underMinutes:number|null;dayType:'workday'|'rest_day'|'holiday'};
+ earlyOutMinutes:number|null;underMinutes:number|null;dayType:'workday'|'rest_day'|'holiday'|null};
 const label=(milliseconds:number)=>{const seconds=Math.floor(milliseconds/1000)%86400;
  return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');};
 /** The canonical source reader first validates actual capture identities and recorded schedule.
@@ -22,7 +22,7 @@ export function replayAttendancePolicyRawClocks(context:AttendancePolicyExecutio
  source:RecordedPolicyClockSource|undefined,trace:AttendanceTraceV1|null,day:RawDay):PolicyRawClockReplay{
  const refuse=(reason:Extract<PolicyRawClockReplay,{state:'unavailable'}>['reason']):PolicyRawClockReplay=>({state:'unavailable',authority:'proposalOnly',reason});
  if(source?.state!=='known')return refuse('sourceUnavailable');
- if(context?.state!=='policy'||!trace||trace.schedule.ruleId!==context.schedule.ruleId||trace.schedule.dayType!==day.dayType)
+ if(context?.state!=='policy'||!trace||day.dayType===null||trace.schedule.ruleId!==context.schedule.ruleId||trace.schedule.dayType!==day.dayType)
   return refuse('scheduleOwnerUnavailable');
  const evidence=attendancePolicyClockMillisecondEvidence(source.clocks,context.resolvedClock,4320);
  const first=evidence.checkInMillisecond,last=evidence.checkOutMillisecond;

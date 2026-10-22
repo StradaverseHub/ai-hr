@@ -6,7 +6,7 @@ import {attendancePolicyPlanInput,type PolicyPlanInput} from './policy-plan-inpu
 import type {PolicyApprovalInput} from './policy-approval-input';
 import {intersectAttendancePolicyIntervals} from '../../lib/attendance-policy-intervals';
 import type {PolicyWorkInput} from './policy-work-input';
-import type {PolicyFormulaInput} from './policy-formula-input';
+import type {PolicyFormulaInput,PolicyDurationFormulaInput} from './policy-formula-input';
 import {deriveAttendancePolicyDurationProposal,type PolicyDurationProposal} from './policy-duration';
 
 export type PolicyExecutionProposal=
@@ -19,6 +19,18 @@ export type PolicyExecutionProposal=
 
 export function attendancePolicyExecutionProposal(context:AttendancePolicyExecutionContext|undefined,
  work:PolicyWorkInput|undefined,formulas:PolicyFormulaInput|undefined,
+ approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
+ return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId);
+}
+/** TOIL's duration proposal shares the same arithmetic and approval requirements. A duration-only
+ * source is not a cash formula/mapping input and cannot be submitted to the money reader API. */
+export function attendancePolicyDurationExecutionProposal(context:AttendancePolicyExecutionContext|undefined,
+ work:PolicyWorkInput|undefined,formulas:PolicyDurationFormulaInput|undefined,
+ approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
+ return composeAttendancePolicyDuration(context,work,formulas,approvals,tenantId);
+}
+function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContext|undefined,
+ work:PolicyWorkInput|undefined,formulas:PolicyFormulaInput|PolicyDurationFormulaInput|undefined,
  approvals?:PolicyApprovalInput,tenantId?:string):PolicyExecutionProposal{
  const unavailable=(reason:Extract<PolicyExecutionProposal,{state:'unavailable'}>['reason']):PolicyExecutionProposal=>({state:'unavailable',authority:'proposalOnly',reason});
  if(context?.state!=='policy')return unavailable('contextUnavailable');
@@ -43,9 +55,10 @@ export function attendancePolicyExecutionProposal(context:AttendancePolicyExecut
  if(formulas?.state==='known')for(const reference of formulas.references){
   if(reference.state!=='known')continue;
   if(selected.policy.overtime.days[reference.dayClass].patternVersionId!==reference.versionId)return unavailable('formulaBindingMismatch');
+  const direction='definition' in reference?reference.definition.durationAllocation:reference.durationAllocation;
   const previous=allocationByClass[reference.dayClass];
-  if(previous!==undefined&&previous!==reference.definition.durationAllocation)return unavailable('formulaBindingMismatch');
-  allocationByClass[reference.dayClass]=reference.definition.durationAllocation;
+  if(previous!==undefined&&previous!==direction)return unavailable('formulaBindingMismatch');
+  allocationByClass[reference.dayClass]=direction;
  }
  const duration=deriveAttendancePolicyDurationProposal({sourceDate:context.date,companyId:context.companyId,periodMinutes:work.periodMinutes,
   policy:selected.policy,workedIntervals:work.workedIntervals,eligibleActualIntervals:work.eligibleActualIntervals,

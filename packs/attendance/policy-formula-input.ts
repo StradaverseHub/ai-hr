@@ -7,23 +7,22 @@ import type {PolicyCalendarProof} from '../../lib/attendance-policy-calendar';
 import {payComponentReferenceStamp} from '../../lib/pay-component-contract';
 import {validateOvertimePattern} from '../../lib/overtime-pattern-schema';
 import {OVERTIME_LIMITS,OvertimePatternError,type OvertimePattern} from '../../lib/overtime-pattern-model';
-import type {AttendancePolicyDayClass} from '../../lib/attendance-group-policy';
 
-type FormulaReference=
- |{date:string;state:'unavailable';reason:'calendarUnavailable'|'bindingMissing'|'formulaUnavailable'|'formulaInactive'|'formulaInvalid'|'currencyMismatch'|'mappingUnavailable'|'referenceLimit'}
- |{date:string;state:'known';dayClass:AttendancePolicyDayClass;moneyDay:'workday'|'rest_day'|'holiday';versionId:string;
-   definition:OvertimePattern;definitionDigest:string;activeState:{id:string;sequence:number;effectiveFrom:string};
-   earningReferences:Record<string,unknown>[]};
-export type PolicyFormulaInput=
- |{authority:'sourceOnly';state:'unavailable';reason:'policyChanged'|'calendarUnavailable'}
- |{authority:'sourceOnly';state:'disabled';references:[]}
- |{authority:'sourceOnly';state:'known';references:FormulaReference[]};
+import {attendancePolicyDurationFormulaProjection,type FormulaReference,type PolicyFormulaInput,type PolicyDurationFormulaInput} from './policy-formula-source';
+export type {PolicyFormulaInput,PolicyDurationFormulaInput} from './policy-formula-source';
 
 /** Policy/calendar inputs are supplied by the canonical snapshot reader. Re-prove the policy's
  * actual selected identity, then read every formula through its existing tenant/company RLS. The
  * formula/date references do not prove calendar provenance, approval or a complete payable partition. */
-export async function attendancePolicyFormulaInputTx(tx:Tx,ctx:SessionContext,p:{sourceDate:string;policy:ResolvedAttendanceGroupPolicy;
- calendar:readonly PolicyCalendarProof[];currency:{code:string;minorScale:number}}):Promise<PolicyFormulaInput>{
+type FormulaSourceParameters={sourceDate:string;policy:ResolvedAttendanceGroupPolicy;calendar:readonly PolicyCalendarProof[];currency:{code:string;minorScale:number}};
+export function attendancePolicyFormulaInputTx(tx:Tx,ctx:SessionContext,p:FormulaSourceParameters):Promise<PolicyFormulaInput>{
+ return readAttendancePolicyFormulaInputTx(tx,ctx,p,'money');
+}
+export async function attendancePolicyDurationFormulaInputTx(tx:Tx,ctx:SessionContext,p:FormulaSourceParameters):Promise<PolicyDurationFormulaInput>{
+ return attendancePolicyDurationFormulaProjection(await readAttendancePolicyFormulaInputTx(tx,ctx,p,'duration'));
+}
+/** One canonical version/state reader; the duration branch never queries earning components. */
+async function readAttendancePolicyFormulaInputTx(tx:Tx,ctx:SessionContext,p:FormulaSourceParameters,stage:'money'|'duration'):Promise<PolicyFormulaInput>{
  const current=async()=>{
   const [row]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
   if(!row?.allowed)throw Error('Current Attendance principal required.');
@@ -54,10 +53,10 @@ export async function attendancePolicyFormulaInputTx(tx:Tx,ctx:SessionContext,p:
   let definition:OvertimePattern;
   try{definition=validateOvertimePattern(version.definition);}catch(error){if(!(error instanceof OvertimePatternError))throw error;unavailable('formulaInvalid');continue;}
   if(definition.currency.code!==p.currency.code||definition.currency.minorScale!==p.currency.minorScale){unavailable('currencyMismatch');continue;}
-  const ids=[...new Set(definition.rates.flatMap(rate=>rate.tiers.map(tier=>tier.mapping.earningItemId)))].sort();
+  const ids=stage==='money'?[...new Set(definition.rates.flatMap(rate=>rate.tiers.map(tier=>tier.mapping.earningItemId)))].sort():[];
   const items=ids.length?await tx.select().from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),inArray(payComponent.id,ids),
    isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind),eq(payComponent.kind,'allowance'),eq(payComponent.isNonPayable,false))):[];
-  if(items.length!==ids.length||definition.rates.some(rate=>rate.tiers.some(tier=>tier.mapping.currency!==p.currency.code))){unavailable('mappingUnavailable');continue;}
+  if(stage==='money'&&(items.length!==ids.length||definition.rates.some(rate=>rate.tiers.some(tier=>tier.mapping.currency!==p.currency.code)))){unavailable('mappingUnavailable');continue;}
   const reference:Extract<FormulaReference,{state:'known'}>={date:fact.date,state:'known',dayClass:fact.dayClass,moneyDay:fact.moneyDay,versionId:version.id,definition,definitionDigest:version.digest,
    activeState:{id:state.id,sequence:state.sequence,effectiveFrom:state.effectiveFrom},
    earningReferences:items.sort((a,b)=>a.id.localeCompare(b.id)).map(item=>JSON.parse(JSON.stringify(payComponentReferenceStamp(item))) as Record<string,unknown>)};

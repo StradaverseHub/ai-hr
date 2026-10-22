@@ -661,8 +661,19 @@ function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,raw
     let identity = safeIdentity(rawInput,adapter);
     try {
         const stage = runDurationStage(rawPattern,rawInput,e=>{engine=e;},adapter);
-        const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
         identity = stage.identity;
+        return priceOvertimeStage(stage);
+    }
+    catch (error) {
+        return { status: 'refused', ...identity, transferable: false, issues: [issueOf(error)], trace: engine?.trace ?? [] };
+    }
+}
+
+/** Shared money owner over an already established internal duration stage.
+ * Private extraction only: no caller-supplied stage, new policy authority or settlement API. */
+function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>):OvertimeEvaluation<B>{
+        const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
+        const identity = stage.identity;
         if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
             fail('source', 'sessionGranularity', 'A day aggregate cannot establish session-based pricing or money deductions.');
         const lines: OvertimeLine[] = [], counters = new Map<string, Q>(), charges = new Map<string, {
@@ -858,8 +869,4 @@ function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,raw
         if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
             fail('limit', 'evidence', 'Complete calculation evidence exceeds its supported size.');
         return result;
-    }
-    catch (error) {
-        return { status: 'refused', ...identity, transferable: false, issues: [issueOf(error)], trace: engine?.trace ?? [] };
-    }
 }

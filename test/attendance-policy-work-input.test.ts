@@ -245,6 +245,11 @@ describe('independent captured raw clock replay',()=>{
   expect(replayAttendancePolicyRawClocks(x.c,{state:'unavailable',authority:'sourceOnly',reason:'missingCapture'},x.trace,x.row))
    .toMatchObject({state:'unavailable',reason:'sourceUnavailable'});
  });
+ it('refuses a missing stored day classification without inferring one from captured clocks',()=>{
+  const x=recorded([[540,720],[840,1080]]);
+  expect(replayAttendancePolicyRawClocks(x.c,x.source,x.trace,{...x.row,dayType:null}))
+   .toMatchObject({state:'unavailable',reason:'scheduleOwnerUnavailable'});
+ });
  it('retains explicit First-In/Last-Out semantics while refusing a different recorded pairing',()=>{
   const p=policy();p.clock.pairing='firstInLastOut';const x=recorded([[540,720],[840,1080]],schedule(),p);
   expect(x.row.workedMinutes).toBe(480);
