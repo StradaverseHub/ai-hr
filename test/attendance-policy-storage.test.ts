@@ -1,3 +1,4 @@
+import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
 import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
 /** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
@@ -27,7 +28,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual'){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -40,6 +41,7 @@ async function fixture(approval:'manual'|'auto'='manual'){
  const tier=definition.rates[0].tiers[0];tier.mapping={earningItemId:earning.id,currency:'MYR'};
  if(tier.payment.method!=='hourly'||tier.payment.rate.type!=='hourlyRate')throw Error('Retain the standard fixture formula');
  tier.payment.rate.divisorMinutes={id:'divisor',unit:'minutes',type:'literal',value:'480'};
+ if(fixedHourlyRate!==undefined)tier.payment.rate={id:'fictional_hourly',unit:'moneyPerHour',type:'literal',value:fixedHourlyRate,currency:'MYR'};
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
@@ -187,6 +189,23 @@ describe('immutable non-payable policy part storage',()=>{
   ]){const changed=structuredClone(snapshot);mutate(changed);expect(attendancePolicyCurrentDurationMatches(changed,proof)).toBe(false);}
   const refused=structuredClone(snapshot);refused.policyDurationFormulaInput={authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'};
   expect(attendancePolicyCurrentDurationMatches(refused,proof)).toBe(false);
+ });
+
+ it('records and replays exact central pricing for both dated parts without enabling payment',async()=>{
+  const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  const pricing=attendancePolicyPricingProposal(snapshot);
+  expect(pricing).toMatchObject({state:'proposed',authority:'policyPricingProposalOnly',amountMinorUnits:'600'});
+  if(pricing.state!=='proposed')throw Error('Expected current captured pricing');
+  expect(pricing.parts.map(row=>row.pricing.amountMinorUnits)).toEqual(['300','300']);
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  const recorded=await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   return calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional actual central price source replay'});});
+  if(recorded.status!=='recorded')throw Error('Expected staged calculation');
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);
  });
 
  it('records a complete proposal part set atomically through the existing parent calculation writer',async()=>{

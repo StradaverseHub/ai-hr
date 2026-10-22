@@ -1,3 +1,4 @@
+import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
 import {attendancePolicyCoverageProposal} from './policy-coverage';
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
  * generate payment lines or settle cash/TOIL. Parent identities/digests are bound by the writer. */
@@ -78,7 +79,8 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
    policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};
-  if(!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot)))return false;
+  if(!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot))
+   ||!isDeepStrictEqual(stored.policyPricingProposal,attendancePolicyPricingProposal(replaySnapshot)))return false;
   const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
   if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;
   const expected=materializeAttendancePolicyProposalParts(input);
