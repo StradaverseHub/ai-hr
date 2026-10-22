@@ -85,7 +85,7 @@ describe('central pricing of finalized group-policy allocations',()=>{
   const pattern=definition(),input=positionedPolicy();
   pattern.eligibleMinutes={id:'legacy_eligible',unit:'minutes',type:'literal',value:'1'};
   pattern.durationCap={id:'legacy_cap',unit:'minutes',type:'literal',value:'2'};
-  pattern.durationRounding={mode:'floor',step:'30'};
+  pattern.durationRounding={mode:'down',step:'30'};
   pattern.deductions=[{id:'legacy_break',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'break_when',type:'constant',value:true},amount:{id:'break_amount',unit:'minutes',type:'literal',value:'30'}}];
   const before=structuredClone(pattern),result=evaluateOvertimePolicyAllocatedPrice(pattern,input);
   expect(result).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'3600',retainedDurationConfiguration:{minuteDeductionIds:['legacy_break']}});
