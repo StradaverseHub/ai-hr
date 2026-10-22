@@ -54,7 +54,7 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{result.value.quickActions.filter(row=>visible(row.key)).map(row=>{
       const reasonId=quickId+'-'+row.key;
       return <div key={row.key} className="min-w-0">{row.reason?<>
-       <Button type="button" variant="outline" className="min-h-11 w-full whitespace-normal" disabled aria-describedby={reasonId}>{actions(row.key)}</Button>
+       <Button type="button" variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2" disabled aria-describedby={reasonId}>{actions(row.key)}</Button>
        <p id={reasonId} className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(row.reason)}</p>
       </>:<Link href={homeQuickActionHref(row.key,employmentId)} className="flex min-h-11 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-center text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{actions(row.key)}</Link>}</div>;
      })}</div>
