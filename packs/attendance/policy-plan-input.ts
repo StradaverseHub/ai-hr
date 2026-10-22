@@ -1,3 +1,4 @@
+import {attendancePolicyTraceBinding} from './policy-trace-binding';
 /** Shared positioned-plan input for the future canonical calculation and independent financial
  * readers. A known plan set is not a worked day, eligible OT, payable part or settlement capability. */
 import {isDeepStrictEqual} from 'node:util';
@@ -13,14 +14,14 @@ export type PolicyPlanInput=
 
 /** Revalidate the complete recorded set; union only after every active approved request passes.
  * No caller may drop one bad receipt and use the rest as the parent's complete approval proof.
- * A currently visible later policy epoch does not prove the original frozen policy binding.
- * Until a richer binding owner exists, require the exact activated company epoch or refuse. */
+ * The exact owner-issued submitted policy identity supplies the frozen binding. A later
+ * unrelated company epoch neither replaces that identity nor invalidates the same policy. */
 export function attendancePolicyPlanInput(context:AttendancePolicyExecutionContext|undefined,
  approvals:PolicyApprovalInput|undefined,tenantId:string):PolicyPlanInput{
  const refuse=(reason:Extract<PolicyPlanInput,{state:'unavailable'}>['reason']):PolicyPlanInput=>({state:'unavailable',authority:'approvedPlanOnly',reason});
  if(context?.state!=='policy')return refuse('contextUnavailable');
- const selected=context.selected;
- if(!approvals||approvals.authority!=='sourceOnly'||approvals.policyRevisionId!==selected.id
+ const selected=context.selected,binding=attendancePolicyTraceBinding(context);
+ if(!binding||!approvals||approvals.authority!=='sourceOnly'||approvals.policyRevisionId!==selected.id
   ||approvals.mode!==selected.policy.overtime.approval||approvals.autoMethod!==selected.policy.overtime.autoMethod
   ||!isDeepStrictEqual(approvals.activation,selected.activation)||selected.companyId!==context.companyId
   ||!Number.isSafeInteger(selected.activation.epoch)||selected.activation.epoch<1)return refuse('policyBindingUnavailable');
@@ -30,14 +31,18 @@ export function attendancePolicyPlanInput(context:AttendancePolicyExecutionConte
  for(const request of approvals.requests){
   if(request.status!=='approved'||request.cancelledAt!==null)continue;
   const submission=request.submissionContract,final=request.finalReceipt,plan=request.positionedPlan;
-  if(submission.state!=='recorded'||submission.kind!=='epoch'||submission.visibleEpoch!==selected.activation.epoch)
+  if(submission.state!=='recorded'||submission.kind!=='epoch'||submission.visibleEpoch===null
+   ||!Number.isSafeInteger(submission.visibleEpoch)||submission.visibleEpoch<selected.activation.epoch
+   ||!isDeepStrictEqual(submission.policyBinding,binding))
    return refuse('policyBindingUnavailable');
   if(submission.correctionId!==request.id||submission.tenantId!==tenantId||submission.employmentId!==context.employmentId
    ||submission.companyId!==context.companyId||submission.date!==context.date)return refuse('planIdentityMismatch');
   if(final.state!=='recorded'||plan.state!=='recorded')return refuse('planUnavailable');
+  if(!isDeepStrictEqual(final.workflow.submittedPolicy,binding))return refuse('policyBindingUnavailable');
   if(final.correctionId!==request.id||plan.correctionId!==request.id||plan.workflowRequestId!==final.workflowRequestId
    ||plan.companyId!==context.companyId||plan.sourceDate!==context.date||plan.submissionEpoch!==submission.visibleEpoch
    ||plan.recordedAt!==final.recordedAt||final.submissionEpoch!==submission.visibleEpoch
+   ||submission.manualApprovalMethod!==request.method||final.workflow.submittedManualMethod!==request.method
    ||request.approvedMinutes!==request.requestedMinutes||!Number.isSafeInteger(request.approvedMinutes)
    ||request.approvedMinutes===null||request.approvedMinutes<1)return refuse('planIdentityMismatch');
   const value=plan.submittedPlan;

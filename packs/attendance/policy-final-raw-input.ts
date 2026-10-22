@@ -29,7 +29,8 @@ export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecut
  if(submission.state!=='recorded'||submission.kind!=='epoch'||submission.correctionId!==request.id
   ||submission.tenantId!==tenantId||submission.employmentId!==context.employmentId
   ||submission.companyId!==context.companyId||submission.date!==context.date
-  ||!binding||!isDeepStrictEqual(submission.policyBinding,binding))return refuse('identityUnavailable');
+  ||!binding||submission.visibleEpoch===null||!Number.isSafeInteger(submission.visibleEpoch)
+  ||submission.visibleEpoch<binding.activation.epoch||!isDeepStrictEqual(submission.policyBinding,binding))return refuse('identityUnavailable');
  if(request.status!=='approved'||request.cancelledAt!==null||final.state!=='recorded'
   ||final.authority!=='finalWorkflowDecisionOnly'||final.correctionId!==request.id
   ||final.submissionEpoch!==submission.visibleEpoch)return refuse('finalReceiptUnavailable');

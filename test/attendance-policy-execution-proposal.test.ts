@@ -1,3 +1,4 @@
+import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
 import {attendancePolicyCashReplay} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyDurationReplay} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
@@ -51,11 +52,11 @@ function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:numb
    otApprovalMethod:'smaller_of',decidedByEmploymentId:id(9),decidedAt:new Date('2026-10-22T02:00:00.000Z'),
    appliedAt:null,cancelledAt:null,plannedStartTime:start,plannedEndTime:end,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null});
   contracts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
-   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,manualApprovalMethod:'smaller_of',policyBinding:null,recordedAt:new Date('2026-10-22T01:00:00.000Z')});
+   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,manualApprovalMethod:'smaller_of',policyBinding:attendancePolicyTraceBinding(f.context),recordedAt:new Date('2026-10-22T01:00:00.000Z')});
   receipts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
    companyId:f.context.companyId,workflowRequestId:requestId,actorUserId:id(9),authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
    requestEvidence:{requestedMinutes:minutes,approvedMinutes:minutes,method:'smaller_of',plannedStartLabel:start,plannedEndLabel:end,checkIn:null,checkOut:null,clockChanges:null},
-   workflowEvidence:{submittedManualMethod:'smaller_of',requestId,routingVersion:2,stageCount:1,completion:{request_id:requestId,tenant_id:id(8),actual_user_id:id(9),stage_index:0,decision:'approved',resulting_status:'approved'},participants:[],submittedPlan:plan},
+   workflowEvidence:{submittedManualMethod:'smaller_of',submittedPolicy:attendancePolicyTraceBinding(f.context),requestId,routingVersion:2,stageCount:1,completion:{request_id:requestId,tenant_id:id(8),actual_user_id:id(9),stage_index:0,decision:'approved',resulting_status:'approved'},participants:[],submittedPlan:plan},
    rawEvidence:null,recordedAt:new Date('2026-10-22T02:00:00.000Z')});
  }
  return attendancePolicyApprovalInput(f.context.selected,rows,contracts,receipts);
@@ -241,13 +242,30 @@ describe('complete positioned-plan source and shared duration replay',()=>{
   const overlap=approvedPlans(f,[{from:1410,to:1470}]);
   expect(propose(f.context,f.work,f.formulas,overlap,id(8))).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:60,classes:[{eligibleMinutes:40,unplacedPayableMinutes:20}]}});
  });
- it('refuses the whole set for a different tenant, incomplete final proof or unproved frozen epoch',()=>{
+ it('refuses the whole set for a different tenant or inconsistent submission and final epochs',()=>{
   const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';
   const approvals=approvedPlans(f,[{from:1410,to:1470}]);
   expect(propose(f.context,f.work,f.formulas,approvals,id(99))).toMatchObject({state:'unavailable',reason:'plannedProofRequired'});
   const contract=approvals.requests[0].submissionContract;if(contract.state!=='recorded')throw Error('Expected fixture receipt');
   contract.visibleEpoch=2;
-  expect(attendancePolicyPlanInput(f.context,approvals,id(8))).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});
+  expect(attendancePolicyPlanInput(f.context,approvals,id(8))).toMatchObject({state:'unavailable',reason:'planIdentityMismatch'});
+ });
+ it('uses exact submitted policy identity across a later unrelated company epoch',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='preApproved';
+  const approvals=approvedPlans(f,[{from:1410,to:1470}]);
+  const request=approvals.requests[0],submission=request.submissionContract,final=request.finalReceipt,plan=request.positionedPlan;
+  if(submission.state!=='recorded'||final.state!=='recorded'||plan.state!=='recorded')throw Error('Expected source fixture');
+  submission.visibleEpoch=2;final.submissionEpoch=2;plan.submissionEpoch=2;
+  expect(attendancePolicyPlanInput(f.context,approvals,id(8))).toMatchObject({state:'known',intervals:[{from:1410,to:1470}]});
+  const mutate=[
+   (x:typeof approvals)=>{const r=x.requests[0];if(r.submissionContract.state==='recorded')r.submissionContract.policyBinding=null;},
+   (x:typeof approvals)=>{const r=x.requests[0];if(r.submissionContract.state==='recorded'&&r.submissionContract.policyBinding){
+    r.submissionContract.policyBinding.revisionId=id(99);if(r.finalReceipt.state==='recorded')r.finalReceipt.workflow.submittedPolicy=structuredClone(r.submissionContract.policyBinding);}},
+   (x:typeof approvals)=>{const r=x.requests[0];if(r.finalReceipt.state==='recorded')r.finalReceipt.workflow.submittedPolicy=null;},
+   (x:typeof approvals)=>{const r=x.requests[0];if(r.submissionContract.state==='recorded')r.submissionContract.visibleEpoch=0;},
+  ];
+  for(const change of mutate){const altered=structuredClone(approvals);change(altered);
+   expect(attendancePolicyPlanInput(f.context,altered,id(8))).toMatchObject({state:'unavailable',reason:'policyBindingUnavailable'});}
  });
  it('replays all planned parts and rejects a missing or altered approval source',()=>{
   const f=fixture();f.context.selected.policy.overtime.autoMethod='intersect';
