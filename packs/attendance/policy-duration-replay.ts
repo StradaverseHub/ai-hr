@@ -46,7 +46,11 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
   const proof={version:1,source:{tenantId:source.tenantId,employmentId:source.employmentId,attendanceId:source.attendanceId,date:source.date},
    policy,context,clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview,
    measurements:snapshot.policyClockMeasurements,work:snapshot.policyWorkInput,approvals:snapshot.policyApprovalInput,formulas,proposal};
-  return {state:'known',authority:'durationProposalReplayOnly',digest:createHash('sha256').update(JSON.stringify(proof)).digest('hex'),minutes:duration.payableMinutes};
+  // PostgreSQL jsonb does not preserve object-key order. Retain array order (capture and
+  // approval sequence), but canonicalize object keys before hashing writer/read-back evidence.
+  const encoded=JSON.stringify(proof,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
+   ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0)):value);
+  return {state:'known',authority:'durationProposalReplayOnly',digest:createHash('sha256').update(encoded).digest('hex'),minutes:duration.payableMinutes};
  }catch{return refuse('sourceUnavailable');}
 }
 /** A historical digest alone proves nothing current. Caller must obtain the snapshot through

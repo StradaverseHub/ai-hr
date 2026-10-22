@@ -174,8 +174,11 @@ describe('immutable non-payable policy part storage',()=>{
   if(!snapshot.policyFormulaInput)throw Error('Expected canonical formula source');
   const durationOnly=structuredClone(snapshot);durationOnly.policyDurationFormulaInput=attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput);
   durationOnly.policyFormulaInput=undefined;durationOnly.input.source.inputDigest='9'.repeat(64);durationOnly.referenceDigest='8'.repeat(64);
-  delete durationOnly.input.facts.monthlySalary;
+  delete durationOnly.input.facts.basicSalary;delete durationOnly.input.facts.calculationBase;
   expect(attendancePolicyCurrentDurationMatches(durationOnly,proof)).toBe(true);
+  const reordered=JSON.parse(JSON.stringify(snapshot,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
+   ?Object.fromEntries(Object.entries(value).reverse()):value)) as typeof snapshot;
+  expect(attendancePolicyCurrentDurationMatches(reordered,proof)).toBe(true);
   for(const mutate of [
    (x:typeof snapshot)=>{x.input.source.employmentId=randomUUID();},
    (x:typeof snapshot)=>{if(x.policyClockSource?.state==='known')x.policyClockSource.clocks[0].captureId=randomUUID();},
