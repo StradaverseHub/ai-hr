@@ -319,6 +319,36 @@ REVOKE ALL ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) F
 GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) TO ai_hr_app;
 
 --> statement-breakpoint
+-- First raw derivation has no calc_trace or overtime source yet. This separate checked barrier
+-- admits only a real visible Attendance subject/day, never a posted policy/company or approval.
+-- The invoker must resolve the canonical dated schedule/policy again AFTER acquiring this lock.
+CREATE FUNCTION app.lock_attendance_policy_raw_context(p_employment uuid,p_date date) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=app.current_tenant_id();
+BEGIN
+ IF app.attendance_policy_principal_current() IS NOT TRUE
+  OR NOT(app.can_see_employment(p_employment) OR app.can_admin_payroll_employment(p_employment)) THEN
+  RAISE EXCEPTION 'Current Attendance subject authority required' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.attendance a JOIN public.employment e
+  ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+  WHERE a.tenant_id=tenant AND a.employment_id=p_employment AND a.attendance_date=p_date
+   AND p_date>=e.hired_on AND(e.terminated_on IS NULL OR p_date<=e.terminated_on)) THEN
+  RAISE EXCEPTION 'Raw Attendance subject day is unavailable' USING ERRCODE='23514';END IF;
+ PERFORM 1 FROM public.overtime_pattern_epoch WHERE tenant_id=tenant FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Policy configuration epoch is unavailable' USING ERRCODE='23514';END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE
+  OR NOT(app.can_see_employment(p_employment) OR app.can_admin_payroll_employment(p_employment)) THEN
+  RAISE EXCEPTION 'Current Attendance subject authority required' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.attendance a JOIN public.employment e
+  ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+  WHERE a.tenant_id=tenant AND a.employment_id=p_employment AND a.attendance_date=p_date
+   AND p_date>=e.hired_on AND(e.terminated_on IS NULL OR p_date<=e.terminated_on)) THEN
+  RAISE EXCEPTION 'Raw Attendance subject day is unavailable' USING ERRCODE='23514';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.lock_attendance_policy_raw_context(uuid,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_raw_context(uuid,date) TO ai_hr_app;
+
+--> statement-breakpoint
 -- This draft is a non-payable storage stage in BOTH settlement modes. The old cash guard already
 -- requires a ready calculation; the old TOIL guard checks its accrual but does not inspect that outcome.
 -- Keep the single parent settlement owner and refuse a new staged policy claim before either branch.

@@ -73,6 +73,17 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('admits only a real current raw subject/day before first-trace configuration serialization',async()=>{
+  const f=await fixture();await f.save();
+  const lock=(employmentId:string,date:string)=>withTenant(ctx,tx=>tx.execute(sql`select app.lock_attendance_policy_raw_context(${employmentId}::uuid,${date}::date)`));
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({code:'23514'});
+  await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:00'});
+  await owner.db.update(s.attendance).set({calcTrace:null}).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  await expect(lock(f.employmentId,day(1))).resolves.toBeDefined();
+  await expect(lock(randomUUID(),day(1))).rejects.toMatchObject({code:'42501'});
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({code:'42501'});
+ });
  it('resolves prospective raw policy inputs without requiring an already-derived trace, and never guesses captures',async()=>{
   const f=await fixture(),saved=await f.save();
   const read=()=>withTenant(ctx,tx=>attendancePolicyRawInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));

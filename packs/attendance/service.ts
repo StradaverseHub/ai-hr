@@ -75,3 +75,4 @@ export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurati
 export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 // Prospective source seam for the canonical raw writer; no figure, approval or settlement write.
 export {attendancePolicyRawInputTx} from './policy-raw-input';
+export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-figures';

@@ -13,16 +13,22 @@ import {assertModuleGate} from '../../core/module-gate';
 /** Called only with the canonical writer's subject/date, never a posted policy/company/interval.
  * Resolve the actual schedule before a first raw-day trace exists; a pre-policy application keeps
  * its original owner. The complete effective punch set and original capture receipts remain intact.
- * Raw writers must still hold their ordinary Attendance/Payroll locks and serialize configuration. */
+ * Raw writers must still hold their ordinary Attendance/Payroll locks. This reader shares the
+ * configuration epoch before rereading live policy; it grants no configuration mutation authority. */
 export async function attendancePolicyRawInputTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  assertModuleGate(ctx,'attendance');
- const context=await attendancePolicyExecutionContextTx(tx,ctx,p);
+ let context=await attendancePolicyExecutionContextTx(tx,ctx,p);
  if(context.state!=='policy')return context;
- const applicationId=await legacyApplicationForAttendancePolicyTx(tx,ctx,p,context.selected);
- if(applicationId)return {state:'legacyApplication' as const,applicationId};
  const [day]=await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
   eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
  if(!day)return {state:'unavailable' as const,reason:'rawDayUnavailable' as const};
+ // A first derived trace does not exist yet. Lock only this real raw subject/day, then resolve
+ // schedule, dated policy and frozen legacy admission again after any configuration writer waited.
+ await tx.execute(sql`select app.lock_attendance_policy_raw_context(${p.employmentId}::uuid,${p.date}::date)`);
+ context=await attendancePolicyExecutionContextTx(tx,ctx,p);
+ if(context.state!=='policy')return context;
+ const applicationId=await legacyApplicationForAttendancePolicyTx(tx,ctx,p,context.selected);
+ if(applicationId)return {state:'legacyApplication' as const,applicationId};
  const punches=await tx.select().from(attendancePunch).where(and(eq(attendancePunch.tenantId,ctx.tenantId),
   eq(attendancePunch.attendanceId,day.id),isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.id)).limit(129);
  const source=await recordedPolicyClockSourceTx(tx,ctx,{attendanceId:day.id,employmentId:p.employmentId,date:p.date,punches});
