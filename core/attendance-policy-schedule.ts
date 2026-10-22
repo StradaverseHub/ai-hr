@@ -26,10 +26,10 @@ export type PolicyClockPlacement=
  |{state:'known';authority:'sourceOnly';scheduled:AttendancePolicyInterval;fixedClock:boolean;
    includeGraceInLateness:boolean;includeGraceInEarlyOut:boolean};
 export function attendancePolicyClockPlacement(s:Pick<PolicySchedulePlacementInput,'start'|'end'|'crossesMidnight'|'durationOnly'|'flexiDuration'|'dayType'|'includeGraceInLateness'|'includeGraceInEarlyOut'>):PolicyClockPlacement{
- if(s.durationOnly||s.flexiDuration)return {state:'unavailable',authority:'sourceOnly',reason:'durationOwner'};
+ if(s.durationOnly)return {state:'unavailable',authority:'sourceOnly',reason:'durationOwner'};
  const start=clock(s.start),last=clock(s.end),end=last===null?null:last+(s.crossesMidnight?1440:0);
  if(start===null||end===null||end<=start)return {state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'};
- return {state:'known',authority:'sourceOnly',scheduled:{from:start,to:end},fixedClock:s.dayType==='workday',
+ return {state:'known',authority:'sourceOnly',scheduled:{from:start,to:end},fixedClock:s.dayType==='workday'&&!s.flexiDuration,
   includeGraceInLateness:s.includeGraceInLateness,includeGraceInEarlyOut:s.includeGraceInEarlyOut};
 }
 /** Independent proof of physical unpaid windows. OT window count attribution cannot erase
@@ -65,6 +65,8 @@ export function attendancePolicyWorkPlacement(s:PolicySchedulePlacementInput):Po
 }
 /** Full OT placement additionally requires its own proved window/count attribution. */
 export function attendancePolicySchedulePlacement(s:PolicySchedulePlacementInput,policy:AttendanceGroupPolicy):PolicySchedulePlacement{
+ // Semi Flexi anchors can prove physical break overlap, but do not authorize fixed-window OT.
+ if(s.flexiDuration)return {state:'unavailable',authority:'sourceOnly',reason:'durationOwner'};
  const unavailable=(reason:Extract<PolicySchedulePlacement,{state:'unavailable'}>['reason']):PolicySchedulePlacement=>({state:'unavailable',authority:'sourceOnly',reason});
  const work=attendancePolicyWorkPlacement(s);
  if(work.state!=='known')return work;

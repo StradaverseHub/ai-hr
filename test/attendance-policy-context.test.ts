@@ -73,10 +73,24 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('retains Semi Flexi duration, allowance and half-day owners without fixed-clock penalties',async()=>{
+  const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),type:'semi_flexi',
+   startTime:'07:00',endTime:'20:00',normalMinutesOverride:480,breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
+  await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
+  for(const [direction,time] of [['in','09:00:00'],['out','10:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:30,underMinutes:450,status:'half_day',lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({workedMinutes:30,workBasis:'semiFlexiDurationOwner'});
+ });
  it('uses the existing Full Flexi raw duration owner with captured pairs and retains no fixed-clock penalties',async()=>{
   const f=await fixture();
   const sh=await createShift(ctx,{...f.shiftInput,code:'FULL_'+randomUUID().slice(0,6),type:'full_flexi',normalMinutesOverride:480,
-   breakMinutes:30,flexibleBreakMinutes:30});
+   breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
   await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
   // Fictional stored-capture runtime fixture, not an actual-app or production receipt.
   for(const [direction,time] of [['in','09:00:00'],['out','12:00:00'],['in','13:00:00'],['out','18:00:00']] as const){

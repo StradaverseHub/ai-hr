@@ -35,7 +35,17 @@ export function attendancePolicyRawWorkedMinutes(context:AttendancePolicyExecuti
   return Math.max(0,gross-fullFlexiBreakMinutes(clocks.minuteIntervals,context.schedule.breakPeriods,
    context.schedule.breakMinutes,context.schedule.flexibleBreakMinutes));
  }
- if(placement.state!=='known')return null;
+ if(placement.state!=='known'){
+  // Semi Flexi's existing whole allowance/scalar cliff is a duration count, not a positioned
+  // unpaid interval. Reuse that count owner only with proved non-fixed schedule anchors. Mixed
+  // per-row flexible/fixed break placement still needs its canonical attribution owner.
+  const boundary=context.clockPlacement;
+  if(!context.schedule.flexiDuration||placement.reason!=='unpositionedBreak'||boundary?.state!=='known'||boundary.fixedClock
+   ||context.schedule.flexibleBreakMinutes===null&&context.schedule.breakPeriods?.length)return null;
+  const gross=clocks.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0);
+  return Math.max(0,gross-fullFlexiBreakMinutes(clocks.minuteIntervals,context.schedule.breakPeriods,
+   context.schedule.breakMinutes,context.schedule.flexibleBreakMinutes));
+ }
  const physical=union(clocks.minuteIntervals.map(row=>({from:row.inAbs,to:row.outAbs})),4320);
  return minutes(subtract(physical,placement.unpaidWindows,4320),4320);
 }

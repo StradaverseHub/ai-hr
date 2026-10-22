@@ -31,7 +31,8 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
   trace.punch={inAbs:Math.floor(first/60000),outAbs:complete&&last!==null?Math.floor(last/60000):null,
    spanMinutes:complete?proof.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0):null,
    workedMinutes:figures.workedMinutes,calculationIntervals:proof.minuteIntervals.map(row=>({...row})),
-   ...(figures.workedMinutes===null?{}:{workBasis:raw.context.schedule.durationOnly?'fullFlexiDurationOwner' as const:'positionedUnpaidOverlap' as const}),
+   ...(figures.workedMinutes===null?{}:{workBasis:raw.context.schedule.durationOnly?'fullFlexiDurationOwner' as const:
+    raw.context.schedule.flexiDuration&&raw.context.workPlacement?.state!=='known'?'semiFlexiDurationOwner' as const:'positionedUnpaidOverlap' as const}),
    intervalSource:raw.context.resolvedClock.pairing==='auto'?'closedPunchPairs':'elapsedEnvelope'};
   trace.lateness=figures.lateMinutes===null||boundary.state!=='known'?null:{startAbs:boundary.scheduled.from,
    graceMinutes:raw.context.resolvedClock.lateGraceMinutes,thresholdAbs:boundary.scheduled.from+raw.context.resolvedClock.lateGraceMinutes,
@@ -45,8 +46,8 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
   trace.latenessDeduction=deduction(figures.lateMinutes,figures.lateDeductMinutes,p.rule!.lateAfterMinutes,p.rule!.lateDeductMinutes);
   trace.earlyOutDeduction=deduction(figures.earlyOutMinutes,figures.earlyOutDeductMinutes,p.rule!.earlyAfterMinutes,p.rule!.earlyDeductMinutes);
   trace.overtime=null;
-  if(complete&&last!==null&&p.dayType==='workday'&&!raw.context.schedule.crossesMidnight&&!raw.context.schedule.flexiDuration
-   &&!raw.context.schedule.durationOnly&&status!=='late'&&Math.floor(last/60000)<p.halfDayBefore)status='half_day';
+  if(complete&&last!==null&&p.dayType==='workday'&&!raw.context.schedule.crossesMidnight
+   &&!raw.context.schedule.durationOnly&&raw.context.schedule.normalMinutes>0&&status!=='late'&&Math.floor(last/60000)<p.halfDayBefore)status='half_day';
  }
  return {checkInAt,checkOutAt,status,workedMinutes:figures.workedMinutes,otMinutes:null,lateMinutes:figures.lateMinutes,
   earlyOutMinutes:figures.earlyOutMinutes,underMinutes:figures.underMinutes,lateDeductMinutes:figures.lateDeductMinutes,

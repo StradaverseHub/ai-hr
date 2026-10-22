@@ -71,6 +71,19 @@ describe('canonical policy schedule and work source projection',()=>{
 });
 
 describe('independent clock boundary and break ownership',()=>{
+ it('uses Semi Flexi anchors for raw break overlap/counts without fixed penalties or fixed-window OT',()=>{
+  const semi={...schedule(),flexiDuration:true},proof=clocks([[570,1050]]),c=context(semi);
+  expect(c.clockPlacement).toMatchObject({state:'known',fixedClock:false});
+  expect(attendancePolicyClockMeasurements(c,proof)).toMatchObject({state:'measured',lateIn:{state:'notApplicable'},earlyOut:{state:'notApplicable'}});
+  expect(attendancePolicyRawWorkedMinutes(c,proof)).toBe(420);
+  expect(attendancePolicyRawWorkedMinutes(context({...semi,flexibleBreakMinutes:30}),proof)).toBe(450);
+  expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:null}),proof)).toBe(420);
+  expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:null}),clocks([[570,720]]))).toBe(150);
+  expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:[{start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30}]}),proof)).toBeNull();
+  expect(attendancePolicyRawWorkedMinutes({...c,workPlacement:{state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'}},proof)).toBeNull();
+  expect(c.placement).toMatchObject({state:'unavailable',reason:'durationOwner'});
+  expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+ });
  it('preserves Full Flexi raw duration and its existing break allowances without fixed-clock penalties or OT placement',()=>{
   const full={...schedule(),start:null,end:null,durationOnly:true,flexiDuration:true,breakPeriods:null};
   const proof=clocks([[540,720],[780,1080]]),c=context(full);
