@@ -15,7 +15,7 @@ import {
 } from '../core/custom-reports';
 import { payrollComparisonSpec } from '../core/report-payroll-comparison';
 import {
-  closeBatch, createBatch, createIndividualTxn, generatePayslips, setPayrollPermissionGrant,
+  closeBatch, createBatch, createIndividualTxn, generatePayslips, reprocessSelectedEmployees, setPayrollPermissionGrant,
   seedPayComponentCatalog, backfillEmploymentComponentsFromCompensation,
   listPayComponents,upsertPayComponent,setEmploymentPayComponent,createAdditionalRun,
 } from '../packs/payroll/service';
@@ -150,11 +150,13 @@ describe('Payroll comparison consumes generated paid results under the saved rep
   it('counts a generated one-off deduction once using its canonical component amount, preserving the separate signed record',async()=>{
     const f=await fixture({typed:true});
     await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',true);
+    await setModule(b.tenantId,'multi_cycle_payroll','active');
     ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
     const deduction=(await listPayComponents(ctx)).find(row=>row.code==='DEDUCTION');expect(deduction).toBeDefined();
     await createIndividualTxn(ctx,{batchId:f.previous.batchId,employmentId:f.employee.employmentId,kind:'deduction',
       txnDate:previousPeriod+'-10',amount:10.10,componentId:deduction!.id});
-    await generatePayslips(ctx,{batchId:f.previous.batchId});await closeBatch(ctx,{batchId:f.previous.batchId});
+    await reprocessSelectedEmployees(ctx,{batchId:f.previous.batchId,employmentIds:[f.employee.employmentId],reason:'Fictional comparison fixture input correction'});
+    await closeBatch(ctx,{batchId:f.previous.batchId});
     await createIndividualTxn(ctx,{batchId:f.current.batchId,employmentId:f.employee.employmentId,kind:'deduction',
       txnDate:currentPeriod+'-10',amount:10.11,componentId:deduction!.id});
     await generatePayslips(ctx,{batchId:f.current.batchId});
@@ -194,9 +196,11 @@ describe('Payroll comparison consumes generated paid results under the saved rep
 
   it('aggregates actual regular, bonus, off-cycle and adjustment payments without adding cumulative assessment bases',async()=>{
     const f=await fixture({typed:true});
+    await setModule(b.tenantId,'multi_cycle_payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
     const bonus=(await listPayComponents(ctx)).find(row=>row.code==='BONUS');expect(bonus).toBeDefined();
     await setEmploymentPayComponent(ctx,{employmentId:f.employee.employmentId,componentId:bonus!.id,amount:100,effectiveFrom:previousPeriod+'-01'});
-    await generatePayslips(ctx,{batchId:f.previous.batchId});await closeBatch(ctx,{batchId:f.previous.batchId});
+    await reprocessSelectedEmployees(ctx,{batchId:f.previous.batchId,employmentIds:[f.employee.employmentId],reason:'Fictional comparison fixture input correction'});
+    await closeBatch(ctx,{batchId:f.previous.batchId});
     await setModule(b.tenantId,'multi_cycle_payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
     await generatePayslips(ctx,{batchId:f.current.batchId});
     const additionalIds:string[]=[];
