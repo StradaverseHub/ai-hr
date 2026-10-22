@@ -10519,6 +10519,7 @@ export const attendancePolicyRequestContract=pgTable('attendance_policy_request_
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),companyId:uuid('company_id').references(()=>company.id,{onDelete:'restrict'}),
  kind:text('kind').notNull().$type<'epoch'|'unavailable'>(),visibleEpoch:bigint('visible_epoch',{mode:'number'}),
  plannedWindow:jsonb('planned_window').$type<Record<string,unknown>>(),
+ manualApprovalMethod:text('manual_approval_method').$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 });
 

@@ -47,11 +47,11 @@ function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:numb
    otApprovalMethod:'smaller_of',decidedByEmploymentId:id(9),decidedAt:new Date('2026-10-22T02:00:00.000Z'),
    appliedAt:null,cancelledAt:null,plannedStartTime:start,plannedEndTime:end,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null});
   contracts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
-   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,recordedAt:new Date('2026-10-22T01:00:00.000Z')});
+   companyId:f.context.companyId,kind:'epoch',visibleEpoch:1,plannedWindow:plan,manualApprovalMethod:'smaller_of',recordedAt:new Date('2026-10-22T01:00:00.000Z')});
   receipts.push({correctionId,tenantId:id(8),employmentId:f.context.employmentId,attendanceDate:f.context.date,
    companyId:f.context.companyId,workflowRequestId:requestId,actorUserId:id(9),authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
    requestEvidence:{requestedMinutes:minutes,approvedMinutes:minutes,method:'smaller_of',plannedStartLabel:start,plannedEndLabel:end,checkIn:null,checkOut:null,clockChanges:null},
-   workflowEvidence:{requestId,routingVersion:2,stageCount:1,completion:{request_id:requestId,tenant_id:id(8),actual_user_id:id(9),stage_index:0,decision:'approved',resulting_status:'approved'},participants:[],submittedPlan:plan},
+   workflowEvidence:{submittedManualMethod:'smaller_of',requestId,routingVersion:2,stageCount:1,completion:{request_id:requestId,tenant_id:id(8),actual_user_id:id(9),stage_index:0,decision:'approved',resulting_status:'approved'},participants:[],submittedPlan:plan},
    rawEvidence:null,recordedAt:new Date('2026-10-22T02:00:00.000Z')});
  }
  return attendancePolicyApprovalInput(f.context.selected,rows,contracts,receipts);

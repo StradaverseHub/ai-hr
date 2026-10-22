@@ -104,6 +104,7 @@ import {
   assignment,
   attendance,
   attendanceCorrection,
+  attendancePolicyRequestContract,
   attendanceClockCapture,
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
@@ -3414,7 +3415,21 @@ export function resolveApprovedOt(
 }
 
 /** The company's OT-approval calculation method for an employee (from attendance_policy; default system_calculated). */
-async function otApprovalCalculationFor(tx: Tx, employmentId: string): Promise<OtApprovalMethod> {
+async function otApprovalCalculationFor(tx: Tx, employmentId: string, correctionId?: string): Promise<OtApprovalMethod> {
+  // Newly submitted requests retain the company method observed by the submission owner.
+  // This does not establish a group-policy binding, worked interval or payment authority.
+  if (correctionId) {
+    const [contract] = await tx.select().from(attendancePolicyRequestContract)
+      .where(and(eq(attendancePolicyRequestContract.correctionId, correctionId),
+        eq(attendancePolicyRequestContract.employmentId, employmentId))).limit(1);
+    if (contract?.kind === 'epoch') {
+      const method = contract.manualApprovalMethod;
+      if (!method || !['requested', 'system_calculated', 'smaller_of', 'greater_of'].includes(method))
+        throw new Error('The submitted overtime calculation method is unavailable.');
+      return method;
+    }
+  }
+
   const [row] = await tx
     .select({ m: attendancePolicy.otApprovalCalculation })
     .from(employment)
@@ -3932,7 +3947,7 @@ export async function decideAttendanceCorrection(
       let otApprovalMethod: OtApprovalMethod | null = null;
       let systemOtForComparison: number | null = null;
       if (hasOtRequest) {
-        otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId);
+        otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId, cor.id);
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
         // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
         // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).

@@ -12,12 +12,12 @@ function row():PolicyApprovalSourceRow{return {id,tenantId:id,employmentId:id,at
  decidedByEmploymentId:id,decidedAt:new Date('2026-10-22T02:00:00.002Z'),appliedAt:new Date('2026-10-23T12:00:00.003Z'),cancelledAt:null,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null,plannedStartTime:'18:00:00',plannedEndTime:'20:00:00'};}
 function finalFixture(){
  const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-  companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+  companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,manualApprovalMethod:'smaller_of',recordedAt:new Date('2026-10-22T01:00:00.123Z')};
  const receipt:PolicyFinalReceiptSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
   companyId:id,workflowRequestId:id,actorUserId:id,authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
   requestEvidence:{requestedMinutes:r.requestedOtMinutes,approvedMinutes:r.approvedOtMinutes,method:r.otApprovalMethod,
    plannedStartLabel:r.plannedStartTime,plannedEndLabel:r.plannedEndTime,checkIn:null,checkOut:null,clockChanges:null},
-  workflowEvidence:{requestId:id,routingVersion:2,stageCount:1,completion:{request_id:id,tenant_id:id,
+  workflowEvidence:{submittedManualMethod:'smaller_of',requestId:id,routingVersion:2,stageCount:1,completion:{request_id:id,tenant_id:id,
    actual_user_id:id,stage_index:0,decision:'approved',resulting_status:'approved'},participants:[]},rawEvidence:null,
   recordedAt:new Date('2026-10-22T02:00:00.123Z')};
  return {p,r,contract,receipt};
@@ -50,17 +50,17 @@ describe('canonical policy application source facts',()=>{
  });
  it('retains the exact owner-issued submission contract separately from the final decision',()=>{
   const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-   companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+   companyId:id,kind:'epoch',visibleEpoch:1,plannedWindow:null,manualApprovalMethod:'smaller_of',recordedAt:new Date('2026-10-22T01:00:00.123Z')};
   const before=structuredClone({p,r,contract}),result=attendancePolicyApprovalInput(p,[r],[contract]);
   expect(result.requests[0].submissionContract).toEqual({state:'recorded',correctionId:id,tenantId:id,employmentId:id,date:r.attendanceDate,
-   companyId:id,kind:'epoch',visibleEpoch:1,recordedAt:'2026-10-22T01:00:00.123Z'});
+   companyId:id,kind:'epoch',visibleEpoch:1,manualApprovalMethod:'smaller_of',recordedAt:'2026-10-22T01:00:00.123Z'});
   expect(result.requests[0]).toMatchObject({decidedByEmploymentId:id,decidedAt:'2026-10-22T02:00:00.002Z'});
   expect(JSON.stringify(attendancePolicyApprovalInput(p,[r],[{...contract,visibleEpoch:2}]))).not.toBe(JSON.stringify(result));
   expect({p,r,contract}).toEqual(before);
  });
  it('does not treat missing, unavailable or mismatched submission proof as legacy admission or approval',()=>{
   const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
-   companyId:null,kind:'unavailable',visibleEpoch:null,plannedWindow:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+   companyId:null,kind:'unavailable',visibleEpoch:null,plannedWindow:null,manualApprovalMethod:null,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
   expect(attendancePolicyApprovalInput(p,[r]).requests[0].submissionContract).toEqual({state:'missing'});
   expect(attendancePolicyApprovalInput(p,[r],[contract]).requests[0].submissionContract).toMatchObject({state:'recorded',kind:'unavailable',visibleEpoch:null});
   for(const field of ['tenantId','employmentId','attendanceDate'] as const){
@@ -88,6 +88,16 @@ describe('canonical policy application source facts',()=>{
    .toMatchObject({state:'unavailable',reason:'workflowMismatch'});
   expect(attendancePolicyApprovalInput(p,[{...r,cancelledAt:new Date()}],[contract],[receipt]).requests[0].finalReceipt)
    .toMatchObject({state:'inactive',reason:'requestNotApproved'});
+ });
+ it('refuses a changed submitted method even when scalar request and final receipt otherwise agree',()=>{
+  const {p,r,contract,receipt}=finalFixture();
+  contract.manualApprovalMethod='requested';
+  expect(attendancePolicyApprovalInput(p,[r],[contract],[receipt]).requests[0].finalReceipt)
+   .toMatchObject({state:'unavailable',reason:'submissionMismatch'});
+  contract.manualApprovalMethod=r.otApprovalMethod;
+  receipt.workflowEvidence.submittedManualMethod='requested';
+  expect(attendancePolicyApprovalInput(p,[r],[contract],[receipt]).requests[0].finalReceipt)
+   .toMatchObject({state:'unavailable',reason:'submissionMismatch'});
  });
  it('requires participant completion evidence for v3/v4 and keeps receipts unambiguous',()=>{
   const {p,r,contract,receipt}=finalFixture();

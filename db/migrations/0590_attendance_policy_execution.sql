@@ -206,9 +206,10 @@ CREATE TABLE public.attendance_policy_request_contract(
  kind text NOT NULL CHECK(kind IN('epoch','unavailable')),
  visible_epoch bigint CHECK(visible_epoch BETWEEN 0 AND 9007199254740991),
  planned_window jsonb CHECK(planned_window IS NULL OR jsonb_typeof(planned_window)='object'),
+ manual_approval_method text CHECK(manual_approval_method IS NULL OR manual_approval_method IN('requested','system_calculated','smaller_of','greater_of')),
  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- CHECK((kind='epoch' AND company_id IS NOT NULL AND visible_epoch IS NOT NULL)
-   OR(kind='unavailable' AND company_id IS NULL AND visible_epoch IS NULL)));
+ CHECK((kind='epoch' AND company_id IS NOT NULL AND visible_epoch IS NOT NULL AND manual_approval_method IS NOT NULL)
+   OR(kind='unavailable' AND company_id IS NULL AND visible_epoch IS NULL AND manual_approval_method IS NULL)));
 ALTER TABLE public.attendance_policy_request_contract ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_policy_request_contract FORCE ROW LEVEL SECURITY;
 CREATE POLICY attendance_policy_request_contract_owner ON public.attendance_policy_request_contract FOR ALL
@@ -251,7 +252,7 @@ CREATE TRIGGER zz_attendance_policy_activation_epoch BEFORE INSERT ON public.att
 CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
- plan jsonb;start_min integer;end_min integer;duration_min integer;
+ plan jsonb;start_min integer;end_min integer;duration_min integer;manual_method text;
 BEGIN
  IF NEW.tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() THEN
   SELECT count(*),min(a.company_id::text)::uuid INTO v_count,v_company
@@ -263,6 +264,10 @@ BEGIN
   IF v_count=1 AND v_company IS NOT NULL THEN
    v_epoch:=app.lock_attendance_policy_epoch(NEW.tenant_id,v_company);
    IF app.attendance_policy_principal_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current request principal required' USING ERRCODE='42501';END IF;
+   -- Freeze the existing company's actual method observed at this submission. This is
+   -- not a group-policy binding or an interval intersection calculation. No historical backfill.
+   SELECT coalesce((SELECT p.ot_approval_calculation::text FROM public.attendance_policy p
+    WHERE p.tenant_id=NEW.tenant_id AND p.company_id=v_company),'system_calculated') INTO manual_method;
    v_kind:='epoch';
   END IF;
  END IF;
@@ -282,8 +287,8 @@ BEGIN
     'from',start_min,'to',start_min+duration_min,'requestedMinutes',duration_min);
   END IF;
  END IF;
- INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window)
-  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan);
+ INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window,manual_approval_method)
+  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan,manual_method);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
@@ -452,6 +457,9 @@ BEGIN
   AND tenant_id=OLD.tenant_id AND employment_id=OLD.employment_id AND attendance_date=OLD.attendance_date AND kind='epoch';
  -- No backfill and no promotion of legacy approvals into a fresh final effect.
  IF NOT FOUND THEN RETURN NEW;END IF;
+ IF contract.manual_approval_method IS DISTINCT FROM NEW.ot_approval_method::text THEN
+  RAISE EXCEPTION 'Retain the submitted overtime calculation method' USING ERRCODE='23514';
+ END IF;
  SELECT * INTO w FROM public.attendance_workflow_request WHERE correction_id=OLD.id
   AND tenant_id=OLD.tenant_id AND employment_id=OLD.employment_id AND routing_version>=2;
  IF NOT FOUND THEN RETURN NEW;END IF;
@@ -482,7 +490,7 @@ BEGIN
    'plannedStartLabel',NEW.planned_start_time,'plannedEndLabel',NEW.planned_end_time,
    'checkIn',NEW.proposed_check_in,'checkOut',NEW.proposed_check_out,'clockChanges',NEW.clock_changes),
   jsonb_build_object('requestId',w.id,'routingVersion',w.routing_version,'stageCount',jsonb_array_length(w.stages),
-   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window),raw);
+   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window,'submittedManualMethod',contract.manual_approval_method),raw);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;

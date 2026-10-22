@@ -7,6 +7,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
+import {setAttendancePolicy} from '../core/attendance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base;
@@ -48,6 +49,25 @@ describe('owner-issued final workflow receipt',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
   await expect(decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved'})).rejects.toThrow();
   expect(await receipts()).toEqual(rows);
+ });
+ it('keeps the submitted company method through a real later configuration change',async()=>{
+  const setting=(method:'requested'|'system_calculated')=>setAttendancePolicy(adminCtx(b),{companyId:b.companyId,
+   workStart:'09:00',workEnd:'18:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',
+   workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
+  await setting('requested');
+  const f=await fixture();
+  const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,f.id));
+  expect(contract.manualApprovalMethod).toBe('requested');
+  await setting('system_calculated');
+  await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
+  const [request]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,f.id));
+  expect(request).toMatchObject({status:'approved',otApprovalMethod:'requested',approvedOtMinutes:60});
+  const [receipt]=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id));
+  expect(receipt).toMatchObject({requestEvidence:{method:'requested',approvedMinutes:60},workflowEvidence:{submittedManualMethod:'requested'}});
+  await expect(owner.db.update(s.attendancePolicyRequestContract).set({manualApprovalMethod:'system_calculated'})
+   .where(eq(s.attendancePolicyRequestContract.correctionId,f.id))).rejects.toThrow();
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
  it('retains an explicit overnight start-date plan but never positions a mismatched scalar request',async()=>{
   const f=await fixture();
