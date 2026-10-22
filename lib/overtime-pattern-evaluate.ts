@@ -656,6 +656,51 @@ export function evaluateOvertimePattern(pattern:OvertimePattern,input:OvertimeIn
 /** Formula proposal only. Canonical Attendance/Payroll must validate the complete parent partition,
  * policy duration pipeline and real approval before accepting any policy-bound result. */
 export function evaluateOvertimePolicyPart(pattern:OvertimePattern,input:OvertimeInput<OvertimePolicyBinding>):OvertimeEvaluation<OvertimePolicyBinding>{return evaluateMoney(pattern,input,overtimePolicyBinding);}
+export type OvertimePolicyAllocatedPrice=
+ |{state:'unavailable';authority:'pricingProposalOnly';reason:'allocationUnavailable'|'formulaUnavailable'|'durationChanged'}
+ |{state:'proposed';authority:'pricingProposalOnly';durationOwner:'attendanceGroupPolicy';minutes:number;
+   source:OvertimeSource;patternVersionId:string;policyBinding:OvertimePolicyBinding['policyBinding'];
+   currency:{code:string;minorScale:number};amountMinorUnits:string;lines:OvertimeLine[];trace:OvertimeTrace[];
+   /** Original duration configuration remains visible, but cannot run a second time at pricing. */
+   retainedDurationConfiguration:{eligibleMinutes:OvertimePattern['eligibleMinutes'];cap:OvertimePattern['durationCap'];
+    rounding:OvertimePattern['durationRounding'];minuteDeductionIds:string[]}};
+/** Price an already finalized, physically positioned policy allocation through the SAME money
+ * engine. The caller must bind all dated parts to its canonical duration/approval source first.
+ * This API emits no ready/transferable calculation and grants no financial capability. */
+export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
+ const unavailable=(reason:Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedPrice=>
+  ({state:'unavailable',authority:'pricingProposalOnly',reason});
+ try{
+  const pattern=validateOvertimePattern(rawPattern),input=validateOvertimePolicyInput(rawInput);
+  // Preserve the original resource conflict fence across the duration/pricing boundary.
+  if(pattern.deductions.some(a=>a.unit==='minutes'&&pattern.deductions.some(b=>b.unit==='money'&&b.resource===a.resource&&b.basis===a.basis)))
+   return unavailable('formulaUnavailable');
+  if(input.layer!=='raw'||input.mode!=='actual'||input.sessionGranularity!=='recorded')return unavailable('allocationUnavailable');
+  let total=ZERO;
+  for(const segment of input.segments){
+   if(segment.clock.state!=='known'||segment.rawMinutes.state!=='known'||segment.approvedMinutes.state!=='known')return unavailable('allocationUnavailable');
+   const count=decimal(segment.rawMinutes.value);
+   if(compare(count,decimal(segment.approvedMinutes.value))!==0||compare(count,q(BigInt(segment.clock.value.elapsedSeconds),BigInt('60')))!==0)
+    return unavailable('allocationUnavailable');
+   total=add(total,count);
+  }
+  if(total.n<=BigInt('0')||total.d!==BigInt('1')||total.n>BigInt(Number.MAX_SAFE_INTEGER)
+   ||input.approval.minutes.state!=='known'||compare(total,decimal(input.approval.minutes.value))!==0)return unavailable('allocationUnavailable');
+  // The group duration owner already applied thresholds, approval limits, deductions and rounding.
+  // Preserve the immutable original definition; derive only the central engine's pricing view.
+  const pricing:OvertimePattern={...pattern,eligibleMinutes:null,durationCap:null,durationRounding:null,
+   deductions:pattern.deductions.filter(rule=>rule.unit==='money')};
+  const result=evaluateOvertimePolicyPart(pricing,input);
+  if(result.status==='refused')return unavailable('formulaUnavailable');
+  if(compare(total,q(BigInt(result.payableMinutes.numerator),BigInt(result.payableMinutes.denominator)))!==0)
+   return unavailable('durationChanged');
+  return {state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:Number(total.n),
+   source:result.source,patternVersionId:result.patternVersionId,policyBinding:input.policyBinding,
+   currency:input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,
+   retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
+    minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
+ }catch{return unavailable('allocationUnavailable');}
+}
 function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,rawInput:OvertimeInput<B>,adapter:OvertimeBindingAdapter<B>):OvertimeEvaluation<B>{
     let engine: Engine | undefined;
     let identity = safeIdentity(rawInput,adapter);

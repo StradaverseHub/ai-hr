@@ -1,6 +1,6 @@
 /** Pure formula proposals. No row, policy activation, approval, source reservation or payment. */
 import {describe,expect,it} from 'vitest';
-import {evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
+import {evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
 import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation,parseRecordedOvertimePolicyEvaluation,parseRecordedOvertimePolicyDurationEvaluation} from '../lib/overtime-pattern-result';
 import {overtimeSourceKey,type OvertimeFact,type OvertimeInput,type OvertimePattern} from '../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../lib/overtime-pattern-binding';
@@ -65,4 +65,45 @@ describe('explicit formula binding adapters',()=>{
     expect(parseRecordedOvertimePolicyEvaluation({...cash,amountMinorUnits:'1'})).toBeNull();
     expect(parseRecordedOvertimePolicyDurationEvaluation({...duration,payableMinutes:{unit:'minutes',numerator:'121',denominator:'1'}})).toBeNull();
   });
+});
+
+function positionedPolicy(){
+ const input=policy();if(input.layer!=='raw')throw Error('Raw fixture required');
+ input.segments[0].clock=fact({startEpochSeconds:String(Date.parse(input.policyBinding.calendarDate+'T00:00:00+08:00')/1000),
+  localDate:input.policyBinding.calendarDate,localStartSecond:0,elapsedSeconds:7200});return input;
+}
+describe('central pricing of finalized group-policy allocations',()=>{
+ it('retains the same exact rates, money rounding and immutable inputs without exposing a payable capability',()=>{
+  const input=positionedPolicy(),pattern=definition(),before=structuredClone({input,pattern});
+  const ordinary=evaluateOvertimePolicyPart(pattern,input),priced=evaluateOvertimePolicyAllocatedPrice(pattern,input);
+  expect(priced).toMatchObject({state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:120,amountMinorUnits:'3600'});
+  if(priced.state!=='proposed'||ordinary.status==='refused')throw Error('Expected exact proposals');
+  expect(priced.lines).toEqual(ordinary.lines);expect(Object.hasOwn(priced,'transferable')).toBe(false);
+  expect(parseRecordedOvertimePolicyEvaluation(priced)).toBeNull();expect({input,pattern}).toEqual(before);
+ });
+ it('does not reapply central duration caps, rounding or minute deductions to the finalized group count',()=>{
+  const pattern=definition(),input=positionedPolicy();
+  pattern.eligibleMinutes={id:'legacy_eligible',unit:'minutes',type:'literal',value:'1'};
+  pattern.durationCap={id:'legacy_cap',unit:'minutes',type:'literal',value:'2'};
+  pattern.durationRounding={mode:'floor',step:'30'};
+  pattern.deductions=[{id:'legacy_break',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'break_when',type:'constant',value:true},amount:{id:'break_amount',unit:'minutes',type:'literal',value:'30'}}];
+  const before=structuredClone(pattern),result=evaluateOvertimePolicyAllocatedPrice(pattern,input);
+  expect(result).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'3600',retainedDurationConfiguration:{minuteDeductionIds:['legacy_break']}});
+  expect(pattern).toEqual(before);
+ });
+ it('keeps central monetary caps while leaving the finalized duration unchanged',()=>{
+  const pattern=definition();pattern.paymentCap={id:'cash_cap',unit:'money',type:'literal',value:'10'};
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,positionedPolicy())).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'1000'});
+ });
+ it('refuses unplaced counts, unequal approval, changed formula eligibility and mixed resource units',()=>{
+  const unknown=policy();expect(evaluateOvertimePolicyAllocatedPrice(definition(),unknown).state).toBe('unavailable');
+  const partial=positionedPolicy();if(partial.layer!=='raw')throw Error('Raw required');partial.segments[0].approvedMinutes=fact('60','approval');
+  expect(evaluateOvertimePolicyAllocatedPrice(definition(),partial).state).toBe('unavailable');
+  const blocked=definition();blocked.eligibility={id:'blocked',type:'constant',value:false};
+  expect(evaluateOvertimePolicyAllocatedPrice(blocked,positionedPolicy())).toMatchObject({state:'unavailable',reason:'durationChanged'});
+  const conflict=definition();conflict.deductions=[
+   {id:'minutes',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'minutes_when',type:'constant',value:true},amount:{id:'minutes_amount',unit:'minutes',type:'literal',value:'30'}},
+   {id:'money',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'money_when',type:'constant',value:true},amount:{id:'money_amount',unit:'money',type:'literal',value:'5'}}];
+  expect(evaluateOvertimePolicyAllocatedPrice(conflict,positionedPolicy())).toMatchObject({state:'unavailable',reason:'formulaUnavailable'});
+ });
 });
