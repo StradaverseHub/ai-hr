@@ -7,7 +7,7 @@ import {hireEmployee} from '../core/org';
 import {createCompany} from '../core/admin';
 import {createShift,assignDefaultShift,updateShift} from '../core/roster';
 import {ensureStandardRule} from '../core/attendance-rule';
-import {attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
+import {attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,checkInTx,checkOutTx,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
  hasOvertimePatternForDayTx,hasRecordedAttendanceGroupPolicyTx,listCoveredOvertimeDaysTx,requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
@@ -73,6 +73,31 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('writes the sum of captured physical pairs and matching raw trace, without legacy OT or scalar approval',async()=>{
+  const f=await fixture();await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:0});await f.save();
+  // Fictional stored receipt fixtures exercise the real writer. These are not real-app capture evidence.
+  for(const [direction,time] of [['in','09:30:00'],['out','12:00:00'],['in','14:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',status:'late',workedMinutes:390,lateMinutes:20,
+   earlyOutMinutes:0,otMinutes:null,otFlatMinutes:null,lateDeductMinutes:0});
+  expect(saved.calcTrace?.punch).toMatchObject({inAbs:570,outAbs:1080,spanMinutes:390,workedMinutes:390,
+   calculationIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}],intervalSource:'closedPunchPairs'});
+  expect(saved.calcTrace?.lateness).toMatchObject({minutes:20,graceMinutes:10});expect(saved.calcTrace?.overtime).toBeNull();
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('keeps manual labels visible in the raw log but clears unproved durations and deductions',async()=>{
+  const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
+  await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:null,workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
+  expect(punches.map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);
+ });
  it('admits only a real current raw subject/day before first-trace configuration serialization',async()=>{
   const f=await fixture();await f.save();
   const lock=(employmentId:string,date:string)=>withTenant(ctx,tx=>tx.execute(sql`select app.lock_attendance_policy_raw_context(${employmentId}::uuid,${date}::date)`));
