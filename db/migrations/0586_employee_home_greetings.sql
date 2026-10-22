@@ -222,7 +222,7 @@ BEGIN
    RAISE EXCEPTION 'Greeting notification is immutable' USING ERRCODE='42501';END IF;
   IF OLD.kind IS DISTINCT FROM NEW.kind AND NEW.kind='employee-home.greeting' THEN
    RAISE EXCEPTION 'Greeting notification is immutable' USING ERRCODE='42501';END IF;
-  IF OLD.kind<>'employee-home.greeting' AND EXISTS(SELECT 1 FROM app.home_greeting g WHERE g.source_event_id=NEW.source_event_id) THEN
+  IF OLD.kind<>'employee-home.greeting' AND EXISTS(SELECT 1 FROM app.home_greeting matching WHERE matching.source_event_id=NEW.source_event_id) THEN
    RAISE EXCEPTION 'Greeting notification is immutable' USING ERRCODE='42501';END IF;
   RETURN NEW;
  END IF;

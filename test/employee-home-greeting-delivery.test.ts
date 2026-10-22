@@ -115,6 +115,11 @@ describe('explicit Home greeting transaction and private content',()=>{
   await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`SELECT message FROM app.home_greeting_content`))).rejects.toThrow();
   await markNotificationRead(target.ctx,notice.id);
   expect((await owner.db.select().from(s.notification).where(eq(s.notification.id,notice.id)))[0].readAt).not.toBeNull();
+  const [ordinary]=await withTenant(target.ctx,tx=>tx.insert(s.notification).values({tenantId:b.tenantId,
+   recipientEmploymentId:target.employmentId,kind:'fictional.ordinary',title:'Fictional ordinary notice',body:'Original ordinary body'}).returning());
+  await markNotificationRead(target.ctx,ordinary.id);
+  await withTenant(target.ctx,tx=>tx.update(s.notification).set({body:'Ordinary owner update'}).where(eq(s.notification.id,ordinary.id)));
+  expect((await owner.db.select().from(s.notification).where(eq(s.notification.id,ordinary.id)))[0]).toMatchObject({body:'Ordinary owner update',readAt:expect.any(Date)});
   await expect(withTenant(target.ctx,tx=>tx.update(s.notification).set({body:'Changed'}).where(eq(s.notification.id,notice.id)))).rejects.toThrow();
   await withTenant(target.ctx,tx=>tx.delete(s.notification).where(eq(s.notification.id,notice.id)));
   expect(await readHomeGreeting(target.ctx,target.employmentId,receipt.greetingId)).toMatchObject({message:p.message});
@@ -149,6 +154,39 @@ describe('explicit Home greeting transaction and private content',()=>{
    (SELECT count(*)::int FROM app.home_greeting_erasure_intent) AS intents,
    (SELECT count(*)::int FROM app.home_greeting_erasure_effect) AS effects`);
   expect(state).toEqual({bodies:0,hashes:0,intents:0,effects:0});
+ });
+ it('requires a completed greeting audit even when the original privacy owner admitted zero old field changes',async()=>{
+  const target=await worker('Fictional empty privacy subject');
+  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`SELECT app.home_greeting_erasure_begin(${target.employmentId}::uuid,
+   'financial','fictional-empty-home586','Fictional empty admission')`))).rejects.toThrow();
+  const [abandoned]=await owner.db.execute<{intents:number;events:number}>(sql`SELECT
+   (SELECT count(*)::int FROM app.home_greeting_erasure_intent) AS intents,
+   (SELECT count(*)::int FROM domain_event WHERE event_type='pii.erased') AS events`);
+  expect(abandoned).toEqual({intents:0,events:0});
+  const report=await erasePersonPii(adminCtx(b),{subjectEmploymentId:target.employmentId,scope:'financial',
+   requestRef:'fictional-valid-empty-home586',reason:'Fictional complete empty admission'});
+  expect(report.erased).not.toContain('homeGreetingMessages');
+  const [completed]=await owner.db.execute<{intents:number;events:number}>(sql`SELECT
+   (SELECT count(*)::int FROM app.home_greeting_erasure_intent) AS intents,
+   (SELECT count(*)::int FROM domain_event WHERE event_type='pii.erased') AS events`);
+  expect(completed).toEqual({intents:0,events:1});
+ });
+ it.each(['wrongReference','missingContentLabel','unconsumedEffects'] as const)('rolls back private erasure with %s',async defect=>{
+  const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();const p=command(own,target);
+  const receipt=await sendHomeGreeting(own.ctx,p),ref='fictional-witness-home586',reason='Fictional witness mismatch';
+  await expect(withTenant(adminCtx(b),async tx=>{
+   await tx.execute(sql`SELECT app.home_greeting_erasure_begin(${target.employmentId}::uuid,'financial',${ref},${reason})`);
+   if(defect!=='unconsumedEffects')await tx.execute(sql`SELECT app.home_greeting_redact(${target.employmentId}::uuid,'financial',${ref},${reason})`);
+   await tx.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'person',aggregateId:target.personId,eventType:'pii.erased',
+    actorType:'user',actorId:b.adminUserId,subjectEmploymentId:target.employmentId,payload:{scope:'financial',
+     requestRef:defect==='wrongReference'?'another-reference':ref,reason,erasedFields:defect==='missingContentLabel'?[]:['homeGreetingMessages'],withheld:[]}});
+  })).rejects.toThrow();
+  expect(await readHomeGreeting(own.ctx,own.employmentId,receipt.greetingId)).toMatchObject({state:'sent',message:p.message});
+  const [remaining]=await owner.db.execute<{intents:number;effects:number;events:number}>(sql`SELECT
+   (SELECT count(*)::int FROM app.home_greeting_erasure_intent) AS intents,
+   (SELECT count(*)::int FROM app.home_greeting_erasure_effect) AS effects,
+   (SELECT count(*)::int FROM domain_event WHERE event_type='pii.erased') AS events`);
+  expect(remaining).toEqual({intents:0,effects:0,events:0});
  });
  it('requires same-origin bounded exact JSON and returns a sender-bound private no-store receipt',async()=>{
   const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();caller=own.ctx;const p=command(own,target);
