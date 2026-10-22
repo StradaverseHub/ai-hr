@@ -1,5 +1,5 @@
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
-import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency} from '../lib/payroll-comparison-source';
+import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
@@ -3087,7 +3087,7 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
   const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId,
     period: payrollBatch.payPeriod, runType: payrollBatch.runType, status: payrollBatch.status,
-    needsRecalcAt: payrollBatch.needsRecalcAt }).from(payrollBatch)
+    needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollBatch)
     .where(and(eq(payrollBatch.tenantId, ctx.tenantId), inArray(payrollBatch.companyId, [...p.companyIds]),
       inArray(payrollBatch.payPeriod, [p.previousPeriod, p.currentPeriod]),
       p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined))
@@ -3104,14 +3104,18 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
     .orderBy(asc(payslip.id)).limit(20001);
   if (results.length > 20000) throw new Error('Payroll comparison exceeds 20000 saved results. Narrow the company scope.');
+  const counts=new Map<string,number>();for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
+  if(batches.some(batch=>(counts.get(batch.id)??0)!==batch.expectedResults))throw new Error('Saved payroll results are incomplete or unavailable in this scope. No partial comparison was generated.');
   const sources = results.map(slip => {
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode),
-      coverage: payslipCoverage(slip, period) };
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
+      coverage: payslipCoverage(slip, period),
+      // The recorded factor describes Basic. It cannot prove a different item's proration.
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,p.payItemCode) };
   });
   return { runs, sources };
 }

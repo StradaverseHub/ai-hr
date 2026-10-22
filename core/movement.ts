@@ -935,7 +935,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
 /** Batched canonical lifecycle projection for an already-authorized report snapshot. All database
  * reads are outside the employment loop; projectRows consumes the same preloaded facts as History.
  * No correction affordances, current compensation or employee names are exposed by this seam. */
-export async function movementReportFactsTx(tx: Tx, tenantId: string, employmentIds: readonly string[]) {
+export async function movementReportFactsTx(tx: Tx, tenantId: string, employmentIds: readonly string[], asOfDates: readonly string[] = []) {
   const ids = [...new Set(employmentIds)];
   if (ids.length > 10000) throw new Error('Movement report scope exceeds 10000 employments.');
   if (!ids.length) return [];
@@ -949,9 +949,14 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       inArray(domainEvent.subjectEmploymentId, ids), inArray(domainEvent.eventType, MOVEMENT_EVENT_TYPES)))
     .orderBy(asc(domainEvent.sequence)).limit(20001);
   if (events.length > 20000) throw new Error('Movement report history exceeds 20000 events. Narrow the scope.');
-  const compIds = events.filter(e => e.eventType === 'compensation.set').map(e => e.aggregateId);
-  const compRows = compIds.length ? await tx.select({id: compensation.id, remarks: compensation.remarks})
-    .from(compensation).where(inArray(compensation.id, compIds)) : [];
+  const compRows = await tx.select({id: compensation.id, employmentId: compensation.employmentId,
+    basicSalary: compensation.basicSalary, validFrom: compensation.validFrom, validTo: compensation.validTo,
+    supersededAt: compensation.supersededAt, remarks: compensation.remarks})
+    .from(compensation).where(inArray(compensation.employmentId, ids)).orderBy(asc(compensation.validFrom),asc(compensation.id)).limit(20001);
+  if(compRows.length>20000)throw new Error('Movement report salary history exceeds 20000 revisions. Narrow the scope.');
+  const compById=new Map(compRows.map(row=>[row.id,row]));
+  const compByEmployment=new Map<string,typeof compRows>();
+  for(const row of compRows){const group=compByEmployment.get(row.employmentId)??[];group.push(row);compByEmployment.set(row.employmentId,group);}
   const compRemarks = new Map(compRows.map(r => [r.id, r.remarks]));
   const catalogue = await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
   const byEmployment = new Map<string, RawEvent[]>();
@@ -970,10 +975,33 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       const key = tagOf(event)?.groupId ?? event.id;
       const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
     }
-    facts.push({employmentId: emp.id, rows: projected.rows.map(row => ({
+    const groupOf=(row:ProjectedRow)=>eventsByGroup.get(row.groupId??row.id)??[];
+    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed');
+    const gradeRows=projected.rows.filter(row=>groupOf(row).some(event=>event.eventType==='employment.grade.changed'));
+    // Unattributed legacy writes and compensating grade legs have no independently recorded effective
+    // date. Do not substitute today's grade for an unprovable historical context.
+    const attributedGrades=new Set(gradeRows.flatMap(row=>groupOf(row).map(event=>event.id)));
+    const gradeKnown=gradeEvents.every(event=>attributedGrades.has(event.id));
+    const gradeBaseline=gradeEvents.length?((gradeEvents[0].payload??{}) as {before?:string|null}).before??null:emp.gradeId;
+    const hireCorrections=projected.events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).map(event=>event.payload);
+    const salaryChanged=(row:ProjectedRow)=>groupOf(row).some(event=>{
+      if(event.eventType!=='compensation.set')return false;
+      const current=compById.get(liveIncarnationOf(event.aggregateId,hireCorrections));
+      if(!current||current.supersededAt)return false;
+      const previous=(compByEmployment.get(emp.id)??[]).filter(candidate=>!candidate.supersededAt&&candidate.validFrom<current.validFrom&&candidate.validTo===current.validFrom).at(-1);
+      return !!previous&&previous.basicSalary!==current.basicSalary;
+    });
+    facts.push({employmentId: emp.id, hireDate:emp.hiredOn,
+      placements:[...new Set(asOfDates)].map(date=>{
+        let gradeId=gradeBaseline;
+        for(const row of gradeRows){if(projected.statusOf(row)!=='applied'||row.effectiveDate>date)continue;
+          for(const event of groupOf(row))if(event.eventType==='employment.grade.changed')gradeId=((event.payload??{}) as {after?:string|null}).after??null;
+        }
+        return {date,gradeId:gradeKnown?gradeId:null,gradeKnown};
+      }),rows: projected.rows.map(row => ({
       id: row.id, kind: row.kind, behaviourKind: projected.resolvedTypes.get(row.kind)?.behaviourKind ?? row.kind,
       effectiveDate: row.effectiveDate, endDate: row.endDate, sequence: row.sequence,
-      status: projected.statusOf(row), remarks: row.remarks,
+      status: projected.statusOf(row), remarks: row.remarks, salaryChanged:salaryChanged(row),
       // References carry no salary values; consumers can resolve dated compensation through its owner.
       events: (eventsByGroup.get(row.groupId ?? row.id) ?? []).map(event => ({
         id: event.id, eventType: event.eventType, aggregateId: event.aggregateId,

@@ -2,9 +2,9 @@
  * This module neither reconstructs pay nor decides company access. */
 import {
   payrollAmountMinor, payrollMinorDecimal, payrollVariance, payrollComparisonReason,
-  PAYROLL_COMPARISON_REASONS, PayrollComparisonInputError,
+  PAYROLL_COMPARISON_REASONS, PAYROLL_COMPARISON_REASON_FILTERS, payrollReasonMatches, PayrollComparisonInputError,
   type PayrollComparisonFilters, type PayrollComparisonDefinition,
-  type PayrollComparisonMovement, type PayrollReasonEvidence, type PayrollComparisonReason,
+  type PayrollComparisonMovement, type PayrollReasonEvidence, type PayrollComparisonReason, type PayrollComparisonReasonFilter,
 } from './payroll-period-comparison';
 
 export type ComparisonRun = {
@@ -18,9 +18,10 @@ export type ComparisonSource = {
   /** null means the selected item cannot be established from this saved result. */
   amount: string | null;
   coverage: { from: string; to: string };
+  proratedCoverage?: { from:string; to:string; windowFrom?:string; windowTo?:string };
 };
 export type ComparisonIdentity = {
-  employmentId: string; companyId: string; employeeCode: string; employeeName: string;
+  employmentId: string; companyId: string; employeeCode: string | null; employeeName: string;
   departmentId: string | null; department: string | null; grade: string | null;
   company: string; costCentre: string | null; hireDate: string; exitDate: string | null;
   movements: readonly PayrollComparisonMovement[];
@@ -47,13 +48,14 @@ export type ComparisonResult = {
   available: boolean; issues: ComparisonIssue[]; provisional: boolean; runs: ComparisonRun[];
   rows: ComparisonRow[]; displayedRows: number; comparisonRows: number;
   reasonCounts: Record<PayrollComparisonReason, number>;
+  reasonFilterCounts: Record<PayrollComparisonReasonFilter, number>;
   summary: { previousHeadcount: number; currentHeadcount: number; joiners: number; leavers: number;
     unexplained: number; totals: ComparisonTotal[] } | null;
   page: number; pageSize: number;
 };
 const key = (employmentId: string, companyId: string, currency: string | null) =>
   JSON.stringify([employmentId, companyId, currency]);
-const abs = (value: bigint) => value < 0n ? -value : value;
+const abs = (value: bigint) => value < BigInt('0') ? -value : value;
 const emptyCounts = () => Object.fromEntries(PAYROLL_COMPARISON_REASONS.map(reason => [reason, 0])) as Record<PayrollComparisonReason, number>;
 
 /** Period availability precedes missing-side arithmetic. A missing whole company-month is not zero. */
@@ -99,7 +101,7 @@ export function comparePayrollResults(input: {
   const result: ComparisonResult = {
     available: false, issues: availability.issues, provisional: availability.runs.some(run => run.status === 'processed'),
     runs: availability.runs, rows: [], displayedRows: 0, comparisonRows: 0,
-    reasonCounts: counts, summary: null, page: filters.page, pageSize: filters.pageSize,
+    reasonCounts: counts, reasonFilterCounts: Object.fromEntries(PAYROLL_COMPARISON_REASON_FILTERS.map(reason=>[reason,0])) as Record<PayrollComparisonReasonFilter,number>, summary: null, page: filters.page, pageSize: filters.pageSize,
   };
   // Do not reveal partial totals while one selected run is unavailable.
   if (result.issues.length) return result;
@@ -121,7 +123,7 @@ export function comparePayrollResults(input: {
     const groupKey = key(source.employmentId, source.companyId, source.currency);
     const group = groups.get(groupKey) ?? {
       employmentId: source.employmentId, companyId: source.companyId, currency: source.currency,
-      previous: { amount: 0n, sources: [] }, current: { amount: 0n, sources: [] },
+      previous: { amount: BigInt('0'), sources: [] }, current: { amount: BigInt('0'), sources: [] },
     };
     const side = run.period === filters.previousPeriod ? group.previous : group.current;
     side.amount += payrollAmountMinor(source.amount); side.sources.push(source); groups.set(groupKey, group);
@@ -144,6 +146,7 @@ export function comparePayrollResults(input: {
       previous: group.previous.amount, current: group.current.amount,
       previousCoverage: group.previous.sources.map(source => source.coverage),
       currentCoverage: group.current.sources.map(source => source.coverage),
+      proratedCoverage: group.current.sources.flatMap(source => source.proratedCoverage ? [source.proratedCoverage] : []),
       movements: identity.movements, verifiedTransferIds: identity.verifiedTransferIds };
     const verified = payrollComparisonReason(evidenceInput);
     const reason = input.definition.autoTag ? verified : payrollComparisonReason({ ...evidenceInput, autoTag: false });
@@ -155,8 +158,8 @@ export function comparePayrollResults(input: {
       m.effectiveDate === exit && exit >= input.previousFrom && exit <= input.currentTo);
     if (recordedExit && exit && (
       group.previous.sources.length && !group.current.sources.length &&
-        (exit >= input.currentFrom || group.previous.sources.some(source => source.coverage.to === exit)) ||
-      exit >= input.currentFrom && group.current.sources.some(source => source.coverage.to === exit && exit < input.currentTo)
+        (exit >= input.currentFrom || group.previous.sources.some(source => source.coverage.from <= exit && exit <= source.coverage.to)) ||
+      exit >= input.currentFrom && group.current.sources.some(source => source.coverage.from <= exit && exit <= source.coverage.to)
     )) leavers.add(group.employmentId);
     counts[reason.reason]++;
     const variance = group.currency ? payrollVariance(group.previous.amount, group.current.amount) : null;
@@ -168,7 +171,7 @@ export function comparePayrollResults(input: {
       sources: [...group.previous.sources, ...group.current.sources].map(({ id, version, runId }) => ({ id, version, runId })),
     });
     const totalKey = JSON.stringify([group.currency, group.currency ? null : group.companyId]);
-    const total = totals.get(totalKey) ?? { currency: group.currency, companyId: group.currency ? null : group.companyId, previous: 0n, current: 0n };
+    const total = totals.get(totalKey) ?? { currency: group.currency, companyId: group.currency ? null : group.companyId, previous: BigInt('0'), current: BigInt('0') };
     total.previous += group.previous.amount; total.current += group.current.amount; totals.set(totalKey, total);
   }
   result.available = true; result.comparisonRows = rows.length;
@@ -179,8 +182,9 @@ export function comparePayrollResults(input: {
       variance: total.currency ? payrollVariance(total.previous, total.current).difference : null,
       variancePct: total.currency ? payrollVariance(total.previous, total.current).percentage : null,
     })).sort((a, b) => (a.currency ?? '').localeCompare(b.currency ?? '') || (a.companyId ?? '').localeCompare(b.companyId ?? '')) };
+  for (const filter of PAYROLL_COMPARISON_REASON_FILTERS) result.reasonFilterCounts[filter] = rows.filter(row => payrollReasonMatches(row.reason, filter)).length;
   const minimum = payrollAmountMinor(filters.minVariance);
-  const displayed = rows.filter(row => (!filters.reason || row.reason.reason === filters.reason) &&
+  const displayed = rows.filter(row => (!filters.reason || payrollReasonMatches(row.reason, filters.reason)) &&
     // Unknown currency rows stay visible: their difference cannot truthfully be tested against a monetary threshold.
     (!filters.onlyVariances || row.variance === null || abs(payrollAmountMinor(row.variance)) >= minimum));
   displayed.sort((a, b) => Number(b.reason.reason === 'unexplained') - Number(a.reason.reason === 'unexplained') ||
@@ -191,6 +195,6 @@ export function comparePayrollResults(input: {
   return result;
 }
 function compareMagnitude(a: string | null, b: string | null): number {
-  const left = a === null ? 0n : abs(payrollAmountMinor(a)), right = b === null ? 0n : abs(payrollAmountMinor(b));
+  const left = a === null ? BigInt('0') : abs(payrollAmountMinor(a)), right = b === null ? BigInt('0') : abs(payrollAmountMinor(b));
   return left === right ? 0 : left > right ? -1 : 1;
 }

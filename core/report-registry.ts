@@ -1,3 +1,4 @@
+import {PAYROLL_COMPARISON_DATASET, PAYROLL_COMPARISON_COLUMNS, validatePayrollComparisonDefinition, payrollComparisonFilters} from '../lib/payroll-period-comparison';
 import {exactOvertimeMinutesText,recordedMinorUnitsText} from '../lib/overtime-records';
 /**
  * Custom-report field registry (ADR-0074, feedback c440b365) — the CLOSED catalogue the custom-report
@@ -509,6 +510,17 @@ const PERFORMANCE_GOALS: ReportDataset = {
 };
 
 /** The closed dataset registry, keyed by id. */
+const PAYROLL_COMPARISON: ReportDataset = {
+  id: PAYROLL_COMPARISON_DATASET, category:'payroll', label:'Payroll period comparison',
+  fields:[...PAYROLL_COMPARISON_COLUMNS.map(id=>({id,label:id,type:'text' as const,group:'Comparison'})),
+    ...['previous','current','variance'].map(id=>({id,label:id,type:'currency' as const,group:'Comparison'})),
+    {id:'reason',label:'Reason',type:'status',group:'Comparison'}, {id:'currency',label:'Currency',type:'text',group:'Comparison'}],
+  filters:['currentPeriod','previousPeriod','companyId','departmentId','runType','minVariance','onlyVariances','reason','page','pageSize']
+    .map(id=>({id,label:id,kind:'text' as const})),
+  defaultColumns:[...PAYROLL_COMPARISON_COLUMNS,'previous','current','variance','reason','currency'],
+  run:async()=>{throw new Error('Run payroll comparisons through the authorized comparison service.');},
+};
+
 export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [MASTER.id]: MASTER,
   [ATTENDANCE_OT.id]: ATTENDANCE_OT,
@@ -519,6 +531,7 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [CLAIM_TYPES.id]: CLAIM_TYPES,
   [PERFORMANCE_REVIEWS.id]: PERFORMANCE_REVIEWS,
   [PERFORMANCE_GOALS.id]: PERFORMANCE_GOALS,
+  [PAYROLL_COMPARISON_DATASET]: PAYROLL_COMPARISON,
 };
 
 /** The six report categories the reporter asked for, in nav order — every category now carries at least
@@ -554,6 +567,19 @@ export function validateReportSpec(spec: unknown): ValidateResult {
   const s = spec as Partial<CustomReportSpec>;
   const ds = s.datasetId ? REPORT_DATASETS[s.datasetId] : undefined;
   if (!ds) return { ok: false, reason: 'unknown-dataset' };
+  if(s.datasetId===PAYROLL_COMPARISON_DATASET){
+    try{
+      const definition=validatePayrollComparisonDefinition(s.payrollComparison);
+      payrollComparisonFilters((s.filters??{}) as Record<string,unknown>,definition);
+      const expected=[...definition.columns,'previous','current','variance','reason','currency'];
+      if(!Array.isArray(s.columns)||JSON.stringify(s.columns)!==JSON.stringify(expected)||s.sort||s.groupBy)
+        return {ok:false,reason:'invalid-payroll-comparison-columns-or-sort'};
+      if(s.employeeMaster)return {ok:false,reason:'conflicting-report-type'};
+      if(s.layout?.permissions){const verbs=['view','create','edit','delete','export','share','manageTemplates'];
+        for(const [role,granted]of Object.entries(s.layout.permissions))if(!['hr_admin','super_admin'].includes(role)||!Array.isArray(granted)||granted.some(verb=>!verbs.includes(verb)))return {ok:false,reason:'invalid-payroll-comparison-permissions'};
+      }
+    }catch{return {ok:false,reason:'invalid-payroll-comparison'};}
+  }else if(s.payrollComparison)return {ok:false,reason:'conflicting-report-type'};
   const fieldIds = new Set(ds.fields.map((f) => f.id));
   if (!Array.isArray(s.columns) || s.columns.length === 0) return { ok: false, reason: 'no-columns' };
   const seen = new Set<string>();
