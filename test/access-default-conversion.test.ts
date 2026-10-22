@@ -49,7 +49,7 @@ it('keeps real global/scoped HR, managers, employees and specialist roles equiva
  const oldRoles=await owner.db.select().from(roleAssignment).orderBy(roleAssignment.id);
  const before=[];for(const ctx of contexts)before.push(await facts(ctx,scopes,subject.employmentId));
  await enabled(true);
- for(let i=0;i<contexts.length;i++)expect(await facts(contexts[i],scopes,subject.employmentId),`actual role ${contexts[i].roles[0]} scoped ${contexts[i].grants?.[0]?.companyId??'global'}`).toEqual(before[i]);
+ for(let i=0;i<contexts.length;i++)expect(await facts(contexts[i],scopes,subject.employmentId),`actual role ${contexts[i].roles?.[0]??'none'} scoped ${contexts[i].grants?.[0]?.companyId??'global'}`).toEqual(before[i]);
  // Positive and negative controls prevent two equally-empty matrices from establishing parity.
  expect(before[0].companies.sort()).toEqual(scopes);
  expect(before[2].companies).toEqual([b.companyId]);

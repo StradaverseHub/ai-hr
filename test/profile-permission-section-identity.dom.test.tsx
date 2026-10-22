@@ -42,7 +42,7 @@ describe('all declared section identities survive translated heading collisions'
   expect([...form.querySelectorAll('select[name^="groupPermission:"]')]).toHaveLength(expectedGroups.size);
   for(const field of fields)expect(data.getAll('permission:'+field.id)).toHaveLength(1);
   const photo=rows.find(row=>row.id==='profile.personal_details.photo')!;
-  fireEvent.click(screen.getByRole('checkbox',{name:`${photo.label}: ${labels.hide}`,exact:true}));
+  fireEvent.click(screen.getByRole('checkbox',{name:`${photo.label}: ${labels.hide}`}));
   expect(new FormData(form).get('permission:'+photo.id)).toBe('hide');
   for(const id of expectedGroups)expect(new FormData(form).getAll('groupPermission:'+id)).toEqual(['editable']);
  });
