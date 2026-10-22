@@ -2,6 +2,7 @@
 import {createHash} from 'node:crypto';
 import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
+import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
@@ -101,6 +102,9 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const [day] = await tx.select().from(attendance).where(and(eq(attendance.tenantId, ctx.tenantId), eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1);
   const [entity] = await tx.select({id: company.id, currency: company.currency}).from(company).where(and(eq(company.tenantId, ctx.tenantId), eq(company.id, proof!.companyId!))).limit(1);
   if (!day || !entity || !isCurrencyCode(entity.currency)) unavailable();
+  // Until the canonical policy writer and independent final-effect replay are complete, the old
+  // assignment/legacy reader cannot turn this dated policy's work into a different calculation.
+  if (await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p)) unavailable();
   const [assignments, salaries, punches, decisions, context] = await Promise.all([
     tx.select().from(assignment).where(and(eq(assignment.tenantId, ctx.tenantId), eq(assignment.employmentId, p.employmentId), isNull(assignment.supersededAt), lte(assignment.validFrom, p.date), or(isNull(assignment.validTo), gt(assignment.validTo, p.date)))).orderBy(asc(assignment.validFrom), asc(assignment.id)).limit(2),
     tx.select().from(compensation).where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, p.employmentId), compensationEffectiveOn(p.date))).orderBy(asc(compensation.validFrom), asc(compensation.id)).limit(2),

@@ -5,7 +5,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx } from '../packs/attendance/service';
+import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -5352,7 +5352,12 @@ async function applyApprovedOtPlanTx(
   // ── 2 · RE-ASSERTION ────────────────────────────────────────────────────────────────────────────────
   if (plan.appliedAt != null) {
     if (plan.approvedOtMinutes == null) return null;
-    return writeOt(plan.approvedOtMinutes);
+    const minutes=await writeOt(plan.approvedOtMinutes);
+    // Reasserting a scalar legacy approval is not positional policy approval. This branch otherwise
+    // skips the normal refresh in both clock-out and import; retain raw clocks but fence final effects.
+    if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,{employmentId:p.employmentId,date:p.date}))
+      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Reasserted overtime plan under dated policy'});
+    return minutes;
   }
 
   // ── 1 · LANDING ─────────────────────────────────────────────────────────────────────────────────────

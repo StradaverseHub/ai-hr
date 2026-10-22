@@ -70,3 +70,6 @@ export { setEmploymentCardId } from '../../core/attendance-card';
 
 // Shared dated-policy arithmetic; proposals do not authorize approval, pricing or settlement.
 export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyDurationProposal,type PolicyClockDurationProposalInput,type PolicyClockDurationProposal} from './policy-duration';
+
+// Internal raw-writer routing; this detector never establishes final-effect authority.
+export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';

@@ -201,6 +201,23 @@ unmatched or missing clock placement cannot be replaced by a posted worked envel
 unclocked setting alone does not attest missing work. This remains proposal arithmetic; source writes,
 new approval receipts, immutable evidence and Payroll acceptance are still separate unfinished work.
 
+## Temporary execution routing fence
+
+The actual raw-day refresh now detects a dated policy using the saved Attendance Schedule Group and
+Personnel's proven employer for that date. A policy from another employer cannot opt this subject in.
+Missing employer or schedule evidence cannot establish legacy absence when a visible dated policy may
+own the day. Detection rechecks the actual principal rather than accepting a claimed role or form ID.
+The canonical Attendance, Payroll and TOIL input reader refuses to feed this work to the old assignment
+calculator until policy execution, immutable approval receipts and financial replay are complete.
+
+The existing durable refusal marker preserves raw punches and enters the existing unresolved Payroll
+coverage path. Already applied scalar plan reassertions must also refresh this marker; both clock-out
+and terminal import otherwise skip the usual refresh after that branch. A scalar plan is not an exact
+policy-work approval receipt. This is a safety staging boundary, not completed disabled-policy behaviour,
+policy arithmetic, acceptance evidence or permission to release the four items. Actual policy writers,
+zero and payable outcomes, immutable parts, approvals and independent financial replay remain required.
+The prepared routing regressions remain unrun while Feedback Automation owns the shared resources.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.

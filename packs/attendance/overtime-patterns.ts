@@ -8,6 +8,7 @@ import {actorOf,appendEvent,appendEvents} from '../../db/events';
 import * as s from '../../db/schema';
 import {assertModuleGate,withAttendanceTenant} from '../../core/module-gate';
 import {provenCompanyDatesTx} from '../../core/employment-company';
+import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 import {labelUsableByCompany,visibleLabelIdsCondition} from '../../core/system-labels';
 import {OVERTIME_STARTERS,overtimeStarterSeed} from '../../lib/overtime-pattern-starters';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -342,6 +343,7 @@ export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{v
 export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
  uuid(p.employmentId);date(p.date);const [recorded]=await tx.select({id:s.attendanceOvertimeSource.id}).from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date),sql`${s.attendanceOvertimeSource.currentCalculationId} is not null`)).limit(1);if(recorded)return true;
  const [marker]=await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`)).limit(1);if(marker)return true;
+ if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
  const proof=(await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}])).get(p.employmentId+'|'+p.date);
  const [candidate]=await tx.select({id:s.overtimePatternAssignment.id}).from(s.overtimePatternAssignment).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternAssignment.versionId)).innerJoin(s.overtimePattern,eq(s.overtimePattern.id,s.overtimePatternVersion.patternId)).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternVersion.kind,'formula'),isNull(s.overtimePattern.archivedAt),isNull(s.overtimePatternAssignment.supersededAt),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)),sql`(${s.overtimePatternAssignment.target}->>'type'='group' OR ${s.overtimePatternAssignment.target}->'employmentIds' ? ${p.employmentId})`,proof?.companyId?sql`exists(select 1 from overtime_pattern_version_company co where co.version_id=${s.overtimePatternVersion.id} and co.company_id=${proof.companyId}::uuid)`:undefined,sql`(select state from overtime_pattern_version_state st where st.version_id=${s.overtimePatternVersion.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`)).orderBy(asc(s.overtimePatternAssignment.id)).limit(1);return !!candidate;
 }
