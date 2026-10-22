@@ -4406,7 +4406,7 @@ export function listAttendanceCorrections(
         // Request visibility alone never grants the raw subject/day comparison.
         systemOtMinutes: attendance.otMinutes,
         otApprovalCalculation: sql<OtApprovalMethod | null>`case when ${attendancePolicyRequestContract.kind}='epoch'
-          then ${attendancePolicyRequestContract.manualApprovalMethod} else ${attendancePolicy.otApprovalCalculation} end`,
+          then ${attendancePolicyRequestContract.manualApprovalMethod} else ${attendancePolicy.otApprovalCalculation}::text end`,
         submittedPolicyBound: sql<boolean>`${attendancePolicyRequestContract.policyBinding} is not null`,
         canReadRawComparison: sql<boolean>`${attendance.id} is not null and app.can_see_employment(${attendanceCorrection.employmentId})`,
       })

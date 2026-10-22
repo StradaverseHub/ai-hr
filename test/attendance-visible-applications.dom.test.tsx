@@ -39,7 +39,7 @@ it('uses the former Overview reader unchanged and keeps noncurrent rows visible 
 it('keeps unavailable comparisons unknown while requested-only uses the frozen request method', async () => {
   list.mockResolvedValue(['system_calculated', 'smaller_of', 'greater_of', 'requested'].map(method => ({
     id: method, employee: method, personId: 'other', attendanceDate: '2026-10-20', status: 'pending',
-    requestKind: 'overtime', requestedOtMinutes: 60, systemOtMinutes: null, otApprovalCalculation: method, canDecide: false,
+    requestKind: 'self_overtime', requestedOtMinutes: 60, systemOtMinutes: null, otApprovalCalculation: method, canDecide: false,
   })));
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({ searchParams: Promise.resolve({}) })}</NextIntlClientProvider>);
   for (const method of ['system_calculated', 'smaller_of', 'greater_of']) {
