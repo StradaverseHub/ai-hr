@@ -4,6 +4,7 @@ import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
+import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {listEmployeeHomeCards} from '@/core/dashboard-card-config';
 import {getEmployeeHomePreferences} from '@/core/dashboard-prefs';
 import {EmployeeHomeSurface} from './home-surface';
@@ -34,7 +35,7 @@ export async function EmployeePersonalHome({session,employmentId}:{session:Sessi
   tasks:<HomeTasksCard employmentId={selected}/>,
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
   team:<HomeTeamCard key={selected} employmentId={selected}/>,
-  celebrations:<HomeCelebrationsCard key={selected} employmentId={selected}/>,
+  celebrations:<HomeCelebrationsCard key={selected} employmentId={selected} greetingsEnabled={isModuleEnabledOrFalse(session,'notifications')}/>,
   calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));

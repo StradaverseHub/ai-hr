@@ -2,6 +2,7 @@ import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
+import userEvent from '@testing-library/user-event';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -18,8 +19,8 @@ const envelope=(employmentId='own')=>({version:1,employmentId,page:{scope:'depar
  items:[{employmentId:id,name:'Fictional birthday',date:today,kind:'birthday',years:null},
   {employmentId:id,name:'Fictional anniversary',date:today,kind:'anniversary',years:4},
   {employmentId:'62063128-fdc5-4a0e-87d7-1892257dbb11',name:null,date:to,kind:'anniversary',years:null}],nextCursor:null}});
-function view(locale:keyof typeof catalogues='en',employmentId='own'){
- return <NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><HomeCelebrationsCard key={employmentId} employmentId={employmentId}/></NextIntlClientProvider>;
+function view(locale:keyof typeof catalogues='en',employmentId='own',greetingsEnabled=false){
+ return <NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><HomeCelebrationsCard key={employmentId} employmentId={employmentId} greetingsEnabled={greetingsEnabled}/></NextIntlClientProvider>;
 }
 beforeEach(()=>{fetcher.mockReset();fetcher.mockImplementation(async()=>Response.json(envelope()));vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
@@ -31,6 +32,31 @@ describe('minimal person-private Home celebrations',()=>{
   expect(screen.getByRole('region',{name:t.title})).toHaveAttribute('aria-busy','false');
   expect(fetcher).toHaveBeenCalledOnce();expect(fetcher.mock.calls[0][1]).toMatchObject({cache:'no-store',credentials:'same-origin'});
   expect(document.querySelector('time[datetime="'+today+'"]')).not.toBeNull();
+ });
+ it('mounts the actual editable composer and sends only after explicit Send through the canonical transport',async()=>{
+  const employmentId='00000000-0000-4000-8000-000000000001',greetingId='00000000-0000-4000-8000-000000000004';
+  fetcher.mockImplementation(async(url,options)=>{
+   if(options?.method!=='POST')return Response.json(envelope(employmentId));
+   const command=JSON.parse(options.body);
+   return Response.json({version:1,employmentId:command.employmentId,nonce:command.nonce,greetingId,state:'sent'});
+  });
+  const user=userEvent.setup();render(view('en',employmentId,true));await screen.findByText('Fictional birthday');
+  await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.sayHi}));
+  const editor=screen.getByRole('textbox');await user.clear(editor);await user.type(editor,'Edited private fictional greeting');
+  expect(fetcher).toHaveBeenCalledOnce();await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.cancel}));
+  expect(fetcher).toHaveBeenCalledOnce();await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.sayHi}));
+  await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.send,exact:true}));
+  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(en.employeeHome.greetingSend.sent));
+  expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toBe('/api/home/greetings');
+  expect(fetcher.mock.calls[1][1]).toMatchObject({method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'}});
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({version:1,employmentId,recipientEmploymentId:id,kind:'birthday',occurrenceDate:today,
+   nonce:expect.any(String),message:'Edited private fictional greeting'});
+ });
+ it('keeps discovery available but offers no Send control when the page cannot establish notification delivery',async()=>{
+  render(view());await screen.findByText('Fictional birthday');
+  expect(screen.getByText(en.employeeHome.celebrations.deliveryUnavailable)).toBeVisible();
+  expect(screen.queryByRole('button',{name:en.employeeHome.greetingSend.sayHi})).toBeNull();
+  expect(screen.queryByRole('button',{name:en.employeeHome.greetingSend.cheer})).toBeNull();expect(fetcher).toHaveBeenCalledOnce();
  });
  it('keeps a failed privacy read distinct from off and empty, then clears old content on refresh',async()=>{
   render(view());await screen.findByText('Fictional birthday');

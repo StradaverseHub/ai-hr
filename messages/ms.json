@@ -22490,7 +22490,8 @@
       "pagination": "Halaman sambutan",
       "previous": "Halaman sebelumnya",
       "next": "Halaman seterusnya",
-      "firstPage": "Kembali ke halaman pertama"
+      "firstPage": "Kembali ke halaman pertama",
+      "deliveryUnavailable": "Penghantaran ucapan tidak tersedia buat masa ini."
     },
     "greetingDetail": {
       "title": "Ucapan",

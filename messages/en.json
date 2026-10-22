@@ -22490,7 +22490,8 @@
       "pagination": "Celebration pages",
       "previous": "Previous page",
       "next": "Next page",
-      "firstPage": "Return to first page"
+      "firstPage": "Return to first page",
+      "deliveryUnavailable": "Greeting delivery is currently unavailable."
     },
     "greetingDetail": {
       "title": "Greeting",

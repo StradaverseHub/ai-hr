@@ -22490,7 +22490,8 @@
       "pagination": "Các trang dịp kỷ niệm",
       "previous": "Trang trước",
       "next": "Trang sau",
-      "firstPage": "Về trang đầu"
+      "firstPage": "Về trang đầu",
+      "deliveryUnavailable": "Hiện chưa thể gửi lời chúc."
     },
     "greetingDetail": {
       "title": "Lời chúc",

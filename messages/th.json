@@ -22490,7 +22490,8 @@
       "pagination": "หน้าโอกาสพิเศษ",
       "previous": "หน้าก่อนหน้า",
       "next": "หน้าถัดไป",
-      "firstPage": "กลับไปหน้าแรก"
+      "firstPage": "กลับไปหน้าแรก",
+      "deliveryUnavailable": "ขณะนี้ยังไม่สามารถส่งคำอวยพรได้"
     },
     "greetingDetail": {
       "title": "คำอวยพร",
