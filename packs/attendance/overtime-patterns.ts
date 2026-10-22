@@ -237,6 +237,10 @@ function validateSnapshot(snapshot:CanonicalOvertimeSnapshot,ctx:SessionContext,
   if(policy.effectiveFrom>p.date||!Number.isSafeInteger(policy.ordinal)||policy.ordinal<1
    ||company?.state!=='known'||company.value!==policy.companyId||group?.state!=='known'||group.value!==policy.ruleId
    ||snapshot.resolvedLegacyRuleId!==policy.ruleId)fail('unavailable','The dated policy does not bind the recorded employer and Schedule Group.');
+  if(!policy.activation)fail('unavailable','The dated policy activation evidence is unavailable.');
+  uuid(policy.activation.actorUserId);
+  if(!Number.isFinite(Date.parse(policy.activation.recordedAt))||typeof policy.activation.reason!=='string'||!policy.activation.reason.trim())
+   fail('unavailable','The dated policy activation evidence is unavailable.');
   validateAttendanceGroupPolicy(policy.policy,4320);
  }
  if(source){const company=input.facts.companyId;if(company?.state!=='known'||company.value!==source.companyId)fail('unavailable','Canonical dated company does not match the recorded overtime source.');}

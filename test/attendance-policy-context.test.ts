@@ -35,7 +35,7 @@ describe('canonical execution-policy selection',()=>{
     const second=await f.save(secondPolicy,1,day(2));
     expect(await read(f.employmentId,day())).toEqual({state:'legacy',reason:'noDatedPolicy'});
     expect(await read(f.employmentId,day(1))).toMatchObject({state:'policy',employmentId:f.employmentId,date:day(1),companyId:b.companyId,timeZone:HR_LOCAL_TZ,
-      selected:{id:first.id,ruleId:f.ruleId,ordinal:1,policy:policy()},resolvedClock:{pairing:'auto',lateGraceMinutes:10,earlyGraceMinutes:15},
+      selected:{id:first.id,ruleId:f.ruleId,ordinal:1,policy:policy(),activation:{actorUserId:ctx.userId,recordedAt:first.createdAt.toISOString(),reason:'Fictional forward policy selection'}},resolvedClock:{pairing:'auto',lateGraceMinutes:10,earlyGraceMinutes:15},
       schedule:{source:'default-shift',shiftId:f.shiftId,ruleId:f.ruleId,normalMinutes:480,durationOnly:false},calendar:[{date:day(1),state:'known',dayClass:'normal'}]});
     expect(await read(f.employmentId,day(2))).toMatchObject({state:'policy',selected:{id:second.id,ordinal:2},resolvedClock:{pairing:'firstInLastOut'}});
     // Selecting live inputs neither creates an attendance result nor approves an application.

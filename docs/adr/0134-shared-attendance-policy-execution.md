@@ -288,3 +288,8 @@ placement; the downstream duration owner still applies its single break-aware of
 included in input freshness and immutable refused evidence. It never approves work, creates parts or
 payment lines, or changes legacy raw attendance. Complete canonical execution, immutable final-effect
 receipts, count attribution and independent Payroll/TOIL replay are still required before transfer.
+
+The selected revision also retains its real enabling user, recorded time and reason from immutable
+policy history. These join the canonical configuration/freshness snapshot. An Auto flag without this
+source evidence cannot stand in for an enabled deterministic policy. This is activation provenance;
+it does not turn the enabler into an approver or establish a final-effect receipt.
