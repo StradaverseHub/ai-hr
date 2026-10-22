@@ -17,14 +17,14 @@ import { payrollComparisonSpec } from '../core/report-payroll-comparison';
 import {
   closeBatch, createBatch, createIndividualTxn, generatePayslips, setPayrollPermissionGrant,
   seedPayComponentCatalog, backfillEmploymentComponentsFromCompensation,
-  listPayComponents,
+  listPayComponents,upsertPayComponent,setEmploymentPayComponent,createAdditionalRun,
 } from '../packs/payroll/service';
 import { requirePackFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { previousPayrollComparisonPeriod } from '../lib/payroll-period-comparison';
 import { serializePayrollComparison } from '../lib/payroll-comparison-export';
 import {
-  closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base,
+  closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule,setSetting, type Base,
 } from './harness';
 
 let b: Base, ctx: SessionContext, previousPeriod: string, currentPeriod: string;
@@ -79,7 +79,7 @@ async function payrollSnapshot() {
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
   it('counts a generated one-off deduction once using its canonical component amount, preserving the separate signed record',async()=>{
     const f=await fixture({typed:true});
-    await setModule(b.tenantId,'individual_txn_pay','active');
+    await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',true);
     ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
     const deduction=(await listPayComponents(ctx)).find(row=>row.code==='DEDUCTION');expect(deduction).toBeDefined();
     await createIndividualTxn(ctx,{batchId:f.previous.batchId,employmentId:f.employee.employmentId,kind:'deduction',
@@ -105,6 +105,68 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const file=await serializePayrollComparison(exported,'xlsx'),book=XLSX.read(file.bytes,{type:'array'});
     expect(XLSX.utils.sheet_to_json(book.Sheets.Details)).toEqual([expect.objectContaining({
       'Previous amount':10.10,'Current amount':10.11,Variance:0.01})]);
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('keeps generated paid Basic independent of a recategorised BASIC display item',async()=>{
+    const f=await fixture({typed:true});await closeBatch(ctx,{batchId:f.previous.batchId});
+    const basic=(await listPayComponents(ctx)).find(row=>row.code==='BASIC');expect(basic).toBeDefined();
+    await upsertPayComponent(ctx,{code:basic!.code,name:basic!.name,label:basic!.label,kind:basic!.kind,
+      includedInEpf:basic!.includedInEpf,includedInSocsoEis:basic!.includedInSocsoEis,includedInPcb:basic!.includedInPcb,
+      includedInHrdfBase:basic!.includedInHrdfBase,isNonPayable:basic!.isNonPayable,prorates:basic!.prorates,displayCategory:'bonus'});
+    await generatePayslips(ctx,{batchId:f.current.batchId});const before=await payrollSnapshot();
+    const result=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,filters:{currentPeriod,previousPeriod,onlyVariances:false}});
+    expect(result.result.available).toBe(true);expect(result.result.rows).toHaveLength(1);
+    expect(result.result.rows[0]).toMatchObject({previous:'3000.00',current:'3000.00',variance:'0.00'});
+    expect(before.results.map(row=>row.basicSalary)).toEqual(['3000.00','3000.00']);
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('aggregates actual regular, bonus, off-cycle and adjustment payments without adding cumulative assessment bases',async()=>{
+    const f=await fixture({typed:true});
+    const bonus=(await listPayComponents(ctx)).find(row=>row.code==='BONUS');expect(bonus).toBeDefined();
+    await setEmploymentPayComponent(ctx,{employmentId:f.employee.employmentId,componentId:bonus!.id,amount:100,effectiveFrom:previousPeriod+'-01'});
+    await generatePayslips(ctx,{batchId:f.previous.batchId});await closeBatch(ctx,{batchId:f.previous.batchId});
+    await setModule(b.tenantId,'multi_cycle_payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+    await generatePayslips(ctx,{batchId:f.current.batchId});
+    const additionalIds:string[]=[];
+    for(const runType of ['bonus','off_cycle','adjustment'] as const){
+      const additional=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:currentPeriod,runType});
+      additionalIds.push(additional.batchId);await generatePayslips(ctx,{batchId:additional.batchId});
+    }
+    const before=await payrollSnapshot();
+    expect(before.results.filter(row=>additionalIds.includes(row.batchId))).toHaveLength(3);
+    expect(before.results.filter(row=>additionalIds.includes(row.batchId)).every(row=>row.basicSalary==='0.00'&&row.bonus==='100.00')).toBe(true);
+    const basic=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,filters:{currentPeriod,previousPeriod,runType:'all',onlyVariances:false}});
+    expect(basic.result.available).toBe(true);expect(basic.result.rows).toHaveLength(1);
+    expect(basic.result.rows[0]).toMatchObject({previous:'3000.00',current:'3000.00',variance:'0.00'});
+    const saved=await getCustomReport(ctx,f.report.id,[b.companyId]);expect(saved).not.toBeNull();
+    const spec=structuredClone(saved!.spec);spec.payrollComparison!.payItemCode='BONUS';
+    await updateCustomReport(ctx,{id:saved!.id,name:saved!.name,version:saved!.version,spec,companyIds:[b.companyId]});
+    const regular=await run(f.report.id),all=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,verb:'export',filters:{currentPeriod,previousPeriod,runType:'all'}});
+    expect(regular.result.available).toBe(true);expect(regular.result.rows).toEqual([]);
+    expect(all.result.available).toBe(true);expect(all.result.rows).toHaveLength(1);
+    expect(all.result.rows[0]).toMatchObject({previous:'100.00',current:'400.00',variance:'300.00'});
+    expect(all.sourceRevisions).toHaveLength(5);
+    const file=await serializePayrollComparison(all,'xlsx'),book=XLSX.read(file.bytes,{type:'array'});
+    expect(XLSX.utils.sheet_to_json(book.Sheets.Details)).toEqual([expect.objectContaining({'Previous amount':100,'Current amount':400,Variance:300})]);
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('retains negative paid Basic variance and the latest of several actual salary movements',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
+    for(const [kind,day,basicSalary] of [['increment','01',3100],['promotion','10',3200],['demotion','20',2900]] as const)
+      await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind,effectiveDate:currentPeriod+'-'+day,basicSalary,remarks:'Fictional comparison evidence'});
+    await generatePayslips(ctx,{batchId:f.current.batchId});const before=await payrollSnapshot();
+    const current=before.results.find(row=>row.batchId===f.current.batchId);expect(current).toBeDefined();
+    const view=await run(f.report.id),exported=await run(f.report.id,'export');
+    expect(view.result.available).toBe(true);expect(view.result.rows).toHaveLength(1);
+    expect(view.result.rows[0]).toMatchObject({previous:'3000.00',current:current!.basicSalary,
+      reason:{reason:'demotion',effectiveDate:currentPeriod+'-20',multipleChanges:true}});
+    expect(view.result.rows[0].variance).toMatch(/^-\d+\.\d{2}$/);expect(view.result.rows[0].reason.evidenceIds).toHaveLength(3);
+    expect(exported.result.rows).toEqual(view.result.rows);
+    const file=await serializePayrollComparison(exported,'xlsx'),book=XLSX.read(file.bytes,{type:'array'});
+    const rows=XLSX.utils.sheet_to_json<Record<string,unknown>>(book.Sheets.Details);expect(rows).toHaveLength(1);expect(rows[0].Variance).toBeLessThan(0);
     expect(await payrollSnapshot()).toEqual(before);
   });
   it('compares another recorded pay item to the cent without substituting later compensation', async () => {
