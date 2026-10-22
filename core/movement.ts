@@ -510,8 +510,15 @@ const dateOf = (d: Date): string => todayInKualaLumpur(d);
  * hire's own reporting-line.set carries a LOWER sequence than employment.hired, so sequence alone
  * would misorder them).
  */
-async function projectRows(tx: Tx, tenantId: string, employmentId: string, today = todayInKualaLumpur()) {
-  const [emp] = await tx
+type MovementProjectionInput = {
+  employment: Pick<typeof employment.$inferSelect, 'id' | 'hiredOn' | 'gradeId' | 'companyId' | 'terminatedOn'>;
+  events: RawEvent[];
+  compRemarks: Map<string, string | null>;
+  catalogue: (typeof movementEventType.$inferSelect)[];
+  actorNames: Map<string, string>;
+};
+async function projectRows(tx: Tx, tenantId: string, employmentId: string, today = todayInKualaLumpur(), input?: MovementProjectionInput) {
+  const [emp] = input ? [input.employment] : await tx
     .select({
       id: employment.id,
       hiredOn: employment.hiredOn,
@@ -524,7 +531,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
     .limit(1);
   if (!emp) throw new Error('Employment not found');
 
-  const events: RawEvent[] = await tx
+  const events: RawEvent[] = input ? input.events : await tx
     .select({
       id: domainEvent.id,
       eventType: domainEvent.eventType,
@@ -547,13 +554,13 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   // Remarks for salary rows live on the compensation row (ADR-0030 redact-to-reference) — resolve them
   // at read time so an in-place correction (compensation.updated) never diverges from the history.
   const compIds = events.filter((e) => e.eventType === 'compensation.set').map((e) => e.aggregateId);
-  const compRows = compIds.length
+  const compRows = !input && compIds.length
     ? await tx
         .select({ id: compensation.id, remarks: compensation.remarks })
         .from(compensation)
         .where(inArray(compensation.id, compIds))
     : [];
-  const compRemarks = new Map(compRows.map((r) => [r.id, r.remarks]));
+  const compRemarks = input?.compRemarks ?? new Map(compRows.map((r) => [r.id, r.remarks]));
 
   /**
    * 476f23ed — the tenant's OWN event-type codes. The projection's rule (30325fc1) is that a generic
@@ -563,7 +570,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
    *
    * A tenant with no configured types gets an empty set and the built-in list, i.e. today's behaviour.
    */
-  const catalogue = await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
+  const catalogue = input?.catalogue ?? await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
   const tenantCodes = new Set(catalogue.map(r=>r.code));
   // Keep recorded codes for identity/projection, and resolve behavior separately for correction.
   // Reuse this existing catalogue read; inactive/custom history must not cause per-row queries.
@@ -889,12 +896,12 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   // tiny, and a reversal is rare, so this is usually skipped entirely).
   const actorIds = [...new Set([...reversalActorIds.values()].filter((v): v is string => !!v))];
   if (actorIds.length) {
-    const names = await tx
+    const names = input ? [] : await tx
       .select({ id: appUser.id, name: person.fullName })
       .from(appUser)
       .innerJoin(person, eq(person.id, appUser.personId))
       .where(inArray(appUser.id, actorIds));
-    const byId = new Map(names.map((n) => [n.id, n.name]));
+    const byId = input?.actorNames ?? new Map(names.map((n) => [n.id, n.name]));
     for (const [movementId, actorId] of reversalActorIds) {
       const rev = reversals.get(movementId);
       if (rev && actorId) rev.by = byId.get(actorId) ?? null;
@@ -923,6 +930,58 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   const superseded = supersededScheduledIds(rows, today);
   const statusOf = (r: ProjectedRow): MovementStatus => statusOfRow(r, superseded);
   return { emp, events, rows, statusOf, today, resolvedTypes };
+}
+
+/** Batched canonical lifecycle projection for an already-authorized report snapshot. All database
+ * reads are outside the employment loop; projectRows consumes the same preloaded facts as History.
+ * No correction affordances, current compensation or employee names are exposed by this seam. */
+export async function movementReportFactsTx(tx: Tx, tenantId: string, employmentIds: readonly string[]) {
+  const ids = [...new Set(employmentIds)];
+  if (ids.length > 10000) throw new Error('Movement report scope exceeds 10000 employments.');
+  if (!ids.length) return [];
+  const employments = await tx.select({id: employment.id, hiredOn: employment.hiredOn,
+    gradeId: employment.gradeId, companyId: employment.companyId, terminatedOn: employment.terminatedOn})
+    .from(employment).where(and(eq(employment.tenantId, tenantId), inArray(employment.id, ids)));
+  const events = await tx.select({id: domainEvent.id, eventType: domainEvent.eventType,
+    aggregateId: domainEvent.aggregateId, payload: domainEvent.payload, occurredAt: domainEvent.occurredAt,
+    sequence: domainEvent.sequence, actorId: domainEvent.actorId, employmentId: domainEvent.subjectEmploymentId})
+    .from(domainEvent).where(and(eq(domainEvent.tenantId, tenantId),
+      inArray(domainEvent.subjectEmploymentId, ids), inArray(domainEvent.eventType, MOVEMENT_EVENT_TYPES)))
+    .orderBy(asc(domainEvent.sequence)).limit(20001);
+  if (events.length > 20000) throw new Error('Movement report history exceeds 20000 events. Narrow the scope.');
+  const compIds = events.filter(e => e.eventType === 'compensation.set').map(e => e.aggregateId);
+  const compRows = compIds.length ? await tx.select({id: compensation.id, remarks: compensation.remarks})
+    .from(compensation).where(inArray(compensation.id, compIds)) : [];
+  const compRemarks = new Map(compRows.map(r => [r.id, r.remarks]));
+  const catalogue = await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
+  const byEmployment = new Map<string, RawEvent[]>();
+  for (const event of events) {
+    if (!event.employmentId) continue;
+    const group = byEmployment.get(event.employmentId) ?? [];
+    group.push(event); byEmployment.set(event.employmentId, group);
+  }
+  const today = todayInKualaLumpur();
+  const facts = [];
+  for (const emp of employments) {
+    const projected = await projectRows(tx, tenantId, emp.id, today, {employment: emp,
+      events: byEmployment.get(emp.id) ?? [], compRemarks, catalogue, actorNames: new Map()});
+    const eventsByGroup = new Map<string, RawEvent[]>();
+    for (const event of projected.events) {
+      const key = tagOf(event)?.groupId ?? event.id;
+      const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
+    }
+    facts.push({employmentId: emp.id, rows: projected.rows.map(row => ({
+      id: row.id, kind: row.kind, behaviourKind: projected.resolvedTypes.get(row.kind)?.behaviourKind ?? row.kind,
+      effectiveDate: row.effectiveDate, endDate: row.endDate, sequence: row.sequence,
+      status: projected.statusOf(row), remarks: row.remarks,
+      // References carry no salary values; consumers can resolve dated compensation through its owner.
+      events: (eventsByGroup.get(row.groupId ?? row.id) ?? []).map(event => ({
+        id: event.id, eventType: event.eventType, aggregateId: event.aggregateId,
+        sequence: event.sequence, payload: event.payload,
+      })),
+    }))});
+  }
+  return facts;
 }
 
 /** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
