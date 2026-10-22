@@ -16,6 +16,7 @@ import {
 import { payrollComparisonSpec } from '../core/report-payroll-comparison';
 import {
   closeBatch, createBatch, createIndividualTxn, generatePayslips, setPayrollPermissionGrant,
+  seedPayComponentCatalog, backfillEmploymentComponentsFromCompensation,
 } from '../packs/payroll/service';
 import { requirePackFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -37,14 +38,20 @@ beforeEach(async () => {
   previousPeriod = previousPayrollComparisonPeriod(currentPeriod);
 });
 
-async function fixture() {
+async function fixture(options: { typed?: boolean; allowance?: number } = {}) {
   const employee = await hireEmployee(ctx, {
     person: { fullName: 'Fictional Paid Result', primaryEmail: randomUUID() + '@fixture.test' },
     companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time',
     employeeCode: 'COMPARE-001', hiredOn: previousPeriod + '-01',
   });
-  await setCompensation(ctx, { employmentId: employee.employmentId, basicSalary: 3000, effectiveFrom: previousPeriod + '-01' });
+  await setCompensation(ctx, { employmentId: employee.employmentId, basicSalary: 3000, monthlyAllowance: options.allowance ?? 0, effectiveFrom: previousPeriod + '-01' });
   await requirePackFor('MY').statutory.set(ctx, { personId: employee.personId, icNumber: '900101011234' });
+  if (options.typed) {
+    await seedPayComponentCatalog(ctx);
+    await backfillEmploymentComponentsFromCompensation(ctx);
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    ctx = { ...await entitledCtx(b), grants: [{ role: 'hr_admin', companyId: null }] };
+  }
   const previous = await createBatch(ctx, { companyId: b.companyId, payPeriod: previousPeriod });
   await generatePayslips(ctx, { batchId: previous.batchId });
   const current = await createBatch(ctx, { companyId: b.companyId, payPeriod: currentPeriod });
@@ -69,6 +76,35 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
+  it('compares another recorded pay item to the cent without substituting later compensation', async () => {
+    const f = await fixture({ typed: true, allowance: 10.10 });
+    await closeBatch(ctx, { batchId: f.previous.batchId });
+    await setCompensation(ctx, { employmentId: f.employee.employmentId, basicSalary: 3000,
+      monthlyAllowance: 10.11, effectiveFrom: currentPeriod + '-01' });
+    await backfillEmploymentComponentsFromCompensation(ctx);
+    await generatePayslips(ctx, { batchId: f.current.batchId });
+    const saved = await getCustomReport(ctx, f.report.id, [b.companyId]);
+    expect(saved).not.toBeNull();
+    const spec = structuredClone(saved!.spec);
+    spec.payrollComparison!.payItemCode = 'ALLOWANCE';
+    await updateCustomReport(ctx, { id: saved!.id, name: saved!.name, version: saved!.version,
+      spec, companyIds: [b.companyId] });
+    await setCompensation(ctx, { employmentId: f.employee.employmentId, basicSalary: 9999,
+      monthlyAllowance: 999, effectiveFrom: todayInKualaLumpur().slice(0, 7) + '-01' });
+    const before = await payrollSnapshot(), view = await run(f.report.id), exported = await run(f.report.id, 'export');
+    expect(view.result.available).toBe(true);
+    expect(view.result.rows).toHaveLength(1);
+    expect(view.result.rows[0]).toMatchObject({ employmentId: f.employee.employmentId,
+      previous: '10.10', current: '10.11', variance: '0.01', currency: 'MYR' });
+    expect(exported.result.rows).toEqual(view.result.rows);
+    const file = await serializePayrollComparison(exported, 'xlsx');
+    const book = XLSX.read(file.bytes, { type: 'array' });
+    expect(XLSX.utils.sheet_to_json(book.Sheets.Details)).toEqual([expect.objectContaining({
+      'Previous amount': 10.10, 'Current amount': 10.11, Variance: 0.01,
+    })]);
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
   it('retains saved Basic instead of later master salary, with matching native workbook and metadata-only audit', async () => {
     const f = await fixture();
     await closeBatch(ctx, { batchId: f.previous.batchId });
