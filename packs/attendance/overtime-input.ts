@@ -1,3 +1,4 @@
+import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput} from './policy-work-input';
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
 import {createHash} from 'node:crypto';
@@ -179,7 +180,10 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   // original path still consumes them; a new formula requires deliberate review/clearance first.
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
-  const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
+  const policyApprovalInput=selectedPolicy?attendancePolicyApprovalInput(selectedPolicy,otDecisions):undefined;
+  // New policy proofs retain exact timestamp strings and original plan labels. Keep the existing
+  // legacy digest contract unchanged; neither labels nor a digest establish final-effect authority.
+  const approvalDigest = fingerprint(policyApprovalInput??otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
   // This review is deliberately limited to an explicitly recorded fixed-clock owner. Full Flexi,
   // duration-only and unavailable schedule ownership retain their existing dedicated processor.
   let policyClockReview:CanonicalOvertimeSnapshot['policyClockReview'];
@@ -196,7 +200,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
-    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput}:{}),
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyWorkInput,policyApprovalInput}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The

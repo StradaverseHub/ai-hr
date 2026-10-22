@@ -181,6 +181,11 @@ describe('dated-policy raw writer routing',()=>{
   await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'22:00'});
   const [again]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
   expect(again.appliedAt).toEqual(first.appliedAt);expect(again.approvedOtMinutes).toBe(first.approvedOtMinutes);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.policyApprovalInput).toMatchObject({authority:'sourceOnly',mode:'manual',requests:[{id:requested.correctionId,
+   createdAt:again.createdAt.toISOString(),decidedAt:again.decidedAt!.toISOString(),appliedAt:again.appliedAt!.toISOString(),
+   method:again.otApprovalMethod,decidedByEmploymentId:again.decidedByEmploymentId,
+   plannedWindow:{authority:'auditOnly',startLabel:'18:00:00',endLabel:'20:00:00'}}]});
   expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
   expect(await covered(f.employmentId,day(1))).toMatchObject([{coverage:'calculation',outcome:'refused'}]);
   const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(asc(s.attendanceOvertimeCalculation.sourceId),asc(s.attendanceOvertimeCalculation.ordinal));

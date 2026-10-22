@@ -293,3 +293,9 @@ The selected revision also retains its real enabling user, recorded time and rea
 policy history. These join the canonical configuration/freshness snapshot. An Auto flag without this
 source evidence cannot stand in for an enabled deterministic policy. This is activation provenance;
 it does not turn the enabler into an approver or establish a final-effect receipt.
+
+New policy approval freshness also retains exact ISO timestamps, frozen method/decision subject and
+original Plan OT labels from the canonical application rows. Labels remain explicitly audit-only;
+neither a digest nor an old scalar approval supplies approved physical placement. The same source
+projection is retained in refused immutable evidence. Legacy approval digest serialization stays
+unchanged so existing assignment obligations do not silently require recalculation.
