@@ -5,7 +5,7 @@ import {resolveApprovedOt,type AttendancePolicyExecutionContext} from '../../cor
 import type {PolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput,type PolicyWorkInput} from './policy-work-input';
 import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
-import {attendancePolicyPlanInput} from './policy-plan-input';
+import {attendancePolicyPlanInput,type PolicyPlanInput} from './policy-plan-input';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
 import {attendancePolicyFinalRawAgreement,type PolicyRawCurrent} from './policy-final-raw-input';
 import {selectAttendancePolicyCandidate} from './policy-duration';
@@ -18,6 +18,28 @@ export type PolicyManualDurationInput=
  |{state:'known';authority:'manualCountProposalOnly';correctionId:string;workflowRequestId:string;
    method:'requested'|'system_calculated'|'smaller_of'|'greater_of';systemMinutes:number;approvedMinutes:number;
    basis:'completeActualCount'|'completeSubmittedWindow';intervals:AttendancePolicyInterval[]};
+
+/** Count placement only. The caller independently proves the submitted policy, current
+ * captures and final effect before using these positions in a duration proposal. */
+export function selectAttendancePolicyManualPositions(input:{method:Extract<PolicyManualDurationInput,{state:'known'}>['method'];
+ requestedMinutes:number;approvedMinutes:number;systemMinutes:number;actualIntervals:readonly AttendancePolicyInterval[];
+ hasSubmittedWindow:boolean;periodMinutes:number;plan:PolicyPlanInput}){
+ const refuse=()=>({state:'unavailable' as const,authority:'manualCountPlacementOnly' as const});
+ if(resolveApprovedOt(input.requestedMinutes,input.systemMinutes,input.method)!==input.approvedMinutes)return refuse();
+ const actual=union(input.actualIntervals,input.periodMinutes);
+ if(minutes(actual,input.periodMinutes)!==input.systemMinutes)return refuse();
+ // A requested-count winner retains its explicit original positions even on a scalar tie.
+ // System-calculated always owns the complete actual count; scalar methods stay scalar.
+ const needsWindow=input.approvedMinutes!==input.systemMinutes
+  ||input.method!=='system_calculated'&&input.approvedMinutes===input.requestedMinutes&&input.hasSubmittedWindow;
+ if(needsWindow){
+  if(input.plan.state!=='known')return refuse();
+  const intervals=union(input.plan.intervals,input.periodMinutes);
+  if(minutes(intervals,input.periodMinutes)!==input.approvedMinutes||subtract(intervals,actual,input.periodMinutes).length)return refuse();
+  return {state:'known' as const,authority:'manualCountPlacementOnly' as const,basis:'completeSubmittedWindow' as const,intervals};
+ }
+ return {state:'known' as const,authority:'manualCountPlacementOnly' as const,basis:'completeActualCount' as const,intervals:actual};
+}
 
 export function attendancePolicyManualDurationInput(context:AttendancePolicyExecutionContext|undefined,work:PolicyWorkInput|undefined,
  approvals:PolicyApprovalInput|undefined,tenantId:string,raw:PolicyRawEffectSource|undefined):PolicyManualDurationInput{
@@ -50,16 +72,13 @@ export function attendancePolicyManualDurationInput(context:AttendancePolicyExec
  if(selection.state!=='known')return refuse('sourceUnavailable');
  const actual=context.selected.policy.overtime.enabled?selection.afterOffset.intervals:[],systemMinutes=minutes(actual,work.periodMinutes);
  if(resolveApprovedOt(request.requestedMinutes!,systemMinutes,method)!==request.approvedMinutes)return refuse('methodMismatch');
- let intervals=actual,basis:'completeActualCount'|'completeSubmittedWindow'='completeActualCount';
- if(request.approvedMinutes!==systemMinutes){
-  const plan=attendancePolicyPlanInput(context,approvals,tenantId);
-  if(plan.state!=='known'||plan.references.length!==1||plan.references[0].correctionId!==request.id
-   ||plan.references[0].workflowRequestId!==final.workflowRequestId)return refuse('countPlacementUnavailable');
-  intervals=union(plan.intervals,work.periodMinutes);basis='completeSubmittedWindow';
-  // Outside-clock, unpaid, late-offset and partial scalar minutes acquire no invented position.
-  if(minutes(intervals,work.periodMinutes)!==request.approvedMinutes||subtract(intervals,actual,work.periodMinutes).length)
-   return refuse('countPlacementUnavailable');
- }
+ const plan=attendancePolicyPlanInput(context,approvals,tenantId);
+ if(plan.state==='known'&&(plan.references.length!==1||plan.references[0].correctionId!==request.id
+  ||plan.references[0].workflowRequestId!==final.workflowRequestId))return refuse('countPlacementUnavailable');
+ const positioned=selectAttendancePolicyManualPositions({method,requestedMinutes:request.requestedMinutes!,approvedMinutes:request.approvedMinutes,
+  systemMinutes,actualIntervals:actual,hasSubmittedWindow:request.plannedWindow.startLabel!==null||request.plannedWindow.endLabel!==null,
+  periodMinutes:work.periodMinutes,plan});
+ if(positioned.state!=='known')return refuse('countPlacementUnavailable');
  return {state:'known',authority:'manualCountProposalOnly',correctionId:request.id,workflowRequestId:final.workflowRequestId,
-  method,systemMinutes,approvedMinutes:request.approvedMinutes,basis,intervals:intervals.map(row=>({...row}))};
+  method,systemMinutes,approvedMinutes:request.approvedMinutes,basis:positioned.basis,intervals:positioned.intervals.map(row=>({...row}))};
 }

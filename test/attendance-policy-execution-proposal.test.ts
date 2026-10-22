@@ -1,3 +1,4 @@
+import {selectAttendancePolicyManualPositions} from '../packs/attendance/policy-manual-duration';
 import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
 import {attendancePolicyCashReplay} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyDurationReplay} from '../packs/attendance/policy-duration-replay';
@@ -62,6 +63,25 @@ function approvedPlans(f:ReturnType<typeof fixture>,windows:{from:number;to:numb
  return attendancePolicyApprovalInput(f.context.selected,rows,contracts,receipts);
 }
 describe('canonical source composition into the shared policy duration proposal',()=>{
+ it('preserves explicit requested positions on scalar ties and refuses equal-count disjoint windows',()=>{
+  const f=fixture(),approvals=approvedPlans(f,[{from:1080,to:1140}]);
+  const plan=attendancePolicyPlanInput(f.context,approvals,id(8));
+  expect(plan.state).toBe('known');
+  const input={requestedMinutes:60,approvedMinutes:60,systemMinutes:60,actualIntervals:[{from:1200,to:1260}],
+   hasSubmittedWindow:true,periodMinutes:4320,plan};
+  for(const method of ['requested','smaller_of','greater_of'] as const){
+   expect(selectAttendancePolicyManualPositions({...input,method})).toMatchObject({state:'unavailable'});
+   expect(selectAttendancePolicyManualPositions({...input,method,actualIntervals:[{from:1080,to:1140}]}))
+    .toMatchObject({state:'known',basis:'completeSubmittedWindow',intervals:[{from:1080,to:1140}]});
+   expect(selectAttendancePolicyManualPositions({...input,method,hasSubmittedWindow:false,
+    plan:{state:'unavailable',authority:'approvedPlanOnly',reason:'planUnavailable'}}))
+    .toMatchObject({state:'known',basis:'completeActualCount',intervals:[{from:1200,to:1260}]});
+  }
+  expect(selectAttendancePolicyManualPositions({...input,method:'system_calculated'}))
+   .toMatchObject({state:'known',basis:'completeActualCount',intervals:[{from:1200,to:1260}]});
+  expect(selectAttendancePolicyManualPositions({...input,method:'requested',plan:{state:'unavailable',authority:'approvedPlanOnly',reason:'planUnavailable'}}))
+   .toMatchObject({state:'unavailable'});
+ });
  it('uses one pre-finalization eligibility count for Manual comparisons without applying group rounding or caps twice',()=>{
   const f=fixture();f.context.selected.policy.overtime.approval='manual';
   expect(attendancePolicySystemEligibleMinutes(f.context,f.work)).toEqual({state:'known',authority:'policyActualComparisonOnly',minutes:40});

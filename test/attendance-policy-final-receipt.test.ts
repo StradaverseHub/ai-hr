@@ -27,7 +27,7 @@ async function actor(name:string,role:'employee'|'hr_admin'){
  const ctx:SessionContext={...adminCtx(b),userId,personId:person.personId,roles:[role],grants:[{role,companyId:b.companyId}]};
  return {...person,ctx};
 }
-async function fixture(offset=1,prepare?:(worker:Awaited<ReturnType<typeof actor>>)=>Promise<void>){
+async function fixture(offset=1,prepare?:(worker:Awaited<ReturnType<typeof actor>>)=>Promise<void>,withPlan=true){
  const worker=await actor('Fictional final receipt applicant','employee'),first=await actor('Fictional first HR','hr_admin'),last=await actor('Fictional final HR','hr_admin');
  await saveAttendanceWorkflow(adminCtx(b),{companyId:b.companyId,routingVersion:3,code:'FINAL_RECEIPT',name:'Fictional receipt workflow',
   applicationType:'self_overtime',priority:100,criteria:{departmentIds:[b.deptA]},active:true,
@@ -35,11 +35,11 @@ async function fixture(offset=1,prepare?:(worker:Awaited<ReturnType<typeof actor
  await setAttendanceWorkflowEnabled(adminCtx(b),b.companyId,'self_overtime',true);
  if(prepare)await prepare(worker);
  const request=await requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:day(offset),requestedOtMinutes:60,
-  plannedStartTime:'18:00',plannedEndTime:'19:00',requestKind:'self_overtime',reason:'Fictional final receipt window'});
+  ...(withPlan?{plannedStartTime:'18:00',plannedEndTime:'19:00'}:{}),requestKind:'self_overtime',reason:'Fictional final receipt window'});
  return {worker,first,last,id:request.correctionId};
 }
 describe('owner-issued final workflow receipt',()=>{
- it('consumes a real v3 captured-day final receipt against current source and refuses a later replacement capture',async()=>{
+ it.each([true,false])('consumes a real v3 captured-day final receipt and preserves explicit window proof requirements (plan=%s)',async withPlan=>{
   const admin=adminCtx(b);let ruleId='';
   await setAttendancePolicy(admin,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:0,
    lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:'requested'});
@@ -78,7 +78,7 @@ describe('owner-issued final workflow receipt',()=>{
      attendanceDate:day(0),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(0)+'T'+time+'+08:00')}).returning();
     await (direction==='in'?checkInTx:checkOutTx)(worker.ctx,{employmentId:worker.employmentId,date:day(0),time,clockCaptureId:capture.id,preciseOrder:true});
    }
-  });
+  },withPlan);
   const [preview]=await listAttendanceCorrections(f.first.ctx,{requestId:f.id,status:'pending'});
   expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:60});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
@@ -98,7 +98,8 @@ describe('owner-issued final workflow receipt',()=>{
    const request=snapshot.policyApprovalInput?.requests.find(row=>row.id===f.id);
    const manual=attendancePolicyManualDurationInput(snapshot.policyExecutionContext,snapshot.policyWorkInput,
     snapshot.policyApprovalInput,b.tenantId,snapshot.policyRawEffectSource);
-   expect(manual).toMatchObject({state:'known',authority:'manualCountProposalOnly',method:'requested',systemMinutes:60,
+   if(withPlan)expect(manual).toMatchObject({state:'unavailable',reason:'countPlacementUnavailable'});
+   else expect(manual).toMatchObject({state:'known',authority:'manualCountProposalOnly',method:'requested',systemMinutes:60,
     approvedMinutes:60,basis:'completeActualCount',intervals:[{from:1080,to:1140}]});
    const changed=structuredClone(snapshot.policyApprovalInput);
    if(!changed)throw Error('Expected current approval source');
