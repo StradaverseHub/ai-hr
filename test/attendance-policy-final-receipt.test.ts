@@ -1,3 +1,4 @@
+import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {attendancePolicyManualDurationInput} from '../packs/attendance/policy-manual-duration';
 import {readFileSync} from 'node:fs';
 import {attendancePolicyFinalRawAgreement} from '../packs/attendance/policy-final-raw-input';
@@ -12,7 +13,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {requestAttendanceCorrection,decideAttendanceCorrection,listAttendanceCorrections} from '../packs/attendance/service';
-import {setAttendancePolicy,ensureStandardRule,checkInTx,checkOutTx,canonicalOvertimeInputTx} from '../packs/attendance/service';
+import {setAttendancePolicy,ensureStandardRule,checkInTx,checkOutTx,canonicalOvertimeInputTx,saveOvertimePatternDraft} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base;
@@ -47,11 +48,16 @@ describe('owner-issued final workflow receipt',()=>{
    const shift=await createShift(admin,{code:'RAW_'+randomUUID().slice(0,6),name:'Fictional restored cutover shift',
     startTime:'09:00',endTime:'18:00',breakMinutes:0,weeklyPattern:[1,2,3,4,5,6,7],ruleId});
    await assignDefaultShift(admin,{employmentId:worker.employmentId,shiftId:shift.id});
+   const definition=prepareOvertimeStarter('ot15','day','earliest');definition.currency={code:'MYR',minorScale:2};
+   const pattern=await saveOvertimePatternDraft(admin,{draft:{code:'RAW_'+randomUUID().slice(0,8),name:'Fictional raw-only draft reference',
+    creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
+   // This draft reference satisfies structural policy identity only. It is not an activated
+   // dated financial formula, and the historical epoch0 still refuses financial proposals.
    const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,
     earlyGraceMinutes:0,skipLatenessIfIncomplete:true},overtime:{enabled:true,beforeShift:false,afterShift:true,
      allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',
      rounding:{mode:'none',step:null},days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,
-      {minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}};
+      {minimumMinutes:0,maximumMinutes:null,patternVersionId:pattern.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
    // Restore-only fixture for a policy that already existed before this day. This does not test
    // scheduling/activation authority. Both configuration triggers are re-enabled atomically BEFORE
    // any clock, request or approval operation; no business workflow guard is disabled.

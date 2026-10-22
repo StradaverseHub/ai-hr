@@ -28,7 +28,7 @@ describe('shared dated-policy duration proposal',()=>{
  it('finalizes Manual approved positions once after the same actual break and late selection',()=>{
   const f=fixture();f.policy.overtime.approval='manual';f.approval='approved';f.policy.overtime.offsetLateness=true;
   f.unpaidIntervals=[{from:1080,to:1090}];f.lateOffsetIntervals=[{from:540,to:550}];
-  f.manualApprovedIntervals=[{from:1110,to:1140}];f.policy.overtime.rounding={mode:'down',step:15};
+  f.manualApprovedIntervals=[{from:1110,to:1140}];f.policy.overtime.rounding={mode:'up',step:30};
   f.policy.overtime.days.normal.maximumMinutes=25;
   const result=calculated(f);
   expect(result).toMatchObject({payableMinutes:25,parts:[{intervals:[{from:1110,to:1140}],allocatedPayableMinutes:25}],
