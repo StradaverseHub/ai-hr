@@ -73,3 +73,5 @@ export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurati
 
 // Internal raw-writer routing; this detector never establishes final-effect authority.
 export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
+// Prospective source seam for the canonical raw writer; no figure, approval or settlement write.
+export {attendancePolicyRawInputTx} from './policy-raw-input';

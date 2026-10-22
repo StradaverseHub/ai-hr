@@ -9,6 +9,27 @@ import {provenCompanyDatesTx} from '../../core/employment-company';
 import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 
+/** Shared frozen-application admission for recorded and prospective raw-day selection.
+ * The caller must supply a policy resolved by the canonical subject/date/company owner. */
+export async function legacyApplicationForAttendancePolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},selected:ResolvedAttendanceGroupPolicy):Promise<string|null>{
+ const [application]=await tx.select({id:attendanceCorrection.id,
+    predatesPolicy:sql<boolean>`(
+     (${attendancePolicyRequestContract.correctionId} is null or(${attendancePolicyRequestContract.kind}='epoch'
+       and ${attendancePolicyRequestContract.companyId}=${selected.companyId}::uuid
+       and ${attendancePolicyRequestContract.employmentId}=${attendanceCorrection.employmentId}
+       and ${attendancePolicyRequestContract.attendanceDate}=${attendanceCorrection.attendanceDate}))
+     and not exists(select 1 from public.attendance_group_policy_revision prior
+      where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
+       and prior.effective_from<=${p.date}::date and prior.activation_epoch<=coalesce(${attendancePolicyRequestContract.visibleEpoch},0)))`})
+    .from(attendanceCorrection).leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId)))
+    .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
+     eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))
+    .orderBy(sql`case when ${attendanceCorrection.status}='approved' then 0 else 1 end`,desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);
+ const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+ if(!principal?.allowed)throw Error('Current Attendance principal required.');
+ return application?.predatesPolicy?application.id:null;
+}
+
 export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'legacyApplication';applicationId:string}|{state:'policy';selected:ResolvedAttendanceGroupPolicy};
 export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<RecordedAttendanceGroupPolicySelection>{
  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
@@ -34,21 +55,9 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
    // The immutable owner-issued receipt records the serialized company policy epoch. Missing
    // receipts identify pre-0590 requests; epoch-zero policies conservatively keep those out of
    // legacy mode. An unavailable/mismatched receipt is never permission for legacy payment.
-   const [application]=await tx.select({id:attendanceCorrection.id,
-    predatesPolicy:sql<boolean>`(
-     (${attendancePolicyRequestContract.correctionId} is null or(${attendancePolicyRequestContract.kind}='epoch'
-       and ${attendancePolicyRequestContract.companyId}=${selected.companyId}::uuid
-       and ${attendancePolicyRequestContract.employmentId}=${attendanceCorrection.employmentId}
-       and ${attendancePolicyRequestContract.attendanceDate}=${attendanceCorrection.attendanceDate}))
-     and not exists(select 1 from public.attendance_group_policy_revision prior
-      where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
-       and prior.effective_from<=${p.date}::date and prior.activation_epoch<=coalesce(${attendancePolicyRequestContract.visibleEpoch},0)))`})
-    .from(attendanceCorrection).leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId)))
-    .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
-     eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))
-    .orderBy(sql`case when ${attendanceCorrection.status}='approved' then 0 else 1 end`,desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);
+   const legacyApplicationId=await legacyApplicationForAttendancePolicyTx(tx,ctx,p,selected);
    await current();
-   if(application?.predatesPolicy)return {state:'legacyApplication',applicationId:application.id};
+   if(legacyApplicationId)return {state:'legacyApplication',applicationId:legacyApplicationId};
   }
   await current();
   return selected?{state:'policy',selected}:{state:'none'};

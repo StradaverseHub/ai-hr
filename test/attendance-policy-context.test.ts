@@ -12,6 +12,7 @@ import {attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,entitledCtx,type Base} from './harness';
+import {attendancePolicyRawInputTx} from '../packs/attendance/service';
 let b:Base,ctx:SessionContext;
 const day=(n=0)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 function policy():AttendanceGroupPolicy{return {version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:10,earlyGraceMinutes:15,skipLatenessIfIncomplete:true},
@@ -72,6 +73,17 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('resolves prospective raw policy inputs without requiring an already-derived trace, and never guesses captures',async()=>{
+  const f=await fixture(),saved=await f.save();
+  const read=()=>withTenant(ctx,tx=>attendancePolicyRawInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(await read()).toEqual({state:'unavailable',reason:'rawDayUnavailable'});
+  await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:00'});
+  // Fictional pre-derivation state: source selection cannot depend on the trace it must produce.
+  await owner.db.update(s.attendance).set({calcTrace:null}).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(await read()).toMatchObject({state:'policy',context:{selected:{id:saved.id}},source:{state:'unavailable',reason:'missingCapture'},work:{state:'unavailable'}});
+  const [retained]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(retained.calcTrace).toBeNull();
+ });
  const row=async(employmentId:string,date:string)=>{
   const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,employmentId),eq(s.attendance.attendanceDate,date))).limit(1);
   return saved;

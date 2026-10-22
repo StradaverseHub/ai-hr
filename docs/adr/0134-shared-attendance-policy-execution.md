@@ -388,6 +388,15 @@ schedules retain their separate owner. This remains source preparation, not raw-
 
 ## Atomic proposal part materialization
 
+The canonical raw writer now has a prospective input seam that resolves the actual dated schedule,
+subject/company policy and existing frozen application contract without requiring a previously derived
+trace. Recorded and prospective selection share the exact same legacy-application admission query.
+The seam reads the complete bounded effective punch set and original captures, pairs at millisecond
+precision and supplies the shared boundary/work projections. Missing captures remain unavailable;
+it cannot write a trace, figures, approval or settlement. The raw writer must still integrate this
+input under its existing Attendance/Payroll locks and configuration serialization. First-trace and
+legacy contract runtime probes remain unrun; this source seam alone does not complete raw execution.
+
 The existing transaction/principal-bound calculation owner can now persist a complete, non-payable
 proposal part set below its original source/calculation. It recomputes the entire source proposal and
 rejects changed identities, omitted dates, substituted versions or counts. It declares the exact part
