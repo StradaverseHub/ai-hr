@@ -6,10 +6,11 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {assignDefaultShift,createShift} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {activateOvertimePattern,assignDefaultShift,checkIn,checkOut,createShift,ensureStandardRule,
+import {activateOvertimePattern,checkIn,checkOut,ensureStandardRule,
  lockOvertimeSourceTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 

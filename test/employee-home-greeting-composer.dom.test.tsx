@@ -43,20 +43,20 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
   const editor=screen.getByRole('textbox',{name:english('message')});
   await user.clear(editor);await user.type(editor,'  Fictional edited greeting 李 🎉  ');
   expect(screen.getByText(english('count',{count:Array.from('Fictional edited greeting 李 🎉').length,max:500}))).toBeVisible();
-  expect(send).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
+  expect(send).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:english('send')}));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(english('sent')));
   expect(send).toHaveBeenCalledTimes(1);
   const command=send.mock.calls[0][0];
   expect(command).toEqual({version:1,employmentId:sender,recipientEmploymentId:recipient,kind:'birthday',
    occurrenceDate:target.date,nonce:expect.any(String),message:'Fictional edited greeting 李 🎉'});
   expect(Object.isFrozen(command)).toBe(true);
-  expect(screen.queryByRole('button',{name:english('send'),exact:true})).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:english('send')})).not.toBeInTheDocument();
  });
  it('keeps the same nonce and body across an uncertain response, close, reopen and explicit retry',async()=>{
   const user=userEvent.setup(),send=vi.fn<(command:Readonly<HomeGreetingCommand>)=>Promise<unknown>>()
    .mockRejectedValueOnce(Error('PRIVATE transport detail')).mockImplementation(async command=>receipt(command));
   render(view({send}));await user.click(screen.getByRole('button',{name:english('sayHi')}));
-  await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
+  await user.click(screen.getByRole('button',{name:english('send')}));
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(english('uncertain')));
   expect(screen.queryByText('PRIVATE transport detail')).not.toBeInTheDocument();
   expect(screen.getByRole('textbox',{name:english('message')})).toHaveAttribute('readonly');
@@ -80,7 +80,7 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
  it('never accepts a receipt from another selected employment as this command succeeding',async()=>{
   const user=userEvent.setup(),send=vi.fn(async(command:Readonly<HomeGreetingCommand>)=>({...receipt(command),employmentId:recipient}));
   render(view({send}));await user.click(screen.getByRole('button',{name:english('sayHi')}));
-  await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
+  await user.click(screen.getByRole('button',{name:english('send')}));
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(english('uncertain')));
   expect(screen.queryByText(english('sent'))).not.toBeInTheDocument();
  });
@@ -89,7 +89,7 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
   const pending=new Promise<unknown>(resolve=>{finish=resolve;});
   const send=vi.fn(async(_command:Readonly<HomeGreetingCommand>)=>pending),user=userEvent.setup();
   const mounted=render(view({send}));await user.click(screen.getByRole('button',{name:english('sayHi')}));
-  await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
+  await user.click(screen.getByRole('button',{name:english('send')}));
   mounted.rerender(view({send,employmentId:'00000000-0000-4000-8000-000000000005'}));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   await act(async()=>finish(receipt(send.mock.calls[0][0])));
@@ -103,7 +103,7 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
   const editor=screen.getByRole('textbox',{name:english('message')});
   for(const value of ['   ','a'.repeat(501)]){
    fireEvent.change(editor,{target:{value}});
-   expect(screen.getByRole('button',{name:english('send'),exact:true})).toBeDisabled();
+   expect(screen.getByRole('button',{name:english('send')})).toBeDisabled();
    fireEvent.submit(editor.closest('form')!);expect(send).not.toHaveBeenCalled();
   }
  });
@@ -117,8 +117,8 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
  it('treats an erased retry receipt as terminal and never offers to recreate the message',async()=>{
   const user=userEvent.setup(),send=vi.fn(async(command:Readonly<HomeGreetingCommand>)=>receipt(command,'erased'));
   render(view({send}));await user.click(screen.getByRole('button',{name:english('sayHi')}));
-  await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
+  await user.click(screen.getByRole('button',{name:english('send')}));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(english('erased')));
-  expect(screen.queryByRole('button',{name:english('send'),exact:true})).not.toBeInTheDocument();expect(send).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button',{name:english('send')})).not.toBeInTheDocument();expect(send).toHaveBeenCalledTimes(1);
  });
 });

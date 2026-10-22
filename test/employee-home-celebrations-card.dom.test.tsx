@@ -45,7 +45,7 @@ describe('minimal person-private Home celebrations',()=>{
   const editor=screen.getByRole('textbox');await user.clear(editor);await user.type(editor,'Edited private fictional greeting');
   expect(fetcher).toHaveBeenCalledOnce();await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.cancel}));
   expect(fetcher).toHaveBeenCalledOnce();await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.sayHi}));
-  await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.send,exact:true}));
+  await user.click(screen.getByRole('button',{name:en.employeeHome.greetingSend.send}));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(en.employeeHome.greetingSend.sent));
   expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toBe('/api/home/greetings');
   expect(fetcher.mock.calls[1][1]).toMatchObject({method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'}});
