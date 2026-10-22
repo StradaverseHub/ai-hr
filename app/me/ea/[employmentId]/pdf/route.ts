@@ -31,17 +31,19 @@ type EaLang = (typeof EA_LANGS)[number];
 
 export async function GET(req: Request, { params }: { params: Promise<{ employmentId: string }> }) {
   const { employmentId } = await params;
-  if (!UUID.test(employmentId)) return new Response('Not found', { status: 404 });
+  if (!UUID.test(employmentId)) return new Response('Not found', { status: 404,headers:{'Cache-Control':'private, no-store'} });
   // Year is a 4-char STRING end-to-end (the read filters payPeriod LIKE '<year>-%'); default to the
   // current calendar year as a string, never a number.
-  const yearParam = new URL(req.url).searchParams.get('year') ?? '';
-  const year = /^\d{4}$/.test(yearParam) ? yearParam : todayInKualaLumpur().slice(0,4);
+  const yearParam = new URL(req.url).searchParams.get('year');
+  if(yearParam!==null&&!/^\d{4}$/.test(yearParam))return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
+  const year = yearParam ?? todayInKualaLumpur().slice(0,4);
 
   // b7b22514 — an EA form belongs to ONE employer, and after an Entity Transfer a year can span two. The
   // caller names which employer's form it wants; unnamed means the employment's current company, which is
   // what every pre-transfer link resolves to. An unrecognised id is refused rather than quietly falling
   // back — silently handing someone the WRONG employer's statement is the failure this route must not have.
   const companyParam = new URL(req.url).searchParams.get('company');
+  if(companyParam!==null&&!UUID.test(companyParam))return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
 
   const s = await getSession();
   const ea = await myEaStatement(s, {
@@ -49,13 +51,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     year,
     ...(companyParam ? { companyId: companyParam } : {}),
   }); // RLS-gated: null → 404 (foreign id)
-  if (!ea) return new Response('Not found', { status: 404 });
+  if (!ea) return new Response('Not found', { status: 404,headers:{'Cache-Control':'private, no-store'} });
 
-  // Allowlisted, never trusted: an unrecognised `lang` falls back to the request locale rather than being
-  // passed to next-intl, which would throw on an unknown locale and 500 a download.
+  // Only the supported English/Malay document editions reach the PDF owner. Other UI locales use
+  // English unless the reader explicitly selected Malay.
   const langParam = new URL(req.url).searchParams.get('lang');
   const lang: EaLang | null = EA_LANGS.includes(langParam as EaLang) ? (langParam as EaLang) : null;
-  const locale = lang ?? (await getLocale());
+  const locale = lang ?? ((await getLocale())==='ms'?'ms':'en');
   const data: EaPdfData = {
     year: ea.year,
     employer: ea.employer,

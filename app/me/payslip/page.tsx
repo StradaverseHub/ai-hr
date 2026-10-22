@@ -6,7 +6,7 @@ import { myReleasedPayslipRuns } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
 import { publicErrorMessage } from '@/lib/public-error';
-import { resolvePayslipSelection } from '@/app/payroll/individual-payslip/period-options';
+import { resolvePersonalPayslipSelection } from './selection-state';
 import { myPayslipDocument } from './document';
 import { PersonalPayslipSelection } from './selection';
 import { PersonalPayslipStatement } from './statement';
@@ -16,8 +16,7 @@ export default async function MyPayslipPage({searchParams}:{searchParams:Promise
   const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('myPayslip'),pay=await getTranslations('payroll.individualPayslip'),txn=await getTranslations('payroll.transactions');
   const locale=await getLocale();
   const result=await myReleasedPayslipRuns(s).then(runs=>({runs,error:undefined})).catch(error=>({runs:[],error:publicErrorMessage(error)}));
-  const selection=resolvePayslipSelection(result.runs,{companyId:sp.companyId,payslipId:sp.payslipId,
-    year:sp.year&&/^\d{4}$/.test(sp.year)?Number(sp.year):undefined,month:sp.month&&/^(0?[1-9]|1[0-2])$/.test(sp.month)?Number(sp.month):undefined});
+  const selection=resolvePersonalPayslipSelection(result.runs,sp);
   const document=selection.payslipId?await myPayslipDocument(s,selection.payslipId):null;
   const choices=result.runs.map(run=>({...run,label:[run.cycleName,txn(`individual.cycle.${run.runType}`),pay('cycleRun',{cycle:'',n:run.runSeq}).trim(),run.employeeCode].filter(Boolean).join(' · ')}));
   const months=Array.from({length:12},(_,month)=>new Intl.DateTimeFormat(locale,{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2000,month,1))));

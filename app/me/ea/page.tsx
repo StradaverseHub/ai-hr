@@ -5,6 +5,7 @@ import { myEaSources, myEaStatement } from '@/core/reporting';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
 import { MyEaSelection } from './selection';
+import { resolvePersonalEaSelection } from './selection-state';
 
 export default async function MyEaPage({ searchParams }: {
   searchParams: Promise<{ year?: string; company?: string; employmentId?: string; lang?: string }>;
@@ -14,12 +15,7 @@ export default async function MyEaPage({ searchParams }: {
   const [sp, t, locale, sources] = await Promise.all([
     searchParams, getTranslations('myEa'), getLocale(), myEaSources(s),
   ]);
-  const year = sp.year && /^\d{4}$/.test(sp.year) ? sp.year : sources[0]?.year;
-  const matching = sources.filter(row => row.year === year);
-  // A supplied subject never falls back to somebody else's or to a different own employer.
-  const selected = sp.employmentId || sp.company
-    ? matching.find(row => (!sp.employmentId || row.employmentId === sp.employmentId) && (!sp.company || row.companyId === sp.company))
-    : matching.find(row => row.isCurrent) ?? matching[0];
+  const selected = resolvePersonalEaSelection(sources,sp);
   const language = sp.lang === 'en' || sp.lang === 'ms' ? sp.lang : locale === 'ms' ? 'ms' : 'en';
   const statement = selected?.available ? await myEaStatement(s, {
     employmentId: selected.employmentId, companyId: selected.companyId, year: selected.year,

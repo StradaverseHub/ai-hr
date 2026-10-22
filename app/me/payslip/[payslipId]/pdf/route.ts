@@ -7,9 +7,9 @@ const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export async function GET(req:Request,{params}:{params:Promise<{payslipId:string}>}) {
   const {payslipId}=await params;
-  if(!UUID.test(payslipId))return new Response('Not found',{status:404});
+  if(!UUID.test(payslipId))return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
   const document=await myPayslipDocument(await getSession(),payslipId);
-  if(!document)return new Response('Not found',{status:404});
+  if(!document)return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
   const {p,data,strings}=document;
   const bytes = await renderPayslipPdf(data, strings.labels);
 
