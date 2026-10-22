@@ -3328,6 +3328,34 @@
       "breakpoints": true
     },
     {
+      "idx": 576,
+      "version": "7",
+      "when": 1791900000056,
+      "tag": "0576_principal_snapshot_current",
+      "breakpoints": true
+    },
+    {
+      "idx": 578,
+      "version": "7",
+      "when": 1791900000058,
+      "tag": "0578_ess_photo_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 579,
+      "version": "7",
+      "when": 1791900000059,
+      "tag": "0579_configurable_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 580,
+      "version": "7",
+      "when": 1791900000060,
+      "tag": "0580_reward_policy_groups",
+      "breakpoints": true
+    },
+    {
       "idx": 591,
       "version": "7",
       "when": 1791900000071,
