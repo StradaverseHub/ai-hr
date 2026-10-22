@@ -1,3 +1,4 @@
+import {materializeAttendancePolicyProposalParts as materialize} from '../packs/attendance/policy-proposal-parts';
 import {describe,expect,it} from 'vitest';
 import type {AttendancePolicyExecutionContext} from '../core/attendance';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
@@ -70,5 +71,35 @@ describe('canonical source composition into the shared policy duration proposal'
   expect(propose(f.context,f.work,f.formulas)).toMatchObject({state:'proposed',duration:{status:'calculated',payableMinutes:60},formulaParts:[{date}]});
   f.formulas.references[0]={date,state:'unavailable',reason:'formulaInactive'};
   expect(propose(f.context,f.work,f.formulas)).toMatchObject({state:'proposed',duration:{status:'unavailable',reason:'formulaAllocationUnavailable'},formulaParts:[]});
+ });
+});
+
+
+describe('complete non-payable proposal materialization',()=>{
+ const source=()=>{const f=fixture();return {source:{employmentId:f.context.employmentId,date:f.context.date},policy:f.context.selected,
+  context:f.context,work:f.work,formulas:f.formulas,proposal:propose(f.context,f.work,f.formulas)};};
+ it('keeps all dated parts below their parent and leaves rounded remainder on parent evidence',()=>{
+  const f=source(),before=structuredClone(f),parts=materialize(f);
+  expect(parts).toMatchObject([{sequence:0,calendarDate:date,versionId:id(4),rawMinutes:20,allocatedPayableMinutes:20,sourceIntervals:[{from:1420,to:1440}],durationEvidence:{authority:'proposalOnly'}},
+   {sequence:1,calendarDate:next,versionId:id(4),rawMinutes:20,allocatedPayableMinutes:20,sourceIntervals:[{from:1440,to:1460}]}]);
+  expect(parts?.reduce((n,row)=>n+row.allocatedPayableMinutes,0)).toBe(40);
+  expect(f.proposal).toMatchObject({duration:{payableMinutes:60,classes:[{unplacedPayableMinutes:20}]}});
+  expect(f).toEqual(before);parts![0].sourceIntervals[0].from=0;expect(f).toEqual(before);
+  expect(Object.hasOwn(parts![0],'calculationId')).toBe(false);expect(Object.hasOwn(parts![0],'transferable')).toBe(false);
+ });
+ it('rejects omitted or substituted date, formula and count data by recomputing the complete proposal',()=>{
+  for(const field of ['omission','formula','count'] as const){
+   const f=source();if(f.proposal.state!=='proposed'||f.proposal.duration.status!=='calculated')throw Error('Expected prepared proposal');
+   if(field==='omission')f.proposal.duration.parts.pop();
+   if(field==='formula')f.proposal.formulaParts[0].versionId=id(9);
+   if(field==='count')f.proposal.duration.parts[0].allocatedPayableMinutes=21;
+   expect(materialize(f)).toBeNull();
+  }
+ });
+ it('refuses source identity substitution and never materializes partial or unavailable proposals',()=>{
+  const f=source();expect(materialize({...f,source:{...f.source,employmentId:id(9)}})).toBeNull();
+  expect(materialize({...f,source:{...f.source,date:next}})).toBeNull();
+  f.context.calendar[1]={state:'unknown',date:next,reason:'holidayDesignationUnavailable'};f.proposal=propose(f.context,f.work,f.formulas);
+  expect(materialize(f)).toEqual([]);expect(materialize({source:f.source})).toEqual([]);
  });
 });

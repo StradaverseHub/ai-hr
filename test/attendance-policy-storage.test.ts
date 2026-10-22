@@ -1,7 +1,8 @@
 /** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
  * Only the non-payable staged contract is allowed; no test turns proposal arithmetic into money. */
-import {randomUUID} from 'node:crypto';
-import {and,asc,eq} from 'drizzle-orm';
+import {randomUUID,createHash} from 'node:crypto';
+import {attendancePolicyExecutionProposal} from '../packs/attendance/policy-execution-proposal';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
@@ -19,7 +20,7 @@ const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z'
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 
-async function fixture(){
+async function fixture(approval:'manual'|'auto'='manual'){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -37,7 +38,7 @@ async function fixture(){
  expect(validation.issues).toEqual([]);
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(1)});
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
-  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
+  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod:'actual',rounding:{mode:'none',step:null},
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
  await checkIn(ctx,{employmentId:worker.employmentId,date:day(2),time:'23:50'});
@@ -60,6 +61,47 @@ function part(f:Fixture,calculationId:string,sequence=0):typeof s.attendanceOver
   durationEvidence:{authority:'proposalOnly',steps:[]}};
 }
 describe('immutable non-payable policy part storage',()=>{
+ it('permits a current self subject barrier without configuration authority, and denies unrelated or revoked principals',async()=>{
+  const f=await fixture(),userId=await createAppUser(b.tenantId,f.personId,'employee');
+  const self:SessionContext={...ctx,userId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  const [before]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  const barrier=(actor:SessionContext,employmentId=f.employmentId)=>withTenant(actor,tx=>tx.execute(sql`select app.lock_attendance_policy_execution_context(${employmentId}::uuid,${day(2)}::date)`));
+  await barrier(self);
+  await expect(withTenant(self,tx=>tx.execute(sql`select app.lock_overtime_configuration(${b.tenantId}::uuid)`))).rejects.toThrow();
+  const [after]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));expect(after).toEqual(before);
+  const other=await hireEmployee(ctx,{person:{fullName:'Fictional unrelated barrier subject'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
+  await expect(barrier(self,other.employmentId)).rejects.toThrow();
+  await expect(barrier(adminCtx(await seedBase()))).rejects.toThrow();
+  await owner.db.delete(s.roleAssignment).where(and(eq(s.roleAssignment.appUserId,userId),eq(s.roleAssignment.tenantId,b.tenantId)));
+  await expect(barrier(self)).rejects.toThrow();
+ });
+ // This injected canonical-reader fixture proves writer structure only, not actual capture authority,
+ // final-effect approval or payable execution. Actual real-clock journeys remain required.
+ it('records a complete proposal part set atomically through the existing parent calculation writer',async()=>{
+  const f=await fixture('auto');
+  const calculator=createOvertimeCalculationOwner(async(tx,actor,p)=>{
+   const snapshot=await canonicalOvertimeInputTx(tx,actor,p);
+   snapshot.policyWorkInput={state:'known',authority:'sourceOnly',periodMinutes:4320,workedIntervals:[{from:1430,to:1450}],
+    eligibleActualIntervals:[{from:1430,to:1450}],unpaidIntervals:[],lateOffsetIntervals:[],lateMinutes:0,earlyOutMinutes:0};
+   snapshot.policyExecutionProposal=attendancePolicyExecutionProposal(snapshot.policyExecutionContext,snapshot.policyWorkInput,snapshot.policyFormulaInput);
+   snapshot.input.source.inputDigest=createHash('sha256').update(JSON.stringify([snapshot.input.source.inputDigest,snapshot.policyWorkInput,snapshot.policyExecutionProposal])).digest('hex');
+   return snapshot;
+  });
+  const result=await withTenant(ctx,async tx=>{
+   const p={employmentId:f.employmentId,date:day(2)},prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   return calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional prepared source-part writer probe'});
+  });
+  if(result.status!=='recorded')throw Error('Expected a non-payable recorded proposal');
+  const [saved]=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,result.calculationId));
+  expect(saved).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:f.revisionId,policyPartCount:2,outcome:'refused',durationOutcome:'refused',transferable:false,versionId:null,assignmentId:null});
+  const parts=await owner.db.select().from(s.attendanceOvertimePolicyPart).where(eq(s.attendanceOvertimePolicyPart.calculationId,saved.id)).orderBy(asc(s.attendanceOvertimePolicyPart.sequence));
+  expect(parts.map(part=>({sequence:part.sequence,date:part.calendarDate,raw:part.rawMinutes,allocated:part.allocatedPayableMinutes,inputDigest:part.inputDigest}))).toEqual([
+   {sequence:0,date:day(2),raw:10,allocated:10,inputDigest:saved.inputDigest},{sequence:1,date:day(3),raw:10,allocated:10,inputDigest:saved.inputDigest}]);
+  expect(parts.every(part=>part.durationEvidence.authority==='proposalOnly')).toBe(true);
+  expect(await owner.db.select().from(s.attendanceOvertimeLine).where(eq(s.attendanceOvertimeLine.calculationId,saved.id))).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,saved.sourceId))).toEqual([]);
+ });
+
  it('retains exact activated formula and earning references without substituting an assignment',async()=>{
   const f=await fixture(),snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
   const source=snapshot.policyFormulaInput;expect(source?.state).toBe('known');if(source?.state!=='known')throw Error('Expected canonical formula source');
@@ -76,21 +118,38 @@ describe('immutable non-payable policy part storage',()=>{
   expect(recorded?.calculation).toMatchObject({outcome:'refused',transferable:false,versionId:null,assignmentId:null});
   expect(recorded?.evidence?.evidence).toMatchObject({policyFormulaInput:source});
  });
- it('invalidates a prepared policy snapshot when its referenced formula is stopped, without rewriting old evidence',async()=>{
-  const f=await fixture(),api=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
-  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
-  const snapshotBefore=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+ it('holds referenced formula state through recording, then preserves its immutable evidence after a concurrent stop',async()=>{
+  const f=await fixture(),api=createOvertimeCalculationOwner(canonicalOvertimeInputTx),p={employmentId:f.employmentId,date:day(2)};
+  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  const snapshotBefore=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
   const [version]=await owner.db.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.id,f.versionId));
   const detail=await getOvertimePattern(ctx,version.patternId),revision=detail!.versions.find(row=>row.id===f.versionId)!.revision;
-  await expect(withTenant(ctx,async tx=>{
-   const prepared=await api.prepareTx(tx,ctx,{employmentId:f.employmentId,date:day(2)});
-   await stopOvertimePatternVersion(ctx,{versionId:f.versionId,expectedRevision:revision,effectiveFrom:day(2),reason:'Fictional prospective formula stop'});
-   return api.recordTx(tx,ctx,{prepared,expectedCurrentRevision:before!.source.revision,reason:'Fictional stale formula source probe'});
-  })).rejects.toMatchObject({code:'stale'});
-  const after=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  let release!:()=>void,preparedReady!:()=>void,prepareFailed!:(error:unknown)=>void,preparingPid=0;
+  const hold=new Promise<void>(resolve=>{release=resolve;}),reached=new Promise<void>((resolve,reject)=>{preparedReady=resolve;prepareFailed=reject;});
+  const recording=withTenant(ctx,async tx=>{
+   const [backend]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];preparingPid=backend.pid;
+   const prepared=await api.prepareTx(tx,ctx,p);preparedReady();await hold;
+   return api.recordTx(tx,ctx,{prepared,expectedCurrentRevision:before!.source.revision,reason:'Fictional concurrent formula preservation'});
+  }).catch(error=>{prepareFailed(error);throw error;});
+  try{await reached;}catch(error){await recording.catch(()=>{});throw error;}
+  const stopping=stopOvertimePatternVersion(ctx,{versionId:f.versionId,expectedRevision:revision,effectiveFrom:day(2),reason:'Fictional prospective formula stop'});
+  void stopping.catch(()=>{});let observed=false,observationError:unknown;
+  try{
+   const until=Date.now()+5000;
+   while(Date.now()<until){
+    const [waiting]=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database()
+     and ${preparingPid}::integer=any(pg_blocking_pids(pid))) as blocked`) as unknown as {blocked:boolean}[];
+    if(waiting.blocked){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+   }
+  }catch(error){observationError=error;}finally{release();}
+  const [result]=await Promise.all([recording,stopping]);if(observationError)throw observationError;expect(observed).toBe(true);expect(result.status).toBe('recorded');
+  const after=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
   expect(after.referenceDigest).not.toBe(snapshotBefore.referenceDigest);
   expect(after.policyFormulaInput).toMatchObject({state:'known',references:[{state:'unavailable',reason:'formulaInactive'},{state:'unavailable',reason:'formulaInactive'},{state:'unavailable',reason:'formulaInactive'}]});
-  expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}))).toEqual(before);
+  const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(current?.evidence?.evidence).toMatchObject({policyFormulaInput:snapshotBefore.policyFormulaInput});
+  const [retained]=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,before!.calculation!.id));
+  expect(retained).toEqual(before!.calculation);
  });
 
  it('retains the original assignment discriminator by default and permits an explicit empty refused policy result',async()=>{

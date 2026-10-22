@@ -354,3 +354,23 @@ the new policy approval digest and immutable evidence; the legacy digest contrac
 Missing, explicitly unavailable and identity-mismatched receipts remain distinct. None is converted to
 legacy admission, a planned physical window or a final approval. The final-effect receipt is still a
 separate unimplemented capability and policy payment remains refused.
+
+
+## Atomic proposal part materialization
+
+The existing transaction/principal-bound calculation owner can now persist a complete, non-payable
+proposal part set below its original source/calculation. It recomputes the entire source proposal and
+rejects changed identities, omitted dates, substituted versions or counts. It declares the exact part
+count before writing every part in the same transaction, with parent-owned tenant/company/digest/ID.
+Class-level rounded remainder stays on parent evidence; no extra physical interval or date is assigned.
+Headers remain refused/non-transferable; no money line, settlement or final approval is produced.
+
+Policy preparation holds a scoped read barrier on the existing central configuration epoch until transaction end and re-reads
+canonical inputs after waiting. This does not grant configuration authority or increment its epoch.
+The barrier independently checks current principal, Attendance subject visibility and a real dated
+policy/source binding before and after waiting. This contains concurrent formula stop/archive changes before the part
+storage guards, instead of risking a late configuration SQL refusal in a raw clocking transaction.
+The legacy preparation branch keeps its existing reads/locks. Runtime lock ordering, complete-set
+storage and real-clock/approval/Payroll journeys still need verification after the resource handover.
+The injected prepared-source writer fixture establishes only its stated structure, not capture truth
+or final-effect authority. This is not the required payable part writer or independent financial replay.

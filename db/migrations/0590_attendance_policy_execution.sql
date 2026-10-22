@@ -282,3 +282,38 @@ END $$;
 REVOKE ALL ON FUNCTION app.guard_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER attendance_policy_request_contract_guard BEFORE INSERT OR UPDATE OR DELETE ON public.attendance_policy_request_contract
  FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_request_contract();
+
+--> statement-breakpoint
+-- Permit only the table owner behind the checked SECURITY DEFINER barrier to reach the epoch under
+-- forced RLS, including restricted migration owners. No new application table capability is granted.
+CREATE POLICY overtime_epoch_execution_owner ON public.overtime_pattern_epoch FOR ALL
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.overtime_pattern_epoch'::regclass)))
+ WITH CHECK(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.overtime_pattern_epoch'::regclass)));
+--> statement-breakpoint
+-- Read-only execution barrier: serialize live policy/formula reads with their existing configuration
+-- writer without giving ordinary Attendance subjects admin configuration access or incrementing it.
+CREATE FUNCTION app.lock_attendance_policy_execution_context(p_employment uuid,p_date date) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=app.current_tenant_id();
+BEGIN
+ IF app.attendance_policy_principal_current() IS NOT TRUE
+  OR NOT(app.can_see_employment(p_employment) OR app.can_admin_payroll_employment(p_employment)) THEN
+  RAISE EXCEPTION 'Current Attendance subject authority required' USING ERRCODE='42501';END IF;
+ -- SECURITY DEFINER must repeat the Attendance RLS subject predicate above; calling a visibility
+ -- helper that relies only on invoker RLS here would inherit this owner's table authority.
+ IF NOT EXISTS(SELECT 1 FROM public.attendance_overtime_source source
+  JOIN public.attendance a ON a.id=source.attendance_id AND a.tenant_id=source.tenant_id
+   AND a.employment_id=source.employment_id AND a.attendance_date=source.attendance_date
+  JOIN public.attendance_group_policy_revision policy ON policy.tenant_id=source.tenant_id
+   AND policy.company_id=source.company_id AND policy.rule_id::text=a.calc_trace#>>'{schedule,ruleId}'
+   AND policy.effective_from<=source.attendance_date
+  WHERE source.tenant_id=tenant AND source.employment_id=p_employment AND source.attendance_date=p_date) THEN
+  RAISE EXCEPTION 'Dated policy source is unavailable' USING ERRCODE='23514';END IF;
+ PERFORM 1 FROM public.overtime_pattern_epoch WHERE tenant_id=tenant FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Policy configuration epoch is unavailable' USING ERRCODE='23514';END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE
+  OR NOT(app.can_see_employment(p_employment) OR app.can_admin_payroll_employment(p_employment)) THEN
+  RAISE EXCEPTION 'Current Attendance subject authority required' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) TO ai_hr_app;
