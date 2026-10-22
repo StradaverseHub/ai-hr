@@ -1,3 +1,4 @@
+import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -630,17 +631,7 @@ const perRowBreakMinutes = (
   cutoffAbs: number | null | undefined,
   span: number,
 ): number | null => {
-  if (!periods || periods.length === 0) return null;
-  const unpaid = periods.filter((bp) => bp.paid !== true);
-  if (!unpaid.some((bp) => bp.flexible === true && bp.flexibleMinutes != null)) return null;
-  const total = unpaid.reduce((acc, bp) => {
-    if (bp.flexible === true && bp.flexibleMinutes != null) return acc + Math.max(0, Math.trunc(bp.flexibleMinutes));
-    // The SAME placement rule the punch used (b8aa3466), for the same reason as in spannedBreakMinutes.
-    const bs = anchorToShift(toMinutes(bp.start), w.startAbs, cutoffAbs);
-    const be = anchorToShift(toMinutes(bp.end), w.startAbs, cutoffAbs);
-    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
-  }, 0);
-  return Math.min(total, breakMinutes, span);
+  return perRowAttendanceBreakMinutes(periods,breakMinutes,[{inAbs:w.inAbs,outAbs:w.outAbs}],w.startAbs,cutoffAbs,span);
 };
 
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the

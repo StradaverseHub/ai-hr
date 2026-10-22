@@ -80,6 +80,24 @@ describe('independent clock boundary and break ownership',()=>{
   expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
   expect(attendancePolicyRawWorkedMinutes({...c,workPlacement:{state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'}},proof)).toBeNull();
  });
+ it('counts mixed per-row allowances once and fixed overlap only on captured work',()=>{
+  const mixed={...schedule(),breakMinutes:45,breakPeriods:[
+   {start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30},{start:'15:00',end:'15:15'},
+   {start:'10:00',end:'10:15',paid:true}]};
+  const proof=clocks([[540,720],[840,1080]]),c=context(mixed);
+  expect(attendancePolicyRawWorkedMinutes(c,proof)).toBe(375);
+  expect(attendancePolicyRawWorkedMinutes(c,clocks([[540,720],[960,1080]]))).toBe(270);
+  expect(attendancePolicyRawWorkedMinutes(c,clocks([[540,560]]))).toBe(0);
+  expect(attendancePolicyRawWorkedMinutes(context({...mixed,flexiDuration:true}),proof)).toBe(375);
+  expect(attendancePolicyRawWorkedMinutes(context({...mixed,flexibleBreakMinutes:10}),proof)).toBe(410);
+  expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(c.workPlacement).toMatchObject({state:'unavailable',reason:'unpositionedBreak'});
+  const open=attendancePolicyClockMillisecondEvidence([{id:'open',atMilliseconds:540*60000,direction:'in'}],c.resolvedClock,4320);
+  expect(attendancePolicyRawWorkedMinutes(c,open)).toBeNull();
+  const night={...mixed,start:'22:00',end:'06:00',crossesMidnight:true,dailyCutoffMinutes:120,
+   breakPeriods:[{start:'23:00',end:'23:30',flexible:true,flexibleMinutes:30},{start:'01:00',end:'01:15'}]};
+  expect(attendancePolicyRawWorkedMinutes(context(night),clocks([[1320,1440],[1470,1800]]))).toBe(405);
+ });
  it('uses Semi Flexi anchors for raw break overlap/counts without fixed penalties or fixed-window OT',()=>{
   const semi={...schedule(),flexiDuration:true},proof=clocks([[570,1050]]),c=context(semi);
   expect(c.clockPlacement).toMatchObject({state:'known',fixedClock:false});
@@ -88,7 +106,7 @@ describe('independent clock boundary and break ownership',()=>{
   expect(attendancePolicyRawWorkedMinutes(context({...semi,flexibleBreakMinutes:30}),proof)).toBe(450);
   expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:null}),proof)).toBe(420);
   expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:null}),clocks([[570,720]]))).toBe(150);
-  expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:[{start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30}]}),proof)).toBeNull();
+  expect(attendancePolicyRawWorkedMinutes(context({...semi,breakPeriods:[{start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30}]}),proof)).toBe(450);
   expect(attendancePolicyRawWorkedMinutes({...c,workPlacement:{state:'unavailable',authority:'sourceOnly',reason:'scheduleBoundaryUnavailable'}},proof)).toBeNull();
   expect(c.placement).toMatchObject({state:'unavailable',reason:'durationOwner'});
   expect(attendancePolicyWorkInput(c,proof)).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});

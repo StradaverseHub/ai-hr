@@ -87,6 +87,24 @@ describe('dated-policy raw writer routing',()=>{
   expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
+ it('stores captured mixed-break raw counts without payable coverage or settlement',async()=>{
+  const f=await fixture();
+  await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:45,breakPeriods:[
+   {start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30},{start:'15:00',end:'15:15'}]});
+  await f.save();
+  for(const [direction,time] of [['in','09:00:00'],['out','12:00:00'],['in','14:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:375,otMinutes:null,lateMinutes:0,earlyOutMinutes:0});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:420,workedMinutes:375,workBasis:'fixedBreakCountOwner',
+   calculationIntervals:[{inAbs:540,outAbs:720},{inAbs:840,outAbs:1080}]});
+  const input=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
  it('retains Semi Flexi duration, allowance and half-day owners without fixed-clock penalties',async()=>{
   const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),type:'semi_flexi',
    startTime:'07:00',endTime:'20:00',normalMinutesOverride:480,breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});

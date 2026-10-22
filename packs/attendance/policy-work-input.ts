@@ -1,4 +1,5 @@
 /** Canonical source projection only. Final-effect receipts and the financial replay remain separate. */
+import {perRowAttendanceBreakMinutes} from '../../lib/attendance-break-count';
 import {fullFlexiBreakMinutes} from '../../lib/full-flexi-time';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
@@ -37,14 +38,16 @@ export function attendancePolicyRawWorkedMinutes(context:AttendancePolicyExecuti
  }
  if(placement.state!=='known'){
   // Existing whole allowance/scalar cliff is a duration count, not a positioned unpaid interval.
-  // Reuse the shared count owner only with proved schedule anchors. Mixed
-  // per-row flexible/fixed break placement still needs its canonical attribution owner.
+  // Reuse the existing shared per-row count owner with proved schedule anchors. Its allowance
+  // contributes once, and its fixed rows intersect only captured work, never the gaps between pairs.
   const boundary=context.clockPlacement;
-  if(placement.reason!=='unpositionedBreak'||boundary?.state!=='known'
-   ||context.schedule.flexibleBreakMinutes===null&&context.schedule.breakPeriods?.length)return null;
+  if(placement.reason!=='unpositionedBreak'||boundary?.state!=='known')return null;
   const gross=clocks.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0);
-  return Math.max(0,gross-fullFlexiBreakMinutes(clocks.minuteIntervals,context.schedule.breakPeriods,
-   context.schedule.breakMinutes,context.schedule.flexibleBreakMinutes));
+  const perRow=context.schedule.flexibleBreakMinutes===null?perRowAttendanceBreakMinutes(context.schedule.breakPeriods,
+   context.schedule.breakMinutes,clocks.minuteIntervals,boundary.scheduled.from,context.schedule.dailyCutoffMinutes,gross):null;
+  if(context.schedule.flexibleBreakMinutes===null&&context.schedule.breakPeriods?.length&&perRow===null)return null;
+  return Math.max(0,gross-(perRow??fullFlexiBreakMinutes(clocks.minuteIntervals,context.schedule.breakPeriods,
+   context.schedule.breakMinutes,context.schedule.flexibleBreakMinutes)));
  }
  const physical=union(clocks.minuteIntervals.map(row=>({from:row.inAbs,to:row.outAbs})),4320);
  return minutes(subtract(physical,placement.unpaidWindows,4320),4320);
