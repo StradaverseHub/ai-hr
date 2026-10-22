@@ -41,7 +41,8 @@ describe('employee explicitly composes and sends a celebration greeting',()=>{
   const user=userEvent.setup(),send=vi.fn(async(command:Readonly<HomeGreetingCommand>)=>receipt(command));
   render(view({send}));await user.click(screen.getByRole('button',{name:english('sayHi')}));
   const editor=screen.getByRole('textbox',{name:english('message')});
-  await user.clear(editor);await user.type(editor,'Fictional edited greeting 李 🎉');
+  await user.clear(editor);await user.type(editor,'  Fictional edited greeting 李 🎉  ');
+  expect(screen.getByText(english('count',{count:Array.from('Fictional edited greeting 李 🎉').length,max:500}))).toBeVisible();
   expect(send).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:english('send'),exact:true}));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(english('sent')));
   expect(send).toHaveBeenCalledTimes(1);

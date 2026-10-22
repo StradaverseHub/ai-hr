@@ -24,7 +24,8 @@ function Composer({employmentId,target,send}:Props){
  const [invalid,setInvalid]=React.useState(false),[receipt,setReceipt]=React.useState<HomeGreetingReceipt|null>(null);
  const attempted=React.useRef<Readonly<HomeGreetingCommand>|null>(null),busy=React.useRef(false),mounted=React.useRef(true);
  React.useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- let valid=true;try{homeGreetingMessage(message);}catch{valid=false;}
+ let valid=true,count=Array.from(message).length;
+ try{count=Array.from(homeGreetingMessage(message)).length;}catch{valid=false;}
  const date=new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(target.date+'T00:00:00Z'));
  async function submit(event:React.FormEvent){
   event.preventDefault();if(busy.current||receipt)return;
@@ -60,7 +61,7 @@ function Composer({employmentId,target,send}:Props){
        readOnly={locked} rows={5} maxLength={2*HOME_GREETING_MAX_CHARACTERS}
        aria-describedby={helpId} aria-invalid={invalid||!valid}
        className="w-full resize-y rounded-lg border border-border bg-background p-3 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/>
-      <p id={helpId} className="text-xs text-muted-foreground">{t('count',{count:Array.from(message).length,max:HOME_GREETING_MAX_CHARACTERS})}</p>
+      <p id={helpId} className="text-xs text-muted-foreground">{t('count',{count,max:HOME_GREETING_MAX_CHARACTERS})}</p>
      </div>
      {invalid&&<p role="alert" className="text-sm">{t('invalid',{max:HOME_GREETING_MAX_CHARACTERS})}</p>}
      {uncertain&&<div role="alert" className="space-y-2 rounded-lg border border-border p-3 text-sm leading-relaxed">
