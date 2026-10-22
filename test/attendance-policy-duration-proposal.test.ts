@@ -1,0 +1,101 @@
+import {describe,expect,it} from 'vitest';
+import {deriveAttendancePolicyDurationProposal,type PolicyDurationProposalInput} from '../packs/attendance/policy-duration';
+import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
+const companyId='00000000-0000-4000-8000-000000000001';
+const sourceDate='2024-02-29',nextDate='2024-03-01';
+const calendar=(date=sourceDate,dayClass:AttendancePolicyDayClass='normal'):PolicyCalendarProof=>({state:'known',date,companyId,dayClass,
+ moneyDay:dayClass==='normal'||dayClass==='off'?'workday':dayClass==='rest'?'rest_day':'holiday',references:['fictional-calendar:'+date+':'+dayClass]});
+function fixture():PolicyDurationProposalInput{
+ const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
+  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'auto',autoMethod:'actual',rounding:{mode:'none',step:null},
+   days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:companyId}])) as AttendanceGroupPolicy['overtime']['days']}};
+ return {sourceDate,companyId,periodMinutes:2880,policy,workedIntervals:[{from:540,to:1140}],eligibleActualIntervals:[{from:1080,to:1140}],eligiblePlannedIntervals:null,
+  unpaidIntervals:[],lateOffsetIntervals:null,calendar:[calendar()],method:'actual',approval:'policyAuto',allocationByClass:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,'earliest'])) as PolicyDurationProposalInput['allocationByClass']};
+}
+function calculated(input:PolicyDurationProposalInput){const value=deriveAttendancePolicyDurationProposal(input);expect(value.status).toBe('calculated');if(value.status!=='calculated')throw Error('Expected evidenced arithmetic');return value;}
+describe('shared dated-policy duration proposal',()=>{
+ it('removes a union of breaks once and excludes the same measured minutes from the late offset',()=>{
+  const f=fixture();f.policy.overtime.offsetLateness=true;f.workedIntervals=[{from:600,to:1140}];f.eligibleActualIntervals=[{from:1080,to:1140}];
+  f.unpaidIntervals=[{from:540,to:550},{from:1080,to:1090},{from:1085,to:1095}];f.lateOffsetIntervals=[{from:540,to:570},{from:550,to:570}];
+  const before=structuredClone(f),result=calculated(f);
+  // 60 actual eligible − 15 unioned break − (30 measured late − 10 already unpaid) = 25.
+  expect(result).toMatchObject({authority:'proposalOnly',lateOffsetMinutes:20,payableMinutes:25,intervalBasis:'actual',classes:[{eligibleMinutes:25,payableMinutes:25}]});
+  expect(result.parts[0].intervals).toEqual([{from:1115,to:1140}]);expect(f).toEqual(before);
+  expect(result.selectionSteps).toEqual([{kind:'breaks',basis:'actual',before:60,after:45},
+   {kind:'lateOffset',before:45,after:25,requested:20,applied:20},{kind:'method',method:'actual',before:25,after:25}]);
+ });
+ it('intersects real positions rather than accepting the smaller of equal disjoint totals',()=>{
+  const f=fixture();f.method='intersect';f.policy.overtime.autoMethod='intersect';f.eligiblePlannedIntervals=[{from:1140,to:1200}];
+  expect(calculated(f).payableMinutes).toBe(0);
+  f.eligiblePlannedIntervals=[{from:1110,to:1170},{from:1120,to:1180}];
+  const result=calculated(f);expect(result.payableMinutes).toBe(30);expect(result.parts[0].intervals).toEqual([{from:1110,to:1140}]);
+ });
+ it('applies one actual lateness offset before intersecting the approved window',()=>{
+  const f=fixture();f.policy.overtime.offsetLateness=true;f.method='intersect';f.policy.overtime.autoMethod='intersect';
+  f.lateOffsetIntervals=[{from:500,to:515}];f.eligiblePlannedIntervals=[{from:1110,to:1170}];
+  const result=calculated(f);expect(result.lateOffsetMinutes).toBe(15);expect(result.payableMinutes).toBe(30);
+  expect(result.parts[0].intervals).toEqual([{from:1110,to:1140}]);
+ });
+ it('requires an established worked day and evidenced plan for Pre-Approved, keeping planned coverage distinct from actual work',()=>{
+  const f=fixture();f.method='preApproved';f.policy.overtime.autoMethod='preApproved';f.eligibleActualIntervals=[];f.workedIntervals=[];
+  expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'workedEvidenceUnavailable'});
+  f.workedIntervals=[{from:540,to:600}];f.eligibleActualIntervals=[];
+  expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'plannedEvidenceUnavailable'});
+  f.eligiblePlannedIntervals=[{from:1080,to:1200}];
+  expect(calculated(f)).toMatchObject({intervalBasis:'approvedPlan',payableMinutes:120,parts:[{minutes:120}]});
+ });
+ it('does not turn missing or pending approval into a synthetic Auto result and retains the manual frozen method',()=>{
+  for(const approval of ['approved','pending','rejected','unknown'] as const)expect(deriveAttendancePolicyDurationProposal({...fixture(),approval})).toMatchObject({status:'unavailable',reason:'approvalUnavailable'});
+  const f=fixture();f.policy.overtime.approval='manual';f.policy.overtime.autoMethod='preApproved';f.approval='approved';
+  expect(calculated(f).payableMinutes).toBe(60);
+  f.approval='policyAuto';expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'approvalUnavailable'});
+ });
+ it('keeps unknown clocks, eligibility and required lateness separate from a known empty interval set',()=>{
+  expect(deriveAttendancePolicyDurationProposal({...fixture(),workedIntervals:null})).toMatchObject({status:'unavailable',reason:'workedEvidenceUnavailable'});
+  expect(deriveAttendancePolicyDurationProposal({...fixture(),eligibleActualIntervals:null})).toMatchObject({status:'unavailable',reason:'eligibleEvidenceUnavailable'});
+  const f=fixture();f.policy.overtime.offsetLateness=true;expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'lateEvidenceUnavailable'});
+  f.lateOffsetIntervals=[];f.eligibleActualIntervals=[];expect(calculated(f).payableMinutes).toBe(0);
+ });
+ it('rounds once for a classification spanning midnight instead of independently per date or interval',()=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'up',step:30};
+  f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=[{from:1420,to:1460}];f.calendar=[calendar(),calendar(nextDate)];
+  const result=calculated(f);expect(result.payableMinutes).toBe(60);expect(result.parts.map(part=>part.minutes)).toEqual([20,20]);
+  expect(result.classes).toMatchObject([{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20,steps:[{kind:'rounding',before:40,after:60}]}]);
+  expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(40);
+ });
+ it('never extends a physical clock span to disguise rounded payable count',()=>{
+  const f=fixture();f.policy.overtime.rounding={mode:'up',step:15};f.eligibleActualIntervals=[{from:1080,to:1117}];
+  const result=calculated(f);expect(result.payableMinutes).toBe(45);expect(result.classes[0].unplacedPayableMinutes).toBe(8);
+  expect(result.parts[0].allocations).toEqual([{from:1080,to:1117}]);expect(result.parts[0].allocatedPayableMinutes).toBe(37);
+  expect(Object.hasOwn(result,'transferable')).toBe(false);
+ });
+ it('keeps selected versions\' count-allocation policies explicit and places a reduced count only within proved coverage',()=>{
+  const f=fixture();f.policy.overtime.days.normal.maximumMinutes=20;
+  expect(calculated(f).parts[0].allocations).toEqual([{from:1080,to:1100}]);
+  f.allocationByClass.normal='latest';expect(calculated(f).parts[0].allocations).toEqual([{from:1120,to:1140}]);
+  f.allocationByClass.normal='' as never;expect(()=>deriveAttendancePolicyDurationProposal(f)).toThrow('explicit count allocation');
+ });
+ it('retains minimum, maximum and approved-plan ceilings around rounding',()=>{
+  const f=fixture();f.method='intersect';f.policy.overtime.autoMethod='intersect';f.eligiblePlannedIntervals=[{from:1080,to:1124}];
+  f.policy.overtime.days.normal.maximumMinutes=44;f.policy.overtime.rounding={mode:'up',step:30};
+  const result=calculated(f);expect(result.payableMinutes).toBe(44);expect(result.classes[0].unplacedPayableMinutes).toBe(0);
+  f.policy.overtime.days.normal.minimumMinutes=30;f.eligiblePlannedIntervals=[{from:1080,to:1109}];expect(calculated(f).payableMinutes).toBe(0);
+ });
+ it('refuses the entire overnight proposal when any required dated calendar proof is unavailable',()=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.workedIntervals=[{from:1430,to:1450}];f.eligibleActualIntervals=f.workedIntervals;
+  expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',date:nextDate,reason:'calendarUnavailable'});
+  f.calendar=[calendar(),{state:'unknown',date:nextDate,reason:'holidayDesignationUnavailable'}];
+  expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'holidayDesignationUnavailable'});
+ });
+ it('refuses a rounded aggregate above the canonical parent period without silently dropping a date',()=>{
+  const f=fixture();f.periodMinutes=1450;f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'up',step:60};
+  f.workedIntervals=[{from:30,to:1450}];f.eligibleActualIntervals=f.workedIntervals;f.calendar=[calendar(),calendar(nextDate,'rest')];
+  expect(deriveAttendancePolicyDurationProposal(f)).toEqual({status:'unavailable',reason:'durationLimitExceeded',authority:'proposalOnly'});
+ });
+ it('rejects claimed actual eligibility outside actual worked coverage and preserves disabled saved settings',()=>{
+  const f=fixture();f.eligibleActualIntervals=[{from:530,to:600}];expect(()=>deriveAttendancePolicyDurationProposal(f)).toThrow('worked coverage');
+  f.eligibleActualIntervals=[];f.policy.overtime.enabled=false;const before=structuredClone(f);
+  expect(calculated(f).payableMinutes).toBe(0);expect(f).toEqual(before);
+ });
+});

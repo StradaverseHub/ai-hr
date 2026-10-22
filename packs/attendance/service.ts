@@ -67,3 +67,6 @@ export {shiftArrangementHistory} from '../../core/shift-arrangement';
 
 export { previewCardImport, commitCardImport, cardImportExisting, assertCardImportAccess } from '../../core/attendance-card-import';
 export { setEmploymentCardId } from '../../core/attendance-card';
+
+// Shared dated-policy arithmetic; proposals do not authorize approval, pricing or settlement.
+export {deriveAttendancePolicyDurationProposal,type PolicyDurationProposalInput,type PolicyDurationProposal} from './policy-duration';

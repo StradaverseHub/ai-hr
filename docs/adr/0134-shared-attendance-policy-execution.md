@@ -121,6 +121,31 @@ validation rejects the starting document. No activation, assignment, policy bind
 or historical version is created by initialization. Each new draft and its actual actor are audited
 in the same transaction. Database/lifecycle and actual-app verification remain required.
 
+## Shared duration proposal sequencing
+
+`packs/attendance/policy-duration.ts` coordinates the existing interval, partition and duration owners.
+It receives canonical worked coverage, already selected actual/plan eligibility, positioned unpaid breaks,
+net measured lateness placement, the resolved calendar and the selected central versions' explicit
+count-allocation directions. It never reconstructs positions from scalar approvals or clock labels.
+The caller must first prove complete clock evidence or the separate HR-attested exception, approval
+receipt, frozen method, source identities and current authority. The function itself grants none of these.
+
+Breaks are unioned and removed once. Measured late placement excludes the same unpaid minutes before
+its offset is consumed from earliest candidate eligibility. Actual and Intersect use actual candidate
+coverage; Intersect then restricts that offset coverage to the approved planned windows. Pre-Approved
+uses evidenced plan eligibility on a separately established worked day and consumes its one offset on
+that candidate basis. A manual proposal needs an approved receipt and explicit frozen method; Auto
+needs the policy-auto receipt branch and the method in the selected version. Missing evidence refuses.
+These are arithmetic inputs, not new receipt authorities; the existing final-effect owner must prove them.
+
+Partition the selected coverage through the existing calendar owner. Finalize minimum/maximum/rounding
+once across each business-day classification total, with the applicable approved-plan ceiling. Allocate
+counts inside proved coverage using the selected central version's explicit direction. Any rounded
+count beyond physical coverage stays explicitly unplaced. It does not extend a clock span or acquire a
+calendar date, rate, cash claim or TOIL claim by inference. Canonical count attribution and Payroll replay
+must still account for it before transfer. The proposal is deliberately distinct from a ready financial
+result. Runtime writers, receipts, storage, financial replay and actual-app verification remain incomplete.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.
