@@ -675,6 +675,10 @@ export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,
   // Preserve the original resource conflict fence across the duration/pricing boundary.
   if(pattern.deductions.some(a=>a.unit==='minutes'&&pattern.deductions.some(b=>b.unit==='money'&&b.resource===a.resource&&b.basis===a.basis)))
    return unavailable('formulaUnavailable');
+  const minuteKeys=new Set(input.resources.filter(resource=>pattern.deductions.some(rule=>rule.unit==='minutes'
+   &&rule.resource===resource.resource&&rule.basis===resource.basis)).flatMap(resource=>resource.sourceKeys));
+  if(input.resources.some(resource=>pattern.deductions.some(rule=>rule.unit==='money'&&rule.resource===resource.resource
+   &&rule.basis===resource.basis)&&resource.sourceKeys.some(key=>minuteKeys.has(key))))return unavailable('formulaUnavailable');
   if(input.layer!=='raw'||input.mode!=='actual'||input.sessionGranularity!=='recorded')return unavailable('allocationUnavailable');
   let total=ZERO;
   for(const segment of input.segments){

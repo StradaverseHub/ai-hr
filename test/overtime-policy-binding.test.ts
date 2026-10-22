@@ -95,6 +95,15 @@ describe('central pricing of finalized group-policy allocations',()=>{
   const pattern=definition();pattern.paymentCap={id:'cash_cap',unit:'money',type:'literal',value:'10',currency:'MYR'};
   expect(evaluateOvertimePolicyAllocatedPrice(pattern,positionedPolicy())).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'1000'});
  });
+ it('retains cross-unit conflict refusal when differently named resources share original source keys',()=>{
+  const pattern=definition(),input=positionedPolicy();
+  pattern.deductions=[
+   {id:'minutes',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'minutes_when',type:'constant',value:true},amount:{id:'minutes_amount',unit:'minutes',type:'literal',value:'30'}},
+   {id:'money',resource:'lateIn',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'money_when',type:'constant',value:true},amount:{id:'money_amount',unit:'money',type:'literal',value:'5',currency:'MYR'}}];
+  input.resources=['postOtBreak','lateIn'].map(resource=>({id:resource,resource,evidence:'measured',basis:'day',sessionId:null,sourceKeys:['same_canonical_source'],measure:{unit:'minutes',quantity:fact('30')}}));
+  expect(evaluateOvertimePolicyPart(pattern,input)).toMatchObject({status:'refused',issues:[{code:'deductionConflict'}]});
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input)).toMatchObject({state:'unavailable',reason:'formulaUnavailable'});
+ });
  it('refuses unplaced counts, unequal approval, changed formula eligibility and mixed resource units',()=>{
   const unknown=policy();expect(evaluateOvertimePolicyAllocatedPrice(definition(),unknown).state).toBe('unavailable');
   const partial=positionedPolicy();if(partial.layer!=='raw')throw Error('Raw required');partial.segments[0].approvedMinutes=fact('60','approval');
