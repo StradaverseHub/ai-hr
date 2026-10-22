@@ -33,7 +33,10 @@ async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutco
     await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
     return;
   }
-  const marker = {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
+  // Retaining a dated-policy identity is not complete execution or financial approval. Keep the
+  // existing unresolved-coverage fence until the staged policy owner can produce those proofs.
+  const marker = result.policyRevisionId?{status:'refused',reason:'sourceUnavailable'} as const:
+    {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
   await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,dayId));
 }
 /** Automatic OT stage after the canonical raw day/approval writer. Legacy quantities stay under

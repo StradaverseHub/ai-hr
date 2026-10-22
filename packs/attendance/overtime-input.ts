@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
-import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
+import {recordedAttendanceGroupPolicyTx} from './policy-selection';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
@@ -87,13 +87,19 @@ export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContex
   if (!proof?.companyId) unavailable();
   const permission = await tx.execute(sql`select app.can_admin_payroll_for(${proof!.companyId}::uuid) as allowed`) as unknown as {allowed: boolean}[];
   if (!permission[0]?.allowed) throw new OvertimeOwnerError('permission', 'The overtime source is outside your financial scope.');
-  return readCanonicalInputsTx(tx, ctx, p);
+  const snapshot=await readCanonicalInputsTx(tx,ctx,p);
+  // The staged policy result has no independent cash/duration replay or final-effect receipt yet.
+  if(snapshot.attendanceGroupPolicy)unavailable();
+  return snapshot;
 }
 /** TOIL's canonical owner already proves the election/decision authority. This reader retains
  * subject RLS and never elevates salary access merely to verify price-independent duration. */
 export async function canonicalOvertimeToilInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   assertModuleGate(ctx, 'toil');
-  return readCanonicalInputsTx(tx, ctx, p);
+  const snapshot=await readCanonicalInputsTx(tx,ctx,p);
+  // The staged policy result has no independent cash/duration replay or final-effect receipt yet.
+  if(snapshot.attendanceGroupPolicy)unavailable();
+  return snapshot;
 }
 async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   if (!isCalendarDate(p.date) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.employmentId)) unavailable();
@@ -102,9 +108,9 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const [day] = await tx.select().from(attendance).where(and(eq(attendance.tenantId, ctx.tenantId), eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1);
   const [entity] = await tx.select({id: company.id, currency: company.currency}).from(company).where(and(eq(company.tenantId, ctx.tenantId), eq(company.id, proof!.companyId!))).limit(1);
   if (!day || !entity || !isCurrencyCode(entity.currency)) unavailable();
-  // Until the canonical policy writer and independent final-effect replay are complete, the old
-  // assignment/legacy reader cannot turn this dated policy's work into a different calculation.
-  if (await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p)) unavailable();
+  const policySelection=await recordedAttendanceGroupPolicyTx(tx,ctx,p);
+  if(policySelection.state==='unavailable')unavailable();
+  const selectedPolicy=policySelection.state==='policy'?policySelection.selected:undefined;
   const [assignments, salaries, punches, decisions, context] = await Promise.all([
     tx.select().from(assignment).where(and(eq(assignment.tenantId, ctx.tenantId), eq(assignment.employmentId, p.employmentId), isNull(assignment.supersededAt), lte(assignment.validFrom, p.date), or(isNull(assignment.validTo), gt(assignment.validTo, p.date)))).orderBy(asc(assignment.validFrom), asc(assignment.id)).limit(2),
     tx.select().from(compensation).where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, p.employmentId), compensationEffectiveOn(p.date))).orderBy(asc(compensation.validFrom), asc(compensation.id)).limit(2),
@@ -155,6 +161,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
+    ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -168,6 +175,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
       ],
     },
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
-    referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1}),
+    referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
+      ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy}:{} )}),
   };
 }

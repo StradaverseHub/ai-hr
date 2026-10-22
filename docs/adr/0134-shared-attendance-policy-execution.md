@@ -207,11 +207,17 @@ The actual raw-day refresh now detects a dated policy using the saved Attendance
 Personnel's proven employer for that date. A policy from another employer cannot opt this subject in.
 Missing employer or schedule evidence cannot establish legacy absence when a visible dated policy may
 own the day. Detection rechecks the actual principal rather than accepting a claimed role or form ID.
-The canonical Attendance, Payroll and TOIL input reader refuses to feed this work to the old assignment
-calculator until policy execution, immutable approval receipts and financial replay are complete.
+The canonical Attendance reader freezes the exact selected policy into its transaction-bound input
+snapshot. The existing calculation factory now records that policy identity and snapshot beneath its
+original single source, with an explicit refused/non-transferable header and no payable lines or parts.
+The policy participates in preparation/re-read freshness and the reference digest. This bypasses old
+assignment selection rather than pricing the new policy through unrelated legacy arithmetic. Independent
+Payroll and TOIL input readers continue to refuse this staged policy until execution, immutable approval
+receipts and financial replay are complete. Existing legacy snapshots and reference digests stay unchanged.
 
-The existing durable refusal marker preserves raw punches and enters the existing unresolved Payroll
-coverage path. Already applied scalar plan reassertions must also refresh this marker; both clock-out
+The existing durable refusal marker remains even when the policy identity is recorded: preserving a
+refused immutable header is not proof of completed execution. Raw punches remain intact and unresolved
+Payroll coverage continues to refuse the day. Already applied scalar plan reassertions must also refresh this marker; both clock-out
 and terminal import otherwise skip the usual refresh after that branch. A scalar plan is not an exact
 policy-work approval receipt. This is a safety staging boundary, not completed disabled-policy behaviour,
 policy arithmetic, acceptance evidence or permission to release the four items. Actual policy writers,
