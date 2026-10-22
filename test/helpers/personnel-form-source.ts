@@ -4,7 +4,7 @@ import type { PersonnelFieldDescriptor } from '../../lib/personnel-field-registr
 export type PersonnelSourceExemption={tag:string;name?:string;nameExpression?:string;context?:string;hidden?:boolean;occurrences?:number;reason:string};
 export type PersonnelSourceIssue={line:number;message:string};
 const CONTROL_TAGS=new Set(['input','select','textarea','DateField','Combobox','ProfileOptionSelect','ProfileOptionSelectControlled','IcDobAutofill','CurrencySelect','MultiSelectPopover']);
-const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName','personnelCarry','personnelPresence','personnelDisplay','personnelRadio','personnelWorkflowControl','personnelWorkflowInput','personnelWorkflowCarry']);
+const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName','personnelCarry','personnelPresence','personnelDisplay','personnelRadio','personnelWorkflowControl','personnelWorkflowInput','personnelWorkflowCarry','workforceMaintenanceControl','workforceMaintenanceInput']);
 /** Inspect real JSX, including controlled draft controls. A registry count is never evidence of rendering. */
 export function auditPersonnelFormSource(file:string,text:string,fields:readonly PersonnelFieldDescriptor[],options:{exemptions?:readonly PersonnelSourceExemption[];dynamicBindings?:Record<string,readonly string[]>;resolveImportSource?:(from:string,specifier:string)=>string|undefined}={}) {
   const source=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);

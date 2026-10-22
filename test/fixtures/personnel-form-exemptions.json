@@ -765,5 +765,55 @@
       "name": "expectedCode",
       "reason": "Compare-and-swap snapshot for saveWorkforceCodeAction; the owner compares this exact previous code under its row lock before changing the bound employeeCode fact."
     }
+  ],
+  "app/admin/personnel/[employmentId]/workforce-value-form.tsx": [
+    {
+      "tag": "input",
+      "context": "Identity",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Subject pointer for saveWorkforceRecordAction; the owner freshly checks company and employment permission, never trusts this pointer as authority."
+    },
+    {
+      "tag": "input",
+      "context": "Identity",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "kind",
+      "reason": "Finite register-owner discriminator for saveWorkforceRecordAction; the action and service refuse unsupported owners, without editing a Personnel field."
+    },
+    {
+      "tag": "input",
+      "context": "Identity",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "section",
+      "reason": "Finite normal-profile section discriminator for saveWorkforceRecordAction; the service derives the exact permitted field set from its owner declaration."
+    },
+    {
+      "tag": "input",
+      "context": "Identity",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "rowId",
+      "reason": "Existing register row pointer for saveWorkforceRecordAction; the owner checks row, Person and Employment binding before any write or archive."
+    },
+    {
+      "tag": "input",
+      "context": "Identity",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "expectedVersion",
+      "reason": "Compare-and-swap row/profile revision for saveWorkforceRecordAction; the owner compares it under its write lock and refuses stale edits."
+    },
+    {
+      "tag": "input",
+      "context": "WorkforceValueForm",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "operation",
+      "reason": "Finite add/update/archive command discriminator for saveWorkforceRecordAction; both forms use the same canonical owner with fresh permission and version checks."
+    }
   ]
 }

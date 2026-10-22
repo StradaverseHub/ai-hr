@@ -224,7 +224,7 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     // NO NEW READ: the switcher list is the already-loaded listEmployees set, narrowed by scope.
     expect(src).toContain('scopeIds.includes(e.companyId)');
     // …and the route's own guard is untouched: this is what refuses an out-of-scope id.
-    expect(src).toContain('const emp = await employeeDetail(s,employmentId,'workforce');');
+    expect(src).toContain("const emp = await employeeDetail(s,employmentId,'workforce');");
     expect(src).toContain('if(!emp)return <WorkforceScopedRecord');
   });
 
@@ -239,7 +239,7 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     // for every well-formed id — that is what refuses one belonging to another company.
     expect(src.indexOf('UUID_RE.test(employmentId)')).toBeLessThan(src.indexOf('if(!isAdmin(s))return <WorkforceScopedRecord'));
     expect(src.indexOf('UUID_RE.test(employmentId)')).toBeLessThan(
-      src.indexOf('const emp = await employeeDetail(s,employmentId,'workforce');'),
+      src.indexOf("const emp = await employeeDetail(s,employmentId,'workforce');"),
     );
   });
 

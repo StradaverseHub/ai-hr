@@ -2,8 +2,9 @@
 
 import {useState,type ReactNode} from 'react';
 import {dependentFieldApplies} from '@/lib/dependent-vocabulary';
+import {personnelCarry} from '@/lib/personnel-form-contract';
 
-export type WorkforceFieldSlot={name:string;emptyValue:string;content:ReactNode};
+export type WorkforceFieldSlot={name:string;fieldId:string;emptyValue:string;content:ReactNode};
 
 /** Only relationship state crosses this boundary. Labels, options and controls stay server-owned.
  * Disabled hidden fields never submit stale values; finite blank placeholders retain the action's
@@ -16,7 +17,7 @@ export function WorkforceRelationshipFields({initialRelationship,fields}:{initia
   {fields.map(field=>{
    const applicable=field.name==='relationship'||Boolean(relationship)&&dependentFieldApplies(relationship,field.name);
    return <div key={field.name} hidden={!applicable} className="min-w-0">
-    {!applicable&&<input type="hidden" name={field.name} value={field.emptyValue}/>}
+    {!applicable&&<input {...personnelCarry(field.fieldId)} value={field.emptyValue}/>}
     <fieldset disabled={!applicable} className="min-w-0">{field.content}</fieldset>
    </div>;
   })}

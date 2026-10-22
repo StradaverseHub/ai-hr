@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * Personnel — Company change before any transaction (feedback 9464bd56).
  *
@@ -28,7 +29,6 @@ import type { SessionContext } from '../db/client';
 import {
   changeEmploymentCompany,
   CompanyLockedError,
-  DestinationCompanyNotAdministered,
   hireEmployee,
 } from '../core/org';
 import { employmentCompanyEditable, listDepartments } from '../core/read';
@@ -489,7 +489,7 @@ describe('authz — destination company must be administered', () => {
         newCompanyId,
         departmentId: newDeptId,
       }),
-    ).rejects.toBeInstanceOf(DestinationCompanyNotAdministered);
+    ).rejects.toBeInstanceOf(WorkforceAccessError);
     expect(await companyIdOf(rejected.employmentId)).toBe(b.companyId);
 
     const both = await hireFresh();

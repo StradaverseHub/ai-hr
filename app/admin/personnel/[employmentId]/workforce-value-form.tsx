@@ -1,5 +1,5 @@
 import type {WorkforceEditor,WorkforceEditorRow} from '@/core/workforce-maintenance';
-import {workforceMaintenanceFields,type WorkforceMaintenanceKind,type WorkforceValue} from '@/lib/workforce-maintenance-fields';
+import {workforceMaintenanceFields,workforceMaintenanceControl,workforceMaintenanceInput,type WorkforceMaintenanceKind,type WorkforceValue} from '@/lib/workforce-maintenance-fields';
 import {personnelFieldChoices} from '@/lib/personnel-import-contract';
 import {inputCls} from '@/components/ui';
 import {saveWorkforceRecordAction} from './workforce-record-actions';
@@ -38,15 +38,13 @@ export function WorkforceValueForm(props:Props){
      // An inactive stored choice must remain editable without forcing an unrelated replacement.
      const current=String(value);
      if(options.length&&current&&!options.some(option=>option.value===current))options.unshift({value:current,label:current});
-     const required=Boolean(field.form?.required?.record)&&((!row&&kind!=='person')||current!=='');
-     return {name:key,emptyValue:field.type==='boolean'&&!nullableBoolean?'false':'',content:<div key={key} className="space-y-1">
+     const required=workforceMaintenanceControl(field.id,kind,key,Boolean(row),current).required;
+     return {name:key,fieldId:field.id,emptyValue:field.type==='boolean'&&!nullableBoolean?'false':'',content:<div key={key} className="space-y-1">
       <label className="block text-sm" htmlFor={id}>{label}{required?' *':''}</label>
-      {options.length?<select id={id} name={key} className={inputCls} defaultValue={current} required={required}>
+      {options.length?<select {...workforceMaintenanceControl(field.id,kind,key,Boolean(row),current)} id={id} className={inputCls} defaultValue={current}>
        {(field.type!=='boolean'||nullableBoolean)&&<option value="">{nullableBoolean?access(key==='childTaxRelief'?'workforceEdit.undecidedClaim':'workforceEdit.unspecified'):'—'}</option>}
        {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>:<input id={id} name={key} className={inputCls} defaultValue={current} maxLength={4000} required={required}
-       inputMode={field.form?.widget==='email'?'email':undefined}
-       type={field.form?.widget==='month'?'month':field.type==='date'?'date':'text'}/>}
+      </select>:<input {...workforceMaintenanceInput(field.id,kind,key,Boolean(row),current)} id={id} className={inputCls} defaultValue={current} maxLength={4000}/>}
      </div>};
     });
  return <div className="space-y-4 p-4">

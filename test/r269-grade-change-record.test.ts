@@ -349,7 +349,13 @@ describe('§B · the history carries the date the change took effect; the ledger
 
     // The sweep: the movement's own effective date, never the morning the cron ran.
     const sweep = read('core/movement-apply.ts');
-    expect(sweep).toContain('await employmentGradeId(ctx, c.employmentId)');
+    const start=sweep.indexOf('const {r,gradeBefore}=await runTransaction(ctx,async tx=>{');
+    const applied=sweep.indexOf('const r=await applyDueMovementsTx(tx,ctx,c.employmentId!,today);',start);
+    expect(start).toBeGreaterThan(-1);expect(applied).toBeGreaterThan(start+100);
+    const before=sweep.slice(start,applied);
+    expect(before).toContain("await assertWorkforceEmploymentTx(tx,ctx,c.employmentId!,'maintain')");
+    expect(before).toContain('tx.select({gradeId:employment.gradeId})');
+    expect(before).toContain('where(eq(employment.id,c.employmentId!))');
     expect(sweep).toContain('changeEffectiveOn: r.appliedEffectiveDate');
     expect(sweep).not.toContain('changeEffectiveOn: today');
 

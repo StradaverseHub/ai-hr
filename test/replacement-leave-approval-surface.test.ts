@@ -50,7 +50,7 @@ describe('the approval surface exists and is wired to the decide action', () => 
   it('the /approvals page LOADS pending replacement-leave requests', () => {
     // Through the pack facade, never the pack implementation (the house rule for cross-module reads).
     expect(page).toMatch(/import \{[^}]*listPendingReplacementLeaveRequests[^}]*\} from '@\/packs\/leave\/service'/);
-    expect(page).toContain('listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') })');
+    expect(page).toContain("listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') })");
   });
 
   it('it MOUNTS a replacement-leave section, gated by the shared category resolver', () => {

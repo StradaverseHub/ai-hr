@@ -1,4 +1,3 @@
-import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
  *
@@ -466,7 +465,7 @@ describe('c063eea9 — validation and refusals', () => {
     const manager: SessionContext = { ...ctx(), roles: ['manager'] };
     await expect(
       correctHireDetails(manager, { employmentId: id, changes: { departmentId: hr }, reason: REASON }),
-    ).rejects.toBeInstanceOf(WorkforceAccessError);
+    ).rejects.toThrow('Only an admin can correct hire details.');
     await expect(
       correctHireDetails(ctx(), { employmentId: id, changes: { departmentId: hr }, reason: '   ' }),
     ).rejects.toBeInstanceOf(HireCorrectionReasonRequiredError);

@@ -289,7 +289,7 @@ describe('420ebab5 · the listing renders those rows, and nothing else', () => {
     // Ledger uses the same destination helpers, including Personnel's return context.
     expect(LISTING).toContain('employmentId={e.employmentId}');
     expect(LISTING).toContain('<EmployeeRow');
-    expect(LISTING).toContain('href: draftRowHref(d.id)');
+    expect(LISTING).toContain('draftId={d.id}');
     // The components are what the two maps return — re-inlining a row here is what this catches.
     expect(LISTING).toMatch(/employees\.map\(\(e\) => \{[\s\S]{0,800}<EmployeeRow/);
     expect(LISTING).toMatch(/drafts\.map\(\(d\) => \([\s\S]{0,200}<DraftRow/);
