@@ -12,7 +12,8 @@ import {attendanceDayCalculationTx,recomputeDayFigures,attendancePolicyExecution
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,entitledCtx,type Base} from './harness';
-import {attendancePolicyRawInputTx} from '../packs/attendance/service';
+import {attendancePolicyRawInputTx,lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from '../packs/attendance/service';
+import {addImportedPunchesBatchTx} from '../core/attendance';
 let b:Base,ctx:SessionContext;
 const day=(n=0)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 function policy():AttendanceGroupPolicy{return {version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:10,earlyGraceMinutes:15,skipLatenessIfIncomplete:true},
@@ -86,6 +87,43 @@ describe('dated-policy raw writer routing',()=>{
   const input=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('routes batch-imported labels to unknown policy figures and preserves uncovered legacy days',async()=>{
+  const f=await fixture();await f.save();
+  await withTenant(ctx,tx=>addImportedPunchesBatchTx(tx,ctx,{runId:randomUUID(),days:[
+   {employmentId:f.employmentId,day:day(0),punches:[{time:'09:00:00',direction:'in'},{time:'18:00:00',direction:'out'}]},
+   {employmentId:f.employmentId,day:day(1),punches:[{time:'09:30:00',direction:'in'},{time:'18:00:00',direction:'out'}]}]}));
+  const rows=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId)).orderBy(asc(s.attendance.attendanceDate));
+  const legacy=rows.find(row=>row.attendanceDate===day(0)),policyDay=rows.find(row=>row.attendanceDate===day(1));
+  expect(legacy?.workedMinutes).toBe(480);
+  expect(policyDay).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,otMinutes:null,
+   lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,calcTrace:null});
+  expect(await owner.db.select().from(s.attendanceClockCapture)).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('keeps frozen pre-policy application selection on the same batched import route',async()=>{
+  const f=await fixture();
+  await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),reason:'Fictional frozen request',requestedOtMinutes:60});
+  await f.save();
+  const route=await withTenant(ctx,async tx=>{
+   expect(await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}])).toBe(true);
+   return attendancePolicyImportRoutesTx(tx,ctx,[{employmentId:f.employmentId,date:day(1),ruleId:f.ruleId,scheduleSource:'default-shift'}]);
+  });
+  expect(route.get(f.employmentId+'|'+day(1))).toBe('legacy');
+ });
+ it('initializes only a zero-revision import barrier when no policy lock row exists',async()=>{
+  const f=await fixture();
+  await owner.db.delete(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  expect(await withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}]))).toBe(false);
+  const [epoch]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  expect(epoch.revision).toBe(0);
+  expect(await owner.db.select().from(s.attendanceGroupPolicyRevision)).toEqual([]);
+ });
+ it('refuses missing import subjects or a revoked principal before initializing an epoch',async()=>{
+  const f=await fixture();
+  await expect(withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:randomUUID(),date:day(1)}]))).rejects.toThrow();
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}]))).rejects.toThrow();
  });
  it('stores captured mixed-break raw counts without payable coverage or settlement',async()=>{
   const f=await fixture();

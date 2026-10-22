@@ -8,7 +8,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -6120,6 +6120,9 @@ export async function addImportedPunchesBatchTx(
 ): Promise<{ punchIds: string[][] }> {
   const days = p.days.filter((d) => d.punches.length > 0);
   if (days.length === 0) return { punchIds: p.days.map(() => []) };
+  // Acquire the checked shared policy epoch before any memoized schedule or dated selection.
+  // The batch barrier proves actual visible subjects, including first imports with no day row yet.
+  const policyConfigured=await lockAttendancePolicyImportTx(tx,ctx,days.map(d=>({employmentId:d.employmentId,date:d.day})));
   const empIds = [...new Set(days.map((d) => d.employmentId))];
   const sorted = days.map((d) => d.day).sort();
   const from = sorted[0];
@@ -6167,6 +6170,18 @@ export async function addImportedPunchesBatchTx(
   }
   const memo = await newScheduleMemo(tx, { employmentIds: empIds, from: addDays(from, -7), to: addDays(to, 7) });
 
+  const schedules=new Map<string,ResolvedSchedule>();
+  for(const d of days){
+    const current=await scheduleFor(tx,d.employmentId,d.day,memo),existing=rowBy.get(keyOf(d.employmentId,d.day));
+    schedules.set(keyOf(d.employmentId,d.day),existing?.dayType?{...current,dayType:existing.dayType}:current);
+  }
+  const policyRoutes=policyConfigured?await attendancePolicyImportRoutesTx(tx,ctx,days.map(d=>{
+    const sched=schedules.get(keyOf(d.employmentId,d.day))!;
+    return {employmentId:d.employmentId,date:d.day,ruleId:sched.rule?.id??null,scheduleSource:sched.source};
+  })):null;
+  if(policyRoutes&&days.some(d=>!policyRoutes.has(keyOf(d.employmentId,d.day))||policyRoutes.get(keyOf(d.employmentId,d.day))==='unavailable'))
+    throw Error('Canonical import policy inputs are unavailable.');
+
   // 2 · Work every day out in memory.
   const newRows: (typeof attendance.$inferInsert)[] = [];
   const punchRows: (typeof attendancePunch.$inferInsert)[] = [];
@@ -6175,8 +6190,8 @@ export async function addImportedPunchesBatchTx(
   const results = new Map<ImportedDayInput, { attendanceId: string; punchIds: string[]; checkInAt: string | null; checkOutAt: string | null }>();
   for (const d of days) {
     const existing = rowBy.get(keyOf(d.employmentId, d.day));
-    const sched0 = await scheduleFor(tx, d.employmentId, d.day, memo);
-    const sched: ResolvedSchedule = existing?.dayType ? { ...sched0, dayType: existing.dayType } : sched0;
+    const sched=schedules.get(keyOf(d.employmentId,d.day))!;
+    const policyRaw=policyRoutes?.get(keyOf(d.employmentId,d.day))==='policy';
     const attendanceId = existing?.id ?? randomUUID();
     const base = { tenantId: ctx.tenantId, attendanceId, employmentId: d.employmentId, attendanceDate: d.day };
     const all: Kid[] = [...(existing ? (kidsBy.get(existing.id) ?? []) : [])];
@@ -6223,7 +6238,13 @@ export async function addImportedPunchesBatchTx(
       punchRows.push({ ...base, id, punchAt: x.time, direction: x.direction, method: 'import' });
       all.push({ punchAt: x.time, direction: x.direction, method: 'import' });
     }
-    const { set, result } = deriveDayFromPunchList(sched, d.day, all, existing?.checkInAt ?? d.punches[0].time);
+    const legacy=deriveDayFromPunchList(sched,d.day,all,existing?.checkInAt??d.punches[0].time);
+    // Every imported child has no capture receipt. Retain actual labels, including an unmatched
+    // Out, but do not reuse the legacy envelope's numeric work, deductions, OT or trace.
+    const raw=policyRaw?attendancePolicyUncapturedRawDay({fallbackIn:all.filter(k=>k.direction==='in').map(k=>k.punchAt).sort()[0]??null,
+      fallbackOut:all.filter(k=>k.direction==='out').map(k=>k.punchAt).sort().at(-1)??null}):null;
+    const set=raw??legacy.set;
+    const result=raw?{status:raw.status,workedMinutes:raw.workedMinutes,otMinutes:raw.otMinutes,checkInAt:raw.checkInAt,checkOutAt:raw.checkOutAt}:legacy.result;
     // The aggregate's method / geo columns describe the clocking that supplies each end NOW. When an
     // imported clocking has become the day's first in or last out, that end carries no geofence reading.
     const endFrom = (dir: 'in' | 'out', at: string | null) => (at == null ? [] : all.filter((k) => k.direction === dir && k.punchAt === at));
@@ -6272,7 +6293,7 @@ export async function addImportedPunchesBatchTx(
     } else if (set || Object.keys(ends).length) {
       updates.push({ id: attendanceId, set: { ...(set ?? {}), ...ends } });
     }
-    if (otKeys.has(keyOf(d.employmentId, d.day))) {
+    if (!policyRaw&&otKeys.has(keyOf(d.employmentId, d.day))) {
       otDays.push({ employmentId: d.employmentId, day: d.day, attendanceId, sched, systemOt: result.otMinutes });
     }
     results.set(d, { attendanceId, punchIds, checkInAt: result.checkInAt, checkOutAt: result.checkOutAt });

@@ -349,6 +349,45 @@ REVOKE ALL ON FUNCTION app.lock_attendance_policy_raw_context(uuid,date) FROM PU
 GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_raw_context(uuid,date) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Batched import has no raw aggregate yet. Check all real visible subjects/dates together before
+-- the caller builds its schedule memo. A missing lock row is initialized at revision ZERO only;
+-- this grants neither policy mutation nor the administrator's revision-increment capability.
+CREATE FUNCTION app.lock_attendance_policy_import_context(p_points jsonb) RETURNS boolean
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=app.current_tenant_id();configured boolean;
+BEGIN
+ IF app.attendance_policy_principal_current() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Current Attendance principal required' USING ERRCODE='42501';END IF;
+ IF jsonb_typeof(p_points) IS DISTINCT FROM 'array' OR jsonb_array_length(p_points)>25000 THEN
+  RAISE EXCEPTION 'Invalid canonical import point set' USING ERRCODE='23514';END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_to_recordset(p_points) AS point("employmentId" uuid,date date)
+  LEFT JOIN public.employment e ON e.id=point."employmentId" AND e.tenant_id=tenant
+  WHERE point."employmentId" IS NULL OR point.date IS NULL OR e.id IS NULL
+   OR point.date<e.hired_on OR(e.terminated_on IS NOT NULL AND point.date>e.terminated_on)
+   OR (app.can_see_employment(e.id) OR app.can_admin_payroll_employment(e.id)) IS NOT TRUE) THEN
+  RAISE EXCEPTION 'Current Attendance import subjects required' USING ERRCODE='42501';END IF;
+ IF jsonb_array_length(p_points)=0 THEN RETURN false;END IF;
+ INSERT INTO public.overtime_pattern_epoch(tenant_id,revision) VALUES(tenant,0) ON CONFLICT DO NOTHING;
+ PERFORM 1 FROM public.overtime_pattern_epoch WHERE tenant_id=tenant FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Policy configuration epoch is unavailable' USING ERRCODE='23514';END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE OR EXISTS(
+  SELECT 1 FROM jsonb_to_recordset(p_points) AS point("employmentId" uuid,date date)
+  LEFT JOIN public.employment e ON e.id=point."employmentId" AND e.tenant_id=tenant
+  WHERE e.id IS NULL OR point.date<e.hired_on OR(e.terminated_on IS NOT NULL AND point.date>e.terminated_on)
+   OR (app.can_see_employment(e.id) OR app.can_admin_payroll_employment(e.id)) IS NOT TRUE) THEN
+  RAISE EXCEPTION 'Current Attendance import subjects required' USING ERRCODE='42501';END IF;
+ -- Writers need this same epoch row. Even absence stays serialized until the import commits.
+ SELECT EXISTS(SELECT 1 FROM public.attendance_group_policy_revision revision
+  WHERE revision.tenant_id=tenant AND revision.effective_from<=
+   (SELECT max(point.date) FROM jsonb_to_recordset(p_points) AS point("employmentId" uuid,date date))) INTO configured;
+ IF app.attendance_policy_principal_current() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Current Attendance principal required' USING ERRCODE='42501';END IF;
+ RETURN configured;
+END $$;
+REVOKE ALL ON FUNCTION app.lock_attendance_policy_import_context(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_import_context(jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
 -- This draft is a non-payable storage stage in BOTH settlement modes. The old cash guard already
 -- requires a ready calculation; the old TOIL guard checks its accrual but does not inspect that outcome.
 -- Keep the single parent settlement owner and refuse a new staged policy claim before either branch.

@@ -77,4 +77,5 @@ export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 export {attendancePolicyRawInputTx} from './policy-raw-input';
 export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-figures';
 
-export {attendancePolicyRawDay} from './policy-raw-day';
+export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-raw-day';
+export {lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from './policy-import-input';

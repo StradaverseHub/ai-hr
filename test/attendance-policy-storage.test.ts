@@ -11,7 +11,7 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
+import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
  lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -88,6 +88,36 @@ describe('immutable non-payable policy part storage',()=>{
   }).catch(error=>{holdFailed(error);throw error;});
   try{await reached;}catch(error){await holding.catch(()=>{});throw error;}
   const waiting=withTenant(self,tx=>tx.execute(sql`select app.lock_attendance_policy_execution_context(${f.employmentId}::uuid,${day(2)}::date)`));
+  void waiting.catch(()=>{});let observed=false,observationError:unknown;
+  try{
+   const until=Date.now()+5000;
+   while(Date.now()<until){
+    const [state]=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database()
+     and ${holdingPid}::integer=any(pg_blocking_pids(pid))) as blocked`) as unknown as {blocked:boolean}[];
+    if(state.blocked){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+   }
+   if(observed)await owner.db.delete(s.roleAssignment).where(and(eq(s.roleAssignment.appUserId,userId),eq(s.roleAssignment.tenantId,b.tenantId)));
+  }catch(error){observationError=error;}finally{release();}
+  const [closed,outcome]=await Promise.allSettled([holding,waiting]);
+  if(observationError)throw observationError;if(closed.status==='rejected')throw closed.reason;
+  expect(observed).toBe(true);expect(outcome.status).toBe('rejected');
+  if(outcome.status!=='rejected')throw Error('Revocation must be rechecked after the real wait');
+  const error=outcome.reason as {code?:unknown;cause?:{code?:unknown}};expect(error.code??error.cause?.code).toBe('42501');
+  const [after]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));expect(after).toEqual(before);
+ });
+ it('rechecks a revoked import subject after an observed shared-epoch wait',async()=>{
+  const f=await fixture(),userId=await createAppUser(b.tenantId,f.personId,'employee');
+  const self:SessionContext={...ctx,userId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  const [before]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  let release!:()=>void,held!:()=>void,holdFailed!:(error:unknown)=>void,holdingPid=0;
+  const hold=new Promise<void>(resolve=>{release=resolve;}),reached=new Promise<void>((resolve,reject)=>{held=resolve;holdFailed=reject;});
+  const holding=owner.db.transaction(async tx=>{
+   const [backend]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];holdingPid=backend.pid;
+   await tx.execute(sql`select tenant_id from public.overtime_pattern_epoch where tenant_id=${b.tenantId}::uuid for update`);
+   held();await hold;
+  }).catch(error=>{holdFailed(error);throw error;});
+  try{await reached;}catch(error){await holding.catch(()=>{});throw error;}
+  const waiting=withTenant(self,tx=>lockAttendancePolicyImportTx(tx,self,[{employmentId:f.employmentId,date:day(2)}]));
   void waiting.catch(()=>{});let observed=false,observationError:unknown;
   try{
    const until=Date.now()+5000;

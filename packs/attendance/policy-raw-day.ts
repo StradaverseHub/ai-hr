@@ -7,6 +7,13 @@ import {attendancePolicyRawFigures} from './policy-raw-figures';
 import type {attendancePolicyRawInputTx} from './policy-raw-input';
 type Raw=Extract<Awaited<ReturnType<typeof attendancePolicyRawInputTx>>,{state:'policy'}>;
 const label=(ms:number)=>{const second=Math.floor(ms/1000)%86400;return [Math.floor(second/3600),Math.floor(second/60)%60,second%60].map(v=>String(v).padStart(2,'0')).join(':');};
+/** An imported/manual label is still visible, but is not a captured physical instant. Shared by
+ * the ordinary raw projection and the batched importer; no scalar legacy figure survives this route. */
+export function attendancePolicyUncapturedRawDay(p:{fallbackIn:string|null;fallbackOut:string|null}){
+ return {checkInAt:p.fallbackIn,checkOutAt:p.fallbackOut,status:'present' as const,workedMinutes:null,otMinutes:null,
+  lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,calcTrace:null,
+  otFlatMinutes:null,ot00Minutes:null,ot10Minutes:null,ot15Minutes:null,ot20Minutes:null,ot30Minutes:null};
+}
 /** The template supplies the canonical schedule snapshot only. Its measured values are discarded.
  * Missing capture receipts retain both visible raw labels but establish no work, arrival, deduction
  * or trace. Incomplete captured sets stay open; their original Out records remain in the punch log. */
@@ -14,6 +21,7 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
  dayType:'workday'|'rest_day'|'holiday';halfDayBefore:number;fallbackIn:string|null;fallbackOut:string|null}){
  const figures=attendancePolicyRawFigures(raw,p.rule,p.dayType);
  if(figures.state!=='calculated')throw Error('Canonical raw Attendance rule is unavailable.');
+ if(raw.source.state!=='known')return attendancePolicyUncapturedRawDay(p);
  const proof=raw.clocks,first=proof?.checkInMillisecond??null,last=proof?.checkOutMillisecond??null;
  const captured=raw.source.state==='known'&&proof!==undefined;
  const complete=captured&&proof.complete&&!proof.requiresReview;

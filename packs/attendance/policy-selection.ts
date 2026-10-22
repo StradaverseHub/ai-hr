@@ -1,7 +1,7 @@
 /** Routing fence for the unfinished dated-policy execution owner. A configured policy must not
  * silently inherit an unrelated formula assignment or legacy overtime. This read cannot approve,
  * calculate or settle work. It uses the saved Attendance schedule and dated Personnel employer. */
-import {and,asc,desc,eq,inArray,isNotNull,lte,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,inArray,isNotNull,lte,sql,type SQL} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {attendance,attendanceCorrection,attendanceGroupPolicyRevision,attendancePolicyRequestContract} from '../../db/schema';
 import {isAttendanceTrace} from '../../core/attendance-trace';
@@ -9,18 +9,23 @@ import {provenCompanyDatesTx} from '../../core/employment-company';
 import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 
+/** One epoch/frozen-application predicate for scalar and batched canonical selection. */
+export function legacyAttendancePolicyAdmissionSql(ctx:SessionContext,p:{companyId:SQL;ruleId:SQL;date:SQL}):SQL<boolean>{
+ return sql<boolean>`(
+     (${attendancePolicyRequestContract.correctionId} is null or(${attendancePolicyRequestContract.kind}='epoch'
+       and ${attendancePolicyRequestContract.companyId}=${p.companyId}::uuid
+       and ${attendancePolicyRequestContract.employmentId}=${attendanceCorrection.employmentId}
+       and ${attendancePolicyRequestContract.attendanceDate}=${attendanceCorrection.attendanceDate}))
+     and not exists(select 1 from public.attendance_group_policy_revision prior
+      where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${p.companyId}::uuid and prior.rule_id=${p.ruleId}::uuid
+       and prior.effective_from<=${p.date}::date and prior.activation_epoch<=coalesce(${attendancePolicyRequestContract.visibleEpoch},0)))`;
+}
+
 /** Shared frozen-application admission for recorded and prospective raw-day selection.
  * The caller must supply a policy resolved by the canonical subject/date/company owner. */
 export async function legacyApplicationForAttendancePolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},selected:ResolvedAttendanceGroupPolicy):Promise<string|null>{
  const [application]=await tx.select({id:attendanceCorrection.id,
-    predatesPolicy:sql<boolean>`(
-     (${attendancePolicyRequestContract.correctionId} is null or(${attendancePolicyRequestContract.kind}='epoch'
-       and ${attendancePolicyRequestContract.companyId}=${selected.companyId}::uuid
-       and ${attendancePolicyRequestContract.employmentId}=${attendanceCorrection.employmentId}
-       and ${attendancePolicyRequestContract.attendanceDate}=${attendanceCorrection.attendanceDate}))
-     and not exists(select 1 from public.attendance_group_policy_revision prior
-      where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
-       and prior.effective_from<=${p.date}::date and prior.activation_epoch<=coalesce(${attendancePolicyRequestContract.visibleEpoch},0)))`})
+    predatesPolicy:legacyAttendancePolicyAdmissionSql(ctx,{companyId:sql`${selected.companyId}`,ruleId:sql`${selected.ruleId}`,date:sql`${p.date}`})})
     .from(attendanceCorrection).leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId)))
     .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
      eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))
