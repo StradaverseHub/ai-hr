@@ -1344,9 +1344,11 @@ function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessm
         submittedAt: tp1Relief.submittedAt,
         createdAt: tp1Relief.createdAt,
         deductionMonth: tp1Relief.deductionMonth,
+        // Keep outer references qualified: single-table SELECT interpolation strips column qualifiers,
+        // which would otherwise compare the event against its own id and fall back to creation time.
         lastSavedAt:sql<Date>`coalesce((select max(ev.occurred_at) from public.domain_event ev
-          where ev.tenant_id=${tp1Relief.tenantId} and ev.aggregate_type='tp1-relief'
-            and ev.aggregate_id=${tp1Relief.id} and ev.event_type='tp1.draft.saved'),${tp1Relief.createdAt})`
+          where ev.tenant_id=tp1_relief.tenant_id and ev.aggregate_type='tp1-relief'
+            and ev.aggregate_id=tp1_relief.id and ev.event_type='tp1.draft.saved'),${tp1Relief.createdAt})`
           .mapWith(tp1Relief.createdAt),
         approvedAt: tp1Relief.approvedAt,
         approvedMonth: tp1Relief.approvedMonth,
