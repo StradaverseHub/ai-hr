@@ -622,6 +622,127 @@ ALTER TABLE public.overtime_source_settlement ADD CONSTRAINT overtime_policy_leg
  EXCLUDE USING gist(tenant_id WITH =,coverage_employment_id WITH =,coverage_kind WITH <>,reservation_coverage WITH &&)
  WHERE(released_at IS NULL AND coverage_kind IS NOT NULL);
 --> statement-breakpoint
+-- Original capture geometry is a separate contract from boundary-floor minute attribution.
+-- Private source validation only: no app EXECUTE and no payable/settlement admission authority.
+CREATE FUNCTION app.attendance_policy_captured_coverage(arg_calculation_id uuid) RETURNS int8multirange
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE header public.attendance_overtime_calculation;source public.attendance_overtime_source;
+ part public.attendance_overtime_policy_part;proof jsonb;data jsonb;inputs jsonb;clock_source jsonb;
+ item jsonb;clock_row jsonb;expected jsonb;epoch_ms bigint;in_ms bigint;out_ms bigint;from_ms bigint;to_ms bigint;
+ lo integer;hi integer;part_total integer;total integer:=0;part_count integer:=0;used integer:=0;
+ ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
+ count_ranges int8multirange;expected_ranges int8multirange;span int8range;last_ms bigint;
+ pin public.attendance_punch;pout public.attendance_punch;cin public.attendance_clock_capture;cout public.attendance_clock_capture;
+BEGIN
+ IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current captured coverage principal required' USING ERRCODE='42501';END IF;
+ SELECT * INTO header FROM public.attendance_overtime_calculation WHERE id=arg_calculation_id AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR header.binding_kind IS DISTINCT FROM 'attendanceGroupPolicy' THEN RAISE EXCEPTION 'Policy capture parent unavailable' USING ERRCODE='23514';END IF;
+ SELECT * INTO source FROM public.attendance_overtime_source WHERE id=header.source_id AND tenant_id=header.tenant_id AND company_id=header.company_id;
+ IF NOT FOUND OR(app.overtime_attendance_visible(source.tenant_id,source.employment_id,source.attendance_date)
+  OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN RAISE EXCEPTION 'Captured coverage source outside authority' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(source.tenant_id::text||':'||source.employment_id::text,0));
+ SELECT * INTO source FROM public.attendance_overtime_source WHERE id=header.source_id AND tenant_id=header.tenant_id AND company_id=header.company_id FOR SHARE;
+ IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE OR(app.overtime_attendance_visible(source.tenant_id,source.employment_id,source.attendance_date)
+  OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN RAISE EXCEPTION 'Captured coverage authority changed while waiting' USING ERRCODE='42501';END IF;
+ SELECT e.inputs,e.evidence INTO inputs,data FROM public.attendance_overtime_calculation_evidence e WHERE e.calculation_id=header.id AND e.tenant_id=header.tenant_id AND e.company_id=header.company_id;
+ proof:=data->'policyCapturedCoverage';clock_source:=data->'policyClockSource';
+ IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM 'capturedCountCoverageProposalOnly'
+  OR proof->>'countBasis' IS DISTINCT FROM 'capturedBoundaryFloor' OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
+  OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
+  OR proof#>>'{identity,tenantId}' IS DISTINCT FROM source.tenant_id::text OR proof#>>'{identity,companyId}' IS DISTINCT FROM source.company_id::text
+  OR proof#>>'{identity,employmentId}' IS DISTINCT FROM source.employment_id::text OR proof#>>'{identity,sourceId}' IS DISTINCT FROM source.id::text
+  OR proof#>>'{identity,calculationId}' IS DISTINCT FROM header.id::text OR proof#>>'{identity,date}' IS DISTINCT FROM source.attendance_date::text
+  OR inputs#>>'{source,tenantId}' IS DISTINCT FROM source.tenant_id::text OR inputs#>>'{source,employmentId}' IS DISTINCT FROM source.employment_id::text
+  OR inputs#>>'{source,attendanceId}' IS DISTINCT FROM source.attendance_id::text OR inputs#>>'{source,date}' IS DISTINCT FROM source.attendance_date::text
+  OR inputs#>>'{source,inputDigest}' IS DISTINCT FROM header.input_digest OR inputs#>>'{source,approvalDigest}' IS DISTINCT FROM header.approval_digest
+  OR clock_source->>'state' IS DISTINCT FROM 'known' OR data#>>'{policyClockReview,state}' IS DISTINCT FROM 'known'
+  OR data#>>'{policyClockReview,evidence,complete}' IS DISTINCT FROM 'true' OR data#>>'{policyClockReview,evidence,requiresReview}' IS DISTINCT FROM 'false'
+  OR jsonb_typeof(proof->'allocations') IS DISTINCT FROM 'array' OR jsonb_typeof(proof->'intervals') IS DISTINCT FROM 'array'
+  OR jsonb_typeof(clock_source->'clocks') IS DISTINCT FROM 'array' OR jsonb_typeof(data#>'{policyClockReview,evidence,intervals}') IS DISTINCT FROM 'array' THEN
+  RAISE EXCEPTION 'Complete bound captured coverage evidence required' USING ERRCODE='23514';END IF;
+ IF jsonb_array_length(proof->'allocations')>4320 OR jsonb_array_length(proof->'intervals')>4320 OR jsonb_array_length(clock_source->'clocks')>128
+  OR(SELECT count(DISTINCT x->>'id') FROM jsonb_array_elements(clock_source->'clocks') x)<>jsonb_array_length(clock_source->'clocks')
+  OR(SELECT count(DISTINCT x->>'captureId') FROM jsonb_array_elements(clock_source->'clocks') x)<>jsonb_array_length(clock_source->'clocks') THEN
+  RAISE EXCEPTION 'Captured coverage exceeds source bounds' USING ERRCODE='23514';END IF;
+ epoch_ms:=(extract(epoch FROM(source.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint;
+ FOR clock_row IN SELECT value FROM jsonb_array_elements(clock_source->'clocks') LOOP
+  IF NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_clock_capture c ON c.id=p.clock_capture_id AND c.tenant_id=p.tenant_id
+   WHERE p.id=(clock_row->>'id')::uuid AND c.id=(clock_row->>'captureId')::uuid AND p.tenant_id=source.tenant_id AND p.attendance_id=source.attendance_id
+    AND p.employment_id=source.employment_id AND c.employment_id=source.employment_id AND p.attendance_date=source.attendance_date AND c.attendance_date=source.attendance_date
+    AND p.voided_at IS NULL AND p.direction::text=clock_row->>'direction' AND c.direction::text=p.direction::text
+    AND clock_row->>'atMilliseconds'=(floor(extract(epoch FROM c.server_recorded_at)*1000)::bigint-epoch_ms)::text
+    AND clock_row->>'recordedAt'=to_char(date_trunc('milliseconds',c.server_recorded_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    AND left(p.punch_at::text,8)=to_char(c.server_recorded_at AT TIME ZONE 'Asia/Kuala_Lumpur','HH24:MI:SS')) THEN
+   RAISE EXCEPTION 'Captured coverage clock identity changed' USING ERRCODE='23514';END IF;
+ END LOOP;
+ FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id AND tenant_id=header.tenant_id AND company_id=header.company_id ORDER BY sequence LOOP
+  IF part.sequence<>part_count OR part.input_digest<>header.input_digest OR jsonb_typeof(part.duration_evidence->'allocatedIntervals') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(part.duration_evidence->'allocatedIntervals')>4320 THEN RAISE EXCEPTION 'Complete captured count parts required' USING ERRCODE='23514';END IF;
+  part_count:=part_count+1;part_total:=0;count_ranges:='{}'::int8multirange;expected_ranges:='{}'::int8multirange;
+  FOR expected IN SELECT value FROM jsonb_array_elements(part.duration_evidence->'allocatedIntervals') LOOP
+   IF coalesce(expected->>'from','')!~'^[0-9]{1,4}$' OR coalesce(expected->>'to','')!~'^[0-9]{1,4}$' THEN RAISE EXCEPTION 'Invalid captured count coordinates' USING ERRCODE='23514';END IF;
+   lo:=(expected->>'from')::integer;hi:=(expected->>'to')::integer;
+   IF lo>=hi OR hi>4320 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(part.source_intervals) original WHERE(original->>'from')::integer<=lo AND(original->>'to')::integer>=hi) THEN
+    RAISE EXCEPTION 'Captured count lacks original allocated source' USING ERRCODE='23514';END IF;
+   span:=int8range(lo,hi,'[)');IF expected_ranges&&span THEN RAISE EXCEPTION 'Captured count allocations overlap' USING ERRCODE='23514';END IF;
+   expected_ranges:=expected_ranges+int8multirange(span);
+  END LOOP;
+  FOR item IN SELECT value FROM jsonb_array_elements(proof->'allocations') WHERE value->>'sequence'=part.sequence::text LOOP
+   IF coalesce(item->>'fromMinute','')!~'^[0-9]{1,4}$' OR coalesce(item->>'toMinute','')!~'^[0-9]{1,4}$' OR item->>'calendarDate' IS DISTINCT FROM part.calendar_date::text THEN
+    RAISE EXCEPTION 'Invalid dated captured count allocation' USING ERRCODE='23514';END IF;
+   lo:=(item->>'fromMinute')::integer;hi:=(item->>'toMinute')::integer;
+   IF lo>=hi OR hi>4320 OR item->>'minutes' IS DISTINCT FROM(hi-lo)::text THEN RAISE EXCEPTION 'Captured quantity changed' USING ERRCODE='23514';END IF;
+   SELECT * INTO pin FROM public.attendance_punch WHERE id=(item->>'inPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='in' AND voided_at IS NULL;
+   SELECT * INTO pout FROM public.attendance_punch WHERE id=(item->>'outPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='out' AND voided_at IS NULL;
+   SELECT * INTO cin FROM public.attendance_clock_capture WHERE id=pin.clock_capture_id AND id=(item->>'inCaptureId')::uuid AND tenant_id=source.tenant_id;
+   SELECT * INTO cout FROM public.attendance_clock_capture WHERE id=pout.clock_capture_id AND id=(item->>'outCaptureId')::uuid AND tenant_id=source.tenant_id;
+   IF cin.id IS NULL OR cout.id IS NULL OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(clock_source->'clocks') x WHERE x->>'id'=pin.id::text AND x->>'captureId'=cin.id::text)
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(clock_source->'clocks') x WHERE x->>'id'=pout.id::text AND x->>'captureId'=cout.id::text) THEN RAISE EXCEPTION 'Captured allocation boundary identity missing' USING ERRCODE='23514';END IF;
+   in_ms:=floor(extract(epoch FROM cin.server_recorded_at)*1000)::bigint;out_ms:=floor(extract(epoch FROM cout.server_recorded_at)*1000)::bigint;
+   IF in_ms>=out_ms OR lo<floor((in_ms-epoch_ms)::numeric/60000) OR hi>floor((out_ms-epoch_ms)::numeric/60000)
+    OR item->>'captureInEpochMillisecond' IS DISTINCT FROM in_ms::text OR item->>'captureOutEpochMillisecond' IS DISTINCT FROM out_ms::text
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyClockReview,evidence,intervals}') x WHERE x->>'inMillisecond'=(in_ms-epoch_ms)::text AND x->>'outMillisecond'=(out_ms-epoch_ms)::text) THEN
+    RAISE EXCEPTION 'Captured allocation changed original geometry' USING ERRCODE='23514';END IF;
+   from_ms:=greatest(in_ms,epoch_ms+lo::bigint*60000);to_ms:=least(out_ms,epoch_ms+hi::bigint*60000);
+   IF from_ms>=to_ms OR item->>'fromEpochMillisecond' IS DISTINCT FROM from_ms::text OR item->>'toEpochMillisecond' IS DISTINCT FROM to_ms::text THEN RAISE EXCEPTION 'Captured footprint is not original source intersection' USING ERRCODE='23514';END IF;
+   span:=int8range(lo,hi,'[)');IF count_ranges&&span THEN RAISE EXCEPTION 'Captured count claimed twice' USING ERRCODE='23514';END IF;count_ranges:=count_ranges+int8multirange(span);
+   span:=int8range(from_ms,to_ms,'[)');IF ranges&&span THEN RAISE EXCEPTION 'Captured physical source claimed twice' USING ERRCODE='23514';END IF;ranges:=ranges+int8multirange(span);
+   part_total:=part_total+hi-lo;used:=used+1;
+  END LOOP;
+  IF part_total<>part.allocated_payable_minutes OR count_ranges IS DISTINCT FROM expected_ranges THEN RAISE EXCEPTION 'Complete exact captured count partition required' USING ERRCODE='23514';END IF;
+  total:=total+part_total;
+ END LOOP;
+ IF part_count<>header.policy_part_count OR used<>jsonb_array_length(proof->'allocations') OR proof->>'minutes' IS DISTINCT FROM total::text
+  OR data#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM total::text OR data#>>'{policyExecutionProposal,duration,payableMinutes}' IS DISTINCT FROM total::text THEN
+  RAISE EXCEPTION 'Captured parent count partition changed' USING ERRCODE='23514';END IF;
+ last_ms:=NULL;
+ FOR item IN SELECT value FROM jsonb_array_elements(proof->'intervals') LOOP
+  IF coalesce(item->>'fromEpochMillisecond','')!~'^-?[0-9]{1,16}$' OR coalesce(item->>'toEpochMillisecond','')!~'^-?[0-9]{1,16}$' THEN RAISE EXCEPTION 'Invalid captured footprint' USING ERRCODE='23514';END IF;
+  from_ms:=(item->>'fromEpochMillisecond')::bigint;to_ms:=(item->>'toEpochMillisecond')::bigint;
+  IF from_ms>=to_ms OR(last_ms IS NOT NULL AND from_ms<=last_ms) THEN RAISE EXCEPTION 'Captured footprint is not normalized' USING ERRCODE='23514';END IF;
+  recorded:=recorded+int8multirange(int8range(from_ms,to_ms,'[)'));last_ms:=to_ms;
+ END LOOP;
+ IF recorded IS DISTINCT FROM ranges THEN RAISE EXCEPTION 'Captured footprint does not replay' USING ERRCODE='23514';END IF;
+ RETURN ranges;
+EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR datetime_field_overflow THEN
+ RAISE EXCEPTION 'Invalid captured source evidence' USING ERRCODE='23514';
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_policy_captured_coverage(uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_punch','attendance_clock_capture'] LOOP
+  EXECUTE format('CREATE POLICY overtime_capture_proof_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',table_name,'app.attendance_policy_captured_coverage(uuid)');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.guard_attendance_policy_captured_evidence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.evidence#>>'{policyCapturedCoverage,state}'='prepared' THEN PERFORM app.attendance_policy_captured_coverage(NEW.calculation_id);END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_attendance_policy_captured_evidence() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER attendance_policy_captured_evidence_complete AFTER INSERT ON public.attendance_overtime_calculation_evidence
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_captured_evidence();
+--> statement-breakpoint
 CREATE FUNCTION app.capture_overtime_settlement_coverage() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source public.attendance_overtime_source;header public.attendance_overtime_calculation;
@@ -735,6 +856,9 @@ BEGIN
  END LOOP;
  IF recorded IS DISTINCT FROM ranges THEN
   RAISE EXCEPTION 'Recorded coverage does not replay from all dated parts' USING ERRCODE='23514';END IF;
+ -- Count coordinates above retain their original owner. Reservation geometry instead binds
+ -- exact original captures; payable minute quantity need not equal footprint milliseconds.
+ ranges:=app.attendance_policy_captured_coverage(header.id);
  -- Rows predating this migration retain all-NULL metadata. Never backfill/rewrite paid history;
  -- conservatively refuse new policy overlap with their possible bounded source period instead.
  IF EXISTS(SELECT 1 FROM public.overtime_source_settlement old_claim
