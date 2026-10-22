@@ -9,6 +9,8 @@ import type {PolicyApprovalInput} from './policy-approval-input';
 import type {PolicyWorkInput} from './policy-work-input';
 import type {PolicyFormulaInput} from './policy-formula-input';
 import {attendancePolicyExecutionProposal,type PolicyExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyDurationReplay} from './policy-duration-replay';
+import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 
 export type PolicyProposalStoragePart=Pick<typeof attendanceOvertimePolicyPart.$inferInsert,
  'sequence'|'calendarDate'|'dayClass'|'moneyDay'|'versionId'|'rawMinutes'|'allocatedPayableMinutes'|'sourceIntervals'|'calendarReferences'|'durationEvidence'>;
@@ -70,6 +72,13 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
    proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
+  const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:'',
+   attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
+   policyApprovalInput:input.approvals,policyExecutionProposal:input.proposal,
+   policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
+   policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
+   policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};
+  if(!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot)))return false;
   const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
   if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;
   const expected=materializeAttendancePolicyProposalParts(input);

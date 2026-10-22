@@ -1,3 +1,5 @@
+import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches} from '../packs/attendance/policy-duration-replay';
+import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
 /** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
  * Only the non-payable staged contract is allowed; no test turns proposal arithmetic into money. */
 import {randomUUID,createHash} from 'node:crypto';
@@ -165,6 +167,25 @@ describe('immutable non-payable policy part storage',()=>{
  });
  // This injected canonical-reader fixture proves writer structure only, not actual capture authority,
  // final-effect approval or payable execution. Actual real-clock journeys remain required.
+ it('replays current captured duration independently of cash facts and rejects equal-count reference changes',async()=>{
+  const f=await fixture('auto');
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(2)}));
+  const proof=attendancePolicyDurationReplay(snapshot);expect(proof).toMatchObject({state:'known',minutes:20,authority:'durationProposalReplayOnly'});
+  if(!snapshot.policyFormulaInput)throw Error('Expected canonical formula source');
+  const durationOnly=structuredClone(snapshot);durationOnly.policyDurationFormulaInput=attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput);
+  durationOnly.policyFormulaInput=undefined;durationOnly.input.source.inputDigest='9'.repeat(64);durationOnly.referenceDigest='8'.repeat(64);
+  delete durationOnly.input.facts.monthlySalary;
+  expect(attendancePolicyCurrentDurationMatches(durationOnly,proof)).toBe(true);
+  for(const mutate of [
+   (x:typeof snapshot)=>{x.input.source.employmentId=randomUUID();},
+   (x:typeof snapshot)=>{if(x.policyClockSource?.state==='known')x.policyClockSource.clocks[0].captureId=randomUUID();},
+   (x:typeof snapshot)=>{if(x.policyFormulaInput?.state==='known'&&x.policyFormulaInput.references[0].state==='known')x.policyFormulaInput.references[0].activeState.sequence++;},
+   (x:typeof snapshot)=>{if(x.policyWorkInput?.state==='known')x.policyWorkInput.eligibleActualIntervals=[{from:1420,to:1440}];},
+  ]){const changed=structuredClone(snapshot);mutate(changed);expect(attendancePolicyCurrentDurationMatches(changed,proof)).toBe(false);}
+  const refused=structuredClone(snapshot);refused.policyDurationFormulaInput={authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'};
+  expect(attendancePolicyCurrentDurationMatches(refused,proof)).toBe(false);
+ });
+
  it('records a complete proposal part set atomically through the existing parent calculation writer',async()=>{
   const f=await fixture('auto');
   const calculator=createOvertimeCalculationOwner(async(tx,actor,p)=>{
