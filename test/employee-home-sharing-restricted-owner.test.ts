@@ -30,7 +30,7 @@ it('honors a hidden peer opt-out under a NOSUPERUSER/NOBYPASSRLS owner and refus
  const role='home_privacy_'+randomUUID().replaceAll('-',''),rollback=new Error('rollback-home-restricted-owner');let verified=false;
  try{await owner.withTenant(own.ctx,async tx=>{
   await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`));
-  await tx.execute(sql.raw(`GRANT USAGE ON SCHEMA public,app TO ${role}`));
+  await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
   // Production's migration owner owns these transitive tables and functions. Granting only SELECT
   // would exercise a different RLS environment and could conceal the permitted positive cohort.
   const tables=['company','employment','assignment','person','app_user','reporting_line','employee_home_configuration_revision',
