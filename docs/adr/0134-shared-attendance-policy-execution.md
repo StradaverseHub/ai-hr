@@ -146,6 +146,16 @@ calendar date, rate, cash claim or TOIL claim by inference. Canonical count attr
 must still account for it before transfer. The proposal is deliberately distinct from a ready financial
 result. Runtime writers, receipts, storage, financial replay and actual-app verification remain incomplete.
 
+## Clock precision adapter
+
+New second-bearing policy evidence validates close events and pairing with exact integer seconds before
+projecting onto Attendance's existing whole-minute boundary arithmetic. The seconds and minutes adapters
+share one closed-pair/flag processor. The source owner still proves absolute subject/day placement; this
+adapter cannot infer a date from a clock label. A 59-second gap across a minute boundary remains too
+close under a one-minute rule. Distinct seconds in the same minute are not duplicate events. Complete
+sub-minute pairs remain in the exact evidence while contributing no invented minute interval. The old
+Full Flexi processor and existing minute adapter retain their established treatment.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.

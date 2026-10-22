@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {attendancePolicyClockEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
+import {attendancePolicyClockEvidence,attendancePolicyClockSecondEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
 import {fullFlexiIntervals} from '../lib/full-flexi-time';
 import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 const policy=(pairing:AttendanceGroupPolicy['clock']['pairing']='auto'):AttendanceGroupPolicy['clock']=>({pairing,minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false});
@@ -38,5 +38,44 @@ describe('explicit dated clock policy evidence',()=>{
   expect(()=>attendancePolicyClockEvidence([clock('a',540,'in'),clock('a',600,'out')],policy(),1440)).toThrow();
   expect(()=>attendancePolicyClockEvidence(day,policy(),0)).toThrow();
   expect(attendancePolicyClockEvidence([],policy(),1440)).toEqual({complete:false,requiresReview:false,flags:[],checkInAbs:null,checkOutAbs:null,intervals:[]});
+ });
+});
+
+describe('canonical second precision before payroll-minute projection',()=>{
+ const seconds=(id:string,atSeconds:number,direction:'in'|'out')=>({id,atSeconds,direction});
+ it('flags 59 seconds even across a whole-minute boundary and accepts exactly 60 seconds',()=>{
+  const p={...policy(),minimumIntervalMinutes:1};
+  const close=attendancePolicyClockSecondEvidence([seconds('a',32401,'in'),seconds('b',32460,'out')],p,1440);
+  expect(close).toMatchObject({complete:false,requiresReview:true,flags:[{kind:'close',clockIds:['a','b']}],intervals:[],minuteIntervals:[]});
+  expect(attendancePolicyClockSecondEvidence([seconds('a',32401,'in'),seconds('b',32461,'out')],p,1440))
+   .toMatchObject({complete:true,requiresReview:false,flags:[],intervals:[{inSecond:32401,outSecond:32461}],minuteIntervals:[{inAbs:540,outAbs:541}]});
+ });
+ it('does not call distinct seconds within one minute duplicates or invent a whole minute',()=>{
+  expect(attendancePolicyClockSecondEvidence([seconds('a',32401,'in'),seconds('b',32459,'out')],policy(),1440))
+   .toEqual({complete:true,requiresReview:false,flags:[],checkInSecond:32401,checkOutSecond:32459,
+    intervals:[{inSecond:32401,outSecond:32459}],minuteIntervals:[]});
+ });
+ it('retains exact duplicate/unmatched events and never debounces them into a valid calculation',()=>{
+  const result=attendancePolicyClockSecondEvidence([seconds('a',32400,'in'),seconds('b',32400,'in'),seconds('c',36000,'out')],policy(),1440);
+  expect(result.complete).toBe(false);expect(result.flags.map(flag=>flag.kind)).toEqual(['duplicate','unmatched']);
+  expect(result.intervals).toEqual([]);expect(result.minuteIntervals).toEqual([]);
+ });
+ it('preserves supplied next-day positions and the canonical boundary-minute arithmetic',()=>{
+  expect(attendancePolicyClockSecondEvidence([seconds('a',86399,'in'),seconds('b',86461,'out')],policy(),2880))
+   .toMatchObject({complete:true,intervals:[{inSecond:86399,outSecond:86461}],minuteIntervals:[{inAbs:1439,outAbs:1441}]});
+ });
+ it.each(['auto','firstInLastOut'] as const)('retains available boundaries while refusing an incomplete %s result',pairing=>{
+  const result=attendancePolicyClockSecondEvidence([seconds('a',32401,'out')],policy(pairing),1440);
+  expect(result).toMatchObject({complete:false,checkInSecond:null,checkOutSecond:32401,intervals:[],minuteIntervals:[]});
+ });
+ it.each(['auto','firstInLastOut'] as const)('shares the original pair owner and preserves minute-boundary %s compatibility',pairing=>{
+  const original=attendancePolicyClockEvidence(day,policy(pairing),1440),input=day.map(clock=>seconds(clock.id,clock.at*60,clock.direction)),before=structuredClone(input);
+  const result=attendancePolicyClockSecondEvidence(input,policy(pairing),1440);
+  expect(result.complete).toBe(original.complete);expect(result.flags).toEqual(original.flags);expect(result.minuteIntervals).toEqual(original.intervals);expect(input).toEqual(before);
+ });
+ it('refuses sub-second/invalid positions, invalid identities and positions outside the resolved period',()=>{
+  for(const at of [-1,0.5,NaN,Infinity,86401])expect(()=>attendancePolicyClockSecondEvidence([seconds('a',at,'in')],policy(),1440)).toThrow();
+  for(const id of ['', ' ', 42 as never])expect(()=>attendancePolicyClockSecondEvidence([seconds(id,32400,'in')],policy(),1440)).toThrow();
+  expect(()=>attendancePolicyClockSecondEvidence([seconds('a',32400,'in'),seconds('a',36000,'out')],policy(),1440)).toThrow();
  });
 });
