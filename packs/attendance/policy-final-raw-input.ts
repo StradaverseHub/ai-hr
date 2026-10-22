@@ -37,12 +37,12 @@ export function attendancePolicyFinalRawAgreement(context:AttendancePolicyExecut
  const raw=final.raw;
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return refuse('rawEffectUnavailable');
  const trace=current.trace,retainedTrace=raw.trace;
- if(!retainedTrace||typeof retainedTrace!=='object'||Array.isArray(retainedTrace))return refuse('rawEffectUnavailable');
+ if(!trace||!retainedTrace||typeof retainedTrace!=='object'||Array.isArray(retainedTrace))return refuse('rawEffectUnavailable');
  // The calculation reference is written AFTER the raw final effect. It belongs to the independent
  // financial owner, not physical work. Compare every retained raw field while excluding only that
  // separately owned marker; current financial consumers must revalidate their own calculation.
  const {overtimePattern:retainedCalculation,...retainedRawTrace}=retainedTrace;
- const {overtimePattern:currentCalculation,...currentRawTrace}=trace??{};
+ const {overtimePattern:currentCalculation,...currentRawTrace}=trace;
  if(!binding||!trace||!isDeepStrictEqual(trace.executionPolicy,binding)
   ||raw.attendanceId!==current.attendanceId||raw.checkIn!==current.checkInAt||raw.checkOut!==current.checkOutAt
   ||raw.workedMinutes!==current.workedMinutes||raw.lateMinutes!==current.lateMinutes
