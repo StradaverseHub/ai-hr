@@ -1,4 +1,4 @@
-import {attendancePolicyClockPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
+import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 import {isCalendarDate} from '../lib/calendar-date';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
@@ -4601,7 +4601,7 @@ export type AttendancePolicyExecutionContext=
     schedule:{source:ResolvedSchedule['source'];shiftId:string|null;ruleId:string;start:string|null;end:string|null;
       crossesMidnight:boolean;dailyCutoffMinutes:number|null;durationOnly:boolean;flexiDuration:boolean;
       normalMinutes:number;breakMinutes:number;breakPeriods:BreakPeriod[]|null;flexibleBreakMinutes:number|null};
-    calendar:PolicyCalendarProof[];clockPlacement?:PolicyClockPlacement;placement:PolicySchedulePlacement};
+    calendar:PolicyCalendarProof[];clockPlacement?:PolicyClockPlacement;workPlacement?:PolicyWorkPlacement;placement:PolicySchedulePlacement};
 
 /** Selection seam for the canonical calculation writer. No form-supplied company/group/policy ID.
  * This is live input, not final-effect authority or an immutable receipt: the writer must freeze its
@@ -4640,6 +4640,10 @@ export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContex
       breakPeriods:schedule.breakPeriods?.map(row=>({...row}))??null,flexibleBreakMinutes:schedule.flexibleBreakMinutes},calendar,
     clockPlacement:attendancePolicyClockPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
       durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false}),
+    workPlacement:attendancePolicyWorkPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
+      dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      breakMinutes:schedule.breakMinutes,breakPeriods:schedule.breakPeriods,flexibleBreakMinutes:schedule.flexibleBreakMinutes,otWindows:schedule.otWindows,
       includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false}),
     placement:attendancePolicySchedulePlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
       dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,

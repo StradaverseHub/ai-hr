@@ -32,13 +32,17 @@ export function attendancePolicyClockPlacement(s:Pick<PolicySchedulePlacementInp
  return {state:'known',authority:'sourceOnly',scheduled:{from:start,to:end},fixedClock:s.dayType==='workday',
   includeGraceInLateness:s.includeGraceInLateness,includeGraceInEarlyOut:s.includeGraceInEarlyOut};
 }
-/** A scalar allowance cannot be converted into a fictional break window. Retain that owner's
- * refusal until an explicit count-attribution contract can account for it through all consumers. */
-export function attendancePolicySchedulePlacement(s:PolicySchedulePlacementInput,policy:AttendanceGroupPolicy):PolicySchedulePlacement{
- const unavailable=(reason:Extract<PolicySchedulePlacement,{state:'unavailable'}>['reason']):PolicySchedulePlacement=>({state:'unavailable',authority:'sourceOnly',reason});
+/** Independent proof of physical unpaid windows. OT window count attribution cannot erase
+ * otherwise proved raw work. Scalar/flexible allowances still confer no fictitious placement. */
+export type PolicyWorkPlacement=
+ |{state:'unavailable';authority:'sourceOnly';reason:'durationOwner'|'scheduleBoundaryUnavailable'|'unpositionedBreak'}
+ |{state:'known';authority:'sourceOnly';periodMinutes:4320;scheduled:AttendancePolicyInterval;
+   unpaidWindows:AttendancePolicyInterval[];fixedClock:boolean;includeGraceInLateness:boolean;includeGraceInEarlyOut:boolean};
+export function attendancePolicyWorkPlacement(s:PolicySchedulePlacementInput):PolicyWorkPlacement{
+ const unavailable=(reason:Extract<PolicyWorkPlacement,{state:'unavailable'}>['reason']):PolicyWorkPlacement=>({state:'unavailable',authority:'sourceOnly',reason});
  const boundary=attendancePolicyClockPlacement(s);
  if(boundary.state!=='known')return boundary;
- const {from:start,to:end}=boundary.scheduled;
+ const {from:start}=boundary.scheduled;
  if(!Number.isSafeInteger(s.breakMinutes)||s.breakMinutes<0||s.breakMinutes>4320)
   return unavailable('scheduleBoundaryUnavailable');
  if(s.flexibleBreakMinutes!==null||s.breakPeriods?.some(row=>!row.paid&&row.flexible&&row.flexibleMinutes!==undefined))
@@ -56,6 +60,16 @@ export function attendancePolicySchedulePlacement(s:PolicySchedulePlacementInput
  const unpaidWindows=union(breaks,4320);
  // Existing scalar/capped allowances have a count, but no independent physical placement proof.
  if(unpaidWindows.reduce((n,row)=>n+row.to-row.from,0)!==s.breakMinutes)return unavailable('unpositionedBreak');
+ return {state:'known',authority:'sourceOnly',periodMinutes:4320,scheduled:boundary.scheduled,unpaidWindows,
+  fixedClock:boundary.fixedClock,includeGraceInLateness:boundary.includeGraceInLateness,includeGraceInEarlyOut:boundary.includeGraceInEarlyOut};
+}
+/** Full OT placement additionally requires its own proved window/count attribution. */
+export function attendancePolicySchedulePlacement(s:PolicySchedulePlacementInput,policy:AttendanceGroupPolicy):PolicySchedulePlacement{
+ const unavailable=(reason:Extract<PolicySchedulePlacement,{state:'unavailable'}>['reason']):PolicySchedulePlacement=>({state:'unavailable',authority:'sourceOnly',reason});
+ const work=attendancePolicyWorkPlacement(s);
+ if(work.state!=='known')return work;
+ const {from:start,to:end}=work.scheduled;
+ const unpaidWindows=work.unpaidWindows;
  let eligibilityWindows:AttendancePolicyInterval[]=[];
  if(policy.overtime.enabled){
   if(s.dayType!=='workday')eligibilityWindows=[{from:0,to:4320}];

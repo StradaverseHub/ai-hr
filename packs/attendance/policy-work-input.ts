@@ -17,6 +17,18 @@ export function attendancePolicyNetWorkedMinutes(work:PolicyWorkInput|undefined)
  return minutes(subtract(work.workedIntervals,work.unpaidIntervals,work.periodMinutes),work.periodMinutes);
 }
 
+/** Raw work does not depend on OT eligibility or lateness-offset allocation. Its independent
+ * positive unpaid-window proof must still bind complete, unflagged captured physical intervals.
+ * Explicit refusal is never bypassed by the older full-placement compatibility fallback. */
+export function attendancePolicyRawWorkedMinutes(context:AttendancePolicyExecutionContext|undefined,clocks:PolicyClockMillisecondEvidence|undefined):number|null{
+ if(context?.state!=='policy'||!clocks||!clocks.complete||clocks.requiresReview
+  ||clocks.checkInMillisecond===null||clocks.checkOutMillisecond===null)return null;
+ const placement=context.workPlacement??context.placement;
+ if(placement.state!=='known')return null;
+ const physical=union(clocks.minuteIntervals.map(row=>({from:row.inAbs,to:row.outAbs})),4320);
+ return minutes(subtract(physical,placement.unpaidWindows,4320),4320);
+}
+
 /** The canonical snapshot reader supplies both inputs. A posted envelope or scalar approval is never
  * an alternative to the complete exact-clock view, and this projection establishes no approval. */
 export function attendancePolicyWorkInput(context:AttendancePolicyExecutionContext|undefined,clocks:PolicyClockMillisecondEvidence|undefined):PolicyWorkInput{

@@ -3,7 +3,7 @@ import {deductionMinutes,deductionsApplyOn} from '../../core/attendance-calc';
 import type {ResolvedAttendanceRule} from '../../core/attendance-rule';
 import {exceptionRevisionOn} from '../../lib/schedule-exception';
 import type {attendancePolicyRawInputTx} from './policy-raw-input';
-import {attendancePolicyNetWorkedMinutes} from './policy-work-input';
+import {attendancePolicyRawWorkedMinutes} from './policy-work-input';
 type RawPolicyInput=Extract<Awaited<ReturnType<typeof attendancePolicyRawInputTx>>,{state:'policy'}>;
 export type PolicyRawFigures=
  |{state:'unavailable';reason:'ruleUnavailable'}
@@ -15,7 +15,7 @@ export type PolicyRawFigures=
 export function attendancePolicyRawFigures(raw:RawPolicyInput,rule:ResolvedAttendanceRule|null,
  dayType:'workday'|'rest_day'|'holiday'):PolicyRawFigures{
  if(!rule||rule.id!==raw.context.schedule.ruleId)return {state:'unavailable',reason:'ruleUnavailable'};
- const workedMinutes=attendancePolicyNetWorkedMinutes(raw.work);
+ const workedMinutes=raw.source.state==='known'?attendancePolicyRawWorkedMinutes(raw.context,raw.clocks):null;
  const measured=raw.measurements.state==='measured'?raw.measurements:null;
  const lateMinutes=measured?.lateIn.state==='known'?measured.lateIn.minutes:null;
  const earlyOutMinutes=measured?.earlyOut.state==='known'?measured.earlyOut.minutes:null;
