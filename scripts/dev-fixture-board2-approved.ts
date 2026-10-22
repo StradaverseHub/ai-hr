@@ -23,7 +23,7 @@ if(decodeURIComponent(urls[0].username)!=='ai_hr_app'||urls[0].username===urls[1
 
 type Role='employee'|'manager'|'hr_admin';
 type Actor={key:string;userId:string;personId:string;employmentId:string;companyId:string;role:Role;hiredOn:string};
-type Fixture={version:1;tenantId:string;companyId:string;otherCompanyId:string;departmentId:string;actors:Actor[];unlinkedUserId:string;batchIds:string[];policyId:string;workflowLineageId:string;correctionId:string;createdOn:string};
+type Fixture={version:2;tenantId:string;companyId:string;otherCompanyId:string;departmentId:string;actors:Actor[];unlinkedUserId:string;batchIds:string[];policyId:string;workflowLineageId:string;correctionId:string;createdOn:string};
 const companyCode='BOARD2-APPROVED',eventType='dev.board2-approved.fixture.completed';
 const output=new URL('../scratchpad/board2-approved-ten-20261022/acceptance/',import.meta.url);
 
@@ -33,7 +33,8 @@ async function main(){
  const s=await import('../db/schema');
  const {actorOf,appendEvent}=await import('../db/events');
  const {resolveEntitlementsTx}=await import('../core/entitlements');
- const {createCompany,createDepartment}=await import('../core/admin');
+ const {createCompany,createDepartment,updateCompany}=await import('../core/admin');
+ const {upsertCompanyStatutoryAuthority}=await import('../core/statutory-authority');
  const {hireEmployee,setReportingLine}=await import('../core/org');
  const {setCompensation}=await import('../core/comp');
  const attendance=await import('../packs/attendance/service');
@@ -59,7 +60,7 @@ async function main(){
    const [receipt]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,tenantId),eq(s.domainEvent.aggregateId,company.id),eq(s.domainEvent.eventType,eventType))).orderBy(asc(s.domainEvent.sequence));
    if(receipt){
     const fixture=receipt.payload as unknown as Fixture;
-    if(fixture.version!==1||fixture.companyId!==company.id||fixture.tenantId!==tenantId||!Array.isArray(fixture.actors)||fixture.actors.length!==6)throw new Error('Stored fixture receipt is incompatible; preserving it.');
+    if(fixture.version!==2||fixture.companyId!==company.id||fixture.tenantId!==tenantId||!Array.isArray(fixture.actors)||fixture.actors.length!==6)throw new Error('Stored fixture receipt is incompatible; preserving it.');
     await manifest(fixture,true);return;
    }
   }
@@ -74,6 +75,15 @@ async function main(){
    let [row]=await owner.db.select().from(s.company).where(and(eq(s.company.tenantId,tenantId),eq(s.company.companyLabel,code)));
    if(!row){const created=await createCompany(root,{companyLabel:code,legalName:name,country:'MY',currency:'MYR'});[row]=await owner.db.select().from(s.company).where(eq(s.company.id,created.id));}
    if(!row||row.archivedAt||row.legalName!==name)throw new Error('Existing fixture company changed; preserving it.');
+   const existingCompany=row;
+   const header={registrationNo:`FICTIONAL-${code}`,addressLine1:'Unit B2, Fictional Acceptance Park',city:'Kuala Lumpur',state:'Kuala Lumpur',addressCountry:'MY',postcode:'50000'};
+   const keys=Object.keys(header) as (keyof typeof header)[];
+   if(keys.some(key=>existingCompany[key]!==null&&existingCompany[key]!==header[key]))throw new Error('Existing fixture document header changed; preserving it.');
+   if(keys.some(key=>existingCompany[key]!==header[key])){
+    await updateCompany(root,{id:existingCompany.id,legalName:name,country:'MY',currency:'MYR',...header});
+    [row]=await owner.db.select().from(s.company).where(eq(s.company.id,existingCompany.id));
+    if(!row)throw new Error('Fixture company disappeared after its canonical update.');
+   }
    return row;
   }
   company=await companyFor(companyCode,'Board 2 fictional employer');
@@ -102,6 +112,16 @@ async function main(){
   }
   const applicant=await actor('applicant','employee',`${year}-01-01`),manager=await actor('superior','manager',`${year-2}-01-01`),named=await actor('named-approver','employee',`${year-2}-01-01`),hr=await actor('company-hr','hr_admin',`${year-2}-01-01`),noProfile=await actor('no-statutory-profile','employee',today),foreign=await actor('foreign-employee','employee',`${year-2}-01-01`,otherCompany.id,otherDepartment.id);
   const actors=[applicant,manager,named,hr,noProfile,foreign],hrContext=await context({id:hr.userId,personId:hr.personId});
+  // Display fixtures are explicitly fictional; no filing, payment account or delivery is configured.
+  const statutoryReferences={epfEmployerNo:'FICTIONAL-BOARD2-EPF',socsoEmployerCode:'FICTIONAL-BOARD2-SOCSO',lhdnEmployerNo:'FICTIONAL-BOARD2-LHDN',myinvoisTin:'FICTIONAL-BOARD2-TIN',ssmRegistrationNo:'FICTIONAL-BOARD2-SSM'};
+  const statutory=await requirePackFor('MY').companyStatutory.get(hrContext,company.id);
+  const statutoryKeys=Object.keys(statutoryReferences) as (keyof typeof statutoryReferences)[];
+  if(statutory&&statutoryKeys.some(key=>statutory[key]!==null&&statutory[key]!==statutoryReferences[key]))throw new Error('Existing fixture employer references changed; preserving them.');
+  if(!statutory||statutoryKeys.some(key=>statutory[key]!==statutoryReferences[key]))await requirePackFor('MY').companyStatutory.set(hrContext,{companyId:company.id,...statutoryReferences});
+  const signatory={signatoryPersonId:hr.personId,phone:'+60 3 0000 0000',email:'board2-approved-company-hr@example.invalid'};
+  const [authority]=await owner.db.select().from(s.companyStatutoryAuthority).where(and(eq(s.companyStatutoryAuthority.companyId,company.id),eq(s.companyStatutoryAuthority.authority,'lhdn')));
+  if(!authority)await upsertCompanyStatutoryAuthority(hrContext,{companyId:company.id,authority:'lhdn',...signatory});
+  else if(authority.signatoryPersonId!==signatory.signatoryPersonId||authority.phone!==signatory.phone||authority.email!==signatory.email)throw new Error('Existing fixture signatory changed; preserving it.');
   const unlinked=await login('unlinked',null,company.id,'employee');
   const paid=[applicant,manager,named,hr];
   for(const [index,person] of paid.entries()){
@@ -140,7 +160,7 @@ async function main(){
    if(!slips.length||slips.some(row=>Number(row.grossPay)<=0))throw new Error('Generated payroll lacks positive recorded payslips.');
    batchIds.push(batch.id);
   }
-  const fixture:Fixture={version:1,tenantId,companyId:company.id,otherCompanyId:otherCompany.id,departmentId:department.id,actors,unlinkedUserId:unlinked.id,batchIds,policyId:policy.id,workflowLineageId:workflow.lineageId,correctionId:correction.id,createdOn:today};
+  const fixture:Fixture={version:2,tenantId,companyId:company.id,otherCompanyId:otherCompany.id,departmentId:department.id,actors,unlinkedUserId:unlinked.id,batchIds,policyId:policy.id,workflowLineageId:workflow.lineageId,correctionId:correction.id,createdOn:today};
   await owner.withTenant(root,tx=>appendEvent(tx,{tenantId,aggregateType:'dev-board2-fixture',aggregateId:company!.id,eventType,actor:actorOf(root),payload:fixture}));
   await manifest(fixture,false);
 
@@ -151,8 +171,11 @@ async function main(){
    const currentEmployments=await owner.db.select({id:s.employment.id,personId:s.employment.personId,companyId:s.employment.companyId,hiredOn:s.employment.hiredOn,joinDate:s.employment.joinDate,terminatedOn:s.employment.terminatedOn,blacklistedAt:s.employment.blacklistedAt}).from(s.employment).where(inArray(s.employment.id,fixture.actors.map(row=>row.employmentId))).orderBy(asc(s.employment.id));
    const batches=await owner.db.select().from(s.payrollBatch).where(inArray(s.payrollBatch.id,fixture.batchIds)).orderBy(asc(s.payrollBatch.payPeriod),asc(s.payrollBatch.id));
    const slips=await owner.db.select({id:s.payslip.id,batchId:s.payslip.batchId,employmentId:s.payslip.employmentId,gross:s.payslip.grossPay,net:s.payslip.netPay}).from(s.payslip).where(inArray(s.payslip.batchId,fixture.batchIds)).orderBy(asc(s.payslip.batchId),asc(s.payslip.employmentId),asc(s.payslip.id));
+   const [documentEmployer]=await owner.db.select({id:s.company.id,legalName:s.company.legalName,registrationNo:s.company.registrationNo,addressLine1:s.company.addressLine1,city:s.company.city,state:s.company.state,postcode:s.company.postcode}).from(s.company).where(eq(s.company.id,fixture.companyId));
+   const [documentReferences]=await owner.db.select({epfEmployerNo:s.companyStatutoryMy.epfEmployerNo,socsoEmployerCode:s.companyStatutoryMy.socsoEmployerCode,lhdnEmployerNo:s.companyStatutoryMy.lhdnEmployerNo,myinvoisTin:s.companyStatutoryMy.myinvoisTin,ssmRegistrationNo:s.companyStatutoryMy.ssmRegistrationNo}).from(s.companyStatutoryMy).where(eq(s.companyStatutoryMy.companyId,fixture.companyId));
+   const [documentSignatory]=await owner.db.select({personId:s.companyStatutoryAuthority.signatoryPersonId,phone:s.companyStatutoryAuthority.phone,email:s.companyStatutoryAuthority.email}).from(s.companyStatutoryAuthority).where(and(eq(s.companyStatutoryAuthority.companyId,fixture.companyId),eq(s.companyStatutoryAuthority.authority,'lhdn')));
    mkdirSync(output,{recursive:true,mode:0o700});
-   writeFileSync(new URL('fixture.json',output),JSON.stringify({...fixture,reused,currentGrants,currentEmployments,batches,slips,screenPaths:['/admin/attendance-allowance','/admin/attendance/approval-workflow','/attendance','/attendance/application-history','/attendance/my-roster','/admin/personnel','/me/payslip','/me/tax-relief','/me/tp3','/me/ea'],limitations:['Prepared fictional data only; actual app outcomes remain unverified.','No CC transport, real provider identities, consent or email enabled. Use captured delivery tests and the private-service rehearsal.','Overtime cash/TOIL fixtures require Board 1 final canonical execution.','Holiday replacements, transfer/rehire, additional run types/currencies and unavailable EA/TP1/TP3 states remain explicit journey extensions.','At a January boundary the current-year applicant has no prior-year payslip; the historical manager/HR fixtures retain the two-period journey.','Completed reruns preserve browser changes and report current recorded payroll.']},null,2)+'\n',{mode:0o600});
+   writeFileSync(new URL('fixture.json',output),JSON.stringify({...fixture,reused,currentGrants,currentEmployments,batches,slips,documentSources:{employer:documentEmployer,references:documentReferences,signatory:documentSignatory},screenPaths:['/admin/attendance-allowance','/admin/attendance/approval-workflow','/attendance','/attendance/application-history','/attendance/my-roster','/admin/personnel','/me/payslip','/me/tax-relief','/me/tp3','/me/ea'],limitations:['Prepared fictional data only; actual app outcomes remain unverified.','No CC transport, real provider identities, consent or email enabled. Use captured delivery tests and the private-service rehearsal.','Overtime cash/TOIL fixtures require Board 1 final canonical execution.','Holiday replacements, transfer/rehire, additional run types/currencies and unavailable EA/TP1/TP3 states remain explicit journey extensions.','At a January boundary the current-year applicant has no prior-year payslip; the historical manager/HR fixtures retain the two-period journey.','Completed reruns preserve browser changes and report current recorded payroll.']},null,2)+'\n',{mode:0o600});
    console.log(JSON.stringify({fixture:'board2-approved',reused,actors:fixture.actors.length,unlinked:1,batches:batches.length,payslips:slips.length,manifest:new URL('fixture.json',output).pathname}));
   }
  }finally{
