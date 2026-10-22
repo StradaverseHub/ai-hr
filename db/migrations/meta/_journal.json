@@ -3354,6 +3354,13 @@
       "when": 1791900000063,
       "tag": "0583_employee_home_person_privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 584,
+      "version": "7",
+      "when": 1791900000064,
+      "tag": "0584_employee_home_sharing",
+      "breakpoints": true
     }
   ]
 }

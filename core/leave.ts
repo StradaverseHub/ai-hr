@@ -5863,51 +5863,14 @@ async function approvedLeaveCalendarPresence(
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
-  const add = (emp: string, d: string, duration: string | null) => {
-    let s = out.get(emp);
-    if (!s) out.set(emp, (s = new Map()));
-    if (!s.has(d) || duration === 'full_day') s.set(d, duration === 'full_day' ? 'full_day' : 'part_day');
-  };
-
-  // (a) per-date requests: every APPROVED sub-row in the window is one on-leave date.
-  const dateRows = await tx
-    .select({ employmentId: leaveRequest.employmentId, d: leaveRequestDate.leaveDate, duration: leaveRequest.durationType })
-    .from(leaveRequestDate)
-    .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
-    .where(
-      and(
-        inArray(leaveRequest.employmentId, empIds),
-        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequestDate.status, status),
-        gte(leaveRequestDate.leaveDate, from),
-        lte(leaveRequestDate.leaveDate, to),
-      ),
-    );
-  for (const r of dateRows) add(r.employmentId, r.d, r.duration);
-
-  // (b) whole-span requests (no per-date rows): expand [start,end] ∩ [from,to] where the REQUEST is approved.
-  const spanRows = await tx
-    .select({
-      employmentId: leaveRequest.employmentId,
-      duration: leaveRequest.durationType,
-      startDate: leaveRequest.startDate,
-      endDate: leaveRequest.endDate,
-    })
-    .from(leaveRequest)
-    .where(
-      and(
-        inArray(leaveRequest.employmentId, empIds),
-        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequest.status, status),
-        lte(leaveRequest.startDate, to),
-        gte(leaveRequest.endDate, from),
-        sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
-      ),
-    );
-  for (const r of spanRows) {
-    const lo = r.startDate < from ? from : r.startDate;
-    const hi = r.endDate > to ? to : r.endDate;
-    for (const d of eachDate(lo, hi)) add(r.employmentId, d, r.duration);
+  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
+  // Home projection may compose it without granting coworkers access to the underlying leave rows.
+  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  for(const row of rows){
+   let dates=out.get(row.employmentId);if(!dates)out.set(row.employmentId,(dates=new Map()));
+   dates.set(row.date,row.presence);
   }
   return out;
 }

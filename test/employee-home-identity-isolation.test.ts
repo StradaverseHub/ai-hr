@@ -9,7 +9,7 @@ const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictio
 beforeEach(()=>{
   vi.resetAllMocks();state.subjects.mockResolvedValue([{employmentId:'own',employeeCode:'0007',company:'Fictional company',companyProof:{companyId:'company'}}]);
   state.lines.mockResolvedValue({reports:[]});state.photo.mockResolvedValue(false);
-  state.proof.mockResolvedValue([{ok:true,current:true,admin:false,manager:false}]);
+  state.proof.mockResolvedValue([{ok:true,role:'employee'}]);
   state.names.mockReturnValue({from:()=>({where:()=>({limit:async()=>[{preferredName:'Fictional recorded name'}]})})});
   const tx={execute:state.proof,select:state.names};
   state.tenant.mockImplementation(async(_ctx:unknown,read:(transaction:typeof tx)=>unknown)=>read(tx));
@@ -34,7 +34,7 @@ describe('Home identity versus greeting presentation failure',()=>{
     expect(state.subjects).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();expect(state.photo).not.toHaveBeenCalled();
   });
   it('refuses a stale principal at selected-company role resolution instead of accepting its claimed role',async()=>{
-    state.proof.mockResolvedValueOnce([{ok:true}]).mockResolvedValueOnce([{current:false,admin:true,manager:true}]);
+    state.proof.mockResolvedValueOnce([{ok:true}]).mockResolvedValueOnce([{role:null}]);
     await expect(readEmployeeHomeIdentity(ctx)).rejects.toMatchObject({code:'employmentUnavailable'});
     expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();
   });

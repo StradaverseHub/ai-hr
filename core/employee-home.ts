@@ -2,7 +2,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
-import {myOwnEmploymentSubjects,reportingLinesFor,type OwnEmploymentSubject} from './read';
+import {myOwnEmploymentSubjects,type OwnEmploymentSubject} from './read';
 import {hasPersonPhoto} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
@@ -52,19 +52,16 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 
 export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
  const selection=await ownHomeSubjectSelection(ctx,requestedEmploymentId);
- const lines=selection.subject?await reportingLinesFor(ctx,selection.subject.employmentId):null;
  // Flattened roles discard their company scope. For a selected employment use the canonical SQL
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
- let admin=isAdmin(ctx),managerRole=(ctx.roles??[]).includes('manager');
+ let role=resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:false});
  if(selection.subject){
-  const companyId=selection.subject.companyProof.companyId;
-  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.principal_snapshot_current() AS current,
-   app.is_admin_for(${companyId}::uuid) AS admin,app.has_role_for('manager',${companyId}::uuid) AS manager`)) as unknown as {current:boolean;admin:boolean;manager:boolean}[];
-  if(!proof?.current)throw new HomeAccessError('employmentUnavailable');
-  admin=proof.admin;managerRole=proof.manager;
+  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`)) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
+  if(!proof?.role||!['employee','manager','hr_admin'].includes(proof.role))throw new HomeAccessError('employmentUnavailable');
+  role=proof.role;
  }
  return {version:1,
-  role:resolveDashboardRole({admin,managerRole,hasDirectReports:(lines?.reports.length??0)>0}),
+  role,
   employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
   companyEstablished:Boolean(selection.subject?.companyProof.companyId),
   employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};

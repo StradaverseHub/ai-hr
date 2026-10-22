@@ -211,6 +211,33 @@ The Claims capability reads an active type ID only, never a balance, rate or rei
 
 ## Verification and rollout
 
+The purpose-bound sharing readers in `0584` compose the canonical dated-company and approved-leave
+facts through INVOKER SQL readers. Their ordinary consumers retain table RLS and explicit owner
+maintenance behavior. Home's outer reader alone uses a fenced definer projection: actual own login,
+current principal, strictly proven current company, actual dashboard role, latest default-off sharing
+configuration, and current administrative or department membership. Private cohort/policy helpers
+have no application EXECUTE grant. No Personnel, person, employment or leave-row policy is widened.
+The shell and sharing configuration use one minimal dashboard-role resolver rather than fetching
+report names merely to decide a role.
+
+A team page contains employment identity, recorded display name and approved full/partial leave
+presence only. Missing evidence is Unknown. Its exact total is explicitly an employment count, not
+a deduplicated person count or an inferred office/WFH/clocking claim. A removed/foreign page cursor
+refuses rather than continuing against a different audience. A subsequent default-off configuration
+returns no peer rows. Pagination always repeats current sharing authority.
+
+Celebration pages compare birth month/day inside the database and project an occurrence date, never
+birth year or age. The window is today through seven subsequent Kuala Lumpur civil dates. Current
+cohort membership and recorded final employment dates bound disclosure. Same-person/day events are
+deduplicated across authorized employments. A work anniversary uses recorded hiring anchors and
+positive completed years; conflicting same-person/day anchors yield no invented year count.
+The newest person-wide opt-outs apply to every page, including a continuation. The forced-RLS privacy
+owner has a tenant/principal-fenced owner-only SELECT policy so a restricted definer owner can read
+choices without granting peers those rows. Ownership drift refuses the celebration read instead of
+silently treating a hidden choice as absent. No BYPASSRLS or owner membership is granted to the app.
+These readers have no send side effect; the explicit editable greeting/notification journey remains
+required. Read-model source and draft tests alone establish no runtime or interface acceptance.
+
 Person-wide celebration opt-outs have a separate immutable revision owner in `0583`. A current
 actual login can read and append choices only for its linked person, even when the login also has
 HR authority. Birthday and anniversary choices are separate. Both logins for one person see the
