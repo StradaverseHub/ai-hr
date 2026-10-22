@@ -20864,7 +20864,90 @@
     "starterDraftHelp": "Missing standard patterns are added to the list as separate company drafts. Open a draft to choose its duration policies, currency, applicable days, hourly basis and earning code. Existing patterns and assignments keep their settings.",
     "starterUnassigned": "Unassigned",
     "starterFormula": "Hourly rate × {multiplier} × payable hours. The hourly basis and payable hours must be configured before an amount can be calculated.",
-    "starterZeroHelp": "A zero multiplier does not waive applicable country or policy minimum-payment checks."
+    "starterZeroHelp": "A zero multiplier does not waive applicable country or policy minimum-payment checks.",
+    "policyReview": {
+      "title": "Schedule Group policies",
+      "description": "Review saved clocking and overtime choices for one company and Schedule Group. Central patterns retain their formulas and rates.",
+      "company": "Company",
+      "group": "Schedule Group",
+      "chooseCompany": "Choose a company",
+      "chooseGroup": "Choose a group",
+      "review": "Review policy",
+      "chooseHelp": "Choose a company and Schedule Group to review its saved policy history.",
+      "unavailable": "The saved policy review could not load. Try again.",
+      "retry": "Retry",
+      "legacy": "No dated policy has been saved for this company and group. Existing attendance settings continue.",
+      "openGroup": "Open Schedule Group",
+      "version": "Version {count, number}",
+      "from": "From {date}",
+      "until": "Before {date}",
+      "history": "Saved policy versions",
+      "clock": "Clocking",
+      "overtime": "Overtime",
+      "on": "On",
+      "off": "Off",
+      "minutes": "{count, number} min",
+      "graceHelp": "Saved group grace is shown here. An explicit shift grace takes precedence.",
+      "disabledHelp": "Overtime is off. The dependent choices remain saved and inactive.",
+      "manualHelp": "The Auto method remains saved. Manual approval follows the request’s recorded route and method.",
+      "bindings": "Day-specific central patterns",
+      "day": "Day classification",
+      "minimum": "Minimum overtime",
+      "maximum": "Maximum overtime",
+      "pattern": "Central pattern",
+      "uncapped": "No maximum",
+      "unassigned": "Not assigned",
+      "bindingUnavailable": "Saved pattern unavailable",
+      "patternVersion": "{name} · version {count, number}",
+      "roundingStep": "{mode} · {count, number} min",
+      "states": {
+        "scheduled": "Scheduled",
+        "earlier": "Earlier version",
+        "current": "Current version"
+      },
+      "pairings": {
+        "auto": "Auto: completed In/Out pairs",
+        "firstInLastOut": "First In Last Out"
+      },
+      "approvals": {
+        "manual": "Manual",
+        "auto": "Auto"
+      },
+      "methods": {
+        "actual": "Actual Hours",
+        "preApproved": "Pre-Approved Hours",
+        "intersect": "Overlapping actual and pre-approved time"
+      },
+      "roundings": {
+        "none": "None",
+        "down": "Down",
+        "up": "Up",
+        "nearest": "Nearest"
+      },
+      "fields": {
+        "pairing": "Clock pairing",
+        "minimumInterval": "Minimum clock interval",
+        "lateGrace": "Late-in grace",
+        "earlyGrace": "Early-out grace",
+        "skipIncomplete": "Skip lateness on incomplete clocking",
+        "enabled": "Enable overtime",
+        "beforeShift": "Before-shift overtime",
+        "afterShift": "After-shift overtime",
+        "unclocked": "Backdated overtime without clocks",
+        "midnight": "Split at midnight",
+        "lateOffset": "Offset lateness once",
+        "approval": "Approval mode",
+        "autoMethod": "Auto approval method",
+        "rounding": "Duration rounding"
+      },
+      "days": {
+        "normal": "Normal Day",
+        "off": "Off Day",
+        "rest": "Rest Day",
+        "publicHoliday": "Public Holiday",
+        "replacementHoliday": "Replacement Public Holiday"
+      }
+    }
   },
   "systemTestingWorkspace": {
     "title": "System Testing",

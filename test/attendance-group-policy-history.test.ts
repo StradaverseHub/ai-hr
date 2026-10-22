@@ -6,7 +6,7 @@ import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {ensureStandardRule} from '../core/attendance-rule';
 import {hireEmployee} from '../core/org';
-import {attendanceGroupPolicyHistory,attendanceGroupPolicyOnTx,scheduleAttendanceGroupPolicy} from '../core/attendance-group-policy';
+import {attendanceGroupPolicyHistory,attendanceGroupPolicyOnTx,attendanceGroupPolicyReview,scheduleAttendanceGroupPolicy} from '../core/attendance-group-policy';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
@@ -76,6 +76,24 @@ describe('future attendance execution policy history',()=>{
   await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),policy:configured})).rejects.toThrow();
   const saved=await scheduleAttendanceGroupPolicy(ctx,{...input(),effectiveFrom:plus(2),policy:configured});
   expect((await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).find(row=>row.id===saved.id)?.policy).toEqual(configured);
+  const review=await attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId});
+  expect(review?.history.find(row=>row.id===saved.id)?.policy).toEqual(configured);
+  expect(review?.patterns).toEqual([{versionId:draft.versionId,patternId:draft.patternId,name:'Fictional 1.5 pattern',ordinal:1}]);
+ });
+ it('reviews the canonical history without creating policies or events and distinguishes a missing group from legacy',async()=>{
+  expect(await attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId:randomUUID()})).toBeNull();
+  expect(await attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId})).toMatchObject({rule:{id:ruleId},history:[],patterns:[]});
+  const saved=await scheduleAttendanceGroupPolicy(ctx,input());
+  const events=()=>owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,ruleId)).orderBy(asc(s.domainEvent.sequence));
+  const beforeEvents=await events(),beforeHistory=await attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId});
+  const first=await attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId});
+  const second=await attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId});
+  expect(first).toEqual(second);expect(first?.history).toEqual(beforeHistory);expect(first?.history.map(row=>row.id)).toEqual([saved.id]);
+  expect(first?.patterns).toEqual([]);expect(await events()).toEqual(beforeEvents);
+  const other=await seedBase();
+  await expect(attendanceGroupPolicyReview(ctx,{companyId:other.companyId,ruleId})).rejects.toThrow();
+  await expect(attendanceGroupPolicyReview(adminCtx(other),{companyId:b.companyId,ruleId})).rejects.toThrow();
+  expect(await attendanceGroupPolicyReview(adminCtx(other),{companyId:other.companyId,ruleId})).toBeNull();
  });
  it('saves/reopens one immutable snapshot and leaves earlier days in legacy mode',async()=>{
   const saved=await scheduleAttendanceGroupPolicy(ctx,input());
@@ -159,7 +177,9 @@ describe('future attendance execution policy history',()=>{
   expect(await visible(full)).toEqual([b.companyId,child.id].sort().map(companyId=>({companyId})));
   expect(await visible(narrow)).toEqual([{companyId:child.id}]);
   expect(await attendanceGroupPolicyHistory(narrow,{companyId:child.id,ruleId})).toHaveLength(1);
+  expect((await attendanceGroupPolicyReview(narrow,{companyId:child.id,ruleId}))?.history).toHaveLength(1);
   await expect(attendanceGroupPolicyHistory(narrow,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(attendanceGroupPolicyReview(narrow,{companyId:b.companyId,ruleId})).rejects.toThrow();
   await scheduleAttendanceGroupPolicy(narrow,{...input(),companyId:child.id,expectedOrdinal:1,effectiveFrom:plus(2)});
   for(const companyId of [null,foreign.id]){
    const forged:SessionContext={...full,grants:[{role:'hr_admin',companyId}]};
@@ -178,6 +198,7 @@ describe('future attendance execution policy history',()=>{
   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
   expect(await withTenant(ctx,tx=>tx.select({id:s.attendanceGroupPolicyRevision.id}).from(s.attendanceGroupPolicyRevision))).toEqual([]);
   await expect(attendanceGroupPolicyHistory(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
+  await expect(attendanceGroupPolicyReview(ctx,{companyId:b.companyId,ruleId})).rejects.toThrow();
   await expect(scheduleAttendanceGroupPolicy(ctx,{...input(),expectedOrdinal:1,effectiveFrom:plus(2)})).rejects.toThrow();
  });
 });

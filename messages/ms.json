@@ -20864,7 +20864,90 @@
     "starterDraftHelp": "Corak standard yang belum ada ditambah ke senarai sebagai draf berasingan bagi setiap syarikat. Buka draf untuk memilih dasar tempoh, mata wang, hari yang berkenaan, asas kadar sejam dan kod pendapatan. Corak dan penetapan sedia ada mengekalkan tetapannya.",
     "starterUnassigned": "Belum ditetapkan",
     "starterFormula": "Kadar sejam × {multiplier} × jam yang layak dibayar. Asas kadar sejam dan jam yang layak dibayar mesti dikonfigurasi sebelum amaun boleh dikira.",
-    "starterZeroHelp": "Pengganda sifar tidak mengetepikan semakan bayaran minimum negara atau dasar yang berkenaan."
+    "starterZeroHelp": "Pengganda sifar tidak mengetepikan semakan bayaran minimum negara atau dasar yang berkenaan.",
+    "policyReview": {
+      "title": "Dasar Kumpulan Jadual",
+      "description": "Semak pilihan rekod waktu dan kerja lebih masa yang disimpan bagi satu syarikat dan Kumpulan Jadual. Formula dan kadar kekal pada corak pusat.",
+      "company": "Syarikat",
+      "group": "Kumpulan Jadual",
+      "chooseCompany": "Pilih syarikat",
+      "chooseGroup": "Pilih kumpulan",
+      "review": "Semak dasar",
+      "chooseHelp": "Pilih syarikat dan Kumpulan Jadual untuk menyemak sejarah dasar yang disimpan.",
+      "unavailable": "Semakan dasar yang disimpan tidak dapat dimuatkan. Cuba lagi.",
+      "retry": "Cuba lagi",
+      "legacy": "Tiada dasar bertarikh disimpan untuk syarikat dan kumpulan ini. Tetapan kehadiran sedia ada diteruskan.",
+      "openGroup": "Buka Kumpulan Jadual",
+      "version": "Versi {count, number}",
+      "from": "Mulai {date}",
+      "until": "Sebelum {date}",
+      "history": "Versi dasar yang disimpan",
+      "clock": "Rekod waktu",
+      "overtime": "Kerja lebih masa",
+      "on": "Aktif",
+      "off": "Tidak aktif",
+      "minutes": "{count, number} min",
+      "graceHelp": "Tempoh kelonggaran kumpulan yang disimpan ditunjukkan di sini. Kelonggaran syif yang ditetapkan secara khusus diutamakan.",
+      "disabledHelp": "Kerja lebih masa tidak aktif. Pilihan berkaitan kekal disimpan tetapi tidak digunakan.",
+      "manualHelp": "Kaedah Auto kekal disimpan. Kelulusan Manual mengikut laluan dan kaedah permohonan yang direkodkan.",
+      "bindings": "Corak pusat mengikut jenis hari",
+      "day": "Jenis hari",
+      "minimum": "Minimum kerja lebih masa",
+      "maximum": "Maksimum kerja lebih masa",
+      "pattern": "Corak pusat",
+      "uncapped": "Tiada maksimum",
+      "unassigned": "Belum ditetapkan",
+      "bindingUnavailable": "Corak yang disimpan tidak tersedia",
+      "patternVersion": "{name} · versi {count, number}",
+      "roundingStep": "{mode} · {count, number} min",
+      "states": {
+        "scheduled": "Dijadualkan",
+        "earlier": "Versi terdahulu",
+        "current": "Versi semasa"
+      },
+      "pairings": {
+        "auto": "Auto: pasangan Masuk/Keluar lengkap",
+        "firstInLastOut": "Masuk pertama, keluar terakhir"
+      },
+      "approvals": {
+        "manual": "Manual",
+        "auto": "Auto"
+      },
+      "methods": {
+        "actual": "Jam sebenar",
+        "preApproved": "Jam diluluskan awal",
+        "intersect": "Pertindihan waktu sebenar dan diluluskan awal"
+      },
+      "roundings": {
+        "none": "Tiada",
+        "down": "Ke bawah",
+        "up": "Ke atas",
+        "nearest": "Terdekat"
+      },
+      "fields": {
+        "pairing": "Pemadanan rekod waktu",
+        "minimumInterval": "Selang minimum rekod waktu",
+        "lateGrace": "Kelonggaran lewat masuk",
+        "earlyGrace": "Kelonggaran keluar awal",
+        "skipIncomplete": "Abaikan kelewatan bagi rekod tidak lengkap",
+        "enabled": "Aktifkan kerja lebih masa",
+        "beforeShift": "Kerja lebih masa sebelum syif",
+        "afterShift": "Kerja lebih masa selepas syif",
+        "unclocked": "Kerja lebih masa bertarikh lampau tanpa rekod waktu",
+        "midnight": "Pisahkan pada tengah malam",
+        "lateOffset": "Tolak kelewatan sekali",
+        "approval": "Mod kelulusan",
+        "autoMethod": "Kaedah kelulusan Auto",
+        "rounding": "Pembundaran tempoh"
+      },
+      "days": {
+        "normal": "Hari biasa",
+        "off": "Hari tidak bekerja",
+        "rest": "Hari rehat",
+        "publicHoliday": "Cuti umum",
+        "replacementHoliday": "Cuti umum gantian"
+      }
+    }
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",

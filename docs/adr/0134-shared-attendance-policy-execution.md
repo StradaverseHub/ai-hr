@@ -123,6 +123,14 @@ in the same transaction. Database/lifecycle and actual-app verification remain r
 
 ## Shared duration proposal sequencing
 
+The central workspace now consumes the same policy-history owner for an explicitly selected, scoped
+company and Schedule Group. It reviews clocking choices, saved approval/rounding controls and all five
+day-specific version references without writing configuration. Formula labels come only from versions
+bound to that employer, and a missing readable binding stays unavailable. Current, future and earlier
+versions remain distinct; a missing group or failed read is not labelled legacy. This read surface does
+not complete the new execution path or replace the existing editors. Its database, DOM and actual-app
+verification remain outstanding while Feedback Automation owns the shared resources.
+
 The dated policy mutation also joins the shared Access/profile barrier before checking current scope
 and taking the overtime configuration lock. A queued edit must re-prove authority after a preceding
 revocation. This uses the same canonical helper as starter initialization; it does not define another

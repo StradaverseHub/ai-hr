@@ -20864,7 +20864,90 @@
     "starterDraftHelp": "缺少的标准模式会作为各公司的独立草稿加入列表。打开草稿以选择时长政策、货币、适用日期、时薪计算基准及收入代码。现有模式和分配保留原有设置。",
     "starterUnassigned": "未分配",
     "starterFormula": "时薪 × {multiplier} × 应付小时数。必须先配置时薪基准和应付小时数，才能计算金额。",
-    "starterZeroHelp": "零倍数不能免除适用的国家或政策最低付款检查。"
+    "starterZeroHelp": "零倍数不能免除适用的国家或政策最低付款检查。",
+    "policyReview": {
+      "title": "排班组政策",
+      "description": "按公司和排班组查看已保存的打卡与加班设置。公式与费率仍由中央加班方案管理。",
+      "company": "公司",
+      "group": "排班组",
+      "chooseCompany": "选择公司",
+      "chooseGroup": "选择排班组",
+      "review": "查看政策",
+      "chooseHelp": "选择公司和排班组，查看已保存的政策历史。",
+      "unavailable": "无法加载已保存的政策，请重试。",
+      "retry": "重试",
+      "legacy": "此公司和排班组尚未保存带生效日期的政策，继续使用现有考勤设置。",
+      "openGroup": "打开排班组",
+      "version": "版本 {count, number}",
+      "from": "自 {date} 起",
+      "until": "至 {date} 之前",
+      "history": "已保存的政策版本",
+      "clock": "打卡",
+      "overtime": "加班",
+      "on": "开启",
+      "off": "关闭",
+      "minutes": "{count, number} 分钟",
+      "graceHelp": "此处显示已保存的排班组宽限时间。明确设置的班次宽限时间优先。",
+      "disabledHelp": "加班已关闭。相关选项仍会保存，但不生效。",
+      "manualHelp": "自动方式仍会保存。手动审批遵循申请中已记录的审批流程与方式。",
+      "bindings": "各日类型的中央方案",
+      "day": "日类型",
+      "minimum": "最低加班时长",
+      "maximum": "最高加班时长",
+      "pattern": "中央方案",
+      "uncapped": "无上限",
+      "unassigned": "未分配",
+      "bindingUnavailable": "已保存的方案不可用",
+      "patternVersion": "{name} · 版本 {count, number}",
+      "roundingStep": "{mode} · {count, number} 分钟",
+      "states": {
+        "scheduled": "待生效",
+        "earlier": "历史版本",
+        "current": "当前版本"
+      },
+      "pairings": {
+        "auto": "自动：完整的签到／签退配对",
+        "firstInLastOut": "首次签到、末次签退"
+      },
+      "approvals": {
+        "manual": "手动",
+        "auto": "自动"
+      },
+      "methods": {
+        "actual": "实际工时",
+        "preApproved": "预先批准工时",
+        "intersect": "实际与预先批准时段的交集"
+      },
+      "roundings": {
+        "none": "不舍入",
+        "down": "向下",
+        "up": "向上",
+        "nearest": "就近"
+      },
+      "fields": {
+        "pairing": "打卡配对方式",
+        "minimumInterval": "最短打卡间隔",
+        "lateGrace": "迟到宽限时间",
+        "earlyGrace": "早退宽限时间",
+        "skipIncomplete": "打卡不完整时跳过迟到计算",
+        "enabled": "启用加班",
+        "beforeShift": "班前加班",
+        "afterShift": "班后加班",
+        "unclocked": "无打卡记录的补报加班",
+        "midnight": "在午夜拆分",
+        "lateOffset": "一次性抵扣迟到时间",
+        "approval": "审批模式",
+        "autoMethod": "自动审批方式",
+        "rounding": "时长舍入"
+      },
+      "days": {
+        "normal": "正常工作日",
+        "off": "非工作日",
+        "rest": "休息日",
+        "publicHoliday": "公共假日",
+        "replacementHoliday": "补假日"
+      }
+    }
   },
   "systemTestingWorkspace": {
     "title": "系统测试",

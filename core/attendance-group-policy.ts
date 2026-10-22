@@ -1,16 +1,21 @@
 /** One dated execution-policy owner, shared by Schedule Groups and the Overtime workspace.
  * The group/shift catalogue remains tenant-wide; execution and formula bindings are per employer.
  * Saving here does not approve a request, recalculate attendance or transfer a payment. */
-import {and,asc,desc,eq,lte,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,inArray,lte,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {withAttendanceTenant} from './module-gate';
-import {attendanceGroupPolicyRevision,company} from '../db/schema';
+import {attendanceGroupPolicyRevision,attendanceRule,company,overtimePatternVersion,overtimePatternVersionCompany} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {attendanceGroupPolicyActivationDate,validateAttendanceGroupPolicy,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {overtimeDate,overtimeUuid} from '../lib/overtime-pattern-schema';
 
 export type AttendanceGroupPolicyVersion=typeof attendanceGroupPolicyRevision.$inferSelect;
+export type AttendanceGroupPolicyReview={
+ rule:{id:string;name:string;label:string|null};
+ history:AttendanceGroupPolicyVersion[];
+ patterns:{versionId:string;patternId:string;name:string;ordinal:number}[];
+};
 export type ResolvedAttendanceGroupPolicy={id:string;companyId:string;ruleId:string;ordinal:number;effectiveFrom:string;policy:AttendanceGroupPolicy};
 async function adminCompany(tx:Tx,ctx:SessionContext,companyId:string):Promise<void>{
  overtimeUuid(companyId,'companyId');
@@ -22,11 +27,39 @@ export async function attendanceGroupPolicyHistory(ctx:SessionContext,p:{company
  overtimeUuid(p.ruleId,'ruleId');
  return withAttendanceTenant(ctx,async tx=>{
   await adminCompany(tx,ctx,p.companyId);
-  const rows=await tx.select().from(attendanceGroupPolicyRevision).where(and(eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId),
-   eq(attendanceGroupPolicyRevision.companyId,p.companyId),eq(attendanceGroupPolicyRevision.ruleId,p.ruleId)))
-   .orderBy(asc(attendanceGroupPolicyRevision.ordinal)).limit(501);
-  if(rows.length>500)throw Error('This policy history exceeds the supported review limit.');
-  return rows.map(row=>({...row,policy:validateAttendanceGroupPolicy(row.policy,4320)}));
+  return historyTx(tx,ctx,p);
+ });
+}
+async function historyTx(tx:Tx,ctx:SessionContext,p:{companyId:string;ruleId:string}):Promise<AttendanceGroupPolicyVersion[]>{
+ const rows=await tx.select().from(attendanceGroupPolicyRevision).where(and(eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId),
+  eq(attendanceGroupPolicyRevision.companyId,p.companyId),eq(attendanceGroupPolicyRevision.ruleId,p.ruleId)))
+  .orderBy(asc(attendanceGroupPolicyRevision.ordinal)).limit(501);
+ if(rows.length>500)throw Error('This policy history exceeds the supported review limit.');
+ return rows.map(row=>({...row,policy:validateAttendanceGroupPolicy(row.policy,4320)}));
+}
+/** The central workspace reviews these same immutable group policies, not a copied rate table.
+ * Labels are joined only for the exact selected employer; a missing readable version stays unknown.
+ * This read neither schedules a policy nor recalculates/approves attendance. */
+export function attendanceGroupPolicyReview(ctx:SessionContext,p:{companyId:string;ruleId:string}):Promise<AttendanceGroupPolicyReview|null>{
+ overtimeUuid(p.ruleId,'ruleId');
+ return withAttendanceTenant(ctx,async tx=>{
+  await adminCompany(tx,ctx,p.companyId);
+  const [rule]=await tx.select({id:attendanceRule.id,name:attendanceRule.name,label:attendanceRule.label}).from(attendanceRule)
+   .where(and(eq(attendanceRule.id,p.ruleId),eq(attendanceRule.tenantId,ctx.tenantId))).limit(1);
+  if(!rule)return null;
+  const history=await historyTx(tx,ctx,p);
+  const ids=[...new Set(history.flatMap(row=>Object.values(row.policy.overtime.days).flatMap(day=>day.patternVersionId?[day.patternVersionId]:[])))];
+  const patterns=ids.length?await tx.select({versionId:overtimePatternVersion.id,patternId:overtimePatternVersion.patternId,
+   name:overtimePatternVersion.name,ordinal:overtimePatternVersion.ordinal}).from(overtimePatternVersion)
+   .innerJoin(overtimePatternVersionCompany,and(eq(overtimePatternVersionCompany.versionId,overtimePatternVersion.id),
+    eq(overtimePatternVersionCompany.tenantId,ctx.tenantId),eq(overtimePatternVersionCompany.companyId,p.companyId)))
+   .where(and(eq(overtimePatternVersion.tenantId,ctx.tenantId),inArray(overtimePatternVersion.id,ids),
+    sql`app.attendance_policy_principal_current() AND app.is_admin_for(${p.companyId}::uuid)`))
+   .orderBy(asc(overtimePatternVersion.patternId),asc(overtimePatternVersion.ordinal)):[];
+  // A current-authority refusal during this multi-statement read must not look like an empty
+  // history (legacy mode). Recheck before returning the composed review.
+  await adminCompany(tx,ctx,p.companyId);
+  return {rule,history,patterns};
  });
 }
 /** Internal canonical reader. The caller proves the subject's dated employer and resolved group;

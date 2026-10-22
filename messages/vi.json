@@ -20864,7 +20864,90 @@
     "starterDraftHelp": "Các mẫu tiêu chuẩn còn thiếu được thêm vào danh sách dưới dạng bản nháp riêng cho từng công ty. Mở bản nháp để chọn chính sách thời lượng, tiền tệ, ngày áp dụng, cơ sở đơn giá giờ và mã thu nhập. Các mẫu và phân công hiện có giữ nguyên cài đặt.",
     "starterUnassigned": "Chưa phân công",
     "starterFormula": "Đơn giá giờ × {multiplier} × số giờ được trả. Cần cấu hình cơ sở đơn giá giờ và số giờ được trả trước khi tính số tiền.",
-    "starterZeroHelp": "Hệ số bằng không không miễn các kiểm tra mức thanh toán tối thiểu theo quốc gia hoặc chính sách áp dụng."
+    "starterZeroHelp": "Hệ số bằng không không miễn các kiểm tra mức thanh toán tối thiểu theo quốc gia hoặc chính sách áp dụng.",
+    "policyReview": {
+      "title": "Chính sách nhóm lịch",
+      "description": "Xem các lựa chọn chấm công và làm thêm đã lưu cho một công ty và nhóm lịch. Công thức và mức trả vẫn do mẫu trung tâm quản lý.",
+      "company": "Công ty",
+      "group": "Nhóm lịch",
+      "chooseCompany": "Chọn công ty",
+      "chooseGroup": "Chọn nhóm",
+      "review": "Xem chính sách",
+      "chooseHelp": "Chọn công ty và nhóm lịch để xem lịch sử chính sách đã lưu.",
+      "unavailable": "Không tải được chính sách đã lưu. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "legacy": "Công ty và nhóm này chưa lưu chính sách có ngày hiệu lực. Tiếp tục dùng thiết lập chấm công hiện có.",
+      "openGroup": "Mở nhóm lịch",
+      "version": "Phiên bản {count, number}",
+      "from": "Từ {date}",
+      "until": "Trước {date}",
+      "history": "Các phiên bản chính sách đã lưu",
+      "clock": "Chấm công",
+      "overtime": "Làm thêm giờ",
+      "on": "Bật",
+      "off": "Tắt",
+      "minutes": "{count, number} phút",
+      "graceHelp": "Đây là thời gian ân hạn đã lưu của nhóm. Thời gian ân hạn được đặt riêng cho ca có ưu tiên cao hơn.",
+      "disabledHelp": "Làm thêm giờ đang tắt. Các lựa chọn liên quan vẫn được lưu nhưng không có hiệu lực.",
+      "manualHelp": "Phương thức Tự động vẫn được lưu. Phê duyệt Thủ công theo quy trình và phương thức đã ghi trong yêu cầu.",
+      "bindings": "Mẫu trung tâm theo loại ngày",
+      "day": "Loại ngày",
+      "minimum": "Thời gian làm thêm tối thiểu",
+      "maximum": "Thời gian làm thêm tối đa",
+      "pattern": "Mẫu trung tâm",
+      "uncapped": "Không giới hạn tối đa",
+      "unassigned": "Chưa gán",
+      "bindingUnavailable": "Mẫu đã lưu không khả dụng",
+      "patternVersion": "{name} · phiên bản {count, number}",
+      "roundingStep": "{mode} · {count, number} phút",
+      "states": {
+        "scheduled": "Đã lên lịch",
+        "earlier": "Phiên bản trước",
+        "current": "Phiên bản hiện tại"
+      },
+      "pairings": {
+        "auto": "Tự động: các cặp Vào/Ra hoàn chỉnh",
+        "firstInLastOut": "Vào đầu tiên, ra cuối cùng"
+      },
+      "approvals": {
+        "manual": "Thủ công",
+        "auto": "Tự động"
+      },
+      "methods": {
+        "actual": "Giờ thực tế",
+        "preApproved": "Giờ được duyệt trước",
+        "intersect": "Thời gian giao nhau giữa thực tế và duyệt trước"
+      },
+      "roundings": {
+        "none": "Không làm tròn",
+        "down": "Xuống",
+        "up": "Lên",
+        "nearest": "Gần nhất"
+      },
+      "fields": {
+        "pairing": "Ghép cặp chấm công",
+        "minimumInterval": "Khoảng cách chấm công tối thiểu",
+        "lateGrace": "Ân hạn đi muộn",
+        "earlyGrace": "Ân hạn về sớm",
+        "skipIncomplete": "Bỏ qua đi muộn khi chấm công chưa đủ",
+        "enabled": "Bật làm thêm giờ",
+        "beforeShift": "Làm thêm trước ca",
+        "afterShift": "Làm thêm sau ca",
+        "unclocked": "Làm thêm hồi tố không có chấm công",
+        "midnight": "Tách lúc nửa đêm",
+        "lateOffset": "Bù trừ đi muộn một lần",
+        "approval": "Chế độ phê duyệt",
+        "autoMethod": "Phương thức phê duyệt tự động",
+        "rounding": "Làm tròn thời lượng"
+      },
+      "days": {
+        "normal": "Ngày thường",
+        "off": "Ngày không làm việc",
+        "rest": "Ngày nghỉ hằng tuần",
+        "publicHoliday": "Ngày lễ",
+        "replacementHoliday": "Ngày nghỉ lễ bù"
+      }
+    }
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",
