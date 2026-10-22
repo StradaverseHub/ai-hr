@@ -77,7 +77,7 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
-  it('includes actual signed one-off pay-item lines instead of treating complete recurring itemization as a zero',async()=>{
+  it('counts a generated one-off deduction once using its canonical component amount, preserving the separate signed record',async()=>{
     const f=await fixture({typed:true});
     await setModule(b.tenantId,'individual_txn_pay','active');
     ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
@@ -95,14 +95,16 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     for(const row of before.results){
       expect(row.statutory).toMatchObject({recordLines:expect.arrayContaining([expect.objectContaining({code:'DEDUCTION',
         amount:row.batchId===f.previous.batchId?-10.10:-10.11,nonPayable:false})])});
+      expect(row.statutory).toMatchObject({componentLines:expect.arrayContaining([expect.objectContaining({code:'DEDUCTION',
+        amount:row.batchId===f.previous.batchId?10.10:10.11})])});
     }
     const view=await run(f.report.id),exported=await run(f.report.id,'export');
     expect(view.result.available).toBe(true);expect(view.result.rows).toHaveLength(1);
-    expect(view.result.rows[0]).toMatchObject({previous:'-10.10',current:'-10.11',variance:'-0.01',currency:'MYR'});
+    expect(view.result.rows[0]).toMatchObject({previous:'10.10',current:'10.11',variance:'0.01',currency:'MYR'});
     expect(exported.result.rows).toEqual(view.result.rows);
     const file=await serializePayrollComparison(exported,'xlsx'),book=XLSX.read(file.bytes,{type:'array'});
     expect(XLSX.utils.sheet_to_json(book.Sheets.Details)).toEqual([expect.objectContaining({
-      'Previous amount':-10.10,'Current amount':-10.11,Variance:-0.01})]);
+      'Previous amount':10.10,'Current amount':10.11,Variance:0.01})]);
     expect(await payrollSnapshot()).toEqual(before);
   });
   it('compares another recorded pay item to the cent without substituting later compensation', async () => {
