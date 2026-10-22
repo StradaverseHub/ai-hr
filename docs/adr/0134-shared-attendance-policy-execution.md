@@ -272,3 +272,19 @@ and independent financial replay still remain required before release.
   denials and unknown-evidence refusals; finish six-locale/mobile/keyboard/light/dark app journeys.
 - [ ] Finish migration rehearsals, strict TypeScript, the required authentic gate, official release and
   production arrival/health checks before marking either board item deployed.
+
+## Positioned source inputs
+
+The canonical execution-context reader now supplies a positioned schedule projection through the same
+clock anchor used by Attendance. The existing OT-window owner exposes its own window bounds; its legacy
+count arithmetic is unchanged. Fixed unpaid break windows must account exactly for the recorded break
+count. A scalar or flexible allowance is not given fictional clock placement, and adjusted/capped shift
+windows remain unavailable until their separate count-attribution contract is implemented.
+
+The canonical snapshot consumes the exact millisecond clock review and this schedule projection to
+retain closed worked coverage, selected before/after eligibility, unpaid windows and measured late/early
+figures. The effective shift/group grace and the existing include-grace rules determine measured lateness
+placement; the downstream duration owner still applies its single break-aware offset. The projection is
+included in input freshness and immutable refused evidence. It never approves work, creates parts or
+payment lines, or changes legacy raw attendance. Complete canonical execution, immutable final-effect
+receipts, count attribution and independent Payroll/TOIL replay are still required before transfer.

@@ -1,3 +1,5 @@
+import {attendancePolicySchedulePlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
+import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 import {isCalendarDate} from '../lib/calendar-date';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
@@ -533,10 +535,7 @@ type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: nu
  *
  *  `cutoffAbs` NULL (every shift today, and every shift that leaves the box off) ⇒ the original expression,
  *  byte for byte. */
-const anchorToShift = (minutes: number, shiftStartAbs: number, cutoffAbs?: number | null): number => {
-  if (cutoffAbs != null) return minutes < cutoffAbs ? minutes + MINS_PER_DAY : minutes;
-  return minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
-};
+// The unchanged placement rule is shared with the OT-window and dated-policy owners.
 
 /** b8aa3466 — the four-way weekly row, resolved for one ISO weekday.
  *
@@ -4561,7 +4560,7 @@ export type AttendancePolicyExecutionContext=
     schedule:{source:ResolvedSchedule['source'];shiftId:string|null;ruleId:string;start:string|null;end:string|null;
       crossesMidnight:boolean;dailyCutoffMinutes:number|null;durationOnly:boolean;flexiDuration:boolean;
       normalMinutes:number;breakMinutes:number;breakPeriods:BreakPeriod[]|null;flexibleBreakMinutes:number|null};
-    calendar:PolicyCalendarProof[]};
+    calendar:PolicyCalendarProof[];placement:PolicySchedulePlacement};
 
 /** Selection seam for the canonical calculation writer. No form-supplied company/group/policy ID.
  * This is live input, not final-effect authority or an immutable receipt: the writer must freeze its
@@ -4594,7 +4593,11 @@ export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContex
     schedule:{source:schedule.source,shiftId:schedule.displayShiftId??null,ruleId:schedule.rule.id,start:schedule.scheduledStart,end:schedule.scheduledEnd,
       crossesMidnight:schedule.crossesMidnight,dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
       normalMinutes:schedule.normalMinutesOverride??schedule.scheduledMinutes,breakMinutes:schedule.breakMinutes,
-      breakPeriods:schedule.breakPeriods?.map(row=>({...row}))??null,flexibleBreakMinutes:schedule.flexibleBreakMinutes},calendar};
+      breakPeriods:schedule.breakPeriods?.map(row=>({...row}))??null,flexibleBreakMinutes:schedule.flexibleBreakMinutes},calendar,
+    placement:attendancePolicySchedulePlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
+      dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      breakMinutes:schedule.breakMinutes,breakPeriods:schedule.breakPeriods,flexibleBreakMinutes:schedule.flexibleBreakMinutes,otWindows:schedule.otWindows,
+      includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false},selected.policy)};
 }
 
 /** Canonical date facts for attendance allowance previews. No measurement is recomputed here.

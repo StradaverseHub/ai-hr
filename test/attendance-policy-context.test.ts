@@ -103,6 +103,7 @@ describe('dated-policy raw writer routing',()=>{
   // absolute midnight placement or turn a scalar approval into captured work.
   expect(snapshot.policyClockSource).toEqual({state:'unavailable',authority:'sourceOnly',reason:'missingCapture'});
   expect(snapshot.policyClockReview).toEqual({state:'unavailable',authority:'proposalOnly',reason:'sourceUnavailable'});
+  expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'clockEvidenceUnavailable'});
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
    versionId:null,assignmentId:null,outcome:'refused',durationOutcome:'refused',transferable:false,payableNumerator:null,payableDenominator:null});
@@ -150,7 +151,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(after.policyExecutionContext).toEqual({state:'unavailable',reason:'scheduleUnavailable'});
   expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);
   const stored=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
-  expect(stored?.evidence?.evidence).toMatchObject({policyExecutionContext:before.policyExecutionContext});
+  expect(stored?.evidence?.evidence).toMatchObject({policyExecutionContext:before.policyExecutionContext,policyWorkInput:before.policyWorkInput});
   expect(await row(f.employmentId,day(1))).toEqual(rawBefore);
  });
  it('does not apply another employer policy merely because both employers share a Schedule Group',async()=>{
