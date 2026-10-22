@@ -1,15 +1,15 @@
 /** Routing fence for the unfinished dated-policy execution owner. A configured policy must not
  * silently inherit an unrelated formula assignment or legacy overtime. This read cannot approve,
  * calculate or settle work. It uses the saved Attendance schedule and dated Personnel employer. */
-import {and,asc,eq,lte,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,inArray,isNotNull,lte,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {attendance,attendanceGroupPolicyRevision} from '../../db/schema';
+import {attendance,attendanceCorrection,attendanceGroupPolicyRevision} from '../../db/schema';
 import {isAttendanceTrace} from '../../core/attendance-trace';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 
-export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'policy';selected:ResolvedAttendanceGroupPolicy};
+export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'legacyApplication';applicationId:string}|{state:'policy';selected:ResolvedAttendanceGroupPolicy};
 export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<RecordedAttendanceGroupPolicySelection>{
  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
  const current=async()=>{
@@ -27,6 +27,19 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
  const proof=(await provenCompanyDatesTx(tx,[p])).get(p.employmentId+'|'+p.date);
  if(ruleId&&proof?.companyId&&!proof.reason){
   const selected=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:proof.companyId,ruleId,date:p.date});
+  if(selected){
+   // Existing submitted work keeps its original approval contract. Choose the SAME effective
+   // approved request (or pending request if none is approved) as the legacy landing owner; an
+   // older superseded approval must not keep a newer application in legacy mode forever.
+   const [application]=await tx.select({id:attendanceCorrection.id,
+    predatesPolicy:sql<boolean>`${attendanceCorrection.createdAt}<${attendanceGroupPolicyRevision.createdAt}`})
+    .from(attendanceCorrection).innerJoin(attendanceGroupPolicyRevision,and(eq(attendanceGroupPolicyRevision.id,selected.id),eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId)))
+    .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
+     eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))
+    .orderBy(sql`case when ${attendanceCorrection.status}='approved' then 0 else 1 end`,desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);
+   await current();
+   if(application?.predatesPolicy)return {state:'legacyApplication',applicationId:application.id};
+  }
   await current();
   return selected?{state:'policy',selected}:{state:'none'};
  }
@@ -41,5 +54,6 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
 }
 
 export async function hasRecordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
- return (await recordedAttendanceGroupPolicyTx(tx,ctx,p)).state!=='none';
+ const selected=await recordedAttendanceGroupPolicyTx(tx,ctx,p);
+ return selected.state==='policy'||selected.state==='unavailable';
 }

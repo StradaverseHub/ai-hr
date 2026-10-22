@@ -305,3 +305,11 @@ the existing formula/company and earning-item owners. Exact definitions, activat
 JSON-safe earning-reference stamps join configuration freshness and immutable refused evidence. Missing,
 inactive, foreign, incompatible-currency and unavailable earning references stay explicit. This is a
 source projection, not a replacement assignment, complete part set, independent replay or payment proof.
+
+An OT-bearing application submitted before the selected policy was enabled retains its original
+approval/landing contract. Selection uses the same effective approved request, or pending request in
+its absence, as the canonical legacy owner and compares submission/activation instants in PostgreSQL.
+An older superseded approval cannot force a newer request into legacy mode. This branch is derived
+from actual immutable request history, never a form flag; requests submitted after activation still
+enter the refused policy boundary until the new final-effect contract is complete. It does not rewrite
+an old approval, create a policy receipt, or infer approved physical windows from display labels.

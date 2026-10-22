@@ -170,6 +170,37 @@ describe('dated-policy raw writer routing',()=>{
   expect(await detected(f.employmentId,day(1))).toBe(true);
   await expect(withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}))).rejects.toMatchObject({code:'unavailable'});
  });
+ it('preserves a plan approved before policy activation under its original owner and frozen method',async()=>{
+  const f=await fixture();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
+   reason:'Fictional pre-policy approved plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const [before]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  await f.save();await clock(f.employmentId,day(1));
+  const [after]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  expect(after).toMatchObject({status:'approved',otApprovalMethod:before.otApprovalMethod,decidedAt:before.decidedAt,decidedByEmploymentId:before.decidedByEmploymentId});
+  expect(after.appliedAt).not.toBeNull();expect(await detected(f.employmentId,day(1))).toBe(false);
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toBeUndefined();
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.attendanceGroupPolicy).toBeUndefined();expect(snapshot.input.approval.status).toBe('approved');
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation)).toEqual([]);
+ });
+ it('does not let an older approval exempt a newer application from the dated policy contract',async()=>{
+  const f=await fixture();
+  const old=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
+   reason:'Fictional original legacy plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:old.correctionId,decision:'approved'});
+  const revision=await f.save();await clock(f.employmentId,day(1));
+  expect(await detected(f.employmentId,day(1))).toBe(false);
+  const next=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
+   reason:'Fictional new policy application',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:next.correctionId,decision:'approved'});
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.attendanceGroupPolicy?.id).toBe(revision.id);
+  const [original]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
+  expect(original.status).toBe('approved');expect(original.appliedAt).not.toBeNull();
+ });
  it('reasserts an already approved scalar plan without turning it into policy execution evidence',async()=>{
   const f=await fixture();await f.save();
   const requested=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
