@@ -104,6 +104,22 @@ available for designated replacement holidays; final-effect receipt extensions n
 workflow. Existing canonical owners must settle those facts. Do not invent missing historical evidence
 or weaken their guards to get a successful calculation.
 
+## Persisted standard starting entries
+
+The workspace initializes missing standard entries through an authenticated POST after mount, under
+its existing configuration lock and current company authority. A rendering GET or link prefetch does
+not write configuration. Each tenant/company/starter tuple has a stable namespaced UUID and code.
+Repeated visits and concurrent tabs create the same four identities; subsequent edits and archival
+are retained. A collision refuses atomically rather than adopting or rewriting an existing pattern.
+
+The initial version stores an exact, explicitly tagged starting-draft document, **not** an executable
+formula with guessed accumulation, attribution, currency, eligibility or divisor. The editor asks HR
+for both duration choices before constructing the normal typed draft, then saves that definition
+through the existing draft owner with the original identity and expected revision. Existing activation
+validation rejects the starting document. No activation, assignment, policy binding, attendance, pay
+or historical version is created by initialization. Each new draft and its actual actor are audited
+in the same transaction. Database/lifecycle and actual-app verification remain required.
+
 ## Required implementation and evidence
 
 - [ ] Map each approved control to its stored owner, execution consumer, preview and immutable trace.

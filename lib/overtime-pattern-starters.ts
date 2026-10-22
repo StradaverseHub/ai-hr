@@ -12,6 +12,21 @@ export const OVERTIME_STARTERS=[
 export type OvertimeStarterKey=typeof OVERTIME_STARTERS[number]['key'];
 export function overtimeStarter(key:unknown){return OVERTIME_STARTERS.find(item=>item.key===key)??null;}
 
+/** A saved starting entry is deliberately not a calculation definition. It cannot validate or
+ * activate until HR chooses both duration policies and supplies the remaining formula inputs. */
+export type OvertimeStarterSeed={v:1;draftKind:'standardOvertimeStarter';starterKey:OvertimeStarterKey};
+export function overtimeStarterSeed(key:OvertimeStarterKey):OvertimeStarterSeed{
+ if(!overtimeStarter(key))overtimeRefuse('invalid','starter','Choose a supported starter.');
+ return {v:1,draftKind:'standardOvertimeStarter',starterKey:key};
+}
+export function readOvertimeStarterSeed(raw:unknown):OvertimeStarterKey|null{
+ if(!raw||typeof raw!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(raw)))return null;
+ const descriptors=Object.getOwnPropertyDescriptors(raw);
+ if(Reflect.ownKeys(raw).length!==3||Object.values(descriptors).some(d=>!('value' in d)))return null;
+ if(descriptors.v?.value!==1||descriptors.draftKind?.value!=='standardOvertimeStarter')return null;
+ return overtimeStarter(descriptors.starterKey?.value)?.key??null;
+}
+
 /** HR still chooses accumulation and attribution before preparing any typed draft. Currency,
  * day eligibility, divisor and earning mapping stay incomplete until configured through the editor.
  * All four drafts (including zero) must pass the existing activation and transfer checks. */

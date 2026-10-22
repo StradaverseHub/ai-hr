@@ -4,11 +4,12 @@ import { payComponentReferenceStamp } from '../../lib/pay-component-contract';
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lt,lte,or,sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../../db/client';
-import {actorOf,appendEvent} from '../../db/events';
+import {actorOf,appendEvent,appendEvents} from '../../db/events';
 import * as s from '../../db/schema';
 import {assertModuleGate,withAttendanceTenant} from '../../core/module-gate';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {labelUsableByCompany,visibleLabelIdsCondition} from '../../core/system-labels';
+import {OVERTIME_STARTERS,overtimeStarterSeed} from '../../lib/overtime-pattern-starters';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {isCalendarDate} from '../../lib/calendar-date';
 import {currencyMinorScale} from '../../lib/currencies';
@@ -118,6 +119,44 @@ export function listOvertimePatterns(ctx:SessionContext,p:{companyIds?:string[];
  const matches=await tx.execute(sql`select v.id from overtime_pattern_version v join overtime_pattern on overtime_pattern.id=v.pattern_id where overtime_pattern.id=${row.id}::uuid and ${versionCondition} order by v.ordinal desc limit 1`) as unknown as {id:string}[];
  const matching=matches[0]?await versionRow(tx,ctx,matches[0].id):null;items.push({...row,latestVersion:latest?await versionView(tx,latest):null,matchingVersion:matching?await versionView(tx,matching):null,writable:await patternWritable(tx,ctx,row)});}return {items,nextCursor:hasMore?items.at(-1)!.id:null};
  });}
+/** Stable, company-bound seed identities survive edits and archival. They never identify an
+ * assignment or authorize a calculation. The namespace is local to this initialization contract. */
+function starterIdentity(tenantId:string,companyId:string,key:string){
+ const bytes=createHash('sha256').update(`aihr:overtime-standard-draft:v1:${tenantId}:${companyId}:${key}`).digest();
+ bytes[6]=(bytes[6]&15)|128;bytes[8]=(bytes[8]&63)|128;
+ const hex=bytes.subarray(0,16).toString('hex');
+ return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+/** The workspace invokes this as an authenticated mutation, never while rendering/prefetching GET.
+ * Only missing entries are created. Existing edits, versions, assignments and archives are untouched. */
+export function ensureOvertimePatternStarters(ctx:SessionContext,p:{companyIds:string[]}){return withAttendanceTenant(ctx,async tx=>{
+ await lockConfiguration(tx,ctx);await configurationReader(tx);
+ if(!p||!Array.isArray(p.companyIds))fail('invalid','Choose the companies for these starting drafts.');
+ const companies=await administerCompanies(tx,ctx,bounded(p.companyIds,500));
+ const seeds=companies.flatMap(company=>OVERTIME_STARTERS.map(starter=>({
+  id:starterIdentity(ctx.tenantId,company.id,starter.key),companyId:company.id,starter,
+  code:`STD_${starter.key.toUpperCase()}_${company.id}`,
+ })));
+ const existing=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),inArray(s.overtimePattern.id,seeds.map(seed=>seed.id))));
+ const byId=new Map(existing.map(row=>[row.id,row]));
+ for(const seed of seeds){const row=byId.get(seed.id);if(row&&(row.kind!=='formula'||row.creationCompanyId!==seed.companyId||row.code!==seed.code))fail('conflict','A standard starting identity is already occupied. Existing configuration was not changed.');}
+ const missing=seeds.filter(seed=>!byId.has(seed.id));
+ if(!missing.length)return {created:0};
+ const created=await tx.insert(s.overtimePattern).values(missing.map(seed=>({id:seed.id,tenantId:ctx.tenantId,kind:'formula' as const,code:seed.code,creationCompanyId:seed.companyId,revision:2}))).onConflictDoNothing().returning({id:s.overtimePattern.id});
+ if(created.length!==missing.length)fail('conflict','A standard starting code is already occupied. Existing configuration was not changed.');
+ const versions=await tx.insert(s.overtimePatternVersion).values(missing.map(seed=>{
+  const definition=overtimeStarterSeed(seed.starter.key),name=seed.starter.name,description='';
+  return {tenantId:ctx.tenantId,patternId:seed.id,kind:'formula' as const,creationCompanyId:seed.companyId,
+   ordinal:1,name,description,definition,digest:digest({name,description,definition,companyIds:[seed.companyId]})};
+ })).returning();
+ await tx.insert(s.overtimePatternVersionCompany).values(versions.map(version=>({tenantId:ctx.tenantId,versionId:version.id,companyId:version.creationCompanyId!})));
+ await appendEvents(tx,versions.map(version=>({tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:version.patternId,
+  eventType:'overtime.draft.saved',actor:actorOf(ctx),payload:{versionId:version.id,ordinal:version.ordinal,revision:version.revision,
+   digest:version.digest,companyIds:[version.creationCompanyId],starterKey:version.definition.starterKey,
+   reason:'Initialize missing standard starting draft'}})));
+ return {created:created.length};
+ });}
+
 export function saveOvertimePatternDraft(ctx:SessionContext,p:{patternId?:string;versionId?:string;expectedRevision?:number;draft:OvertimePatternDraft}){return withAttendanceTenant(ctx,async tx=>{
  await lockConfiguration(tx,ctx);const draft=p.draft,code=text(draft.code,64),name=text(draft.name,160),description=draft.description??'';if(description.length>2000)fail('invalid','Description exceeds 2,000 characters.');const definition=draftStructure(draft.definition),companies=await administerCompanies(tx,ctx,bounded(draft.companyIds,100));await administerCompanies(tx,ctx,[draft.creationCompanyId]);await validateReferencesTx(tx,ctx,definition,companies.map(c=>c.id));
  let pattern:typeof s.overtimePattern.$inferSelect;if(p.patternId){pattern=await patternRow(tx,ctx,p.patternId,true);if(pattern.kind!=='formula'||pattern.code!==code||pattern.creationCompanyId!==draft.creationCompanyId||pattern.archivedAt)fail('invalid','Keep the saved pattern identity and creation company.');if(!(await patternWritable(tx,ctx,pattern)))fail('permission','You cannot change every company affected by this pattern.');}else{[pattern]=await tx.insert(s.overtimePattern).values({tenantId:ctx.tenantId,kind:'formula',code,creationCompanyId:draft.creationCompanyId}).returning();}

@@ -20857,7 +20857,11 @@
     "transferConflictHelp": "This day already has an incompatible cash or time off in lieu settlement. Review the existing settlement before choosing another payment.",
     "standardStarters": "Standard starting patterns",
     "prepareStarter": "Prepare draft",
-    "starterHelp": "Choose the company, currency, day eligibility, hourly basis and earning code before activation. These starters are unassigned; rate names do not establish a statutory payment formula."
+    "starterHelp": "Choose the company, currency, day eligibility, hourly basis and earning code before activation. These starters are unassigned; rate names do not establish a statutory payment formula.",
+    "starterPreparing": "Preparing missing standard drafts…",
+    "starterPreparationFailed": "The standard drafts could not be prepared. Your existing patterns are unchanged.",
+    "retryStarterPreparation": "Try again",
+    "starterDraftHelp": "Missing standard patterns are added to the list as separate company drafts. Open a draft to choose its duration policies, currency, applicable days, hourly basis and earning code. Existing patterns and assignments keep their settings."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",

@@ -17,6 +17,7 @@ vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({saveO
 import {OvertimeWorkspace} from '../components/overtime-patterns/workspace';
 import {ConditionControl,ExpressionControl} from '../components/overtime-patterns/rule-controls';
 import {overtimeMoneyText,OvertimeCalculationResult} from '../components/overtime-patterns/calculation-result';
+import {overtimeStarterSeed} from '../lib/overtime-pattern-starters';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {__resetUnsavedGuards} from '../lib/unsaved-changes';
 
@@ -56,6 +57,26 @@ describe('typed Overtime Pattern editing',()=>{
   expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
  });
 
+ it('reopens a saved starting entry without guessing policies and saves into the original version',async()=>{
+  const item=detail();item.versions[0].definition=overtimeStarterSeed('ot00');item.versions[0].name='OT 0.0';
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);
+  expect(screen.queryByText(words.malformedDraft)).toBeNull();
+  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');
+  expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'session'}});
+  fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'latest'}});
+  fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
+  expect(screen.getByLabelText(words.code)).toHaveValue('SYNTH-OT');
+  expect(screen.getByLabelText(words.name)).toHaveValue('OT 0.0');
+  fireEvent.change(screen.getByLabelText(words.currency),{target:{value:'MYR'}});
+  fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
+  const sent=mocks.save.mock.calls[0][0];
+  expect(sent).toMatchObject({patternId,versionId,expectedRevision:7,draft:{code:'SYNTH-OT',creationCompanyId:companyId,companyIds:[companyId],definition:{eligibilityBasis:'session',durationAllocation:'latest'}}});
+  expect(sent.draft.definition.rates[0].tiers[0].payment.multiplier.value).toBe('0');
+  expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
+ });
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows all seven translated sections in %s',locale=>{
   const errors:unknown[]=[];
   render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup}/></NextIntlClientProvider>);

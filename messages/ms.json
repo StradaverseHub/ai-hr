@@ -20857,7 +20857,11 @@
     "transferConflictHelp": "Hari ini sudah mempunyai penyelesaian tunai atau cuti gantian yang tidak serasi. Semak penyelesaian sedia ada sebelum memilih bayaran lain.",
     "standardStarters": "Corak permulaan standard",
     "prepareStarter": "Sediakan draf",
-    "starterHelp": "Pilih syarikat, mata wang, kelayakan hari, asas kadar sejam dan kod pendapatan sebelum pengaktifan. Corak permulaan ini belum ditugaskan; nama kadar bukan formula bayaran berkanun."
+    "starterHelp": "Pilih syarikat, mata wang, kelayakan hari, asas kadar sejam dan kod pendapatan sebelum pengaktifan. Corak permulaan ini belum ditugaskan; nama kadar bukan formula bayaran berkanun.",
+    "starterPreparing": "Menyediakan draf standard yang belum ada…",
+    "starterPreparationFailed": "Draf standard tidak dapat disediakan. Corak sedia ada anda tidak berubah.",
+    "retryStarterPreparation": "Cuba lagi",
+    "starterDraftHelp": "Corak standard yang belum ada ditambah ke senarai sebagai draf berasingan bagi setiap syarikat. Buka draf untuk memilih dasar tempoh, mata wang, hari yang berkenaan, asas kadar sejam dan kod pendapatan. Corak dan penetapan sedia ada mengekalkan tetapannya."
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",

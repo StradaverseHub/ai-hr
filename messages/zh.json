@@ -20857,7 +20857,11 @@
     "transferConflictHelp": "当天已有不兼容的现金或补休结算。选择其他付款前，请审核现有结算。",
     "standardStarters": "标准起始方案",
     "prepareStarter": "准备草稿",
-    "starterHelp": "启用前请选择公司、币种、适用日、时薪基数和收入代码。这些起始方案尚未分配；费率名称不代表法定付款公式。"
+    "starterHelp": "启用前请选择公司、币种、适用日、时薪基数和收入代码。这些起始方案尚未分配；费率名称不代表法定付款公式。",
+    "starterPreparing": "正在准备缺少的标准草稿…",
+    "starterPreparationFailed": "无法准备标准草稿。现有模式未作更改。",
+    "retryStarterPreparation": "重试",
+    "starterDraftHelp": "缺少的标准模式会作为各公司的独立草稿加入列表。打开草稿以选择时长政策、货币、适用日期、时薪计算基准及收入代码。现有模式和分配保留原有设置。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",

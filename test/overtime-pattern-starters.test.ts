@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {OVERTIME_STARTERS,overtimeStarter,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
+import {OVERTIME_STARTERS,overtimeStarter,prepareOvertimeStarter,overtimeStarterSeed,readOvertimeStarterSeed} from '../lib/overtime-pattern-starters';
 import {validateOvertimePattern,validateOvertimePatternDraft} from '../lib/overtime-pattern-schema';
 
 describe('standard overtime starting configurations',()=>{
@@ -19,6 +19,21 @@ describe('standard overtime starting configurations',()=>{
   expect(draft.currency.code).toBe('');
   expect(draft.rates[0].tiers[0].mapping).toEqual({earningItemId:'',currency:''});
   expect(draft.eligibility).toEqual({id:'eligibility',type:'group',logic:'and',children:[]});
+ });
+ it.each(OVERTIME_STARTERS)('$name persists as a non-executable starting document with no invented duration policy',starter=>{
+  const seed=overtimeStarterSeed(starter.key);
+  expect(readOvertimeStarterSeed(seed)).toBe(starter.key);
+  expect(Object.keys(seed).sort()).toEqual(['draftKind','starterKey','v']);
+  expect(()=>validateOvertimePatternDraft(seed)).toThrow();
+  expect(()=>validateOvertimePattern(seed)).toThrow();
+ });
+ it('does not mistake malformed or executable documents for a standard starter',()=>{
+  for(const raw of [null,[],{v:1,draftKind:'standardOvertimeStarter',starterKey:'missing'},
+   {...overtimeStarterSeed('ot15'),rates:[]},{...overtimeStarterSeed('ot15'),v:2},
+   prepareOvertimeStarter('ot15','day','earliest')])expect(readOvertimeStarterSeed(raw)).toBeNull();
+  const getter=Object.defineProperty({...overtimeStarterSeed('ot15')},'starterKey',{get(){throw Error('Never execute a getter');}});
+  expect(readOvertimeStarterSeed(getter)).toBeNull();
+  expect(readOvertimeStarterSeed({...overtimeStarterSeed('ot15'),[Symbol('extra')]:true})).toBeNull();
  });
  it('does not share mutable formula state between companies or calls',()=>{
   const first=prepareOvertimeStarter('ot15','day','earliest');

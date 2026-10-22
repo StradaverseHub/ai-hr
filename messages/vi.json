@@ -20857,7 +20857,11 @@
     "transferConflictHelp": "Ngày này đã có khoản thanh toán tiền hoặc nghỉ bù không tương thích. Kiểm tra khoản đã ghi nhận trước khi chọn thanh toán khác.",
     "standardStarters": "Mẫu khởi đầu tiêu chuẩn",
     "prepareStarter": "Chuẩn bị bản nháp",
-    "starterHelp": "Chọn công ty, tiền tệ, ngày đủ điều kiện, cơ sở tính theo giờ và mã thu nhập trước khi kích hoạt. Các mẫu khởi đầu chưa được phân công; tên mức giá không xác lập công thức thanh toán theo luật định."
+    "starterHelp": "Chọn công ty, tiền tệ, ngày đủ điều kiện, cơ sở tính theo giờ và mã thu nhập trước khi kích hoạt. Các mẫu khởi đầu chưa được phân công; tên mức giá không xác lập công thức thanh toán theo luật định.",
+    "starterPreparing": "Đang chuẩn bị các bản nháp tiêu chuẩn còn thiếu…",
+    "starterPreparationFailed": "Không thể chuẩn bị bản nháp tiêu chuẩn. Các mẫu hiện có của bạn không thay đổi.",
+    "retryStarterPreparation": "Thử lại",
+    "starterDraftHelp": "Các mẫu tiêu chuẩn còn thiếu được thêm vào danh sách dưới dạng bản nháp riêng cho từng công ty. Mở bản nháp để chọn chính sách thời lượng, tiền tệ, ngày áp dụng, cơ sở đơn giá giờ và mã thu nhập. Các mẫu và phân công hiện có giữ nguyên cài đặt."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",

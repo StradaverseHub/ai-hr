@@ -5,7 +5,7 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Field,inputCls,btnPrimary} from '@/components/ui';
 import {AttendanceSettingsNavigation} from '@/components/attendance-settings-navigation';
-import {overtimeStarter,prepareOvertimeStarter,type OvertimeStarterKey} from '@/lib/overtime-pattern-starters';
+import {overtimeStarter,prepareOvertimeStarter,readOvertimeStarterSeed,type OvertimeStarterKey} from '@/lib/overtime-pattern-starters';
 import {validateOvertimePatternDraft} from '@/lib/overtime-pattern-schema';
 import {OvertimePatternError} from '@/lib/overtime-pattern-model';
 import type {OvertimePattern,OvertimeAssignmentTarget,OvertimeIssue} from '@/lib/overtime-pattern-model';
@@ -27,12 +27,14 @@ export function OvertimeWorkspace(props:WorkspaceProps) {
   const t=useTranslations('overtimePatterns');
   if(props.detail?.pattern.kind==='legacy')return <p className="rounded-lg border border-border p-4 text-sm">{t('legacyHelp')} <a className="text-primary underline" href="/admin/attendance/schedule">{t('legacyLink')}</a></p>;
   if(!props.version)return <NewOvertimePreparation {...props}/>;
+  const seed=readOvertimeStarterSeed(props.version.definition);
+  if(seed&&!props.version.activatedAt)return <NewOvertimePreparation {...props} starterKey={seed}/>;
   let initialDefinition:OvertimePattern;
   try {initialDefinition=validateOvertimePatternDraft(props.version.definition);}
   catch {return <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm">{t('malformedDraft')}</p>;}
   return <EditableOvertimeWorkspace {...props} initialDefinition={initialDefinition}/>;
 }
-/** No typed policy exists until HR makes both required choices. Preparing does not create a record. */
+/** A saved starter remains non-executable until HR makes both required choices. Preparing is local. */
 function NewOvertimePreparation(props:WorkspaceProps) {
   const t=useTranslations('overtimePatterns');
   const [basis,setBasis]=useState<OvertimePattern['eligibilityBasis']|''>('');
