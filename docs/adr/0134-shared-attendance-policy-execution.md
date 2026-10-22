@@ -308,7 +308,9 @@ source projection, not a replacement assignment, complete part set, independent 
 
 An OT-bearing application submitted before the selected policy was enabled retains its original
 approval/landing contract. Selection uses the same effective approved request, or pending request in
-its absence, as the canonical legacy owner and compares submission/activation instants in PostgreSQL.
+its absence, as the canonical legacy owner and proves in PostgreSQL that no policy applicable to its attendance
+date existed at submission. A later replacement of an already-new policy cannot downgrade its
+applications into the legacy payment path.
 An older superseded approval cannot force a newer request into legacy mode. This branch is derived
 from actual immutable request history, never a form flag; requests submitted after activation still
 enter the refused policy boundary until the new final-effect contract is complete. It does not rewrite

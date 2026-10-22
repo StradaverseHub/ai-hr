@@ -31,8 +31,12 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
    // Existing submitted work keeps its original approval contract. Choose the SAME effective
    // approved request (or pending request if none is approved) as the legacy landing owner; an
    // older superseded approval must not keep a newer application in legacy mode forever.
+   // Absence is proved against ALL applicable revisions at submission: replacing an already-new
+   // policy must not downgrade one of its applications into the legacy payment path.
    const [application]=await tx.select({id:attendanceCorrection.id,
-    predatesPolicy:sql<boolean>`${attendanceCorrection.createdAt}<${attendanceGroupPolicyRevision.createdAt}`})
+    predatesPolicy:sql<boolean>`not exists(select 1 from public.attendance_group_policy_revision prior
+     where prior.tenant_id=${ctx.tenantId}::uuid and prior.company_id=${selected.companyId}::uuid and prior.rule_id=${selected.ruleId}::uuid
+      and prior.effective_from<=${p.date}::date and prior.created_at<=${attendanceCorrection.createdAt})`})
     .from(attendanceCorrection).innerJoin(attendanceGroupPolicyRevision,and(eq(attendanceGroupPolicyRevision.id,selected.id),eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId)))
     .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
      eq(attendanceCorrection.attendanceDate,p.date),isNotNull(attendanceCorrection.requestedOtMinutes),inArray(attendanceCorrection.status,['approved','pending'])))

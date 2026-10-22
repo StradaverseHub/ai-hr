@@ -201,6 +201,18 @@ describe('dated-policy raw writer routing',()=>{
   const [original]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
   expect(original.status).toBe('approved');expect(original.appliedAt).not.toBeNull();
  });
+ it('does not downgrade an application under an earlier new-policy revision into legacy mode',async()=>{
+  const f=await fixture();await f.save();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(3),requestedOtMinutes:120,
+   reason:'Fictional existing new-policy application',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const changed=policy();changed.clock.pairing='firstInLastOut';const next=await f.save(changed,1,day(2));
+  await clock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(snapshot.attendanceGroupPolicy?.id).toBe(next.id);
+  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
  it('reasserts an already approved scalar plan without turning it into policy execution evidence',async()=>{
   const f=await fixture();await f.save();
   const requested=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
