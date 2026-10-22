@@ -4,11 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createMovementEvent } from '../core/movement';
+import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,applyDueMovementsTx} from '../core/movement';
+import {saveMovementEventType} from '../core/movement-type';
 import {
   getCustomReport, recordPayrollComparisonRun, runPayrollComparisonReport,
   saveCustomReport, updateCustomReport,
@@ -77,6 +78,49 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
+  it('uses canonical custom movement behavior, excludes corrected/reversed evidence and refuses stale paid output after rollback',async()=>{
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
+    await setModule(b.tenantId,'multi_cycle_payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+    const type=await saveMovementEventType(ctx,{label:'Fictional career advancement',behaviourKind:'promotion'});
+    await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:type.code,effectiveDate:currentPeriod+'-01',basicSalary:3200});
+    const original=(await movementHistory(ctx,f.employee.employmentId)).find(row=>row.kind===type.code)!;expect(original.status).toBe('applied');
+    await editMovementEvent(ctx,{employmentId:f.employee.employmentId,movementId:original.id,kind:type.code,effectiveDate:currentPeriod+'-01',basicSalary:3300,reason:'Fictional salary correction'});
+    const history=await movementHistory(ctx,f.employee.employmentId),corrected=history.filter(row=>row.kind===type.code&&row.status==='applied');
+    expect(history.find(row=>row.id===original.id)?.status).toBe('reversed');expect(corrected).toHaveLength(1);
+    await generatePayslips(ctx,{batchId:f.current.batchId});let before=await payrollSnapshot();
+    const view=await run(f.report.id),exported=await run(f.report.id,'export');
+    expect(view.result.available).toBe(true);expect(view.result.rows).toHaveLength(1);
+    expect(view.result.rows[0]).toMatchObject({previous:'3000.00',current:'3300.00',reason:{reason:'promotion',
+      effectiveDate:currentPeriod+'-01',evidenceIds:[corrected[0].id],multipleChanges:false}});
+    expect(exported.result.rows).toEqual(view.result.rows);expect(await payrollSnapshot()).toEqual(before);
+    await reverseMovementEvent(ctx,{employmentId:f.employee.employmentId,movementId:corrected[0].id,reason:'Fictional complete rollback'});
+    const stale=await run(f.report.id);expect(stale.result.available).toBe(false);expect(stale.result.issues.map(issue=>issue.code)).toContain('stalePayroll');expect(stale.result.rows).toEqual([]);
+    await reprocessSelectedEmployees(ctx,{batchId:f.current.batchId,employmentIds:[f.employee.employmentId],reason:'Fictional post-rollback regeneration'});before=await payrollSnapshot();
+    const reopened=await runPayrollComparisonReport(ctx,[b.companyId],{id:f.report.id,filters:{currentPeriod,previousPeriod,onlyVariances:false}});
+    expect(reopened.result.available).toBe(true);expect(reopened.result.rows).toHaveLength(1);
+    expect(reopened.result.rows[0]).toMatchObject({previous:'3000.00',current:'3000.00',variance:'0.00',reason:{reason:'unexplained',evidenceIds:[]}});
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
+  it('distinguishes a superseded scheduled salary change and a still-pending change from the actual applied winner',async()=>{
+    // Deliberate scheduled-arrival fixture: the canonical due-owner is given its simulated arrival
+    // date. No raw movement, compensation or payslip rows are fabricated. The current run is provisional.
+    const now=todayInKualaLumpur(),next=new Date(Date.UTC(Number(now.slice(0,4)),Number(now.slice(5,7)),1));
+    currentPeriod=next.toISOString().slice(0,7);previousPeriod=previousPayrollComparisonPeriod(currentPeriod);
+    const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
+    for(const basicSalary of [3200,3300])await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:'increment',effectiveDate:currentPeriod+'-05',basicSalary});
+    const due=await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,f.employee.employmentId,currentPeriod+'-05'));expect(due.applied).toBe(1);
+    await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:'increment',effectiveDate:currentPeriod+'-10',basicSalary:3400});
+    const history=(await movementHistory(ctx,f.employee.employmentId)).filter(row=>row.kind==='increment');
+    expect(history.map(row=>row.status).sort()).toEqual(['applied','pending','superseded']);
+    const winner=history.find(row=>row.status==='applied')!;
+    await generatePayslips(ctx,{batchId:f.current.batchId});const before=await payrollSnapshot(),result=await run(f.report.id);
+    expect(result.result.available).toBe(true);expect(result.result.rows).toHaveLength(1);
+    expect(result.result.rows[0]).toMatchObject({previous:'3000.00',current:'3300.00',variance:'300.00',reason:{reason:'increment',
+      effectiveDate:currentPeriod+'-05',evidenceIds:[winner.id],multipleChanges:false}});
+    expect(await payrollSnapshot()).toEqual(before);
+  });
+
   it('keeps an actual mid-month exit and the same person later rehired as separate paid employments',async()=>{
     const f=await fixture();await closeBatch(ctx,{batchId:f.previous.batchId});
     await createMovementEvent(ctx,{employmentId:f.employee.employmentId,kind:'termination',effectiveDate:currentPeriod+'-10',
