@@ -388,6 +388,93 @@ REVOKE ALL ON FUNCTION app.lock_attendance_policy_import_context(jsonb) FROM PUB
 GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_import_context(jsonb) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Durable final-workflow evidence is minted ONLY by the actual pending->approved transition.
+-- It records the decision/effect, not a payable policy outcome, positioned plan or unclocked attestation.
+CREATE TABLE public.attendance_policy_final_receipt(
+ correction_id uuid PRIMARY KEY REFERENCES public.attendance_correction(id) ON DELETE CASCADE,
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ employment_id uuid NOT NULL REFERENCES public.employment(id),attendance_date date NOT NULL,
+ company_id uuid NOT NULL REFERENCES public.company(id) ON DELETE RESTRICT,
+ workflow_request_id uuid NOT NULL,actor_user_id text NOT NULL,
+ authority text NOT NULL DEFAULT 'finalWorkflowDecisionOnly' CHECK(authority='finalWorkflowDecisionOnly'),
+ submission_epoch bigint NOT NULL CHECK(submission_epoch BETWEEN 0 AND 9007199254740991),
+ request_evidence jsonb NOT NULL CHECK(jsonb_typeof(request_evidence)='object'),
+ workflow_evidence jsonb NOT NULL CHECK(jsonb_typeof(workflow_evidence)='object'),
+ raw_evidence jsonb CHECK(raw_evidence IS NULL OR jsonb_typeof(raw_evidence)='object'),
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+ALTER TABLE public.attendance_policy_final_receipt ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_policy_final_receipt FORCE ROW LEVEL SECURITY;
+CREATE POLICY attendance_policy_final_receipt_owner ON public.attendance_policy_final_receipt FOR ALL
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.attendance_policy_final_receipt'::regclass)))
+ WITH CHECK(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.attendance_policy_final_receipt'::regclass)));
+CREATE POLICY attendance_policy_final_receipt_read ON public.attendance_policy_final_receipt FOR SELECT
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current())
+  AND(app.can_see_employment(employment_id) OR app.can_admin_payroll_for(company_id)));
+REVOKE ALL ON public.attendance_policy_final_receipt FROM PUBLIC,ai_hr_app;
+GRANT SELECT ON public.attendance_policy_final_receipt TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.guard_attendance_policy_final_receipt() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' AND pg_trigger_depth()>1 THEN RETURN NEW;END IF;
+ IF TG_OP='DELETE' AND pg_trigger_depth()>1 AND NOT EXISTS(SELECT 1 FROM public.attendance_correction WHERE id=OLD.correction_id) THEN RETURN OLD;END IF;
+ RAISE EXCEPTION 'Retain the owner-issued final workflow receipt' USING ERRCODE='23514';
+END $$;
+REVOKE ALL ON FUNCTION app.guard_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER attendance_policy_final_receipt_guard BEFORE INSERT OR UPDATE OR DELETE ON public.attendance_policy_final_receipt
+ FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_final_receipt();
+--> statement-breakpoint
+CREATE FUNCTION app.capture_attendance_policy_final_receipt() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE contract public.attendance_policy_request_contract;w public.attendance_workflow_request;
+ completion public.attendance_workflow_decision;raw jsonb;participants jsonb;
+BEGIN
+ IF OLD.status<>'pending' OR NEW.status<>'approved' OR NEW.requested_ot_minutes IS NULL THEN RETURN NEW;END IF;
+ SELECT * INTO contract FROM public.attendance_policy_request_contract WHERE correction_id=OLD.id
+  AND tenant_id=OLD.tenant_id AND employment_id=OLD.employment_id AND attendance_date=OLD.attendance_date AND kind='epoch';
+ -- No backfill and no promotion of legacy approvals into a fresh final effect.
+ IF NOT FOUND THEN RETURN NEW;END IF;
+ SELECT * INTO w FROM public.attendance_workflow_request WHERE correction_id=OLD.id
+  AND tenant_id=OLD.tenant_id AND employment_id=OLD.employment_id AND routing_version>=2;
+ IF NOT FOUND THEN RETURN NEW;END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR current_setting('app.attendance_workflow_effect',true) IS DISTINCT FROM OLD.id::text
+  OR app.attendance_workflow_effect_scope(OLD.employment_id,OLD.attendance_date) IS NOT TRUE
+  OR app.attendance_workflow_final_effect(OLD.id,NEW.approved_ot_minutes) IS NOT TRUE THEN
+  RAISE EXCEPTION 'An exact active final workflow effect is required for its receipt' USING ERRCODE='42501';END IF;
+ SELECT * INTO completion FROM public.attendance_workflow_decision d WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id
+  AND d.stage_index=jsonb_array_length(w.stages)-1 AND d.decision='approved' AND d.resulting_status='approved'
+  AND d.actual_user_id=app.current_user_id()::text AND app.attendance_workflow_active_write(d.xmin);
+ IF NOT FOUND THEN RAISE EXCEPTION 'The completing workflow write must remain active' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(to_jsonb(d) ORDER BY d.stage_index,d.participant_slot,d.id),'[]'::jsonb) INTO participants
+  FROM public.attendance_workflow_participant_decision d WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id;
+ SELECT jsonb_build_object('attendanceId',a.id,'checkIn',a.check_in_at,'checkOut',a.check_out_at,
+  'status',a.status,'dayType',a.day_type,'workedMinutes',a.worked_minutes,'otMinutes',a.ot_minutes,
+  'lateMinutes',a.late_minutes,'earlyOutMinutes',a.early_out_minutes,'trace',a.calc_trace,
+  'punchCount',(SELECT count(*) FROM public.attendance_punch p WHERE p.attendance_id=a.id AND p.tenant_id=a.tenant_id AND p.voided_at IS NULL),
+  'punches',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.id),'[]'::jsonb) FROM
+   (SELECT p.id,p.punch_at,p.direction,p.clock_capture_id FROM public.attendance_punch p
+    WHERE p.attendance_id=a.id AND p.tenant_id=a.tenant_id AND p.voided_at IS NULL ORDER BY p.id LIMIT 129)p)) INTO raw
+  FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id
+   AND a.attendance_date=OLD.attendance_date AND app.attendance_workflow_active_write(a.xmin);
+ INSERT INTO public.attendance_policy_final_receipt(correction_id,tenant_id,employment_id,attendance_date,company_id,
+  workflow_request_id,actor_user_id,submission_epoch,request_evidence,workflow_evidence,raw_evidence)
+ VALUES(OLD.id,OLD.tenant_id,OLD.employment_id,OLD.attendance_date,contract.company_id,w.id,app.current_user_id()::text,contract.visible_epoch,
+  jsonb_build_object('requestedMinutes',NEW.requested_ot_minutes,'approvedMinutes',NEW.approved_ot_minutes,'method',NEW.ot_approval_method,
+   'plannedStartLabel',NEW.planned_start_time,'plannedEndLabel',NEW.planned_end_time,
+   'checkIn',NEW.proposed_check_in,'checkOut',NEW.proposed_check_out,'clockChanges',NEW.clock_changes),
+  jsonb_build_object('requestId',w.id,'routingVersion',w.routing_version,'stageCount',jsonb_array_length(w.stages),
+   'completion',to_jsonb(completion),'participants',participants),raw);
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.capture_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;
+-- The existing workflow authority guards run first. Any later refusal rolls this receipt back with
+-- the status transition. The private final-effect proof is still pending/live here, not replayed later.
+CREATE TRIGGER zz_attendance_policy_final_receipt BEFORE UPDATE ON public.attendance_correction
+ FOR EACH ROW EXECUTE FUNCTION app.capture_attendance_policy_final_receipt();
+
+--> statement-breakpoint
 -- This draft is a non-payable storage stage in BOTH settlement modes. The old cash guard already
 -- requires a ready calculation; the old TOIL guard checks its accrual but does not inspect that outcome.
 -- Keep the single parent settlement owner and refuse a new staged policy claim before either branch.

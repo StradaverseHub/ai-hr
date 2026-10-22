@@ -10518,6 +10518,17 @@ export const attendancePolicyRequestContract=pgTable('attendance_policy_request_
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 });
 
+/** Minted by the real final workflow transition; not a payment, positioned plan or exception attestation. */
+export const attendancePolicyFinalReceipt=pgTable('attendance_policy_final_receipt',{
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),
+ companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),workflowRequestId:uuid('workflow_request_id').notNull(),
+ actorUserId:text('actor_user_id').notNull(),authority:text('authority').notNull().$type<'finalWorkflowDecisionOnly'>().default('finalWorkflowDecisionOnly'),
+ submissionEpoch:bigint('submission_epoch',{mode:'number'}).notNull(),requestEvidence:jsonb('request_evidence').notNull().$type<Record<string,unknown>>(),
+ workflowEvidence:jsonb('workflow_evidence').notNull().$type<Record<string,unknown>>(),rawEvidence:jsonb('raw_evidence').$type<Record<string,unknown>>(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
+
 // ADR-0120: original holidays and employee-specific replacement allocations remain separate.
 export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),

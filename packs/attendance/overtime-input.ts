@@ -10,7 +10,7 @@ import {and, asc, desc, eq, gt, inArray, isNull, lte, or, sql} from 'drizzle-orm
 import type {SessionContext, Tx} from '../../db/client';
 import {recordedAttendanceGroupPolicyTx} from './policy-selection';
 import {recordedPolicyClockSourceTx} from './policy-clock-input';
-import {assignment, attendance, attendanceCorrection, attendancePolicyRequestContract, attendancePunch, company, compensation, employment} from '../../db/schema';
+import {assignment, attendance, attendanceCorrection, attendancePolicyRequestContract, attendancePolicyFinalReceipt, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
 import {isAttendanceTrace} from '../../core/attendance-trace';
@@ -186,7 +186,10 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyContracts=selectedPolicy&&otDecisions.length?await tx.select().from(attendancePolicyRequestContract)
     .where(and(eq(attendancePolicyRequestContract.tenantId,ctx.tenantId),inArray(attendancePolicyRequestContract.correctionId,otDecisions.map(row=>row.id))))
     .orderBy(asc(attendancePolicyRequestContract.correctionId)).limit(501):[];
-  const policyApprovalInput=selectedPolicy?attendancePolicyApprovalInput(selectedPolicy,otDecisions,policyContracts):undefined;
+  const policyReceipts=selectedPolicy&&otDecisions.length?await tx.select().from(attendancePolicyFinalReceipt)
+    .where(and(eq(attendancePolicyFinalReceipt.tenantId,ctx.tenantId),inArray(attendancePolicyFinalReceipt.correctionId,otDecisions.map(row=>row.id))))
+    .orderBy(asc(attendancePolicyFinalReceipt.correctionId)).limit(501):[];
+  const policyApprovalInput=selectedPolicy?attendancePolicyApprovalInput(selectedPolicy,otDecisions,policyContracts,policyReceipts):undefined;
   // New policy proofs retain exact timestamp strings and original plan labels. Keep the existing
   // legacy digest contract unchanged; neither labels nor a digest establish final-effect authority.
   const approvalDigest = fingerprint(policyApprovalInput??otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));

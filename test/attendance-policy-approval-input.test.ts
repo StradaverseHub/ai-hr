@@ -1,6 +1,6 @@
 /** Source serialization only; these facts cannot authorize an approval, final effect or money. */
 import {describe,expect,it} from 'vitest';
-import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySubmissionSourceRow} from '../packs/attendance/policy-approval-input';
+import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySubmissionSourceRow,type PolicyFinalReceiptSourceRow} from '../packs/attendance/policy-approval-input';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import type {ResolvedAttendanceGroupPolicy} from '../core/attendance-group-policy';
 const id='00000000-0000-4000-8000-000000000001';
@@ -9,7 +9,19 @@ function policy():ResolvedAttendanceGroupPolicy{return {id,companyId:id,ruleId:i
  overtime:{enabled:true,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
  days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(day=>[day,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}}};}
 function row():PolicyApprovalSourceRow{return {id,tenantId:id,employmentId:id,attendanceDate:'2026-10-23',createdAt:new Date('2026-10-22T01:00:00.001Z'),status:'approved',requestedOtMinutes:120,approvedOtMinutes:90,otApprovalMethod:'smaller_of',
- decidedByEmploymentId:id,decidedAt:new Date('2026-10-22T02:00:00.002Z'),appliedAt:new Date('2026-10-23T12:00:00.003Z'),cancelledAt:null,plannedStartTime:'18:00:00',plannedEndTime:'20:00:00'};}
+ decidedByEmploymentId:id,decidedAt:new Date('2026-10-22T02:00:00.002Z'),appliedAt:new Date('2026-10-23T12:00:00.003Z'),cancelledAt:null,proposedCheckIn:null,proposedCheckOut:null,clockChanges:null,plannedStartTime:'18:00:00',plannedEndTime:'20:00:00'};}
+function finalFixture(){
+ const p=policy(),r=row(),contract:PolicySubmissionSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
+  companyId:id,kind:'epoch',visibleEpoch:1,recordedAt:new Date('2026-10-22T01:00:00.123Z')};
+ const receipt:PolicyFinalReceiptSourceRow={correctionId:id,tenantId:id,employmentId:id,attendanceDate:r.attendanceDate,
+  companyId:id,workflowRequestId:id,actorUserId:id,authority:'finalWorkflowDecisionOnly',submissionEpoch:1,
+  requestEvidence:{requestedMinutes:r.requestedOtMinutes,approvedMinutes:r.approvedOtMinutes,method:r.otApprovalMethod,
+   plannedStartLabel:r.plannedStartTime,plannedEndLabel:r.plannedEndTime,checkIn:null,checkOut:null,clockChanges:null},
+  workflowEvidence:{requestId:id,routingVersion:2,stageCount:1,completion:{request_id:id,tenant_id:id,
+   actual_user_id:id,stage_index:0,decision:'approved',resulting_status:'approved'},participants:[]},rawEvidence:null,
+  recordedAt:new Date('2026-10-22T02:00:00.123Z')};
+ return {p,r,contract,receipt};
+}
 describe('canonical policy application source facts',()=>{
  it('retains exact real timestamp strings and distinct enabling-user/deciding-employment fields',()=>{
   const p=policy(),r=row(),before=structuredClone({p,r}),result=attendancePolicyApprovalInput(p,[r]);
@@ -55,6 +67,37 @@ describe('canonical policy application source facts',()=>{
    expect(attendancePolicyApprovalInput(p,[r],[{...contract,[field]:'mismatched'}]).requests[0].submissionContract).toEqual({state:'unavailable',reason:'identityMismatch'});
   }
   expect(()=>attendancePolicyApprovalInput(p,[r],[contract,contract])).toThrow('ambiguous');
+ });
+ it('retains an owner-issued final decision without inventing plan, work or payment authority',()=>{
+  const {p,r,contract,receipt}=finalFixture(),before=structuredClone(receipt);
+  const value=attendancePolicyApprovalInput(p,[r],[contract],[receipt]).requests[0];
+  expect(value.finalReceipt).toMatchObject({state:'recorded',authority:'finalWorkflowDecisionOnly',actorUserId:id,raw:null});
+  expect(value.plannedWindow.authority).toBe('auditOnly');expect(value).not.toHaveProperty('intervals');
+  expect(value.finalReceipt).not.toHaveProperty('transferable');expect(receipt).toEqual(before);
+ });
+ it('refuses mismatched final identities, submission epochs, request values and completing actors',()=>{
+  const {p,r,contract,receipt}=finalFixture();
+  for(const field of ['tenantId','companyId','employmentId','attendanceDate'] as const)
+   expect(attendancePolicyApprovalInput(p,[r],[contract],[{...receipt,[field]:'mismatch'}]).requests[0].finalReceipt)
+    .toMatchObject({state:'unavailable',reason:'identityMismatch'});
+  expect(attendancePolicyApprovalInput(p,[r],[contract],[{...receipt,submissionEpoch:2}]).requests[0].finalReceipt)
+   .toMatchObject({state:'unavailable',reason:'submissionMismatch'});
+  expect(attendancePolicyApprovalInput(p,[{...r,approvedOtMinutes:91}],[contract],[receipt]).requests[0].finalReceipt)
+   .toMatchObject({state:'unavailable',reason:'requestMismatch'});
+  expect(attendancePolicyApprovalInput(p,[r],[contract],[{...receipt,actorUserId:'different'}]).requests[0].finalReceipt)
+   .toMatchObject({state:'unavailable',reason:'workflowMismatch'});
+  expect(attendancePolicyApprovalInput(p,[{...r,cancelledAt:new Date()}],[contract],[receipt]).requests[0].finalReceipt)
+   .toMatchObject({state:'inactive',reason:'requestNotApproved'});
+ });
+ it('requires participant completion evidence for v3/v4 and keeps receipts unambiguous',()=>{
+  const {p,r,contract,receipt}=finalFixture();
+  for(const routingVersion of [3,4]){
+   const changed:PolicyFinalReceiptSourceRow={...receipt,workflowEvidence:{...receipt.workflowEvidence,routingVersion}};
+   expect(attendancePolicyApprovalInput(p,[r],[contract],[changed]).requests[0].finalReceipt).toMatchObject({state:'unavailable',reason:'workflowMismatch'});
+   changed.workflowEvidence.participants=[{request_id:id,tenant_id:id,actual_user_id:id,stage_index:0,decision:'approved'}];
+   expect(attendancePolicyApprovalInput(p,[r],[contract],[changed]).requests[0].finalReceipt).toMatchObject({state:'recorded'});
+  }
+  expect(()=>attendancePolicyApprovalInput(p,[r],[contract],[receipt,receipt])).toThrow('ambiguous');
  });
  it('keeps the canonical application-history bound',()=>{
   expect(()=>attendancePolicyApprovalInput(policy(),Array.from({length:501},()=>row()))).toThrow('bounded');
