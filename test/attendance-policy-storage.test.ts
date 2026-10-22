@@ -224,6 +224,29 @@ describe('immutable non-payable policy part storage',()=>{
   expect(attendancePolicyCurrentDurationMatches(refused,proof)).toBe(false);
  });
 
+ // Injected source-metadata probe: actual captures and policy/formula APIs still run. This
+ // proves immutable retention of an independently read duration source, not TOIL readiness.
+ it.each(['known','unavailable'] as const)('retains an explicit %s duration source through writer and historical replay',async state=>{
+  const f=await fixture('auto'),p={employmentId:f.employmentId,date:day(2)};
+  const reader:typeof canonicalOvertimeInputTx=async(tx,actor,input)=>{
+   const snapshot=await canonicalOvertimeInputTx(tx,actor,input);
+   if(!snapshot.policyFormulaInput)throw Error('Expected a complete cash formula source');
+   snapshot.policyDurationFormulaInput=state==='known'?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput)
+    :{authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'};
+   return snapshot;
+  };
+  const snapshot=await withTenant(ctx,tx=>reader(tx,ctx,p));
+  const proof=attendancePolicyDurationReplay(snapshot);expect(proof.state).toBe(state);
+  const calculator=createOvertimeCalculationOwner(reader);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional independent duration source retention'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.evidence?.evidence.policyDurationFormulaInput).toEqual(snapshot.policyDurationFormulaInput);
+  expect(reviewed?.evidence?.evidence.policyDurationReplay).toEqual(proof);
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);
+ });
+
  it('uses each dated child salary and binds next-day pay changes without changing duration',async()=>{
   const f=await fixture('auto');
   const [first,second]=await owner.db.insert(s.compensation).values([
