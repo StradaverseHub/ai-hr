@@ -9,7 +9,7 @@ import { absenceBreakdownByEmployment } from './absence-days';
 import { approvedLeaveMeasurementsTx } from '../packs/leave/service';
 import type { AllowanceDay, AllowanceEmployeeFacts } from '../lib/attendance-allowance-rules';
 export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:string,today:string,version:2|3=2){
-  const employees=await tx.select({id:employment.id,name:person.fullName,companyId:employment.companyId,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,gradeId:employment.gradeId,employmentCategory:employment.employmentCategory,allowed:sql<boolean>`app.can_admin_employment(${employment.id})`})
+  const employees=await tx.select({id:employment.id,name:person.fullName,companyId:employment.companyId,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,gradeId:employment.gradeId,branch:employment.orgBranch,division:employment.orgDivision,employmentCategory:employment.employmentCategory,allowed:sql<boolean>`app.can_admin_employment(${employment.id})`})
     .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(employedByCompanyDuring(companyId,from,to),lte(employment.hiredOn,to),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,from)))).orderBy(asc(employment.id));
   // A payroll calculation must not silently turn a hidden subordinate into an eligible recipient.
   if(employees.some(e=>!e.allowed)) throw new Error('Allowance preview requires administrative access to every selected employee');
@@ -40,7 +40,7 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
       if(date<employee.hiredOn||(employee.terminatedOn&&date>employee.terminatedOn))continue;
       if(!(segments.get(employee.id)??[]).some(s=>s.companyId===companyId&&s.from<=date&&s.to>=date))continue;
       const placement=assignments.find(a=>a.employmentId===employee.id&&a.validFrom<=date&&(!a.validTo||a.validTo>date));
-      factsByDate.set(date,{companyId,departmentId:placement?.departmentId??null,businessUnitId:placement?.businessUnitId??placement?.departmentBusinessUnitId??null,positionId:placement?.positionId??null,gradeId:employee.gradeId,employmentType:placement?.employmentType??null,employmentCategory:employee.employmentCategory,status:employee.terminatedOn&&employee.terminatedOn<=date?'terminated':'active'});
+      factsByDate.set(date,{companyId,departmentId:placement?.departmentId??null,businessUnitId:placement?.businessUnitId??placement?.departmentBusinessUnitId??null,positionId:placement?.positionId??null,gradeId:employee.gradeId,branch:employee.branch,division:employee.division,employmentType:placement?.employmentType??null,employmentCategory:employee.employmentCategory,status:employee.terminatedOn&&employee.terminatedOn<=date?'terminated':'active'});
       const schedule=await allowanceScheduleFactsTx(tx,employee.id,date,memo);
       const row=recordByDay.get(`${employee.id}:${date}`);
       // The three-way day type is frozen on recorded attendance. Never relabel a recorded holiday or

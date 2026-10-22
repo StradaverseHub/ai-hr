@@ -35,7 +35,7 @@ export const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
  *                  the reader did not mean to ask for. Saying what is actually wrong is cheaper than
  *                  letting them conclude their record is empty.
  */
-export type RangeRefusal = 'too_long' | 'inverted' | null;
+export type RangeRefusal = 'too_long' | 'inverted' | 'invalid' | null;
 
 export type ResolvedRange = {
   /** What the screen will show in the Date From box — the asked-for value, valid or refused. */
@@ -79,8 +79,10 @@ export function resolveMyAttendanceRange(
   today: string,
   maxDays: number,
 ): ResolvedRange {
-  const from = sp.from && DATE_RE.test(sp.from) ? sp.from : firstOfMonth(today);
-  const to = sp.to && DATE_RE.test(sp.to) ? sp.to : today;
+  const realDate = (value: string) => DATE_RE.test(value) && Number.isFinite(Date.parse(value+'T00:00:00Z')) && new Date(value+'T00:00:00Z').toISOString().slice(0,10) === value;
+  const from = sp.from || firstOfMonth(today);
+  const to = sp.to || today;
+  if (!realDate(from) || !realDate(to)) return {from,to,days:0,refusal:'invalid'};
   if (from > to) return { from, to, days: 0, refusal: 'inverted' };
   const days = dayCountInclusive(from, to);
   return { from, to, days, refusal: days > maxDays ? 'too_long' : null };

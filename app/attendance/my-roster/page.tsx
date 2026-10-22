@@ -7,15 +7,15 @@ import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import type { MyRosterDay, MyRosterView } from '@/core/roster';
 import { myAttendanceCalendarWindow, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
-import { attendanceCalendarDetailHref } from './attendance-links';
-import { isIsoDate } from '@/lib/roster-month';
+import { attendanceCalendarDetailHref, attendanceCalendarHref, resolveAttendanceCalendarState, type AttendanceCalendarState, type AttendanceCalendarQuery } from './attendance-links';
+import { AttendanceRecordList } from './record-list';
+import { PersonalAttendanceStatus } from '@/components/personal-attendance-status';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isoWeekdayOf, rosterDateLocale } from '@/lib/roster-month';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   MY_ROSTER_VIEWS,
-  myRosterHref,
   resolveMyRosterWindow,
   stepMyRosterWindow,
   switchMyRosterView,
@@ -29,7 +29,7 @@ import {
 export default async function MyRosterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; month?: string; date?: string; selected?: string }>;
+  searchParams: Promise<AttendanceCalendarQuery>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -42,10 +42,12 @@ export default async function MyRosterPage({
   const sp = await searchParams;
 
   const today = todayInKualaLumpur();
-  const w = resolveMyRosterWindow({ view: sp.view, month: sp.month, date: sp.date, today });
-  const view = await myAttendanceCalendarWindow(s, { from: w.from, to: w.to });
+  const state = resolveAttendanceCalendarState(sp, today);
+  const w = state.window;
+  const calendarHref = (window:MyRosterWindow, selected=state.selected) => attendanceCalendarHref({...state,tab:'calendar',window,selected});
+  const loaded = await myAttendanceCalendarWindow(s, { from: w.from, to: w.to });
 
-  if (!view) {
+  if (!loaded) {
     /**
      * A real, named person linked to no active employment — the seeded HR administrator is exactly this.
      * Saying so beats an empty calendar, which reads as "your supervisor has rostered you for nothing".
@@ -65,9 +67,21 @@ export default async function MyRosterPage({
     );
   }
 
+  const identity = [loaded.employeeCode ? `${loaded.name} (${loaded.employeeCode})` : loaded.name,loaded.position,loaded.managerName ? t('myRoster.supervisorNamed',{manager:loaded.managerName}) : null].filter(Boolean).join(' · ');
+  if(state.tab==='list') return <div className={pageWideCls}>
+    <PageHeader title={t('myCalendar.title')} description={identity}/>
+    <PersonalAttendanceTabs state={state} t={t}/>
+    <AttendanceRecordList s={s} state={state} query={sp}/>
+  </div>;
+
   const replacementT=await getTranslations('replacementHoliday');
-  const [originals,replacements]=await Promise.all([withTenant(s,tx=>originalHolidayCalendarFor(tx,{employmentId:view.employmentId,startDate:w.from,endDate:w.to})),replacementHolidayCalendarNotes(s,{employmentId:view.employmentId,from:w.from,to:w.to})]);
-  view.days=view.days.map(day=>({...day,selected:isIsoDate(sp.selected??'')&&day.date===sp.selected,holidayNote:replacements.some(r=>r.replacementDate===day.date)?{label:replacementT('replacement'),name:replacements.find(r=>r.replacementDate===day.date)!.sourceName}:originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined}));
+  const [originals,replacements]=await Promise.all([withTenant(s,tx=>originalHolidayCalendarFor(tx,{employmentId:loaded.employmentId,startDate:w.from,endDate:w.to})),replacementHolidayCalendarNotes(s,{employmentId:loaded.employmentId,from:w.from,to:w.to})]);
+  const view:CalendarRosterView={...loaded,days:loaded.days.map(day=>({...day,
+    selected:day.date===state.selected,isToday:day.date===today,navigation:state,
+    holidayNote:replacements.some(r=>r.replacementDate===day.date)
+      ?{label:replacementT('replacement'),name:replacements.filter(r=>r.replacementDate===day.date).map(r=>r.sourceName).join(', ')}
+      :originals.some(h=>h.date===day.date)?{label:replacementT('original'),name:originals.filter(h=>h.date===day.date).map(h=>h.name).join(', ')}:undefined,
+  }))};
   const dl = rosterDateLocale(locale);
   const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { day: '2-digit', month: 'short', year: 'numeric' });
   const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -86,13 +100,6 @@ export default async function MyRosterPage({
     week: t('myRoster.viewWeekly'),
     month: t('myRoster.viewMonthly'),
   };
-  // "This month" / "This week" / "Today" — the same shortcut, named for the view it lands in.
-  const nowLabel: Record<MyRosterViewKind, string> = {
-    day: t('myRoster.today'),
-    week: t('myRoster.thisWeek'),
-    month: t('myRoster.thisMonth'),
-  };
-
   const subtitleParts = [
     view.employeeCode ? `${view.name} (${view.employeeCode})` : view.name,
     view.position,
@@ -100,12 +107,12 @@ export default async function MyRosterPage({
   ].filter((v): v is string => !!v);
 
   const stepCls =
-    'inline-flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground';
+    'inline-flex size-11 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground';
 
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('myCalendar.title')} description={subtitleParts.join(' · ')} />
-      <Link href={`/attendance/my-records?${new URLSearchParams({from:w.from,to:w.to})}`} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('myCalendar.records')}</Link>
+      <PersonalAttendanceTabs state={state} t={t}/>
       {replacements.length>0&&<Card className="space-y-2 p-4"><h2 className="text-sm font-medium">{replacementT('calendarHint')}</h2><p className="text-xs text-muted-foreground">{replacementT('originalKept')}</p><ul className="space-y-1 text-sm">{replacements.map(r=><li key={r.id}>{r.replacementDate} · {r.sourceName} ({r.sourceDate}){r.status==='review'&&` · ${replacementT('review')}`}</li>)}</ul></Card>}
 
       {/* View switch on the left, window stepper on the right — the approved picture's control row. */}
@@ -116,7 +123,7 @@ export default async function MyRosterPage({
             {MY_ROSTER_VIEWS.map((k) => (
               <Link
                 key={k}
-                href={myRosterHref(switchMyRosterView(w, k, today))}
+                href={calendarHref(switchMyRosterView(w, k, today))}
                 aria-current={w.view === k ? 'page' : undefined}
                 className={`rounded px-3 py-1 text-sm transition-colors ${
                   w.view === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
@@ -128,18 +135,18 @@ export default async function MyRosterPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={myRosterHref(stepMyRosterWindow(w, -1))} className={stepCls} aria-label={t('myRoster.previous')}>
+          <Link href={calendarHref(stepMyRosterWindow(w, -1))} className={stepCls} aria-label={t('myRoster.previous')}>
             ‹
           </Link>
           <span className="min-w-40 text-center text-sm font-medium">{caption}</span>
-          <Link href={myRosterHref(stepMyRosterWindow(w, 1))} className={stepCls} aria-label={t('myRoster.next')}>
+          <Link href={calendarHref(stepMyRosterWindow(w, 1))} className={stepCls} aria-label={t('myRoster.next')}>
             ›
           </Link>
           <Link
-            href={myRosterHref(resolveMyRosterWindow({ view: w.view, today }))}
+            href={calendarHref(resolveMyRosterWindow({ view: w.view, today }),today)}
             className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
           >
-            {nowLabel[w.view]}
+            {t('myRoster.today')}
           </Link>
         </div>
       </Card>
@@ -203,6 +210,13 @@ export default async function MyRosterPage({
         )}
       </Card>
 
+      <Card className="space-y-2 px-4 py-3">
+        <h2 className="text-xs font-semibold">{t('myCalendar.attendanceLegend')}</h2>
+        <div className="flex flex-wrap gap-2 text-xs">{(['present','absent','exempt','rest','off','ph','on_leave'] as const).map(status=><PersonalAttendanceStatus key={status} status={status} label={t(PERSONAL_STATUS_KEYS[status])}/>)}</div>
+        <p className="text-xs text-muted-foreground">{t('flagLate')} · {t('myCalendar.shortHours')} · {t('myCalendar.incompleteEntry')}</p>
+        <p className="text-xs text-muted-foreground">{t('myCalendar.contextHelp')}</p>
+      </Card>
+
       {w.view === 'month' && <MonthGrid view={view} w={w} t={t} fmtWeekday={fmtWeekday} hhmm={hhmm} />}
       {w.view === 'week' && <WeekCards view={view} w={w} t={t} fmtWeekday={fmtWeekday} hhmm={hhmm} fmtHrs={fmtHrs} />}
       {w.view === 'day' && (
@@ -214,8 +228,9 @@ export default async function MyRosterPage({
 
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────────────────
 
+const PERSONAL_STATUS_KEYS = {present:'statusPresent',absent:'statusAbsent',exempt:'statusExempt',rest:'statusRest',off:'statusOff',ph:'statusPh',on_leave:'statusOnLeave'} as const;
 type T = Awaited<ReturnType<typeof getTranslations<'attendance'>>>;
-type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string};selected?:boolean;attendance?:{status:AttendanceStatus|null;flag:AttendanceFlag;checkInAt:string|null;checkOutAt:string|null}|null};
+type CalendarRosterDay=MyRosterDay&{holidayNote?:{label:string;name:string};selected:boolean;isToday:boolean;navigation:AttendanceCalendarState;attendance?:{status:AttendanceStatus|null;flag:AttendanceFlag;checkInAt:string|null;checkOutAt:string|null}|null};
 type CalendarRosterView=Omit<MyRosterView,'days'>&{days:CalendarRosterDay[]};
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -287,74 +302,39 @@ function DayBodyContent({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string
 
 /** Status and flag stay independent; an incomplete punch never becomes an invented absence. */
 function AttendanceDayContext({ day, window, t }: { day: CalendarRosterDay; window: MyRosterWindow; t:T }) {
-  const statusKeys = { present:'statusPresent', absent:'statusAbsent', exempt:'statusExempt', rest:'statusRest', off:'statusOff', ph:'statusPh', on_leave:'statusOnLeave' } as const;
-  const flagKeys = { late:'flagLate', under:'flagUnder', odd:'flagOdd' } as const;
+  const flagKeys = { late:'flagLate', under:'myCalendar.shortHours', odd:'myCalendar.incompleteEntry' } as const;
   return <div className="space-y-1 border-t border-border pt-2">
-    {day.attendance?.status && <p className="text-xs font-medium">{t(statusKeys[day.attendance.status])}</p>}
+    {day.attendance?.status && <PersonalAttendanceStatus status={day.attendance.status} label={t(PERSONAL_STATUS_KEYS[day.attendance.status])}/>}
     {day.attendance?.flag && <p className="text-xs text-amber-700 dark:text-amber-400">{t(flagKeys[day.attendance.flag])}</p>}
     {(day.attendance?.checkInAt || day.attendance?.checkOutAt) && <p className="text-xs tabular-nums text-muted-foreground">{t('colCheckIn')}: {day.attendance.checkInAt?.slice(0,5)??'—'} · {t('colCheckOut')}: {day.attendance.checkOutAt?.slice(0,5)??'—'}</p>}
-    <Link href={attendanceCalendarDetailHref(day.date, window)} aria-label={t('myCalendar.viewDate',{date:day.date})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('breakdownView')}</Link>
+    <Link href={attendanceCalendarDetailHref(day.date, window, day.navigation)} aria-label={t('myCalendar.viewDate',{date:day.date})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('breakdownView')}</Link>
   </div>;
 }
 
 const WEEKDAY_ANCHORS = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09', '2026-01-10', '2026-01-11'] as const;
 
-/**
- * The month as a Monday-first grid.
- *
- * `grid-cols-1 sm:grid-cols-7` is how the plan's "on a phone the grid becomes one row per day" is met
- * with no JavaScript: at phone width every cell is its own row and carries its own weekday name, and the
- * leading blanks that pad the first week are simply not rendered there.
- */
-function MonthGrid({
-  view,
-  w,
-  t,
-  fmtWeekday,
-  hhmm,
-}: {
-  view: CalendarRosterView;
-  w: MyRosterWindow;
-  t: T;
-  fmtWeekday: (iso: string) => string;
-  hhmm: (v: string | null) => string;
-}) {
-  const pad = isoWeekdayOf(view.days[0]!.date) - 1;
-  return (
+/** Aligned month; compact dates on tablets/phones and one readable selected-day panel. */
+function MonthGrid({view,w,t,fmtWeekday,hhmm}:{view:CalendarRosterView;w:MyRosterWindow;t:T;fmtWeekday:(iso:string)=>string;hhmm:(v:string|null)=>string}) {
+  const pad=isoWeekdayOf(view.days[0]!.date)-1;
+  const selected=view.days.find(day=>day.selected)??view.days[0]!;
+  return <div className="space-y-4">
     <Card className="overflow-hidden">
-      <div className="hidden grid-cols-7 border-b border-border bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground sm:grid">
-        {WEEKDAY_ANCHORS.map((iso) => (
-          <div key={iso} className="px-3 py-2 font-medium">
-            {fmtWeekday(iso)}
-          </div>
-        ))}
+      <div className="grid grid-cols-7 border-b border-border text-xs text-muted-foreground">{WEEKDAY_ANCHORS.map(iso=><div key={iso} className="px-1 py-2 text-center font-medium lg:text-left lg:px-3">{fmtWeekday(iso)}</div>)}</div>
+      <div className="grid grid-cols-7">
+        {Array.from({length:pad},(_,i)=><div key={`pad-${i}`} className="border-b border-r border-border"/>)}
+        {view.days.map(day=><div key={day.date} className={`min-w-0 border-b border-r border-border ${day.selected?'bg-primary/5 ring-2 ring-inset ring-primary':isoWeekdayOf(day.date)>=6?'bg-amber-50/60 dark:bg-amber-500/5':''}`}>
+          <Link href={attendanceCalendarHref({...day.navigation,selected:day.date})} aria-current={day.isToday?'date':undefined} aria-label={[day.date,day.isToday?t('myRoster.today'):null,day.attendance?.status?t(PERSONAL_STATUS_KEYS[day.attendance.status]):null,day.holidayNote?.name].filter(Boolean).join(' · ')} className="flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-xs focus-visible:outline-2 focus-visible:outline-primary lg:min-h-11 lg:flex-row lg:justify-between lg:px-3">
+            <span className={`tabular-nums ${day.isToday?'font-bold text-primary':''}`}>{day.date.slice(8)}</span>
+            {day.isToday&&<span className="text-[10px] font-semibold text-primary">{t('myRoster.today')}</span>}
+            <span aria-hidden className={`size-1.5 rounded-full lg:hidden ${day.attendance?.status==='absent'?'bg-rose-500':day.attendance?.flag?'bg-amber-500':day.attendance?.status==='present'?'bg-emerald-500':'bg-muted-foreground/50'}`}/>
+          </Link>
+          <div className="hidden space-y-1 px-3 pb-2 lg:block"><DayBody d={day} t={t} hhmm={hhmm}/>{day.note&&<p className="truncate text-xs text-primary">• {t('myRoster.noteMarker')}</p>}<AttendanceDayContext day={day} window={w} t={t}/></div>
+        </div>)}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-7">
-        {Array.from({ length: pad }, (_, i) => (
-          // Padding for the first week. `hidden sm:block` — a blank row on a phone is noise, not a day.
-          <div key={`pad-${i}`} className="hidden border-b border-r border-border sm:block" />
-        ))}
-        {view.days.map((d) => (
-          <div
-            key={d.date}
-            aria-current={d.selected ? 'date' : undefined}
-            className={`min-h-24 space-y-1 border-b border-r border-border px-3 py-2 transition-colors hover:bg-muted/60 ${
-              d.selected ? 'bg-primary/5 ring-2 ring-inset ring-primary' : isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''
-            }`}
-          >
-            <Link href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })} className="block min-h-8 text-xs text-muted-foreground hover:text-primary">
-              <span className="tabular-nums">{d.date.slice(8)}</span>
-              <span className="ml-1 sm:hidden">{fmtWeekday(d.date)}</span>
-            </Link>
-            <DayBody d={d} t={t} hhmm={hhmm} />
-            {d.note && <p className="truncate text-xs text-primary">• {t('myRoster.noteMarker')}</p>}
-            <AttendanceDayContext day={d} window={w} t={t} />
-          </div>
-        ))}
-      </div>
-      <p className="px-4 py-2.5 text-xs text-muted-foreground">{t('myRoster.clickDay')}</p>
+      <p className="px-4 py-3 text-xs text-muted-foreground">{t('myCalendar.selectDay')}</p>
     </Card>
-  );
+    <Card className="space-y-3 p-4 lg:hidden"><h2 className="text-sm font-semibold">{selected.date} · {fmtWeekday(selected.date)}</h2><DayBody d={selected} t={t} hhmm={hhmm}/><AttendanceDayContext day={selected} window={w} t={t}/>{selected.note&&<p className="text-xs text-muted-foreground">{selected.note}</p>}</Card>
+  </div>;
 }
 
 /** Seven cards, Monday to Sunday — the picture's Weekly view. */
@@ -378,12 +358,12 @@ function WeekCards({
       {view.days.map((d) => (
         <Card
           key={d.date}
-          aria-current={d.selected ? 'date' : undefined}
+          aria-current={d.isToday ? 'date' : undefined}
           className={`space-y-2 px-3 py-3 ${d.selected ? 'bg-primary/5 ring-2 ring-inset ring-primary' : isoWeekdayOf(d.date) >= 6 ? 'bg-amber-50/60 dark:bg-amber-500/5' : ''}`}
         >
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{fmtWeekday(d.date)}</p>
-            <p className="text-lg font-semibold tabular-nums">{d.date.slice(8)}</p>
+            <p className="text-lg font-semibold tabular-nums">{d.date.slice(8)}</p>{d.isToday&&<span className="text-xs font-semibold text-primary">{t('myRoster.today')}</span>}
           </div>
           <DayBody d={d} t={t} hhmm={hhmm} />
           <AttendanceDayContext day={d} window={w} t={t} />
@@ -395,7 +375,7 @@ function WeekCards({
           <p className="text-xs text-muted-foreground">{t(`myRoster.${sourceKey(d)}`)}</p>
           {d.note && <p className="text-xs text-primary">• {d.note}</p>}
           <Link
-            href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })}
+            href={calendarDayHref(d, w)}
             className="inline-block text-xs text-primary hover:underline"
           >
             {t('myRoster.openDay')}
@@ -433,14 +413,14 @@ function DayPanel({
         {view.days.map((d) => (
           <Link
             key={d.date}
-            href={myRosterHref({ view: 'day', from: d.date, to: d.date, month: w.month, focus: d.date })}
-            aria-current={d.date === day.date ? 'date' : undefined}
+            href={calendarDayHref(d, w)}
+            aria-current={d.isToday ? 'date' : undefined}
             className={`rounded-md border px-2 py-2 text-center transition-colors ${
               d.date === day.date ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
             }`}
           >
             <span className="block text-xs text-muted-foreground">{fmtWeekday(d.date)}</span>
-            <span className="block text-sm font-semibold tabular-nums">{d.date.slice(8)}</span>
+            <span className="block text-sm font-semibold tabular-nums">{d.date.slice(8)}</span>{d.isToday&&<span className="block text-[10px] font-semibold text-primary">{t('myRoster.today')}</span>}
           </Link>
         ))}
       </div>
@@ -499,4 +479,14 @@ function Detail({ term, value }: { term: string; value: string }) {
       <dd className="mt-0.5 text-sm font-medium">{value}</dd>
     </div>
   );
+}
+
+function PersonalAttendanceTabs({state,t}:{state:AttendanceCalendarState;t:T}) {
+  return <nav aria-label={t('myCalendar.viewNavigation')} className="flex gap-5 border-b border-border">
+    {(['calendar','list'] as const).map(tab=><Link key={tab} href={attendanceCalendarHref({...state,tab})} aria-current={state.tab===tab?'page':undefined} className={`inline-flex min-h-11 items-center border-b-2 px-1 text-sm ${state.tab===tab?'border-primary font-semibold text-primary':'border-transparent text-muted-foreground hover:text-foreground'}`}>{t(tab==='calendar'?'myCalendar.calendarView':'myCalendar.listView')}</Link>)}
+  </nav>;
+}
+function calendarDayHref(day:CalendarRosterDay,window:MyRosterWindow) {
+  const next={view:'day' as const,from:day.date,to:day.date,month:window.month,focus:day.date};
+  return attendanceCalendarHref({...day.navigation,tab:'calendar',window:next,selected:day.date});
 }

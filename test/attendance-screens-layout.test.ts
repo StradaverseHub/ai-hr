@@ -111,7 +111,7 @@ const WIDE_LIST_SCREENS = [
    * active employment, which `capsPage` deliberately does not count (`max-w-md` is not `max-w-…xl`), the
    * same arrangement app/attendance/requests/page.tsx uses one entry above for the same sentence.
    */
-  'app/attendance/my-records/page.tsx',
+  // 54f33b59 r2: legacy records route redirects; the canonical my-roster page below owns width.
   /**
    * 6948727a (r369) — MY ROSTER, the employee's own roster. Added on the SAME reasoning r227 and r287
    * gave, and LISTED FROM THE START rather than after somebody complains: the full-width property

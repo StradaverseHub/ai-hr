@@ -77,7 +77,9 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-const EMPLOYEE_PAGE = 'app/attendance/my-records/page.tsx';
+// 54f33b59 r2 composes the list under the personal calendar; the old page only redirects.
+const EMPLOYEE_PAGE = 'app/attendance/my-roster/record-list.tsx';
+const ENTRY_PAGE = 'app/attendance/my-roster/page.tsx';
 const ADMIN_PAGE = 'app/attendance/page.tsx';
 const EMPLOYEE_ROUTE = '/attendance/my-records';
 const ADMIN_ROUTE = '/attendance';
@@ -105,9 +107,9 @@ describe('f3e6c36e — the two screens are genuinely two screens', () => {
      * stub — worse than failing. Replaced by the positive statement of what the screen IS after the
      * emptying: its own page, rendering its own title, forwarding nowhere.
      */
-    expect(src, 'it renders its own title rather than forwarding somewhere else').toContain(
-      "<PageHeader title={t('myRecords.title')} />",
-    );
+    expect(read(ENTRY_PAGE), 'the personal shell renders its title').toContain("title={t('myCalendar.title')}");
+    expect(read(ENTRY_PAGE)).toContain('<AttendanceRecordList');
+    expect(read('app/attendance/my-records/page.tsx')).toContain('redirect(attendanceCalendarHref(');
     expect(src, 'and it is not a redirect stub').not.toMatch(/\bredirect\(/);
   });
 
@@ -220,7 +222,9 @@ describe('f3e6c36e — the administrative affordances are ABSENT from the employ
       .flatMap((m) => (m[1] ?? m[2]).split(/\s+/))
       .filter(Boolean);
     const concealing = classTokens.filter((tok) => /^(?:[a-z-]+:)?hidden$/.test(tok));
-    expect(concealing, 'nothing is hidden by class instead of being absent').toEqual([]);
+    // Only the equivalent desktop table/phone records switch by viewport. Administrative controls
+    // remain absent under the invariant above; responsive disclosure is no longer prohibited.
+    expect(new Set(concealing)).toEqual(new Set(['hidden','lg:block','lg:hidden'].filter(token => token === 'hidden' || token === 'lg:hidden')));
     expect(src, 'and nothing is hidden by inline style either').not.toMatch(/display:\s*['"]?none/);
   });
 
@@ -251,8 +255,8 @@ describe('f3e6c36e — the administrative affordances are ABSENT from the employ
     );
     // The two calls that survived the emptying and must keep surviving, or the route stops being an
     // authenticated page and test/function-access.test.ts's "no stale routes" fails on a registered route.
-    expect(src, 'the authentication boundary is still crossed').toContain('await scopedSession()');
-    expect(src, 'and the module courtesy redirect is still in place').toContain("requireModule('attendance')");
+    expect(read(ENTRY_PAGE), 'the authentication boundary is still crossed').toContain('await scopedSession()');
+    expect(read(ENTRY_PAGE), 'and the module courtesy redirect is still in place').toContain("requireModule('attendance')");
     // Unchanged from r287 and r362, and the assertion that keeps the fence the EMPLOYMENT and not the
     // company: `scopeIds` here would mean the page had started answering a question about other people.
     expect(src, 'no company scope is resolved here').not.toContain('scopeIds');
@@ -316,7 +320,7 @@ describe('f3e6c36e — the employee screen says the same thing the admin screen 
     // facade that re-exports it), never redefined. The specifier is pinned so a hand-rolled `statusOf` in a
     // local helper file cannot pass by exporting the same name.
     expect(src, 'statusOf/flagOf come from the shared derivation module').toMatch(
-      /import\s*\{[^}]*\bstatusOf\b[^}]*\}\s*from\s*'(?:@\/core\/attendance-derive|@\/packs\/attendance\/service)'/,
+      /import\s*\{[^}]*\bpersonalAttendanceStatus\b[^}]*\}\s*from\s*'(?:@\/core\/attendance-derive|@\/packs\/attendance\/service)'/,
     );
     expect(src, 'and so does flagOf').toMatch(
       /import\s*\{[^}]*\bflagOf\b[^}]*\}\s*from\s*'(?:@\/core\/attendance-derive|@\/packs\/attendance\/service)'/,
@@ -591,7 +595,8 @@ describe('67268d83 — canonical statuses, three flags, and a bounded range', ()
     expect(src, 'and the Note header beside it').toContain("t('colNote')");
     // The failure this is really about: a single cell printing "Present · Late" (or a Late chip where the
     // status belongs) collapses the two axes back into one and re-asserts the choice the kernel refuses.
-    const cells = src.split(/<td\b/);
+    const cells = src.match(/<td\b[^>]*>[\s\S]*?<\/td>/g) ?? [];
+    expect(cells.length).toBeGreaterThanOrEqual(11);
     const mixed = cells.filter((c) => c.includes('statusText[') && c.includes('flagText['));
     expect(mixed.length, 'no single cell renders both a status and a flag').toBe(0);
     expect(cells.filter((c) => c.includes('statusText[')).length, 'exactly one Status cell').toBe(1);
@@ -621,7 +626,7 @@ describe('67268d83 — canonical statuses, three flags, and a bounded range', ()
     // for while looking exactly like the one they did — the truncation defect moved one step later. So the
     // read must be conditional on there being no refusal.
     expect(src, 'the range read is skipped entirely when the range was refused').toMatch(
-      /range\.refusal\s*\?\s*\[\]\s*:\s*await attendanceForEmploymentRange\(/,
+      /range\.refusal\s*\?\s*\{rows:\[\],error:undefined\}\s*:\s*await attendanceForEmploymentRange\(/,
     );
     expect(src, 'and the reader is told why, with the limit in the sentence').toContain(
       "t('myRecords.rangeTooLong'",
@@ -636,7 +641,7 @@ describe('67268d83 — canonical statuses, three flags, and a bounded range', ()
     // committed to stating that rather than letting the reporter discover it; the note renders only when a
     // leave day is on screen, because a caption printed over a month with no leave in it is noise.
     expect(src, 'the leave-type limit is stated').toContain("t('myRecords.leaveTypeNote')");
-    expect(src, 'and only when a leave day is actually shown').toMatch(/statusOf\(r\)\s*===\s*'on_leave'/);
+    expect(src, 'and only when a leave day is actually shown').toMatch(/personalAttendanceStatus\(row,\s*today\)\s*===\s*'on_leave'/);
     // …and the limit is NOT worked around by inventing a sub-code. AL / ML / EL / RL are the codes
     // core/attendance-derive.ts documents as a follow-up; printing one here would be a fabricated fact.
     for (const invented of ["'AL'", "'ML'", "'EL'", "'RL'"]) {

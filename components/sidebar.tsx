@@ -244,8 +244,9 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // disk, so the three cannot part company silently.
   ['/admin/system-testing', 'system_testing'] as const,
   ['/system-testing', 'system_testing'] as const,
-  ['/me?tab=payroll', 'payroll'] as const,
+  ['/me/payslip', 'payroll'] as const,
   ['/me/tax-relief', 'payroll'] as const,
+  ['/me/ea', 'payroll'] as const,
   ['/admin/claims/reimbursements', 'claims'] as const,
   ['/admin/work-locations', 'attendance'] as const,
   ['/performance/workspace?module=tm', 'performance'] as const,
@@ -685,8 +686,9 @@ export function Sidebar({
     .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
   const additionalRows: ChildItem[] = [
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
-    {href:'/me?tab=payroll',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
+    {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
+    {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
     {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},

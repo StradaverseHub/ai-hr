@@ -765,6 +765,12 @@ export interface CountryPack {
     },
   ) => Promise<EaStatement | null>;
 
+  /** Optional strict personal document path. Implementations must gate all contributing sources
+   * inside the same read snapshot; absence means personal EA is unsupported, never admin fallback. */
+  selfServiceEaStatement?: (
+    ctx:SessionContext,p:{employmentId:string;year:string;companyId:string},
+  )=>Promise<EaStatement|null>;
+
   /** Every employer that owes this employee a statement for the year, oldest first. One entry for anyone
    *  who has never transferred — which is what keeps single-company output unchanged. */
   eaCompaniesInYear: (

@@ -253,6 +253,7 @@ export const myPack: CountryPack = {
   // produce a document.
   plannedForms: MY_PLANNED_FORMS,
   eaStatement,
+  selfServiceEaStatement:(ctx,p)=>eaStatement(ctx,{...p,selfService:true}),
   // 72b100cd — LHDN's PCB 2(II). Optional on the contract; Malaysia implements it.
   pcb2iiStatement,
   eaCompaniesInYear,

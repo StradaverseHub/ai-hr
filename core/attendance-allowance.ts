@@ -1,3 +1,4 @@
+import { allowanceEmployeeLeaves } from '../lib/allowance-employee-expression';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 import {visibleLabelIdsCondition,labelCompanyIdsSql} from './system-labels';
 import { allowanceLeaveTypesTx } from '../packs/leave/service';
@@ -16,7 +17,7 @@ import {
   company,
   attendanceAllowanceVersion, attendanceAllowanceResult, attendanceAllowanceResultRevision, attendanceAllowanceTransfer, shift, businessUnit, position, jobGrade,
   department,
-  employment,person,
+  employment,person,profileOption,
   payComponent,
   payrollBatch,
   type AttendanceAllowanceCriteria,
@@ -93,18 +94,24 @@ async function validateDefinitionTx(tx:Tx,p:{companyId:string;payComponentId:str
   if(isUnsupportedTaxableComponent(component))throw new UnsupportedBatchComponentError(component.code);
   if(component.archivedAt||component.isNonPayable||(component.rule&&component.rule.kind!=='fixed')||(p.policyType==='deduction'?component.kind!=='deduction':component.kind!=='allowance'))throw new Error('Choose an active fixed Payroll code compatible with Earning or Deduction');
   if(!p.rules)return;
-  if(p.rules.v===3){const ids=[...new Set(allowanceExpressionCriteria(p.rules.attendance.expression).flatMap(c=>c.leaveTypeIds??[]))];const available=await allowanceLeaveTypesTx(tx,p.companyId);if(ids.some(id=>!available.some(type=>type.id===id)))throw new Error('Choose active leave types available to the policy company.');}
+  if(p.rules.v===3||p.rules.v===4){const ids=[...new Set(allowanceExpressionCriteria(p.rules.attendance.expression).flatMap(c=>c.leaveTypeIds??[]))];const available=await allowanceLeaveTypesTx(tx,p.companyId);if(ids.some(id=>!available.some(type=>type.id===id)))throw new Error('Choose active leave types available to the policy company.');}
   const selected=p.rules.attendance.shiftIds;
   if(selected.length){const rows=await tx.select({id:shift.id}).from(shift).where(and(inArray(shift.id,selected),isNull(shift.archivedAt),sql`(${shift.companyId} is null or ${shift.companyId}=${p.companyId})`));if(rows.length!==selected.length)throw new Error('Selected shifts must be active and available to the policy company');}
   const empIds=p.rules.employee.employmentIds;
   if(empIds.length){const rows=await tx.select({id:employment.id,allowed:sql<boolean>`app.can_admin_employment(${employment.id})`}).from(employment).where(and(inArray(employment.id,empIds),eq(employment.companyId,p.companyId)));if(rows.length!==empIds.length||rows.some(r=>!r.allowed))throw new Error('Select employees within the policy company and your administrative scope');}
-  for(const c of p.rules.employee.criteria){
+  for(const c of p.rules.v===4&&p.rules.employee.expression?allowanceEmployeeLeaves(p.rules.employee.expression):p.rules.employee.criteria){
     if(c.field==='companyId'&&c.values.some(id=>id!==p.companyId))throw new Error('A policy belongs to one company; employee company criteria must match that company');
     if(c.field==='departmentId'){const rows=await tx.select({id:department.id}).from(department).where(and(inArray(department.id,c.values),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[p.companyId])));if(rows.length!==c.values.length)throw new Error('Departments must belong to the policy company');}
     if(c.field==='businessUnitId'){const rows=await tx.select({id:businessUnit.id}).from(businessUnit).where(and(inArray(businessUnit.id,c.values),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[p.companyId])));if(rows.length!==c.values.length)throw new Error('Business units must be available to the policy company');}
     if(c.field==='positionId'){const rows=await tx.select({id:position.id}).from(position).where(and(inArray(position.id,c.values),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[p.companyId])));if(rows.length!==c.values.length)throw new Error('Positions must be available to the policy company');}
     if(c.field==='gradeId'){const rows=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(inArray(jobGrade.id,c.values),isNull(jobGrade.archivedAt)));if(rows.length!==c.values.length)throw new Error('Choose active job grades');}
-    if(c.field==='employmentCategory'){const cats=await tx.selectDistinct({value:employment.employmentCategory}).from(employment).where(eq(employment.companyId,p.companyId));if(c.values.some(v=>!cats.some(r=>r.value===v)))throw new Error('Choose an employee category recorded in the policy company');}
+    if(c.field==='branch'||c.field==='division'||c.field==='employmentCategory'){
+      const category=c.field==='employmentCategory'?'category':c.field;
+      const rows=await tx.select({value:profileOption.value}).from(profileOption).where(and(eq(profileOption.category,category),eq(profileOption.isActive,true),inArray(profileOption.value,c.values)));
+      // Legacy v2/v3 categories retain their original Personnel-value vocabulary.
+      if(p.rules.v===4&&c.values.some(value=>!rows.some(row=>row.value===value)))throw new Error('Choose active organization values from System Labels');
+      if(p.rules.v!==4&&c.field==='employmentCategory'){const cats=await tx.selectDistinct({value:employment.employmentCategory}).from(employment).where(eq(employment.companyId,p.companyId));if(c.values.some(value=>!cats.some(row=>row.value===value)))throw new Error('Choose an employee category recorded in the policy company');}
+    }
   }
 }
 async function saveVersionTx(tx:Tx,row:PolicyRow){
@@ -281,7 +288,7 @@ export async function createAllowancePolicy(
           amount,
           payComponentId,
           effectiveFrom,
-          status: rules?.v===3?'inactive':'active',
+          status: rules&&(rules.v===3||rules.v===4)?'inactive':'active',
           criteria,
           scope,
         })
@@ -347,7 +354,7 @@ export async function updateAllowancePolicy(
     try {
       await tx
         .update(attendanceAllowancePolicy)
-        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope,method,policyType,rules,version:before.version+1,status:rules?.v===3?'inactive':before.status })
+        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope,method,policyType,rules,version:before.version+1,status:rules&&(rules.v===3||rules.v===4)?'inactive':before.status })
         .where(eq(attendanceAllowancePolicy.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicateAllowancePolicyCodeError();
@@ -377,7 +384,7 @@ export async function setAllowancePolicyStatus(
     if(!before||before.archivedAt)throw new Error('Attendance-allowance policy not found');
     await assertPolicyAdminTx(tx,before.companyId);
     if(status==='active')await validateDefinitionTx(tx,{companyId:before.companyId,payComponentId:before.payComponentId,policyType:before.policyType,rules:before.rules});
-    if(status==='active'&&before.rules?.v===3){
+    if(status==='active'&&before.rules&&(before.rules.v===3||before.rules.v===4)){
       if(!p.reviewed||!p.previewMonth||!p.expectedDigest)throw new Error('Preview and review the current policy calculation before activation.');
       const preview=await evaluateAllowancesTx(tx,ctx,{policyId:before.id,month:p.previewMonth});
       if(preview.inputDigest!==p.expectedDigest)throw new StaleAllowancePreviewError();
@@ -529,7 +536,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
     const rules=validateAllowanceRules(policy.rules);
     const from=periods[0]?.from,to=periods[periods.length-1]?.to;
     const today=p.today??todayInKualaLumpur();
-    const inputs=from&&to?await allowanceInputsTx(tx,policy.companyId,from,to,today,rules.v===3?3:2):[];
+    const inputs=from&&to?await allowanceInputsTx(tx,policy.companyId,from,to,today,rules.v===3||rules.v===4?3:2):[];
     for(const input of inputs){
       // Employee selection is resolved on each period's final owned employment date, independently
       // of the attendance predicate; no today's department is silently substituted for history.
@@ -540,7 +547,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
         const date=employeeDates[employeeDates.length-1];
         const facts=date?input.factsByDate.get(date):undefined;
         const pass=!!facts&&allowanceEmployeeMatches(rules.employee,input.employmentId,facts);
-        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure'}};
+        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure',branch:'current-personnel-profile-no-historical-version',division:'current-personnel-profile-no-historical-version'}};
         if(!pass){
           period.qualified=false;period.amount='0.00';period.reasons.push('employeeCriteriaFailed');
         }else candidate=true;
@@ -653,16 +660,16 @@ export function allowanceSetupOptions(ctx:SessionContext,companyIds:string[]){
   return withTenant(ctx,async tx=>{
     for(const id of companyIds)await assertPolicyAdminTx(tx,id);
     if(!companyIds.length)return {companies:[],departments:[],businessUnits:[],positions:[],grades:[],employees:[],categories:[],shifts:[],leaveTypes:[]};
-    const [companies,departments,businessUnits,positions,grades,employees,shifts]=await Promise.all([
+    const [companies,departments,businessUnits,positions,grades,categories,shifts]=await Promise.all([
       tx.select({id:company.id,label:company.legalName,currency:company.currency}).from(company).where(inArray(company.id,companyIds)).orderBy(company.legalName),
       tx.select({id:department.id,label:department.name,companyId:department.companyId,isGlobal:department.isGlobal,assignedCompanyIds:labelCompanyIdsSql(department,'department')}).from(department).where(and(isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',companyIds))).orderBy(department.name),
       tx.select({id:businessUnit.id,label:businessUnit.name,companyId:businessUnit.companyId,isGlobal:businessUnit.isGlobal,assignedCompanyIds:labelCompanyIdsSql(businessUnit,'business_unit')}).from(businessUnit).where(and(isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',companyIds))).orderBy(businessUnit.name),
       tx.select({id:position.id,label:position.title,companyId:position.companyId,isGlobal:position.isGlobal,assignedCompanyIds:labelCompanyIdsSql(position,'position')}).from(position).where(and(isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',companyIds))).orderBy(position.title),
       tx.select({id:jobGrade.id,label:jobGrade.name}).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(jobGrade.rank,jobGrade.name),
-      tx.select({id:employment.id,label:person.fullName,companyId:employment.companyId,category:employment.employmentCategory}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(inArray(employment.companyId,companyIds),sql`app.can_admin_employment(${employment.id})`)).orderBy(person.fullName,employment.id),
+      tx.selectDistinct({category:employment.employmentCategory}).from(employment).where(and(inArray(employment.companyId,companyIds),sql`app.can_admin_employment(${employment.id})`)).orderBy(employment.employmentCategory),
       tx.select({id:shift.id,label:shift.name,companyId:shift.companyId,archived:sql<boolean>`${shift.archivedAt} is not null`}).from(shift).where(sql`(${shift.companyId} is null or ${inArray(shift.companyId,companyIds)})`).orderBy(shift.name),
     ]);
     const leaveTypes=(await Promise.all(companyIds.map(async companyId=>(await allowanceLeaveTypesTx(tx,companyId,true)).map(type=>({id:type.id,label:type.label,archived:type.archivedAt!=null,companyId}))))).flat();
-    return {companies,departments,businessUnits,positions,grades,employees,leaveTypes,categories:[...new Set(employees.flatMap(e=>e.category?[e.category]:[]))],shifts};
+    return {companies,departments,businessUnits,positions,grades,employees:[] as {id:string;label:string;companyId:string;category:string|null}[],leaveTypes,categories:categories.flatMap(row=>row.category?[row.category]:[]),shifts};
   });
 }

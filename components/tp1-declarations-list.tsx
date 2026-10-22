@@ -80,7 +80,7 @@ type SortKey = 'year' | 'month' | 'amount' | 'status' | 'lastSaved';
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] }) {
+export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1DeclarationListRow[]; compactOnMobile?:boolean }) {
   const t = useTranslations('payroll.transactions.tp1');
   const q = useClientPageQuery({ page: 'dPage', size: 'dSize' });
   const [query, setQuery] = useState('');
@@ -166,7 +166,7 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         <span className="text-xs text-muted-foreground">{t('history.nShown', { count: sorted.length })}</span>
       </div>
 
-      <div className="overflow-x-auto border-t border-border">
+      <div className={`overflow-x-auto border-t border-border ${compactOnMobile?'hidden md:block':''}`}>
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -233,6 +233,14 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         </table>
       </div>
 
+      {compactOnMobile&&<div className="divide-y divide-border border-t border-border md:hidden">
+        {pageRows.map(row=><article key={row.id} className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{row.assessmentYear} · {row.monthLabel}</h3><Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge></div>
+          <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">{t('history.colAmount')}</dt><dd className="tabular-nums">{rm(row.amount)}</dd></div><div><dt className="text-xs text-muted-foreground">{t('history.colLastSaved')}</dt><dd>{row.lastSaved}</dd></div></dl>
+          <Link href={row.href} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline">{t(row.readOnly?'history.view':'history.viewEdit')}</Link>
+        </article>)}
+        {pageRows.length===0&&<p className="p-6 text-center text-sm text-muted-foreground">{t(rows.length===0?'history.empty':'history.noMatches')}</p>}
+      </div>}
       <ClientPager state={state} paramNames={{ page: 'dPage', size: 'dSize' }} />
     </div>
   );

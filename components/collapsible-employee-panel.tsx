@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { INQUIRY_PICKER_KEYS } from '@/lib/inquiry-picker-context';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -52,9 +52,12 @@ export function CollapsibleEmployeePanel({
   detailHeader,
   headerClassName,
   collapseOnSelection,
+  keepPanelMounted = false,
 }: {
   /** The employee list (left). Rendered only while expanded. */
   panel: ReactNode;
+  /** Preserve picker input state when a records workspace hides its list. Opt-in. */
+  keepPanelMounted?: boolean;
   /** The workspace (right). Always rendered; takes the full width while the panel is collapsed. */
   children: ReactNode;
   /** SSR-resolved initial state, read from the cookie by the server page. */
@@ -91,6 +94,7 @@ export function CollapsibleEmployeePanel({
   headerClassName?: string;
 }) {
   const t = useTranslations('employeePanel');
+  const panelId = useId();
   const [open, setOpen] = useState(defaultOpen);
   const [previousSelection, setPreviousSelection] = useState(collapseOnSelection);
   if (collapseOnSelection !== previousSelection) {
@@ -125,6 +129,7 @@ export function CollapsibleEmployeePanel({
       type="button"
       onClick={toggle}
       aria-expanded={open}
+      aria-controls={panelId}
       title={open ? hide : show}
       className={`items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden ${extra}`}
     >
@@ -160,7 +165,7 @@ export function CollapsibleEmployeePanel({
           rendered in both states so collapsing on a phone cannot strand the operator. */}
       <div className="lg:hidden">{toggleButton('flex w-full')}</div>
 
-      {open && <div className="min-w-0">{panel}</div>}
+      {(open || keepPanelMounted) && <div id={panelId} hidden={!open} className="min-w-0">{panel}</div>}
 
       <div className="min-w-0 space-y-4">
         {/* THE HEADER ROW, RENDERED UNCONDITIONALLY. Every consumer drew no header at all with nobody

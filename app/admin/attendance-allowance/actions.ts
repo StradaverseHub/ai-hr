@@ -42,13 +42,13 @@ export async function saveAllowancePolicyFormAction(_state:{error:string|null},f
     if(!scopeIds.includes(companyId))throw new Error('Choose a company in the selected scope');
     if(id){const existing=await getAllowancePolicy(s,id);if(!existing||existing.companyId!==companyId)throw new Error('Policy does not belong to the selected company');}
     if(fd.get('reviewed')!=='on')throw new Error('Review and confirm the policy before saving');
-    const raw=text(fd,'rules');if(raw.length>40000)throw new Error('Too many policy conditions');
+    const raw=text(fd,'rules');if(raw.length>250000)throw new Error('Too many policy conditions');
     const rules=raw?validateAllowanceRules(JSON.parse(raw)):null;
     if(!id&&!rules)throw new Error('New policies require the attendance and employee conditions');
     const policyType=text(fd,'policyType');if(policyType!=='earning'&&policyType!=='deduction')throw new Error('Choose Earning or Deduction');
     const input={companyId,code:text(fd,'code'),name:text(fd,'name'),policyType:policyType as AllowancePolicyType,method:text(fd,'method'),amount:text(fd,'amount'),payComponentId:text(fd,'payComponentId'),effectiveFrom:text(fd,'effectiveFrom'),rules,...(!rules?{criteria:legacyCriteria(fd),scope:legacyScope(fd)}:{})};
     const saved=id?(await updateAllowancePolicy(s,{id,...input})):await createAllowancePolicy(s,input);
-    if(rules?.v===3)reviewPath=`${PAGE}/${saved.id}`;
+    if(rules&&(rules.v===3||rules.v===4))reviewPath=`${PAGE}/${saved.id}`;
     revalidatePath(PAGE);if(id)revalidatePath(`${PAGE}/${id}`);
   }catch(error){return {error:await message(error)};}
   redirect(reviewPath??PAGE);
@@ -72,4 +72,18 @@ export async function transferAllowanceAction(fd:FormData){
   }catch(e){error=await message(e);}
   const query=new URLSearchParams({batchId,...(error?{error}:{transferred:'1'})});
   redirect(`${PAGE}/${uuid(id)?id:''}?${query}`);
+}
+
+/** Read-only searches retain the selected company scope and the service's own access checks. */
+export async function searchAllowanceEmployees(input: import('@/packs/attendance/service').AllowanceEmployeePageInput) {
+  const {s,scopeIds}=await scopedAdmin();
+  if(!scopeIds.includes(input.companyId))throw new Error('Choose a company in the selected scope');
+  const {allowanceEmployeePage}=await import('@/packs/attendance/service');
+  return allowanceEmployeePage(s,input);
+}
+export async function searchAllowanceEmployeeValues(input: {companyId:string;field:import('@/lib/allowance-employee-expression').AllowanceEmployeeFieldV4;query:string;page:number;selected?:string[]}) {
+  const {s,scopeIds}=await scopedAdmin();
+  if(!scopeIds.includes(input.companyId))throw new Error('Choose a company in the selected scope');
+  const {allowanceEmployeeValues}=await import('@/packs/attendance/service');
+  return allowanceEmployeeValues(s,input);
 }

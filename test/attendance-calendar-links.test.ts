@@ -17,7 +17,10 @@ describe('personal calendar detail and return navigation', () => {
   it('ignores foreign destinations, invalid dates, arbitrary views and employee selectors', () => {
     const hostile={calendar:'1',calendarView:'https://untrusted.invalid',calendarMonth:'2026-99',calendarDate:'2026-02-30',employmentId:'someone-else',returnTo:'https://untrusted.invalid'};
     expect(calendarReturnParams(hostile)).toEqual({calendar:'1'});
-    expect(attendanceCalendarBackHref(hostile,today)).toBe('/attendance/my-roster?view=month&month=2026-03&selected=2026-03-18');
+    const back = new URL(attendanceCalendarBackHref(hostile,today),'https://local.invalid');
+    expect(back.pathname).toBe('/attendance/my-roster');
+    expect(Object.fromEntries(back.searchParams)).toMatchObject({tab:'calendar',view:'month',month:'2026-03',selected:today});
+    expect(back.searchParams.has('employmentId')).toBe(false);
   });
   it.each(['2026-13-01', '2026-00-10', '2026-01-32', '2026-02-30', '2026-02-29'])('ignores impossible date %s without throwing', date => {
     expect(calendarReturnParams({calendar:'1', calendarDate:date})).toEqual({calendar:'1'});
@@ -26,6 +29,6 @@ describe('personal calendar detail and return navigation', () => {
     }
   });
   it('maps an older daily bookmark to the same personal calendar month',()=>{
-    expect(attendanceCalendarBackHref({},today)).toBe('/attendance/my-roster?view=month&month=2026-03&selected=2026-03-18');
+    expect(Object.fromEntries(new URL(attendanceCalendarBackHref({},today),'https://local.invalid').searchParams)).toMatchObject({tab:'calendar',view:'month',month:'2026-03',selected:today});
   });
 });

@@ -1704,9 +1704,16 @@ export async function eaStatement(
     throughPeriod?: string;
     processedOnly?: boolean;
     applyOverrides?: boolean;
+    /** Mine withholds the entire form while any canonical contributing source is unavailable. */
+    selfService?: boolean;
   },
 ): Promise<EaStatement | null> {
   return withTenant(ctx, async (tx) => {
+    if(p.selfService) {
+      if(!p.companyId || !ctx.personId)return null;
+      const [available]=await tx.execute(sql`select app.my_ea_source_available(${p.employmentId}::uuid,${p.companyId}::uuid,${p.year}) as ok`) as unknown as {ok:boolean}[];
+      if(available?.ok!==true)return null;
+    }
     const [info] = await tx
       .select({
         name: person.fullName,
@@ -2307,7 +2314,7 @@ export async function eaStatement(
         mappedFields: [...mappedFields].sort(),
       },
     };
-  });
+  },p.selfService?{readOnlySnapshot:true}:undefined);
 }
 
 export const MY_REPORTS: ReportDef[] = [

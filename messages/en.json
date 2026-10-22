@@ -449,14 +449,15 @@
     "workforceInsights": "Workforce Insights",
     "systemConfiguration": "System Configuration",
     "inbox": "Inbox",
-    "myPayslips": "My Payslips",
-    "taxRelief": "Tax relief",
+    "myPayslips": "My Payslip",
+    "taxRelief": "Tax Relief (Form TP1)",
     "reimbursementsDue": "Reimbursements due",
     "workLocations": "Locations",
     "sharedNavigation": "Shared navigation",
     "profileChanges": "Profile changes",
     "leaveSettings": "Settings",
-    "attendanceCalendar": "Attendance Calendar"
+    "attendanceCalendar": "Attendance Calendar",
+    "myEa": "My EA"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -3929,7 +3930,16 @@
     "myCalendar": {
       "title": "Attendance Calendar",
       "records": "Attendance records list",
-      "viewDate": "View attendance for {date}"
+      "viewDate": "View attendance for {date}",
+      "calendarView": "Calendar View",
+      "listView": "List View",
+      "viewNavigation": "Attendance views",
+      "shortHours": "Short Hours",
+      "incompleteEntry": "Incomplete Entry",
+      "attendanceLegend": "Attendance and warnings",
+      "selectDay": "Select a date to review its attendance details.",
+      "invalidRange": "Enter a valid date range.",
+      "contextHelp": "Warnings describe attendance separately from its status. Holiday names appear on the applicable dates."
     }
   },
   "org": {
@@ -10046,7 +10056,10 @@
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingAcknowledgement": "Only the person linked to the hire can acknowledge their own handed-over equipment. Rehire and multiple-employment cases remain separate.",
         "attendanceVisibleApplications": "Only attendance requests already visible through the current employee, reporting, delegation or saved participant scope. This page grants no Personnel browsing or wider HR history access.",
-        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing."
+        "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
+        "myPayslip": "You can view only your own released payslips, including retained former-employment records.",
+        "myTp1": "Your own TP1 declarations only. Employer consent remains an authorised Payroll action.",
+        "myEa": "My EA"
       },
       "status": {
         "active": "Active",
@@ -13812,8 +13825,8 @@
     "accountReporter": "Account reporter"
   },
   "taxRelief": {
-    "title": "Personal Tax Relief (TP1)",
-    "intro": "Declare your total optional personal tax reliefs (LHDN form TP1) for an assessment year. The latest submitted amount reduces your monthly tax deduction (PCB/MTD).",
+    "title": "Tax Relief (Form TP1)",
+    "intro": "Submit monthly TP1 relief and follow its approval. Only approved relief feeds payroll.",
     "backToWorkspace": "Back to My Profile",
     "yearLabel": "Assessment year",
     "viewYear": "View year",
@@ -13824,7 +13837,7 @@
     "submit": "Submit",
     "submitCorrection": "Submit correction",
     "correctedAmountLabel": "Corrected annual TP1 relief (RM)",
-    "submittedNotice": "This year has been submitted. The latest submitted amount feeds your payroll. To change it, submit a correction.",
+    "submittedNotice": "A submitted declaration needs employer approval before it affects payroll. A correction keeps the earlier record.",
     "historicalSubmitted": "Submitted for this assessment year.",
     "historicalDraft": "Saved as a draft for this assessment year.",
     "historicalNone": "No declaration was made for this assessment year.",
@@ -14137,7 +14150,15 @@
       "totalPlusExcess": "Plus taxable excess over exemption (C2)",
       "totalExemptNote": "Of the RM {entered} keyed across the C2 boxes, RM {exempt} is within the statutory exemption limits and is not taxed. C1 carries only taxable pay, so the exempt amount is never deducted from it — only the RM {excess} above the limits is added.",
       "totalNoLimitNote": "No annual exemption limit is published for C2(iii) or C2(v), so no part of those boxes can be shown to be taxable and nothing from them is added."
-    }
+    },
+    "monthlyIntro": "Submit monthly TP1 relief and follow its approval. Only approved relief feeds payroll.",
+    "notLinked": "This account has no active linked employment. Existing declarations remain available to view.",
+    "changed": "This TP1 changed while you were editing. Reload the declaration before saving.",
+    "pastReadOnly": "Past assessment years are read-only.",
+    "invalidIntent": "Choose Save draft or Submit.",
+    "savedDraft": "Draft saved.",
+    "savedSubmitted": "Submitted for employer approval.",
+    "recordHistory": "Record history"
   },
   "payRule": {
     "sectionTitle": "How is this calculated?",
@@ -21890,6 +21911,74 @@
       "credit": "This change affects earned time off. Review the existing credit before changing the calendar.",
       "tooMany": "The history or date window exceeds the supported size. Narrow the dates or request review.",
       "failed": "The calendar could not be saved. Review the dates and try again."
+    }
+  },
+  "myPayslip": {
+    "title": "My Payslip",
+    "intro": "Your released payslips",
+    "cycle": "Pay Cycle (Run Type)",
+    "unavailableChoice": "Unavailable selection",
+    "releasedHelp": "Choices come from your own final, released payslips.",
+    "unavailable": "No released payslip is available for this selection.",
+    "review": "Review Payslip",
+    "download": "Download PDF",
+    "back": "Back to My Payslip",
+    "openInNewTab": "Open in new tab",
+    "loadError": "Unable to load your payslip",
+    "retry": "Try again",
+    "loading": "Loading your payslip…"
+  },
+  "myEa": {
+    "title": "My EA",
+    "intro": "View your annual EA form by year and paying employer.",
+    "year": "Year",
+    "employer": "Employer",
+    "language": "Document language",
+    "view": "View EA",
+    "unavailable": "EA is unavailable",
+    "unavailableHelp": "The complete form becomes available when all contributing payroll runs are closed and released. Contact HR if you need help.",
+    "download": "Download PDF",
+    "back": "Back to My EA",
+    "openInNewTab": "Open PDF in a new tab",
+    "loadError": "Your EA form could not be loaded.",
+    "retry": "Try again",
+    "loading": "Loading your EA form…"
+  },
+  "allowanceV4": {
+    "available": "Available",
+    "included": "Included",
+    "includeChecked": "Include checked ({count})",
+    "removeChecked": "Remove checked ({count})",
+    "includedCount": "{count} employees included",
+    "limit": "A policy supports up to 2,000 included employees. Remove some before adding more.",
+    "clearIncluded": "Clear included",
+    "selectionHelp": "Only Included employees qualify. Checks stay selected across searches and pages. Select visible applies only to this page.",
+    "searchSide": "Search {side}",
+    "search": "Search Employee ID or name",
+    "loadError": "The choices could not be loaded.",
+    "retry": "Try again",
+    "selectVisible": "Select visible ({count})",
+    "loading": "Loading choices…",
+    "empty": "No matching choices.",
+    "noCode": "No Employee ID",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {page}",
+    "unavailable": "Some included references are unavailable. Remove them or ask HR to correct their access before saving.",
+    "unavailableMore": "{count} more unavailable references remain.",
+    "searchValues": "Search values",
+    "removeValue": "Remove {value}",
+    "employeeGroup": "Employee criteria",
+    "emptyGroup": "Add a condition to this group before saving.",
+    "branch": "Branch",
+    "division": "Division",
+    "upgradeHelp": "Grouped employee criteria start a new saved policy version. Existing results and attendance conditions keep their meaning.",
+    "upgrade": "Use grouped employee criteria",
+    "operators": {
+      "is": "Is",
+      "isNot": "Is Not",
+      "in": "In",
+      "notIn": "Not In"
     }
   }
 }

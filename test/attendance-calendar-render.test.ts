@@ -8,6 +8,7 @@ const catalogue=()=>JSON.parse(readFileSync(new URL(`../messages/${state.locale}
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:catalogue()})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{personId:'self'}})}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>undefined}));
+vi.mock('../app/attendance/my-roster/record-list',()=>({AttendanceRecordList:()=>null}));
 vi.mock('../packs/attendance/service',()=>({myAttendanceCalendarWindow:state.view}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:unknown)=>unknown)=>run({})}));
 vi.mock('../core/holidays',()=>({originalHolidayCalendarFor:async()=>[]}));
@@ -25,13 +26,15 @@ describe('Attendance Calendar rendering',()=>{
     state.locale=locale;const html=await render(),m=catalogue();
     expect(html).toContain(m.attendance.myCalendar.title);
     expect(html).toContain(m.attendance.statusPresent);
-    expect(html).toContain(m.attendance.flagOdd);
+    expect(html).toContain(m.attendance.myCalendar.incompleteEntry);
     expect(html).toContain(m.attendance.statusOnLeave);
     expect(html).toContain('DAY');expect(html).toContain('09:00');
     expect(html).toContain('/attendance/my-records/2026-03-16?calendar=1');
-    expect(html).toContain('/attendance/my-records?from=2026-03-01&amp;to=2026-03-31');
+    expect(html).toContain('tab=list');
+    expect(html).toContain('from=2026-03-01');
+    expect(html).toContain('to=2026-03-31');
     expect(html).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
-    expect(html).toContain('aria-current="date"');
+    expect(html).not.toContain('aria-current="date"'); // selected March date is not today
   });
   it.each(['week','day'])('retains %s roster information and a daily attendance action',async view=>{
     const html=await render(view);expect(html).toContain('/attendance/my-records/2026-03-16?calendar=1');

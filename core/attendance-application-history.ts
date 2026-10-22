@@ -152,7 +152,26 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
             const key=field as keyof AttendanceWorkflowCriteria;
             const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
         }
-        const employees=await tx.select({id:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,companies.map(c=>c.id))).orderBy(asc(person.fullName),asc(employment.id));
+        // Extend the existing authorised options, rather than introducing a wider employee reader.
+        // One dated assignment supplies the choice-only narrowers; application filters remain separate.
+        const employees = await tx.execute(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
+          e.company_id AS "companyId",co.legal_name AS company,e.terminated_on AS "terminatedOn",
+          a.department_id AS "departmentId",d.name AS department,
+          coalesce(a.business_unit_id,d.business_unit_id) AS "businessUnitId",bu.name AS "businessUnit"
+          FROM employment e JOIN person p ON p.id=e.person_id JOIN company co ON co.id=e.company_id
+          LEFT JOIN LATERAL (SELECT department_id,business_unit_id FROM assignment
+            WHERE employment_id=e.id AND superseded_at IS NULL AND valid_from<=${todayInKualaLumpur()}::date
+              AND (valid_to IS NULL OR valid_to>${todayInKualaLumpur()}::date)
+            ORDER BY valid_from DESC,id DESC LIMIT 1) a ON true
+          LEFT JOIN department d ON d.id=a.department_id
+          LEFT JOIN business_unit bu ON bu.id=coalesce(a.business_unit_id,d.business_unit_id)
+          WHERE e.company_id IN (${sql.join(companies.map(c=>sql`${c.id}::uuid`),sql`, `)})
+            AND app.is_admin_for(e.company_id)
+          ORDER BY p.full_name,e.id`) as unknown as {
+            id:string; name:string; employeeCode:string|null; companyId:string; company:string;
+            terminatedOn:string|null; departmentId:string|null; department:string|null;
+            businessUnitId:string|null; businessUnit:string|null;
+          }[];
         const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[])`) as unknown as { id: string; name: string; employeeCode: string | null }[];
         return { companies, departments, businessUnits, grades, divisions, employees, approverEmployees, positions, profileFields };
     });

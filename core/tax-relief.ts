@@ -1,3 +1,5 @@
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { createHash } from 'node:crypto';
 /**
  * Self-service Personal Tax Relief — LHDN TP1 (ADR-0050, #1.1.3; per-category breakdown a2f1fa24).
  *
@@ -97,6 +99,10 @@ export class TaxReliefError extends Error {
     super(message);
     this.name = 'TaxReliefError';
   }
+}
+
+export class Tp1ChangedError extends TaxReliefError {
+  constructor(){super('This TP1 changed while you were editing. Reload the declaration before saving.');this.name='Tp1ChangedError';}
 }
 
 /**
@@ -752,6 +758,8 @@ function resolveInput(p: Tp1WriteInput): { year: number; amount: number; categor
 }
 
 export type Tp1WriteInput = {
+  /** Optional optimistic token; Mine always supplies one. Legacy API callers retain their contract. */
+  expectedRevision?: string;
   assessmentYear: number;
   /** Scalar total — accepted for legacy/API callers when no `categories` breakdown is provided. */
   tp1Amount?: number;
@@ -839,6 +847,12 @@ function requirePerson(ctx: SessionContext): string {
   return ctx.personId;
 }
 
+/** Mine binds the actual login, not a caller-supplied Person, even when that login also administers Payroll. */
+async function assertMyTp1OwnerTx(tx:Tx,personId:string) {
+  const rows=await tx.execute(sql`select u.id from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() for share`);
+  if(!rows.length)throw new TaxReliefError('This account is not linked to this employee profile.');
+}
+
 /**
  * Admin-on-behalf gate (Standardize-TP1, item 0cde61f3). The `*ForPerson` entry points let an HR admin
  * open/maintain ANOTHER employee's TP1 declaration — the SAME single tp1_relief master row the employee
@@ -854,6 +868,29 @@ function requireAdminTarget(ctx: SessionContext, personId: string | null | undef
   }
   if (!personId) throw new TaxReliefError('Select an employee before maintaining a TP1 declaration.');
   return personId;
+}
+
+type Tp1RevisionSource = {
+  id:string; status:string; tp1Amount:number|string; categories:unknown; declaredAt:Date|null;
+  approvedBy:string|null; approvedAt:Date|null; approvedMonth:number|null; approvedYear:number|null;
+  approverPosition:string|null;
+};
+/** Opaque change token over canonical claim and consent; no second financial record. */
+export function tp1Revision(row:Tp1RevisionSource|null):string {
+  if(!row)return 'new';
+  return createHash('sha256').update(JSON.stringify([row.id,row.status,Number(row.tp1Amount),row.categories,
+    row.declaredAt?.toISOString()??null,row.approvedBy,row.approvedAt?.toISOString()??null,
+    row.approvedMonth,row.approvedYear,row.approverPosition])).digest('hex');
+}
+async function lockTp1YearTx(tx:Tx,ctx:SessionContext,personId:string,year:number) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`tp1|${ctx.tenantId}|${personId}|${year}`},0))`);
+}
+async function checkTp1RevisionTx(tx:Tx,ctx:SessionContext,personId:string,year:number,month:number|null,expected:string|undefined) {
+  await lockTp1YearTx(tx,ctx,personId,year);
+  if(expected===undefined)return;
+  const [latest]=await tx.select().from(tp1Relief).where(and(eq(tp1Relief.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${tp1Relief.personId})`,eq(tp1Relief.assessmentYear,year),month==null?isNull(tp1Relief.deductionMonth):eq(tp1Relief.deductionMonth,month)))
+    .orderBy(desc(tp1Relief.createdAt),desc(tp1Relief.id)).limit(1);
+  if(tp1Revision(latest??null)!==expected)throw new Tp1ChangedError();
 }
 
 /** The latest TP1 row for the caller for an assessment year (RLS-scoped). Read-only, no event. */
@@ -894,14 +931,14 @@ function getTp1ForPersonId(
 }
 
 /** One TP1 row by id, for a person already resolved by the caller. Read-only, RLS-scoped, no event. */
-function getTp1RowById(ctx: SessionContext, personId: string, id: string): Promise<Tp1Row | null> {
+function getTp1RowById(ctx: SessionContext, personId: string, id: string, ownOnly=false): Promise<Tp1Row | null> {
   return withTenant(ctx, async (tx): Promise<Tp1Row | null> => {
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
       .leftJoin(appUser, eq(appUser.id, tp1Relief.approvedBy))
       .leftJoin(person, eq(person.id, appUser.personId))
-      .where(and(eq(tp1Relief.id, id), eq(tp1Relief.personId, personId)))
+      .where(and(eq(tp1Relief.id, id), eq(tp1Relief.personId, personId),ownOnly?sql`app.principal_snapshot_current() AND app.is_self_person(${tp1Relief.personId})`:undefined))
       .limit(1);
     return row ? toTp1Row(row) : null;
   });
@@ -913,6 +950,22 @@ export async function getTp1ByIdForPerson(
   p: { personId: string; id: string },
 ): Promise<Tp1Row | null> {
   return getTp1RowById(ctx, requireAdminTarget(ctx, p.personId), p.id);
+}
+
+/** Exact owned declaration, with the same bare absence for foreign and unknown IDs. */
+export function getMyTp1ById(ctx: SessionContext, p: {id: string}): Promise<Tp1Row | null> {
+  const personId = requirePerson(ctx);
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.id)) return Promise.resolve(null);
+  return getTp1RowById(ctx, personId, p.id, true);
+}
+
+/** Retained versions of one owned month; null remains the recorded month-less bucket. */
+export function listMyTp1Versions(ctx: SessionContext, p: {assessmentYear:number; deductionMonth:number|null}): Promise<Tp1Row[]> {
+  const personId=requirePerson(ctx), year=validateYear(p.assessmentYear), month=validateMonth(p.deductionMonth,'Deduction month');
+  return withTenant(ctx,async tx => (await tx.select(TP1_ROW_COLUMNS).from(tp1Relief)
+    .leftJoin(appUser,eq(appUser.id,tp1Relief.approvedBy)).leftJoin(person,eq(person.id,appUser.personId))
+    .where(and(eq(tp1Relief.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${tp1Relief.personId})`,eq(tp1Relief.assessmentYear,year),month==null?isNull(tp1Relief.deductionMonth):eq(tp1Relief.deductionMonth,month)))
+    .orderBy(desc(tp1Relief.createdAt),desc(tp1Relief.id))).map(toTp1Row));
 }
 
 /**
@@ -1265,10 +1318,21 @@ export async function listTp1DeclarationsForPersonYear(
   ctx: SessionContext,
   p: { personId: string; assessmentYear?: number },
 ): Promise<Tp1MonthDeclaration[]> {
-  const personId = requireAdminTarget(ctx, p.personId);
+  return listTp1MonthDeclarations(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear);
+}
+
+/** Mine never accepts a subject, including when the caller also has payroll administration rights. */
+export function listMyTp1Declarations(
+  ctx: SessionContext, p: {assessmentYear?: number} = {},
+): Promise<Tp1MonthDeclaration[]> {
+  return listTp1MonthDeclarations(ctx, requirePerson(ctx), p.assessmentYear, true);
+}
+
+function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessmentYear?: number, ownOnly=false): Promise<Tp1MonthDeclaration[]> {
   // Validated only when supplied: an absent year is "every year", not year zero.
-  const year = p.assessmentYear == null ? null : validateYear(p.assessmentYear);
+  const year = assessmentYear == null ? null : validateYear(assessmentYear);
   return withTenant(ctx, async (tx) => {
+    if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
     const rows = await tx
       .select({
         id: tp1Relief.id,
@@ -1338,8 +1402,10 @@ export type Tp1FormIdentity = {
 export function getTp1FormIdentity(
   ctx: SessionContext,
   p: { personId: string; companyId?: string | null },
+  ownOnly=false,
 ): Promise<Tp1FormIdentity> {
   return withTenant(ctx, async (tx): Promise<Tp1FormIdentity> => {
+    if(ownOnly)await assertMyTp1OwnerTx(tx,p.personId);
     // The HR screen already knows which employment the reader selected and passes its company. The
     // employee's own screen does not, so the company is resolved from their employment here rather than
     // making /me guess — and a person with no employment simply has no Section A, which is the honest
@@ -1430,6 +1496,7 @@ async function saveTp1DraftForPersonId(
   ctx: SessionContext,
   personId: string,
   p: Tp1WriteInput,
+  ownOnly=false,
 ): Promise<{ id: string }> {
   const { year, amount, categories } = resolveInput(p);
   const deductionMonth = validateMonth(p.deductionMonth, 'Deduction month');
@@ -1438,6 +1505,8 @@ async function saveTp1DraftForPersonId(
   if (deductionMonth != null) fields.push('deductionMonth');
   const isCatalogue = isTp1Categories2026(categories);
   return withTenant(ctx, async (tx) => {
+    if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    await checkTp1RevisionTx(tx,ctx,personId,year,deductionMonth,p.expectedRevision);
     // ⚠️ THE YEAR-TO-DATE CHECK RUNS ON A DRAFT TOO (r352, item 0df7dd44), and until this round it did
     // not. `resolveInput` above has always checked THIS claim on its own — each sub-line against its
     // printed cap, each item against its annual-limit column — but the accumulated check needs the
@@ -1531,6 +1600,7 @@ async function submitTp1ForPersonId(
   ctx: SessionContext,
   personId: string,
   p: Tp1WriteInput,
+  ownOnly=false,
 ): Promise<{ id: string }> {
   const { year, amount, categories } = resolveInput(p);
   const deductionMonth = validateMonth(p.deductionMonth, 'Deduction month');
@@ -1546,13 +1616,9 @@ async function submitTp1ForPersonId(
     throw new TaxReliefError('Tick the employee declaration (Section E) before submitting this TP1.');
   }
   return withTenant(ctx, async (tx) => {
-    // The accumulated check runs INSIDE the write transaction, against this person's already-approved
-    // rows for the year. Doing it here rather than in the action is what makes "an over-limit claim
-    // across two declarations in one year is refused on the second" true for every caller, screen or
-    // not. (Two simultaneous submissions could still each read the same accumulation and both pass —
-    // the same serialization gap core/claims.ts closes with an advisory lock. It is NOT closed here:
-    // TP1 is a per-person self-declaration with no concurrent writer in any shipped flow, and adding a
-    // lock this round would be an unexercised code path on the payroll write path. Recorded, not hidden.)
+    if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    await checkTp1RevisionTx(tx,ctx,personId,year,deductionMonth,p.expectedRevision);
+    // The person-year lock above serializes claims and consent before this canonical headroom check.
     if (isCatalogue) {
       // THE SAME FUNCTION THE SCREEN CALLS, with the month this row is about to be written against — so
       // a correction to an already-approved month is measured against the REST of the year and not
@@ -1741,6 +1807,9 @@ async function decide(
   stamps: Record<string, unknown>,
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    await lockTp1YearTx(tx,ctx,personId,current.assessmentYear);
+    const [live]=await tx.select().from(tp1Relief).where(and(eq(tp1Relief.id,current.id),eq(tp1Relief.personId,personId))).limit(1);
+    if(!live || tp1Revision(live)!==tp1Revision(current))throw new Tp1ChangedError();
     await tx
       .update(tp1Relief)
       .set({ status, ...stamps })
@@ -1762,4 +1831,22 @@ async function decide(
     });
     return { id: current.id };
   });
+}
+
+export function getMyTp1FormIdentity(ctx:SessionContext):Promise<Tp1FormIdentity> {
+  return getTp1FormIdentity(ctx,{personId:requirePerson(ctx)},true);
+}
+export function getMyTp1Accumulated(ctx:SessionContext,p:{assessmentYear:number;deductionMonth:number|null}):Promise<Tp1Counted> {
+  const personId=requirePerson(ctx),year=validateYear(p.assessmentYear);
+  return withTenant(ctx,async tx=>{await assertMyTp1OwnerTx(tx,personId);return accumulatedInTx(tx,personId,year,p.deductionMonth);});
+}
+function validateMyTp1Write(p:Tp1WriteInput) {
+  if(p.assessmentYear<Number(todayInKualaLumpur().slice(0,4)))throw new TaxReliefError('Past assessment years are read-only.');
+  if(typeof p.expectedRevision!=='string'||!p.expectedRevision)throw new Tp1ChangedError();
+}
+export function saveMyTp1Draft(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
+  validateMyTp1Write(p);return saveTp1DraftForPersonId(ctx,requirePerson(ctx),p,true);
+}
+export function submitMyTp1(ctx:SessionContext,p:Tp1WriteInput):Promise<{id:string}> {
+  validateMyTp1Write(p);return submitTp1ForPersonId(ctx,requirePerson(ctx),p,true);
 }

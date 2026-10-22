@@ -1,20 +1,11 @@
 import { EaLayoutFitError } from '@/lib/ea-pdf';
 import { eaLayoutFailure } from '@/lib/ea-layout-response';
-// ADR-0036 (#22 follow-up) — stream a self-serve annual EA (C.P.8A) statement as a downloadable A4 PDF.
-//
-// ABAC is inherited from employeeEaStatement, which since security finding H4 gates on PAYROLL-STAFF-OR-SELF
-// before it reads anything, with RLS still fencing what that caller may reach. Null → 404 here.
-//
-// THE OLD COMMENT HERE DESCRIBED THE DEFECT AS THE DESIGN, and is retired deliberately rather than deleted.
-// It read: "the read returns null unless the caller may see the employment (own, a report's/subordinate's
-// via can_see_employment, or admin via is_admin_for — db/migrations 0010/0016/0017). So an employee can
-// only pull their own (or a subordinate's, or — as admin — their company's) EA." A subordinate's EA is
-// exactly what a line manager must NOT be able to pull: the form carries their IC or passport, their tax
-// number and the year's full remuneration. The HTML page was guarded when 0492 landed and this route was
-// not, so the guard was one URL away from being bypassed. Mirrors the payslip-pdf route.
+// Mine uses an explicit own-subject facade, including administrators. Availability and canonical
+// aggregation share one read snapshot; inline/download differ only in disposition.
 import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
+import { myEaStatement } from '@/core/reporting';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { renderEaPdf, type EaPdfData } from '@/lib/ea-pdf';
 import { eaPdfLabels } from '@/lib/ea-pdf-labels';
 
@@ -44,7 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   // Year is a 4-char STRING end-to-end (the read filters payPeriod LIKE '<year>-%'); default to the
   // current calendar year as a string, never a number.
   const yearParam = new URL(req.url).searchParams.get('year') ?? '';
-  const year = /^\d{4}$/.test(yearParam) ? yearParam : String(new Date().getFullYear());
+  const year = /^\d{4}$/.test(yearParam) ? yearParam : todayInKualaLumpur().slice(0,4);
 
   // b7b22514 — an EA form belongs to ONE employer, and after an Entity Transfer a year can span two. The
   // caller names which employer's form it wants; unnamed means the employment's current company, which is
@@ -53,11 +44,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   const companyParam = new URL(req.url).searchParams.get('company');
 
   const s = await getSession();
-  if (companyParam) {
-    const allowed = await employeeEaCompanies(s, { employmentId, year });
-    if (!allowed.some((c) => c.companyId === companyParam)) return new Response('Not found', { status: 404 });
-  }
-  const ea = await employeeEaStatement(s, {
+  const ea = await myEaStatement(s, {
     employmentId,
     year,
     ...(companyParam ? { companyId: companyParam } : {}),
@@ -116,7 +103,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fname}.pdf"`,
+      'Content-Disposition': `${new URL(req.url).searchParams.get('disposition')==='inline'?'inline':'attachment'}; filename="${fname}.pdf"`,
       'Cache-Control': 'private, no-store',
     },
   });

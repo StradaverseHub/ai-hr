@@ -450,13 +450,14 @@
     "systemConfiguration": "系统配置",
     "inbox": "收件箱",
     "myPayslips": "我的工资单",
-    "taxRelief": "税务减免",
+    "taxRelief": "税务减免（TP1 表格）",
     "reimbursementsDue": "待支付报销",
     "workLocations": "地点",
     "sharedNavigation": "通用导航",
     "profileChanges": "个人资料变更",
     "leaveSettings": "设置",
-    "attendanceCalendar": "考勤日历"
+    "attendanceCalendar": "考勤日历",
+    "myEa": "我的 EA"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -3929,7 +3930,16 @@
     "myCalendar": {
       "title": "考勤日历",
       "records": "考勤记录列表",
-      "viewDate": "查看 {date} 的考勤"
+      "viewDate": "查看 {date} 的考勤",
+      "calendarView": "日历视图",
+      "listView": "列表视图",
+      "viewNavigation": "考勤视图",
+      "shortHours": "工时不足",
+      "incompleteEntry": "打卡不完整",
+      "attendanceLegend": "考勤与提醒",
+      "selectDay": "选择日期以查看考勤详情。",
+      "invalidRange": "请输入有效的日期范围。",
+      "contextHelp": "提醒与考勤状态分开显示。假日名称显示在对应日期。"
     }
   },
   "org": {
@@ -10046,7 +10056,10 @@
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingAcknowledgement": "只有与该次入职关联的本人可以确认已交付给自己的设备。重新入职及多重雇佣的记录分别保留。",
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
-        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。"
+        "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
+        "myPayslip": "您只能查看自己已发布的工资单，包括保留的过往雇佣记录。",
+        "myTp1": "仅限您本人的 TP1 申报。雇主同意仍须由获授权的薪资人员操作。",
+        "myEa": "我的 EA"
       },
       "status": {
         "active": "启用",
@@ -13812,8 +13825,8 @@
     "accountReporter": "账号报告者"
   },
   "taxRelief": {
-    "title": "个人税务减免 (TP1)",
-    "intro": "申报您在某个课税年度的可选个人税务减免总额（LHDN TP1 表格）。最新提交的金额将减少您的每月预扣税（PCB/MTD）。",
+    "title": "税务减免（TP1 表格）",
+    "intro": "按月提交 TP1 减免并跟进审批。只有获批减免会用于薪资计算。",
     "backToWorkspace": "返回我的资料",
     "yearLabel": "课税年度",
     "viewYear": "查看年度",
@@ -13824,7 +13837,7 @@
     "submit": "提交",
     "submitCorrection": "提交更正",
     "correctedAmountLabel": "更正后的年度 TP1 减免（RM）",
-    "submittedNotice": "本年度已提交。最新提交的金额将用于您的薪资计算。如需更改，请提交更正。",
+    "submittedNotice": "提交的申报须经雇主批准后才会影响薪资。更正会保留原记录。",
     "historicalSubmitted": "本课税年度已提交。",
     "historicalDraft": "本课税年度已保存为草稿。",
     "historicalNone": "本课税年度未作任何申报。",
@@ -14137,7 +14150,15 @@
       "totalPlusExcess": "加：超出免税限额的应税部分（C2）",
       "totalExemptNote": "在 C2 各栏录入的 RM {entered} 之中，RM {exempt} 在法定免税限额之内，不课税。C1 仅包含应税薪酬，因此免税金额从不从中扣除——只有超出限额的 RM {excess} 会被加入。",
       "totalNoLimitNote": "C2(iii) 与 C2(v) 没有公布的年度免税限额，因此无法认定其中任何部分应课税，也不会加入任何金额。"
-    }
+    },
+    "monthlyIntro": "按月提交 TP1 减免并跟进审批。只有获批减免会用于薪资计算。",
+    "notLinked": "此账户未关联有效雇佣。您仍可查看已有申报。",
+    "changed": "编辑期间此 TP1 已发生变化。请重新加载申报后再保存。",
+    "pastReadOnly": "过往课税年份仅供查看。",
+    "invalidIntent": "请选择保存草稿或提交。",
+    "savedDraft": "草稿已保存。",
+    "savedSubmitted": "已提交，等待雇主审批。",
+    "recordHistory": "记录历史"
   },
   "payRule": {
     "sectionTitle": "如何计算？",
@@ -21890,6 +21911,74 @@
       "credit": "此更改影响已取得的补休，请先复核现有补休。",
       "tooMany": "历史记录或日期范围超过支持大小，请缩小范围或申请复核。",
       "failed": "无法保存日历，请检查日期后重试。"
+    }
+  },
+  "myPayslip": {
+    "title": "我的工资单",
+    "intro": "您已发布的工资单",
+    "cycle": "薪资周期（运行类型）",
+    "unavailableChoice": "所选项目不可用",
+    "releasedHelp": "选项仅来自您已最终确认并发布的工资单。",
+    "unavailable": "此选项暂无已发布的工资单。",
+    "review": "预览工资单",
+    "download": "下载 PDF",
+    "back": "返回我的工资单",
+    "openInNewTab": "在新标签页中打开",
+    "loadError": "无法加载您的工资单",
+    "retry": "重试",
+    "loading": "正在加载您的工资单…"
+  },
+  "myEa": {
+    "title": "我的 EA",
+    "intro": "按年份和支付薪资的雇主查看年度 EA 表格。",
+    "year": "年份",
+    "employer": "雇主",
+    "language": "文件语言",
+    "view": "查看 EA",
+    "unavailable": "EA 暂不可用",
+    "unavailableHelp": "所有相关薪资批次关闭并发布后，完整表格才会开放。如需帮助，请联系 HR。",
+    "download": "下载 PDF",
+    "back": "返回我的 EA",
+    "openInNewTab": "在新标签页打开 PDF",
+    "loadError": "无法加载您的 EA 表格。",
+    "retry": "重试",
+    "loading": "正在加载您的 EA 表格…"
+  },
+  "allowanceV4": {
+    "available": "可选员工",
+    "included": "已加入员工",
+    "includeChecked": "加入勾选项（{count}）",
+    "removeChecked": "移除勾选项（{count}）",
+    "includedCount": "已加入 {count} 名员工",
+    "limit": "每项政策最多可加入 2,000 名员工。请先移除部分员工。",
+    "clearIncluded": "清空已加入员工",
+    "selectionHelp": "仅已加入员工符合条件。勾选会跨搜索及分页保留。“选择本页”仅影响当前页。",
+    "searchSide": "搜索{side}",
+    "search": "搜索员工编号或姓名",
+    "loadError": "无法加载选项。",
+    "retry": "重试",
+    "selectVisible": "选择本页（{count}）",
+    "loading": "正在加载选项…",
+    "empty": "没有匹配选项。",
+    "noCode": "无员工编号",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {page} 页",
+    "unavailable": "部分员工引用不可用。请移除，或联系 HR 修正访问权限后再保存。",
+    "unavailableMore": "另有 {count} 个不可用引用。",
+    "searchValues": "搜索值",
+    "removeValue": "移除 {value}",
+    "employeeGroup": "员工条件",
+    "emptyGroup": "保存前请为此组添加条件。",
+    "branch": "分行",
+    "division": "事业部门",
+    "upgradeHelp": "分组员工条件会保存为新政策版本。历史结果和考勤条件保持原有含义。",
+    "upgrade": "使用分组员工条件",
+    "operators": {
+      "is": "等于",
+      "isNot": "不等于",
+      "in": "属于",
+      "notIn": "不属于"
     }
   }
 }

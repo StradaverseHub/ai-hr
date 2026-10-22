@@ -450,13 +450,14 @@
     "systemConfiguration": "Konfigurasi Sistem",
     "inbox": "Peti masuk",
     "myPayslips": "Slip Gaji Saya",
-    "taxRelief": "Pelepasan cukai",
+    "taxRelief": "Pelepasan Cukai (Borang TP1)",
     "reimbursementsDue": "Bayaran balik belum dibayar",
     "workLocations": "Lokasi",
     "sharedNavigation": "Navigasi bersama",
     "profileChanges": "Perubahan profil",
     "leaveSettings": "Tetapan",
-    "attendanceCalendar": "Kalendar Kehadiran"
+    "attendanceCalendar": "Kalendar Kehadiran",
+    "myEa": "EA Saya"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3929,7 +3930,16 @@
     "myCalendar": {
       "title": "Kalendar Kehadiran",
       "records": "Senarai rekod kehadiran",
-      "viewDate": "Lihat kehadiran untuk {date}"
+      "viewDate": "Lihat kehadiran untuk {date}",
+      "calendarView": "Paparan Kalendar",
+      "listView": "Paparan Senarai",
+      "viewNavigation": "Paparan kehadiran",
+      "shortHours": "Jam Tidak Mencukupi",
+      "incompleteEntry": "Rekod Tidak Lengkap",
+      "attendanceLegend": "Kehadiran dan amaran",
+      "selectDay": "Pilih tarikh untuk menyemak butiran kehadiran.",
+      "invalidRange": "Masukkan julat tarikh yang sah.",
+      "contextHelp": "Amaran berasingan daripada status kehadiran. Nama cuti dipaparkan pada tarikh berkenaan."
     }
   },
   "org": {
@@ -10046,7 +10056,10 @@
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingAcknowledgement": "Hanya individu yang dipautkan kepada pengambilan boleh mengakui peralatan sendiri selepas serahan. Kes pengambilan semula dan pekerjaan berbilang kekal berasingan.",
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
-        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa."
+        "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
+        "myPayslip": "Anda hanya boleh melihat slip gaji anda yang telah dikeluarkan, termasuk rekod pekerjaan terdahulu yang disimpan.",
+        "myTp1": "Pengisytiharan TP1 anda sendiri sahaja. Persetujuan majikan kekal sebagai tindakan Gaji yang dibenarkan.",
+        "myEa": "EA Saya"
       },
       "status": {
         "active": "Aktif",
@@ -13812,8 +13825,8 @@
     "accountReporter": "Pelapor akaun"
   },
   "taxRelief": {
-    "title": "Pelepasan Cukai Peribadi (TP1)",
-    "intro": "Isytiharkan jumlah pelepasan cukai peribadi pilihan anda (borang TP1 LHDN) bagi sesuatu tahun taksiran. Jumlah terkini yang dihantar akan mengurangkan potongan cukai bulanan anda (PCB/MTD).",
+    "title": "Pelepasan Cukai (Borang TP1)",
+    "intro": "Hantar pelepasan TP1 bulanan dan ikuti kelulusannya. Hanya pelepasan yang diluluskan digunakan dalam gaji.",
     "backToWorkspace": "Kembali ke Profil Saya",
     "yearLabel": "Tahun taksiran",
     "viewYear": "Lihat tahun",
@@ -13824,7 +13837,7 @@
     "submit": "Hantar",
     "submitCorrection": "Hantar pembetulan",
     "correctedAmountLabel": "Pelepasan TP1 tahunan yang dibetulkan (RM)",
-    "submittedNotice": "Tahun ini telah dihantar. Jumlah terkini yang dihantar akan digunakan dalam gaji anda. Untuk mengubahnya, hantar pembetulan.",
+    "submittedNotice": "Pengisytiharan yang dihantar memerlukan kelulusan majikan sebelum mempengaruhi gaji. Pembetulan mengekalkan rekod terdahulu.",
     "historicalSubmitted": "Dihantar bagi tahun taksiran ini.",
     "historicalDraft": "Disimpan sebagai draf bagi tahun taksiran ini.",
     "historicalNone": "Tiada pengisytiharan dibuat bagi tahun taksiran ini.",
@@ -14137,7 +14150,15 @@
       "totalPlusExcess": "Campur lebihan bercukai melebihi pengecualian (C2)",
       "totalExemptNote": "Daripada RM {entered} yang dikunci masuk ke dalam kotak C2, RM {exempt} berada dalam had pengecualian berkanun dan tidak dikenakan cukai. C1 hanya mengandungi saraan yang dikenakan cukai, jadi amaun yang dikecualikan tidak pernah ditolak daripadanya — hanya RM {excess} yang melebihi had ditambah.",
       "totalNoLimitNote": "Tiada had pengecualian tahunan diterbitkan bagi C2(iii) atau C2(v), jadi tiada bahagian kotak tersebut boleh ditunjukkan sebagai dikenakan cukai dan tiada apa-apa daripadanya ditambah."
-    }
+    },
+    "monthlyIntro": "Hantar pelepasan TP1 bulanan dan ikuti kelulusannya. Hanya pelepasan yang diluluskan digunakan dalam gaji.",
+    "notLinked": "Akaun ini tiada pekerjaan aktif yang dipautkan. Pengisytiharan sedia ada masih boleh dilihat.",
+    "changed": "TP1 ini telah berubah semasa anda menyunting. Muat semula pengisytiharan sebelum menyimpan.",
+    "pastReadOnly": "Tahun taksiran terdahulu hanya boleh dilihat.",
+    "invalidIntent": "Pilih Simpan draf atau Hantar.",
+    "savedDraft": "Draf disimpan.",
+    "savedSubmitted": "Dihantar untuk kelulusan majikan.",
+    "recordHistory": "Sejarah rekod"
   },
   "payRule": {
     "sectionTitle": "Bagaimana ia dikira?",
@@ -21890,6 +21911,74 @@
       "credit": "Perubahan ini menjejaskan cuti gantian diperoleh. Semak kredit sedia ada dahulu.",
       "tooMany": "Sejarah atau tempoh tarikh melebihi saiz disokong. Kecilkan tempoh atau minta semakan.",
       "failed": "Kalendar tidak dapat disimpan. Semak tarikh dan cuba lagi."
+    }
+  },
+  "myPayslip": {
+    "title": "Slip Gaji Saya",
+    "intro": "Slip gaji anda yang telah dikeluarkan",
+    "cycle": "Kitaran Gaji (Jenis Larian)",
+    "unavailableChoice": "Pilihan tidak tersedia",
+    "releasedHelp": "Pilihan berdasarkan slip gaji akhir anda yang telah dikeluarkan.",
+    "unavailable": "Tiada slip gaji yang telah dikeluarkan tersedia untuk pilihan ini.",
+    "review": "Semak Slip Gaji",
+    "download": "Muat Turun PDF",
+    "back": "Kembali ke Slip Gaji Saya",
+    "openInNewTab": "Buka dalam tab baharu",
+    "loadError": "Slip gaji anda tidak dapat dimuatkan",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan slip gaji anda…"
+  },
+  "myEa": {
+    "title": "EA Saya",
+    "intro": "Lihat borang EA tahunan mengikut tahun dan majikan pembayar.",
+    "year": "Tahun",
+    "employer": "Majikan",
+    "language": "Bahasa dokumen",
+    "view": "Lihat EA",
+    "unavailable": "EA belum tersedia",
+    "unavailableHelp": "Borang lengkap tersedia apabila semua pemprosesan gaji berkaitan ditutup dan diterbitkan. Hubungi HR jika anda memerlukan bantuan.",
+    "download": "Muat turun PDF",
+    "back": "Kembali ke EA Saya",
+    "openInNewTab": "Buka PDF dalam tab baharu",
+    "loadError": "Borang EA anda tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan borang EA anda…"
+  },
+  "allowanceV4": {
+    "available": "Tersedia",
+    "included": "Disertakan",
+    "includeChecked": "Sertakan yang ditanda ({count})",
+    "removeChecked": "Buang yang ditanda ({count})",
+    "includedCount": "{count} pekerja disertakan",
+    "limit": "Satu polisi menyokong sehingga 2,000 pekerja. Buang sebahagian sebelum menambah lagi.",
+    "clearIncluded": "Kosongkan senarai",
+    "selectionHelp": "Hanya pekerja Disertakan layak. Tanda kekal merentas carian dan halaman. Pilih yang dipaparkan hanya meliputi halaman ini.",
+    "searchSide": "Cari {side}",
+    "search": "Cari ID Pekerja atau nama",
+    "loadError": "Pilihan tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "selectVisible": "Pilih yang dipaparkan ({count})",
+    "loading": "Memuatkan pilihan…",
+    "empty": "Tiada pilihan sepadan.",
+    "noCode": "Tiada ID Pekerja",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "page": "Halaman {page}",
+    "unavailable": "Sesetengah rujukan tidak tersedia. Buang atau minta HR membetulkan akses sebelum menyimpan.",
+    "unavailableMore": "{count} lagi rujukan tidak tersedia.",
+    "searchValues": "Cari nilai",
+    "removeValue": "Buang {value}",
+    "employeeGroup": "Kriteria pekerja",
+    "emptyGroup": "Tambah syarat pada kumpulan ini sebelum menyimpan.",
+    "branch": "Cawangan",
+    "division": "Bahagian",
+    "upgradeHelp": "Kriteria berkumpulan memulakan versi polisi baharu. Hasil terdahulu dan syarat kehadiran mengekalkan maknanya.",
+    "upgrade": "Gunakan kriteria pekerja berkumpulan",
+    "operators": {
+      "is": "Adalah",
+      "isNot": "Bukan",
+      "in": "Dalam",
+      "notIn": "Bukan Dalam"
     }
   }
 }

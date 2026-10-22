@@ -40,12 +40,12 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   expect(screen.getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
-  document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me';route.search='tab=payroll';
+  document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me/payslip';route.search='';
   render(ui({isAdmin:false,canApprove:false,canAccessTeam:false,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false}));
   const payroll=screen.getByRole('button',{name:messages.nav.payroll});
   if(payroll.getAttribute('aria-expanded')!=='true')fireEvent.click(payroll);
   const panel=screen.getByRole('navigation',{name:messages.nav.payroll});
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/me?tab=payroll','/me/tax-relief']);
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/me/payslip','/me/tax-relief']);
   expect(within(panel).getByRole('link',{name:messages.nav.myPayslips})).toHaveAttribute('aria-current','page');
   expect(screen.getByRole('link',{name:messages.nav.myWorkspace})).not.toHaveAttribute('aria-current');
   expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();
