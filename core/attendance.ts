@@ -6606,7 +6606,7 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
   // the immutable revision under the same transaction. This binding proves neither work nor pay.
   let executionPolicy:ReturnType<typeof attendancePolicyTraceBinding>=null;
   if(requestedOtMinutes!==null){
-    await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
+    await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
     const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
     if(context.state==='unavailable')throw Error('The submitted Attendance policy is unavailable.');
     if(context.state==='policy'){
