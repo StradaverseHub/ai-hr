@@ -30,7 +30,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(captureDate+'T'+time+'+08:00')}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -44,6 +44,8 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  if(tier.payment.method!=='hourly'||tier.payment.rate.type!=='hourlyRate')throw Error('Retain the standard fixture formula');
  tier.payment.rate.divisorMinutes={id:'divisor',unit:'minutes',type:'literal',value:'480'};
  if(fixedHourlyRate!==undefined)tier.payment.rate={id:'fictional_hourly',unit:'moneyPerHour',type:'literal',value:fixedHourlyRate,currency:'MYR'};
+ if(moneyScope==='cap')definition.paymentCap={id:'parent_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
+ if(moneyScope==='dayMapping')definition.moneyRounding={stage:'dayMapping',mode:'halfUp'};
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
@@ -302,6 +304,24 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional complete approved plan replay'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+
+ it.each(['cap','dayMapping'] as const)('refuses resetting whole-parent %s in dated child pricing',async moneyScope=>{
+  // Both formulas are genuinely activated and both dated allocations derive from actual
+  // captured work. A parent cap of 4 must not become two caps; two half-cent slices must
+  // not independently round to two cents when the parent mapping owns one cent.
+  const f=await fixture('auto',moneyScope==='cap'?'12':'0.02','actual',false,moneyScope),p={employmentId:f.employmentId,date:day(2)};
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:20});
+  expect(attendancePolicyPricingProposal(snapshot)).toEqual({state:'unavailable',authority:'policyPricingProposalOnly',reason:'pricingScopeUnavailable'});
+  expect(attendancePolicyCashReplay(snapshot).state).toBe('unavailable');
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional unsupported parent money scope'})).toMatchObject({status:'recorded'});});
+  const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(reviewed?.evidence?.evidence.policyPricingProposal).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
   expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
