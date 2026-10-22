@@ -15,8 +15,8 @@ vi.mock('../app/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state
 vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 const catalogues={en,ms,zh,ta,th,vi:viWords};
 beforeEach(()=>{vi.clearAllMocks();state.save.mockReset();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);
-function mount(locale:keyof typeof catalogues='en'){
- return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomePersonPrivacyEditor initial={{version:1,ordinal:3,hideBirthday:true,hideAnniversary:false}}/></NextIntlClientProvider>);
+function mount(locale:keyof typeof catalogues='en',saved=false){
+ return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomePersonPrivacyEditor initial={{version:1,ordinal:3,hideBirthday:true,hideAnniversary:false}} saved={saved}/></NextIntlClientProvider>);
 }
 const form=()=>screen.getByRole('button',{name:en.employeeHome.personPrivacy.save}).closest('form')!;
 describe('Person-wide celebration privacy editor',()=>{
@@ -45,5 +45,18 @@ describe('Person-wide celebration privacy editor',()=>{
   state.save.mockRejectedValue(Error('Private transport details'));mount();fireEvent.submit(form());
   const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.employeeHome.personPrivacy.failed);expect(alert).not.toHaveTextContent('Private transport details');
   expect(screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideBirthday})).toBeChecked();
+ });
+ it('clears an earlier saved message on editing and never presents success beside a stale refusal',async()=>{
+  state.save.mockResolvedValue({error:'changed'});mount('en',true);
+  expect(screen.getByRole('status')).toHaveTextContent(en.employeeHome.personPrivacy.saved);
+  fireEvent.click(screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideBirthday}));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();fireEvent.submit(form());
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.employeeHome.personPrivacy.changed);expect(screen.queryByRole('status')).not.toBeInTheDocument();
+ });
+ it('confirms an owner-verified unchanged choice and clears that confirmation on the next edit',async()=>{
+  state.save.mockResolvedValue({error:null,alreadySaved:true});mount('en',true);
+  const birthday=screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideBirthday});fireEvent.click(birthday);fireEvent.click(birthday);fireEvent.submit(form());
+  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(en.employeeHome.personPrivacy.alreadySaved));expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(birthday);expect(screen.queryByRole('status')).not.toBeInTheDocument();
  });
 });

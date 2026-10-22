@@ -22277,7 +22277,8 @@
       "invalid": "Review your privacy choices before saving.",
       "forbidden": "Your access changed. Sign in again before saving.",
       "changed": "These choices were changed in another session. Reload the saved choices before editing again.",
-      "failed": "The save could not be confirmed. Your draft is kept. Reload to check saved choices before retrying."
+      "failed": "The save could not be confirmed. Your draft is kept. Reload to check saved choices before retrying.",
+      "alreadySaved": "These privacy choices are already saved."
     },
     "preferences": {
       "title": "Home preferences",

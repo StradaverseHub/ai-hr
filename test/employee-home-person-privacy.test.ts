@@ -83,6 +83,9 @@ describe('Own-person celebration privacy under real application RLS',()=>{
   await expect(saveHomePersonPrivacyAction({error:null},form)).rejects.toThrow('confirmed-redirect:/me/home?privacySaved=1');
   expect(await readOwnHomePersonPrivacy(caller)).toMatchObject({ordinal:1,hideBirthday:true,hideAnniversary:false});
   expect(cache.mock.calls.map(row=>row[0])).toEqual(['/me/home','/','/me/calendar']);
+  const unchanged=new FormData();unchanged.set('expectedOrdinal','1');unchanged.set('hideBirthday','1');
+  expect(await saveHomePersonPrivacyAction({error:null},unchanged)).toEqual({error:null,alreadySaved:true});expect(await versions()).toHaveLength(1);
+  expect(cache).toHaveBeenCalledTimes(3);
   expect(await saveHomePersonPrivacyAction({error:null},form)).toEqual({error:'changed'});
   form.set('personId',randomUUID());expect(await saveHomePersonPrivacyAction({error:null},form)).toEqual({error:'invalid'});expect(await versions()).toHaveLength(1);
  });

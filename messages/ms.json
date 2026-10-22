@@ -22277,7 +22277,8 @@
       "invalid": "Semak pilihan privasi anda sebelum menyimpan.",
       "forbidden": "Akses anda telah berubah. Log masuk semula sebelum menyimpan.",
       "changed": "Pilihan ini telah diubah dalam sesi lain. Muat semula pilihan yang disimpan sebelum mengedit lagi.",
-      "failed": "Simpanan tidak dapat disahkan. Draf anda dikekalkan. Muat semula untuk menyemak pilihan yang disimpan sebelum mencuba lagi."
+      "failed": "Simpanan tidak dapat disahkan. Draf anda dikekalkan. Muat semula untuk menyemak pilihan yang disimpan sebelum mencuba lagi.",
+      "alreadySaved": "Pilihan privasi ini sudah disimpan."
     },
     "preferences": {
       "title": "Keutamaan Home",

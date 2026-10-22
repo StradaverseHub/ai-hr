@@ -22277,7 +22277,8 @@
       "invalid": "Kiểm tra các lựa chọn quyền riêng tư trước khi lưu.",
       "forbidden": "Quyền truy cập của bạn đã thay đổi. Hãy đăng nhập lại trước khi lưu.",
       "changed": "Các lựa chọn này đã được thay đổi trong phiên khác. Hãy tải lại các lựa chọn đã lưu trước khi chỉnh sửa tiếp.",
-      "failed": "Không thể xác nhận việc lưu. Bản nháp của bạn được giữ lại. Hãy tải lại để kiểm tra các lựa chọn đã lưu trước khi thử lại."
+      "failed": "Không thể xác nhận việc lưu. Bản nháp của bạn được giữ lại. Hãy tải lại để kiểm tra các lựa chọn đã lưu trước khi thử lại.",
+      "alreadySaved": "Các lựa chọn quyền riêng tư này đã được lưu."
     },
     "preferences": {
       "title": "Tùy chọn trang chủ",

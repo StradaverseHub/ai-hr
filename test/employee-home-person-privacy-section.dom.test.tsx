@@ -10,19 +10,19 @@ vi.mock('../app/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state
 vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:keyof typeof en.employeeHome.personPrivacy)=>en.employeeHome.personPrivacy[key])}));
 const session={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};
-async function mount(){render(<NextIntlClientProvider locale="en" messages={en}>{await HomePersonPrivacySection({session})}</NextIntlClientProvider>);}
+async function mount(saved=false){render(<NextIntlClientProvider locale="en" messages={en}>{await HomePersonPrivacySection({session,saved})}</NextIntlClientProvider>);}
 beforeEach(()=>{vi.resetAllMocks();});afterEach(cleanup);
 describe('Celebration privacy read failure boundary',()=>{
  it('shows a reload path with no editable defaults when the saved choice read fails',async()=>{
-  state.read.mockRejectedValue(Error('Private diagnostic'));await mount();
+  state.read.mockRejectedValue(Error('Private diagnostic'));await mount(true);
   expect(screen.getByRole('alert')).toHaveTextContent(en.employeeHome.personPrivacy.loadFailed);
   expect(screen.getByRole('alert')).not.toHaveTextContent('Private diagnostic');
   expect(screen.getByRole('link',{name:en.employeeHome.personPrivacy.reload})).toHaveAttribute('href','/me/home');
-  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();expect(screen.queryByRole('button')).not.toBeInTheDocument();expect(state.save).not.toHaveBeenCalled();
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();expect(screen.queryByRole('button')).not.toBeInTheDocument();expect(screen.queryByRole('status')).not.toBeInTheDocument();expect(state.save).not.toHaveBeenCalled();
  });
  it('does not confuse an unlinked account with failed data or allow it to submit choices',async()=>{
-  state.read.mockResolvedValue(null);await mount();expect(screen.getByText(en.employeeHome.personPrivacy.unlinked)).toBeVisible();
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument();expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();expect(state.save).not.toHaveBeenCalled();
+  state.read.mockResolvedValue(null);await mount(true);expect(screen.getByText(en.employeeHome.personPrivacy.unlinked)).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();expect(screen.queryByRole('status')).not.toBeInTheDocument();expect(state.save).not.toHaveBeenCalled();
  });
  it('renders the current saved person-wide revision without writing on read',async()=>{
   state.read.mockResolvedValue({version:1,ordinal:5,hideBirthday:true,hideAnniversary:false});await mount();

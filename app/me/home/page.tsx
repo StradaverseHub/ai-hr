@@ -15,8 +15,7 @@ export default async function HomePreferencesPage({searchParams}:{searchParams:P
   <Card className="p-4 sm:p-6"><HomePreferencesEditor key={JSON.stringify([preferences,cards])} initial={preferences} cards={cards}/></Card>
   <Card className="space-y-4 p-4 sm:p-6"><section aria-labelledby="home-person-privacy-heading" className="space-y-4">
    <div className="space-y-2"><h2 id="home-person-privacy-heading" className="font-semibold">{privacy('title')}</h2><p className="max-w-prose text-sm text-muted-foreground">{privacy('intro')}</p><p className="max-w-prose text-sm text-muted-foreground">{privacy('resetHelp')}</p></div>
-   {query.privacySaved==='1'&&<p role="status" className="text-sm">{privacy('saved')}</p>}
-   <Suspense fallback={<p role="status" className="text-sm">{privacy('loading')}</p>}><HomePersonPrivacySection session={s}/></Suspense>
+   <Suspense fallback={<p role="status" className="text-sm">{privacy('loading')}</p>}><HomePersonPrivacySection session={s} saved={query.privacySaved==='1'}/></Suspense>
   </section></Card>
  </div>;
 }
