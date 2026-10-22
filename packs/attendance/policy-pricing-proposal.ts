@@ -16,14 +16,17 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   if(formulas?.state!=='known')return refuse('formulaUnavailable');
   if(snapshot.input.layer!=='raw'||snapshot.input.sessionGranularity!=='recorded')return refuse('sourcePlacementUnavailable');
   const base=Date.parse(snapshot.input.source.date+'T00:00:00+08:00')/1000,parts:Extract<PolicyPricingProposal,{state:'proposed'}>['parts']=[];
+  const pricedPartCount=proposal.duration.parts.filter(part=>part.allocatedPayableMinutes>0).length;
   let total=BigInt('0');
   for(const [sequence,part]of proposal.duration.parts.entries()){
    if(part.allocatedPayableMinutes===0)continue;
    const refs=formulas.references.filter(row=>row.date===part.date),formula=refs[0];
    if(refs.length!==1||formula.state!=='known'||formula.dayClass!==part.dayClass||formula.moneyDay!==part.moneyDay)return refuse('formulaUnavailable');
-   // Cross-date session charges/counters and shared monetary resource consumption require one
-   // parent pricing scope. Never reset them in a loop and accidentally charge twice.
-   if(proposal.duration.parts.length>1&&(formula.definition.deductions.some(r=>r.unit==='money')
+   // Parent caps, mapping-total rounding, session charges/counters and shared monetary
+   // resources must run in one central money scope. Separate child evaluations cannot
+   // establish that scope, even when each child is independently valid.
+   if(pricedPartCount>1&&(formula.definition.paymentCap!==null||formula.definition.moneyRounding.stage==='dayMapping'
+    ||formula.definition.deductions.some(r=>r.unit==='money')
     ||formula.definition.rates.some(r=>r.accumulation==='session'||r.tiers.some(t=>t.payment.method!=='hourly'&&t.payment.basis==='session'))))return refuse('pricingScopeUnavailable');
    const fact=<T>(value:T):OvertimeFact<T>=>({state:'known',value,provenance:{owner:'attendance',reference:snapshot.input.source.attendanceId+':policy:'+part.date,asOf:snapshot.input.source.date,basis:'recorded'}});
    const segments:Extract<OvertimeInput<OvertimePolicyBinding>,{layer:'raw'}>['segments']=[];
