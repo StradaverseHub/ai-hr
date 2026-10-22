@@ -92,7 +92,7 @@ describe('central pricing of finalized group-policy allocations',()=>{
   expect(pattern).toEqual(before);
  });
  it('keeps central monetary caps while leaving the finalized duration unchanged',()=>{
-  const pattern=definition();pattern.paymentCap={id:'cash_cap',unit:'money',type:'literal',value:'10'};
+  const pattern=definition();pattern.paymentCap={id:'cash_cap',unit:'money',type:'literal',value:'10',currency:'MYR'};
   expect(evaluateOvertimePolicyAllocatedPrice(pattern,positionedPolicy())).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'1000'});
  });
  it('refuses unplaced counts, unequal approval, changed formula eligibility and mixed resource units',()=>{
@@ -103,7 +103,7 @@ describe('central pricing of finalized group-policy allocations',()=>{
   expect(evaluateOvertimePolicyAllocatedPrice(blocked,positionedPolicy())).toMatchObject({state:'unavailable',reason:'durationChanged'});
   const conflict=definition();conflict.deductions=[
    {id:'minutes',resource:'postOtBreak',basis:'day',unit:'minutes',when:{id:'minutes_when',type:'constant',value:true},amount:{id:'minutes_amount',unit:'minutes',type:'literal',value:'30'}},
-   {id:'money',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'money_when',type:'constant',value:true},amount:{id:'money_amount',unit:'money',type:'literal',value:'5'}}];
+   {id:'money',resource:'postOtBreak',basis:'day',unit:'money',targetEarningItemId:uuid(20),when:{id:'money_when',type:'constant',value:true},amount:{id:'money_amount',unit:'money',type:'literal',value:'5',currency:'MYR'}}];
   expect(evaluateOvertimePolicyAllocatedPrice(conflict,positionedPolicy())).toMatchObject({state:'unavailable',reason:'formulaUnavailable'});
  });
 });
