@@ -321,7 +321,16 @@ async function lockExistingOvertimeSourceTx(tx:Tx,ctx:SessionContext,p:{employme
  const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1).for('update');if(!source)fail('unavailable','No recorded overtime source exists for this day.');return source;
 }
 export async function assertOvertimeSettlementAvailableTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;mode:'cash'|'toil'}){
- const source=await lockExistingOvertimeSourceTx(tx,ctx,p);const [existing]=await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,source.id),isNull(s.overtimeSourceSettlement.releasedAt))).limit(1).for('update');if(existing&&existing.mode!==p.mode)fail('conflict','The same overtime source cannot be settled in both cash and TOIL.');if(p.mode==='cash'){const [toil]=await tx.select({id:s.toilAccrual.id}).from(s.toilAccrual).where(and(eq(s.toilAccrual.tenantId,ctx.tenantId),eq(s.toilAccrual.employmentId,p.employmentId),eq(s.toilAccrual.workedDate,p.date),sql`${s.toilAccrual.status}<>'reversed'`)).limit(1);if(toil)fail('conflict','The canonical TOIL owner already holds this overtime day.');}return {source,existing:existing??null};
+ const source=await lockExistingOvertimeSourceTx(tx,ctx,p);
+ // Both settlement modes stop at this staged boundary. TOIL must not use its original scalar
+ // accrual branch to bypass an unresolved policy calculation merely because cash already refuses it.
+ if(source.currentCalculationId){
+  const [calculation]=await tx.select({id:s.attendanceOvertimeCalculation.id,bindingKind:s.attendanceOvertimeCalculation.bindingKind})
+   .from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId),eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);
+  if(!calculation)fail('unavailable','The current overtime calculation is unavailable.');
+  if(calculation.bindingKind==='attendanceGroupPolicy')fail('unavailable','Policy overtime cannot settle before complete execution, approval and independent financial replay.');
+ }
+ const [existing]=await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,source.id),isNull(s.overtimeSourceSettlement.releasedAt))).limit(1).for('update');if(existing&&existing.mode!==p.mode)fail('conflict','The same overtime source cannot be settled in both cash and TOIL.');if(p.mode==='cash'){const [toil]=await tx.select({id:s.toilAccrual.id}).from(s.toilAccrual).where(and(eq(s.toilAccrual.tenantId,ctx.tenantId),eq(s.toilAccrual.employmentId,p.employmentId),eq(s.toilAccrual.workedDate,p.date),sql`${s.toilAccrual.status}<>'reversed'`)).limit(1);if(toil)fail('conflict','The canonical TOIL owner already holds this overtime day.');}return {source,existing:existing??null};
 }
 export type OvertimeSettlementReservation={employmentId:string;date:string}&({mode:'cash';calculationId:string|null;payrollBatchId:string}|{mode:'toil';toilAccrualId:string});
 export async function reserveOvertimeSettlementTx(tx:Tx,ctx:SessionContext,p:OvertimeSettlementReservation){

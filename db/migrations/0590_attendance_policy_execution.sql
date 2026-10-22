@@ -317,3 +317,29 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_execution_context(uuid,date) TO ai_hr_app;
+
+--> statement-breakpoint
+-- This draft is a non-payable storage stage in BOTH settlement modes. The old cash guard already
+-- requires a ready calculation; the old TOIL guard checks its accrual but does not inspect that outcome.
+-- Keep the single parent settlement owner and refuse a new staged policy claim before either branch.
+CREATE FUNCTION app.guard_attendance_policy_settlement_stage() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.attendance_overtime_source;kind text;
+BEGIN
+ IF NEW.released_at IS NOT NULL THEN RETURN NEW;END IF;
+ SELECT * INTO source FROM public.attendance_overtime_source
+  WHERE id=NEW.source_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Current settlement subject is unavailable' USING ERRCODE='42501';END IF;
+ -- Use the parent's current header in either mode; a null TOIL calculation_id cannot hide its policy.
+ IF source.current_calculation_id IS NOT NULL THEN
+  SELECT binding_kind INTO kind FROM public.attendance_overtime_calculation
+   WHERE id=source.current_calculation_id AND source_id=source.id AND tenant_id=source.tenant_id AND company_id=source.company_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Current settlement calculation is unavailable' USING ERRCODE='42501';END IF;
+  IF kind='attendanceGroupPolicy' THEN
+   RAISE EXCEPTION 'Policy overtime settlement remains unavailable before complete execution and independent replay' USING ERRCODE='23514';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_attendance_policy_settlement_stage() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aa_attendance_policy_settlement_stage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
+ FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_settlement_stage();

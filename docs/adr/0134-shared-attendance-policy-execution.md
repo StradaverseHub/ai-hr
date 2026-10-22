@@ -367,8 +367,9 @@ Headers remain refused/non-transferable; no money line, settlement or final appr
 
 Policy preparation holds a scoped read barrier on the existing central configuration epoch until transaction end and re-reads
 canonical inputs after waiting. This does not grant configuration authority or increment its epoch.
-The barrier independently checks current principal, Attendance subject visibility and a real dated
-policy/source binding before and after waiting. This contains concurrent formula stop/archive changes before the part
+The barrier independently checks current principal and Attendance subject visibility before and after
+waiting, and requires a real dated policy/source binding before taking the epoch lock. The owner then
+re-reads and validates the complete canonical snapshot after waiting. This contains concurrent formula stop/archive changes before the part
 storage guards, instead of risking a late configuration SQL refusal in a raw clocking transaction.
 The legacy preparation branch keeps its existing reads/locks. Runtime lock ordering, complete-set
 storage and real-clock/approval/Payroll journeys still need verification after the resource handover.
@@ -384,3 +385,14 @@ insufficient. This historical proposal comparison does not prove current source 
 authority, money, TOIL or cross-parent settlement coverage. Those existing financial fences remain.
 Legacy assignment records keep their existing reader shape and semantics. The new prepared runtime
 reader/storage probes remain unrun until the explicit resource handover.
+
+
+The staging boundary now refuses new policy settlement through both the canonical reservation owner
+and an invoker-scoped SQL trigger. The existing cash guard already requires a ready calculation; the
+legacy TOIL branch validated its matching accrual without inspecting the current policy header. That
+branch must not admit a staged policy through a null TOIL calculation_id. The new guard looks up the
+actual source's current header in either mode and refuses any staged policy claim. Missing visible
+source/header proof also refuses. It grants no new table or function authority; controlled releases
+retain the existing owner guard and legacy sources retain their current behavior. This temporary
+boundary must be replaced by the complete verified execution/receipt/replay contract before policy
+settlement is enabled. Prepared SQL/owner boundary and legacy consumer probes remain runtime-unrun.

@@ -12,7 +12,7 @@ import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
- lockOvertimeSourceTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
+ lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation} from '../packs/attendance/service';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
@@ -228,6 +228,25 @@ describe('immutable non-payable policy part storage',()=>{
    await tx.insert(s.attendanceOvertimePolicyPart).values(row);
   })).rejects.toThrow();
   expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
+ });
+ it.each(['cash','toil'] as const)('refuses staged %s settlement at the owner and SQL boundaries',async mode=>{
+  const f=await fixture(),p={employmentId:f.employmentId,date:day(2)};
+  const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!current?.calculation)throw Error('Expected the actual staged policy calculation');
+  // Deliberately absent target IDs ensure this probe pins the POLICY admission boundary, not an
+  // unrelated FK/target failure. A valid legacy TOIL/cash lifecycle is covered by consumer regressions.
+  const targetId=randomUUID();const reservation:Parameters<typeof reserveOvertimeSettlementTx>[2]=mode==='cash'?{...p,mode,calculationId:current.calculation.id,payrollBatchId:targetId}
+   :{...p,mode,toilAccrualId:targetId};
+  await expect(withTenant(ctx,tx=>reserveOvertimeSettlementTx(tx,ctx,reservation))).rejects.toMatchObject({code:'unavailable',
+   message:'Policy overtime cannot settle before complete execution, approval and independent financial replay.'});
+  let sqlError:unknown;
+  try{await withTenant(ctx,tx=>tx.insert(s.overtimeSourceSettlement).values({tenantId:b.tenantId,companyId:b.companyId,sourceId:current.source.id,
+   mode,calculationId:mode==='cash'?current.calculation!.id:null,ownerReference:{type:mode==='cash'?'payroll_batch':'toil_accrual',id:targetId},
+   payrollBatchId:mode==='cash'?targetId:null,toilAccrualId:mode==='toil'?targetId:null}));}catch(error){sqlError=error;}
+  const outer=sqlError as {cause?:{code?:unknown;message?:unknown}}|undefined;
+  const cause=(outer?.cause??sqlError) as {code?:unknown;message?:unknown}|undefined;
+  expect(cause?.code).toBe('23514');expect(String(cause?.message)).toContain('Policy overtime settlement remains unavailable before complete execution and independent replay');
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,current.source.id))).toEqual([]);
  });
  it('refuses a payable policy header while execution receipts and financial replay are not implemented',async()=>{
   const f=await fixture();
