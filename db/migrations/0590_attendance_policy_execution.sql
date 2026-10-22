@@ -433,6 +433,56 @@ REVOKE ALL ON FUNCTION app.lock_attendance_policy_import_context(jsonb) FROM PUB
 GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_import_context(jsonb) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Preserve 0548's exact legacy label/deferral owner and its private ACL. The shared API only
+-- dispatches a narrowly identified raw-policy OT-only effect; v2/v3/v4 scope remains owned by the
+-- existing dynamically resolved effect_scope helper. No receipt/event can reopen that capability.
+ALTER FUNCTION app.attendance_workflow_final_effect(uuid,integer) RENAME TO attendance_workflow_legacy_labels_final_effect;
+CREATE FUNCTION app.attendance_workflow_final_effect(p_correction_id uuid,approved_minutes integer) RETURNS boolean
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.attendance_correction;contract public.attendance_policy_request_contract;
+ a public.attendance;capture_count integer;
+BEGIN
+ SELECT * INTO c FROM public.attendance_correction WHERE id=p_correction_id AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN RETURN false;END IF;
+ SELECT * INTO contract FROM public.attendance_policy_request_contract WHERE correction_id=c.id AND tenant_id=c.tenant_id
+  AND employment_id=c.employment_id AND attendance_date=c.attendance_date;
+ IF contract.policy_binding IS NULL OR c.admin_amendment IS NOT NULL OR c.requested_ot_minutes IS NULL
+  OR c.proposed_check_in IS NOT NULL OR c.proposed_check_out IS NOT NULL OR c.clock_changes IS NOT NULL
+  OR c.attendance_date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN
+  RETURN app.attendance_workflow_legacy_labels_final_effect(p_correction_id,approved_minutes);
+ END IF;
+ IF c.status<>'pending' OR approved_minutes IS NULL OR approved_minutes<0
+  OR app.attendance_policy_principal_current() IS NOT TRUE OR app.can_see_employment(c.employment_id) IS NOT TRUE
+  OR current_setting('app.attendance_workflow_effect',true) IS DISTINCT FROM c.id::text
+  OR app.attendance_workflow_effect_scope(c.employment_id,c.attendance_date) IS NOT TRUE THEN RETURN false;END IF;
+ SELECT * INTO a FROM public.attendance d WHERE d.tenant_id=c.tenant_id AND d.employment_id=c.employment_id
+  AND d.attendance_date=c.attendance_date AND app.attendance_workflow_active_write(d.xmin);
+ IF NOT FOUND OR a.calc_trace->'executionPolicy' IS DISTINCT FROM contract.policy_binding
+  OR contract.kind<>'epoch' OR contract.company_id IS NULL OR a.check_in_at IS NULL OR a.check_out_at IS NULL
+  OR a.worked_minutes IS NULL OR a.worked_minutes<0 OR a.calc_trace->'punch'->>'outAbs' IS NULL
+  OR a.calc_trace->'punch'->>'workedMinutes' IS NULL
+  OR jsonb_typeof(a.calc_trace->'punch'->'calculationIntervals') IS DISTINCT FROM 'array'
+  OR a.ot_minutes IS NOT NULL OR a.ot_flat_minutes IS NOT NULL OR a.ot00_minutes IS NOT NULL
+  OR a.ot10_minutes IS NOT NULL OR a.ot15_minutes IS NOT NULL OR a.ot20_minutes IS NOT NULL OR a.ot30_minutes IS NOT NULL
+  THEN RETURN false;END IF;
+ SELECT count(*) INTO capture_count FROM public.attendance_punch p
+  WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.attendance_date=c.attendance_date
+   AND p.attendance_id=a.id AND p.voided_at IS NULL;
+ IF capture_count<2 OR capture_count>128 OR EXISTS(
+  SELECT 1 FROM public.attendance_punch p LEFT JOIN public.attendance_clock_capture capture
+   ON capture.id=p.clock_capture_id AND capture.tenant_id=p.tenant_id AND capture.employment_id=p.employment_id
+    AND capture.attendance_date=p.attendance_date AND capture.direction=p.direction
+  WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.attendance_date=c.attendance_date
+   AND p.attendance_id=a.id AND p.voided_at IS NULL
+   AND (capture.id IS NULL OR p.punch_at IS DISTINCT FROM date_trunc('second',capture.server_recorded_at AT TIME ZONE 'Asia/Kuala_Lumpur')::time))
+  THEN RETURN false;END IF;
+ -- This proves the actively written raw target-day effect only. The independent canonical
+ -- millisecond replay, full approved count allocation and financial consumers remain mandatory.
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_workflow_legacy_labels_final_effect(uuid,integer) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.attendance_workflow_final_effect(uuid,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Durable final-workflow evidence is minted ONLY by the actual pending->approved transition.
 -- It records the decision/effect, not a payable policy outcome, positioned plan or unclocked attestation.
 CREATE TABLE public.attendance_policy_final_receipt(

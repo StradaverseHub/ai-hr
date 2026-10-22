@@ -76,6 +76,10 @@ describe('owner-issued final workflow receipt',()=>{
   await decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:1,expectedParticipantSlot:'1:0'});
   const [receipt]=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id));
   expect(receipt.rawEvidence).not.toBeNull();expect(receipt.workflowEvidence.routingVersion).toBe(3);
+  expect(receipt.rawEvidence).toMatchObject({otMinutes:null,workedMinutes:600});
+  const [decided]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,f.id));
+  expect(decided).toMatchObject({status:'approved',approvedOtMinutes:60,appliedAt:null});
+  await expect(decideAttendanceCorrection(f.last.ctx,{correctionId:f.id,decision:'approved'})).rejects.toThrow();
   const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,f.id));
   expect(contract.policyBinding).toMatchObject({authority:'datedPolicyOnly',ruleId,employmentId:f.worker.employmentId,sourceDate:day(0),activation:{epoch:0}});
   expect(receipt.workflowEvidence.submittedPolicy).toEqual(contract.policyBinding);

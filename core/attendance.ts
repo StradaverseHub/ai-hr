@@ -3888,6 +3888,7 @@ export async function decideAttendanceCorrection(
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
+    let policyRawDecision = false;
     let finalizedV2 = false;
     let approvedCredit: {dayType: DayType; requestedOn: string} | null = null;
 
@@ -4138,8 +4139,8 @@ export async function decideAttendanceCorrection(
         };
       } else {
         // OT-only request: there MUST already be an attendance row (you cannot bank OT against a day with no
-        // recorded work). We update ONLY that row's otMinutes to the approved figure — punches are left intact
-        // (we do NOT null them, unlike a clock correction).
+        // recorded work). Frozen legacy days retain scalar landing. A bound policy day replays
+        // captured raw inputs and retains the approved scalar only on its decision, not on raw work.
         const [existing] = await tx
           .select({ id: attendance.id })
           .from(attendance)
@@ -4156,6 +4157,21 @@ export async function decideAttendanceCorrection(
           // overtime is being claimed for a day on which no work was ever recorded.
           throw new Error('No attendance record exists for this date to attach overtime to.');
         }
+        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(raw.state==='unavailable')throw Error('Canonical overtime decision inputs are unavailable.');
+        if(raw.state==='policy'){
+          if(!workflowStage.versionedFinalEffect)throw Error('A dated policy overtime decision requires its frozen versioned workflow.');
+          const [submission]=await tx.select().from(attendancePolicyRequestContract)
+            .where(and(eq(attendancePolicyRequestContract.correctionId,cor.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId))).limit(1);
+          const binding=attendancePolicyTraceBinding(raw.context);
+          if(!binding||!submission?.policyBinding||!isDeepStrictEqual(submission.policyBinding,binding))
+            throw Error('The submitted Attendance policy changed. Withdraw and resubmit the request.');
+          const derived=await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,attendanceId:existing.id,
+            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+          if(!derived.policyRaw||derived.workedMinutes===null||derived.checkOutAt===null)
+            throw Error('A captured complete Attendance day is required for this policy decision.');
+          policyRawDecision=true;
+        }else{
         await tx
           .update(attendance)
           // 7c834696: the punches are untouched here, so lateness / early-out / short-hours keep whatever
@@ -4168,12 +4184,14 @@ export async function decideAttendanceCorrection(
             ),
           })
           .where(eq(attendance.id, existing.id));
+        }
         amendedId = existing.id;
         eventPayload = {
           correctionId: cor.id,
           date: cor.attendanceDate,
           dayType,
-          otMinutes: approvedOtMinutes,
+          otMinutes: policyRawDecision?null:approvedOtMinutes,
+          ...(policyRawDecision?{policyRawOnly:true}:{}),
         };
       }
 
@@ -4194,7 +4212,9 @@ export async function decideAttendanceCorrection(
             // the attendance row's own, double-counting them against the 104-hour ceiling, and (b) the
             // next clock-out of that day would LAND it a second time, re-resolving a figure a human had
             // already agreed and re-running the replacement-leave accrual. Both are silent.
-            ...(deferred ? {} : { appliedAt: sql`now()` }),
+            // A raw policy decision has not placed approved hours on this scalar day.
+            // Retain its decision/receipt, but leave legacy landing and credit stamps unset.
+            ...(deferred||policyRawDecision ? {} : { appliedAt: sql`now()` }),
           })
           .where(eq(attendanceCorrection.id, cor.id));
         eventPayload = {
@@ -4233,7 +4253,7 @@ export async function decideAttendanceCorrection(
 
       // Deferred plans bank only when actual work lands. Immediate decisions bank after their
       // approved status is written, so the canonical formula reader sees this exact approval.
-      if (!deferred) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
+      if (!deferred&&!policyRawDecision) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
       deferredApproval = deferred;
     }
     // Keep v2's writing savepoint active until SQL verifies the actual target-day result.
@@ -4243,9 +4263,9 @@ export async function decideAttendanceCorrection(
       await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
       finalizedV2 = true;
     }
-    if (approvedCredit) {
+    if (approvedCredit||policyRawDecision) {
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,reason:'Approved attendance decision'});
-      await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
+      if(approvedCredit)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
     }
 
     } catch (effectError) {
