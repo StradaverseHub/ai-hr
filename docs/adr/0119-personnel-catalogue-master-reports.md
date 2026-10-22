@@ -30,6 +30,14 @@ Historical company authorization consumes the canonical company's strict `proven
 
 Historical-scope exclusion notices survive export: Excel includes a Report notes sheet, PDF repeats the scope notice, and CSV is packaged with a Report-notes.txt companion when such notices exist. Data CSV files retain their actual column header as the first row. An export cannot silently look complete after its preview disclosed unresolved historical scope.
 
+Reading an existing definition for listing or repair validates its structure and current company/field
+permissions without treating that read as execution. An older current-only condition keeps its saved
+date and can reopen in the builder, whose preview explains the condition that needs repair. Saving,
+running, recipient eligibility, schedule enabling and renderer authorization retain strict execution
+validation. An authorized owner can disable an expired schedule. Revoked or malformed definitions are
+unavailable to the reader and do not break unrelated list entries; unexpected infrastructure errors
+still propagate. No read silently rolls the saved date forward or grants access to report data.
+
 Managed delivery execution boundary (source contract; runtime evidence pending)
 
 Migration0549 owns the private ID/nonce queue, claim, target, start and finish helpers. The minute runner calls `sweepEmployeeMasterReports(owner,{limit?})` under `reports.employee-master.deliver`; only the maintenance owner queues/claims. The existing mail identity receives only target/start/finish EXECUTE grants, never HR table reads. Application audit reads exclude lease token/expiry columns. Frozen recipient pair, report/schedule/consent revisions, scope and opaque permission metadata stamp are checked again at start. Only expired, never-started occurrences reclaim a nonce. An expired started attempt becomes uncertain; neither SMTP acknowledgement loss nor a lost finish acknowledgement triggers automatic resend.

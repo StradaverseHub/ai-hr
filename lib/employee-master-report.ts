@@ -25,49 +25,57 @@ const scalar=z.union([z.string().max(2000),z.number().finite(),z.boolean(),z.nul
 const column=z.object({field:z.string().min(1).max(200),header:z.string().trim().max(120).optional(),format:z.enum(['auto','text','date','number']),decimals:z.number().int().min(0).max(6),sum:z.boolean(),freeze:z.boolean(),align:z.enum(['left','center','right']),width:z.enum(['auto','narrow','medium','wide']),records:z.enum(['latest','all']),side:z.enum(['before','after']).optional()}).strict();
 const definition=z.object({v:z.literal(2),asAt:isoDate,companyIds:z.array(z.uuid()).min(1).max(100),includeDrafts:z.boolean(),columns:z.array(column).min(1).max(500),expression:z.unknown(),sorts:z.array(z.object({field:z.string(),dir:z.enum(['asc','desc'])}).strict()).max(3),groups:z.array(z.string()).max(3),pdf:z.object({paper:z.enum(['A4','A3','Letter','Legal']),orientation:z.enum(['portrait','landscape']),margins:z.enum(['narrow','normal','wide']),logo:z.boolean(),pageBreakGroups:z.boolean()}).strict()}).strict();
 
+export class EmployeeMasterSpecError extends Error { override name='EmployeeMasterSpecError'; }
+/** Opening a stored definition for repair grants no execution or scheduling authority. */
+export function validateEmployeeMasterDefinition(raw:unknown,fields:readonly PersonnelFieldDescriptor[]):EmployeeMasterSpec {
+  return validateDefinition(raw,fields);
+}
 export function validateEmployeeMasterSpec(raw:unknown,fields:readonly PersonnelFieldDescriptor[],today:string):EmployeeMasterSpec {
+  return validateDefinition(raw,fields,today);
+}
+function validateDefinition(raw:unknown,fields:readonly PersonnelFieldDescriptor[],today?:string):EmployeeMasterSpec {
   const parsed=definition.parse(raw);
-  if(parsed.pdf.logo&&parsed.companyIds.length!==1)throw new Error('Choose one company to print its logo.');
-  if(parsed.asAt>today)throw new Error('Choose an as-at date on or before today.');
+  if(parsed.pdf.logo&&parsed.companyIds.length!==1)throw new EmployeeMasterSpecError('Choose one company to print its logo.');
+  if(today!==undefined&&parsed.asAt>today)throw new EmployeeMasterSpecError('Choose an as-at date on or before today.');
   const byId=new Map(fields.filter(f=>f.report.enabled).map(f=>[f.id,f]));
   // The supplied catalogue must already be permission-scoped. Errors never echo a restricted ID/label.
   const field=(id:string,capability?:'filter'|'sort'|'group'|'sum')=>{
-    const f=byId.get(id);if(!f||capability&&!f.report[capability])throw new Error('A selected report field is unavailable or not permitted for this operation.');return f;
+    const f=byId.get(id);if(!f||capability&&!f.report[capability])throw new EmployeeMasterSpecError('A selected report field is unavailable or not permitted for this operation.');return f;
   };
-  if(new Set(parsed.columns.map(c=>c.field+':'+(c.side??'after'))).size!==parsed.columns.length)throw new Error('Select each report field once.');
-  for(const c of parsed.columns){const f=field(c.field);if(c.side&&f.owner!=='movementComparison')throw new Error('Before/After columns apply only to Movement comparisons.');if(c.sum)field(c.field,'sum');if(c.format==='date'&&f.type!=='date'||c.format==='number'&&!['number','currency'].includes(f.type))throw new Error('Column format does not match its field type.');if(c.records==='all'&&f.grain!=='many')throw new Error('All records applies only to record registers.');}
-  const firstUnfrozen=parsed.columns.findIndex(column=>!column.freeze);if(firstUnfrozen>=0&&parsed.columns.slice(firstUnfrozen).some(column=>column.freeze))throw new Error('Frozen columns must form a leading block.');
+  if(new Set(parsed.columns.map(c=>c.field+':'+(c.side??'after'))).size!==parsed.columns.length)throw new EmployeeMasterSpecError('Select each report field once.');
+  for(const c of parsed.columns){const f=field(c.field);if(c.side&&f.owner!=='movementComparison')throw new EmployeeMasterSpecError('Before/After columns apply only to Movement comparisons.');if(c.sum)field(c.field,'sum');if(c.format==='date'&&f.type!=='date'||c.format==='number'&&!['number','currency'].includes(f.type))throw new EmployeeMasterSpecError('Column format does not match its field type.');if(c.records==='all'&&f.grain!=='many')throw new EmployeeMasterSpecError('All records applies only to record registers.');}
+  const firstUnfrozen=parsed.columns.findIndex(column=>!column.freeze);if(firstUnfrozen>=0&&parsed.columns.slice(firstUnfrozen).some(column=>column.freeze))throw new EmployeeMasterSpecError('Frozen columns must form a leading block.');
   for(const sort of parsed.sorts)field(sort.field,'sort');
   for(const group of parsed.groups)field(group,'group');
-  if(new Set(parsed.groups).size!==parsed.groups.length||new Set(parsed.sorts.map(s=>s.field)).size!==parsed.sorts.length)throw new Error('Choose distinct group and sort fields.');
+  if(new Set(parsed.groups).size!==parsed.groups.length||new Set(parsed.sorts.map(s=>s.field)).size!==parsed.sorts.length)throw new EmployeeMasterSpecError('Choose distinct group and sort fields.');
   let nodes=0;const ids=new Set<string>();
   const visit=(rawNode:unknown,depth:number):MasterExpression=>{
-    if(depth>6||++nodes>200)throw new Error('Conditions exceed the supported depth or size.');
+    if(depth>6||++nodes>200)throw new EmployeeMasterSpecError('Conditions exceed the supported depth or size.');
     const base=z.object({id:z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),type:z.enum(['group','condition'])}).passthrough().parse(rawNode);
-    if(ids.has(base.id))throw new Error('Condition identifiers must be distinct.');ids.add(base.id);
+    if(ids.has(base.id))throw new EmployeeMasterSpecError('Condition identifiers must be distinct.');ids.add(base.id);
     if(base.type==='group'){
       const g=z.object({id:z.string(),type:z.literal('group'),logic:z.enum(['and','or']),children:z.array(z.unknown()).max(30)}).strict().parse(rawNode);
-      if(depth>0&&!g.children.length)throw new Error('Add a condition or remove the empty group.');
+      if(depth>0&&!g.children.length)throw new EmployeeMasterSpecError('Add a condition or remove the empty group.');
       return {...g,children:g.children.map(child=>visit(child,depth+1))};
     }
     const c=z.object({id:z.string(),type:z.literal('condition'),field:z.string(),operator:z.enum(['eq','ne','contains','in','between','before','after','blank','notBlank']),value:scalar.optional(),upper:scalar.optional(),values:z.array(scalar).max(100).optional()}).strict().parse(rawNode);
     const f=field(c.field,'filter');
-    if(parsed.asAt!==today&&f.history==='current')throw new Error('A condition uses a current-only field. Choose today or remove that condition.');
+    if(today!==undefined&&parsed.asAt!==today&&f.history==='current')throw new EmployeeMasterSpecError('A condition uses a current-only field. Choose today or remove that condition.');
     const ordered=f.type==='date'||f.type==='number'||f.type==='currency';
-    if(c.operator==='contains'&&!['text','choice','status'].includes(f.type)||['between','before','after'].includes(c.operator)&&!ordered)throw new Error('The comparison does not match its field type.');
+    if(c.operator==='contains'&&!['text','choice','status'].includes(f.type)||['between','before','after'].includes(c.operator)&&!ordered)throw new EmployeeMasterSpecError('The comparison does not match its field type.');
     const operand=(value:MasterScalar|undefined)=>{
-      if(value===undefined||value===null)throw new Error('Enter a complete condition value.');
-      if(f.type==='boolean'){if(typeof value!=='boolean')throw new Error('Choose Yes or No.');}
+      if(value===undefined||value===null)throw new EmployeeMasterSpecError('Enter a complete condition value.');
+      if(f.type==='boolean'){if(typeof value!=='boolean')throw new EmployeeMasterSpecError('Choose Yes or No.');}
       else if(f.type==='date')isoDate.parse(f.unit==='month'?String(value)+'-01':value);
-      else if(f.type==='number'||f.type==='currency'){if(typeof value!=='number'||!Number.isFinite(value))throw new Error('Enter a complete number.');}
-      else if(typeof value!=='string')throw new Error('Enter a text or choice value.');
+      else if(f.type==='number'||f.type==='currency'){if(typeof value!=='number'||!Number.isFinite(value))throw new EmployeeMasterSpecError('Enter a complete number.');}
+      else if(typeof value!=='string')throw new EmployeeMasterSpecError('Enter a text or choice value.');
     };
-    if(c.operator==='blank'||c.operator==='notBlank'){if(c.value!==undefined||c.upper!==undefined||c.values!==undefined)throw new Error('Blank conditions take no value.');}
-    else if(c.operator==='in'){if(!c.values?.length||c.value!==undefined||c.upper!==undefined)throw new Error('Choose one or more values.');c.values.forEach(operand);}
-    else {operand(c.value);if(c.values!==undefined)throw new Error('Only In list accepts multiple values.');if(c.operator==='between'){operand(c.upper);if((f.type==='date'?String(c.upper)<String(c.value):Number(c.upper)<Number(c.value)))throw new Error('The upper bound must not precede the lower bound.');}else if(c.upper!==undefined)throw new Error('Only Between takes an upper value.');}
+    if(c.operator==='blank'||c.operator==='notBlank'){if(c.value!==undefined||c.upper!==undefined||c.values!==undefined)throw new EmployeeMasterSpecError('Blank conditions take no value.');}
+    else if(c.operator==='in'){if(!c.values?.length||c.value!==undefined||c.upper!==undefined)throw new EmployeeMasterSpecError('Choose one or more values.');c.values.forEach(operand);}
+    else {operand(c.value);if(c.values!==undefined)throw new EmployeeMasterSpecError('Only In list accepts multiple values.');if(c.operator==='between'){operand(c.upper);if((f.type==='date'?String(c.upper)<String(c.value):Number(c.upper)<Number(c.value)))throw new EmployeeMasterSpecError('The upper bound must not precede the lower bound.');}else if(c.upper!==undefined)throw new EmployeeMasterSpecError('Only Between takes an upper value.');}
     return c;
   };
-  const expression=visit(parsed.expression,0);if(expression.type!=='group')throw new Error('Conditions require an All/Any root group.');
+  const expression=visit(parsed.expression,0);if(expression.type!=='group')throw new EmployeeMasterSpecError('Conditions require an All/Any root group.');
   return {...parsed,companyIds:[...new Set(parsed.companyIds)],expression};
 }
 export function defaultMasterColumn(field:PersonnelFieldDescriptor):MasterColumn{return {field:field.id,format:'auto',decimals:field.type==='currency'?2:0,sum:false,freeze:false,align:['number','currency'].includes(field.type)?'right':'left',width:'auto',records:'latest'};}

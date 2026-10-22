@@ -5,7 +5,7 @@ import type {MasterRecipient} from '../core/employee-master-recipient-types';
 const m=vi.hoisted(()=>({write:vi.fn(),event:vi.fn(),report:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>unknown)=>work({insert:()=>({values:(value:unknown)=>{m.write(value);return {onConflictDoUpdate:()=>({returning:async()=>[{id:'fictional-schedule'}]})};}})})}));
 vi.mock('../db/events',()=>({appendEvent:m.event,actorOf:()=>({kind:'user'})}));
-vi.mock('../core/employee-master-reports',()=>({getEmployeeMasterReport:m.report,authorizeEmployeeMasterRun:vi.fn(),runEmployeeMasterReport:vi.fn()}));
+vi.mock('../core/employee-master-reports',()=>({getEmployeeMasterReport:m.report,getExecutableEmployeeMasterReport:m.report,authorizeEmployeeMasterRun:vi.fn(),runEmployeeMasterReport:vi.fn()}));
 vi.mock('../core/employee-master-access',()=>({MasterReportAccessError:class extends Error{}}));
 vi.mock('../core/notification-email',()=>({resolveEmployeeMasterRecipients:vi.fn()}));
 vi.mock('../lib/employee-master-export',()=>({serializeEmployeeMaster:vi.fn()}));

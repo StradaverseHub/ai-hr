@@ -10,7 +10,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { customReportSchedule, customReportOccurrence } from '../db/schema';
 import { nextMasterScheduleAt, validateMasterSchedule } from '../lib/employee-master-schedule';
-import { authorizeEmployeeMasterRun, getEmployeeMasterReport, runEmployeeMasterReport } from './employee-master-reports';
+import { authorizeEmployeeMasterRun, getEmployeeMasterReport, getExecutableEmployeeMasterReport, runEmployeeMasterReport } from './employee-master-reports';
 import { serializeEmployeeMaster } from '../lib/employee-master-export';
 import { MasterReportAccessError } from './employee-master-access';
 import { resolveEmployeeMasterRecipients } from './notification-email';
@@ -18,16 +18,16 @@ import type { MasterRecipient, MasterRecipientIdentity, MasterRecipientPolicy, M
 export type { MasterRecipient, MasterRecipientIdentity, MasterRecipientPolicy, MasterConsentRevision } from './employee-master-recipient-types';
 const pairSchema=z.object({userId:z.uuid(),employmentId:z.uuid()}).strict();
 export async function employeeMasterRecipientOptions(ctx:SessionContext,scopeIds:readonly string[],reportId:string,policy:MasterRecipientPolicy=resolveEmployeeMasterRecipients){
- const report=await getEmployeeMasterReport(ctx,scopeIds,reportId),options:MasterRecipient[]=[];
+ const report=await getExecutableEmployeeMasterReport(ctx,scopeIds,reportId),options:MasterRecipient[]=[];
  for(const recipient of await policy(ctx)){
   if(!report.shared&&recipient.userId!==report.ownerUserId)continue;
-  try{await getEmployeeMasterReport(recipient.context,recipient.scopeIds,reportId);options.push(recipient);}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}
+  try{await getExecutableEmployeeMasterReport(recipient.context,recipient.scopeIds,reportId);options.push(recipient);}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}
  }
  return options;
 }
 export async function saveEmployeeMasterSchedule(ctx:SessionContext,scopeIds:readonly string[],input:{reportId:string;version:number;enabled:boolean;config:unknown;recipients:MasterRecipientIdentity[]},policy:MasterRecipientPolicy=resolveEmployeeMasterRecipients){
  if(input.enabled&&!employeeMasterScheduledEmailEnabled())throw new Error('Scheduled report emails are unavailable on this installation.');
- const report=await getEmployeeMasterReport(ctx,scopeIds,input.reportId);if(!report.canEdit)throw new MasterReportAccessError();if(report.version!==input.version)throw new Error('Review the changed report before scheduling it.');
+ const report=await (input.enabled?getExecutableEmployeeMasterReport:getEmployeeMasterReport)(ctx,scopeIds,input.reportId);if(!report.canEdit)throw new MasterReportAccessError();if(report.version!==input.version)throw new Error('Review the changed report before scheduling it.');
  const config=validateMasterSchedule(input.config),recipients=z.array(pairSchema).max(100).parse(input.recipients);
  // A user must have one explicit receiving employment. Never infer one from an email or array order.
  if(new Set(recipients.map(pair=>pair.userId)).size!==recipients.length||input.enabled&&!recipients.length)throw new Error('Choose one receiving employment for each opted-in recipient.');

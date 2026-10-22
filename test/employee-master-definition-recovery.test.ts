@@ -5,8 +5,8 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {MasterReportAccessError} from '../core/employee-master-access';
-import {getEmployeeMasterReport,listEmployeeMasterReports,runEmployeeMasterReport,saveEmployeeMasterReport} from '../core/employee-master-reports';
-import {getEmployeeMasterSchedule,saveEmployeeMasterSchedule} from '../core/employee-master-schedules';
+import {getEmployeeMasterReport,getExecutableEmployeeMasterReport,listEmployeeMasterReports,runEmployeeMasterReport,saveEmployeeMasterReport} from '../core/employee-master-reports';
+import {employeeMasterRecipientOptions,getEmployeeMasterSchedule,saveEmployeeMasterSchedule} from '../core/employee-master-schedules';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -42,6 +42,10 @@ describe('Saved Employee Master definition recovery',()=>{
   vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(tomorrow);
   expect((await getEmployeeMasterReport(ctx,[base.companyId],saved.id)).spec).toEqual(definition);
   expect((await listEmployeeMasterReports(ctx,[base.companyId],{all:true})).map(row=>row.id).sort()).toEqual([saved.id,healthy.id].sort());
+  await expect(getExecutableEmployeeMasterReport(ctx,[base.companyId],saved.id)).rejects.toThrow('current-only');
+  const recipientPolicy=vi.fn(async()=>[]);
+  await expect(employeeMasterRecipientOptions(ctx,[base.companyId],saved.id,recipientPolicy)).rejects.toThrow('current-only');
+  expect(recipientPolicy).not.toHaveBeenCalled();
   await expect(runEmployeeMasterReport(ctx,[base.companyId],{id:saved.id})).rejects.toThrow('current-only');
   await expect(save(definition,'Cannot silently resave stale execution')).rejects.toThrow('current-only');
   vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');
@@ -50,6 +54,11 @@ describe('Saved Employee Master definition recovery',()=>{
   await saveEmployeeMasterSchedule(ctx,[base.companyId],{reportId:saved.id,version:saved.version,enabled:false,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[]});
   expect(await getEmployeeMasterSchedule(ctx,saved.id)).toMatchObject({enabled:false,nextRunAt:null});
   expect((await getEmployeeMasterReport(ctx,[base.companyId],saved.id)).spec.asAt).toBe(definition.asAt);
+  const repaired={...definition,asAt:todayInKualaLumpur()};
+  await saveEmployeeMasterReport(ctx,[base.companyId],{id:saved.id,version:saved.version,name:'Explicitly repaired definition',description:'Actual owner chooses the new date',sharedRoleIds:[],spec:repaired});
+  expect((await getEmployeeMasterReport(ctx,[base.companyId],saved.id)).spec).toEqual(repaired);
+  expect((await runEmployeeMasterReport(ctx,[base.companyId],{id:saved.id})).result.employeeCount).toBe(1);
+  expect(await getEmployeeMasterSchedule(ctx,saved.id)).toMatchObject({enabled:false,nextRunAt:null});
  });
 
  it('hides a definition after its field permission is revoked without breaking unrelated reports or crossing tenants',async()=>{
