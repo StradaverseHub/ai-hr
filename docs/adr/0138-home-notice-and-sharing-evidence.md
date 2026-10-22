@@ -209,6 +209,57 @@ set further filters visible destinations. These are navigation capabilities, not
 balance, attachment, salary or field-mutation authority. Every destination repeats its existing guards.
 The Claims capability reads an active type ID only, never a balance, rate or reimbursement amount.
 
+## Explicit celebration greeting delivery
+
+The celebration reader remains side-effect free. A separate command binds the actual login and its
+selected own employment to the currently disclosed recipient occurrence. Its nonce belongs to that
+login, not to a caller-supplied person or company. Send repeats current principal, company, cohort,
+occasion and person-wide opt-out checks inside its transaction. Opening, editing, cancelling, paging
+and refreshing cannot send. An ambiguous transport response retains the exact attempted nonce and
+body; a retry returns the same terminal receipt instead of authorizing another message.
+
+Store the bounded plaintext body in a private content owner, separately from its immutable delivery
+receipt. Neither the domain event nor the generic notification contains the message, participant
+names or personal dates. The existing notification registry owns the fixed translation keys and
+link. A purpose-bound point projection consumes only the exact current transaction's admitted
+Greeting and event; deferred completion requires one actual notification before commit. The global
+notification cursor consequently recognizes this event without projecting it twice or sending email.
+No generic privileged insert callback is exposed. Ordinary notification behavior remains with its
+existing owner; greeting read-state changes may not rewrite content or routing.
+
+The private detail reader requires the actual sender login or the actual recipient person through a
+current own employment. Sharing authority is permission to discover an occurrence, not permission
+to read somebody else's message. HR authority, a reporting relationship and another login linked to
+the sender's person do not inherit the sender's history. The detail projection contains the body or
+its erased state and the minimal occurrence metadata; it does not freeze a person's display name.
+
+All competing writers acquire the canonical Access/profile barrier before Home configuration,
+Person and privacy advisory locks. The additive migration replaces the existing raw opt-out BEFORE
+trigger with its original checks plus that first barrier; the service owner acquires it first too.
+Changing only Send or only the SQL trigger leaves the service path with an inverted order. The
+original applied opt-out migration and its immutable revisions remain untouched.
+
+## Private greeting content and canonical erasure
+
+Compose with the existing privacy-erasure admission, selected-company administrative proof,
+forty-field policy and seven-year financial hold. The Home extension changes none of those rules.
+An admission captures the actual selected person/employment, transaction, actor, scope, request
+reference, reason and original timestamp. Every valid erasure scope clears this untyped private
+message content for either participant; the separate financial hold continues to govern its own
+existing fields. No digest capable of retaining the erased message survives.
+
+Capture exact before/after content effects in a private transient witness. Completion requires the
+same transaction's canonical privacy event and exact admission bindings, even when no original
+privacy field needed changing. The audit names the greeting-content category only when an actual
+body was cleared. Missing effects, a wrong reference, an incomplete event or a rollback cannot
+commit a partial erasure. Delete transient witnesses on successful completion, retaining only the
+ordinary canonical audit and the content's erased state. The immutable nonce receipt remains
+terminal: retrying an erased send cannot recreate its body or its notification.
+
+The new SQL remains an unregistered draft until its dependency union, restricted migration-owner
+rehearsals and populated-baseline outcomes have been demonstrated. Focused owner tests are not an
+actual composer/detail journey, a full Home acceptance result or deployment evidence.
+
 ## Verification and rollout
 
 The purpose-bound sharing readers in `0584` compose the canonical dated-company and approved-leave
