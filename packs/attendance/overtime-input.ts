@@ -1,5 +1,5 @@
 import {replayAttendancePolicyRawClocks} from './policy-clock-replay';
-import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyDurationExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyFormulaInputTx,attendancePolicyDurationFormulaInputTx} from './policy-formula-input';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from './policy-work-input';
@@ -214,15 +214,16 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const formulaSource=selectedPolicy?{sourceDate:p.date,policy:selectedPolicy,
     calendar:policyExecutionContext?.state==='policy'?policyExecutionContext.calendar:[],currency:{code:entity.currency,minorScale:currencyMinorScale(entity.currency)}}:undefined;
   const policyFormulaInput=formulaSource&&purpose==='money'?await attendancePolicyFormulaInputTx(tx,ctx,formulaSource):undefined;
-  const policyDurationFormulaInput=formulaSource&&purpose==='duration'?await attendancePolicyDurationFormulaInputTx(tx,ctx,formulaSource):undefined;
+  // Duration identity/state is independent of earning mappings even in a cash snapshot.
+  // The bounded shared version reader omits salary and earning-component reads for this branch.
+  const policyDurationFormulaInput=formulaSource?await attendancePolicyDurationFormulaInputTx(tx,ctx,formulaSource):undefined;
   const policyRawTrace=trace?{...trace}:null;
   if(policyRawTrace)delete policyRawTrace.overtimePattern;
   const policyRawEffectSource=selectedPolicy?{clocks:policyClockSource,current:{attendanceId:day.id,checkInAt:day.checkInAt,
     checkOutAt:day.checkOutAt,workedMinutes:day.workedMinutes,lateMinutes:day.lateMinutes,earlyOutMinutes:day.earlyOutMinutes,
     underMinutes:day.underMinutes,dayType:day.dayType,trace:policyRawTrace}}:undefined;
-  const policyExecutionProposal=selectedPolicy?(purpose==='duration'
-    ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource)
-    :attendancePolicyExecutionProposal(policyExecutionContext,policyWorkInput,policyFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource)):undefined;
+  const policyExecutionProposal=selectedPolicy
+    ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource):undefined;
   // A dated child uses its own compensation selection, never the parent shift's salary by guess.
   // This bounded money-only read does not enter the import path or TOIL duration source.
   let policyPricingFacts:CanonicalOvertimeSnapshot['policyPricingFacts'];

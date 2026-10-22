@@ -6,7 +6,7 @@ import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/pol
 /** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
  * Only the non-payable staged contract is allowed; no test turns proposal arithmetic into money. */
 import {randomUUID,createHash} from 'node:crypto';
-import {attendancePolicyExecutionProposal} from '../packs/attendance/policy-execution-proposal';
+import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -217,7 +217,7 @@ describe('immutable non-payable policy part storage',()=>{
   for(const mutate of [
    (x:typeof snapshot)=>{x.input.source.employmentId=randomUUID();},
    (x:typeof snapshot)=>{if(x.policyClockSource?.state==='known')x.policyClockSource.clocks[0].captureId=randomUUID();},
-   (x:typeof snapshot)=>{if(x.policyFormulaInput?.state==='known'&&x.policyFormulaInput.references[0].state==='known')x.policyFormulaInput.references[0].activeState.sequence++;},
+   (x:typeof snapshot)=>{if(x.policyDurationFormulaInput?.state==='known'&&x.policyDurationFormulaInput.references[0].state==='known')x.policyDurationFormulaInput.references[0].activeState.sequence++;},
    (x:typeof snapshot)=>{if(x.policyWorkInput?.state==='known')x.policyWorkInput.eligibleActualIntervals=[{from:1420,to:1440}];},
   ]){const changed=structuredClone(snapshot);mutate(changed);expect(attendancePolicyCurrentDurationMatches(changed,proof)).toBe(false);}
   const refused=structuredClone(snapshot);refused.policyDurationFormulaInput={authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'};
@@ -233,6 +233,8 @@ describe('immutable non-payable policy part storage',()=>{
    if(!snapshot.policyFormulaInput)throw Error('Expected a complete cash formula source');
    snapshot.policyDurationFormulaInput=state==='known'?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput)
     :{authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'};
+   snapshot.policyExecutionProposal=attendancePolicyDurationExecutionProposal(snapshot.policyExecutionContext,snapshot.policyWorkInput,
+    snapshot.policyDurationFormulaInput,snapshot.policyApprovalInput,actor.tenantId,snapshot.policyRawEffectSource);
    return snapshot;
   };
   const snapshot=await withTenant(ctx,tx=>reader(tx,ctx,p));
