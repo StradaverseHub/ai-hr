@@ -4089,7 +4089,15 @@ export async function decideAttendanceCorrection(
         // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
         // that). Skipped when this correction carries its own OT figure: the human who approved it decided
         // the day's overtime a moment ago and that decision wins.
-        if (!hasOtRequest) {
+        // Reconcile a proposed-pair correction through the same policy raw owner AFTER its
+        // effective punch rows exist and BEFORE the final effect/audit snapshot is captured.
+        // Manually entered labels do not acquire capture provenance merely because HR approved them.
+        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(raw.state==='unavailable')throw Error('Canonical corrected Attendance inputs are unavailable.');
+        const policyDerived=raw.state==='policy'?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
+          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn}):null;
+        if(policyDerived)otMinutes=policyDerived.otMinutes;
+        if (!hasOtRequest&&!policyDerived) {
           const planned = await applyApprovedOtPlanTx(tx, ctx, {
             employmentId: cor.employmentId,
             date: cor.attendanceDate,
@@ -4104,9 +4112,9 @@ export async function decideAttendanceCorrection(
           date: cor.attendanceDate,
           checkIn: cor.proposedCheckIn,
           checkOut: cor.proposedCheckOut,
-          status: d.status,
+          status: policyDerived?.status??d.status,
           dayType,
-          workedMinutes: d.workedMinutes,
+          workedMinutes: policyDerived?policyDerived.workedMinutes:d.workedMinutes,
           otMinutes,
         };
       } else {

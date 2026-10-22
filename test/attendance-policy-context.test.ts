@@ -73,6 +73,20 @@ describe('canonical execution-policy selection',()=>{
 /** Safety staging only: these probes must not be counted as complete policy execution or Payroll
  * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
 describe('dated-policy raw writer routing',()=>{
+ it('reconciles proposed-pair correction labels before storing its actual effect and event figures',async()=>{
+  const f=await fixture();await f.save();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),checkIn:'09:30',checkOut:'18:00',
+   reason:'Fictional proposed-pair correction without captured instants'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,lateDeductMinutes:null,otMinutes:null});
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
+  expect(punches.filter(row=>!row.voidedAt).map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);
+  const effects=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,request.correctionId),eq(s.domainEvent.eventType,'attendance-correction.effect.recorded')));
+  expect(effects).toHaveLength(1);expect(effects[0].payload).toMatchObject({after:{workedMinutes:null,otMinutes:null}});
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,saved.id),eq(s.domainEvent.eventType,'attendance.amended')));
+  expect(events.at(-1)?.payload).toMatchObject({workedMinutes:null,otMinutes:null});
+ });
  it('writes the sum of captured physical pairs and matching raw trace, without legacy OT or scalar approval',async()=>{
   const f=await fixture();await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:0});await f.save();
   // Fictional stored receipt fixtures exercise the real writer. These are not real-app capture evidence.
@@ -93,7 +107,7 @@ describe('dated-policy raw writer routing',()=>{
   const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
   await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
   const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
-  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:null,workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,
    lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
   const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
   expect(punches.map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);

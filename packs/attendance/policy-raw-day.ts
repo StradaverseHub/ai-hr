@@ -8,8 +8,8 @@ import type {attendancePolicyRawInputTx} from './policy-raw-input';
 type Raw=Extract<Awaited<ReturnType<typeof attendancePolicyRawInputTx>>,{state:'policy'}>;
 const label=(ms:number)=>{const second=Math.floor(ms/1000)%86400;return [Math.floor(second/3600),Math.floor(second/60)%60,second%60].map(v=>String(v).padStart(2,'0')).join(':');};
 /** The template supplies the canonical schedule snapshot only. Its measured values are discarded.
- * Missing capture receipts retain visible raw labels but establish no work, arrival, deduction or
- * trace. Incomplete captured sets stay open; their original Out records remain in the punch log. */
+ * Missing capture receipts retain both visible raw labels but establish no work, arrival, deduction
+ * or trace. Incomplete captured sets stay open; their original Out records remain in the punch log. */
 export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|null;template:AttendanceTraceV1|null;
  dayType:'workday'|'rest_day'|'holiday';halfDayBefore:number;fallbackIn:string|null;fallbackOut:string|null}){
  const figures=attendancePolicyRawFigures(raw,p.rule,p.dayType);
@@ -18,7 +18,7 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
  const captured=raw.source.state==='known'&&proof!==undefined;
  const complete=captured&&proof.complete&&!proof.requiresReview;
  const checkInAt=captured?(first===null?null:label(first)):p.fallbackIn;
- const checkOutAt=captured?(last!==null&&(complete||first===null)?label(last):null):checkInAt?null:p.fallbackOut;
+ const checkOutAt=captured?(last!==null&&(complete||first===null)?label(last):null):p.fallbackOut;
  let trace:AttendanceTraceV1|null=null;
  let status:'present'|'late'|'half_day'=figures.lateMinutes!==null&&figures.lateMinutes>0?'late':'present';
  if(captured&&first!==null&&p.template){
