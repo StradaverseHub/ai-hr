@@ -1,3 +1,4 @@
+import {recordedAttendancePolicyProposalPartsMatch} from '../packs/attendance/policy-proposal-parts';
 import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../packs/attendance/policy-cash-replay';
@@ -295,7 +296,11 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed.evidence?.evidence.policyCapturedCoverage).toEqual(coverage);
   const substituted=structuredClone(snapshot);if(substituted.policyClockSource?.state!=='known')throw Error('Expected captures');
   substituted.policyClockSource.clocks[0].captureId=randomUUID();
-  expect(attendancePolicyCapturedCoverageProposal(identity,substituted)).toMatchObject({state:'unavailable'});
+  const changed=attendancePolicyCapturedCoverageProposal(identity,substituted);
+  expect(changed).not.toEqual(coverage);
+  const altered=structuredClone(reviewed.evidence);if(!altered||!reviewed.policyParts)throw Error('Expected complete stored evidence');
+  altered.evidence.policyCapturedCoverage=changed;
+  expect(recordedAttendancePolicyProposalPartsMatch(reviewed.source,reviewed.calculation,altered,reviewed.policyParts)).toBe(false);
   expect(reviewed.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});expect(reviewed.lines).toEqual([]);
  });
 
@@ -582,7 +587,7 @@ describe('immutable non-payable policy part storage',()=>{
   const normal=await withTenant(ctx,async tx=>{const {saved}=await header(tx,f,0,{bindingKind:undefined,policyRevisionId:null});return saved;});
   expect(normal).toMatchObject({bindingKind:'assignedPattern',policyRevisionId:null,policyPartCount:0,outcome:'refused',transferable:false});
   // The independent fixture uses another source rather than rewriting the immutable header.
-  await capturedClock(f.employmentId,day(3),'in','23:50:00',day(sourceOffset),captureMillisecond);
+  await capturedClock(f.employmentId,day(3),'in','23:50:00');
   const policy=await withTenant(ctx,async tx=>{
    const source=await lockOvertimeSourceTx(tx,ctx,{employmentId:f.employmentId,date:day(3)});
    const [saved]=await tx.insert(s.attendanceOvertimeCalculation).values({...normal,id:randomUUID(),sourceId:source.id,ordinal:source.revision+1,
