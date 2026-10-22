@@ -31,14 +31,13 @@ export function HomeGreetingCard({employmentId,children}:{employmentId:string;ch
   return value;
  },[employmentId,locale]);
  return <IndependentHomeCard card="summary" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={`${employmentId}:${locale}:${refresh}`} read={read}>{value=><div className="space-y-6">
+  requestKey={`${employmentId}:${locale}:${refresh}`} read={read} footer={children}>{value=><div className="space-y-6">
    <div className="flex min-w-0 items-start gap-4">
     {value.photoHref&&<img src={value.photoHref} alt="" width={56} height={56} className="size-14 shrink-0 rounded-full object-cover"/>}
     <div className="min-w-0 space-y-2"><p className="break-words text-2xl font-semibold leading-snug">{value.message??t('welcome')}</p>
      <p className="text-sm text-muted-foreground"><time dateTime={value.serverNow}>{new Intl.DateTimeFormat(locale,{dateStyle:'full',timeStyle:'short',timeZone:value.timeZone}).format(new Date(value.serverNow))}</time></p>
     </div>
    </div>
-   {children}
    {isLocale(locale)&&<HomeKnowledgeSearch locale={locale} contextKey={employmentId} labels={{label:search('label'),hint:search('hint'),submit:search('submit'),loading:search('loading'),results:search('results'),noMatch:search('noMatch'),failed:search('failed'),timeout:search('timeout'),invalid:search('invalid'),descriptionFallback:search('descriptionFallback'),pageDescriptionFallback:search('pageDescriptionFallback')}}/>}
   </div>}</IndependentHomeCard>;
 }

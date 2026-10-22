@@ -3930,7 +3930,8 @@
       "title": "Lịch chấm công",
       "records": "Danh sách bản ghi chấm công",
       "viewDate": "Xem chấm công ngày {date}"
-    }
+    },
+    "myDayHomeBack": "Về Trang chủ"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -22409,6 +22410,19 @@
       "paydayTomorrow": "Ngày trả lương đã ghi nhận: ngày mai, {date}.",
       "paydayIn": "Ngày trả lương đã ghi nhận: {date}, sau {days} ngày.",
       "noPayday": "Chưa ghi nhận ngày trả lương sắp tới."
+    },
+    "summary": {
+      "title": "Cập nhật của bạn",
+      "quickTitle": "Thao tác nhanh",
+      "loading": "Đang tải cập nhật của bạn…",
+      "failed": "Không thể tải cập nhật của bạn. Vui lòng thử lại phần này.",
+      "timeout": "Cập nhật của bạn mất nhiều thời gian hơn dự kiến. Vui lòng thử lại phần này.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "moduleUnavailable": "Tài khoản của bạn chưa thể dùng dịch vụ này.",
+      "notConfigured": "Chưa có lựa chọn khả dụng được cấu hình cho hồ sơ việc làm này.",
+      "noPayslip": "Chưa có phiếu lương được công bố.",
+      "detailsLocked": "Hiện bạn chỉ có thể xem thông tin của mình."
     }
   }
 }

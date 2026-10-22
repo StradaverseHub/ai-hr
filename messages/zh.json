@@ -3930,7 +3930,8 @@
       "title": "考勤日历",
       "records": "考勤记录列表",
       "viewDate": "查看 {date} 的考勤"
-    }
+    },
+    "myDayHomeBack": "返回主页"
   },
   "org": {
     "title": "组织架构图",
@@ -22409,6 +22410,19 @@
       "paydayTomorrow": "已记录发薪日：明天，{date}。",
       "paydayIn": "已记录发薪日：{date}，还有 {days} 天。",
       "noPayday": "未记录即将到来的发薪日。"
+    },
+    "summary": {
+      "title": "您的最新动态",
+      "quickTitle": "快捷操作",
+      "loading": "正在加载您的动态…",
+      "failed": "无法加载您的动态。请重试此部分。",
+      "timeout": "加载您的动态耗时较长。请重试此部分。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "moduleUnavailable": "您的账号暂时无法使用此服务。",
+      "notConfigured": "尚未为此雇佣关系配置可用选项。",
+      "noPayslip": "目前尚无已发布的工资单。",
+      "detailsLocked": "您的资料目前仅供查看。"
     }
   }
 }

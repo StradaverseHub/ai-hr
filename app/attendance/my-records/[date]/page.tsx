@@ -88,7 +88,7 @@ export default async function MyAttendanceDayPage({
       <div className={pageWideCls}>
         <PageHeader title={t('dayTitle')} description={subjectDescription} />
         <Link href={backHref} className="text-sm font-medium text-primary hover:underline">
-          ← {t('myDayBack')}
+          ← {t(sp.home==='1'&&typeof sp.employmentId==='string'?'myDayHomeBack':'myDayBack')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
         <AttendanceRequestHistory rows={requestHistory} />
@@ -132,7 +132,7 @@ export default async function MyAttendanceDayPage({
       <PageHeader title={t('dayTitle')} description={subjectDescription} />
 
       <Link href={backHref} className="inline-block text-sm font-medium text-primary hover:underline">
-        ← {t('myDayBack')}
+        ← {t(sp.home==='1'&&typeof sp.employmentId==='string'?'myDayHomeBack':'myDayBack')}
       </Link>
 
       {sp.error && CORRECTION_MESSAGES.includes(sp.error) && <ErrorBanner message={t(sp.error)} />}

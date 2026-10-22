@@ -25,10 +25,11 @@ function DeliveredBody<T>({value,render}:{value:T;render:(value:T)=>React.ReactN
  * unserializable function through a Server Component. Empty/unavailable facts belong to that owner's
  * typed result; a failed transport must never be reinterpreted as an empty list or a calm summary.
  */
-export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef}:{
+export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer}:{
   card:EmployeeHomeCard;title:string;labels:Labels;requestKey:string;read:HomeCardReader<T>;
   children:(value:T)=>React.ReactNode;className?:string;
   regionRef?:React.Ref<HTMLDivElement>;
+  footer?:React.ReactNode;
 }){
   const titleId=React.useId();
   const [attempt,setAttempt]=React.useState(0);
@@ -58,11 +59,12 @@ export function IndependentHomeCard<T>({card,title,labels,requestKey,read,childr
         {loading?labels.loading:failed?labels.retry:labels.refresh}
       </Button>
     </CardHeader>
-    <CardContent className="min-w-0">
+    <CardContent className="min-w-0 space-y-6">
       {loading?<p role="status" className="min-h-24 text-sm leading-relaxed text-muted-foreground">{labels.loading}</p>:
         failed?failure:result.state==='ready'?<CardRenderBoundary key={key} fallback={failure} onFailure={renderFailed}>
           <DeliveredBody value={result.value} render={children}/>
         </CardRenderBoundary>:null}
+      {footer}
     </CardContent>
   </Card>;
 }

@@ -40,6 +40,7 @@ import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } fr
 import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {myOwnEmploymentSubjectsTx} from './read';
 
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
@@ -1716,6 +1717,18 @@ export type EmployeeClaimType = {
   formFields: ClaimFormFieldRowOut[];
   balance: ClaimBalanceRow;
 };
+
+/** A navigation capability, not a budget check. Mirrors the form's active-type catalogue without
+ * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
+export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Promise<boolean>{
+ return withTenant(ctx,async tx=>{
+  if(!ctx.userId||!ctx.personId)throw new ClaimError('The own claim context is unavailable');
+  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
+  if(!own.some(row=>row.employmentId===employmentId))throw new ClaimError('The own claim context is unavailable');
+  const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.id).limit(1);
+  return Boolean(row);
+ });
+}
 
 /**
  * Everything the employee claim form needs, resolved for THIS employee's job grade (ccbd0508): per claim

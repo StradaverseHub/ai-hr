@@ -32,6 +32,7 @@ import {
   decideClaim,
   deleteClaimDraft,
   getEmployeeClaimTypes,
+  ownClaimFormAvailable,
   listClaimsForEmployment,
   listPendingClaims,
   saveClaimDraft,
@@ -132,6 +133,16 @@ describe('e7eb5d83 stage 1 — draft claims and limit reservation', () => {
   };
 
   // ─────────────────── The enum, and everyone who has to read it ───────────────────
+
+  it('exposes only current own claim-form availability and does not turn privileged reach into self access',async()=>{
+    const {a,E,me,typeId}=await setup();
+    expect(await ownClaimFormAvailable(me,E.employmentId)).toBe(true);
+    const other=await hireEmployee(a,{person:{fullName:'Fictional other claim subject'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+    await expect(ownClaimFormAvailable(me,other.employmentId)).rejects.toThrow('own claim context');
+    await expect(ownClaimFormAvailable(a,E.employmentId)).rejects.toThrow('own claim context');
+    await owner.db.update(schema.claimType).set({archivedAt:new Date()}).where(eq(schema.claimType.id,typeId));
+    expect(await ownClaimFormAvailable(me,E.employmentId)).toBe(false);
+  });
 
   it('binds draft edits, submission, deletion and cancellation to the selected own employment',async()=>{
     const {a,E,me,typeId}=await setup();

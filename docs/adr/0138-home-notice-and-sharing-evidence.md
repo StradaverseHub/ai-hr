@@ -182,6 +182,31 @@ edits must match the draft's actual employment before applying a different emplo
 attachment context. Selected bulk submit, deletion and cancellation repeat that subject binding
 inside the existing row-locked owner transaction. No Home-specific claim or correction writer exists.
 
+## Deterministic updates and quick actions
+
+The summary uses the existing versioned templates and their priority ordering over actual assigned
+work, approved leave presence, confirmed original/retained replacement holidays, recorded payroll
+dates and currently published payslip metadata. Near-term leave, holiday and payday reminders cover
+today through seven civil business dates ahead. This is a presentation window, not a new leave or
+payroll rule. Display preferences never shift those civil dates. Tentative holidays are not announced
+as confirmed. A published slip is described as ready, never newly unread or paid into a bank account;
+the current metadata owner does not establish a reading/newness timestamp.
+
+At most four actual sentences are rendered; a second sentence is never invented to meet a quota.
+Only a successful read with no candidates can render the configured calm sentence. Disabling all
+positive templates cannot turn existing work into an empty-day assertion. The summary has a separate
+bounded delivery/retry boundary from the greeting. Account-wide task counts are plain text, because
+their assignments can span different employments and owners; the Waiting for You card retains the
+individual canonical action links.
+
+HR chooses at most six fixed quick-action keys for the selected company's actual dashboard role.
+Targets retain the selected own employment. Existing leave eligibility, a minimal active Claims
+catalogue capability, published own payslips and the canonical editable Profile policy determine
+availability. Unavailable configured actions have localized reasons; the rail's published navigation
+set further filters visible destinations. These are navigation capabilities, not new approval,
+balance, attachment, salary or field-mutation authority. Every destination repeats its existing guards.
+The Claims capability reads an active type ID only, never a balance, rate or reimbursement amount.
+
 ## Verification and rollout
 
 The unshipped Home migration is `0582` (moved from its unapplied `0577` allocation so Feedback

@@ -13,6 +13,7 @@ import {HomeTasksCard} from './tasks-card';
 import {HomeNoticesCard} from './notices-card';
 import {HomeCalendarCard} from './calendar-card';
 import {HomeTodayCard} from './today-card';
+import {HomeSummaryOverview} from './summary-overview';
 import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
@@ -25,7 +26,7 @@ export async function EmployeePersonalHome({session,employmentId}:{session:Sessi
  const preferences=await getEmployeeHomePreferences(session,catalogue),selected=identity.selectedEmploymentId;
  const permitted=new Set(catalogue.map(card=>card.cardKey));
  const available:Partial<Record<EmployeeHomeCard,ReactNode>>=selected?{
-  summary:<HomeGreetingCard employmentId={selected}/>,
+  summary:<HomeGreetingCard employmentId={selected}><HomeSummaryOverview key={selected} employmentId={selected}/></HomeGreetingCard>,
   today:<HomeTodayCard key={JSON.stringify([selected,preferences.timeZone])} employmentId={selected} employmentLabel={identity.employments.filter(row=>row.employmentId===selected).map(row=>[row.company??t('companyUnavailable'),row.employeeCode].filter(Boolean).join(' · ')).join('')} timeZone={preferences.timeZone??'Asia/Kuala_Lumpur'}/>,
   notices:<HomeNoticesCard employmentId={selected} timeZone={preferences.timeZone??'Asia/Kuala_Lumpur'}/>,
   tasks:<HomeTasksCard employmentId={selected}/>,

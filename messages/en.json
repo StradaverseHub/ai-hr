@@ -3930,7 +3930,8 @@
       "title": "Attendance Calendar",
       "records": "Attendance records list",
       "viewDate": "View attendance for {date}"
-    }
+    },
+    "myDayHomeBack": "Back to Home"
   },
   "org": {
     "title": "Org chart",
@@ -22409,6 +22410,19 @@
       "paydayTomorrow": "Recorded payday: tomorrow, {date}.",
       "paydayIn": "Recorded payday: {date}, in {days} days.",
       "noPayday": "No upcoming payday is recorded."
+    },
+    "summary": {
+      "title": "Your updates",
+      "quickTitle": "Quick actions",
+      "loading": "Loading your updates…",
+      "failed": "We could not load your updates. Please retry this section.",
+      "timeout": "Your updates took longer than expected. Please retry this section.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "moduleUnavailable": "This service is unavailable for your account.",
+      "notConfigured": "No available option is configured for your employment.",
+      "noPayslip": "No published payslip is available yet.",
+      "detailsLocked": "Your details are currently view only."
     }
   }
 }

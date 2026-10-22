@@ -3930,7 +3930,8 @@
       "title": "Kalendar Kehadiran",
       "records": "Senarai rekod kehadiran",
       "viewDate": "Lihat kehadiran untuk {date}"
-    }
+    },
+    "myDayHomeBack": "Kembali ke Laman Utama"
   },
   "org": {
     "title": "Carta organisasi",
@@ -22409,6 +22410,19 @@
       "paydayTomorrow": "Tarikh gaji direkodkan: esok, {date}.",
       "paydayIn": "Tarikh gaji direkodkan: {date}, dalam {days} hari.",
       "noPayday": "Tiada tarikh gaji akan datang direkodkan."
+    },
+    "summary": {
+      "title": "Maklumat terkini anda",
+      "quickTitle": "Tindakan pantas",
+      "loading": "Memuatkan maklumat terkini anda…",
+      "failed": "Maklumat terkini anda tidak dapat dimuatkan. Cuba semula bahagian ini.",
+      "timeout": "Maklumat terkini anda mengambil masa lebih lama. Cuba semula bahagian ini.",
+      "retry": "Cuba semula",
+      "refresh": "Muat semula",
+      "moduleUnavailable": "Perkhidmatan ini tidak tersedia untuk akaun anda.",
+      "notConfigured": "Tiada pilihan tersedia yang dikonfigurasi untuk pekerjaan anda.",
+      "noPayslip": "Belum ada slip gaji yang diterbitkan.",
+      "detailsLocked": "Butiran anda buat masa ini hanya boleh dilihat."
     }
   }
 }
