@@ -4445,13 +4445,15 @@ export function listAttendanceCorrections(
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
     const comparisons = new Map<string, Promise<number | null>>();
     const comparisonFor = (r: typeof visible[number]) => {
-      const key = `${r.employmentId}:${r.attendanceDate}`;
+      const hasProposedClocks = r.proposedCheckIn != null || r.proposedCheckOut != null;
+      const key = `${r.employmentId}:${r.attendanceDate}:${hasProposedClocks}`;
       let pending = comparisons.get(key);
       if (!pending) {
         pending = (async () => {
           const raw = await attendancePolicyRawInputTx(tx, ctx, { employmentId: r.employmentId, date: r.attendanceDate });
           if (raw.state === 'unavailable') return null;
           if (raw.state !== 'policy') return r.systemOtMinutes;
+          if (hasProposedClocks) return null;
           const comparison = attendancePolicySystemEligibleMinutes(raw.context, raw.work);
           return comparison.state === 'known' ? comparison.minutes : null;
         })();
