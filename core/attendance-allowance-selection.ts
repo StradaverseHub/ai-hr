@@ -8,7 +8,7 @@ import { ALLOWANCE_EMPLOYEE_FIELDS_V4, type AllowanceEmployeeFieldV4 } from '../
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 async function authorize(tx: Tx, companyId: string) {
   if (!UUID.test(companyId)) throw new Error('Choose a policy company.');
-  const [allowed] = await tx.select({ ok: sql<boolean>`app.is_admin_for(${company.id})` }).from(company).where(eq(company.id, companyId));
+  const [allowed] = await tx.select({ ok: sql<boolean>`app.principal_snapshot_current() AND app.is_admin_for(${company.id})` }).from(company).where(eq(company.id, companyId));
   if (!allowed?.ok) throw new Error('Company administration access is required.');
 }
 export type AllowanceEmployeePageInput = { companyId: string; query: string; page: number; side: 'available' | 'included'; included: string[] };
@@ -22,16 +22,25 @@ export async function allowanceEmployeePage(ctx: SessionContext, input: Allowanc
     const condition = sql`e.company_id=${input.companyId}::uuid AND app.can_admin_employment(e.id) AND ${input.side === 'included' ? ids : sql`NOT (${ids})`} AND (p.full_name ILIKE ${pattern} OR e.employee_code ILIKE ${pattern})`;
     const result = await tx.execute(sql`
       SELECT e.id,e.employee_code AS code,p.full_name AS name,d.name AS department,b.name AS "businessUnit",count(*) OVER()::int AS total
-      FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-      LEFT JOIN LATERAL (SELECT a.department_id,a.business_unit_id FROM assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id DESC LIMIT 1) a ON true
-      LEFT JOIN department d ON d.id=a.department_id AND d.tenant_id=e.tenant_id
-      LEFT JOIN business_unit b ON b.id=coalesce(a.business_unit_id,d.business_unit_id) AND b.tenant_id=e.tenant_id
+      FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+      LEFT JOIN LATERAL (SELECT a.department_id,a.business_unit_id FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id DESC LIMIT 1) a ON true
+      LEFT JOIN public.department d ON d.id=a.department_id AND d.tenant_id=e.tenant_id
+      LEFT JOIN public.business_unit b ON b.id=coalesce(a.business_unit_id,d.business_unit_id) AND b.tenant_id=e.tenant_id
       WHERE e.tenant_id=app.current_tenant_id() AND ${condition}
       ORDER BY p.full_name,e.employee_code NULLS LAST,e.id LIMIT 25 OFFSET ${(input.page-1)*25}
     `);
     const reachable = input.side==='included' && input.included.length ? await tx.select({id:employment.id}).from(employment).where(and(eq(employment.companyId,input.companyId),inArray(employment.id,input.included),sql`app.can_admin_employment(${employment.id})`)) : [];
     const unavailable = input.side==='included' ? input.included.filter(id=>!reachable.some(row=>row.id===id)) : [];
-    return { rows: result as unknown as (AllowanceEmployeeOption & { total: number })[], page: input.page, total: Number((result[0] as unknown as {total?: number})?.total ?? 0), unavailable };
+    let total=Number((result[0] as unknown as {total?: number})?.total ?? 0);
+    if(!result.length&&input.page>1) {
+      // Moving the final page into Included can leave an empty page behind. Its window has no row
+      // carrying count(*); preserve the real scoped total rather than reporting an empty catalogue.
+      const [count]=await tx.execute(sql`SELECT count(*)::int AS total FROM public.employment e
+        JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+        WHERE e.tenant_id=app.current_tenant_id() AND ${condition}`) as unknown as {total:number}[];
+      total=Number(count?.total??0);
+    }
+    return { rows: result as unknown as (AllowanceEmployeeOption & { total: number })[], page: input.page, total, unavailable };
 
   });
 }
