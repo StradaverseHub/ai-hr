@@ -457,7 +457,8 @@
     "profileChanges": "个人资料变更",
     "leaveSettings": "设置",
     "attendanceCalendar": "考勤日历",
-    "myEa": "我的 EA"
+    "myEa": "我的 EA",
+    "myTp3": "我的 TP3 表格"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -10059,7 +10060,8 @@
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
         "myPayslip": "您只能查看自己已发布的工资单，包括保留的过往雇佣记录。",
         "myTp1": "仅限您本人的 TP1 申报。雇主同意仍须由获授权的薪资人员操作。",
-        "myEa": "我的 EA"
+        "myEa": "此处仅可查看属于您本人任职记录和支付薪资雇主的 EA 表格。",
+        "myTp3": "仅可查看本人的 TP3。新建记录受本公司入职日期限制；更正权限仍属于 Payroll。"
       },
       "status": {
         "active": "启用",
@@ -21979,6 +21981,47 @@
       "isNot": "不等于",
       "in": "属于",
       "notIn": "不属于"
-    }
+    },
+    "previewTitle": "预览匹配员工",
+    "previewAction": "预览员工",
+    "previewHelp": "使用每个周期内员工归属的最后一天。部门、业务单位、职位及用工类型使用带日期的任职资料；职级、类别、分行及事业部门使用当前 Personnel 档案。考勤条件也必须满足。",
+    "previewError": "无法预览匹配员工。请检查选择和周期后重试。",
+    "previewCount": "共 {count} 个员工与周期匹配项",
+    "asOf": "资料日期：{date}",
+    "previewTruncated": "显示前 100 个员工与周期匹配项。"
+  },
+  "myTp3": {
+    "title": "我的 TP3 表格",
+    "intro": "填写加入本公司年份的前雇主资料。",
+    "employment": "任职记录",
+    "chooseEmployment": "选择您的任职记录",
+    "year": "课税年度",
+    "view": "查看",
+    "joinDate": "本公司入职日期",
+    "state": "记录状态",
+    "fallback": "尚未填写本公司入职日期；现使用已有的集团入职日期。",
+    "chooseHelp": "请选择任职记录，查看对应入职日期及填写资格。",
+    "ineligible": "新建记录须有有效任职，且本公司入职日期已到、属于当前日历年。已有记录仍可在下方查看。",
+    "correctionHelp": "此处仅可查看本记录。如需授权更正，请联系 Payroll。",
+    "held": "表格已记录，但薪资期初余额仍归属 {year} 年。",
+    "savedAt": "上次保存：{at}",
+    "draftSaved": "草稿已保存。薪资输入保持不变。",
+    "submitted": "已提交",
+    "notLinked": "此账号未关联员工档案。",
+    "history": "往年记录",
+    "new": "尚无保存记录",
+    "draft": "草稿",
+    "declared": "员工已声明",
+    "payrollSaved": "Payroll 已保存",
+    "saveDraft": "保存草稿",
+    "submit": "提交声明",
+    "saving": "正在保存…",
+    "draftHelp": "草稿不影响薪资。提交后将记录您的声明，并按现有 TP3 计算规则处理。",
+    "invalid": "无效的 TP3 表格操作。",
+    "invalidMoney": "请输入非负金额，最多保留两位小数。",
+    "changed": "记录或填写资格已更改。请重新加载并核对当前 TP3 后再保存。",
+    "loadError": "无法加载您的 TP3 表格。",
+    "retry": "重试",
+    "loading": "正在加载您的 TP3 表格…"
   }
 }

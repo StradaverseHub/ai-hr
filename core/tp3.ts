@@ -70,11 +70,12 @@
  *
  * ══ AUTHORIZATION ═══════════════════════════════════════════════════════════════════════════════════
  *
- * READS are `app.can_see_person` (self + admin) at the database. WRITES are admin-only in BOTH places:
+ * Existing administrative READS use person visibility. Administrative WRITES retain both gates:
  * `requireAdminTarget` here and `WITH CHECK app.is_admin()` in migration 0480. HR keys this from the
- * paper form the employee hands in; an employee does not self-declare a previous employer's figures.
+ * paper form. Mine uses private staging plus a separate own-only insertion/projection port; it never
+ * changes roles or calls the administrator entry point.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE — the same binding core/tax-relief.ts uses and for the same reason: a
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
@@ -82,6 +83,7 @@ import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
+  employment,company,
   employeeStatutoryMy,
   employeeTp3,
   person,
@@ -727,7 +729,7 @@ export type Tp3Identity = {
   };
 };
 
-export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Promise<Tp3Identity> {
+export function getTp3Identity(ctx: SessionContext, p: { personId: string }, ownOnly=false): Promise<Tp3Identity> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
@@ -744,7 +746,7 @@ export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Pr
       })
       .from(person)
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
-      .where(eq(person.id, p.personId))
+      .where(and(eq(person.id, p.personId),ownOnly?sql`app.principal_snapshot_current() AND app.is_self_person(${person.id})`:undefined))
       .limit(1);
     const num = (v: string | null | undefined) => (v == null ? null : Number(v));
     return {
@@ -842,6 +844,7 @@ async function projectSeedOntoStatutory(
   tx: Tx,
   ctx: SessionContext,
   p: { personId: string; assessmentYear: number; seed: Tp3AccumulatorSeed },
+  selfDraftId?:string,
 ): Promise<Tp3SeedOutcome> {
   const [stat] = await tx
     .select({
@@ -856,18 +859,22 @@ async function projectSeedOntoStatutory(
     })
     .from(employeeStatutoryMy)
     .where(eq(employeeStatutoryMy.personId, p.personId))
-    .limit(1);
+    .limit(1).for('update');
 
   // NO ROW TO PROJECT INTO. Refusing (and rolling the form back with it) rather than creating a bare one:
   // an `employee_statutory_my` row is what `preProcessChecksTx` reads as "this employee HAS a statutory
   // profile", so inserting an empty one here would silence a real readiness warning on the payroll run.
   // A form whose money cannot reach the calculation must not save quietly — that is the whole defect.
   throwIfNowhereToLand(stat, p.seed);
-  if (!stat) return { applied: false, reason: 'noStatutoryProfile' };
+  if (!stat) {
+    if(selfDraftId)await tx.execute(sql`select app.my_tp3_projection(${selfDraftId}::uuid,NULL::jsonb)`);
+    return { applied: false, reason: 'noStatutoryProfile' };
+  }
 
   // A LATER year holds the columns. See the file header: demoting `tp3_year` is a statutory regression
   // with no error message, so the form is kept and the projection is REPORTED as not applied.
   if (stat.tp3Year != null && stat.tp3Year > p.assessmentYear) {
+    if(selfDraftId)await tx.execute(sql`select app.my_tp3_projection(${selfDraftId}::uuid,NULL::jsonb)`);
     return { applied: false, reason: 'laterYearHoldsColumns', heldBy: stat.tp3Year };
   }
 
@@ -906,7 +913,8 @@ async function projectSeedOntoStatutory(
     // `core/payroll.ts`, and null is what the column already means everywhere else.
     tp3ExemptionUsed: Object.keys(p.seed.exemptionUsed).length ? p.seed.exemptionUsed : null,
   };
-  await tx
+  if(selfDraftId)await tx.execute(sql`select app.my_tp3_projection(${selfDraftId}::uuid,${JSON.stringify(after)}::jsonb)`);
+  else await tx
     .update(employeeStatutoryMy)
     .set({ ...after, updatedAt: new Date() })
     .where(eq(employeeStatutoryMy.id, stat.id));
@@ -1050,8 +1058,8 @@ function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
  * figures did not reach payroll is precisely the state this item was raised about, and a partial commit
  * would recreate it.
  */
-export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ id: string; seed: Tp3SeedOutcome }> {
-  const personId = requireAdminTarget(ctx, p.personId);
+type PreparedTp3 = ReturnType<typeof prepareTp3>;
+function prepareTp3(p:Tp3WriteInput) {
   const assessmentYear = validateYear(p.assessmentYear);
   const deductionMonth = validateMonth(p.deductionMonth);
   const previousEmployers = validateEmployers(p.previousEmployers);
@@ -1067,7 +1075,19 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
   const payload: Tp3Payload = { form: 'tp3-2026', sectionC: sectionC.out, sectionD: sectionD.out };
   if (remarks != null) payload.remarks = remarks;
 
-  return withTenant(ctx, async (tx) => {
+  const seed=deriveAccumulatorSeed(payload);
+  if(!seed)throw new Tp3Error('This Form TP3 could not be read for the tax calculation.');
+  if(seed.netRemuneration<0)throw new Tp3Error('Section C does not add up: the tax-exempt amounts (C2) plus the EPF contributions (C3) are more than the total remuneration (C1). Check those boxes before saving.');
+  return {assessmentYear,deductionMonth,previousEmployers,payload,remarks};
+}
+type MyTp3Storage = {draftId:string;revision:number};
+export async function saveTp3(ctx: SessionContext,p:Tp3WriteInput):Promise<{id:string;seed:Tp3SeedOutcome}> {
+  const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
+  return withTenant(ctx,tx=>savePreparedTp3Tx(tx,ctx,personId,p,prepared));
+}
+async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage):Promise<{id:string;seed:Tp3SeedOutcome}> {
+  const {assessmentYear,deductionMonth,previousEmployers,payload,remarks}=prepared;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'tp3|'+ctx.tenantId+'|'+personId+'|'+assessmentYear},0))`);
     const [existing] = await tx
       .select()
       .from(employeeTp3)
@@ -1077,7 +1097,7 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
     // Section E. The tick is an explicit VALUE read by the form reader (never by presence), and the
     // TIMESTAMP is the server's. Unticking CLEARS it: a declaration that was withdrawn must not keep
     // printing a date under the acknowledgement.
-    const declaredAt = p.declarationAccepted ? (existing?.declaredAt ?? new Date()) : null;
+    let declaredAt = p.declarationAccepted ? (existing?.declaredAt ?? new Date()) : null;
 
     const values = {
       tenantId: ctx.tenantId,
@@ -1090,7 +1110,16 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
       remarks,
     };
 
-    const [saved] = await tx
+    let saved:{id:string};
+    if(self) {
+      if(existing)throw new Tp3Error('A TP3 record already exists for this year. Ask Payroll for a correction.');
+      const [row]=await tx.execute(sql`select app.my_tp3_insert(${self.draftId}::uuid,${self.revision},${deductionMonth}::smallint,${JSON.stringify(previousEmployers)}::jsonb,${JSON.stringify(payload)}::jsonb) as id`) as unknown as {id:string}[];
+      if(!row?.id)throw new Tp3Error('The TP3 submission could not be saved.');
+      saved=row;
+      const [actual]=await tx.select({declaredAt:employeeTp3.declaredAt}).from(employeeTp3).where(eq(employeeTp3.id,row.id));
+      declaredAt=actual?.declaredAt??null;
+    } else {
+      [saved] = await tx
       .insert(employeeTp3)
       .values(values)
       .onConflictDoUpdate({
@@ -1105,6 +1134,8 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
         },
       })
       .returning({ id: employeeTp3.id });
+
+    }
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1154,10 +1185,9 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
         'Section C does not add up: the tax-exempt amounts (C2) plus the EPF contributions (C3) are more than the total remuneration (C1). Check those boxes before saving.',
       );
     }
-    const outcome = await projectSeedOntoStatutory(tx, ctx, { personId, assessmentYear, seed });
+    const outcome = await projectSeedOntoStatutory(tx, ctx, { personId, assessmentYear, seed }, self?.draftId);
 
     return { id: saved.id, seed: outcome };
-  });
 }
 
 /**
@@ -1208,3 +1238,49 @@ export async function deleteTp3(ctx: SessionContext, p: { personId: string; asse
     });
   });
 }
+
+
+export type MyTp3Employment = {employmentId:string;company:string;employeeCode:string|null;joinDate:string|null;hiredOn:string;terminatedOn:string|null;resignationDate:string|null;lastWorkingDate:string|null;blacklistedAt:Date|null};
+export type MyTp3Draft = {id:string;employmentId:string;assessmentYear:number;revision:number;deductionMonth:number|null;previousEmployers:Tp3PreviousEmployer[];payload:Tp3Payload;declarationAccepted:boolean;submittedAt:Date|null;canonicalId:string|null;projectionOutcome:Exclude<Tp3SeedOutcome,{applied:true}>|{applied:true}|null;updatedAt:Date};
+const ownTp3=sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`;
+export function myTp3Employments(ctx:SessionContext):Promise<MyTp3Employment[]> {
+  if(!ctx.personId)return Promise.resolve([]);
+  return withTenant(ctx,tx=>tx.select({employmentId:employment.id,company:company.legalName,employeeCode:employment.employeeCode,joinDate:employment.joinDate,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.personId,ctx.personId),ownTp3)).orderBy(desc(employment.hiredOn),employment.id));
+}
+export {myTp3Eligibility} from '../lib/my-tp3-eligibility';
+/** Both top-level and legacy payload notes are removed before this model leaves its owner. */
+function personalTp3(row:Row):Tp3Record {
+  const record=toRecord(row);
+  const payload=record.payload?{...record.payload}:null;
+  if(payload)delete payload.remarks;
+  return {...record,payload,remarks:null};
+}
+export function myTp3History(ctx:SessionContext):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
+  if(!ctx.personId)return Promise.resolve({records:[],drafts:[]});
+  return withTenant(ctx,async tx=>{
+    const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
+    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from employee_tp3_draft where person_id=${ctx.personId}::uuid and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
+    return {records:records.map(personalTp3),drafts};
+  });
+}
+export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
+  if(!ctx.personId)throw new Tp3Error('This account is not linked to an employee profile.');
+  // The identity reader takes its subject from the actual login inside its transaction.
+  return getTp3Identity(ctx,{personId:ctx.personId},true);
+}
+export type MyTp3WriteInput=Omit<Tp3WriteInput,'personId'|'remarks'> & {employmentId:string;expectedRevision:number};
+async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit:boolean) {
+  if(!ctx.personId||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw new Tp3Error('Reload this TP3 draft before saving.');
+  const [actual]=await tx.execute(sql`select u.id from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() for share`) as unknown as {id:string}[];
+  if(!actual?.id)throw new Tp3Error('This account is not linked to this employee profile.');
+  if(submit&&input.declarationAccepted!==true)throw new Tp3Error('Confirm the employee declaration before submitting.');
+  const prepared=prepareTp3({...input,personId:ctx.personId,remarks:null});
+  const [draft]=await tx.execute(sql`select app.my_tp3_save_draft(${input.employmentId}::uuid,${prepared.assessmentYear},${input.expectedRevision},${prepared.deductionMonth}::smallint,${JSON.stringify(prepared.previousEmployers)}::jsonb,${JSON.stringify(prepared.payload)}::jsonb,${input.declarationAccepted===true}) as id`) as unknown as {id:string}[];
+  if(!draft?.id)throw new Tp3Error('The TP3 draft could not be saved.');
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-tp3-draft',aggregateId:draft.id,eventType:'employee.tp3draft.saved',actor:actorOf(ctx),subjectEmploymentId:input.employmentId,payload:{assessmentYear:prepared.assessmentYear,revision:input.expectedRevision+1}});
+  if(!submit)return {id:draft.id,revision:input.expectedRevision+1,seed:null};
+  const result=await savePreparedTp3Tx(tx,ctx,ctx.personId,{...input,personId:ctx.personId},prepared,{draftId:draft.id,revision:input.expectedRevision+1});
+  return {...result,revision:input.expectedRevision+2};
+}
+export function saveMyTp3Draft(ctx:SessionContext,input:MyTp3WriteInput) {return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,false));}
+export function submitMyTp3(ctx:SessionContext,input:MyTp3WriteInput) {return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,true));}

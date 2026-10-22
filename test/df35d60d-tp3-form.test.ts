@@ -73,6 +73,7 @@ const CORE_PAYROLL = src('core/payroll.ts');
 const PDF = src('lib/tp3-pdf.ts');
 const ROUTE = src('app/payroll/transactions/tp3/pdf/route.ts');
 const PAGE = src('app/payroll/transactions/tp3/page.tsx');
+const FIELDS=src('components/tp3-declaration-fields.tsx');
 const ACTIONS = src('app/payroll/transactions/tp3/actions.ts');
 const MIGRATION = readFileSync(join(ROOT, 'db/migrations/0480_employee_tp3.sql'), 'utf8');
 
@@ -178,7 +179,8 @@ describe('df35d60d · Section D is the TP1 schedule, not a copy of it', () => {
     // The labels are not duplicated either. `items.<code>.label` is the TP1's own key; the TP3 renderer
     // resolves the same one, so a reworded relief is reworded on both forms at once.
     expect(ROUTE, 'the route resolves the shared item labels').toContain('t(`items.${item.code}.label`)');
-    expect(PAGE).toContain("t(`items.${item.code}.label`)");
+    expect(PAGE).toMatch(/<Tp3DeclarationFields[^>]*mode="admin"/);
+    expect(FIELDS).toContain("t(`items.${item.code}.label`)");
     for (const l of LOCALES) {
       const tr = (messages[l] as unknown as { taxRelief: { items: Record<string, { label: string; sub?: Record<string, string> }> } }).taxRelief;
       for (const item of TP3_SECTION_D) {
@@ -366,8 +368,8 @@ describe('df35d60d · Section A is ruled for two employers, and a third is refus
   it('declares two, from the pack rather than from a literal in a screen', () => {
     expect(TP3_MAX_EMPLOYERS).toBe(2);
     expect(MY_TP3_2026.maxEmployers).toBe(2);
-    expect(PAGE, 'the screen reads the pack’s number').toContain('TP3_MAX_EMPLOYERS');
-    expect(PAGE, 'and never hardcodes it').not.toMatch(/length:\s*2\s*\}/);
+    expect(FIELDS, 'the shared fields read the pack’s number').toContain('TP3_MAX_EMPLOYERS');
+    expect(FIELDS, 'and never hardcodes it').not.toMatch(/length:\s*2\s*\}/);
   });
 
   it('stores two and REFUSES a third, quoting the form’s own attachment note', async () => {
@@ -719,7 +721,7 @@ describe('df35d60d · the record', () => {
     fd.append('declarationAccepted', 'yes'); // …and the checkbox, when ticked
     expect(readTp3FormInput(fd).declarationAccepted, 'ticked').toBe(true);
     // The emitter renders the hidden `no` FIRST, or the reader above can never see an untick.
-    expect(PAGE).toMatch(/name="declarationAccepted" value="no"[\s\S]{0,400}value="yes"/);
+    expect(FIELDS).toMatch(/name="declarationAccepted" value="no"[\s\S]{0,400}value="yes"/);
   });
 
   it('refuses a non-admin write in the service, and the policy refuses it again', async () => {

@@ -527,7 +527,7 @@ describe('20837372 (c) · each C2 sub-item carries its own sourced exemption lim
   });
 
   it('the screen prints the limit and the note that says where it comes from', () => {
-    const src = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/page.tsx'), 'utf8')
+    const src = readFileSync(join(ROOT, 'components/tp3-declaration-fields.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
     expect(src, 'the limit column reads the pack, never a literal on the screen').toMatch(
@@ -710,7 +710,7 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
     // declaration would silently stop opening on its own month.
     const tp1Src = readFileSync(join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
     expect(tp1Src).toMatch(/r\.deductionMonth === month/);
-    const tp3Src = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/page.tsx'), 'utf8')
+    const tp3Src = readFileSync(join(ROOT, 'components/tp3-declaration-fields.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
     expect(tp3Src, 'a <select>, not a number box').toMatch(/<select\s[\s\S]*?name="deductionMonth"/);
@@ -718,7 +718,7 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
       /value=\{String\(m\.value\)\}/,
     );
     expect(tp3Src, 'names come from Intl in the request locale, not from the catalogue').toMatch(
-      /new Intl\.DateTimeFormat\(await getLocale\(\), \{ month: 'long' \}\)/,
+      /new Intl\.DateTimeFormat\(await getLocale\(\),\s*\{\s*month:\s*'long',\s*timeZone:\s*'UTC'\s*\}\)/,
     );
   });
 
@@ -736,7 +736,7 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
       .where(eq(schema.employeeTp3.personId, e.personId))
       .then((r) => r[0]))!;
     expect(form.deductionMonth, 'left blank is null, never 1').toBeNull();
-    const tp3Src = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/page.tsx'), 'utf8');
+    const tp3Src = readFileSync(join(ROOT, 'components/tp3-declaration-fields.tsx'), 'utf8');
     expect(tp3Src).toMatch(/<option value="">\{t\('tp3\.deductionMonthBlank'\)\}<\/option>/);
   });
 

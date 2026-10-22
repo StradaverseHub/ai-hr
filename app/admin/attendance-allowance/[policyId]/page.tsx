@@ -1,13 +1,13 @@
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
-import { allowanceSetupOptions,allowanceTransferHistory,evaluateAllowancesForPeriod,getAllowancePolicy } from '@/packs/attendance/service';
+import { allowanceEmployeeValues,allowanceSetupOptions,allowanceTransferHistory,evaluateAllowancesForPeriod,getAllowancePolicy } from '@/packs/attendance/service';
 import { listAttendanceAllowancePayCodes,listBatches } from '@/packs/payroll/service';
 import { isModuleEnabled } from '@/core/entitlements';
 import { AllowanceExpressionView } from '@/components/attendance-allowance-expression';
 import { AttendanceAllowanceDayEvidence } from '@/components/attendance-allowance-day-evidence';
 import { AllowanceEmployeeExpressionView } from '@/components/allowance-employee-expression';
-import { ALLOWANCE_EMPLOYEE_FIELDS_V4 } from '@/lib/allowance-employee-expression';
+import { ALLOWANCE_EMPLOYEE_FIELDS_V4, allowanceEmployeeLeaves } from '@/lib/allowance-employee-expression';
 import { ALLOWANCE_METRICS_V3 } from '@/lib/attendance-allowance-expression';
 import { ALLOWANCE_OPERATORS } from '@/lib/attendance-allowance-vocabulary';
 import { AttendanceAllowanceEditor } from '@/components/attendance-allowance-editor';
@@ -27,10 +27,16 @@ export default async function AllowancePolicyPage({params,searchParams}:{params:
   const expressionLabels={all:v('all'),any:v('any'),unrestricted:v('unrestricted'),unknown:v('unknown'),pass:t('pass'),fail:t('fail'),unknownMeasurement:v('unknownMeasurement'),allLeaveTypes:v('allLeaveTypes'),leaveTypes:v('leaveTypes'),metrics:Object.fromEntries(ALLOWANCE_METRICS_V3.map(field=>[field,t(`metrics.${field}`)])),operators:Object.fromEntries(ALLOWANCE_OPERATORS.map(operator=>[operator,t(`operators.${operator}`)])),units:Object.fromEntries(['hours','minutes','days','occurrences'].map(unit=>[unit,t(`units.${unit}`)]))};
   const legacyT=await getTranslations('attendanceAllowance');
   const query=await searchParams;
-  const [options,components]=await Promise.all([allowanceSetupOptions(s,[policy.companyId]),listAttendanceAllowancePayCodes(s)]);
+  const [options,components]=await Promise.all([allowanceSetupOptions(s,[policy.companyId],{catalogs:policy.rules?.v!==4}),listAttendanceAllowancePayCodes(s)]);
+  const valueLabels:Record<string,string>={};
+  if(policy.rules?.v===4&&policy.rules.employee.expression){
+    const leaves=allowanceEmployeeLeaves(policy.rules.employee.expression);
+    const resolved=await Promise.all(leaves.map(leaf=>allowanceEmployeeValues(s,{companyId:policy.companyId,field:leaf.field,query:'',page:1,selected:leaf.values})));
+    resolved.forEach((result,index)=>result.rows.forEach(row=>{valueLabels[`${leaves[index].field}:${row.id}`]=row.label;}));
+  }
   const currency=options.companies.find(c=>c.id===policy.companyId)?.currency;
   const base=`/admin/attendance-allowance/${policy.id}`;
-  if(query.edit==='1'&&!policy.archivedAt)return <div className={pageWideCls}><a href={base} className="text-sm text-muted-foreground">← {t('backPolicy')}</a><PageHeader title={`${t('edit')}: ${policy.name}`} description={t('setupDescription')}/><AttendanceAllowanceEditor options={options} components={components} policy={policy} action={saveAllowancePolicyFormAction}/></div>;
+  if(query.edit==='1'&&!policy.archivedAt)return <div className={pageWideCls}><a href={base} className="text-sm text-muted-foreground">← {t('backPolicy')}</a><PageHeader title={`${t('edit')}: ${policy.name}`} description={t('setupDescription')}/><AttendanceAllowanceEditor initialValueLabels={valueLabels} options={options} components={components} policy={policy} action={saveAllowancePolicyFormAction}/></div>;
   const payrollEnabled=isModuleEnabled(s,'payroll');
   const batches=payrollEnabled?await listBatches(s,[policy.companyId]):[];
   const selectedBatch=batches.find(b=>b.id===query.batchId);
@@ -61,5 +67,5 @@ export default async function AllowancePolicyPage({params,searchParams}:{params:
       <details><summary className="cursor-pointer text-sm font-medium">{t('policyVersions')} ({history.versions.length})</summary>{history.versions.map(version=><details key={version.id} className="mt-2 text-sm"><summary>{t('version')} {version.version} · {version.createdAt.toISOString()}</summary><pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">{JSON.stringify(version.snapshot,null,2)}</pre></details>)}</details>
     </div></Card>
   </div>;
-  function resolveValue(field:string,id:string){const rows=field==='companyId'?options.companies:field==='departmentId'?options.departments:field==='businessUnitId'?options.businessUnits:field==='positionId'?options.positions:field==='gradeId'?options.grades:[];return rows.find(r=>r.id===id)?.label??id;}
+  function resolveValue(field:string,id:string){if(valueLabels[`${field}:${id}`])return valueLabels[`${field}:${id}`];const rows=field==='companyId'?options.companies:field==='departmentId'?options.departments:field==='businessUnitId'?options.businessUnits:field==='positionId'?options.positions:field==='gradeId'?options.grades:[];return rows.find(r=>r.id===id)?.label??id;}
 }

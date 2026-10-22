@@ -87,7 +87,7 @@ const ALL_TABLES = [
   // leaked template would trip the (tenant, leave_type, lower(name)) partial-unique index in a later test
   // file, and a leaked archive row would be counted by the listing/CSV assertions.
   'entitlement_template', 'entitlement_eligibility_rule', 'entitlement_reset_archive',
-  'tp1_relief',
+  'tp1_relief', 'employee_tp3_draft',
   'employee_dependent',
   // 23ad620e — emergency-contact register: a leaked live 'primary' row would trip the partial unique
   // index (person_emergency_contact_one_primary_uq) in a later test file. CASCADE from `person` would

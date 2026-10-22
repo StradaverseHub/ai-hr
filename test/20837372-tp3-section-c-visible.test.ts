@@ -30,7 +30,11 @@ import { MY_RELIEFS } from '../localization/my/statutory-tables';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
-const PAGE = 'app/payroll/transactions/tp3/page.tsx';
+const PAGE = 'components/tp3-declaration-fields.tsx';
+it('both TP3 surfaces mount the shared full field owner in the correct mode',()=>{
+ expect(src('app/payroll/transactions/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="admin"/);
+ expect(src('app/me/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="personal"/);
+});
 
 const c2sub = (code: string) => TP3_SECTION_C.find((l) => l.code === 'c2')!.subItems.find((s) => s.code === code)!;
 

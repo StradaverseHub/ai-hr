@@ -140,6 +140,12 @@ export function allowanceEmployeeMatches(rule: AllowanceRules['employee'], emplo
   });
   return rule.logic === 'and' ? tests.every(Boolean) : tests.some(Boolean);
 }
+/** Same period-end owned employment facts for editor preview and payable period evaluation. */
+export function allowanceEmployeePeriodMatch(rule:AllowanceRules['employee'],employmentId:string,input:{days:{date:string}[];factsByDate:Map<string,AllowanceEmployeeFacts>},period:{from:string;to:string}) {
+  const dates=input.days.filter(day=>day.date>=period.from&&day.date<=period.to).map(day=>day.date).sort();
+  const asOf=dates.at(-1)??null,facts=asOf?input.factsByDate.get(asOf)??null:null;
+  return {asOf,facts,pass:!!facts&&allowanceEmployeeMatches(rule,employmentId,facts)};
+}
 export type AllowanceDay = {
   date: string; attendanceId: string | null; kind: AllowanceDayKind; shiftId: string | null;
   workingMinutes: number | null; actualMinutes: number | null; overtimeMinutes: number | null;

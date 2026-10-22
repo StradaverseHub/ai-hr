@@ -33,3 +33,11 @@ describe('grouped employee inclusion preserves the exact Design/two-business-uni
     expect(()=>validateAllowanceRules({...base,employee:{...base.employee,mode:'criteria',expression:{id:'empty',type:'group',logic:'or',children:[]}}})).toThrow();
   });
 });
+
+it('editor preview and period calculation use the same final owned employment day',async()=>{
+ const {allowanceEmployeePeriodMatch}=await import('../lib/attendance-allowance-rules');
+ const rule=upgradeAllowanceEmployeeRules({...emptyAllowanceRulesV3(),employee:{mode:'criteria',employmentIds:[],logic:'and',criteria:[{field:'departmentId',operator:'in',values:[design]}]}}).employee;
+ const input={days:[{date:'2026-01-05'},{date:'2026-01-04'}],factsByDate:new Map([['2026-01-04',facts(other,materials)],['2026-01-05',facts(design,materials)]])};
+ expect(allowanceEmployeePeriodMatch(rule,'own',input,{from:'2026-01-01',to:'2026-01-31'})).toMatchObject({asOf:'2026-01-05',pass:true});
+ expect(allowanceEmployeePeriodMatch(rule,'own',input,{from:'2026-01-01',to:'2026-01-04'})).toMatchObject({asOf:'2026-01-04',pass:false});
+});

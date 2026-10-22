@@ -6065,6 +6065,20 @@ export const employeeTp3 = pgTable(
   ],
 );
 
+/** Private TP3 staging; no Payroll consumer reads this table. Writes use own-only storage ports. */
+export const employeeTp3Draft=pgTable('employee_tp3_draft',{
+ id:id(),tenantId:tenantId(),personId:uuid('person_id').notNull().references(()=>person.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),assessmentYear:integer('assessment_year').notNull(),
+ baselineRevision:text('baseline_revision').notNull().default('absent'),revision:integer('revision').notNull().default(1),
+ deductionMonth:smallint('deduction_month'),previousEmployers:jsonb('previous_employers').notNull().$type<Tp3PreviousEmployer[]>(),
+ payload:jsonb('payload').notNull().$type<Tp3Payload>(),declarationAccepted:boolean('declaration_accepted').notNull().default(false),
+ // Historical reference intentionally survives an authorized HR deletion of the canonical master.
+ canonicalId:uuid('canonical_id'),submittedAt:timestamp('submitted_at',{withTimezone:true}),
+ commitXid:customType<{data:string}>({dataType:()=> 'xid8'})('commit_xid'),
+ projectionFinished:boolean('projection_finished').notNull().default(false),projectionOutcome:jsonb('projection_outcome').$type<{applied:boolean;reason?:string;heldBy?:number}|null>(),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('employee_tp3_draft_person_year_uq').on(t.tenantId,t.personId,t.assessmentYear)]);
+
 // ─────────────── Personnel — Family / Dependents (phase 1, migration 0137) ───────────────
 // A per-PERSON register of family members / dependents for BENEFITS / INSURANCE only. Person-keyed
 // (concurrent-employment-safe, like tp1_relief / employee_statutory_my) and gated with app.can_see_person

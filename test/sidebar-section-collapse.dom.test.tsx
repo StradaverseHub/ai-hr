@@ -45,7 +45,7 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   const payroll=screen.getByRole('button',{name:messages.nav.payroll});
   if(payroll.getAttribute('aria-expanded')!=='true')fireEvent.click(payroll);
   const panel=screen.getByRole('navigation',{name:messages.nav.payroll});
-  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/me/payslip','/me/tax-relief']);
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/me/payslip','/me/tax-relief','/me/tp3','/me/ea']);
   expect(within(panel).getByRole('link',{name:messages.nav.myPayslips})).toHaveAttribute('aria-current','page');
   expect(screen.getByRole('link',{name:messages.nav.myWorkspace})).not.toHaveAttribute('aria-current');
   expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();

@@ -99,6 +99,7 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},

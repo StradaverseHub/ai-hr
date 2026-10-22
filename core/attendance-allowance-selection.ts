@@ -53,11 +53,11 @@ export async function allowanceEmployeeValues(ctx: SessionContext, input: { comp
       const table = input.field === 'departmentId' ? department : input.field === 'businessUnitId' ? businessUnit : input.field === 'positionId' ? position : jobGrade;
       const label = input.field === 'positionId' ? position.title : input.field === 'departmentId' ? department.name : input.field === 'businessUnitId' ? businessUnit.name : jobGrade.name;
       const scope = input.field === 'gradeId' ? undefined : input.field === 'departmentId' ? visibleLabelIdsCondition(department,'department',[input.companyId]) : input.field === 'businessUnitId' ? visibleLabelIdsCondition(businessUnit,'business_unit',[input.companyId]) : visibleLabelIdsCondition(position,'position',[input.companyId]);
-      const rows = await tx.select({id:table.id,label}).from(table).where(and(isNull(table.archivedAt),scope,selected.length ? inArray(sql<string>`${table.id}::text`,selected) : ilike(label,term))).orderBy(label,table.id).limit(26).offset(offset);
-      return {rows:rows.slice(0,25),hasMore:rows.length>25};
+      const rows = await tx.select({id:table.id,label}).from(table).where(and(isNull(table.archivedAt),scope,selected.length ? inArray(sql<string>`${table.id}::text`,selected) : ilike(label,term))).orderBy(label,table.id).limit(selected.length?2000:26).offset(selected.length?0:offset);
+      return {rows:selected.length?rows:rows.slice(0,25),hasMore:!selected.length&&rows.length>25};
     }
     const category = input.field === 'employmentCategory' ? 'category' : input.field;
-    const rows = await tx.select({id:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.category,category),eq(profileOption.isActive,true),selected.length ? inArray(profileOption.value,selected) : or(ilike(profileOption.label,term),ilike(profileOption.value,term)))).orderBy(profileOption.sortOrder,profileOption.label,profileOption.id).limit(26).offset(offset);
-    return {rows:rows.slice(0,25),hasMore:rows.length>25};
+    const rows = await tx.select({id:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.category,category),eq(profileOption.isActive,true),selected.length ? inArray(profileOption.value,selected) : or(ilike(profileOption.label,term),ilike(profileOption.value,term)))).orderBy(profileOption.sortOrder,profileOption.label,profileOption.id).limit(selected.length?2000:26).offset(selected.length?0:offset);
+    return {rows:selected.length?rows:rows.slice(0,25),hasMore:!selected.length&&rows.length>25};
   });
 }

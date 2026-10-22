@@ -457,7 +457,8 @@
     "profileChanges": "Thay đổi hồ sơ",
     "leaveSettings": "Cài đặt",
     "attendanceCalendar": "Lịch chấm công",
-    "myEa": "EA của tôi"
+    "myEa": "EA của tôi",
+    "myTp3": "Mẫu TP3 của tôi"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -10059,7 +10060,8 @@
         "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
         "myPayslip": "Bạn chỉ có thể xem phiếu lương đã phát hành của mình, gồm các hồ sơ việc làm trước đây còn được lưu giữ.",
         "myTp1": "Chỉ các tờ khai TP1 của bạn. Việc chấp thuận của chủ lao động vẫn thuộc quyền của bộ phận lương.",
-        "myEa": "EA của tôi"
+        "myEa": "Chỉ mẫu EA thuộc quan hệ lao động và đơn vị trả lương của bạn được cung cấp tại đây.",
+        "myTp3": "Chỉ hiển thị TP3 của bạn. Ngày gia nhập công ty giới hạn bản ghi mới; Payroll vẫn có thẩm quyền sửa."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -21979,6 +21981,47 @@
       "isNot": "Không là",
       "in": "Thuộc",
       "notIn": "Không thuộc"
-    }
+    },
+    "previewTitle": "Xem trước nhân viên phù hợp",
+    "previewAction": "Xem trước nhân viên",
+    "previewHelp": "Dùng ngày cuối thuộc quan hệ lao động trong từng kỳ. Phòng ban, đơn vị kinh doanh, chức danh và loại lao động dùng phân công có ngày hiệu lực; bậc, nhóm, chi nhánh và khối dùng hồ sơ Personnel hiện tại. Điều kiện chấm công vẫn phải đạt.",
+    "previewError": "Không thể xem trước. Kiểm tra lựa chọn và kỳ rồi thử lại.",
+    "previewCount": "{count} cặp nhân viên-kỳ phù hợp",
+    "asOf": "Dữ liệu tại {date}",
+    "previewTruncated": "Hiển thị 100 cặp nhân viên-kỳ đầu tiên."
+  },
+  "myTp3": {
+    "title": "Mẫu TP3 của tôi",
+    "intro": "Ghi thông tin đơn vị sử dụng lao động trước đây cho năm bạn gia nhập công ty này.",
+    "employment": "Quan hệ lao động",
+    "chooseEmployment": "Chọn quan hệ lao động",
+    "year": "Năm tính thuế",
+    "view": "Xem",
+    "joinDate": "Ngày gia nhập công ty",
+    "state": "Trạng thái bản ghi",
+    "fallback": "Chưa ghi ngày gia nhập công ty; đang dùng ngày gia nhập tập đoàn hiện có.",
+    "chooseHelp": "Chọn quan hệ lao động để xem ngày gia nhập và điều kiện nhập liệu.",
+    "ineligible": "Bản ghi mới yêu cầu quan hệ lao động đang hoạt động với ngày gia nhập công ty đã đến trong năm hiện tại. Bản ghi cũ vẫn xem được bên dưới.",
+    "correctionHelp": "Bản ghi chỉ đọc tại đây. Liên hệ Payroll để được sửa theo thẩm quyền.",
+    "held": "Đã ghi biểu mẫu nhưng số dư đầu kỳ lương vẫn thuộc năm {year}.",
+    "savedAt": "Lưu lần cuối {at}",
+    "draftSaved": "Đã lưu nháp. Dữ liệu đầu vào Payroll không thay đổi.",
+    "submitted": "Đã gửi",
+    "notLinked": "Tài khoản này chưa liên kết với hồ sơ nhân viên.",
+    "history": "Các năm trước",
+    "new": "Chưa có bản ghi",
+    "draft": "Bản nháp",
+    "declared": "Nhân viên đã khai báo",
+    "payrollSaved": "Payroll đã lưu",
+    "saveDraft": "Lưu nháp",
+    "submit": "Gửi tờ khai",
+    "saving": "Đang lưu…",
+    "draftHelp": "Bản nháp không ảnh hưởng Payroll. Gửi sẽ ghi tờ khai và áp dụng phép tính TP3 hiện có.",
+    "invalid": "Thao tác mẫu TP3 không hợp lệ.",
+    "invalidMoney": "Nhập số tiền không âm với tối đa hai chữ số thập phân.",
+    "changed": "Bản ghi hoặc điều kiện của bạn đã thay đổi. Tải lại và kiểm tra TP3 hiện tại trước khi lưu lại.",
+    "loadError": "Không thể tải mẫu TP3 của bạn.",
+    "retry": "Thử lại",
+    "loading": "Đang tải mẫu TP3 của bạn…"
   }
 }

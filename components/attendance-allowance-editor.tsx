@@ -1,12 +1,13 @@
 'use client';
 import {labelsInCompanyScope,type CompanyScopedLabel} from '@/lib/system-label-scope';
-import { useActionState, useState } from 'react';
+import { useActionState, useCallback, useState } from 'react';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { useTranslations } from 'next-intl';
 import { ErrorBanner, Field, inputCls, btnPrimary } from '@/components/ui';
 import { ALLOWANCE_DAY_KINDS, ALLOWANCE_EMPLOYEE_FIELDS, ALLOWANCE_METRICS, ALLOWANCE_OPERATORS, emptyAllowanceRulesV3, emptyAllowanceRulesV4, upgradeAllowanceRules, upgradeAllowanceEmployeeRules, type AllowanceRules, type AllowanceEmployeeField, type AllowanceMetric } from '@/lib/attendance-allowance-rules';
 import { AttendanceAllowanceExpressionEditor, AllowanceChoices } from '@/components/attendance-allowance-expression-editor';
 import { AllowanceExpressionView } from '@/components/attendance-allowance-expression';
+import { AllowanceEmployeePreview } from '@/components/allowance-employee-preview';
 import { AllowanceEmployeePicker } from '@/components/allowance-employee-picker';
 import { AllowanceEmployeeExpressionEditor, newAllowanceEmployeeGroup } from '@/components/allowance-employee-expression-editor';
 import { AllowanceEmployeeExpressionView } from '@/components/allowance-employee-expression';
@@ -16,10 +17,12 @@ import type { allowanceSetupOptions, getAllowancePolicy } from '@/packs/attendan
 type Options=Awaited<ReturnType<typeof allowanceSetupOptions>>;
 type Policy=NonNullable<Awaited<ReturnType<typeof getAllowancePolicy>>>;
 const selected=(event:React.ChangeEvent<HTMLSelectElement>)=>Array.from(event.currentTarget.selectedOptions,o=>o.value);
-export function AttendanceAllowanceEditor({options,components,policy,action}:{options:Options;components:{id:string;code:string;name:string;kind:string}[];policy?:Policy;action:(state:{error:string|null},formData:FormData)=>Promise<{error:string|null}>}){
+export function AttendanceAllowanceEditor({options,components,policy,action,initialValueLabels={}}:{initialValueLabels?:Record<string,string>;options:Options;components:{id:string;code:string;name:string;kind:string}[];policy?:Policy;action:(state:{error:string|null},formData:FormData)=>Promise<{error:string|null}>}){
   const t=useTranslations('allowanceV2'),v=useTranslations('allowanceV3'),v4=useTranslations('allowanceV4');
   const employeeLabels={fields:Object.fromEntries(ALLOWANCE_EMPLOYEE_FIELDS_V4.map(field=>[field,field==='branch'||field==='division'?v4(field):t(`employeeFields.${field}`)])),operators:Object.fromEntries(['is','isNot','in','notIn'].map(operator=>[operator,v4(`operators.${operator}`)])),and:t('and'),or:t('or')};
   const expressionLabels={all:v('all'),any:v('any'),unrestricted:v('unrestricted'),unknown:v('unknown'),pass:t('pass'),fail:t('fail'),unknownMeasurement:v('unknownMeasurement'),allLeaveTypes:v('allLeaveTypes'),leaveTypes:v('leaveTypes'),metrics:Object.fromEntries(ALLOWANCE_METRICS_V3.map(field=>[field,t(`metrics.${field}`)])),operators:Object.fromEntries(ALLOWANCE_OPERATORS.map(operator=>[operator,t(`operators.${operator}`)])),units:Object.fromEntries(['hours','minutes','days','occurrences'].map(unit=>[unit,t(`units.${unit}`)]))};
+  const [valueLabels,setValueLabels]=useState(initialValueLabels);
+  const reportLabels=useCallback((field:string,rows:{id:string;label:string}[])=>setValueLabels(previous=>{const additions=Object.fromEntries(rows.map(row=>[`${field}:${row.id}`,row.label]));return Object.keys(additions).some(key=>previous[key]!==additions[key])?{...previous,...additions}:previous;}),[]);
   const [state,formAction,pending]=useActionState(action,{error:null});
   const [effectiveFrom,setEffectiveFrom]=useState(policy?.effectiveFrom??'');
   const [legacyCriteria,setLegacyCriteria]=useState<Record<string,number|boolean|undefined>>(policy?.criteria??{});
@@ -89,9 +92,9 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
           if(rules.v===4)update({...rules,employee:{...rules.employee,mode,employmentIds:mode==='selected'?rules.employee.employmentIds:[],criteria:[],logic:'and',expression:mode==='criteria'?rules.employee.expression??newAllowanceEmployeeGroup():null}});
           else updateEmployee({mode});
         }}>{['all','selected','criteria'].map(mode=><option key={mode} value={mode}>{t(`selectionModes.${mode}`)}</option>)}</select></Field>
-        {rules.employee.mode==='selected'&&<AllowanceEmployeePicker companyId={companyId} values={rules.employee.employmentIds} onChange={employmentIds=>updateEmployee({employmentIds})}/>}
+        {rules.employee.mode==='selected'&&<AllowanceEmployeePicker key={companyId} companyId={companyId} values={rules.employee.employmentIds} onChange={employmentIds=>updateEmployee({employmentIds})}/>}
         {rules.employee.mode==='criteria'&&(rules.v===4?
-          <AllowanceEmployeeExpressionEditor value={rules.employee.expression??newAllowanceEmployeeGroup()} companyId={companyId} onChange={expression=>{if(rules.v===4)update({...rules,employee:{...rules.employee,expression}});}}/>:
+          <AllowanceEmployeeExpressionEditor onLabels={reportLabels} value={rules.employee.expression??newAllowanceEmployeeGroup()} companyId={companyId} onChange={expression=>{if(rules.v===4)update({...rules,employee:{...rules.employee,expression}});}}/>:
           <>
             <Field label={t('employeeLogic')}><select className={inputCls} value={rules.employee.logic} onChange={event=>updateEmployee({logic:event.target.value as 'and'|'or'})}><option value="and">{t('and')}</option><option value="or">{t('or')}</option></select></Field>
             {rules.employee.criteria.map((criterion,index)=><div key={index} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-4">
@@ -103,6 +106,8 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
             <button type="button" className="min-h-11 text-sm text-primary" onClick={()=>updateEmployee({criteria:[...rules.employee.criteria,{field:'departmentId',operator:'in',values:[]}]})}>{t('addEmployeeCriterion')}</button>
           </>)}
         <p className="text-sm text-muted-foreground">{t('employeeRule')}</p>
+        {rules.v===4&&<AllowanceEmployeePreview companyId={companyId} method={method} rules={rules}/>}
+
       </>:<><p className="text-sm text-muted-foreground">{t('legacyScope')}</p>{Object.entries(policy?.scope??{}).map(([key,values])=><div key={key}><p className="text-sm">{key}: {(values as string[]).length}</p>{(values as string[]).map(value=><input type="hidden" key={value} name={key} value={value}/>)}</div>)}</>}
     </section>
     <section className="space-y-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-semibold">{t('sections.attendance')}</h2>
@@ -128,7 +133,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
       {advanced&&<div className="space-y-2 text-sm">
         <p>{t(`selectionModes.${rules.employee.mode}`)} · {t('employeeLogic')}: {rules.employee.logic.toUpperCase()}</p>
         {rules.employee.mode==='selected'&&<p>{v4('includedCount',{count:rules.employee.employmentIds.length})}</p>}
-        {rules.v===4&&rules.employee.mode==='criteria'&&rules.employee.expression&&<AllowanceEmployeeExpressionView node={rules.employee.expression} labels={employeeLabels} valueLabel={(field,value)=>field==='branch'||field==='division'?value:employeeOptions(field as AllowanceEmployeeField).find(row=>row.id===value)?.label??value}/>}
+        {rules.v===4&&rules.employee.mode==='criteria'&&rules.employee.expression&&<AllowanceEmployeeExpressionView node={rules.employee.expression} labels={employeeLabels} valueLabel={(field,value)=>valueLabels[`${field}:${value}`]??(field==='branch'||field==='division'?value:employeeOptions(field as AllowanceEmployeeField).find(row=>row.id===value)?.label??value)}/>}
         {rules.employee.mode==='criteria'&&rules.employee.criteria.map((c,i)=><p key={i}>{t(`employeeFields.${c.field}`)} {t(`operators.${c.operator}`)} {c.values.map(value=>employeeOptions(c.field).find(v=>v.id===value)?.label??value).join(', ')}</p>)}
         <p>{t('dayTypes')}: {rules.attendance.dayKinds.length?rules.attendance.dayKinds.map(k=>t(`dayKinds.${k}`)).join(', '):t('allDays')}</p>
         <p>{t('shifts')}: {rules.attendance.shiftIds.length?rules.attendance.shiftIds.map(id=>options.shifts.find(s=>s.id===id)?.label??id).join(', '):t('allShifts')}</p>

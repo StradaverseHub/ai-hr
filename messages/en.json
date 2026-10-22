@@ -457,7 +457,8 @@
     "profileChanges": "Profile changes",
     "leaveSettings": "Settings",
     "attendanceCalendar": "Attendance Calendar",
-    "myEa": "My EA"
+    "myEa": "My EA",
+    "myTp3": "My Form TP3"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -10059,7 +10060,8 @@
         "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
         "myPayslip": "You can view only your own released payslips, including retained former-employment records.",
         "myTp1": "Your own TP1 declarations only. Employer consent remains an authorised Payroll action.",
-        "myEa": "My EA"
+        "myEa": "Only your own retained employment and paying-employer EA forms are available here.",
+        "myTp3": "Only your own TP3 records are visible. New entry is limited by your current company Join Date; Payroll keeps correction authority."
       },
       "status": {
         "active": "Active",
@@ -21979,6 +21981,47 @@
       "isNot": "Is Not",
       "in": "In",
       "notIn": "Not In"
-    }
+    },
+    "previewTitle": "Preview matching employees",
+    "previewAction": "Preview employees",
+    "previewHelp": "Uses each period’s final owned employment day. Department, Business Unit, Position and Employment Type use dated assignments; Grade, Category, Branch and Division use the current Personnel profile. Attendance conditions still have to pass.",
+    "previewError": "Employee matching could not be previewed. Check the selection and period, then try again.",
+    "previewCount": "{count} matching employee-periods",
+    "asOf": "Facts at {date}",
+    "previewTruncated": "Showing the first 100 matching employee-periods."
+  },
+  "myTp3": {
+    "title": "My Form TP3",
+    "intro": "Record your own previous-employer information for the year you joined this company.",
+    "employment": "Employment",
+    "chooseEmployment": "Choose your employment",
+    "year": "Assessment year",
+    "view": "View",
+    "joinDate": "Company Join Date",
+    "state": "Record state",
+    "fallback": "Join Date has not been captured; the existing Group Join Date is used.",
+    "chooseHelp": "Choose an employment to see its Join Date and entry eligibility.",
+    "ineligible": "New entry requires an active employment with a company Join Date already reached in the current calendar year. Existing records remain available below.",
+    "correctionHelp": "This record is read-only here. Contact Payroll for an authorized correction.",
+    "held": "The form is recorded, but {year} still owns the payroll opening balances.",
+    "savedAt": "Last saved {at}",
+    "draftSaved": "Draft saved. Payroll inputs are unchanged.",
+    "submitted": "Submitted",
+    "notLinked": "This account is not linked to an employee profile.",
+    "history": "Previous years",
+    "new": "No saved record",
+    "draft": "Draft",
+    "declared": "Employee declared",
+    "payrollSaved": "Saved by Payroll",
+    "saveDraft": "Save draft",
+    "submit": "Submit declaration",
+    "saving": "Saving…",
+    "draftHelp": "A draft does not affect Payroll. Submission records your declaration and applies the existing TP3 calculation.",
+    "invalid": "This is not a valid TP3 form action.",
+    "invalidMoney": "Enter non-negative amounts with at most two decimal places.",
+    "changed": "The record or your eligibility changed. Reload and review the current TP3 before saving again.",
+    "loadError": "Your Form TP3 could not be loaded.",
+    "retry": "Try again",
+    "loading": "Loading your Form TP3…"
   }
 }

@@ -457,7 +457,8 @@
     "profileChanges": "Perubahan profil",
     "leaveSettings": "Tetapan",
     "attendanceCalendar": "Kalendar Kehadiran",
-    "myEa": "EA Saya"
+    "myEa": "EA Saya",
+    "myTp3": "Borang TP3 Saya"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -10059,7 +10060,8 @@
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "myPayslip": "Anda hanya boleh melihat slip gaji anda yang telah dikeluarkan, termasuk rekod pekerjaan terdahulu yang disimpan.",
         "myTp1": "Pengisytiharan TP1 anda sendiri sahaja. Persetujuan majikan kekal sebagai tindakan Gaji yang dibenarkan.",
-        "myEa": "EA Saya"
+        "myEa": "Hanya borang EA milik pekerjaan dan majikan pembayar anda tersedia di sini.",
+        "myTp3": "Hanya rekod TP3 anda kelihatan. Kemasukan baharu dihadkan oleh Tarikh Sertai syarikat semasa; Payroll mengekalkan kuasa pembetulan."
       },
       "status": {
         "active": "Aktif",
@@ -21979,6 +21981,47 @@
       "isNot": "Bukan",
       "in": "Dalam",
       "notIn": "Bukan Dalam"
-    }
+    },
+    "previewTitle": "Pratonton pekerja sepadan",
+    "previewAction": "Pratonton pekerja",
+    "previewHelp": "Menggunakan hari terakhir pekerjaan dalam setiap tempoh. Jabatan, Unit Perniagaan, Jawatan dan Jenis Pekerjaan menggunakan penempatan bertarikh; Gred, Kategori, Cawangan dan Bahagian menggunakan profil Personnel semasa. Syarat kehadiran juga perlu dipenuhi.",
+    "previewError": "Pratonton tidak dapat dimuatkan. Semak pilihan dan tempoh, kemudian cuba lagi.",
+    "previewCount": "{count} padanan pekerja-tempoh",
+    "asOf": "Fakta pada {date}",
+    "previewTruncated": "Memaparkan 100 padanan pekerja-tempoh pertama."
+  },
+  "myTp3": {
+    "title": "Borang TP3 Saya",
+    "intro": "Rekodkan maklumat majikan terdahulu bagi tahun anda menyertai syarikat ini.",
+    "employment": "Pekerjaan",
+    "chooseEmployment": "Pilih pekerjaan anda",
+    "year": "Tahun taksiran",
+    "view": "Lihat",
+    "joinDate": "Tarikh Sertai Syarikat",
+    "state": "Keadaan rekod",
+    "fallback": "Tarikh Sertai belum direkodkan; Tarikh Sertai Kumpulan sedia ada digunakan.",
+    "chooseHelp": "Pilih pekerjaan untuk melihat Tarikh Sertai dan kelayakan kemasukan.",
+    "ineligible": "Kemasukan baharu memerlukan pekerjaan aktif dengan Tarikh Sertai syarikat yang telah tiba dalam tahun kalendar semasa. Rekod sedia ada kekal tersedia di bawah.",
+    "correctionHelp": "Rekod ini baca sahaja di sini. Hubungi Payroll untuk pembetulan yang dibenarkan.",
+    "held": "Borang direkodkan, tetapi {year} masih memiliki baki pembukaan gaji.",
+    "savedAt": "Terakhir disimpan {at}",
+    "draftSaved": "Draf disimpan. Input Payroll tidak berubah.",
+    "submitted": "Dihantar",
+    "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja.",
+    "history": "Tahun terdahulu",
+    "new": "Tiada rekod disimpan",
+    "draft": "Draf",
+    "declared": "Diisytiharkan pekerja",
+    "payrollSaved": "Disimpan oleh Payroll",
+    "saveDraft": "Simpan draf",
+    "submit": "Hantar pengisytiharan",
+    "saving": "Menyimpan…",
+    "draftHelp": "Draf tidak menjejaskan Payroll. Penghantaran merekodkan pengisytiharan anda dan menggunakan pengiraan TP3 sedia ada.",
+    "invalid": "Tindakan borang TP3 tidak sah.",
+    "invalidMoney": "Masukkan amaun bukan negatif dengan maksimum dua tempat perpuluhan.",
+    "changed": "Rekod atau kelayakan anda telah berubah. Muat semula dan semak TP3 semasa sebelum menyimpan lagi.",
+    "loadError": "Borang TP3 anda tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan Borang TP3 anda…"
   }
 }

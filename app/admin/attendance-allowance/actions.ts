@@ -87,3 +87,10 @@ export async function searchAllowanceEmployeeValues(input: {companyId:string;fie
   const {allowanceEmployeeValues}=await import('@/packs/attendance/service');
   return allowanceEmployeeValues(s,input);
 }
+
+export async function previewAllowanceEmployeeSelection(input:{companyId:string;rules:unknown;method:string;month:string}) {
+  const {s,scopeIds}=await scopedAdmin();
+  if(!scopeIds.includes(input.companyId))throw new Error('Choose a company in the selected scope');
+  const {previewAllowanceEmployees}=await import('@/packs/attendance/service');
+  return previewAllowanceEmployees(s,input);
+}

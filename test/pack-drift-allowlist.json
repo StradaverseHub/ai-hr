@@ -6,7 +6,6 @@
     "app/admin/personnel/[employmentId]/actions.ts",
     "app/admin/personnel/[employmentId]/cp38-actions.ts",
     "app/admin/personnel/[employmentId]/page.tsx",
-    "app/me/actions.ts",
     "app/me/page.tsx",
     "app/performance/[cycleId]/page.tsx",
     "components/loan-list.tsx",
