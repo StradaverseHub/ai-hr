@@ -20,7 +20,7 @@ function text(source:unknown,path:string,fallback=path):string{
 afterEach(cleanup);
 describe('all declared section identities survive translated heading collisions',()=>{
  it.each(['en','zh','ms','ta','th','vi'])('%s submits every stable group and field exactly once from the actual matrix',locale=>{
-  const messages:unknown=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+  const messages:unknown=JSON.parse(readFileSync(`${process.cwd()}/messages/${locale}.json`,'utf8'));
   const fields=essVisibleFields(),allowed=resolveEssEditableIds('all'),visible=resolveEssVisibleIds('all'),primary=resolveEssPrimaryEditableIds('all');
   const rows:Parameters<typeof PermissionMatrix>[0]['rows']=fields.map(field=>{
    const tabLabel=text(messages,`people.detail.tabs.${tabs[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`);
