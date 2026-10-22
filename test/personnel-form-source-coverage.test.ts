@@ -42,12 +42,14 @@ describe('actual mounted Personnel form inventory',()=>{
     for(const entry of PERSONNEL_FORM_ROOTS)expect(files.has(entry),entry).toBe(true);
     for(const file of Object.keys(exemptions))expect(files.has(file),'Stale exemption module: '+file).toBe(true);
     let controlCount=0;
+    const issues:{file:string;line:number;message:string}[]=[];
     for(const [file,source] of files){
       const result=auditPersonnelFormSource(file,source,PERSONNEL_FIELDS,{exemptions:exemptions[file],dynamicBindings:workforceBindings(file,source),resolveImportSource:personnelImportSourceReader(root)});
       if(!result.controls){expect(exemptions[file]??[],file).toEqual([]);continue;} // Layout-only modules are discovered, but declare no inputs.
       controlCount+=result.controls;
-      expect(result.issues,file).toEqual([]);
+      issues.push(...result.issues.map(issue=>({file,...issue})));
     }
+    expect(issues,'complete mounted-form inventory').toEqual([]);
     expect(controlCount).toBeGreaterThan(100);
     expect(boundaries.get('components/profile-option-select.tsx')).toContain('owning Personnel widget');
   });
