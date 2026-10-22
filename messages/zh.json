@@ -22396,7 +22396,12 @@
         "leave": "休假",
         "holiday": "假日",
         "payday": "发薪"
-      }
+      },
+      "teamLeave": "共享的团队休假",
+      "teamLeaveCount": "{count} 位同事休假",
+      "teamUnavailable": "此日期的共享团队信息不可用。",
+      "teamUnavailableMonth": "部分日期的共享团队信息不可用。",
+      "teamMore": "查看全部共享休假"
     },
     "today": {
       "title": "您的一天",
@@ -22443,6 +22448,29 @@
       "notConfigured": "尚未为此雇佣关系配置可用选项。",
       "noPayslip": "目前尚无已发布的工资单。",
       "detailsLocked": "您的资料目前仅供查看。"
+    },
+    "team": {
+      "title": "同事动态",
+      "leaveTitle": "共享的团队休假",
+      "loading": "正在加载团队动态…",
+      "failed": "无法加载团队动态。请重试或返回第一页。",
+      "timeout": "团队动态加载时间比预期长。",
+      "retry": "重试",
+      "refresh": "刷新",
+      "off": "此主页未开启团队动态共享。",
+      "context": "{scope} · {date}",
+      "direct": "您的汇报关系团队",
+      "department": "您的部门",
+      "empty": "目前此共享范围内没有同事。",
+      "noLeave": "此日期没有共享的已批准团队休假。",
+      "onLeave": "{name}有已批准的休假。",
+      "unknown": "{name}：暂无可共享的状态。",
+      "unnamed": "未记录显示姓名的同事",
+      "total": "{count} 位同事",
+      "pagination": "团队分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "firstPage": "返回第一页"
     }
   }
 }

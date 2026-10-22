@@ -15,7 +15,9 @@ import {homeCalendarGrid,type EmployeeHomeCalendar} from '../lib/employee-home-c
 const fetcher=vi.fn();
 const catalogues={en:messages,ms,zh,ta,th,vi:viMessages};
 function data(month='2024-02',employmentId='own'):EmployeeHomeCalendar{
+ const dates=homeCalendarGrid(month,1);
  return {version:1,employmentId,month,today:'2024-02-12',weekStartsOn:1,payrollEnabled:true,
+  team:{scope:'off',from:dates[0],to:dates[dates.length-1],days:dates.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
   days:homeCalendarGrid(month,1).map(date=>({date,canRequestLeave:date==='2024-02-14',entries:date==='2024-02-12'?[{kind:'leave',date,status:'pending',duration:'part_day'}]:[]}))};
 }
 function view(employmentId='own',full=false,locale:keyof typeof catalogues='en'){return <NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><HomeCalendarCard employmentId={employmentId} initialMonth="2024-02" full={full}/></NextIntlClientProvider>;}
@@ -83,5 +85,20 @@ describe('personal Home calendar interactions',()=>{
   expect(await screen.findByRole('alert')).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Monday, February 12, 2024/})).toBeNull();
   expect(screen.getByRole('button',{name:'Retry: My Calendar'})).toBeTruthy();
+ });
+ it('shows a complete shared count, bounded names and a fresh permission-checked day detail without changing own leave actions',async()=>{
+  const value=data(),date='2024-02-14';value.team.scope='department';
+  const peers=Array.from({length:5},(_,index)=>({employmentId:'62063128-fdc5-4a0e-87d7-1892257dbb1'+index,name:'Fictional shared '+index}));
+  value.team.days=value.team.days.map(day=>day.date===date?{date,available:true,totalPeople:6,items:peers,nextCursor:peers[4].employmentId}:
+   {...day,available:true,totalPeople:0});
+  fetcher.mockImplementation(async(url:string)=>String(url).includes('/api/home/team?')?Response.json({version:1,employmentId:'own',page:{scope:'department',date,totalPeople:6,
+   items:[...peers.map(peer=>({...peer,presence:'leave'})),{employmentId:'62063128-fdc5-4a0e-87d7-1892257dbb19',name:'Fictional shared final',presence:'leave'}],nextCursor:null}}):Response.json(value));
+  render(view());fireEvent.click(await screen.findByRole('button',{name:/Wednesday, February 14, 2024.*6 colleagues on leave/}));
+  await screen.findByRole('dialog');expect(screen.getByRole('link',{name:'Request leave'})).toBeVisible();
+  expect(screen.getByText('Fictional shared 4')).toBeVisible();expect(screen.queryByText('Fictional shared final has approved leave.')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:messages.employeeHome.calendar.teamMore}));
+  expect(await screen.findByText('Fictional shared final has approved leave.')).toBeVisible();
+  const request=fetcher.mock.calls.find(([url])=>String(url).includes('/api/home/team?'))!;
+  expect(Object.fromEntries(new URL(String(request[0]),'http://localhost').searchParams)).toEqual({employmentId:'own',date,view:'leave'});
  });
 });

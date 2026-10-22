@@ -22396,7 +22396,12 @@
         "leave": "Nghỉ",
         "holiday": "Lễ",
         "payday": "Lương"
-      }
+      },
+      "teamLeave": "Lịch nghỉ được chia sẻ của nhóm",
+      "teamLeaveCount": "{count} đồng nghiệp nghỉ phép",
+      "teamUnavailable": "Không có thông tin nhóm được chia sẻ cho ngày này.",
+      "teamUnavailableMonth": "Thông tin nhóm được chia sẻ không khả dụng cho một số ngày.",
+      "teamMore": "Xem toàn bộ lịch nghỉ được chia sẻ"
     },
     "today": {
       "title": "Ngày của bạn",
@@ -22443,6 +22448,29 @@
       "notConfigured": "Chưa có lựa chọn khả dụng được cấu hình cho hồ sơ việc làm này.",
       "noPayslip": "Chưa có phiếu lương được công bố.",
       "detailsLocked": "Hiện bạn chỉ có thể xem thông tin của mình."
+    },
+    "team": {
+      "title": "Tình hình đồng nghiệp",
+      "leaveTitle": "Lịch nghỉ được chia sẻ của nhóm",
+      "loading": "Đang tải trạng thái nhóm…",
+      "failed": "Không thể tải trạng thái nhóm. Hãy thử lại hoặc quay về trang đầu.",
+      "timeout": "Trạng thái nhóm đang tải lâu hơn dự kiến.",
+      "retry": "Thử lại",
+      "refresh": "Làm mới",
+      "off": "Chia sẻ trạng thái nhóm đang tắt cho trang chủ này.",
+      "context": "{scope} · {date}",
+      "direct": "Nhóm theo tuyến báo cáo của bạn",
+      "department": "Phòng ban của bạn",
+      "empty": "Hiện không có đồng nghiệp nào trong nhóm chia sẻ này.",
+      "noLeave": "Không có lịch nghỉ đã duyệt của nhóm được chia sẻ cho ngày này.",
+      "onLeave": "{name} có lịch nghỉ đã được duyệt.",
+      "unknown": "{name}: chưa có trạng thái được chia sẻ.",
+      "unnamed": "Đồng nghiệp chưa có tên hiển thị",
+      "total": "{count} đồng nghiệp",
+      "pagination": "Các trang của nhóm",
+      "previous": "Trang trước",
+      "next": "Trang tiếp",
+      "firstPage": "Về trang đầu"
     }
   }
 }

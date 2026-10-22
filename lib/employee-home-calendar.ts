@@ -1,5 +1,6 @@
 import {calendarWindowDates} from './calendar-window';
 import {isMonthParam,monthRange,addDaysIso} from './roster-month';
+import {validateHomeTeamCalendar,type HomeTeamCalendar} from './employee-home-sharing';
 
 export type HomeCalendarEntry=
  |{kind:'leave';date:string;status:'approved'|'pending';duration:'full_day'|'part_day'}
@@ -9,6 +10,7 @@ export type EmployeeHomeCalendar={
  version:1;employmentId:string;month:string;today:string;weekStartsOn:number;
  days:{date:string;canRequestLeave:boolean;entries:HomeCalendarEntry[]}[];
  payrollEnabled:boolean;
+ team:HomeTeamCalendar;
 };
 export function homeCalendarMonth(month:string){
  if(!isMonthParam(month)||Number(month.slice(0,4))<1000)throw Error('Invalid calendar month.');
@@ -30,6 +32,7 @@ export function validateHomeCalendar(value:EmployeeHomeCalendar,employmentId:str
   ||typeof value.payrollEnabled!=='boolean'||!Array.isArray(value.days))throw Error('Calendar unavailable.');
  const dates=homeCalendarGrid(month,value.weekStartsOn);
  if(value.days.length!==dates.length)throw Error('Calendar unavailable.');
+ validateHomeTeamCalendar(value.team,dates[0],dates[dates.length-1]);
  calendarWindowDates(value.today,value.today);
  value.days.forEach((day,index)=>{
   if(!day||day.date!==dates[index]||typeof day.canRequestLeave!=='boolean'||!Array.isArray(day.entries)||day.entries.length>100)throw Error('Calendar unavailable.');

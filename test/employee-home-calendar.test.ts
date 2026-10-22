@@ -16,7 +16,9 @@ describe('own calendar civil dates and bounded payloads',()=>{
   expect(()=>homeCalendarGrid('2026-01',7)).toThrow();
  });
  it('rejects stale subjects/months, missing dates, impossible current dates and unsupported statuses',()=>{
+  const dates=homeCalendarGrid('2024-02',1);
   const valid:EmployeeHomeCalendar={version:1,employmentId:'own',month:'2024-02',today:'2024-02-29',weekStartsOn:1,payrollEnabled:false,
+   team:{scope:'off',from:dates[0],to:dates[dates.length-1],days:dates.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
    days:homeCalendarGrid('2024-02',1).map(date=>({date,canRequestLeave:false,entries:[]}))};
   expect(validateHomeCalendar(valid,'own','2024-02')).toBe(valid);
   const bad=[{...valid,employmentId:'foreign'},{...valid,month:'2024-03'},{...valid,today:'2024-02-31'},

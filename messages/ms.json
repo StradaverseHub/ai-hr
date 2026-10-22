@@ -22396,7 +22396,12 @@
         "leave": "Cuti",
         "holiday": "Cuti umum",
         "payday": "Gaji"
-      }
+      },
+      "teamLeave": "Cuti pasukan yang dikongsi",
+      "teamLeaveCount": "{count} rakan sekerja bercuti",
+      "teamUnavailable": "Butiran pasukan yang dikongsi tidak tersedia untuk tarikh ini.",
+      "teamUnavailableMonth": "Butiran pasukan yang dikongsi tidak tersedia untuk sesetengah tarikh.",
+      "teamMore": "Lihat semua cuti yang dikongsi"
     },
     "today": {
       "title": "Hari Anda",
@@ -22443,6 +22448,29 @@
       "notConfigured": "Tiada pilihan tersedia yang dikonfigurasi untuk pekerjaan anda.",
       "noPayslip": "Belum ada slip gaji yang diterbitkan.",
       "detailsLocked": "Butiran anda buat masa ini hanya boleh dilihat."
+    },
+    "team": {
+      "title": "Status Rakan Sekerja",
+      "leaveTitle": "Cuti pasukan yang dikongsi",
+      "loading": "Memuatkan status pasukan…",
+      "failed": "Status pasukan tidak dapat dimuatkan. Cuba lagi atau kembali ke halaman pertama.",
+      "timeout": "Status pasukan mengambil masa lebih lama daripada biasa.",
+      "retry": "Cuba lagi",
+      "refresh": "Muat semula",
+      "off": "Perkongsian status pasukan dimatikan untuk halaman Utama ini.",
+      "context": "{scope} · {date}",
+      "direct": "Kumpulan pelaporan anda",
+      "department": "Jabatan anda",
+      "empty": "Tiada rakan sekerja dalam kumpulan perkongsian ini pada masa ini.",
+      "noLeave": "Tiada cuti pasukan yang diluluskan dikongsi untuk tarikh ini.",
+      "onLeave": "{name} mempunyai cuti yang diluluskan.",
+      "unknown": "{name}: tiada status yang dikongsi tersedia.",
+      "unnamed": "Rakan sekerja tanpa nama paparan",
+      "total": "{count} rakan sekerja",
+      "pagination": "Halaman pasukan",
+      "previous": "Halaman sebelumnya",
+      "next": "Halaman seterusnya",
+      "firstPage": "Kembali ke halaman pertama"
     }
   }
 }

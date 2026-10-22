@@ -26,6 +26,8 @@ it('honors a hidden peer opt-out under a NOSUPERUSER/NOBYPASSRLS owner and refus
  const configuration=defaultEmployeeHomeConfiguration();configuration.teamVisibility='department';configuration.celebrations={enabled:true,scope:'department'};
  await saveEmployeeHomeConfiguration(adminCtx(b),{companyId:b.companyId,audienceRole:'employee',expectedOrdinal:0,configuration,reason:'Fictional restricted-owner acceptance'});
  await saveOwnHomePersonPrivacy(peer.ctx,{expectedOrdinal:0,hideBirthday:true,hideAnniversary:false});
+ await owner.db.insert(s.leaveRequest).values({tenantId:b.tenantId,employmentId:peer.employmentId,leaveTypeId:b.annualLeaveTypeId,
+  startDate:on,endDate:on,durationType:'full_day',status:'approved',days:'1'});
  expect(await withTenant(own.ctx,tx=>tx.select().from(s.employeeHomePersonPrivacyRevision))).toEqual([]);
  const role='home_privacy_'+randomUUID().replaceAll('-',''),rollback=new Error('rollback-home-restricted-owner');let verified=false;
  try{await owner.withTenant(own.ctx,async tx=>{
@@ -38,7 +40,7 @@ it('honors a hidden peer opt-out under a NOSUPERUSER/NOBYPASSRLS owner and refus
   for(const table of tables)await tx.execute(sql.raw(`ALTER TABLE public.${table} OWNER TO ${role}`));
   await tx.execute(sql.raw(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${role}`));
   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
-  const names=['proven_company_date_points','leave_calendar_presence','own_home_dashboard_role','_home_peer_policy','_home_peer_cohort','home_team_page','home_celebration_page'];
+  const names=['proven_company_date_points','leave_calendar_presence','own_home_dashboard_role','_home_peer_policy','_home_peer_cohort','home_team_page','home_celebration_page','_home_team_leave_window','_home_team_page','home_team_leave_page','home_team_calendar'];
   const functions=await tx.execute(sql`SELECT p.oid::regprocedure::text AS signature FROM pg_proc p
    JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
    AND p.proname=ANY(ARRAY[${sql.join(names.map(name=>sql`${name}`),sql`, `)}]::text[]) ORDER BY p.proname,p.oid`) as unknown as {signature:string}[];
@@ -54,6 +56,8 @@ it('honors a hidden peer opt-out under a NOSUPERUSER/NOBYPASSRLS owner and refus
   const [projection]=await tx.execute(sql`SELECT app.home_celebration_page(${own.employmentId}::uuid) AS result`) as unknown as {result:{total:number;items:{kind:string;employmentId:string}[]}}[];
   expect(projection.result.total).toBe(1);expect(projection.result.items).toEqual([
    {employmentId:peer.employmentId,name:'Fictional private birthday',date:on,kind:'anniversary',years:4}]);
+  const [team]=await tx.execute(sql`SELECT app.home_team_page(${own.employmentId}::uuid,${on}::date) AS result`) as unknown as {result:unknown}[];
+  expect(team.result).toMatchObject({totalPeople:1,items:[{employmentId:peer.employmentId,name:'Fictional private birthday',presence:'leave'}]});
   expect(await tx.select().from(s.employeeHomePersonPrivacyRevision)).toEqual([]);
   await expect(tx.transaction(async attempt=>{
    await attempt.execute(sql`RESET ROLE`);

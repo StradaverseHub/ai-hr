@@ -22396,7 +22396,12 @@
         "leave": "Leave",
         "holiday": "Holiday",
         "payday": "Payday"
-      }
+      },
+      "teamLeave": "Shared team leave",
+      "teamLeaveCount": "{count, plural, one {# colleague on leave} other {# colleagues on leave}}",
+      "teamUnavailable": "Shared team details are unavailable for this date.",
+      "teamUnavailableMonth": "Shared team details are unavailable for some dates.",
+      "teamMore": "View all shared leave"
     },
     "today": {
       "title": "Your Day",
@@ -22443,6 +22448,29 @@
       "notConfigured": "No available option is configured for your employment.",
       "noPayslip": "No published payslip is available yet.",
       "detailsLocked": "Your details are currently view only."
+    },
+    "team": {
+      "title": "Who’s Around",
+      "leaveTitle": "Shared team leave",
+      "loading": "Loading shared team status…",
+      "failed": "Shared team status could not be loaded. Try again or return to the first page.",
+      "timeout": "Shared team status is taking longer than expected.",
+      "retry": "Retry",
+      "refresh": "Refresh",
+      "off": "Team status sharing is off for this Home.",
+      "context": "{scope} · {date}",
+      "direct": "Your reporting group",
+      "department": "Your department",
+      "empty": "No colleagues are currently included in this sharing group.",
+      "noLeave": "No approved team leave is shared for this date.",
+      "onLeave": "{name} has approved leave.",
+      "unknown": "{name}: no shared status is available.",
+      "unnamed": "Unnamed colleague",
+      "total": "{count, plural, one {# colleague} other {# colleagues}}",
+      "pagination": "Team pages",
+      "previous": "Previous page",
+      "next": "Next page",
+      "firstPage": "Return to first page"
     }
   }
 }

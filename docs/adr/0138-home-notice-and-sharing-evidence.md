@@ -220,11 +220,19 @@ have no application EXECUTE grant. No Personnel, person, employment or leave-row
 The shell and sharing configuration use one minimal dashboard-role resolver rather than fetching
 report names merely to decide a role.
 
-A team page contains employment identity, recorded display name and approved full/partial leave
-presence only. Missing evidence is Unknown. Its exact total is explicitly an employment count, not
-a deduplicated person count or an inferred office/WFH/clocking claim. A removed/foreign page cursor
+A team page contains an opaque representative employment key, recorded display name and the fact
+that approved leave is shared. Missing evidence is Unknown. `0585` groups the permitted employments
+by person, so one person is counted once. "Has approved leave" does not claim that every concurrent
+employment is absent for a full day. It never infers office/WFH/clocking. A removed/foreign page cursor
 refuses rather than continuing against a different audience. A subsequent default-off configuration
 returns no peer rows. Pagination always repeats current sharing authority.
+
+Calendar sharing composes the same current cohort and canonical approved-leave facts, with dated
+company proof for both viewer and target. A current transfer cannot reveal a peer's leave from a
+different employer's period. An unproven viewer date is unavailable, not a zero count. Shared days
+contain an exact distinct-person count, at most five display names and a continuation indication;
+the separately loaded on-leave page repeats authority and uses the same person representative key.
+Own leave, holiday and payday facts remain separate. No peer presence can block an own Leave form.
 
 Celebration pages compare birth month/day inside the database and project an occurrence date, never
 birth year or age. The window is today through seven subsequent Kuala Lumpur civil dates. Current

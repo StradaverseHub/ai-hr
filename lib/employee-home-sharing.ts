@@ -1,8 +1,10 @@
 import {calendarWindowDates} from './calendar-window';
 
 export type HomeSharingScope='off'|'direct'|'department';
-export type HomeTeamMember={employmentId:string;name:string|null;presence:'full_day'|'part_day'|null};
-export type HomeTeamPage={scope:HomeSharingScope;date:string;totalEmployments:number;items:HomeTeamMember[];nextCursor:string|null};
+export type HomeTeamMember={employmentId:string;name:string|null;presence:'leave'|null};
+export type HomeTeamPage={scope:HomeSharingScope;date:string;totalPeople:number;items:HomeTeamMember[];nextCursor:string|null};
+export type HomeTeamCalendarDay={date:string;available:boolean;totalPeople:number|null;items:{employmentId:string;name:string|null}[];nextCursor:string|null};
+export type HomeTeamCalendar={scope:HomeSharingScope|'unavailable';from:string;to:string;days:HomeTeamCalendarDay[]};
 export type HomeCelebration={employmentId:string;name:string|null;date:string;kind:'birthday'|'anniversary';years:number|null};
 export type HomeCelebrationPage={scope:HomeSharingScope;from:string;to:string;total:number;items:HomeCelebration[];nextCursor:string|null};
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -28,18 +30,40 @@ export function homeSharingPageInput(after:string|undefined,limit=20,kind:'team'
  return {after:after??null,limit};
 }
 export function validateHomeTeamPage(raw:unknown,expectedDate:string):HomeTeamPage{
- const value=object(raw,['scope','date','totalEmployments','items','nextCursor']);
+ const value=object(raw,['scope','date','totalPeople','items','nextCursor']);
  const rows=items(value.items).map<HomeTeamMember>(raw=>{
   const row=object(raw,['employmentId','name','presence']);
-  if(row.presence!==null&&row.presence!=='full_day'&&row.presence!=='part_day')return fail();
+  if(row.presence!==null&&row.presence!=='leave')return fail();
   return {employmentId:id(row.employmentId),name:name(row.name),presence:row.presence};
  });
- const result={scope:scope(value.scope),date:date(value.date),totalEmployments:total(value.totalEmployments,rows.length),items:rows,
+ const result={scope:scope(value.scope),date:date(value.date),totalPeople:total(value.totalPeople,rows.length),items:rows,
   nextCursor:value.nextCursor===null?null:id(value.nextCursor)};
  if(result.date!==expectedDate||new Set(rows.map(row=>row.employmentId)).size!==rows.length
-  ||result.scope==='off'&&(rows.length>0||result.totalEmployments!==0||result.nextCursor!==null)
+  ||result.scope==='off'&&(rows.length>0||result.totalPeople!==0||result.nextCursor!==null)
   ||result.nextCursor!==null&&result.nextCursor!==rows.at(-1)?.employmentId)return fail();
  return result;
+}
+export function validateHomeTeamCalendar(raw:unknown,from:string,to:string):HomeTeamCalendar{
+ const value=object(raw,['scope','from','to','days']),dates=calendarWindowDates(from,to),sharing=value.scope==='unavailable'?'unavailable' as const:scope(value.scope);
+ if(value.from!==from||value.to!==to||!Array.isArray(value.days)||value.days.length!==dates.length)return fail();
+ const days=value.days.map<HomeTeamCalendarDay>((raw,index)=>{
+  const day=object(raw,['date','available','totalPeople','items','nextCursor']);
+  if(day.date!==dates[index]||typeof day.available!=='boolean')return fail();
+  const peers=items(day.items).map(raw=>{const peer=object(raw,['employmentId','name']);return {employmentId:id(peer.employmentId),name:name(peer.name)};});
+  if(peers.length>5||new Set(peers.map(peer=>peer.employmentId)).size!==peers.length)return fail();
+  const count=day.totalPeople===null?null:total(day.totalPeople,peers.length),next=day.nextCursor===null?null:id(day.nextCursor);
+  if(!day.available&&(count!==null||peers.length>0||next!==null)||(sharing==='off'||sharing==='unavailable')&&day.available
+   ||day.available&&count===null||next!==null&&(next!==peers.at(-1)?.employmentId||count===null||count<=peers.length)
+   ||day.available&&count!==null&&count>peers.length&&next===null)return fail();
+  return {date:dates[index],available:day.available,totalPeople:count,items:peers,nextCursor:next};
+ });
+ return {scope:sharing,from,to,days};
+}
+export function validateHomeTeamResponse(raw:unknown,employmentId:string,expectedDate?:string){
+ const value=object(raw,['version','employmentId','page']);
+ if(value.version!==1||value.employmentId!==employmentId)return fail();
+ const page=object(value.page,['scope','date','totalPeople','items','nextCursor']);
+ return {version:1 as const,employmentId,page:validateHomeTeamPage(page,expectedDate??date(page.date))};
 }
 export function validateHomeCelebrationPage(raw:unknown):HomeCelebrationPage{
  const value=object(raw,['scope','from','to','total','items','nextCursor']);

@@ -7,6 +7,7 @@ import {useSearchParams} from 'next/navigation';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
+import {HomeTeamCard} from './team-card';
 import {addMonths} from '@/lib/roster-month';
 import {homeCalendarMonth,validateHomeCalendar,type EmployeeHomeCalendar,type HomeCalendarEntry} from '@/lib/employee-home-calendar';
 
@@ -47,16 +48,20 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
     <li className="rounded border border-dashed border-primary/50 px-2 py-1">{t('pending')}</li>
     <li className={'rounded border px-2 py-1 '+tones.holiday}>{t('holiday')}</li>
     {value.payrollEnabled&&<li className={'rounded border px-2 py-1 '+tones.payday}>{t('payday')}</li>}
+    {value.team.scope!=='off'&&<li className="rounded border border-sky-600/50 bg-sky-500/10 px-2 py-1">{t('teamLeave')}</li>}
    </ul>
+   {value.team.scope!=='off'&&value.team.days.some(day=>!day.available)&&<p className="text-xs leading-relaxed text-muted-foreground">{t('teamUnavailableMonth')}</p>}
    {value.payrollEnabled&&<p className="text-xs leading-relaxed text-muted-foreground">{t('paymentNote')}</p>}
    {!full&&<Link className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring" href={'/me/calendar?'+new URLSearchParams({employmentId,month})}>{t('full')}</Link>}
   </div>}</IndependentHomeCard>;
 }
 
 function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
- const t=useTranslations('employeeHome.calendar'),locale=useLocale();
+ const t=useTranslations('employeeHome.calendar'),teamT=useTranslations('employeeHome.team'),locale=useLocale();
  const initialDay=value.days.findIndex(day=>day.date===value.today);
  const [week,setWeek]=React.useState(initialDay>=0?Math.floor(initialDay/7):0);
+ const [expandedTeam,setExpandedTeam]=React.useState<string|null>(null);
+ const teamByDate=new Map(value.team.days.map(day=>[day.date,day]));
  const fmtDate=(date:string)=>new Intl.DateTimeFormat(locale,{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z'));
  function entryLabel(entry:HomeCalendarEntry){
   if(entry.kind==='leave')return `${t('leave')} · ${t(entry.status)} · ${t(entry.duration)}`;
@@ -65,7 +70,7 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
  }
  const weekdayNames=Array.from({length:7},(_,offset)=>new Intl.DateTimeFormat(locale,{weekday:'short',timeZone:'UTC'})
   .format(new Date(Date.UTC(2024,0,7+(value.weekStartsOn+offset)%7))));
- const days=view==='week'?value.days.slice(week*7,week*7+7):view==='list'?value.days.filter(day=>day.date.startsWith(value.month)&&day.entries.length>0):value.days;
+ const days=view==='week'?value.days.slice(week*7,week*7+7):view==='list'?value.days.filter(day=>day.date.startsWith(value.month)&&(day.entries.length>0||(teamByDate.get(day.date)?.totalPeople??0)>0)):value.days;
  return <div className="space-y-3">
   {view==='week'&&<div className="flex flex-wrap items-center justify-between gap-2">
    <Button type="button" variant="outline" className="min-h-11" disabled={week===0} onClick={()=>setWeek(index=>index-1)}>{t('previousWeek')}</Button>
@@ -75,8 +80,8 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
   {view!=='list'&&<div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground" aria-hidden="true">{weekdayNames.map((name,index)=><span key={index}>{name}</span>)}</div>}
   {view==='list'&&days.length===0?<p className="text-sm text-muted-foreground">{t('empty')}</p>:
    <div className={view==='list'?'space-y-2':'grid grid-cols-7 gap-1'}>
-    {days.map(day=><Dialog.Root key={day.date}>
-     <Dialog.Trigger asChild><button type="button" aria-label={fmtDate(day.date)+(day.entries.length?' · '+day.entries.map(entryLabel).join('; '):'')}
+    {days.map(day=>{const team=teamByDate.get(day.date)!,teamCount=team.totalPeople??0;return <Dialog.Root key={day.date} onOpenChange={open=>{if(!open)setExpandedTeam(null);}}>
+     <Dialog.Trigger asChild><button type="button" aria-label={fmtDate(day.date)+(day.entries.length?' · '+day.entries.map(entryLabel).join('; '):'')+(teamCount>0?' · '+t('teamLeaveCount',{count:teamCount}):'')}
       aria-current={day.date===value.today?'date':undefined}
       className={'min-w-0 rounded-md border p-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-1 '+(view==='list'?'flex min-h-14 w-full flex-wrap items-center justify-between gap-3 p-3 sm:p-3':'min-h-24')
        +(day.date===value.today?' ring-2 ring-primary ring-offset-1 ring-offset-background':'')+(day.date.startsWith(value.month)?'':' bg-muted/40 text-muted-foreground')}>
@@ -85,7 +90,9 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
        className={'block rounded border px-0.5 py-1 leading-snug '+(view==='list'?'text-sm':'text-xs')+' '+tones[entry.kind]+(entry.kind==='leave'&&entry.status==='pending'?' border-dashed bg-transparent':'')}>
        {view==='list'?entryLabel(entry):<><span className="block truncate sm:hidden">{t(`compact.${entry.kind}`)}</span><span className="hidden sm:inline">{t(entry.kind)}</span>
         {entry.kind==='leave'&&entry.status==='pending'&&<span className="block truncate text-[11px] tracking-tighter sm:text-xs sm:tracking-normal">{t('pending')}</span>}</>}
-      </span>)}</span>
+      </span>)}{teamCount>0&&<span className="block rounded border border-sky-600/50 bg-sky-500/10 px-0.5 py-1 text-xs leading-snug">
+       {view==='list'?t('teamLeaveCount',{count:teamCount}):<><span className="block truncate sm:hidden">{t('teamLeaveCount',{count:teamCount})}</span><span className="hidden sm:inline">{t('teamLeaveCount',{count:teamCount})}</span></>}
+      </span>}</span>
      </button></Dialog.Trigger>
      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-background p-5 shadow-xl">
@@ -93,13 +100,21 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
        <Dialog.Description className="mt-2 text-sm text-muted-foreground">{t('details')}</Dialog.Description>
        {day.entries.length?<ul className="my-4 space-y-2 text-sm">{day.entries.map((entry,index)=><li key={index} className={'rounded border p-3 '+tones[entry.kind]}>{entryLabel(entry)}</li>)}</ul>:
         <p className="my-4 text-sm">{t('emptyDay')}</p>}
+       {value.team.scope!=='off'&&<section className="my-4 space-y-3" aria-label={t('teamLeave')}>
+        {!team.available?<p className="text-sm text-muted-foreground">{t('teamUnavailable')}</p>:expandedTeam===day.date?
+         <HomeTeamCard key={JSON.stringify([value.employmentId,day.date])} employmentId={value.employmentId} date={day.date} onlyLeave/>:
+         teamCount>0?<><h3 className="text-sm font-medium">{t('teamLeaveCount',{count:teamCount})}</h3>
+          <ul className="space-y-2 text-sm [overflow-wrap:anywhere]">{team.items.map(member=><li key={member.employmentId}>{member.name??teamT('unnamed')}</li>)}</ul>
+          {team.nextCursor&&<Button type="button" variant="outline" className="min-h-11 whitespace-normal" onClick={()=>setExpandedTeam(day.date)}>{t('teamMore')}</Button>}
+         </>:null}
+       </section>}
        <div className="flex flex-wrap justify-between gap-3">
         {day.canRequestLeave&&<Link className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring" href={'/leave?'+new URLSearchParams({apply:'1',start:day.date,employmentId:value.employmentId})}>{t('requestLeave')}</Link>}
         <Dialog.Close asChild><Button type="button" variant="outline" className="min-h-11">{t('close')}</Button></Dialog.Close>
        </div>
       </Dialog.Content>
      </Dialog.Portal>
-    </Dialog.Root>)}
+    </Dialog.Root>;})}
    </div>}
  </div>;
 }

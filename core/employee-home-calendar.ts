@@ -1,5 +1,5 @@
-/** Own calendar metadata. No attendance pricing rows, private leave reasons, payroll amounts or
- * peer records are fetched. Each fact retains its existing module owner. Team sharing is separate. */
+/** Own calendar metadata plus the separate, purpose-bound shared-team projection. No attendance
+ * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
 import {listEligibleLeaveTypesFor,myOwnEmploymentSubjects} from './read';
@@ -13,6 +13,7 @@ import {isModuleEnabled} from './entitlements';
 import {originalHolidayCalendarFor} from './holidays';
 import {replacementHolidayCalendarProjectionsTx} from './holiday-replacement-read';
 import {provenCompanyDatesTx} from './employment-company';
+import {readHomeTeamCalendar} from './employee-home-sharing';
 
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date()):Promise<EmployeeHomeCalendar>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
@@ -21,7 +22,7 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
  const from=dates[0],to=dates[dates.length-1];
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [facts,paymentDates,eligible,active]=await Promise.all([
+ const [facts,paymentDates,eligible,active,team]=await Promise.all([
   withTenant(ctx,async tx=>{
    const [leave,holidays,replacements,coverage]=await Promise.all([
     leaveCalendarPresenceByEmploymentTx(tx,[subject.employmentId],from,to),
@@ -33,10 +34,11 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
   }),
   payrollEnabled?readOwnPayrollCalendarPayments(ctx,subject.employmentId,from,to):Promise.resolve([]),
   listEligibleLeaveTypesFor(ctx,subject.employmentId),myOwnEmploymentSubjects(ctx,{profileEdit:true}),
+  readHomeTeamCalendar(ctx,subject.employmentId,from,to),
  ]);
  const canApply=active.some(row=>row.employmentId===subject.employmentId)&&eligible.length>0;
  const payments=new Set(paymentDates);
- return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,
+ return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
   days:dates.map(date=>{
    const entries:HomeCalendarEntry[]=[];
    for(const status of ['approved','pending'] as const){
