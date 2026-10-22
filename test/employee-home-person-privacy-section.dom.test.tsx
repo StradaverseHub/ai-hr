@@ -30,4 +30,8 @@ describe('Celebration privacy read failure boundary',()=>{
   expect(screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideBirthday})).toBeChecked();expect(screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideAnniversary})).not.toBeChecked();
   expect(screen.getByRole('button',{name:en.employeeHome.personPrivacy.save}).closest('form')?.querySelector('input[name="expectedOrdinal"]')).toHaveValue('5');expect(state.save).not.toHaveBeenCalled();
  });
+ it('does not turn a saved query parameter into confirmation when no revision exists',async()=>{
+  state.read.mockResolvedValue({version:1,ordinal:0,hideBirthday:false,hideAnniversary:false});await mount(true);
+  expect(screen.getByRole('checkbox',{name:en.employeeHome.personPrivacy.hideBirthday})).not.toBeChecked();expect(screen.queryByRole('status')).not.toBeInTheDocument();expect(state.save).not.toHaveBeenCalled();
+ });
 });

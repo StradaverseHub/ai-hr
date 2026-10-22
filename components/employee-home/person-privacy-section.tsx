@@ -10,5 +10,5 @@ export async function HomePersonPrivacySection({session,saved=false}:{session:Se
  let privacy:Awaited<ReturnType<typeof readOwnHomePersonPrivacy>>;
  try{privacy=await readOwnHomePersonPrivacy(session);}
  catch(error){unstable_rethrow(error);return <p role="alert" className="text-sm">{t('loadFailed')} <a href="/me/home" className="underline underline-offset-4">{t('reload')}</a></p>;}
- return privacy?<HomePersonPrivacyEditor key={JSON.stringify(privacy)} initial={privacy} saved={saved}/>:<p className="text-sm text-muted-foreground">{t('unlinked')}</p>;
+ return privacy?<HomePersonPrivacyEditor key={JSON.stringify(privacy)} initial={privacy} saved={saved&&privacy.ordinal>0}/>:<p className="text-sm text-muted-foreground">{t('unlinked')}</p>;
 }
