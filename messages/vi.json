@@ -22528,6 +22528,15 @@
       "sending": "Đang gửi…",
       "retry": "Kiểm tra và thử lại",
       "send": "Gửi"
+    },
+    "usage": {
+      "title": "Mức sử dụng thẻ Trang chủ",
+      "intro": "Tất cả công ty · 30 ngày qua (Kuala Lumpur). Số liệu dựa trên các lượt tương tác ghi nhận được và có thể chưa đầy đủ.",
+      "privacy": "Lưu tổng số theo ngày, không có thông tin chi tiết về nhân viên.",
+      "card": "Thẻ",
+      "views": "Lượt xem",
+      "clicks": "Lượt nhấp",
+      "failed": "Hiện chưa có số liệu sử dụng."
     }
   }
 }

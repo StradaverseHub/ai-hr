@@ -22528,6 +22528,15 @@
       "sending": "Menghantar…",
       "retry": "Semak dan cuba lagi",
       "send": "Hantar"
+    },
+    "usage": {
+      "title": "Penggunaan kad Utama",
+      "intro": "Semua syarikat · 30 hari terakhir (Kuala Lumpur). Kiraan berdasarkan interaksi yang diperhatikan dan mungkin tidak lengkap.",
+      "privacy": "Disimpan sebagai jumlah harian tanpa butiran pekerja.",
+      "card": "Kad",
+      "views": "Paparan",
+      "clicks": "Klik",
+      "failed": "Kiraan penggunaan tidak tersedia buat masa ini."
     }
   }
 }

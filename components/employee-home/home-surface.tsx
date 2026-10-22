@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import {Button,PageHeader} from '@/components/ui';
+import {HomeCardUsage} from './card-usage';
 import type {EmployeeHomeIdentity} from '@/lib/employee-home-read-model';
 import {readEmployeeHomePreferences,type EmployeeHomeCard} from '@/lib/employee-home';
 
@@ -50,7 +51,7 @@ export function EmployeeHomeSurface({identity,preferences,cards,labels,selection
       {identity.employmentState==='none'?labels.noEmployment:labels.chooseHelp}
     </p>}
     {visible.length>0&&<div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
-      {visible.map(card=><div key={card} id={`home-card-${card}`} data-home-slot={card} className={`min-w-0 ${width(card)}`}>{cards[card]}</div>)}
+      {visible.map(card=><div key={card} id={`home-card-${card}`} data-home-slot={card} className={`min-w-0 ${width(card)}`}><HomeCardUsage card={card}>{cards[card]}</HomeCardUsage></div>)}
     </div>}
   </div>;
 }

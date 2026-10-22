@@ -8,6 +8,7 @@ import {DASHBOARD_LAYOUT_ROLES} from '@/lib/dashboard-layout';
 import {HR_LOCAL_TZ} from '@/lib/hr-date';
 import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,employeeHomeConfigurationHistory,readEmployeeHomeConfigurationVersion} from '@/core/employee-home-configuration';
 import {HomeConfigurationEditor} from './configuration-editor';
+import {HomeUsageSummary} from './usage-summary';
 
 const PAGE='/admin/settings/dashboard';
 export type HomeConfigurationSelection={companyId?:string|string[];role?:string|string[];before?:string|string[];version?:string|string[]};
@@ -51,6 +52,7 @@ export async function HomeConfigurationPanel({session,selection}:{session:Sessio
    <div className="flex flex-wrap items-center justify-between gap-2"><Link className="inline-flex min-h-11 items-center text-sm font-medium underline" href={address({homeVersion:String(item.ordinal)})}>{t('version',{version:item.ordinal})}</Link><time className="text-xs text-muted-foreground" dateTime={item.createdAt}>{timestamp(item.createdAt)}</time></div>
    <p className="break-words text-sm">{item.reason}</p><details className="text-xs text-muted-foreground"><summary className="flex min-h-11 cursor-pointer items-center">{t('auditReference')}</summary><code className="break-all">{item.createdByUserId}</code></details>
   </li>)}</ol>}{history.nextBeforeOrdinal!==null&&<Link className="inline-flex min-h-11 items-center text-sm underline" href={address({homeBeforeOrdinal:String(history.nextBeforeOrdinal)})}>{t('older')}</Link>}</Card>}
+  <HomeUsageSummary session={session}/>
   <p className="text-sm"><Link href="/admin/notice-board" className="inline-flex min-h-11 items-center underline">{t('manageNotices')}</Link></p>
  </div>;
 }

@@ -509,3 +509,59 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.prepare_employee_home_person_privacy_revision() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Anonymous observations only. This is neither billing usage nor a business/audit event stream.
+-- No person/login/employment/company key, individual event timestamp, URL or content is retained.
+CREATE TABLE app.home_card_interaction_count (
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),observed_on date NOT NULL,
+ card text NOT NULL CHECK(card IN ('summary','today','calendar','notices','tasks','timeOff','team','celebrations')),
+ action text NOT NULL CHECK(action IN ('view','click')),interactions bigint NOT NULL CHECK(interactions>0),
+ PRIMARY KEY(tenant_id,observed_on,card,action)
+);
+ALTER TABLE app.home_card_interaction_count ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE app.home_card_interaction_count FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.record_home_card_interactions(p_events jsonb) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();today date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;item jsonb;
+BEGIN
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(
+  SELECT 1 FROM public.employment e CROSS JOIN LATERAL app._home_peer_policy(e.id,'team') policy
+  WHERE e.tenant_id=t AND app.is_self_person(e.person_id)) THEN
+  RAISE EXCEPTION 'Home context unavailable' USING ERRCODE='42501';END IF;
+ IF p_events IS NULL OR jsonb_typeof(p_events)<>'array' THEN
+  RAISE EXCEPTION 'Invalid Home interactions' USING ERRCODE='22023';END IF;
+ IF jsonb_array_length(p_events)<1 OR jsonb_array_length(p_events)>16 THEN
+  RAISE EXCEPTION 'Invalid Home interactions' USING ERRCODE='22023';END IF;
+ FOR item IN SELECT value FROM jsonb_array_elements(p_events) LOOP
+  IF jsonb_typeof(item)<>'object' THEN RAISE EXCEPTION 'Invalid Home interactions' USING ERRCODE='22023';END IF;
+  IF (SELECT count(*) FROM jsonb_object_keys(item))<>2 OR NOT(item ? 'card' AND item ? 'action')
+   OR jsonb_typeof(item->'card') IS DISTINCT FROM 'string' OR jsonb_typeof(item->'action') IS DISTINCT FROM 'string'
+   OR item->>'card' NOT IN ('summary','today','calendar','notices','tasks','timeOff','team','celebrations')
+   OR item->>'action' NOT IN ('view','click') THEN
+   RAISE EXCEPTION 'Invalid Home interactions' USING ERRCODE='22023';END IF;
+ END LOOP;
+ -- Same order for competing batches; a request's arbitrary array order does not invert row locks.
+ INSERT INTO app.home_card_interaction_count AS current_count(tenant_id,observed_on,card,action,interactions)
+ SELECT t,today,value->>'card',value->>'action',count(*) FROM jsonb_array_elements(p_events)
+ GROUP BY value->>'card',value->>'action' ORDER BY value->>'card',value->>'action'
+ ON CONFLICT(tenant_id,observed_on,card,action) DO UPDATE SET interactions=current_count.interactions+excluded.interactions;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.record_home_card_interactions(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.record_home_card_interactions(jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.home_card_interactions_summary() RETURNS TABLE(card text,action text,interactions text)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Home usage unavailable' USING ERRCODE='42501';END IF;
+ RETURN QUERY SELECT c.card,c.action,sum(c.interactions)::text FROM app.home_card_interaction_count c
+ WHERE c.tenant_id=app.current_tenant_id() AND c.observed_on BETWEEN
+  (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date-29 AND (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ GROUP BY c.card,c.action ORDER BY c.card,c.action;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.home_card_interactions_summary() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.home_card_interactions_summary() TO ai_hr_app;

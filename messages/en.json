@@ -22528,6 +22528,15 @@
       "sending": "Sending…",
       "retry": "Check and retry",
       "send": "Send"
+    },
+    "usage": {
+      "title": "Home card usage",
+      "intro": "All companies · last 30 days (Kuala Lumpur). Counts reflect observed interactions and may be incomplete.",
+      "privacy": "Stored as daily totals without employee details.",
+      "card": "Card",
+      "views": "Views",
+      "clicks": "Clicks",
+      "failed": "Usage counts are currently unavailable."
     }
   }
 }

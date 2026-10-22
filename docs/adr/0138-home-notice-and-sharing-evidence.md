@@ -260,6 +260,24 @@ The new SQL remains an unregistered draft until its dependency union, restricted
 rehearsals and populated-baseline outcomes have been demonstrated. Focused owner tests are not an
 actual composer/detail journey, a full Home acceptance result or deployment evidence.
 
+## Anonymous Home interaction observations
+
+The approved N-08 requirement records a visible card shell once per mount and explicit interactive
+clicks within that card. These observations describe presentation usage, not completed business
+commands, audit evidence, unique employees or billing. Delivery is bounded and best effort; a failed
+counter request cannot block a card, navigation or a business command. It is never retried implicitly.
+
+The input contains only a version and at most sixteen fixed card/action pairs. Reject additional
+content and identities at both the HTTP and private SQL boundaries. Derive the actual tenant and
+Kuala Lumpur civil day on the server and retain only daily tenant/card/action totals. Do not retain
+login, person, employment, company, device, IP, URL, search, message, field value or individual event
+timestamp. The counter is distinct from the platform's authoritative billing usage snapshots.
+
+Admission repeats the actual current principal and usable own-Home subject proof. Readback is a
+fixed thirty-day aggregate for the actual tenant, restricted to a fresh group administrator; a
+company-scoped administrator cannot read tenant-wide observations. Dashboard configuration labels
+the aggregate's scope and incompleteness. No individual activity or drill-down exists.
+
 ## Verification and rollout
 
 The purpose-bound sharing readers in `0584` compose the canonical dated-company and approved-leave
