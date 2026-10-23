@@ -1,3 +1,4 @@
+import {updateLeaveType} from '../core/admin';
 import {requestLeave,decideLeave} from '../core/leave';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
@@ -1084,6 +1085,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(forgedCreditCause?.code).toBe('23514');expect(String(forgedCreditCause?.message)).toContain('Dated TOIL credit provenance is immutable');
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].datedCredit).toEqual(stored.datedCredit);
   const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
+  await updateLeaveType(ctx,{id:type.id,name:type.name,durations:['full_day','half_day_am','half_day_pm']});
   const leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
   await decideLeave(ctx,{leaveRequestId:request.leaveRequestId,decision:'approved'});

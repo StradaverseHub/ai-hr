@@ -113,7 +113,7 @@ BEGIN
     AND receipt.employment_id=source.employment_id AND receipt.attendance_date=source.attendance_date AND receipt.company_id=source.company_id
     AND receipt.workflow_request_id=e.workflow_request_id AND receipt.actor_user_id=e.actor_user_id AND receipt.raw_evidence IS NULL
     AND receipt.workflow_evidence->'submittedAttestedWork'=e.attested_work
-    AND(receipt.workflow_evidence->'unclockedEffect'-'recorded_at')=(to_jsonb(e)-'recorded_at')
+    AND((receipt.workflow_evidence->'unclockedEffect')-'recorded_at')=(to_jsonb(e)-'recorded_at')
     AND(receipt.workflow_evidence#>>'{unclockedEffect,recorded_at}')::timestamptz=e.recorded_at
     AND a.check_in_at IS NULL AND a.check_out_at IS NULL AND a.worked_minutes IS NULL AND a.ot_minutes IS NULL
     AND a.late_minutes IS NULL AND a.early_out_minutes IS NULL AND a.under_minutes IS NULL
@@ -1124,7 +1124,7 @@ BEGIN
   IF NOT FOUND OR proof->>'workflowRequestId' IS DISTINCT FROM attested.workflow_request_id::text
    OR data#>>'{policyRawEffectSource,attested,authority}' IS DISTINCT FROM 'attestedSourceOnly'
    OR data#>>'{policyRawEffectSource,attested,punchCount}' IS DISTINCT FROM '0'
-   OR(data#>'{policyRawEffectSource,attested,ownerEffect}'-'recorded_at') IS DISTINCT FROM(to_jsonb(attested)-'recorded_at')
+   OR((data#>'{policyRawEffectSource,attested,ownerEffect}')-'recorded_at') IS DISTINCT FROM(to_jsonb(attested)-'recorded_at')
    OR(data#>>'{policyRawEffectSource,attested,ownerEffect,recorded_at}')::timestamptz IS DISTINCT FROM attested.recorded_at
    OR attested.context_evidence IS DISTINCT FROM data->'policyExecutionContext'
    OR attested.context_evidence#>>'{selected,id}' IS DISTINCT FROM header.policy_revision_id::text
@@ -1153,7 +1153,7 @@ BEGIN
      AND contract.policy_binding=attested.policy_binding AND contract.company_id=source.company_id
      AND receipt.raw_evidence IS NULL AND receipt.workflow_request_id=attested.workflow_request_id AND receipt.actor_user_id=attested.actor_user_id
      AND receipt.workflow_evidence->'submittedAttestedWork'=attested.attested_work
-     AND(receipt.workflow_evidence->'unclockedEffect'-'recorded_at')=(to_jsonb(attested)-'recorded_at')
+     AND((receipt.workflow_evidence->'unclockedEffect')-'recorded_at')=(to_jsonb(attested)-'recorded_at')
      AND(receipt.workflow_evidence#>>'{unclockedEffect,recorded_at}')::timestamptz=attested.recorded_at) THEN
    RAISE EXCEPTION 'Current uncancelled HR actual-work source changed' USING ERRCODE='23514';END IF;
   testimony:=attested.attested_work->'work';
