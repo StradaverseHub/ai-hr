@@ -1,3 +1,4 @@
+import {recordedAttestedPolicyWorkTx} from './policy-attested-work-source';
 /** Routing fence for the unfinished dated-policy execution owner. A configured policy must not
  * silently inherit an unrelated formula assignment or legacy overtime. This read cannot approve,
  * calculate or settle work. It uses the saved Attendance schedule and dated Personnel employer. */
@@ -35,7 +36,7 @@ export async function legacyApplicationForAttendancePolicyTx(tx:Tx,ctx:SessionCo
  return application?.predatesPolicy?application.id:null;
 }
 
-export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'legacyApplication';applicationId:string}|{state:'policy';selected:ResolvedAttendanceGroupPolicy};
+export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'legacyApplication';applicationId:string}|{state:'policy';selected:ResolvedAttendanceGroupPolicy;attested?:NonNullable<Awaited<ReturnType<typeof recordedAttestedPolicyWorkTx>>>};
 export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<RecordedAttendanceGroupPolicySelection>{
  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
  const current=async()=>{
@@ -43,9 +44,14 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
   if(!principal?.allowed)throw Error('Current Attendance principal required.');
  };
  await current();
- const [day]=await tx.select({trace:attendance.calcTrace}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+ const [day]=await tx.select({trace:attendance.calcTrace,attestedWorkCorrectionId:attendance.attestedWorkCorrectionId}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
   eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
  if(!day)return {state:'none'};
+ if(day.attestedWorkCorrectionId){
+  const attested=await recordedAttestedPolicyWorkTx(tx,ctx,p);
+  await current();
+  return attested?{state:'policy',selected:attested.context.selected,attested}:{state:'unavailable'};
+ }
  const trace=isAttendanceTrace(day.trace)?day.trace:null;
  // A recorded explicit absence of a Schedule Group is different from missing schedule evidence.
  if(trace&&trace.schedule.ruleId===null)return {state:'none'};

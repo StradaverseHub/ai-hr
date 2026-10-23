@@ -1,3 +1,5 @@
+import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
+import {attendancePolicyAttestedWorkInput} from '../packs/attendance/policy-attested-work-input';
 import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch} from '../packs/payroll/service';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
@@ -1090,6 +1092,18 @@ describe('immutable non-payable policy part storage',()=>{
   const [anchor]=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId));
   expect(anchor).toMatchObject({id:effect.attendanceId,attestedWorkCorrectionId:result.correctionId,checkInAt:null,checkOutAt:null,
    workedMinutes:null,otMinutes:null,calcTrace:null,lateMinutes:null,earlyOutMinutes:null});
+  const current=await withTenant(ctx,tx=>recordedAttestedPolicyWorkTx(tx,ctx,{employmentId:f.employmentId,date}));
+  if(!current)throw Error('Expected independent canonical attested-work source');
+  expect(current.replay).toMatchObject({state:'known',attendanceId:anchor.id,correctionId:result.correctionId,
+   actualWork:contract.attestedWork?.work});
+  for(const forged of [
+   {...current.source,punchCount:1},
+   {...current.source,anchor:{...current.source.anchor,workedMinutes:physicalMinutes}},
+   {...current.source,anchor:{...current.source.anchor,attestedWorkCorrectionId:randomUUID()}},
+   {...current.source,ownerEffect:{...current.source.ownerEffect,attendance_id:randomUUID()}},
+  ])expect(attendancePolicyAttestedWorkInput(current.context,current.approvals,ctx.tenantId,forged).state).toBe('unavailable');
+  const changedContext=structuredClone(current.context);changedContext.schedule.breakMinutes++;
+  expect(attendancePolicyAttestedWorkInput(changedContext,current.approvals,ctx.tenantId,current.source).state).toBe('unavailable');
   await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyAttestedEffect).set({approvedMinutes:999})
    .where(eq(s.attendancePolicyAttestedEffect.correctionId,result.correctionId)))).rejects.toThrow();
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
