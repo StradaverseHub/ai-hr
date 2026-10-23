@@ -91,16 +91,16 @@ export function attendancePolicyCurrentDurationMatches(snapshot:CanonicalOvertim
 /** Recorded policy approval requirement/status only. This does not establish a live final
  * effect, ready financial header or settlement authority. Legacy input approval facts remain
  * intact: their scalar selector cannot replace the new policy's actual approval contract. */
-export function attendancePolicyRecordedApprovalStatus(snapshot:CanonicalOvertimeSnapshot):'approved'|'notRequired'|'pending'|'rejected'|'unknown'{
+export function attendancePolicyIndependentRecordedApprovalStatus(snapshot:IndependentPolicyDurationSource):'approved'|'notRequired'|'pending'|'rejected'|'unknown'{
  try{
   const policy=snapshot.attendanceGroupPolicy,context=snapshot.policyExecutionContext;
   if(!policy||context?.state!=='policy'||!isDeepStrictEqual(context.selected,policy)
-   ||context.employmentId!==snapshot.input.source.employmentId||context.date!==snapshot.input.source.date
+   ||context.employmentId!==snapshot.source.employmentId||context.date!==snapshot.source.date
    ||!Number.isSafeInteger(policy.activation.epoch)||policy.activation.epoch<1)return 'unknown';
   const overtime=policy.policy.overtime;
   if(!overtime.enabled||overtime.approval==='auto'&&overtime.autoMethod==='actual')return 'notRequired';
   const proposal=snapshot.policyExecutionProposal;
-  if(attendancePolicyDurationReplay(snapshot).state==='known'&&proposal?.state==='proposed'
+  if(attendancePolicyIndependentDurationReplay(snapshot).state==='known'&&proposal?.state==='proposed'
    &&(overtime.approval==='manual'?proposal.manualEvidence!==undefined:proposal.planEvidence!==undefined))return 'approved';
   const approvals=snapshot.policyApprovalInput;
   if(!approvals||approvals.policyRevisionId!==policy.id||approvals.mode!==overtime.approval
@@ -111,4 +111,24 @@ export function attendancePolicyRecordedApprovalStatus(snapshot:CanonicalOvertim
   // An approved scalar row, missing final receipt, or incomplete captured proof is unknown.
   return 'unknown';
  }catch{return 'unknown';}
+}
+
+export function attendancePolicyIndependentSource(snapshot:CanonicalOvertimeSnapshot):IndependentPolicyDurationSource|null{
+ const policyDurationFormulaInput=snapshot.policyDurationFormulaInput!==undefined?snapshot.policyDurationFormulaInput
+  :snapshot.policyFormulaInput?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput):undefined;
+ if(!policyDurationFormulaInput)return null;
+ const {tenantId,employmentId,attendanceId,date}=snapshot.input.source;
+ return {source:{tenantId,employmentId,attendanceId,date},policyDurationFormulaInput,
+  attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,
+  policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,
+  policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,
+  policyApprovalInput:snapshot.policyApprovalInput,policyRawEffectSource:snapshot.policyRawEffectSource,
+  policyExecutionProposal:snapshot.policyExecutionProposal};
+}
+export function attendancePolicyRecordedApprovalStatus(snapshot:CanonicalOvertimeSnapshot):'approved'|'notRequired'|'pending'|'rejected'|'unknown'{
+ const source=attendancePolicyIndependentSource(snapshot);
+ return source?attendancePolicyIndependentRecordedApprovalStatus(source):attendancePolicyIndependentRecordedApprovalStatus({
+  source:snapshot.input.source,attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,
+  policyApprovalInput:snapshot.policyApprovalInput,policyExecutionProposal:snapshot.policyExecutionProposal,
+  policyDurationFormulaInput:{authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'}});
 }

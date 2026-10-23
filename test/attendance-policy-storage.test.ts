@@ -1,3 +1,5 @@
+import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
+import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
 import {recordedAttendancePolicyProposalPartsMatch} from '../packs/attendance/policy-proposal-parts';
 import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
@@ -716,4 +718,42 @@ describe('immutable non-payable policy part storage',()=>{
   await owner.db.delete(s.roleAssignment).where(and(eq(s.roleAssignment.appUserId,ctx.userId!),eq(s.roleAssignment.tenantId,b.tenantId)));
   expect(await read(ctx)).toEqual([]);
  });
+ it('records and independently reads one explicit financial parent with all dated lines and no assignment substitution',async()=>{
+  const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
+   await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional complete financial parent'});});
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(read?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:f.revisionId,versionId:null,
+   assignmentId:null,outcome:'ready',durationOutcome:'ready',transferable:true,payableNumerator:'20',payableDenominator:'1',policyPartCount:2});
+  expect(read?.policyParts?.map(part=>({date:part.calendarDate,minutes:part.allocatedPayableMinutes})))
+   .toEqual([{date:day(2),minutes:10},{date:day(3),minutes:10}]);
+  expect(read?.lines).toHaveLength(2);
+  expect(read?.lines.map(row=>row.evidence)).toMatchObject([
+   {sequence:0,partSequence:0,calendarDate:day(2),versionId:f.versionId,line:{amountMinorUnits:'300'}},
+   {sequence:1,partSequence:1,calendarDate:day(3),versionId:f.versionId,line:{amountMinorUnits:'300'}}]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,read!.source.id))).toEqual([]);
+ });
+ it('consumes current independently recorded TOIL duration after earning archival while cash remains refused',async()=>{
+  const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
+  await setModule(b.tenantId,'toil','active');const actor=adminCtx(b);
+  const before=await withTenant(actor,tx=>canonicalOvertimeInputTx(tx,actor,p));
+  if(before.policyFormulaInput?.state!=='known')throw Error('Expected activated actual formula references');
+  const reference=before.policyFormulaInput.references.find(row=>row.state==='known');
+  if(reference?.state!=='known')throw Error('Expected actual earning reference');
+  await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,reference.definition.rates[0].tiers[0].mapping.earningItemId));
+  const calculator=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(actor,async tx=>{const prepared=await calculator.prepareTx(tx,actor,p),source=await lockOvertimeSourceTx(tx,actor,p);
+   await calculator.recordTx(tx,actor,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional duration independent of cash mapping'});});
+  const read=await withTenant(actor,tx=>readOvertimeCalculationTx(tx,actor,p));
+  expect(read?.calculation).toMatchObject({outcome:'refused',transferable:false,durationOutcome:'ready',payableNumerator:'20',payableDenominator:'1'});
+  expect(read?.lines).toEqual([]);
+  const historical=await withTenant(actor,tx=>readOvertimePolicyDurationTx(tx,actor,p));
+  expect(historical?.contract).toMatchObject({state:'prepared',minutes:20,parts:[{calendarDate:day(2)},{calendarDate:day(3)}]});
+  const current=await withTenant(actor,tx=>resolveOvertimeToilDurationTx(tx,actor,p));
+  expect(current).toMatchObject({kind:'formula',minutes:20,afterShiftMinutes:20,recordedWorkedDayKind:'workday',
+   audit:{datedAllocations:[{date:day(2),minutes:10,afterShiftMinutes:10},{date:day(3),minutes:10,afterShiftMinutes:10}]}});
+
+ });
+
 });

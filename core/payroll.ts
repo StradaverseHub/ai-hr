@@ -1,4 +1,4 @@
-import { readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
+import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
@@ -3554,6 +3554,7 @@ export async function generatePayslips(
 }
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const subset = p.reprocessSubset ?? null;
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
     if (!batch) throw new Error('batch not found');
@@ -8088,6 +8089,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -8974,6 +8976,7 @@ export async function reprocessSelectedEmployees(
         if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
           throw new Error('Stored payroll employee outcomes are invalid.');
         if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
+        await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
         const [currentBatch] = await tx.select().from(payrollBatch)
           .where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
         if (!currentBatch) throw new Error('batch not found');

@@ -1,7 +1,7 @@
 /** Original capture geometry and the separate existing boundary-floor count attribution.
  * This is proposal evidence only; ready headers, current consumers and settlement retain their owners. */
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
-import {attendancePolicyDurationReplay} from './policy-duration-replay';
+import {attendancePolicyIndependentDurationReplay,attendancePolicyIndependentSource,type IndependentPolicyDurationSource} from './policy-duration-replay';
 import {attendancePolicyCoverageProposal,type PolicyCoverageIdentity} from './policy-coverage';
 import {overtimeUuid} from '../../lib/overtime-pattern-schema';
 export type PolicyCapturedCoverageProposal=
@@ -16,12 +16,12 @@ export type PolicyCapturedCoverageProposal=
 /** A minute coordinate is count attribution, not a captured instant. Keep that existing count
  * owner unchanged and intersect its selected windows with the independently replayed original
  * millisecond geometry. Never lengthen a capture to justify a minute count or rounding remainder. */
-export function attendancePolicyCapturedCoverageProposal(identity:PolicyCoverageIdentity,snapshot:CanonicalOvertimeSnapshot):PolicyCapturedCoverageProposal{
+export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicyCapturedCoverageProposal{
  const refuse=(reason:Extract<PolicyCapturedCoverageProposal,{state:'unavailable'}>['reason']):PolicyCapturedCoverageProposal=>
   ({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason});
  try{
-  const source=snapshot.input.source,context=snapshot.policyExecutionContext,clocks=snapshot.policyClockSource,review=snapshot.policyClockReview,
-   proposal=snapshot.policyExecutionProposal,replay=attendancePolicyDurationReplay(snapshot);
+  const source=snapshot.source,context=snapshot.policyExecutionContext,clocks=snapshot.policyClockSource,review=snapshot.policyClockReview,
+   proposal=snapshot.policyExecutionProposal,replay=attendancePolicyIndependentDurationReplay(snapshot);
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
   if(source.tenantId!==identity.tenantId||source.employmentId!==identity.employmentId||source.date!==identity.date
    ||context?.state!=='policy'||context.companyId!==identity.companyId||clocks?.state!=='known'||review?.state!=='known')return refuse('sourceMismatch');
@@ -64,4 +64,10 @@ export function attendancePolicyCapturedCoverageProposal(identity:PolicyCoverage
   return {state:'prepared',authority:'capturedCountCoverageProposalOnly',identity:{...identity},durationDigest:replay.digest,
    countBasis:'capturedBoundaryFloor',minutes:replay.minutes,allocations,intervals};
  }catch{return refuse('sourceMismatch');}
+}
+
+export function attendancePolicyCapturedCoverageProposal(identity:PolicyCoverageIdentity,snapshot:CanonicalOvertimeSnapshot):PolicyCapturedCoverageProposal{
+ const source=attendancePolicyIndependentSource(snapshot);
+ return source?attendancePolicyIndependentCapturedCoverage(identity,source)
+  :{state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason:'durationUnavailable'};
 }

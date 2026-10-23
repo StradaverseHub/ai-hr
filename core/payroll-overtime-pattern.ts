@@ -9,7 +9,7 @@ import { appendEvent, actorOf } from '../db/events';
 import {
   assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, readOvertimeCalculationTx,
   readOvertimeSettlementForDayTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx,
-  readOvertimeCashDefinitionTx, canonicalOvertimePayrollInputTx,
+  readOvertimeCashDefinitionTx, canonicalOvertimePayrollInputTx, attendancePolicyFinancialContract, lockOvertimePayrollBatchContextTx,
 } from '../packs/attendance/service';
 import { parseRecordedOvertimeEvaluation } from '../lib/overtime-pattern-result';
 import { evaluateOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
@@ -21,6 +21,12 @@ import { resolveAssignedPolicy } from './payroll-policy';
 import { applyOvertimeCapsDetailed } from './payroll-policy-config';
 import { employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
 import { EXCLUDE_TOIL_BANKED_DAYS, collectableCycleIds, prefillOvertimeFromAttendanceTx, resolveBatchScopeFilter, resolveEmploymentOvertimeWindowTx, type BatchScope } from './payroll';
+
+/** Shared policy configuration precedes a batch lock; source locking remains the transfer
+ * owner's employee/source order, and generation/close retain their no-source-lock read path. */
+export async function lockPayrollOvertimeBatchContextTx(tx:Tx,ctx:SessionContext,batchId:string){
+ return lockOvertimePayrollBatchContextTx(tx,ctx,batchId);
+}
 
 export const OVERTIME_PAYROLL_ERROR_CODES = ['invalid','permission','unavailable','stale','approval','currency','mapping','statutoryFloor','wageIneligible','unsupportedRun','coverage','conflict','unknownHours'] as const;
 export type OvertimePayrollErrorCode = typeof OVERTIME_PAYROLL_ERROR_CODES[number];
@@ -66,13 +72,16 @@ type CalculationRead=NonNullable<Awaited<ReturnType<typeof readOvertimeCalculati
 /** Verify the original immutable definition against matched canonical inputs; never reprice with today's policy. */
 async function boundCalculationTx(tx:Tx,ctx:SessionContext,r:CalculationRead){
  const c=r.calculation,e=r.evidence;
- if(!c||!e||!c.versionId||!c.assignmentId||c.id!==r.source.currentCalculationId||c.ordinal!==r.source.revision||c.sourceId!==r.source.id)fail('stale');
+ if(!c||!e||c.id!==r.source.currentCalculationId||c.ordinal!==r.source.revision||c.sourceId!==r.source.id)fail('stale');
+ if(c.bindingKind==='attendanceGroupPolicy')return boundPolicyCalculationTx(tx,ctx,r);
+ if(!c.versionId||!c.assignmentId)fail('stale');
  const evaluation=parseRecordedOvertimeEvaluation(record(e.evidence)?.evaluation);
  if(!evaluation||evaluation.status!=='ready'||!evaluation.transferable||c.outcome!=='ready'||!c.transferable||!['approved','notRequired'].includes(c.approvalStatus))fail('approval');
  const stored=validateOvertimeInput(e.inputs);
  if(stored.mode!=='actual'||stored.layer!=='raw'||evaluation.source.tenantId!==ctx.tenantId||evaluation.source.employmentId!==r.source.employmentId||evaluation.source.attendanceId!==r.source.attendanceId||evaluation.source.date!==r.source.attendanceDate||evaluation.patternVersionId!==c.versionId||evaluation.assignmentId!==c.assignmentId||evaluation.source.inputDigest!==c.inputDigest||evaluation.source.approvalDigest!==c.approvalDigest||stored.source.inputDigest!==c.inputDigest||stored.source.approvalDigest!==c.approvalDigest||stored.source.tenantId!==ctx.tenantId||stored.source.employmentId!==r.source.employmentId||stored.source.attendanceId!==r.source.attendanceId||stored.source.date!==r.source.attendanceDate||stored.patternVersionId!==c.versionId||stored.assignmentId!==c.assignmentId||stored.approval.status!==c.approvalStatus||c.durationOutcome!=='ready')fail('stale');
  if(e.calculationId!==c.id||e.companyId!==r.source.companyId||e.tenantId!==ctx.tenantId)fail('unavailable');
  const fresh=await canonicalOvertimePayrollInputTx(tx,ctx,{employmentId:r.source.employmentId,date:r.source.attendanceDate});
+ if(fresh.attendanceGroupPolicy)fail('stale');
  if(fresh.input.source.inputDigest!==c.inputDigest||fresh.input.source.approvalDigest!==c.approvalDigest||fresh.referenceDigest!==c.referenceDigest||fresh.input.source.attendanceId!==r.source.attendanceId||fresh.input.approval.status!==c.approvalStatus)fail('stale');
  const canonical=validateOvertimeInput({...fresh.input,mode:'actual',patternVersionId:c.versionId,assignmentId:c.assignmentId});
  if(stableJSON(stored)!==stableJSON(canonical))fail('stale');
@@ -86,38 +95,127 @@ async function boundCalculationTx(tx:Tx,ctx:SessionContext,r:CalculationRead){
  for(let i=0;i<r.lines.length;i++){const line=r.lines[i],proof=evaluation.lines[i];if(line.tenantId!==ctx.tenantId||line.companyId!==r.source.companyId||line.calculationId!==c.id||line.sequence!==i||line.lineKey!==proof.id||line.componentId!==proof.mapping.earningItemId||line.amountMinorUnits!==proof.amountMinorUnits||stableJSON(line.evidence)!==stableJSON(proof))fail('unavailable');}
  // Duration and cash proofs must agree exactly; the independent persisted duration is not a new payout identity.
  if(evaluation.payableMinutes.numerator!==c.payableNumerator||evaluation.payableMinutes.denominator!==c.payableDenominator)fail('unavailable');
- return {evaluation,fresh,calculationId:c.id};
+ return {kind:'assigned' as const,evaluation,fresh,calculationId:c.id};
 }
 
-async function targetTx(tx:Tx,ctx:SessionContext,p:{batchId:string;employmentId:string;date:string;companyId:string;status:'draft'|'processed'}){
+/** Policy identity remains distinct from an assignment and from any one dated formula.
+ * Rebuild one parent through the existing canonical duration/captured/central money owners. */
+async function boundPolicyCalculationTx(tx:Tx,ctx:SessionContext,r:CalculationRead){
+ const c=r.calculation,e=r.evidence;
+ if(!c||!e||c.bindingKind!=='attendanceGroupPolicy'||c.versionId!==null||c.assignmentId!==null
+  ||!c.policyRevisionId||c.outcome!=='ready'||c.durationOutcome!=='ready'||!c.transferable)fail('approval');
+ if(e.calculationId!==c.id||e.companyId!==r.source.companyId||e.tenantId!==ctx.tenantId)fail('unavailable');
+ const fresh=await canonicalOvertimePayrollInputTx(tx,ctx,{employmentId:r.source.employmentId,date:r.source.attendanceDate});
+ const contract=attendancePolicyFinancialContract({tenantId:ctx.tenantId,companyId:r.source.companyId,
+  employmentId:r.source.employmentId,sourceId:r.source.id,calculationId:c.id,date:r.source.attendanceDate},fresh);
+ if(contract.state!=='prepared'||contract.policyRevisionId!==c.policyRevisionId
+  ||contract.inputDigest!==c.inputDigest||contract.approvalDigest!==c.approvalDigest||contract.referenceDigest!==c.referenceDigest
+  ||contract.durationDigest!==c.durationInputDigest||String(contract.minutes)!==c.payableNumerator||c.payableDenominator!=='1'
+  ||contract.approvalStatus!==c.approvalStatus||contract.parts.length!==c.policyPartCount
+  ||stableJSON(contract)!==stableJSON(record(e.evidence)?.policyFinancialContract))fail('stale');
+ if(stableJSON(e.inputs)!==stableJSON({...fresh.input,mode:'actual',patternVersionId:null,assignmentId:null}))fail('stale');
+ if(contract.currency.code!==c.currency||contract.currency.minorScale!==c.minorScale||c.minorScale!==2)fail('currency');
+ const parts='policyParts' in r?r.policyParts:undefined;
+ if(!parts||parts.length!==contract.parts.length)fail('unavailable');
+ const fields=['sequence','calendarDate','dayClass','moneyDay','versionId','rawMinutes','allocatedPayableMinutes','sourceIntervals','calendarReferences','durationEvidence'] as const;
+ for(const [index,part]of parts.entries()){
+  if(part.tenantId!==ctx.tenantId||part.companyId!==r.source.companyId||part.calculationId!==c.id||part.inputDigest!==c.inputDigest
+   ||stableJSON(Object.fromEntries(fields.map(key=>[key,part[key]])))!==stableJSON(contract.parts[index]))fail('unavailable');
+ }
+ if(r.lines.length!==contract.lines.length)fail('unavailable');
+ for(const [index,row]of r.lines.entries()){
+  const expected=contract.lines[index];
+  if(row.tenantId!==ctx.tenantId||row.companyId!==r.source.companyId||row.calculationId!==c.id||row.sequence!==index
+   ||row.lineKey!==expected.line.id||row.componentId!==expected.line.mapping.earningItemId
+   ||row.amountMinorUnits!==expected.line.amountMinorUnits||stableJSON(row.evidence)!==stableJSON(expected))fail('unavailable');
+ }
+ return {kind:'policy' as const,contract,fresh,calculationId:c.id};
+}
+
+/** Cutoff admission follows every positive dated allocation of a validated parent.
+ * The original Attendance date remains its source identity, not an invented pricing date. */
+function calculationDates(r:CalculationRead):string[]{
+ if(r.calculation?.bindingKind!=='attendanceGroupPolicy')return [r.source.attendanceDate];
+ const parts='policyParts' in r?r.policyParts:undefined;
+ if(!parts||parts.length!==r.calculation.policyPartCount)fail('unavailable');
+ const dates=parts.filter(part=>part.allocatedPayableMinutes>0).map(part=>part.calendarDate);
+ if(!dates.length||dates.length>3||new Set(dates).size!==dates.length)fail('unavailable');
+ return dates;
+}
+
+async function targetTx(tx:Tx,ctx:SessionContext,p:{batchId:string;employmentId:string;date:string;dates?:readonly string[];companyId:string;status:'draft'|'processed'}){
  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,uuid(p.batchId))).limit(1);if(!batch||batch.companyId!==p.companyId)fail('coverage');await financial(tx,batch.companyId);
  if(batch.status!==p.status)fail('stale');if(batch.runType!=='regular')fail('unsupportedRun');
  const scoped=await resolveBatchScopeFilter(tx,batch.scope as BatchScope|null);if(scoped.employmentIds&&!scoped.employmentIds.includes(p.employmentId))fail('coverage');
- const window=await resolveEmploymentOvertimeWindowTx(tx,{companyId:batch.companyId,employmentId:p.employmentId,payPeriod:batch.payPeriod});if(p.date<window.start||p.date>window.end)fail('coverage');
- const companies=await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}]);if(companies.get(p.employmentId+'|'+p.date)?.companyId!==batch.companyId)fail('coverage');
+ const dates=[...new Set(p.dates??[p.date])];if(!dates.length||dates.length>3)fail('coverage');
+ const window=await resolveEmploymentOvertimeWindowTx(tx,{companyId:batch.companyId,employmentId:p.employmentId,payPeriod:batch.payPeriod});
+ for(const on of dates){date(on);if(on<window.start||on>window.end)fail('coverage');}
+ const companies=await provenCompanyDatesTx(tx,dates.map(on=>({employmentId:p.employmentId,date:on})));
+ if(dates.some(on=>companies.get(p.employmentId+'|'+on)?.companyId!==batch.companyId))fail('coverage');
  const collectable=await collectableCycleIds(tx,batch);if(!collectable.collectsUnnamed)fail('coverage');
  return batch;
 }
 async function pricedLinesTx(tx:Tx,ctx:SessionContext,r:CalculationRead,batch:typeof payrollBatch.$inferSelect,settlementId:string):Promise<PayrollOvertimePatternLine[]>{
- const {evaluation,fresh,calculationId}=await boundCalculationTx(tx,ctx,r);
- const [entity]=await tx.select().from(company).where(eq(company.id,batch.companyId)).limit(1);if(!entity)fail('permission');assertStatutory(entity.statutoryTier,'Payroll',entity.legalName);const pack=packFor(entity.country);if(!pack)fail('unavailable');if(entity.currency!==evaluation.currency.code)fail('currency');
+ const bound=await boundCalculationTx(tx,ctx,r),calculationId=bound.calculationId;
+ type Allocation={sequence:number;date:string;dayType:'workday'|'rest_day'|'holiday';minutes:OvertimeExact;amountMinorUnits:string;lines:OvertimeLine[]};
+ const allocations:Allocation[]=[];
+ const currency=bound.kind==='policy'?bound.contract.currency:bound.evaluation.currency;
+ if(bound.kind==='policy'){
+  for(const [sequence,part]of bound.contract.parts.entries()){
+   const minutes=part.allocatedPayableMinutes??0;if(!minutes)continue;
+   if(!['workday','rest_day','holiday'].includes(part.moneyDay))fail('unavailable');
+   const lines=bound.contract.lines.filter(row=>row.partSequence===sequence).map(row=>row.line);
+   allocations.push({sequence,date:part.calendarDate,dayType:part.moneyDay as Allocation['dayType'],
+    minutes:{unit:'minutes',numerator:String(minutes),denominator:'1'},
+    amountMinorUnits:lines.reduce((n,line)=>n+BigInt(line.amountMinorUnits),BigInt('0')).toString(),lines});
+  }
+ }else{
+  const day=bound.fresh.input.facts.dayType;
+  if(day?.state!=='known'||typeof day.value!=='string'||!['workday','rest_day','holiday'].includes(day.value))fail('unavailable');
+  allocations.push({sequence:0,date:r.source.attendanceDate,dayType:day.value as Allocation['dayType'],
+   minutes:bound.evaluation.payableMinutes,amountMinorUnits:bound.evaluation.amountMinorUnits,lines:bound.evaluation.lines});
+ }
+ if(!allocations.length)fail('unavailable');
+ // The parent is indivisible. Every actual payable date must fit this run's existing cut-off
+ // and dated employer scope; a parent source date cannot stand in for its next-day money.
+ if(bound.kind==='policy')await targetTx(tx,ctx,{batchId:batch.id,employmentId:r.source.employmentId,date:r.source.attendanceDate,
+  companyId:r.source.companyId,status:batch.status==='draft'?'draft':'processed',dates:allocations.map(row=>row.date)});
+ const [entity]=await tx.select().from(company).where(eq(company.id,batch.companyId)).limit(1);
+ if(!entity)fail('permission');assertStatutory(entity.statutoryTier,'Payroll',entity.legalName);
+ const pack=packFor(entity.country);if(!pack)fail('unavailable');if(entity.currency!==currency.code)fail('currency');
  const seed=pack.payComponents.defaults.find(row=>row.code===pack.payComponents.backfillCodes.overtime);if(!seed)fail('mapping');
- const ids=[...new Set(evaluation.lines.map(l=>l.mapping.earningItemId))];
+ const allLines=allocations.flatMap(row=>row.lines),ids=[...new Set(allLines.map(line=>line.mapping.earningItemId))];
  const components=ids.length?await tx.select().from(payComponent).where(and(inArray(payComponent.id,ids),eq(payComponent.tenantId,ctx.tenantId),isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind))):[];
- const byId=new Map(components.map(c=>[c.id,c]));
- for(const line of evaluation.lines){const item=byId.get(line.mapping.earningItemId);if(!item||line.mapping.currency!==entity.currency||item.kind!==seed.kind||item.isNonPayable!==seed.isNonPayable||item.includedInEpf!==seed.includedInEpf||item.includedInSocsoEis!==seed.includedInSocsoEis||item.includedInPcb!==seed.includedInPcb||item.includedInHrdfBase!==seed.includedInHrdfBase||item.epfBonus2012||item.pcbExemptionCode||item.pcbRemunerationType==='optional_deduction'||item.pcbRemunerationType==='normal')fail('mapping');}
- const day=fresh.input.facts.dayType;if(day?.state!=='known'||typeof day.value!=='string'||!['workday','rest_day','holiday'].includes(day.value))fail('unavailable');const dayType=day.value as 'workday'|'rest_day'|'holiday';
- const end=periodEnd(batch.payPeriod);
- const comps=await tx.select().from(compensation).where(and(eq(compensation.employmentId,r.source.employmentId),compensationEffectiveOn(end))).limit(2);if(comps.length!==1||comps[0].currency!==entity.currency)fail('unavailable');
- const rules=await pack.payroll.loadRuleset(tx,{asOf:end});
- const minimum=pack.payroll.overtimePay({monthlyWages:round2(Number(comps[0].basicSalary)+Number(comps[0].monthlyAllowance??0)),days:[{dayType,minutes:exactNumber(evaluation.payableMinutes)}],wageCeiling:rules.ot.wageCeiling,restDayExcessMultiplier:rules.ot.restDayExcessMultiplier,holidayExcessMultiplier:rules.ot.holidayExcessMultiplier});
- const cfg=(await resolveAssignedPolicy(tx,r.source.employmentId))?.config??null;
- // Country eligibility establishes a modelled statutory floor, not a contractual payment ban.
- // Above its ceiling the explicit activated formula may pay, as existing manual cash may;
- // no manual-worker exception or positive statutory/policy floor is invented. Legacy prefill is unchanged.
- const floor=minimum.eligible?applyOvertimeCapsDetailed({overtime:{multiplier:cfg?.overtime?.multiplier}},{workday:minimum.workday,restDay:minimum.restDay,holiday:minimum.holiday,workedOtHours:0}).capped:0;
- if(minorNumber(evaluation.amountMinorUnits)<Math.round(floor*100))fail('statutoryFloor');
- return evaluation.lines.map(line=>({sourceId:r.source.id,calculationId,sourceRevision:r.source.revision,settlementId,employmentId:r.source.employmentId,date:r.source.attendanceDate,dayType,lineId:line.id,earningItemId:line.mapping.earningItemId,earningItemCode:byId.get(line.mapping.earningItemId)!.code,earningItemName:byId.get(line.mapping.earningItemId)!.name,treatment:{epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase},floorEvidence:{countryMinimumApplicable:minimum.eligible,minimumMinorUnits:String(Math.round(floor*100)),periodEnd:end},amountMinorUnits:line.amountMinorUnits,payableMinutes:line.payableMinutes,evidence:line}));
+ const byId=new Map(components.map(row=>[row.id,row]));
+ for(const line of allLines){const item=byId.get(line.mapping.earningItemId);
+  if(!item||line.mapping.currency!==entity.currency||item.kind!==seed.kind||item.isNonPayable!==seed.isNonPayable
+   ||item.includedInEpf!==seed.includedInEpf||item.includedInSocsoEis!==seed.includedInSocsoEis
+   ||item.includedInPcb!==seed.includedInPcb||item.includedInHrdfBase!==seed.includedInHrdfBase||item.epfBonus2012
+   ||item.pcbExemptionCode||item.pcbRemunerationType==='optional_deduction'||item.pcbRemunerationType==='normal')fail('mapping');
+ }
+ const end=periodEnd(batch.payPeriod),comps=await tx.select().from(compensation)
+  .where(and(eq(compensation.employmentId,r.source.employmentId),compensationEffectiveOn(end))).limit(2);
+ if(comps.length!==1||comps[0].currency!==entity.currency)fail('unavailable');
+ const rules=await pack.payroll.loadRuleset(tx,{asOf:end}),cfg=(await resolveAssignedPolicy(tx,r.source.employmentId))?.config??null;
+ const result:PayrollOvertimePatternLine[]=[];
+ for(const allocation of allocations){
+  const minimum=pack.payroll.overtimePay({monthlyWages:round2(Number(comps[0].basicSalary)+Number(comps[0].monthlyAllowance??0)),
+   days:[{dayType:allocation.dayType,minutes:exactNumber(allocation.minutes)}],wageCeiling:rules.ot.wageCeiling,
+   restDayExcessMultiplier:rules.ot.restDayExcessMultiplier,holidayExcessMultiplier:rules.ot.holidayExcessMultiplier});
+  // Country and assigned policy floors retain their existing owners, independently for each
+  // actual dated part. Above-ceiling contractual money is not replaced by a fabricated floor.
+  const floor=minimum.eligible?applyOvertimeCapsDetailed({overtime:{multiplier:cfg?.overtime?.multiplier}},
+   {workday:minimum.workday,restDay:minimum.restDay,holiday:minimum.holiday,workedOtHours:0}).capped:0;
+  if(minorNumber(allocation.amountMinorUnits)<Math.round(floor*100))fail('statutoryFloor');
+  for(const line of allocation.lines)result.push({sourceId:r.source.id,calculationId,sourceRevision:r.source.revision,settlementId,
+   employmentId:r.source.employmentId,date:allocation.date,dayType:allocation.dayType,lineId:line.id,
+   earningItemId:line.mapping.earningItemId,earningItemCode:byId.get(line.mapping.earningItemId)!.code,
+   earningItemName:byId.get(line.mapping.earningItemId)!.name,
+   treatment:{epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase},
+   floorEvidence:{countryMinimumApplicable:minimum.eligible,minimumMinorUnits:String(Math.round(floor*100)),periodEnd:end},
+   amountMinorUnits:line.amountMinorUnits,payableMinutes:line.payableMinutes,evidence:line});
+ }
+ return result;
 }
 
 /** Retained obligations remain readable after Attendance module removal. No employee/source locks here. */
@@ -125,9 +223,13 @@ export async function readPayrollOvertimePatternCashTx(tx:Tx,ctx:SessionContext,
  const claims=await readOvertimeCashSettlementsTx(tx,ctx,p);const lines:PayrollOvertimePatternLine[]=[];
  for(const claim of claims){const calculation=claim.calculation;if(!calculation){continue;} // Legacy cash claims protect identity; legacy Payroll still supplies their amount.
   const [b]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);if(!b)fail('unavailable');
-  await targetTx(tx,ctx,{batchId:p.batchId,employmentId:claim.source.employmentId,date:claim.source.attendanceDate,companyId:claim.source.companyId,status:b.status==='draft'?'draft':'processed'});
   const evidence=claim.evidence;if(!evidence)fail('stale');
-  const contribution:CalculationRead={source:claim.source,calculation,evidence,lines:claim.lines};
+  const contribution:CalculationRead=calculation.bindingKind==='attendanceGroupPolicy'
+   ?await readOvertimeCalculationTx(tx,ctx,{employmentId:claim.source.employmentId,date:claim.source.attendanceDate})??fail('stale')
+   :{source:claim.source,calculation,evidence,lines:claim.lines};
+  if(contribution.calculation?.id!==calculation.id)fail('stale');
+  await targetTx(tx,ctx,{batchId:p.batchId,employmentId:claim.source.employmentId,date:claim.source.attendanceDate,
+   dates:calculationDates(contribution),companyId:claim.source.companyId,status:b.status==='draft'?'draft':'processed'});
   lines.push(...await pricedLinesTx(tx,ctx,contribution,b,claim.settlement.id));
  }
  const byEmployment=new Map<string,PayrollOvertimePatternLine[]>();for(const line of lines){const list=byEmployment.get(line.employmentId)??[];list.push(line);byEmployment.set(line.employmentId,list);}return {lines,byEmployment};
@@ -164,8 +266,9 @@ export async function overtimePatternTransferOptions(ctx:SessionContext,p:{emplo
   const [entity]=await tx.select({currency:company.currency}).from(company).where(eq(company.id,read.source.companyId)).limit(1);if(!entity)fail('permission');
   const batches=await tx.select({batch:payrollBatch,cycleName:payrollCycle.name}).from(payrollBatch).leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId)).where(and(eq(payrollBatch.companyId,read.source.companyId),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'))).orderBy(asc(payrollBatch.payPeriod),asc(payrollBatch.id)).limit(1001);if(batches.length>1000)fail('unavailable');
   const runs:{id:string;payPeriod:string;runType:string;batchDate:string;cycleName:string|null;status:'draft';transferable:boolean;refusal:OvertimePayrollErrorCode|null}[]=[];
-  for(const r of batches){try{await targetTx(tx,ctx,{batchId:r.batch.id,...p,companyId:read.source.companyId,status:'draft'});runs.push({id:r.batch.id,payPeriod:r.batch.payPeriod,runType:r.batch.runType,batchDate:r.batch.batchDate,cycleName:r.cycleName,status:'draft',transferable:false,refusal:'unavailable'});}catch(error){if(!(error instanceof OvertimePayrollError)||error.code!=='coverage')throw error;}}
+  for(const r of batches){try{await targetTx(tx,ctx,{batchId:r.batch.id,...p,dates:calculationDates(read),companyId:read.source.companyId,status:'draft'});runs.push({id:r.batch.id,payPeriod:r.batch.payPeriod,runType:r.batch.runType,batchDate:r.batch.batchDate,cycleName:r.cycleName,status:'draft',transferable:false,refusal:'unavailable'});}catch(error){if(!(error instanceof OvertimePayrollError)||error.code!=='coverage')throw error;}}
   const result=c?parseRecordedOvertimeEvaluation(record(read.evidence?.evidence)?.evaluation):null;
+  const policyFinancial=record(record(read.evidence?.evidence)?.policyFinancialContract);
   let transferable=false;
   for(const run of runs){
    if(claim?.settlement&&(claim.settlement.mode==='toil'||claim.settlement.payrollBatchId!==run.id)){run.refusal='conflict';continue;}
@@ -179,7 +282,9 @@ export async function overtimePatternTransferOptions(ctx:SessionContext,p:{emplo
     run.transferable=true;run.refusal=null;transferable=true;
    }catch(error){if(!(error instanceof OvertimePayrollError))throw error;run.refusal=error.code;}
   }
-  return {companyId:read.source.companyId,currency:entity.currency,...p,calculation:c?{id:c.id,sourceRevision:read.source.revision,status:c.outcome,approvalStatus:c.approvalStatus,transferable,amountMinorUnits:result&&result.status!=='refused'?result.amountMinorUnits:null,minorScale:c.minorScale}:null,runs,settlement:claim?.settlement?{id:claim.settlement.id,mode:claim.settlement.mode,batchId:claim.settlement.payrollBatchId}:null};
+  return {companyId:read.source.companyId,currency:entity.currency,...p,calculation:c?{id:c.id,sourceRevision:read.source.revision,status:c.outcome,approvalStatus:c.approvalStatus,transferable,amountMinorUnits:c.bindingKind==='attendanceGroupPolicy'
+   ?policyFinancial?.state==='prepared'?String(policyFinancial.amountMinorUnits):null
+   :result&&result.status!=='refused'?result.amountMinorUnits:null,minorScale:c.minorScale}:null,runs,settlement:claim?.settlement?{id:claim.settlement.id,mode:claim.settlement.mode,batchId:claim.settlement.payrollBatchId}:null};
  });
 }
 export async function transferOvertimePatternToPayroll(ctx:SessionContext,p:{employmentId:string;date:string;expectedCalculationId:string;expectedSourceRevision:number;batchId:string;reason:string}){
@@ -188,9 +293,13 @@ export async function transferOvertimePatternToPayroll(ctx:SessionContext,p:{emp
   // This owner helper takes employee advisory then existing source; only then may the batch lock be taken.
   const available=await assertOvertimeSettlementAvailableTx(tx,ctx,{employmentId:p.employmentId,date:p.date,mode:'cash'});
   if(available.source.revision!==p.expectedSourceRevision||available.source.currentCalculationId!==p.expectedCalculationId)fail('stale');
+  const read=await readOvertimeCalculationTx(tx,ctx,p);if(!read)fail('unavailable');
+  // Employee/source precede the policy epoch; the fresh binding must finish before batch.
+  await boundCalculationTx(tx,ctx,read);
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const [locked]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1).for('update');if(!locked)fail('coverage');
-  const batch=await targetTx(tx,ctx,{...p,companyId:available.source.companyId,status:'draft'});
-  const read=await readOvertimeCalculationTx(tx,ctx,p);if(!read)fail('unavailable');await pricedLinesTx(tx,ctx,read,batch,available.existing?.id??'pending');
+  const batch=await targetTx(tx,ctx,{...p,dates:calculationDates(read),companyId:available.source.companyId,status:'draft'});
+  await pricedLinesTx(tx,ctx,read,batch,available.existing?.id??'pending');
   if(available.existing&&(available.existing.payrollBatchId!==p.batchId||available.existing.calculationId!==p.expectedCalculationId))fail('conflict');
   const settlement=await reserveOvertimeSettlementTx(tx,ctx,{employmentId:p.employmentId,date:p.date,mode:'cash',calculationId:p.expectedCalculationId,payrollBatchId:p.batchId});
   // Remove the old aggregate for this covered day in the SAME transaction; independent keyed OT and bonus survive.

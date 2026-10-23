@@ -83,3 +83,8 @@ export {lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from './pol
 export {attendancePolicyTraceBinding} from './policy-trace-binding';
 
 export {attendancePolicySystemEligibleMinutes} from './policy-execution-proposal';
+
+// Internal parent contract; callers retain current financial scope, replay and settlement owners.
+export {attendancePolicyFinancialContract,type PolicyFinancialContract,type PolicyFinancialLine} from './policy-financial-contract';
+
+export {lockOvertimePayrollBatchContextTx} from './overtime-patterns';

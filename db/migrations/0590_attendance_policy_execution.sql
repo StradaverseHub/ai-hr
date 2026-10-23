@@ -1,6 +1,6 @@
 -- Board 1 reservation: 0590 / 1791900000070. DRAFT, UNREGISTERED AND UNAPPLIED.
--- Add immutable policy-part storage below the existing OT parent. The staged contract is explicitly
--- non-payable until canonical execution, approval receipts and independent financial replay exist.
+-- Add immutable policy-part storage and explicit policy financial evidence below the existing OT
+-- parent. The settlement admission fence remains until actual current consumer replay is complete.
 -- Existing assignment calculations, source identity and the single cash/TOIL settlement are retained.
 ALTER TABLE public.attendance_overtime_calculation
  ADD COLUMN binding_kind text NOT NULL DEFAULT 'assignedPattern',
@@ -11,9 +11,26 @@ ALTER TABLE public.attendance_overtime_calculation
  ADD CONSTRAINT attendance_overtime_policy_staged_ck CHECK(
   (binding_kind='assignedPattern' AND policy_revision_id IS NULL AND policy_part_count=0)
   OR(binding_kind='attendanceGroupPolicy' AND policy_revision_id IS NOT NULL
-   AND version_id IS NULL AND assignment_id IS NULL AND outcome='refused'
-   AND duration_outcome='refused' AND NOT transferable));
--- The original 0551 version/assignment constraint and evidence trigger are deliberately unchanged.
+   AND version_id IS NULL AND assignment_id IS NULL
+   AND ((outcome='refused' AND duration_outcome IN('refused','ready') AND NOT transferable)
+    OR(outcome='ready' AND duration_outcome='ready' AND transferable AND policy_part_count>0
+     AND approval_status IN('approved','notRequired')))));
+-- Extend only the original version/assignment admission CHECK, preserving its assigned branch.
+-- Discover its generated name by its columns, fail closed on unexpected schema rather than
+-- dropping an arbitrary constraint or rewriting the frozen 0551 migration.
+DO $$ DECLARE names text[];BEGIN
+ SELECT array_agg(conname ORDER BY conname) INTO names FROM pg_constraint
+  WHERE conrelid='public.attendance_overtime_calculation'::regclass AND contype='c'
+   AND pg_get_constraintdef(oid) LIKE '%version_id IS NOT NULL%'
+   AND pg_get_constraintdef(oid) LIKE '%assignment_id IS NOT NULL%';
+ IF coalesce(array_length(names,1),0)<>1 THEN
+  RAISE EXCEPTION 'Expected one original version-assignment admission constraint';END IF;
+ EXECUTE format('ALTER TABLE public.attendance_overtime_calculation DROP CONSTRAINT %I',names[1]);
+END $$;
+ALTER TABLE public.attendance_overtime_calculation ADD CONSTRAINT attendance_overtime_binding_admission_ck CHECK(
+ (binding_kind='assignedPattern' AND ((version_id IS NOT NULL AND assignment_id IS NOT NULL)
+  OR(outcome='refused' AND version_id IS NULL AND assignment_id IS NULL)))
+ OR(binding_kind='attendanceGroupPolicy' AND policy_revision_id IS NOT NULL AND version_id IS NULL AND assignment_id IS NULL));
 --> statement-breakpoint
 CREATE TABLE public.attendance_overtime_policy_part(
  calculation_id uuid NOT NULL REFERENCES public.attendance_overtime_calculation(id) ON DELETE RESTRICT,
@@ -573,25 +590,47 @@ CREATE TRIGGER zz_attendance_policy_final_receipt BEFORE UPDATE ON public.attend
  FOR EACH ROW EXECUTE FUNCTION app.capture_attendance_policy_final_receipt();
 
 --> statement-breakpoint
--- This draft is a non-payable storage stage in BOTH settlement modes. The old cash guard already
--- requires a ready calculation; the old TOIL guard checks its accrual but does not inspect that outcome.
--- Keep the single parent settlement owner and refuse a new staged policy claim before either branch.
+-- Retain the single parent settlement owner. A new policy claim must match its complete current
+-- mode-specific contract; the original cash/TOIL owner checks and derived coverage still apply.
 CREATE FUNCTION app.guard_attendance_policy_settlement_stage() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE source public.attendance_overtime_source;kind text;
+DECLARE source public.attendance_overtime_source;header public.attendance_overtime_calculation;data jsonb;clock jsonb;
 BEGIN
  IF NEW.released_at IS NOT NULL THEN RETURN NEW;END IF;
  SELECT * INTO source FROM public.attendance_overtime_source
   WHERE id=NEW.source_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'Current settlement subject is unavailable' USING ERRCODE='42501';END IF;
- -- Use the parent's current header in either mode; a null TOIL calculation_id cannot hide its policy.
- IF source.current_calculation_id IS NOT NULL THEN
-  SELECT binding_kind INTO kind FROM public.attendance_overtime_calculation
-   WHERE id=source.current_calculation_id AND source_id=source.id AND tenant_id=source.tenant_id AND company_id=source.company_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Current settlement calculation is unavailable' USING ERRCODE='42501';END IF;
-  IF kind='attendanceGroupPolicy' THEN
-   RAISE EXCEPTION 'Policy overtime settlement remains unavailable before complete execution and independent replay' USING ERRCODE='23514';END IF;
- END IF;
+ IF source.current_calculation_id IS NULL THEN RETURN NEW;END IF;
+ SELECT * INTO header FROM public.attendance_overtime_calculation
+  WHERE id=source.current_calculation_id AND source_id=source.id AND tenant_id=source.tenant_id AND company_id=source.company_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Current settlement calculation is unavailable' USING ERRCODE='42501';END IF;
+ IF header.binding_kind<>'attendanceGroupPolicy' THEN RETURN NEW;END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE OR header.ordinal<>source.revision
+  OR header.duration_outcome<>'ready' OR header.approval_status NOT IN('approved','notRequired')
+  OR header.policy_part_count<1 THEN
+  RAISE EXCEPTION 'Complete current policy duration and approval required' USING ERRCODE='23514';END IF;
+ PERFORM app.lock_attendance_policy_execution_context(source.employment_id,source.attendance_date);
+ SELECT evidence INTO data FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id
+  AND tenant_id=source.tenant_id AND company_id=source.company_id;
+ IF NOT FOUND OR data#>>'{policyFinancialDurationContract,state}' IS DISTINCT FROM 'prepared'
+  OR data#>>'{policyFinancialDurationContract,durationDigest}' IS DISTINCT FROM header.duration_input_digest THEN
+  RAISE EXCEPTION 'Complete retained policy duration contract required' USING ERRCODE='23514';END IF;
+ IF NEW.mode='cash' AND (NEW.calculation_id IS DISTINCT FROM header.id OR header.outcome<>'ready' OR NOT header.transferable
+  OR data#>>'{policyFinancialContract,state}' IS DISTINCT FROM 'prepared') THEN
+  RAISE EXCEPTION 'Complete current policy cash contract required' USING ERRCODE='23514';END IF;
+ -- Historical capture evidence alone survives voiding; a NEW reservation must also retain the
+ -- entire current nonvoided source. Canonical consumers separately replay policy/approval/refs.
+ IF jsonb_typeof(data#>'{policyClockSource,clocks}') IS DISTINCT FROM 'array'
+  OR (SELECT count(*) FROM public.attendance_punch WHERE attendance_id=source.attendance_id AND tenant_id=source.tenant_id
+   AND voided_at IS NULL)<>jsonb_array_length(data#>'{policyClockSource,clocks}') THEN
+  RAISE EXCEPTION 'Current policy clock source changed' USING ERRCODE='23514';END IF;
+ FOR clock IN SELECT value FROM jsonb_array_elements(data#>'{policyClockSource,clocks}') LOOP
+  IF NOT EXISTS(SELECT 1 FROM public.attendance_punch WHERE id=(clock->>'id')::uuid
+   AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND employment_id=source.employment_id
+   AND clock_capture_id=(clock->>'captureId')::uuid AND voided_at IS NULL) THEN
+   RAISE EXCEPTION 'Current policy clock source changed' USING ERRCODE='23514';END IF;
+ END LOOP;
+ PERFORM app.attendance_policy_captured_coverage(header.id);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.guard_attendance_policy_settlement_stage() FROM PUBLIC,ai_hr_app;
@@ -791,8 +830,8 @@ BEGIN
   NEW.reservation_coverage:=int8multirange(int8range(epoch_ms,epoch_ms+259200000,'[)'));
   RETURN NEW;
  END IF;
- -- This additional guard does NOT remove the earlier unconditional staged-policy payment fence.
- IF header.outcome<>'ready' OR header.duration_outcome<>'ready' OR NOT header.transferable
+ -- Mode-specific contract admission runs before derived physical reservation coverage.
+ IF (NEW.mode='cash' AND(header.outcome<>'ready' OR NOT header.transferable)) OR header.duration_outcome<>'ready'
   OR header.approval_status NOT IN('approved','notRequired') OR header.policy_part_count<1
   OR header.payable_numerator IS NULL OR header.payable_denominator IS NULL THEN
   RAISE EXCEPTION 'Complete payable policy execution is required before physical reservation' USING ERRCODE='23514';END IF;
@@ -889,3 +928,135 @@ END $$;
 -- Preserve the explicit staged-payment admission refusal before derived coverage validation.
 CREATE TRIGGER ab_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
  FOR EACH ROW EXECUTE FUNCTION app.capture_overtime_settlement_coverage();
+
+--> statement-breakpoint
+-- Complete stored financial parent/dated-line integrity. This does not perform pricing in SQL
+-- or establish current source authority. Financial consumers independently replay the one engine;
+-- the earlier aa settlement admission fence remains in force in this candidate.
+CREATE FUNCTION app.guard_attendance_policy_financial_evidence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent_id uuid;header public.attendance_overtime_calculation;source public.attendance_overtime_source;
+ evidence public.attendance_overtime_calculation_evidence;duration jsonb;cash jsonb;identity jsonb;
+ part_json jsonb;line_json jsonb;actual_count integer;total numeric;item jsonb;previous_sequence integer:=-1;
+BEGIN
+ IF TG_TABLE_NAME='attendance_overtime_calculation' THEN parent_id:=NEW.id;ELSE parent_id:=NEW.calculation_id;END IF;
+ SELECT * INTO header FROM public.attendance_overtime_calculation WHERE id=parent_id;
+ IF NOT FOUND OR header.binding_kind<>'attendanceGroupPolicy' THEN RETURN NULL;END IF;
+ SELECT * INTO source FROM public.attendance_overtime_source WHERE id=header.source_id
+  AND tenant_id=header.tenant_id AND company_id=header.company_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Financial policy parent source is unavailable' USING ERRCODE='23514';END IF;
+ SELECT * INTO evidence FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id
+  AND tenant_id=header.tenant_id AND company_id=header.company_id;
+ IF NOT FOUND THEN
+  IF header.outcome='refused' AND header.duration_outcome='refused' AND NOT header.transferable
+   AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_line WHERE calculation_id=header.id) THEN RETURN NULL;END IF;
+  RAISE EXCEPTION 'Financial policy requires complete immutable evidence' USING ERRCODE='23514';END IF;
+ duration:=evidence.evidence->'policyFinancialDurationContract';cash:=evidence.evidence->'policyFinancialContract';
+ identity:=jsonb_build_object('tenantId',source.tenant_id,'companyId',source.company_id,'employmentId',source.employment_id,
+  'sourceId',source.id,'calculationId',header.id,'date',source.attendance_date);
+ SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',sequence,'calendarDate',calendar_date,'dayClass',day_class,
+  'moneyDay',money_day,'versionId',version_id,'rawMinutes',raw_minutes,'allocatedPayableMinutes',allocated_payable_minutes,
+  'sourceIntervals',source_intervals,'calendarReferences',calendar_references,'durationEvidence',duration_evidence)
+  ORDER BY sequence),'[]'::jsonb),count(*),coalesce(sum(allocated_payable_minutes),0)
+ INTO part_json,actual_count,total FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id;
+ IF actual_count<>header.policy_part_count THEN
+  RAISE EXCEPTION 'Financial policy requires its entire dated part set' USING ERRCODE='23514';END IF;
+ IF header.duration_outcome='ready' THEN
+  IF duration->>'state' IS DISTINCT FROM 'prepared' OR duration->>'authority' IS DISTINCT FROM 'policyFinancialDurationContractOnly'
+   OR duration->'identity' IS DISTINCT FROM identity OR duration->>'policyRevisionId' IS DISTINCT FROM header.policy_revision_id::text
+   OR duration->>'approvalStatus' IS DISTINCT FROM header.approval_status OR header.approval_status NOT IN('approved','notRequired')
+   OR duration->>'durationDigest' IS DISTINCT FROM header.duration_input_digest
+   OR jsonb_typeof(duration->'minutes') IS DISTINCT FROM 'number' OR duration->>'minutes' IS DISTINCT FROM total::text
+   OR header.payable_numerator IS DISTINCT FROM total::text OR header.payable_denominator IS DISTINCT FROM '1'
+   OR total<=0 OR duration->'parts' IS DISTINCT FROM part_json
+   OR duration->'coverage' IS DISTINCT FROM evidence.evidence->'policyCapturedCoverage'
+   OR evidence.evidence#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
+   OR evidence.evidence#>>'{policyDurationReplay,digest}' IS DISTINCT FROM header.duration_input_digest
+   OR evidence.evidence#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM total::text THEN
+   RAISE EXCEPTION 'Financial policy duration/header/parts mismatch' USING ERRCODE='23514';END IF;
+  PERFORM app.attendance_policy_captured_coverage(header.id);
+ ELSIF duration->>'state'='prepared' THEN
+  RAISE EXCEPTION 'Prepared policy duration requires its exact ready duration header' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(jsonb_agg(line.evidence ORDER BY line.sequence,line.id),'[]'::jsonb),count(*),coalesce(sum(line.amount_minor_units::numeric),0)
+ INTO line_json,actual_count,total FROM public.attendance_overtime_line line WHERE line.calculation_id=header.id;
+ IF header.outcome='ready' THEN
+  IF cash->>'state' IS DISTINCT FROM 'prepared' OR cash->>'authority' IS DISTINCT FROM 'policyFinancialContractOnly'
+   OR cash->'identity' IS DISTINCT FROM identity OR cash->>'policyRevisionId' IS DISTINCT FROM header.policy_revision_id::text
+   OR cash->>'inputDigest' IS DISTINCT FROM header.input_digest OR cash->>'approvalDigest' IS DISTINCT FROM header.approval_digest
+   OR cash->>'referenceDigest' IS DISTINCT FROM header.reference_digest OR cash->>'approvalStatus' IS DISTINCT FROM header.approval_status
+   OR cash->>'durationDigest' IS DISTINCT FROM header.duration_input_digest OR cash->>'minutes' IS DISTINCT FROM header.payable_numerator
+   OR cash->'currency' IS DISTINCT FROM jsonb_build_object('code',header.currency,'minorScale',header.minor_scale)
+   OR cash->'parts' IS DISTINCT FROM part_json OR cash->'coverage' IS DISTINCT FROM duration->'coverage'
+   OR cash->'cash' IS DISTINCT FROM evidence.evidence->'policyCashReplay'
+   OR cash#>>'{cash,state}' IS DISTINCT FROM 'known' OR cash#>>'{cash,amountMinorUnits}' IS DISTINCT FROM total::text
+   OR cash->>'amountMinorUnits' IS DISTINCT FROM total::text OR actual_count<1 OR actual_count>16384
+   OR cash->'lines' IS DISTINCT FROM line_json OR NOT header.transferable OR header.duration_outcome<>'ready' THEN
+   RAISE EXCEPTION 'Financial policy cash/header/dated lines mismatch' USING ERRCODE='23514';END IF;
+  FOR item IN SELECT value FROM jsonb_array_elements(line_json) LOOP
+   previous_sequence:=previous_sequence+1;
+   IF item->>'sequence' IS DISTINCT FROM previous_sequence::text
+    OR NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
+     WHERE part.calculation_id=header.id AND part.sequence::text=item->>'partSequence'
+      AND part.calendar_date::text=item->>'calendarDate' AND part.day_class=item->>'dayClass'
+      AND part.money_day=item->>'moneyDay' AND part.version_id::text=item->>'versionId'
+      AND part.allocated_payable_minutes>0)
+    OR NOT EXISTS(SELECT 1 FROM public.attendance_overtime_line line WHERE line.calculation_id=header.id
+     AND line.sequence=previous_sequence AND line.line_key=item#>>'{line,id}'
+     AND line.component_id::text=item#>>'{line,mapping,earningItemId}'
+     AND line.amount_minor_units=item#>>'{line,amountMinorUnits}'
+     AND item#>>'{line,mapping,currency}'=header.currency) THEN
+    RAISE EXCEPTION 'Financial policy line must retain exact dated formula ownership' USING ERRCODE='23514';END IF;
+  END LOOP;
+ ELSIF actual_count<>0 OR header.transferable OR cash->>'state'='prepared' THEN
+  RAISE EXCEPTION 'Refused policy cash cannot retain payable lines or transfer authority' USING ERRCODE='23514';
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_attendance_policy_financial_evidence() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation',
+  'attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_overtime_line'] LOOP
+  EXECUTE format('CREATE POLICY overtime_financial_proof_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',
+   table_name,'app.guard_attendance_policy_financial_evidence()');
+ END LOOP;
+END $$;
+CREATE CONSTRAINT TRIGGER attendance_policy_financial_header_complete AFTER INSERT ON public.attendance_overtime_calculation
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_financial_evidence();
+CREATE CONSTRAINT TRIGGER attendance_policy_financial_evidence_complete AFTER INSERT ON public.attendance_overtime_calculation_evidence
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_financial_evidence();
+CREATE CONSTRAINT TRIGGER attendance_policy_financial_lines_complete AFTER INSERT ON public.attendance_overtime_line
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_attendance_policy_financial_evidence();
+
+--> statement-breakpoint
+-- Batch-level consumer barrier uses the SAME tenant epoch as individual canonical readers.
+-- Generation, close and selective reprocessing take it BEFORE the batch row, with no source row
+-- lock (Attendance owns employee/day/source -> epoch -> batch). A transfer adds claims under its
+-- source/epoch barrier and the same batch row, so a new claim cannot bypass a locked run.
+CREATE FUNCTION app.lock_overtime_payroll_batch_context(p_batch uuid) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=app.current_tenant_id();employer uuid;
+BEGIN
+ SELECT company_id INTO employer FROM public.payroll_batch WHERE id=p_batch AND tenant_id=tenant;
+ IF NOT FOUND THEN RETURN;END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.overtime_source_settlement claim
+  JOIN public.attendance_overtime_calculation header ON header.id=claim.calculation_id AND header.source_id=claim.source_id
+   AND header.tenant_id=claim.tenant_id AND header.company_id=claim.company_id
+  WHERE claim.tenant_id=tenant AND claim.company_id=employer AND claim.payroll_batch_id=p_batch
+   AND claim.mode='cash' AND claim.released_at IS NULL AND header.binding_kind='attendanceGroupPolicy') THEN RETURN;END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE OR NOT app.can_admin_payroll_for(employer) THEN
+  RAISE EXCEPTION 'Current scoped Payroll authority required' USING ERRCODE='42501';END IF;
+ PERFORM 1 FROM public.overtime_pattern_epoch WHERE tenant_id=tenant FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Financial policy configuration is unavailable' USING ERRCODE='23514';END IF;
+ IF app.attendance_policy_principal_current() IS NOT TRUE OR NOT app.can_admin_payroll_for(employer)
+  OR NOT EXISTS(SELECT 1 FROM public.payroll_batch WHERE id=p_batch AND tenant_id=tenant AND company_id=employer) THEN
+  RAISE EXCEPTION 'Current scoped Payroll authority required' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.lock_overtime_payroll_batch_context(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lock_overtime_payroll_batch_context(uuid) TO ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['payroll_batch','overtime_source_settlement','attendance_overtime_calculation','overtime_pattern_epoch'] LOOP
+  EXECUTE format('CREATE POLICY overtime_batch_context_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',
+   table_name,'app.lock_overtime_payroll_batch_context(uuid)');
+ END LOOP;
+END $$;

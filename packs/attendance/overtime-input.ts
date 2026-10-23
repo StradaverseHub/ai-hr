@@ -104,18 +104,28 @@ export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContex
   if (!proof?.companyId) unavailable();
   const permission = await tx.execute(sql`select app.can_admin_payroll_for(${proof!.companyId}::uuid) as allowed`) as unknown as {allowed: boolean}[];
   if (!permission[0]?.allowed) throw new OvertimeOwnerError('permission', 'The overtime source is outside your financial scope.');
-  const snapshot=await readCanonicalInputsTx(tx,ctx,p);
-  // The staged policy result has no independent cash/duration replay or final-effect receipt yet.
-  if(snapshot.attendanceGroupPolicy)unavailable();
+  let snapshot=await readCanonicalInputsTx(tx,ctx,p);
+  if(snapshot.attendanceGroupPolicy){
+    // Transfers hold employee/source before entering. Retained Payroll consumers acquire the
+    // SAME tenant epoch before their batch lock; this repeated shared read cannot invert it.
+    await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
+    snapshot=await readCanonicalInputsTx(tx,ctx,p);
+    const after=await tx.execute(sql`select app.can_admin_payroll_for(${proof!.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
+    if(!after[0]?.allowed)throw new OvertimeOwnerError('permission','The overtime source is outside your financial scope.');
+  }
   return snapshot;
 }
 /** TOIL's canonical owner already proves the election/decision authority. This reader retains
  * subject RLS and never elevates salary access merely to verify price-independent duration. */
 export async function canonicalOvertimeToilInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   assertModuleGate(ctx, 'toil');
-  const snapshot=await readCanonicalInputsTx(tx,ctx,p,'duration');
-  // The staged policy result has no independent cash/duration replay or final-effect receipt yet.
-  if(snapshot.attendanceGroupPolicy)unavailable();
+  let snapshot=await readCanonicalInputsTx(tx,ctx,p,'duration');
+  if(snapshot.attendanceGroupPolicy){
+    // The TOIL owner takes employment/source locks before entering this shared configuration
+    // barrier. Re-read after any wait; no monetary inputs are requested by this purpose.
+    await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
+    snapshot=await readCanonicalInputsTx(tx,ctx,p,'duration');
+  }
   return snapshot;
 }
 async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}, purpose:'money'|'duration'='money'): Promise<CanonicalOvertimeSnapshot> {

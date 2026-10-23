@@ -1,7 +1,9 @@
+import {isDeepStrictEqual} from 'node:util';
+import {attendancePolicyFinancialContract,attendancePolicyFinancialDurationContract,recordedAttendancePolicyFinancialContractMatches,type PolicyFinancialContract} from './policy-financial-contract';
 import {attendancePolicyCapturedCoverageProposal} from './policy-captured-coverage';
 import {attendancePolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
-import {attendancePolicyDurationReplay,attendancePolicyRecordedApprovalStatus} from './policy-duration-replay';
+import {attendancePolicyDurationReplay,attendancePolicyRecordedApprovalStatus,attendancePolicyIndependentSource} from './policy-duration-replay';
 import {attendancePolicyCoverageProposal} from './policy-coverage';
 import {materializeAttendancePolicyProposalParts,recordedAttendancePolicyProposalPartsMatch} from './policy-proposal-parts';
 import type {PolicyExecutionProposal} from './policy-execution-proposal';
@@ -222,7 +224,7 @@ export function saveOvertimePatternAssignment(ctx:SessionContext,p:{assignmentId
  const [row]=await tx.insert(s.overtimePatternAssignment).values({tenantId:ctx.tenantId,versionId:version.id,target:json(target),priority:p.priority,validFrom:p.from,validTo:p.to,createdBy:ctx.userId??null}).returning();if(target.type==='individual')await tx.insert(s.overtimePatternAssignmentEmployment).values(target.employmentIds.map(employmentId=>({tenantId:ctx.tenantId,assignmentId:row.id,employmentId})));await event(tx,ctx,pattern.id,'assignment.saved',{assignmentId:row.id,versionId:version.id,target,priority:p.priority,from:p.from,to:p.to});return {assignmentId:row.id,revision:row.revision};
  });}
 export function closeOvertimePatternAssignment(ctx:SessionContext,p:{assignmentId:string;expectedRevision:number;effectiveTo:string;reason:string}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);date(p.effectiveTo);reason(p.reason);const [row]=await tx.select().from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternAssignment.id,uuid(p.assignmentId)))).limit(1).for('update');if(!row||row.revision!==p.expectedRevision||row.supersededAt)fail('stale','The assignment changed.');const version=await versionRow(tx,ctx,row.versionId);await assertVersionAdmin(tx,ctx,version);if(p.effectiveTo<todayInKualaLumpur()||p.effectiveTo<=row.validFrom||row.validTo&&p.effectiveTo>row.validTo)fail('invalid','Close the assignment prospectively within its saved interval.');await tx.update(s.overtimePatternAssignment).set({validTo:p.effectiveTo,closeReason:p.reason,revision:row.revision+1}).where(eq(s.overtimePatternAssignment.id,row.id));await event(tx,ctx,version.patternId,'assignment.closed',{assignmentId:row.id,effectiveTo:p.effectiveTo,reason:p.reason});return {assignmentId:row.id,revision:row.revision+1};});}
-export type StoredOvertimeResolution=OvertimeResolution|{status:'legacy';versionId:string|null;ruleId:string|null;reason:'recorded_legacy'|'compatibility_unavailable';trace:unknown[]};
+export type StoredOvertimeResolution=OvertimeResolution|{status:'policy';policyRevisionId:string;trace:unknown[]}|{status:'legacy';versionId:string|null;ruleId:string|null;reason:'recorded_legacy'|'compatibility_unavailable';trace:unknown[]};
 export async function resolveOvertimePatternTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;recordedFacts:OvertimeFacts;resolvedLegacyRuleId:string|null}):Promise<StoredOvertimeResolution>{
  gate(ctx);uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);
  if(source?.currentCalculationId){const [recorded]=await tx.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId)).limit(1);if(recorded?.versionId&&recorded.assignmentId)return {status:'selected',patternVersionId:recorded.versionId,assignmentId:recorded.assignmentId,trace:[{kind:'assignment',id:recorded.assignmentId,data:{source:'recordedCalculation',calculationId:recorded.id}}]};}
@@ -254,9 +256,9 @@ function validateSnapshot(snapshot:CanonicalOvertimeSnapshot,ctx:SessionContext,
  if(source){const company=input.facts.companyId;if(company?.state!=='known'||company.value!==source.companyId)fail('unavailable','Canonical dated company does not match the recorded overtime source.');}
 }
 async function snapshotResolutionTx(tx:Tx,ctx:SessionContext,snapshot:CanonicalOvertimeSnapshot,p:{employmentId:string;date:string}):Promise<StoredOvertimeResolution>{
- if(snapshot.attendanceGroupPolicy)return {status:'refused',issues:[{code:'unknown',path:'attendanceGroupPolicy.execution',severity:'error',
-  detail:'Dated policy execution and final-effect approval evidence are not yet available.'}],trace:[{kind:'condition',id:'attendanceGroupPolicy',
-   data:{policyRevisionId:snapshot.attendanceGroupPolicy.id,ordinal:snapshot.attendanceGroupPolicy.ordinal,authority:'unavailable'}}]};
+ if(snapshot.attendanceGroupPolicy)return {status:'policy',policyRevisionId:snapshot.attendanceGroupPolicy.id,
+  trace:[{kind:'condition',id:'attendanceGroupPolicy',data:{policyRevisionId:snapshot.attendanceGroupPolicy.id,
+   ordinal:snapshot.attendanceGroupPolicy.ordinal,authority:'canonicalPolicySelection'}}]};
  return resolveOvertimePatternTx(tx,ctx,{...p,recordedFacts:snapshot.input.facts,resolvedLegacyRuleId:snapshot.resolvedLegacyRuleId});
 }
 async function selectedInput(tx:Tx,ctx:SessionContext,snapshot:CanonicalOvertimeSnapshot,p:{employmentId:string;date:string},mode:'actual'|'preview'){
@@ -272,7 +274,7 @@ async function selectedInput(tx:Tx,ctx:SessionContext,snapshot:CanonicalOvertime
  }
  return {resolution,input,version,evaluation,duration,durationInputDigest};
 }
-export type OvertimeRecordOutcome={status:'legacy';sourceId:string;revision:number;resolution:Extract<StoredOvertimeResolution,{status:'legacy'}>}|{status:'recorded';sourceId:string;calculationId:string;revision:number;policyRevisionId?:string;evaluation:OvertimeEvaluation|null;duration:OvertimeDurationEvaluation|null;resolution:Exclude<StoredOvertimeResolution,{status:'legacy'}>};
+export type OvertimeRecordOutcome={status:'legacy';sourceId:string;revision:number;resolution:Extract<StoredOvertimeResolution,{status:'legacy'}>}|{status:'recorded';sourceId:string;calculationId:string;revision:number;policyRevisionId?:string;policyFinancialContract?:PolicyFinancialContract;evaluation:OvertimeEvaluation|null;duration:OvertimeDurationEvaluation|null;resolution:Exclude<StoredOvertimeResolution,{status:'legacy'}>};
 /** Bind ONCE in trusted server integration. No action accepts a reader, result, role flags or handle JSON. */
 export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOvertimeReader){
  const handles=new WeakMap<object,{tx:Tx;principal:string;p:{employmentId:string;date:string};snapshotDigest:string;sourceId:string;resolutionDigest:string}>();const principal=(ctx:SessionContext)=>ctx.tenantId+':'+(ctx.userId??'');
@@ -292,15 +294,32 @@ export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOv
    const policyParts=materializeAttendancePolicyProposalParts({source:snapshot.input.source,policy:snapshot.attendanceGroupPolicy,
     context:snapshot.policyExecutionContext,work:snapshot.policyWorkInput,formulas:snapshot.policyFormulaInput,durationFormulas:snapshot.policyDurationFormulaInput,approvals:snapshot.policyApprovalInput,proposal:snapshot.policyExecutionProposal,rawEffect:snapshot.policyRawEffectSource});
    if(policyParts===null)fail('unavailable','The complete policy proposal does not bind its canonical source.');
+   const policyFinancial=snapshot.attendanceGroupPolicy?attendancePolicyFinancialContract({tenantId:ctx.tenantId,
+    companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId,date:source.attendanceDate},snapshot):undefined;
+   const independent=attendancePolicyIndependentSource(snapshot);
+   const policyFinancialDuration=snapshot.attendanceGroupPolicy&&independent?attendancePolicyFinancialDurationContract({tenantId:ctx.tenantId,
+    companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId,date:source.attendanceDate},independent):undefined;
+   const preparedDuration=policyFinancialDuration?.state==='prepared'?policyFinancialDuration:null;
+   const preparedPolicy=policyFinancial?.state==='prepared'?policyFinancial:null;
+   const recordedOutcome=preparedPolicy?'ready' as const:evaluation?.status??'refused';
+   const recordedDurationOutcome=preparedDuration?'ready' as const:selected.duration?.status??'refused';
+   const recordedDurationDigest=preparedDuration?.durationDigest??selected.durationInputDigest;
+   const recordedTransferable=preparedPolicy?true:evaluation?.transferable??false;
+   const recordedNumerator=preparedDuration?String(preparedDuration.minutes):selected.duration&&selected.duration.status!=='refused'?selected.duration.payableMinutes.numerator:null;
+   const recordedDenominator=preparedDuration?'1':selected.duration&&selected.duration.status!=='refused'?selected.duration.payableMinutes.denominator:null;
+
    const policyCoverage=snapshot.attendanceGroupPolicy&&snapshot.policyExecutionProposal?attendancePolicyCoverageProposal({tenantId:ctx.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId,date:source.attendanceDate},snapshot.policyExecutionProposal):undefined;
-   await tx.insert(s.attendanceOvertimeCalculation).values({id:calculationId,tenantId:ctx.tenantId,companyId:source.companyId,sourceId:source.id,...(snapshot.attendanceGroupPolicy?{bindingKind:'attendanceGroupPolicy' as const,policyRevisionId:snapshot.attendanceGroupPolicy.id,policyPartCount:policyParts.length}:{}),versionId:selected.version?.id??null,assignmentId:selected.resolution.status==='selected'?selected.resolution.assignmentId:null,ordinal,inputDigest:snapshot.input.source.inputDigest,approvalDigest:snapshot.input.source.approvalDigest,referenceDigest:snapshot.referenceDigest,outcome:evaluation?.status??'refused',durationOutcome:selected.duration?.status??'refused',durationInputDigest:selected.durationInputDigest,currency:snapshot.input.currency.code,minorScale:snapshot.input.currency.minorScale,approvalStatus:snapshot.attendanceGroupPolicy?attendancePolicyRecordedApprovalStatus(snapshot):snapshot.input.approval.status,transferable:evaluation?.transferable??false,payableNumerator:selected.duration&&selected.duration.status!=='refused'?selected.duration.payableMinutes.numerator:null,payableDenominator:selected.duration&&selected.duration.status!=='refused'?selected.duration.payableMinutes.denominator:null,reason:why});
-   await tx.insert(s.attendanceOvertimeCalculationEvidence).values({calculationId,tenantId:ctx.tenantId,companyId:source.companyId,inputs:json(input),evidence:json({evaluation:evaluation??null,duration:selected.duration,resolution:selected.resolution,...(snapshot.attendanceGroupPolicy?{attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,policyRawEffectSource:snapshot.policyRawEffectSource,policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,policyApprovalInput:snapshot.policyApprovalInput,policyFormulaInput:snapshot.policyFormulaInput,policyDurationFormulaInput:snapshot.policyDurationFormulaInput,policyPricingFacts:snapshot.policyPricingFacts,policyExecutionProposal:snapshot.policyExecutionProposal,policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyCashReplay:attendancePolicyCashReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot),policyCoverage,policyCapturedCoverage:attendancePolicyCapturedCoverageProposal({tenantId:ctx.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId,date:source.attendanceDate},snapshot)}:{})})});
+   await tx.insert(s.attendanceOvertimeCalculation).values({id:calculationId,tenantId:ctx.tenantId,companyId:source.companyId,sourceId:source.id,...(snapshot.attendanceGroupPolicy?{bindingKind:'attendanceGroupPolicy' as const,policyRevisionId:snapshot.attendanceGroupPolicy.id,policyPartCount:policyParts.length}:{}),versionId:selected.version?.id??null,assignmentId:selected.resolution.status==='selected'?selected.resolution.assignmentId:null,ordinal,inputDigest:snapshot.input.source.inputDigest,approvalDigest:snapshot.input.source.approvalDigest,referenceDigest:snapshot.referenceDigest,outcome:recordedOutcome,durationOutcome:recordedDurationOutcome,durationInputDigest:recordedDurationDigest,currency:snapshot.input.currency.code,minorScale:snapshot.input.currency.minorScale,approvalStatus:snapshot.attendanceGroupPolicy?attendancePolicyRecordedApprovalStatus(snapshot):snapshot.input.approval.status,transferable:recordedTransferable,payableNumerator:recordedNumerator,payableDenominator:recordedDenominator,reason:why});
+   await tx.insert(s.attendanceOvertimeCalculationEvidence).values({calculationId,tenantId:ctx.tenantId,companyId:source.companyId,inputs:json(input),evidence:json({evaluation:evaluation??null,duration:selected.duration,resolution:selected.resolution,...(snapshot.attendanceGroupPolicy?{policyFinancialContract:policyFinancial,policyFinancialDurationContract:policyFinancialDuration,attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,policyRawEffectSource:snapshot.policyRawEffectSource,policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,policyApprovalInput:snapshot.policyApprovalInput,policyFormulaInput:snapshot.policyFormulaInput,policyDurationFormulaInput:snapshot.policyDurationFormulaInput,policyPricingFacts:snapshot.policyPricingFacts,policyExecutionProposal:snapshot.policyExecutionProposal,policyDurationReplay:attendancePolicyDurationReplay(snapshot),policyCashReplay:attendancePolicyCashReplay(snapshot),policyPricingProposal:attendancePolicyPricingProposal(snapshot),policyCoverage,policyCapturedCoverage:attendancePolicyCapturedCoverageProposal({tenantId:ctx.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId,date:source.attendanceDate},snapshot)}:{})})});
    if(policyParts.length)await tx.insert(s.attendanceOvertimePolicyPart).values(policyParts.map(part=>({...part,
     calculationId,tenantId:ctx.tenantId,companyId:source.companyId,inputDigest:snapshot.input.source.inputDigest})));
+   if(preparedPolicy)await tx.insert(s.attendanceOvertimeLine).values(preparedPolicy.lines.map(row=>({
+    tenantId:ctx.tenantId,companyId:source.companyId,calculationId,lineKey:row.line.id,sequence:row.sequence,
+    componentId:row.line.mapping.earningItemId,amountMinorUnits:row.line.amountMinorUnits,evidence:json(row)})));
    if(evaluation&&evaluation.status==='ready'&&evaluation.lines.length)await tx.insert(s.attendanceOvertimeLine).values(evaluation.lines.map((line,sequence)=>({tenantId:ctx.tenantId,companyId:source.companyId,calculationId,lineKey:line.id,sequence,componentId:line.mapping.earningItemId,amountMinorUnits:line.amountMinorUnits,evidence:json(line)})));
    await tx.update(s.attendanceOvertimeSource).set({currentCalculationId:calculationId,revision:ordinal}).where(and(eq(s.attendanceOvertimeSource.id,source.id),eq(s.attendanceOvertimeSource.revision,p.expectedCurrentRevision)));
-   await event(tx,ctx,source.id,'calculation.recorded',{sourceId:source.id,calculationId,ordinal,previousCalculationId:source.currentCalculationId,inputDigest:snapshot.input.source.inputDigest,approvalDigest:snapshot.input.source.approvalDigest,referenceDigest:snapshot.referenceDigest,outcome:evaluation?.status??'refused',versionId:selected.version?.id??null,reason:why},source.employmentId);
-   return {status:'recorded',sourceId:source.id,calculationId,revision:ordinal,...(snapshot.attendanceGroupPolicy?{policyRevisionId:snapshot.attendanceGroupPolicy.id}:{}),evaluation,duration:selected.duration,resolution:selected.resolution};
+   await event(tx,ctx,source.id,'calculation.recorded',{sourceId:source.id,calculationId,ordinal,previousCalculationId:source.currentCalculationId,inputDigest:snapshot.input.source.inputDigest,approvalDigest:snapshot.input.source.approvalDigest,referenceDigest:snapshot.referenceDigest,outcome:recordedOutcome,versionId:selected.version?.id??null,reason:why},source.employmentId);
+   return {status:'recorded',sourceId:source.id,calculationId,revision:ordinal,...(snapshot.attendanceGroupPolicy?{policyRevisionId:snapshot.attendanceGroupPolicy.id,policyFinancialContract:policyFinancial}:{}),evaluation,duration:selected.duration,resolution:selected.resolution};
   },
   async preview(ctx:SessionContext,p:{patternId:string;versionId:string;employmentId:string;date:string}):Promise<OvertimeEvaluation>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);date(p.date);const version=await versionRow(tx,ctx,p.versionId);if(version.patternId!==p.patternId)fail('invalid','Choose a version belonging to this pattern.');const snapshot=await readCanonicalInputsTx(tx,ctx,p);validateSnapshot(snapshot,ctx,p);if(snapshot.attendanceGroupPolicy)fail('unavailable','Dated policy preview requires its complete execution evidence.');const co=snapshot.input.facts.companyId;if(co?.state!=='known'||!co.value)fail('unavailable','The dated company is unavailable.');await administerCompanies(tx,ctx,[co.value]);if(!(await companiesForVersion(tx,version.id)).includes(co.value))fail('permission','The selected employee is outside this pattern company scope.');const definition=validateOvertimePattern(version.definition);await validateReferencesTx(tx,ctx,definition,[co.value],true);return evaluateOvertimePattern(definition,{...snapshot.input,mode:'preview',patternVersionId:version.id,assignmentId:'00000000-0000-0000-0000-000000000000'} as OvertimeInput);});},
   async previewSample(ctx:SessionContext,p:{patternId:string;versionId:string;sample:OvertimeInput}):Promise<OvertimeEvaluation>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);const version=await versionRow(tx,ctx,p.versionId);if(version.patternId!==p.patternId)fail('invalid','Choose a version belonging to this pattern.');await assertVersionAdmin(tx,ctx,version);const definition=validateOvertimePattern(version.definition),sample=json(p.sample) as unknown as OvertimeInput;date(sample.source.date);const zero='00000000-0000-0000-0000-000000000000',provenance={owner:'sample',reference:'sample',asOf:sample.source.date,basis:'sample'};
@@ -310,7 +329,8 @@ export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOv
 export async function readOvertimeCalculationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;revisionId?:string}){uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);if(!source)return null;const permission=await tx.execute(sql`select app.can_admin_payroll_for(${source.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];if(!permission[0]?.allowed)fail('permission','Only an authorized company financial administrator may read calculation evidence.');const id=p.revisionId?uuid(p.revisionId):source.currentCalculationId;if(!id)return {source,calculation:null,evidence:null,lines:[]};const [calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,id),eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);if(!calculation)return null;const [evidence]=await tx.select().from(s.attendanceOvertimeCalculationEvidence).where(eq(s.attendanceOvertimeCalculationEvidence.calculationId,id)).limit(1);const lines=bounded(await tx.select().from(s.attendanceOvertimeLine).where(eq(s.attendanceOvertimeLine.calculationId,id)).orderBy(asc(s.attendanceOvertimeLine.sequence),asc(s.attendanceOvertimeLine.id)).limit(16385),16384);if(calculation.bindingKind==='attendanceGroupPolicy'){
  const policyParts=await tx.select().from(s.attendanceOvertimePolicyPart).where(eq(s.attendanceOvertimePolicyPart.calculationId,id))
   .orderBy(asc(s.attendanceOvertimePolicyPart.sequence)).limit(4);
- if(!recordedAttendancePolicyProposalPartsMatch(source,calculation,evidence,policyParts))
+ if(!recordedAttendancePolicyProposalPartsMatch(source,calculation,evidence,policyParts)
+  ||!recordedAttendancePolicyFinancialContractMatches(source,calculation,evidence,lines))
   fail('unavailable','The complete recorded policy proposal does not bind its parent evidence.');
  return {source,calculation,evidence:evidence??null,lines,policyParts};
 }return {source,calculation,evidence:evidence??null,lines};}
@@ -327,13 +347,30 @@ async function lockExistingOvertimeSourceTx(tx:Tx,ctx:SessionContext,p:{employme
 }
 export async function assertOvertimeSettlementAvailableTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;mode:'cash'|'toil'}){
  const source=await lockExistingOvertimeSourceTx(tx,ctx,p);
- // Both settlement modes stop at this staged boundary. TOIL must not use its original scalar
- // accrual branch to bypass an unresolved policy calculation merely because cash already refuses it.
+ // A policy source must pass its actual current consumer replay before either settlement mode.
+ // Stored duration/approval scalars never substitute for complete fresh source evidence.
  if(source.currentCalculationId){
   const [calculation]=await tx.select({id:s.attendanceOvertimeCalculation.id,bindingKind:s.attendanceOvertimeCalculation.bindingKind})
    .from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId),eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);
   if(!calculation)fail('unavailable','The current overtime calculation is unavailable.');
-  if(calculation.bindingKind==='attendanceGroupPolicy')fail('unavailable','Policy overtime cannot settle before complete execution, approval and independent financial replay.');
+  if(calculation.bindingKind==='attendanceGroupPolicy'){
+   if(p.mode==='cash'){
+    const recorded=await readOvertimeCalculationTx(tx,ctx,p);
+    if(!recorded?.calculation||recorded.calculation.id!==calculation.id||recorded.calculation.outcome!=='ready'
+     ||!recorded.calculation.transferable)fail('unavailable','Only a complete payable policy parent may settle in cash.');
+    const {canonicalOvertimePayrollInputTx}=await import('./overtime-input');
+    const fresh=await canonicalOvertimePayrollInputTx(tx,ctx,p);
+    const expected=attendancePolicyFinancialContract({tenantId:ctx.tenantId,companyId:source.companyId,
+     employmentId:source.employmentId,sourceId:source.id,calculationId:calculation.id,date:source.attendanceDate},fresh);
+    if(expected.state!=='prepared'||!isDeepStrictEqual(expected,(recorded.evidence?.evidence as Record<string,unknown>)?.policyFinancialContract))
+     fail('stale','Current policy source, approval, formula or financial references changed.');
+   }else{
+    const {resolveOvertimeToilDurationTx}=await import('./overtime-toil');
+    const current=await resolveOvertimeToilDurationTx(tx,ctx,p);
+    if(current.kind!=='formula'||current.calculationId!==calculation.id||current.sourceRevision!==source.revision
+     ||current.minutes<=0)fail('unavailable','Only complete current policy duration may settle in TOIL.');
+   }
+  }
  }
  const [existing]=await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,source.id),isNull(s.overtimeSourceSettlement.releasedAt))).limit(1).for('update');if(existing&&existing.mode!==p.mode)fail('conflict','The same overtime source cannot be settled in both cash and TOIL.');if(p.mode==='cash'){const [toil]=await tx.select({id:s.toilAccrual.id}).from(s.toilAccrual).where(and(eq(s.toilAccrual.tenantId,ctx.tenantId),eq(s.toilAccrual.employmentId,p.employmentId),eq(s.toilAccrual.workedDate,p.date),sql`${s.toilAccrual.status}<>'reversed'`)).limit(1);if(toil)fail('conflict','The canonical TOIL owner already holds this overtime day.');}return {source,existing:existing??null};
 }
@@ -426,4 +463,62 @@ export async function readOvertimeDurationDefinitionTx(tx:Tx,ctx:SessionContext,
  assertModuleGate(ctx,'toil');uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);if(!source?.currentCalculationId)return null;
  const [calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId),eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);if(!calculation?.versionId||!calculation.assignmentId)fail('unavailable','The recorded formula duration has no proven selected definition.');const version=await versionRow(tx,ctx,calculation.versionId),companyIds=await companiesForVersion(tx,version.id);const [assignment]=await tx.select().from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.id,calculation.assignmentId),eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternAssignment.versionId,version.id),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)))).limit(1);
  if(version.kind!=='formula'||!version.activatedAt||!assignment||!companyIds.includes(source.companyId))fail('unavailable','The recorded duration definition does not match the source company/date/assignment.');return {source,calculation,definition:validateOvertimePattern(version.definition),companyIds};
+}
+
+/** Independent historical TOIL read. Select only duration/clock/approval evidence in SQL;
+ * retained cash inputs, salary facts, monetary definitions and earning references never leave DB. */
+export async function readOvertimePolicyDurationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ assertModuleGate(ctx,'toil');uuid(p.employmentId);date(p.date);
+ const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),
+  eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);
+ if(!source?.currentCalculationId)return null;
+ const [calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId),
+  eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);
+ if(!calculation)fail('unavailable','The current duration calculation is unavailable.');
+ if(calculation.bindingKind!=='attendanceGroupPolicy')return null;
+ if(calculation.versionId!==null||calculation.assignmentId!==null||calculation.durationOutcome!=='ready'
+  ||calculation.ordinal!==source.revision)fail('unavailable','The policy duration is not ready.');
+ const rows=await tx.execute(sql`select jsonb_build_object(
+  'source',jsonb_build_object('tenantId',inputs#>>'{source,tenantId}','employmentId',inputs#>>'{source,employmentId}',
+   'attendanceId',inputs#>>'{source,attendanceId}','date',inputs#>>'{source,date}'),
+  'attendanceGroupPolicy',evidence->'attendanceGroupPolicy','policyExecutionContext',evidence->'policyExecutionContext',
+  'policyClockSource',evidence->'policyClockSource','policyClockReview',evidence->'policyClockReview',
+  'policyClockMeasurements',evidence->'policyClockMeasurements','policyWorkInput',evidence->'policyWorkInput',
+  'policyApprovalInput',evidence->'policyApprovalInput','policyRawEffectSource',evidence->'policyRawEffectSource',
+  'policyExecutionProposal',evidence->'policyExecutionProposal','policyDurationFormulaInput',evidence->'policyDurationFormulaInput'
+ ) as independent,evidence->'policyFinancialDurationContract' as recorded
+ from attendance_overtime_calculation_evidence where tenant_id=${ctx.tenantId}::uuid
+  and company_id=${source.companyId}::uuid and calculation_id=${calculation.id}::uuid`) as unknown as {
+   independent:import('./policy-duration-replay').IndependentPolicyDurationSource;recorded:unknown}[];
+ const row=rows[0],input=row?.independent;
+ // jsonb_build_object emits SQL NULL for absent optional top-level fields. Normalize only
+ // those optional fields; nested nulls (approval/effect facts) keep their original meaning.
+ if(input)for(const key of ['policyClockSource','policyClockReview','policyClockMeasurements','policyWorkInput',
+  'policyApprovalInput','policyRawEffectSource','policyExecutionProposal','policyExecutionContext','attendanceGroupPolicy'] as const)
+  if(input[key]===null)delete input[key];
+ if(rows.length!==1||!input||input.source.tenantId!==source.tenantId||input.source.employmentId!==source.employmentId
+  ||input.source.attendanceId!==source.attendanceId||input.source.date!==source.attendanceDate)
+  fail('unavailable','The recorded policy duration source is incomplete.');
+ const contract=attendancePolicyFinancialDurationContract({tenantId:source.tenantId,companyId:source.companyId,
+  employmentId:source.employmentId,sourceId:source.id,calculationId:calculation.id,date:source.attendanceDate},input);
+ if(contract.state!=='prepared'||!isDeepStrictEqual(contract,row.recorded))fail('unavailable','The recorded policy duration does not replay.');
+ if(contract.state!=='prepared'||contract.policyRevisionId!==calculation.policyRevisionId
+  ||contract.durationDigest!==calculation.durationInputDigest||contract.approvalStatus!==calculation.approvalStatus
+  ||String(contract.minutes)!==calculation.payableNumerator||calculation.payableDenominator!=='1'
+  ||contract.parts.length!==calculation.policyPartCount)fail('unavailable','The policy duration header does not match its evidence.');
+ const parts=await tx.select().from(s.attendanceOvertimePolicyPart).where(eq(s.attendanceOvertimePolicyPart.calculationId,calculation.id))
+  .orderBy(asc(s.attendanceOvertimePolicyPart.sequence)).limit(4);
+ const fields=['sequence','calendarDate','dayClass','moneyDay','versionId','rawMinutes','allocatedPayableMinutes','sourceIntervals','calendarReferences','durationEvidence'] as const;
+ if(parts.length!==contract.parts.length||parts.some((part,index)=>part.tenantId!==source.tenantId
+  ||part.companyId!==source.companyId||part.inputDigest!==calculation.inputDigest
+  ||!isDeepStrictEqual(Object.fromEntries(fields.map(key=>[key,part[key]])),contract.parts[index])))
+  fail('unavailable','The policy duration requires its exact complete dated parts.');
+ return {source,calculation,contract,independent:input};
+}
+
+/** Acquire before the Payroll batch row. The database checks only already-retained policy
+ * obligations and repeats financial scope after waiting; no source row is locked here. */
+export async function lockOvertimePayrollBatchContextTx(tx:Tx,ctx:SessionContext,batchId:string){
+ uuid(batchId);
+ await tx.execute(sql`select app.lock_overtime_payroll_batch_context(${batchId}::uuid)`);
 }
