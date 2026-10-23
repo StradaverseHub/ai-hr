@@ -4374,7 +4374,9 @@ export async function decideAttendanceCorrection(
 
       // Deferred plans bank only when actual work lands. Immediate decisions bank after their
       // approved status is written, so the canonical formula reader sees this exact approval.
-      if (!deferred&&!policyRawDecision) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
+      if (!deferred) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
+      // Policy raw columns stay unknown. Auto-accrual below reads the newly finalized
+      // independent duration and existing TOIL policy, after the canonical refresh.
       deferredApproval = deferred;
     }
     // Keep v2's writing savepoint active until SQL verifies the actual target-day result.

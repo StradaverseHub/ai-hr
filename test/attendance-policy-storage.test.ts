@@ -988,6 +988,44 @@ describe('immutable non-payable policy part storage',()=>{
   expect(claim.releasedAt).not.toBeNull();
  });
 
+ it.each([{auto:true,extended:true,days:0.63},{auto:false,extended:true,days:null},{auto:true,extended:false,days:null}])(
+  'uses dated credit rules on actual v4 final approval with auto=$auto and ordinary switch=$extended',async({auto,extended,days})=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
+  // Same declared historical group baseline as the other current-day workflow cases.
+  // The approval, immutable final receipt, credit and reservation use the real owners.
+  const f=await fixture('auto','12','actual',true,undefined,555,true,{mode:'none',step:null},120,'earliest',true),p={employmentId:f.employmentId,date:f.sourceDate};
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:auto,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:extended,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional dated auto-credit reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+  const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
+   roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:4,code:'AUTO_DATED_'+randomUUID().slice(0,7),name:'Fictional dated auto-credit approval',
+   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,cc:[],
+   stages:[{name:'Final review',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[reviewer.employmentId]}],hrAlternative:false}]});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:120,reason:'Fictional current mixed-class overtime final approval'});
+  await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId)))[0].status).toBe('approved');
+  expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,request.correctionId))).toHaveLength(1);
+  const [raw]=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId));expect(raw.otMinutes).toBeNull();
+  const credits=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId)).orderBy(asc(s.toilAccrual.id));
+  if(days===null){expect(credits).toEqual([]);return;}
+  expect(credits).toHaveLength(1);expect(credits[0]).toMatchObject({source:'auto_approval',daysCredited:'0.63',dayType:null,workedDayKind:null,
+   datedCredit:{path:'roster',consumptionOrder:'earliestDateFirst',parts:[{dayClass:'normal',days:0.5},{dayClass:'rest',days:0.13}]}});
+  await expect(decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'})).rejects.toThrow('already approved');
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation)throw Error('Expected canonical dated auto-credit source');
+  const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.toilAccrualId,credits[0].id));
+  expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical',coverageCalculationId:read.calculation.id});
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+  await expect(transferOvertimePatternToPayroll(ctx,{...p,expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,
+   batchId:batch.batchId,reason:'Fictional auto-credit excludes duplicate cash'})).rejects.toThrow();
+  await deleteDraftBatch(ctx,{batchId:batch.batchId});await reverseLeaveCredit(ctx,{accrualId:credits[0].id,reason:'Fictional canonical auto-credit release'});
+  expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
+ });
+
  it('banks mixed normal/rest credits once and expires only the unused dated balance after real half-day leave',async()=>{
   await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,555,true,{mode:'none',step:null},120,'earliest',true);
