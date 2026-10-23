@@ -1064,7 +1064,9 @@ export async function bankToilCreditTx(
   if(formula.kind==='formula'&&(p.companyId!==formula.companyId||!Number.isSafeInteger(p.otMinutes)||p.otMinutes<0||p.otMinutes>formula.minutes))throw new ToilNotEligibleError('The Leave Credit must use the proven source company and a reviewed subset of its current formula duration.');
   if(formula.kind==='formula'&&p.workedDayKind==='workday'&&(formula.afterShiftMinutes===null||p.otMinutes>formula.afterShiftMinutes))throw new ToilNotEligibleError('Extended Leave Credit must be a reviewed subset of the recorded post-shift formula duration.');
   // Counted subsets already passed through the canonical break/grace/tier owner. Never expand them here.
-  if(formula.kind==='formula'&&await payrollStartedForDateTx(tx,p.workedDate))throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
+  if(formula.kind==='formula'&&await payrollStartedForDatesTx(tx,[p.workedDate,
+    ...(formula.audit.datedAllocations??[]).filter(part=>part.minutes>0).map(part=>part.date)]))
+    throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
 
   // 2 · the company policy must be enabled.
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, p.companyId)).limit(1);
@@ -2112,13 +2114,23 @@ async function assertAdminForEmploymentTx(tx: Tx, employmentId: string, action: 
  * company's run. The function answers yes/no for the caller's tenant and reveals nothing else.
  */
 async function payrollStartedForDateTx(tx: Tx, workedDate: string): Promise<boolean> {
-  const [y, m] = workedDate.slice(0, 7).split('-').map(Number);
-  const month = workedDate.slice(0, 7);
-  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-  const res = await tx.execute(
-    sql`SELECT app.payroll_run_exists_for_periods(ARRAY[${month}, ${next}]::text[]) AS started`,
-  );
-  return (res as unknown as { started: boolean }[])[0]?.started === true;
+  return payrollStartedForDatesTx(tx,[workedDate]);
+}
+
+/** Each proven dated quantity can fall in its own month or the following cutoff run.
+ * Ask the existing tenant-wide owner once for their union; the source label alone can
+ * miss a next-month allocation carried into the run after that. No Payroll rows leak. */
+async function payrollStartedForDatesTx(tx:Tx,dates:readonly string[]):Promise<boolean>{
+  const periods=new Set<string>();
+  for(const date of dates){
+    const [year,month]=date.slice(0,7).split('-').map(Number);
+    periods.add(date.slice(0,7));
+    periods.add(month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`);
+  }
+  const ordered=[...periods].sort();
+  const res=await tx.execute(sql`SELECT app.payroll_run_exists_for_periods(
+    ARRAY[${sql.join(ordered.map(period=>sql`${period}`),sql`, `)}]::text[]) AS started`);
+  return (res as unknown as {started:boolean}[])[0]?.started===true;
 }
 
 /**

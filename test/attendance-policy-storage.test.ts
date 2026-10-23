@@ -39,7 +39,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false,sourceDateOverride?:string){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -106,11 +106,12 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
  }
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
- if(mixedCompatible)await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:day(sourceOffset+1)});
- await capturedClock(worker.employmentId,day(sourceOffset),'in',financial?'23:00:00':'23:50:00',day(sourceOffset),captureMillisecond);
+ const sourceDate=sourceDateOverride??day(sourceOffset),nextDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+ if(mixedCompatible)await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:nextDate});
+ await capturedClock(worker.employmentId,sourceDate,'in',financial?'23:00:00':'23:50:00',sourceDate,captureMillisecond);
  const endMinute=1380+financialMinutes,financialOut=`${String(Math.floor(endMinute/60)%24).padStart(2,'0')}:${String(endMinute%60).padStart(2,'0')}:00`;
- await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?financialOut:'00:10:00',day(sourceOffset+1),captureMillisecond);
- return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset),earningId:earning.id,compatibleVersionId};
+ await capturedClock(worker.employmentId,sourceDate,'out',financial?financialOut:'00:10:00',nextDate,captureMillisecond);
+ return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate,earningId:earning.id,compatibleVersionId};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 async function header(tx:Tx,f:Fixture,count:number,patch:Partial<typeof s.attendanceOvertimeCalculation.$inferInsert>={}){
@@ -1009,6 +1010,30 @@ describe('immutable non-payable policy part storage',()=>{
   expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical'});
   await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional rounded TOIL reversal'});
   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
+ });
+
+ it('refuses rounded TOIL when a dated next-month allocation already belongs to a later cutoff Payroll period',async()=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
+  const today=new Date(todayInKualaLumpur()+'T00:00:00Z'),
+   sourceDate=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth()+2,0)).toISOString().slice(0,10),
+   childDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10),
+   carriedPeriod=new Date(Date.UTC(Number(childDate.slice(0,4)),Number(childDate.slice(5,7)),1)).toISOString().slice(0,7);
+  const f=await fixture('auto','12','actual',false,undefined,555,true,{mode:'up',step:30},125,'latest',false,sourceDate);
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  const proof=await withTenant(ctx,tx=>resolveOvertimeToilDurationTx(tx,ctx,{employmentId:f.employmentId,date:sourceDate}));
+  expect(proof).toMatchObject({kind:'formula',minutes:150,audit:{datedAllocations:[
+   {date:sourceDate,minutes:60},{date:childDate,minutes:90}]}});
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:carriedPeriod});
+  await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:sourceDate})).rejects.toThrow('Payroll for this worked period has already started');
+  expect(await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId))).toEqual([]);
+  const source=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:sourceDate}));
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id))).toEqual([]);
+  await deleteDraftBatch(ctx,{batchId:batch.batchId});
+  await accrueToil(ctx,{employmentId:f.employmentId,workedDate:sourceDate});
+  expect(await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId))).toMatchObject([
+   {workedDate:sourceDate,otMinutes:150,daysCredited:'1.00'}]);
  });
 
  it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{
