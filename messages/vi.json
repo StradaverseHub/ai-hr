@@ -22342,7 +22342,7 @@
     "noAttachments": "Không có tài liệu hỗ trợ.",
     "supportingFile": "Tệp hỗ trợ",
     "upload": "Tải tài liệu lên",
-    "attachmentHint": "PDF, DOCX, văn bản thuần, PNG hoặc JPEG. Tối đa 5 MB mỗi tệp, 20 tệp mỗi bản sửa đổi. Tải xuống cần quyền nhân sự tại công ty này.",
+    "attachmentHint": "PDF, DOCX, văn bản thuần, PNG hoặc JPEG. Tối đa 2 MB mỗi tệp, 20 tệp mỗi bản sửa đổi. Tải xuống cần quyền nhân sự tại công ty này.",
     "history": "Lịch sử kiểm toán",
     "actor": "Người thực hiện",
     "changeDetails": "Trước và sau",
@@ -22646,7 +22646,12 @@
     },
     "previous": "Trước",
     "next": "Tiếp",
-    "pageNumber": "Trang {page}"
+    "pageNumber": "Trang {page}",
+    "attachmentSaveHint": "Lưu bản nháp trước khi thêm tệp đính kèm. Tải lên sẽ mở lại tài liệu đã lưu.",
+    "recordReceipt": "Ghi nhận đã nhận theo báo cáo",
+    "receiptDetails": "Người nhận / chi tiết nhận",
+    "receiptOn": "Ngày nhận",
+    "receiptHint": "Nhân sự ghi nhận người được nêu đã nhận bản sửa đổi này. Chỉ ghi nhận việc nhận, không phải chữ ký đã xác minh của người đảm nhiệm."
   },
   "rewardsAccess": {
     "title": "Quyền truy cập Thưởng",

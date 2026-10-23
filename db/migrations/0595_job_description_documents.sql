@@ -20,6 +20,12 @@ CREATE TABLE job_document_revision (
  version integer NOT NULL CHECK(version>0), status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','approved')),
  lock_version integer NOT NULL DEFAULT 1, title text NOT NULL, document_owner text NOT NULL DEFAULT '',
  org jsonb NOT NULL DEFAULT '{}', org_labels jsonb NOT NULL DEFAULT '{}', answers jsonb NOT NULL DEFAULT '{}', definition jsonb NOT NULL,
+ business_unit_id uuid GENERATED ALWAYS AS (nullif(org->>'businessUnit','')::uuid) STORED REFERENCES business_unit(id),
+ department_id uuid GENERATED ALWAYS AS (nullif(org->>'department','')::uuid) STORED REFERENCES department(id),
+ position_id uuid GENERATED ALWAYS AS (nullif(org->>'position','')::uuid) STORED REFERENCES position(id),
+ grade_id uuid GENERATED ALWAYS AS (nullif(org->>'grade','')::uuid) STORED REFERENCES job_grade(id),
+ location_id uuid GENERATED ALWAYS AS (nullif(org->>'location','')::uuid) STORED REFERENCES location(id),
+ reports_to_position_id uuid GENERATED ALWAYS AS (nullif(org->>'reportsTo','')::uuid) STORED REFERENCES position(id),
  effective_on date, review_on date, reason text NOT NULL DEFAULT '', approver_id uuid REFERENCES app_user(id),
  prepared_by uuid NOT NULL REFERENCES app_user(id), last_edited_by uuid NOT NULL REFERENCES app_user(id), contributor_ids uuid[] NOT NULL DEFAULT '{}',
  submitted_by uuid REFERENCES app_user(id), submitted_at timestamptz, approved_by uuid REFERENCES app_user(id), approved_at timestamptz,
@@ -43,7 +49,7 @@ CREATE TABLE job_document_review (
 CREATE TABLE job_document_attachment (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),revision_id uuid NOT NULL,
  filename text NOT NULL CHECK(length(filename) BETWEEN 1 AND 180),mime_type text NOT NULL CHECK(mime_type IN ('application/pdf','text/plain','image/png','image/jpeg','application/vnd.openxmlformats-officedocument.wordprocessingml.document')),
- content bytea NOT NULL CHECK(octet_length(content) BETWEEN 1 AND 5242880), created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
+ content bytea NOT NULL CHECK(octet_length(content) BETWEEN 1 AND 2097152), created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(tenant_id,revision_id) REFERENCES job_document_revision(tenant_id,id) ON DELETE CASCADE
 );
 --> statement-breakpoint

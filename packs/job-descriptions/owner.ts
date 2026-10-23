@@ -5,7 +5,7 @@ import { organisationChoiceLabel as label, organisationChoiceLabels } from '@/li
 import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
 import { businessUnit, company, department, jobGrade, location, position, profileOption } from '@/db/schema';
 import { labelCompanyIdsSql, labelUsableByCompany, lockLabelCriteriaTx, visibleLabelIdsCondition } from '@/core/system-labels';
-import { DEFAULT_FORM, JobDocumentError, normalizedJobCode, projectJobAnswers, validateDefinition, validateInput, type FormDefinition, type JobInput, type OrgAssignment } from './model';
+import { DEFAULT_FORM, JobDocumentError, normalizedJobCode, projectJobAnswers, validDate, validateDefinition, validateInput, type FormDefinition, type JobInput, type OrgAssignment } from './model';
 export type MasterOption = {
     value: string;
     label: string;
@@ -284,15 +284,21 @@ export async function transitionJob(ctx: SessionContext, p: {
     jobId: string;
     revisionId: string;
     lockVersion: number;
-    action: 'submit' | 'review' | 'return' | 'approve' | 'revise' | 'inactivate' | 'reactivate' | 'delete';
+    action: 'submit' | 'review' | 'return' | 'approve' | 'revise' | 'inactivate' | 'reactivate' | 'delete' | 'acknowledge';
     comments?: string;
+    receiptOn?: string;
 }) {
     const by = actor(ctx);
     return jobTenant(ctx, async (tx) => {
         const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true);
+        await scope(tx,ctx,job.company_id);
         if (r.lock_version !== p.lockVersion)
             throw new JobDocumentError('This document changed. Reopen it before continuing');
         const reviews = await rows<Review>(tx, sql `select * from job_document_review where revision_id=${r.id}::uuid order by id`);
+        if(p.action==='acknowledge'){
+            if(r.status!=='approved'||!p.comments?.trim()||p.comments.length>2000||!p.receiptOn||!validDate(p.receiptOn))throw new JobDocumentError('Record the recipient, receipt date and acknowledgement details for an approved revision');
+            await audit(tx,ctx,job.id,r.id,'holder.acknowledged',null,{recipientDetails:p.comments,receiptOn:p.receiptOn,recordedBy:by,meaning:'receipt-only; reported by HR; not a verified holder signature'});return;
+        }
         if (p.action === 'delete') {
             if (r.status !== 'draft' || r.version !== 1 || r.submitted_at)
                 throw new JobDocumentError('Only an unused initial draft can be deleted');
@@ -366,8 +372,8 @@ export function validateJobAttachment(file: {
     name: string;
     type: string;
     size: number;
-}, bytes: Uint8Array) { if (!TYPES.has(file.type) || file.size < 1 || file.size > 5242880 || bytes.length !== file.size || !file.name.trim() || file.name.length > 180 || /[\x00-\x1f/\\]/.test(file.name))
-    throw new JobDocumentError('Use a PDF, DOCX, plain text, PNG or JPEG file up to 5 MB'); const hex = Buffer.from(bytes.subarray(0, 8)).toString('hex'); if ((file.type === 'application/pdf' && !hex.startsWith('255044462d')) || (file.type === 'image/png' && hex !== '89504e470d0a1a0a') || (file.type === 'image/jpeg' && !hex.startsWith('ffd8ff')) || (file.type.includes('wordprocessingml') && !hex.startsWith('504b0304')) || (file.type === 'text/plain' && bytes.includes(0)))
+}, bytes: Uint8Array) { if (!TYPES.has(file.type) || file.size < 1 || file.size > 2097152 || bytes.length !== file.size || !file.name.trim() || file.name.length > 180 || /[\x00-\x1f/\\]/.test(file.name))
+    throw new JobDocumentError('Use a PDF, DOCX, plain text, PNG or JPEG file up to 2 MB'); const hex = Buffer.from(bytes.subarray(0, 8)).toString('hex'); if ((file.type === 'application/pdf' && !hex.startsWith('255044462d')) || (file.type === 'image/png' && hex !== '89504e470d0a1a0a') || (file.type === 'image/jpeg' && !hex.startsWith('ffd8ff')) || (file.type.includes('wordprocessingml') && !hex.startsWith('504b0304')) || (file.type === 'text/plain' && bytes.includes(0)))
     throw new JobDocumentError('File content does not match its type'); }
 export async function attachJobDocument(ctx: SessionContext, p: {
     jobId: string;

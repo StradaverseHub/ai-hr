@@ -25,11 +25,11 @@ export async function saveDraftAction(_state: SaveState, fd: FormData): Promise<
     }
     redirect(`${BASE}/${id}?saved=1`);
 }
-export async function transitionAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); const action = text(fd, 'transition'); if (!['submit', 'review', 'return', 'approve', 'revise', 'inactivate', 'reactivate', 'delete'].includes(action))
+export async function transitionAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); const action = text(fd, 'transition'); if (!['submit', 'review', 'return', 'approve', 'revise', 'inactivate', 'reactivate', 'delete', 'acknowledge'].includes(action))
     return; let error = ''; try {
     if (action === 'delete' && text(fd, 'confirm') !== 'yes')
         throw new Error('Confirm draft deletion');
-    await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments') });
+    await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments'), receiptOn:text(fd,'receiptOn') });
 }
 catch (e) {
     error = failure(e);
@@ -45,8 +45,8 @@ catch (e) {
 } redirect(`${BASE}/configuration?company=${companyId}&saved=1`); }
 export async function uploadAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); let error = ''; try {
     const file = fd.get('attachment');
-    if (!(file instanceof File) || file.size > 5242880)
-        throw new Error('Choose a file up to 5 MB');
+    if (!(file instanceof File) || file.size > 2097152)
+        throw new Error('Choose a file up to 2 MB');
     await attachJobDocument(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), name: file.name, type: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });
 }
 catch (e) {

@@ -22342,7 +22342,7 @@
     "noAttachments": "No supporting documents.",
     "supportingFile": "Supporting file",
     "upload": "Upload document",
-    "attachmentHint": "PDF, DOCX, plain text, PNG or JPEG. Up to 5 MB each; maximum 20 per revision. Download requires HR access to this company.",
+    "attachmentHint": "PDF, DOCX, plain text, PNG or JPEG. Up to 2 MB each; maximum 20 per revision. Download requires HR access to this company.",
     "history": "Audit history",
     "actor": "Actor",
     "changeDetails": "Before and after",
@@ -22646,7 +22646,12 @@
     },
     "previous": "Previous",
     "next": "Next",
-    "pageNumber": "Page {page}"
+    "pageNumber": "Page {page}",
+    "attachmentSaveHint": "Save your draft before adding attachments. Uploading reopens the saved document.",
+    "recordReceipt": "Record reported receipt",
+    "receiptDetails": "Recipient / receipt details",
+    "receiptOn": "Receipt date",
+    "receiptHint": "HR records that the named recipient received this revision. This records receipt only and is not a verified job-holder signature."
   },
   "rewardsAccess": {
     "title": "Rewards access",

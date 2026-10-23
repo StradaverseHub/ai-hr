@@ -22342,7 +22342,7 @@
     "noAttachments": "无支持文件。",
     "supportingFile": "支持文件",
     "upload": "上传文件",
-    "attachmentHint": "PDF、DOCX、纯文本、PNG 或 JPEG。每个文件不超过5 MB，每次修订最多20个。下载需要此公司的人力资源访问权限。",
+    "attachmentHint": "PDF、DOCX、纯文本、PNG 或 JPEG。每个文件不超过2 MB，每次修订最多20个。下载需要此公司的人力资源访问权限。",
     "history": "审计历史",
     "actor": "操作人",
     "changeDetails": "变更前后",
@@ -22646,7 +22646,12 @@
     },
     "previous": "上一页",
     "next": "下一页",
-    "pageNumber": "第 {page} 页"
+    "pageNumber": "第 {page} 页",
+    "attachmentSaveHint": "添加附件前请保存草稿。上传后将重新打开已保存的文件。",
+    "recordReceipt": "记录报告的收悉情况",
+    "receiptDetails": "收件人 / 收悉详情",
+    "receiptOn": "收悉日期",
+    "receiptHint": "人力资源人员记录指定收件人已收到此修订。此记录仅表示收悉，并非经验证的在岗人员签名。"
   },
   "rewardsAccess": {
     "title": "奖励访问权限",

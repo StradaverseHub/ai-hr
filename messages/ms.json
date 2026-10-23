@@ -22342,7 +22342,7 @@
     "noAttachments": "Tiada dokumen sokongan.",
     "supportingFile": "Fail sokongan",
     "upload": "Muat naik dokumen",
-    "attachmentHint": "PDF, DOCX, teks biasa, PNG atau JPEG. Sehingga 5 MB setiap fail; maksimum 20 bagi setiap pindaan. Muat turun memerlukan akses HR kepada syarikat ini.",
+    "attachmentHint": "PDF, DOCX, teks biasa, PNG atau JPEG. Sehingga 2 MB setiap fail; maksimum 20 bagi setiap pindaan. Muat turun memerlukan akses HR kepada syarikat ini.",
     "history": "Sejarah audit",
     "actor": "Pelaku",
     "changeDetails": "Sebelum dan selepas",
@@ -22646,7 +22646,12 @@
     },
     "previous": "Sebelumnya",
     "next": "Seterusnya",
-    "pageNumber": "Halaman {page}"
+    "pageNumber": "Halaman {page}",
+    "attachmentSaveHint": "Simpan draf sebelum menambah lampiran. Muat naik membuka semula dokumen yang disimpan.",
+    "recordReceipt": "Rekod penerimaan yang dilaporkan",
+    "receiptDetails": "Penerima / butiran penerimaan",
+    "receiptOn": "Tarikh penerimaan",
+    "receiptHint": "HR merekodkan penerima yang dinamakan menerima pindaan ini. Ini merekodkan penerimaan sahaja dan bukan tandatangan penyandang kerja yang disahkan."
   },
   "rewardsAccess": {
     "title": "Akses Ganjaran",

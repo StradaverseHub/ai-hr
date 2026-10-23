@@ -90,7 +90,7 @@ for (const section of DEFAULT_FORM.sections)
         if (choices[`${section.id}.${field.id}`])
             field.options = choices[`${section.id}.${field.id}`];
 export function normalizedJobCode(code: string): string { return code.normalize('NFKC').trim().replace(/\s+/g, ' ').toUpperCase(); }
-const ID = /^[a-z][a-zA-Z0-9]{0,63}$/;
+const ID = /^(?!(?:constructor|prototype|toString|valueOf|hasOwnProperty)$)[a-z][a-zA-Z0-9]{0,63}$/;
 export function validateDefinition(value: unknown): FormDefinition {
     if (!value || typeof value !== 'object')
         throw new JobDocumentError('Invalid form definition');
@@ -166,12 +166,12 @@ export function validateAnswers(def: FormDefinition, answers: Answers, complete 
         }
     }
 }
-export function validDate(value: string): boolean { if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+export function validDate(value: string): boolean { if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(value))
     return false; const d = new Date(`${value}T12:00:00Z`); return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value; }
 export function validateInput(x: JobInput, definition: FormDefinition, complete = false): void {
     if (!x || typeof x.title !== 'string' || !x.title.trim() || x.title.length > 200 || typeof x.jobCode !== 'string' || !normalizedJobCode(x.jobCode) || x.jobCode.length > 80 || typeof x.owner !== 'string' || x.owner.length > 200 || typeof x.reason !== 'string' || x.reason.length > 2000)
         throw new JobDocumentError('Enter a Job ID, title and valid document details');
-    if (!x.org || typeof x.org !== 'object' || Object.entries(x.org).some(([k, v]) => !['businessUnit', 'department', 'section', 'team', 'position', 'grade', 'family', 'location', 'reportsTo', 'employmentType'].includes(k) || typeof v !== 'string' || v.length > 200))
+    if (!x.org || typeof x.org !== 'object' || Array.isArray(x.org) || Object.entries(x.org).some(([k, v]) => !['businessUnit', 'department', 'section', 'team', 'position', 'grade', 'family', 'location', 'reportsTo', 'employmentType'].includes(k) || typeof v !== 'string' || v.length > 200))
         throw new JobDocumentError('Invalid organizational assignment');
     for (const day of [x.effectiveOn, x.reviewOn])
         if (day && !validDate(day))

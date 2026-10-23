@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
@@ -11,10 +10,7 @@ import { exportJobText } from '../packs/job-descriptions/export';
 let b: Base;
 let reviewer: SessionContext;
 let approver: SessionContext;
-beforeAll(async () => { await migrateTestDb(); const [r] = await owner.db.execute(sql `select to_regclass('public.job_document') as name`); if (!r.name) {
-    for (const part of readFileSync(new URL('../db/migrations/0595_job_description_documents.sql', import.meta.url), 'utf8').split('--> statement-breakpoint').map(v => v.trim()).filter(Boolean))
-        await owner.db.execute(sql.raw(part));
-} });
+beforeAll(async()=>{await migrateTestDb();const[row]=await owner.db.execute(sql`select to_regclass('public.job_document') as name`);expect(row.name).toBe('job_document');});
 beforeEach(async () => { await resetDb(); b = await seedBase();await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`); reviewer = await principal('Reviewer'); approver = await principal('Approver'); });
 afterAll(async()=>{try{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`);}finally{await closeAll();}});
 async function principal(name: string, companyId: string | null = null): Promise<SessionContext> { const [p] = await owner.db.insert(person).values({ tenantId: b.tenantId, fullName: name }).returning(); const [u] = await owner.db.insert(appUser).values({ tenantId: b.tenantId, personId: p.id, workosUserId: randomUUID() }).returning(); await owner.db.insert(roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, role: 'hr_admin', companyId }); return { ...adminCtx(b), userId: u.id, grants: [{ role: 'hr_admin', companyId }] }; }
@@ -59,4 +55,15 @@ it('refuses fresh maintain/configuration denials despite cached HR role membersh
 });
 it('rechecks named review eligibility and disabled login at decision time',async()=>{
  const saved=await saveJobDraft(adminCtx(b),input());await command(adminCtx(b),saved.jobId,'submit');await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,reviewer.userId!));await expect(command(reviewer,saved.jobId,'review')).rejects.toThrow();const d=await readJobDocument(adminCtx(b),saved.jobId);expect(d.reviews[0].decision).toBe('pending');
+});
+it('rejects wrong-content, executable types and attachments above the native transport limit',async()=>{
+ const saved=await saveJobDraft(adminCtx(b),input());const d=await readJobDocument(adminCtx(b),saved.jobId);const identity={jobId:saved.jobId,revisionId:d.revision.id,lockVersion:d.revision.lock_version};
+ for(const file of [{name:'fake.pdf',type:'application/pdf',bytes:new TextEncoder().encode('not a PDF')},{name:'script.html',type:'text/html',bytes:new TextEncoder().encode('<script>bad()</script>')},{name:'large.txt',type:'text/plain',bytes:new Uint8Array(2097153)}])await expect(attachJobDocument(adminCtx(b),{...identity,...file})).rejects.toThrow();
+ expect((await readJobDocument(adminCtx(b),saved.jobId)).attachments).toEqual([]);
+});
+it('holds relational master references so deleting a referenced master cannot break document history',async()=>{
+ const saved=await saveJobDraft(adminCtx(b),input());await expect(owner.db.delete(department).where(eq(department.id,b.deptA))).rejects.toThrow();expect((await readJobDocument(adminCtx(b),saved.jobId)).revision.org.department).toBe(b.deptA);
+});
+it('records optional reported receipt as its own attributable event without modifying approved content',async()=>{
+ const saved=await approved();const before=await readJobDocument(adminCtx(b),saved.jobId);await transitionJob(adminCtx(b),{jobId:saved.jobId,revisionId:before.revision.id,lockVersion:before.revision.lock_version,action:'acknowledge',comments:'Finance Analyst role holder: reported receipt',receiptOn:todayInKualaLumpur()});const after=await readJobDocument(adminCtx(b),saved.jobId);expect(after.revision).toEqual(before.revision);expect(after.events.some(event=>event.action==='holder.acknowledged'&&event.actor_id===b.adminUserId)).toBe(true);
 });
