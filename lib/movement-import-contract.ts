@@ -87,7 +87,7 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
   if(!visible.has(field))continue;
   if(!value&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
   if(!value)continue;
-  if(['effectiveDate','endDate','resignationDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
+  if(['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
   else if(!['kind','companyId','businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId'].includes(field)){
    const issue=personnelScalarIssue(personnelFormField(MOVEMENT_FORM_IDS[field]),value);if(issue)issues.push(`invalid_${issue}:${field}`);
   }

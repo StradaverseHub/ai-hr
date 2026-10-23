@@ -977,6 +977,8 @@ async function analyze(
     catalog,
   });
 
+  if(['tender_resignation_date','resignation_date','last_working_date'].some(field=>presentColumns.has(field)))fileErrors.push('Resignation dates must be recorded through Movement import. Remove these columns from the employee file. Nothing was imported.');
+
   for(const dependent of dependents)if(dependent.result.ok) {
     try { await assertDependentsValid(ctx,[dependent.add]); }
     catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }

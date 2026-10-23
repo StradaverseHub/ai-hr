@@ -1,3 +1,4 @@
+import { hasExitDateAuthorityTx } from './exit-date-authority';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
@@ -2628,12 +2629,9 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   // `joinDateChange` movement tag), so the Employment Dates form can no longer set it. hiredOn was never in
   // this list (it is NOT NULL and has its own block, likewise now movement-gated).
   'confirmationDate',
-  'resignationDate',
   // 955c7de4 — new lifecycle dates. finalConfirmationDate is DERIVED (not in this list; computed on save).
   // d27961e3 — extendedConfirmationDate is NOT in this list either: it is movement-only (accepted below
   // solely under the probationExtension movement tag), so the Employment Dates form can no longer set it.
-  'tenderResignationDate',
-  'lastWorkingDate',
   // 8590615a — the contract period. contractEndDate is the pre-existing employment-review column (0110);
   // it is accepted here so the Employment tab's Contract Information block and the Others tab's Employment
   // Review row write the SAME date rather than two copies of it.
@@ -2791,6 +2789,15 @@ export async function setEmploymentInfo(
     const v = raw == null ? null : String(raw).trim();
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set[f] = v || null;
+  }
+  // Exit dates are a Movement-owned effect. An arbitrary movement tag or a stale
+  // general form cannot manufacture the transaction-bound authority held by apply/reverse.
+  if (hasExitDateAuthorityTx(outerTx,p.employmentId)) {
+    for (const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const) {
+      const raw=p[field];if(raw===undefined)continue;const value=raw?.trim()||null;
+      if(value&&!isCalendarDate(value))throw new Error('Enter a valid date (YYYY-MM-DD).');
+      set[field]=value;
+    }
   }
   // d27961e3 — Extended Confirmation Date left the Employment Dates form: probation extensions are managed
   // EXCLUSIVELY through the Movement module (createMovementEvent 'probationExtension' delegates here with the

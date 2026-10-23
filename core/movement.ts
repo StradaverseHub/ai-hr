@@ -1,3 +1,4 @@
+import { withExitDateAuthorityTx } from './exit-date-authority';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -284,7 +285,7 @@ export type MovementRowSummary = Pick<
   'id' | 'kind' | 'effectiveDate' | 'entryDate' | 'status' | 'endDate' | 'remarks' | 'reversed'
 >;
 
-export type MovementIntentField = 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
+export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiveDate' | 'company' | 'businessUnit' | 'department' | 'position' | 'location' |
   'grade' | 'employmentType' | 'manager' | 'basicSalary' | 'currency' | 'payMode' | 'paymentTerm' | MovementFlatField;
 
 /** Saved targets only: not an applied snapshot or an invented historical before-state. */
@@ -745,7 +746,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           kind === 'confirmation'
             ? ((after.confirmationDate as string | null) ?? occDate)
             : kind === 'resignation'
-              ? ((after.tenderResignationDate as string | null) ?? occDate)
+              ? (mv?.effectiveDate ?? (after.tenderResignationDate as string | null) ?? occDate)
               : kind === 'joinDateChange'
                 ? ((after.joinDate as string | null) ?? occDate)
                 : kind === 'groupJoinDateCorrection'
@@ -982,7 +983,7 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  * the event's own `fields`; it is never restored directly — putting the confirmation date back re-derives
  * it, which is also what keeps it consistent with an extended probation date this movement never touched.
  *
- * The other lifecycle dates stay out of scope, unchanged: resignation, probation extension and the two
+ * Resignation has its own scoped reversible family below. Probation extension and the two
  * join dates are moved by kinds that are NOT comparison kinds, they derive from one another, and each is
  * maintained on its own screen with its own gates.
  */
@@ -1005,6 +1006,7 @@ const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'fin
  * Widening a correction gate is not a side effect an Entity Transfer gets to have.
  */
 const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  resignation: ['tenderResignationDate','resignationDate','lastWorkingDate'],
   entityTransfer: ['joinDate'],
 };
 
@@ -1038,7 +1040,7 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
       (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, behaviour)),
   );
   const canReverse = supported && !row.reversed;
-  const canEdit = canReverse && (!stateChanging || (isComparisonKind(behaviour) && isLatest));
+  const canEdit = canReverse && (!stateChanging || ((isComparisonKind(behaviour) || behaviour==='resignation') && isLatest));
   return { canReverse, canEdit, stateChanging };
 }
 
@@ -1452,7 +1454,7 @@ async function pendingIntentTx(tx: Tx, tenantId: string, event: RawEvent): Promi
       .where(and(eq(employment.tenantId, tenantId), eq(person.tenantId, tenantId), eq(employment.id, id))).limit(1);
     return row?.name ?? null;
   });
-  for (const field of ['employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS] as const) {
+  for (const field of ['tenderResignationDate','resignationEffectiveDate','employmentType', 'basicSalary', 'currency', 'payMode', 'paymentTerm', ...MOVEMENT_FLAT_FIELDS] as const) {
     if (!(field in input)) continue; // Omitted is not a clear and not today's value.
     const value: unknown = Reflect.get(input, field);
     if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
@@ -1484,6 +1486,11 @@ export function movementPendingEditInput(ctx:SessionContext,employmentId:string,
     const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${emp.companyId}::uuid) as ok`);
     if(!scope?.ok)return {unavailable:true};
     const row=rows.find(r=>r.id===movementId);
+    if(row?.kind==='resignation'&&statusOf(row)==='applied'){
+      const leg=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
+      const after=(leg?.payload as {after?:Record<string,string|null>})?.after;
+      return after?{values:{tenderResignationDate:after.tenderResignationDate??null,resignationEffectiveDate:after.resignationDate??null},unavailable:false}:{unavailable:true};
+    }
     if(!row?.scheduled||statusOf(row)!=='pending')return null;
     const event=events.find(e=>e.id===row.id),payload=event?.payload;
     const input=payload&&typeof payload==='object'&&'input' in payload?payload.input:undefined;
@@ -1768,6 +1775,10 @@ export type CreateMovementInput = {
    * column the `resignation` movement kind writes, so the two paths agree on where that date lives.
    */
   resignationDate?: string | null;
+  /** Resignation's explicit tendered date; old scheduled inputs retain their original effective-date meaning. */
+  tenderResignationDate?: string | null;
+  /** Actual Employment resignation date. Distinct from the historical termination resignationDate input. */
+  resignationEffectiveDate?: string | null;
   /** Blacklist kind: true (default) sets the blacklist, false clears it — the old card's two actions. */
   blacklisted?: boolean;
   /**
@@ -2232,6 +2243,39 @@ async function scheduleMovementTx(
   return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate };
 }
 
+// Resignation information is a lifecycle effect, not a termination or final-pay command.
+const RESIGNATION_INFO_FIELDS=['tenderResignationDate','resignationDate','lastWorkingDate'] as const;
+async function resignationValuesTx(tx:Tx,p:CreateMovementInput){
+  await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
+  const [before]=await tx.select({hiredOn:employment.hiredOn,tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,p.employmentId)).for('update');
+  if(!before)throw new Error('Employment not found.');
+  if(!isCalendarDate(p.effectiveDate)||p.effectiveDate<before.hiredOn)throw new Error('A valid effective date on or after the hire date is required.');
+  const value=(raw:string|null|undefined,current:string|null)=>raw===undefined?current:raw?.trim()||null;
+  const next={tenderResignationDate:value(p.tenderResignationDate,p.effectiveDate),resignationDate:value(p.resignationEffectiveDate,before.resignationDate),lastWorkingDate:value(p.endDate,before.lastWorkingDate)};
+  for(const date of Object.values(next))if(date!==null&&(!isCalendarDate(date)||date<before.hiredOn))throw new Error('Resignation dates must be valid dates on or after the hire date.');
+  if(next.tenderResignationDate&&next.resignationDate&&next.tenderResignationDate>next.resignationDate||next.resignationDate&&next.lastWorkingDate&&next.resignationDate>next.lastWorkingDate||next.tenderResignationDate&&next.lastWorkingDate&&next.tenderResignationDate>next.lastWorkingDate)throw new Error('Resignation dates must follow tender date, resignation date, then last working date.');
+  const changes=RESIGNATION_INFO_FIELDS.filter(field=>before[field]!==next[field]).map(field=>({field,before:before[field],after:next[field]}));
+  const from=[p.effectiveDate,...changes.flatMap(change=>[change.before,change.after]).filter((date):date is string=>!!date)].sort()[0];
+  if(changes.length&&overlapsClosedPeriod(await closedPeriodsTx(tx,p.employmentId),from,null))throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
+  return {before,next,changes};
+}
+async function applyResignationMovementTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,opts?:{groupId?:string;allSecondary?:boolean}){
+  const {next,changes}=await resignationValuesTx(tx,p);if(!changes.length)throw new MovementNoChangeError();
+  // Changing exit thresholds can affect any later closed payroll period. Apply and reverse share
+  // the existing Movement guard; no final-pay, assignment-end or encashment owner is invoked here.
+  const groupId=opts?.groupId??randomUUID();
+  await withExitDateAuthorityTx(tx,p.employmentId,()=>setEmploymentInfo(ctx,{employmentId:p.employmentId,...next,movement:{type:'resignation',groupId,effectiveDate:p.effectiveDate,endDate:next.lastWorkingDate,remarks:p.remarks?.trim()||null,secondary:opts?.allSecondary}},tx));
+  return {employmentId:p.employmentId,groupId,changes};
+}
+async function recordResignationMovementTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput){
+  const {next,changes}=await resignationValuesTx(tx,p);
+  if(!changes.length)throw new MovementNoChangeError();
+  if(p.effectiveDate<=todayInKualaLumpur())return applyResignationMovementTx(tx,ctx,p);
+  const groupId=randomUUID();
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.movement.scheduled',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{type:'resignation',effectiveDate:p.effectiveDate,endDate:next.lastWorkingDate,remarks:p.remarks?.trim()||null,fields:RESIGNATION_INFO_FIELDS,input:{tenderResignationDate:next.tenderResignationDate,resignationEffectiveDate:next.resignationDate},movement:{type:'resignation',groupId,effectiveDate:p.effectiveDate,endDate:next.lastWorkingDate,remarks:p.remarks?.trim()||null}}});
+  return {employmentId:p.employmentId,scheduled:true as const,effectiveDate:p.effectiveDate};
+}
+
 // ───────────── Termination — ae9350f2 ─────────────
 //
 // Termination is NOT greenfield: `termination` has been a MOVEMENT_KIND since 78853b97 and the projection
@@ -2458,7 +2502,7 @@ async function applyTerminationTx(
   // Leg 2 — SECONDARY. The exit dates. lastWorkingDate is what flips Employee Status to Resigned on the
   // day the person actually stops working when that precedes the termination date
   // (deriveEmploymentStatus reads the EARLIEST of the three end dates).
-  await setEmploymentInfo(
+  await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(
     ctx,
     {
       employmentId,
@@ -2467,7 +2511,7 @@ async function applyTerminationTx(
       movement: tag(),
     },
     tx,
-  );
+  ));
 
   const changes: MovementChange[] = [
     { field: 'terminatedOn', before: null, after: plan.effectiveDate },
@@ -2668,12 +2712,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
       },tx);
 
     case 'resignation':
-      return setEmploymentInfo(ctx, {
-        employmentId: p.employmentId,
-        tenderResignationDate: p.effectiveDate,
-        ...(endDate ? { lastWorkingDate: endDate } : {}),
-        movement: { type: 'resignation', remarks, endDate, groupId: randomUUID() },
-      },tx);
+      return recordResignationMovementTx(tx,ctx,p);
 
     // ae9350f2 — Termination. Validated once, then either applied now or scheduled for its effective date;
     // see the "Termination" section above for why a future-dated one must not write anything today.
@@ -2851,7 +2890,8 @@ export async function applyDueMovementsTx(
     if (!resolved) continue;
     const behaviourKind = resolved.behaviourKind;
     const isTermination = behaviourKind === 'termination';
-    if (!isTermination && !isComparisonKind(behaviourKind)) continue;
+    const isResignation = behaviourKind === 'resignation';
+    if (!isTermination && !isResignation && !isComparisonKind(behaviourKind)) continue;
 
     const input: CreateMovementInput = {
       ...(payload.input ?? {}),
@@ -2865,7 +2905,9 @@ export async function applyDueMovementsTx(
 
     let changes: MovementChange[] = [];
     try {
-      const res = isTermination
+      const res = isResignation
+        ? await applyResignationMovementTx(tx,ctx,input,{groupId:r.groupId,allSecondary:true})
+        : isTermination
         ? await applyTerminationTx(
             tx,
             ctx,
@@ -3171,12 +3213,15 @@ async function reverseLegTx(
           // b7b22514 — read so the join-date restore below can apply the same last-write-wins test the
           // flat columns get: put it back only while the stored value is still the one this movement wrote.
           joinDate: employment.joinDate,
+          tenderResignationDate: employment.tenderResignationDate,
+          resignationDate: employment.resignationDate,
+          lastWorkingDate: employment.lastWorkingDate,
         })
         .from(employment)
         .where(eq(employment.id, employmentId))
         .limit(1);
       if (!cur) return;
-      const restore: Partial<Record<MovementFlatField | 'confirmationDate' | 'joinDate', string | null>> = {};
+      const restore: Partial<Record<MovementFlatField | 'confirmationDate' | 'joinDate' | 'tenderResignationDate' | 'resignationDate' | 'lastWorkingDate', string | null>> = {};
       for (const f of MOVEMENT_FLAT_FIELDS) {
         if (!fields.includes(f)) continue;
         if ((cur[f] ?? null) !== (after[f] ?? null)) continue; // a later movement owns this column now
@@ -3198,8 +3243,11 @@ async function reverseLegTx(
       if (fields.includes('joinDate') && (cur.joinDate ?? null) === (after.joinDate ?? null)) {
         restore.joinDate = before.joinDate ?? null;
       }
+      for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const) {
+        if(fields.includes(field)&&(cur[field]??null)===(after[field]??null))restore[field]=before[field]??null;
+      }
       if (Object.keys(restore).length) {
-        await setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx);
+        await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx));
       }
       return;
     }
@@ -3293,7 +3341,9 @@ async function reverseMovementTx(
   }
   if (c.stateChanging) {
     const closed = await closedPeriodsTx(tx, employmentId);
-    if (overlapsClosedPeriod(closed, row.effectiveDate, null)) {
+    const exitDates=row.kind==='resignation'?group.flatMap(event=>{const payload=event.payload as {before?:Record<string,string|null>;after?:Record<string,string|null>};return RESIGNATION_INFO_FIELDS.flatMap(field=>[payload?.before?.[field],payload?.after?.[field]]).filter((value):value is string=>!!value);}):[];
+    const from=[row.effectiveDate,...exitDates].sort()[0];
+    if (overlapsClosedPeriod(closed, from, null)) {
       throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
     }
   }
@@ -3425,6 +3475,11 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       }
       const corrected={...retained,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined)),
         remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
+      if(row.kind==='resignation'||p.kind==='resignation'){
+        if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+        await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+        return recordResignationMovementTx(tx,ctx,corrected);
+      }
       // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
       // scheduling made `canEdit` true for it (a scheduled event is not state-changing), so without this
       // branch the Edit button would render and the service would refuse it — an affordance that lies.
@@ -3475,6 +3530,15 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
           ? 'Only the most recent movement can be edited. Roll back the later movements first, then correct this one.'
           : 'This event type cannot be edited from Employment History — use the screen that records it.',
       );
+    }
+
+    if(row.kind==='resignation'||p.kind==='resignation'){
+      if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+      const original=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
+      const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
+      const submitted={...p,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
+      await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+      return recordResignationMovementTx(tx,ctx,submitted);
     }
 
     // The unchanged-replay no-op, checked BEFORE anything is written — against the same date/remark fields
@@ -3570,4 +3634,26 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
     }
   });
   return {...result,behaviourKind:p.kind};
+}
+
+
+export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[number],{
+  value:string|null;
+  source:{kind:'movement';movementId:string;effectiveDate:string}|{kind:'legacy'}|{kind:'empty'};
+}>;
+/** View-only current owner effects with per-field provenance. Pending/reversed rows never win.
+ * Untagged imported/history values stay visible as legacy; no event is fabricated for them. */
+export function resignationInformation(ctx:SessionContext,employmentId:string):Promise<ResignationInformation>{
+  return withTenant(ctx,async tx=>{
+    await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+    const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
+    if(!current)throw new Error('Employment not found.');
+    const {events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
+    const effects=rows.filter(row=>statusOf(row)==='applied').flatMap(row=>groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').map(event=>({row,event}))).sort((a,b)=>b.event.sequence-a.event.sequence);
+    return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
+      const value=current[field];
+      const owner=effects.find(({event})=>{const payload=event.payload as {fields?:unknown;after?:Record<string,unknown>};return Array.isArray(payload?.fields)&&payload.fields.includes(field)&&payload.after?.[field]===value;});
+      return [field,{value,source:owner?{kind:'movement',movementId:owner.row.id,effectiveDate:owner.row.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
+    })) as ResignationInformation;
+  });
 }

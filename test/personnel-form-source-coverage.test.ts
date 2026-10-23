@@ -36,6 +36,9 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(owner).toContain('export async function setEmploymentTestRecord');
     expect(owner).toContain('assertWorkforceEmploymentTx');
     expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.data_classification.istestrecord')?.ownerField).toBe('isTestRecord');
+    const field=PERSONNEL_FIELDS.find(field=>field.id==='employment.data_classification.istestrecord');
+    expect(field).toBeDefined();expect(field?.form).toBeUndefined();expect(field?.ess.visibility).toBe('protected');
+    expect(field?.import.disabledReason).toContain('Personnel and generic import do not maintain');
   });
   it('checks every real control reached from Personnel, draft completion and short Create',()=>{
     const {files,boundaries}=personnelFormSources(root);

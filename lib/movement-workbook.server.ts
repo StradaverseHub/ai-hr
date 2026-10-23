@@ -51,7 +51,7 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
   for(let r=5;r<rowCount+5;r++)for(let c=0;c<columns.length;c++){
    const address=col(c)+(r+1),column=columns[c],cell=sheet[address]??={t:'s',v:''};
    if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:words('formulaNote','Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.')+' '+baselineGuide}];cell.c.hidden=true;}
-   else if(column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key)){
+   else if(column.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key)){
     cell.z='dd-mmm-yyyy';const raw=String(cell.v??'');if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){cell.t='n';cell.v=(Date.parse(raw+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000;}
    }else cell.z='@';
   }
@@ -117,7 +117,7 @@ export async function buildMovementWorkbook(p:MovementWorkbookDownload){
    if(annotation)style=base+8;
    else{const column=columns[c-1];if(!column)return whole;
     const unlocked=column.role==='input'||column.role==='identity'&&!bindings[i].identities.some(identity=>identity.row===Number(r));
-    const date=column.field&&['effectiveDate','endDate','resignationDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
+    const date=column.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
     style=column.role==='formula'?base+(column.key.endsWith('changePercent')?7:2):unlocked?base+(date?3:money?6:1):base+(date?4:money?5:0);
    }
    return '<c'+attrs.replace(/\s+s="[^" ]*"/,'')+` s="${style}">`;
@@ -170,7 +170,7 @@ export async function readMovementWorkbook(bytes:Buffer,p:{tenantId:string;compa
   for(let c=0;c<columns.length;c++){const header=sheet[XLSX.utils.encode_cell({r:4,c})];if(header?.f||String(header?.v??'')!==binding.captions[c])throw new Error('workbook_columns_changed');}
   const range=XLSX.utils.decode_range(sheet['!ref']??'A1');if(range.e.r>MOVEMENT_IMPORT_LIMITS.rows+4||range.e.c>=columns.length+Number(!!binding.annotationCaption))throw new Error('workbook_structure_invalid');
   if(binding.annotationCaption&&String(sheet[col(columns.length)+'5']?.v??'')!==binding.annotationCaption)throw new Error('workbook_columns_changed');
-  const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';if(cell.t==='n'&&columns[c]?.field&&['effectiveDate','endDate','resignationDate'].includes(columns[c].field!)){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(!d)return '';return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}return String(cell.v);};
+  const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';if(cell.t==='n'&&columns[c]?.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(columns[c].field!)){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(!d)return '';return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}return String(cell.v);};
   for(const [address,cell]of Object.entries(sheet)){
    if(address.startsWith('!')||!cell||typeof cell!=='object'||!('f'in cell)||!cell.f)continue;
    const a=XLSX.utils.decode_cell(address),column=columns[a.c];if(a.r<5||column?.role!=='formula'||cell.f!==formula(column,columns,a.r+1)||('F'in cell&&cell.F))throw new Error('formula_input:'+binding.sheet+':'+address);

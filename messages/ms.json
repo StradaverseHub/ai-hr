@@ -1639,7 +1639,9 @@
           "basicSalary": "Gaji Pokok",
           "currency": "Mata Wang",
           "payMode": "Mod Bayaran",
-          "paymentTerm": "Terma Pembayaran"
+          "paymentTerm": "Terma Pembayaran",
+          "tenderResignationDate": "Tarikh Serah Peletakan Jawatan",
+          "resignationEffectiveDate": "Tarikh Peletakan Jawatan"
         },
         "eventType": {
           "hired": "Diambil Bekerja",
@@ -1707,7 +1709,8 @@
           "entityTransferDateHint": "Tarikh ini ialah tarikh pemindahan berkuat kuasa, dan ia juga menjadi Tarikh Menyertai pekerja dengan syarikat yang mereka pindah. Tarikh Menyertai Kumpulan tidak berubah, jadi perkhidmatan, cuti dan kelayakan perkhidmatan panjang mereka dibawa bersama.",
           "entityTransferHint": "Pilih syarikat yang pekerja ini akan pindah. Senarai Unit Perniagaan, Jabatan, Jawatan dan Lokasi Kerja di bawah kini menunjukkan pilihan syarikat destinasi — pilih Jabatan di situ. ID pekerja, Tarikh Menyertai Kumpulan dan sejarah mereka kekal seperti sedia ada.",
           "selectPlaceholder": "Pilih…",
-          "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan."
+          "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan.",
+          "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan."
         },
         "edit": "Sunting",
         "rollback": "Batalkan",
@@ -1921,7 +1924,13 @@
         "marked": "Ditandakan sebagai rekod ujian",
         "save": "Simpan pengelasan"
       },
-      "employeeAuditLink": "Jejak audit pekerja"
+      "employeeAuditLink": "Jejak audit pekerja",
+      "resignationInformation": {
+        "readOnly": "Maklumat peletakan jawatan diselenggara melalui Pergerakan.",
+        "movementSource": "Peristiwa Pergerakan",
+        "legacySource": "Rekod lama — tiada peristiwa Pergerakan asal",
+        "emptySource": "Tiada tarikh direkodkan"
+      }
     },
     "import": {
       "title": "Import pekerja",

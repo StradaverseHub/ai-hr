@@ -522,6 +522,8 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
       ? mode === 'edit' && formData.has('terminationNoticeDays') ? null : undefined
       : Number(rawNoticeDays),
     resignationDate: optional('resignationDate'),
+    tenderResignationDate: optional('tenderResignationDate'),
+    resignationEffectiveDate: optional('resignationEffectiveDate'),
     blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
   };
 }

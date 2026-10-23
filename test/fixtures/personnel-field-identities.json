@@ -383,5 +383,7 @@
   "employment.draft_only_employment_fields.costcenterid",
   "employment.draft_only_employment_fields.internshipenddate",
   "employment.draft_only_employment_fields.probationenddate",
-  "payroll.draft_initial_monthly_allowance.monthlyallowance"
+  "payroll.draft_initial_monthly_allowance.monthlyallowance",
+  "employment_history.event_information.tenderresignationdate",
+  "employment_history.event_information.resignationeffectivedate"
 ]
