@@ -3,7 +3,7 @@ import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/poli
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../packs/attendance/policy-cash-replay';
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
-import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches} from '../packs/attendance/policy-duration-replay';
+import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches,attendancePolicyIndependentDurationReplay,type IndependentPolicyDurationSource} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
 /** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
  * Only the non-payable staged contract is allowed; no test turns proposal arithmetic into money. */
@@ -213,6 +213,19 @@ describe('immutable non-payable policy part storage',()=>{
   durationOnly.policyFormulaInput=undefined;durationOnly.input.source.inputDigest='9'.repeat(64);durationOnly.referenceDigest='8'.repeat(64);
   delete durationOnly.input.facts.basicSalary;delete durationOnly.input.facts.calculationBase;
   expect(attendancePolicyCurrentDurationMatches(durationOnly,proof)).toBe(true);
+  if(!snapshot.policyDurationFormulaInput)throw Error('Expected independent canonical duration metadata');
+  const independent:IndependentPolicyDurationSource={source:{tenantId:snapshot.input.source.tenantId,employmentId:snapshot.input.source.employmentId,
+   attendanceId:snapshot.input.source.attendanceId,date:snapshot.input.source.date},
+   policyDurationFormulaInput:snapshot.policyDurationFormulaInput,attendanceGroupPolicy:snapshot.attendanceGroupPolicy,
+   policyExecutionContext:snapshot.policyExecutionContext,policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,
+   policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,policyApprovalInput:snapshot.policyApprovalInput,
+   policyRawEffectSource:snapshot.policyRawEffectSource,policyExecutionProposal:snapshot.policyExecutionProposal};
+  const cashReads:string[]=[];
+  for(const key of ['input','policyFormulaInput','policyPricingFacts','referenceDigest'])Object.defineProperty(independent,key,{get(){cashReads.push(key);throw Error('Cash source must not be read');}});
+  expect(attendancePolicyIndependentDurationReplay(independent)).toEqual(proof);
+  expect(attendancePolicyIndependentDurationReplay({...independent,policyDurationFormulaInput:{state:'unavailable',authority:'durationSourceOnly',reason:'policyChanged'}})).toMatchObject({state:'unavailable',reason:'sourceUnavailable'});
+  expect(cashReads).toEqual([]);
+
   const reordered=JSON.parse(JSON.stringify(snapshot,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
    ?Object.fromEntries(Object.entries(value).reverse()):value)) as typeof snapshot;
   expect(attendancePolicyCurrentDurationMatches(reordered,proof)).toBe(true);

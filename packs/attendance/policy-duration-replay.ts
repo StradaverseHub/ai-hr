@@ -15,12 +15,22 @@ export type PolicyDurationReplay=
  |{state:'known';authority:'durationProposalReplayOnly';digest:string;minutes:number};
 /** Money definitions, salary facts, earning references and the cash input/reference digests are
  * deliberately absent. Frozen formula identities/directions, complete approval references and
- * actual capture identities remain bound, even when changing one leaves the minute total equal. */
-export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapshot):PolicyDurationReplay{
+ * actual capture identities remain bound, even when changing one leaves the minute total equal.
+ *
+ * Explicit salary-free boundary for independent financial duration reads. A caller supplies
+ * only source identity and independently recorded duration/clock/approval evidence. Cash facts,
+ * earning references and cash digests are not part of this interface. This is still replay only. */
+export type IndependentPolicyDurationSource=Pick<CanonicalOvertimeSnapshot,
+ 'attendanceGroupPolicy'|'policyExecutionContext'|'policyClockSource'|'policyClockReview'|
+ 'policyWorkInput'|'policyApprovalInput'|'policyClockMeasurements'|'policyRawEffectSource'|'policyExecutionProposal'>&{
+ source:Pick<CanonicalOvertimeSnapshot['input']['source'],'tenantId'|'employmentId'|'attendanceId'|'date'>;
+ policyDurationFormulaInput:NonNullable<CanonicalOvertimeSnapshot['policyDurationFormulaInput']>;
+};
+export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPolicyDurationSource):PolicyDurationReplay{
  const refuse=(reason:Extract<PolicyDurationReplay,{state:'unavailable'}>['reason']):PolicyDurationReplay=>
   ({state:'unavailable',authority:'durationProposalReplayOnly',reason});
  try{
-  const source=snapshot.input.source,policy=snapshot.attendanceGroupPolicy,context=snapshot.policyExecutionContext;
+  const source=snapshot.source,policy=snapshot.attendanceGroupPolicy,context=snapshot.policyExecutionContext;
   overtimeUuid(source.tenantId,'tenantId');overtimeUuid(source.employmentId,'employmentId');
   overtimeUuid(source.attendanceId,'attendanceId');overtimeDate(source.date,'date');
   if(!policy||context?.state!=='policy'||context.employmentId!==source.employmentId||context.date!==source.date
@@ -33,8 +43,7 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
    ||!isDeepStrictEqual(attendancePolicyWorkInput(context,captured),snapshot.policyWorkInput)
    ||!isDeepStrictEqual(attendancePolicyClockMeasurements(context,captured),snapshot.policyClockMeasurements))return refuse('proposalMismatch');
   // An explicit duration refusal is authoritative; never bypass it through the money source.
-  const formulas=snapshot.policyDurationFormulaInput!==undefined?snapshot.policyDurationFormulaInput
-   :snapshot.policyFormulaInput?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput):undefined;
+  const formulas=snapshot.policyDurationFormulaInput;
   if(formulas?.state!=='known')return refuse('sourceUnavailable');
   const proposal=attendancePolicyDurationExecutionProposal(context,snapshot.policyWorkInput,formulas,snapshot.policyApprovalInput,source.tenantId,snapshot.policyRawEffectSource);
   if(!isDeepStrictEqual(proposal,snapshot.policyExecutionProposal))return refuse('proposalMismatch');
@@ -53,6 +62,24 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
    ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0)):value);
   return {state:'known',authority:'durationProposalReplayOnly',digest:createHash('sha256').update(encoded).digest('hex'),minutes:duration.payableMinutes};
  }catch{return refuse('sourceUnavailable');}
+}
+/** Compatibility entry point for complete canonical snapshots and old retained evidence.
+ * Only absent historical duration metadata keeps the original money-definition projection.
+ * New financial duration readers use the explicit independent interface above instead. */
+export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapshot):PolicyDurationReplay{
+ try{
+  const formulas=snapshot.policyDurationFormulaInput!==undefined?snapshot.policyDurationFormulaInput
+   :snapshot.policyFormulaInput?attendancePolicyDurationFormulaProjection(snapshot.policyFormulaInput):undefined;
+  if(!formulas)return {state:'unavailable',authority:'durationProposalReplayOnly',reason:'sourceUnavailable'};
+  const source=snapshot.input.source;
+  return attendancePolicyIndependentDurationReplay({source:{tenantId:source.tenantId,employmentId:source.employmentId,
+   attendanceId:source.attendanceId,date:source.date},policyDurationFormulaInput:formulas,
+   attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,
+   policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,
+   policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,
+   policyApprovalInput:snapshot.policyApprovalInput,policyRawEffectSource:snapshot.policyRawEffectSource,
+   policyExecutionProposal:snapshot.policyExecutionProposal});
+ }catch{return {state:'unavailable',authority:'durationProposalReplayOnly',reason:'sourceUnavailable'};}
 }
 /** A historical digest alone proves nothing current. Caller must obtain the snapshot through
  * canonical fresh reads under the source/epoch locks before comparing this complete projection. */
