@@ -671,7 +671,7 @@ export type OvertimePolicyAllocatedPrice=
  |{state:'proposed';authority:'pricingProposalOnly';durationOwner:'attendanceGroupPolicy';minutes:number;
    source:OvertimeSource;patternVersionId:string;policyBinding:OvertimePolicyBinding['policyBinding'];
    currency:{code:string;minorScale:number};amountMinorUnits:string;lines:OvertimeLine[];trace:OvertimeTrace[];
-   moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][];formulaScope?:{kind:'identicalDefinitions';partVersionIds:string[]}};
+   moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][];formulaScope?:{kind:'identicalDefinitions'|'datedRateExpressions';partVersionIds:string[]}};
    /** Original duration configuration remains visible, but cannot run a second time at pricing. */
    retainedDurationConfiguration:{eligibleMinutes:OvertimePattern['eligibleMinutes'];cap:OvertimePattern['durationCap'];
     rounding:OvertimePattern['durationRounding'];minuteDeductionIds:string[]}};
@@ -757,25 +757,35 @@ export type OvertimePolicyAllocatedParentPrice=
  |{state:'unavailable';authority:'parentPricingProposalOnly';reason:'allocationUnavailable'|'parentScopeUnavailable'|'formulaUnavailable'}
  |{state:'proposed';authority:'parentPricingProposalOnly';amountMinorUnits:string;currency:{code:string;minorScale:number};
    parts:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[];trace:OvertimeTrace[]};
-/** One central money evaluation over complete dated allocations of the SAME computational definition.
- * Default history retains exact same-version scope. An explicit new canonical scope may bind
- * distinct immutable versions only when their complete validated definitions are identical.
- * Dated facts stay dated; incompatible definitions never invent a shared cap or charge policy.
- * This emits proposal evidence only, never a transferable calculation or settlement authority. */
-export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[],formulaScope:'sameVersion'|'identicalDefinitions'='sameVersion'):OvertimePolicyAllocatedParentPrice{
+/** Dated hourly expressions may differ only under an explicit proposal scope. Shared
+ * definitions, tier identity/bounds, charges, deductions, cap and rounding remain identical.
+ * This comparison does not select a scope for canonical financial consumers. */
+function policyDatedRateShape(pattern:OvertimePattern):string{
+ return JSON.stringify({...pattern,rates:pattern.rates.map(rate=>({...rate,tiers:rate.tiers.map(tier=>({...tier,
+  payment:tier.payment.method==='hourly'?{...tier.payment,rate:null,multiplier:null}:tier.payment}))}))});
+}
+/** One central money evaluation over complete dated allocations. Old scopes require the
+ * same definition; the explicit dated-expression proposal permits only hourly expressions
+ * to differ under identical shared rules. No canonical reader selects this new scope yet.
+ * Incompatible caps, charges or tier identities remain refused, never guessed. */
+export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[],formulaScope:'sameVersion'|'identicalDefinitions'|'datedRateExpressions'='sameVersion'):OvertimePolicyAllocatedParentPrice{
  const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
   ({state:'unavailable',authority:'parentPricingProposalOnly',reason});
  try{
-  if(!['sameVersion','identicalDefinitions'].includes(formulaScope)||rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
+  if(!['sameVersion','identicalDefinitions','datedRateExpressions'].includes(formulaScope)||rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
   const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input,p.roundedCounts));
   if(prepared.some(p=>p.state!=='known'))return refuse('allocationUnavailable');
   const parts=prepared.filter((p):p is Extract<typeof p,{state:'known'}>=>p.state==='known'),first=parts[0];
-  const definition=JSON.stringify(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
+  const definition=JSON.stringify(first.pattern),datedShape=policyDatedRateShape(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
   if(parent.layer!=='raw'||parent.mode!=='actual'||parent.sessionGranularity!=='recorded'
    ||parent.patternVersionId!==first.stage.input.patternVersionId
-   ||parts.some(p=>JSON.stringify(p.pattern)!==definition||formulaScope==='sameVersion'&&p.stage.input.patternVersionId!==parent.patternVersionId
+   ||parts.some(p=>(formulaScope==='datedRateExpressions'?policyDatedRateShape(p.pattern)!==datedShape:JSON.stringify(p.pattern)!==definition)||formulaScope==='sameVersion'&&p.stage.input.patternVersionId!==parent.patternVersionId
     ||JSON.stringify(p.stage.input.source)!==source||JSON.stringify(p.stage.input.currency)!==currency
     ||p.stage.input.policyBinding.revisionId!==parent.policyBinding.revisionId))return refuse('parentScopeUnavailable');
+  // One immutable version cannot describe two definitions, even in the explicit dated scope.
+  const versions=new Map<string,string>();
+  for(const p of parts){const id=p.stage.input.patternVersionId,definition=JSON.stringify(p.pattern);
+   if(versions.has(id)&&versions.get(id)!==definition)return refuse('parentScopeUnavailable');versions.set(id,definition);}
   const segments=parts.flatMap(p=>p.stage.input.layer==='raw'?p.stage.input.segments:[]),ids=new Set(segments.map(s=>s.id));
   if(ids.size!==segments.length||JSON.stringify(segments)!==JSON.stringify(parent.segments))return refuse('parentScopeUnavailable');
   let end:bigint|null=null;const dates=new Set<string>();
@@ -800,11 +810,13 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
   const setComputed=computedScope(e,physicalTotal,physicalTotal,total),deductions=deductionScope(first.stage.pattern,parent,e,work,setComputed);
   const dated=new Map(parts.flatMap(p=>p.stage.work.map(w=>[w.id,p.stage.input.facts] as const)));
   e.emit('duration','parentAllocatedPricing',{source:parent.source,parts:parts.map(p=>({binding:p.stage.input.policyBinding,patternVersionId:p.stage.input.patternVersionId,
-   facts:p.stage.input.facts,segments:p.stage.input.segments,validationTrace:p.stage.e.trace})),parentFacts:parent.facts,resources:parent.resources});
+   facts:p.stage.input.facts,segments:p.stage.input.segments,validationTrace:p.stage.e.trace,
+   ...(formulaScope==='datedRateExpressions'?{rateDefinition:p.pattern.rates}:{})})),parentFacts:parent.facts,resources:parent.resources});
   const stage={pattern:first.stage.pattern,input:parent,identity:{source:parent.source,patternVersionId:parent.patternVersionId,...overtimePolicyBinding.read(parent,parent.source.date)},
    e,work,rawTotal:physicalTotal,eligibleTotal:physicalTotal,canonicalApproved:total,dayApproval:total,setComputed,deductions};
   const roundedBySegment=new Map(parts.flatMap(part=>[...part.roundedBySegment]));
-  const result=priceOvertimeStage(stage,dated,roundedBySegment);if(result.status==='refused')return refuse('formulaUnavailable');
+  const datedPatterns=formulaScope==='datedRateExpressions'?new Map(parts.flatMap(p=>p.stage.work.map(w=>[w.id,p.pattern] as const))):undefined;
+  const result=priceOvertimeStage(stage,dated,roundedBySegment,datedPatterns);if(result.status==='refused')return refuse('formulaUnavailable');
   const projected:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[]=[];
   for(const p of parts){
    const own=new Set(p.stage.work.map(w=>w.id)),lines=result.lines.filter(l=>own.has(l.segmentId));
@@ -813,7 +825,7 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
    if(value.state!=='proposed')return refuse('formulaUnavailable');
    projected.push({...value,moneyScope:{kind:'parent',amountMinorUnits:result.amountMinorUnits,partBindings:parts.map(part=>part.stage.input.policyBinding),
     ...(new Set(parts.map(part=>part.stage.input.patternVersionId)).size>1
-     ?{formulaScope:{kind:'identicalDefinitions' as const,partVersionIds:parts.map(part=>part.stage.input.patternVersionId)}}:{})}});
+     ?{formulaScope:{kind:formulaScope==='datedRateExpressions'?'datedRateExpressions' as const:'identicalDefinitions' as const,partVersionIds:parts.map(part=>part.stage.input.patternVersionId)}}:{})}});
   }
   if(projected.reduce((n,p)=>n+BigInt(p.amountMinorUnits),BigInt('0'))!==BigInt(result.amountMinorUnits))return refuse('formulaUnavailable');
   return {state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:result.amountMinorUnits,currency:parent.currency,parts:projected,trace:result.trace};
@@ -834,7 +846,7 @@ function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,raw
 
 /** Shared money owner over an already established internal duration stage.
  * Private extraction only: no caller-supplied stage, new policy authority or settlement API. */
-function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>,datedFacts?:ReadonlyMap<string,OvertimeFacts>,roundedCounts?:ReadonlyMap<string,Q>):OvertimeEvaluation<B>{
+function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>,datedFacts?:ReadonlyMap<string,OvertimeFacts>,roundedCounts?:ReadonlyMap<string,Q>,datedPatterns?:ReadonlyMap<string,OvertimePattern>):OvertimeEvaluation<B>{
         const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
         const identity = stage.identity;
         if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
@@ -844,12 +856,13 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             mapping: string;
         }>();
         function selectRate(w: Work, localSecond: number | null): OvertimeRate {
+            const ownPattern=datedPatterns?.get(w.id)??pattern;
             e.clockScope = pattern.eligibilityBasis === 'day' ? work : work.filter(x => x.sessionId === w.sessionId);
             const choices: {
                 rate: OvertimeRate;
                 match: 'true' | 'false' | 'unknown';
             }[] = [];
-            for (const rate of pattern.rates) {
+            for (const rate of ownPattern.rates) {
                 let match: 'true' | 'false' | 'unknown' = 'false';
                 try {
                     if (e.condition(rate.when, { ...datedFacts?.get(w.id), dayType: w.dayType })) {
@@ -888,6 +901,7 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             ordinal: number;
         }[] = [];
         for (const w of work) {
+            const ownPattern=datedPatterns?.get(w.id)??pattern;
             if (w.payable.n === BigInt('0'))
                 continue;
             setComputed(work);
@@ -896,12 +910,12 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             let elapsed = 0, start: number | null = null;
             if (w.clock.state === 'known') {
                 const c = e.value(w.clock, w.id + '.clock');
-                if (input.layer === 'finalLegacy' && pattern.rates.some(r => r.timeBand) && compare(w.approved, q(BigInt(c.elapsedSeconds), BigInt('60'))) !== 0)
+                if (input.layer === 'finalLegacy' && ownPattern.rates.some(r => r.timeBand) && compare(w.approved, q(BigInt(c.elapsedSeconds), BigInt('60'))) !== 0)
                     fail('legacyLayer', w.id, 'Legacy final counts have no proven precise time-band placement.');
                 elapsed = c.elapsedSeconds;
                 start = c.localStartSecond;
                 points.push(elapsed);
-                for (const r of pattern.rates)
+                for (const r of ownPattern.rates)
                     if (r.timeBand)
                         for (const boundary of [r.timeBand.fromMinute * 60, r.timeBand.toMinute * 60])
                             if (boundary > start && boundary < start + elapsed)

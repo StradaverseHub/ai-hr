@@ -184,6 +184,32 @@ describe('one central parent money scope over dated allocations',()=>{
   expect(result.parts.reduce((n,part)=>n+BigInt(part.amountMinorUnits),BigInt('0'))).toBe(BigInt('700'));
   expect(f).toEqual(before);
  });
+ it('prices explicit dated hourly expressions through one parent cap and refuses changed shared money rules',()=>{
+  const f=parentAllocations(),first=definition(),second=structuredClone(first);f.parts[1].patternVersionId=uuid(99);
+  const payment=second.rates[0].tiers[0].payment;
+  if(payment.method!=='hourly'||payment.rate.type!=='literal')throw Error('Expected the actual hourly fixture');
+  payment.rate.value='24';
+  const parts=[{pattern:first,input:f.parts[0]},{pattern:second,input:f.parts[1]}],before=structuredClone({f,parts});
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts).state).toBe('unavailable');
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'identicalDefinitions').state).toBe('unavailable');
+  const result=evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'datedRateExpressions');
+  expect(result).toMatchObject({state:'proposed',amountMinorUnits:'900'});
+  if(result.state!=='proposed')throw Error('Expected explicit dated hourly proposals');
+  expect(result.parts.map(part=>part.amountMinorUnits)).toEqual(['300','600']);
+  expect(result.parts.every(part=>part.moneyScope.kind==='parent'&&part.moneyScope.formulaScope?.kind==='datedRateExpressions')).toBe(true);
+  expect({f,parts}).toEqual(before);
+  first.paymentCap=second.paymentCap={id:'common_dated_cap',type:'literal',unit:'money',currency:'MYR',value:'7'};
+  const capped=evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'datedRateExpressions');
+  expect(capped).toMatchObject({state:'proposed',amountMinorUnits:'700'});
+  if(capped.state!=='proposed')throw Error('Expected one shared cap');
+  expect(capped.trace.filter(row=>row.id==='paymentCap')).toHaveLength(1);
+  const altered=structuredClone(second);altered.paymentCap={...second.paymentCap,value:'8'};
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{pattern:altered,input:f.parts[1]}],'datedRateExpressions').state).toBe('unavailable');
+  const sameVersion={...f.parts[1],patternVersionId:f.parts[0].patternVersionId};
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{pattern:second,input:sameVersion}],'datedRateExpressions').state).toBe('unavailable');
+  const tierChange=structuredClone(second);tierChange.rates[0].accumulation='session';
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{pattern:tierChange,input:f.parts[1]}],'datedRateExpressions').state).toBe('unavailable');
+ });
  it('requires explicit identical-definition scope for different immutable versions and retains every dated version under one cap',()=>{
   const f=parentAllocations(),pattern=definition();f.parts[1].patternVersionId=uuid(99);
   pattern.paymentCap={id:'compatible_versions_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
