@@ -692,6 +692,9 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
  });
  it.each(['cash','toil'] as const)('refuses staged %s settlement at the owner and SQL boundaries',async mode=>{
+  // Exercise the incomplete-proof boundary with the real TOIL module enabled; otherwise its
+  // module gate correctly refuses before reaching the duration evidence being tested.
+  if(mode==='toil'){await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);}
   const f=await fixture(),p={employmentId:f.employmentId,date:day(2)};
   const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!current?.calculation)throw Error('Expected the actual staged policy calculation');
