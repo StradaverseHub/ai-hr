@@ -23,6 +23,15 @@ export function attendancePolicyClockMeasurements(context:AttendancePolicyExecut
  const unavailable=(reason:Extract<PolicyClockMeasurements,{state:'unavailable'}>['reason']):PolicyClockMeasurements=>({state:'unavailable',authority:'sourceOnly',reason});
  if(context?.state!=='policy')return unavailable('scheduleUnavailable');
  if(!clocks)return unavailable('clockEvidenceUnavailable');
+ return attendancePolicyWorkBoundaryMeasurements(context,clocks);
+}
+
+/** Shared boundary arithmetic for independently proved work sources. The caller keeps the
+ * source provenance: HR-entered actual instants never become captured-clock evidence. */
+export function attendancePolicyWorkBoundaryMeasurements(context:AttendancePolicyExecutionContext|undefined,
+ clocks:Pick<PolicyClockMillisecondEvidence,'complete'|'requiresReview'|'checkInMillisecond'|'checkOutMillisecond'|'firstInIsArrival'>):PolicyClockMeasurements{
+ const unavailable=(reason:Extract<PolicyClockMeasurements,{state:'unavailable'}>['reason']):PolicyClockMeasurements=>({state:'unavailable',authority:'sourceOnly',reason});
+ if(context?.state!=='policy')return unavailable('scheduleUnavailable');
  // Historical prepared contexts may carry only a positively known complete placement.
  // A new canonical context always supplies the independent boundary proof, including refusals.
  const placement=context.clockPlacement??context.placement;

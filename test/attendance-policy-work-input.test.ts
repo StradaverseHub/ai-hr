@@ -3,7 +3,7 @@ import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-bin
 /** Pure source geometry only, not real-capture, approval, Payroll or application acceptance. */
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicySchedulePlacementInput} from '../core/attendance-policy-schedule';
-import {attendancePolicyRawWorkedMinutes,attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
+import {attendancePolicyUnclockedWorkComparison,attendancePolicyRawWorkedMinutes,attendancePolicyNetWorkedMinutes,attendancePolicyWorkInput} from '../packs/attendance/policy-work-input';
 import {attendancePolicyClockMeasurements} from '../packs/attendance/policy-clock-measurements';
 import {attendancePolicyClockMillisecondEvidence} from '../lib/attendance-policy-clocks';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
@@ -341,5 +341,30 @@ describe('independent captured raw clock replay',()=>{
    if(review.state!=='known')throw Error('Expected raw clock proof');
    expect(attendancePolicyWorkInput(x.c,review.evidence).state).toBe('unavailable');
   }
+ });
+});
+
+describe('unclocked HR work comparison retains its separate source basis',()=>{
+ it('uses the same schedule/grace/late-offset arithmetic without making a captured clock or payable result',()=>{
+  const p=policy();p.overtime.allowBackdatedWithoutClock=true;const c=context(schedule(),p),midnight=Date.parse(c.date+'T00:00:00+08:00');
+  const actual={version:1 as const,completeWorkedDay:true as const,sourceDate:c.date,reason:'Fictional complete HR work testimony',
+   intervals:[{fromEpochMillisecond:midnight+570*60000+555,toEpochMillisecond:midnight+1200*60000+555}]};
+  const result=attendancePolicyUnclockedWorkComparison(c,actual,midnight+2*86400000);
+  expect(result.state).toBe('known');if(result.state!=='known')throw Error('Expected independent attested comparison');
+  expect(result.actualWork).toEqual(actual);expect(result.work.workedIntervals).toEqual([{from:570,to:1200}]);
+  expect(result.measurements.lateIn).toEqual({state:'known',minutes:20});
+  expect(result.work.eligibleActualIntervals).toEqual([{from:1080,to:1200}]);
+  expect(result).not.toHaveProperty('captureId');expect(result).not.toHaveProperty('transferable');
+  expect(result).not.toHaveProperty('payableMinutes');
+ });
+ it('keeps disabled policy, missing complete-day testimony, mismatched day and future work unavailable',()=>{
+  const p=policy();p.overtime.allowBackdatedWithoutClock=true;const c=context(schedule(),p),midnight=Date.parse(c.date+'T00:00:00+08:00');
+  const actual={version:1 as const,completeWorkedDay:true as const,sourceDate:c.date,reason:'Fictional testimony',
+   intervals:[{fromEpochMillisecond:midnight+60000,toEpochMillisecond:midnight+120000}]};
+  const now=midnight+86400000;
+  expect(attendancePolicyUnclockedWorkComparison(c,{...actual,sourceDate:'2026-10-22'},now).state).toBe('unavailable');
+  expect(attendancePolicyUnclockedWorkComparison(c,actual,midnight).state).toBe('unavailable');
+  p.overtime.allowBackdatedWithoutClock=false;
+  expect(attendancePolicyUnclockedWorkComparison(c,actual,now).state).toBe('unavailable');
  });
 });

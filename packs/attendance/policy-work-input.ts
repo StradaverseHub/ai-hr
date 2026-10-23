@@ -1,8 +1,9 @@
+import {validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../../lib/attendance-policy-unclocked-work';
 /** Canonical source projection only. Final-effect receipts and the financial replay remain separate. */
 import {perRowAttendanceBreakMinutes} from '../../lib/attendance-break-count';
 import {fullFlexiBreakMinutes} from '../../lib/full-flexi-time';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
-import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
+import {attendancePolicyClockMeasurements,attendancePolicyWorkBoundaryMeasurements,type PolicyClockMeasurements} from './policy-clock-measurements';
 import {attendancePolicyIntervalMinutes as minutes,subtractAttendancePolicyIntervals as subtract,intersectAttendancePolicyIntervals as intersect,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 import type {PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 
@@ -69,4 +70,34 @@ export function attendancePolicyWorkInput(context:AttendancePolicyExecutionConte
  return {state:'known',authority:'sourceOnly',periodMinutes:4320,workedIntervals,
   eligibleActualIntervals:intersect(workedIntervals,placement.eligibilityWindows,4320),unpaidIntervals:placement.unpaidWindows.map(row=>({...row})),
   lateOffsetIntervals:measured.lateOffsetIntervals,lateMinutes:measured.lateIn.minutes,earlyOutMinutes:measured.earlyOut.minutes};
+}
+
+/** Arithmetic comparison only for the separately owner-issued HR testimony. It establishes
+ * neither HR authority nor a final approval. Its entered geometry remains distinct from clocks;
+ * the same schedule, break, grace and late-offset owners serve the captured and attested paths. */
+export function attendancePolicyUnclockedWorkComparison(context:AttendancePolicyExecutionContext|undefined,
+ supplied:AttendancePolicyUnclockedWork,nowMillisecond=Date.now()):
+ |{state:'unavailable';authority:'attestedWorkComparisonOnly'}
+ |{state:'known';authority:'attestedWorkComparisonOnly';actualWork:AttendancePolicyUnclockedWork;
+   work:Extract<PolicyWorkInput,{state:'known'}>;measurements:Extract<PolicyClockMeasurements,{state:'measured'}>}{
+ const refuse=()=>({state:'unavailable' as const,authority:'attestedWorkComparisonOnly' as const});
+ try{
+  if(context?.state!=='policy'||!context.selected.policy.overtime.enabled
+   ||!context.selected.policy.overtime.allowBackdatedWithoutClock||context.selected.activation.epoch<1
+   ||supplied.sourceDate!==context.date||context.placement.state!=='known')return refuse();
+  const actualWork=validateAttendancePolicyUnclockedWork(supplied,nowMillisecond),
+   midnight=Date.parse(context.date+'T00:00:00+08:00');
+  const workedIntervals=union(actualWork.intervals.map(span=>({
+   from:Math.floor((span.fromEpochMillisecond-midnight)/60000),
+   to:Math.floor((span.toEpochMillisecond-midnight)/60000)})).filter(span=>span.to>span.from),4320);
+  const measurements=attendancePolicyWorkBoundaryMeasurements(context,{complete:true,requiresReview:false,firstInIsArrival:true,
+   checkInMillisecond:actualWork.intervals[0].fromEpochMillisecond-midnight,
+   checkOutMillisecond:actualWork.intervals.at(-1)!.toEpochMillisecond-midnight});
+  if(measurements.state!=='measured'||measurements.lateOffsetIntervals===null)return refuse();
+  const work:Extract<PolicyWorkInput,{state:'known'}>={state:'known',authority:'sourceOnly',periodMinutes:4320,workedIntervals,
+   eligibleActualIntervals:intersect(workedIntervals,context.placement.eligibilityWindows,4320),
+   unpaidIntervals:context.placement.unpaidWindows.map(row=>({...row})),lateOffsetIntervals:measurements.lateOffsetIntervals,
+   lateMinutes:measurements.lateIn.minutes,earlyOutMinutes:measurements.earlyOut.minutes};
+  return {state:'known',authority:'attestedWorkComparisonOnly',actualWork,work,measurements};
+ }catch{return refuse();}
 }
