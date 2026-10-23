@@ -22652,7 +22652,28 @@
     "receiptDetails": "Penerima / butiran penerimaan",
     "receiptOn": "Tarikh penerimaan",
     "receiptHint": "HR merekodkan penerima yang dinamakan menerima pindaan ini. Ini merekodkan penerimaan sahaja dan bukan tandatangan penyandang kerja yang disahkan.",
-    "unavailableReviewer": "{name} (tidak lagi layak; buang atau ganti)"
+    "unavailableReviewer": "{name} (tidak lagi layak; buang atau ganti)",
+    "errors": {
+      "required": "Lengkapkan {field}.",
+      "timeDistribution": "Jika peratus digunakan, isi setiap peratus tugas dan pastikan jumlahnya 100%.",
+      "stale": "Dokumen berubah atau baca sahaja. Buka semula draf semasa sebelum meneruskan.",
+      "duplicate": "Syarikat ini sudah mempunyai ID kerja bersama tersebut. Buka kerja sedia ada atau gunakan ID berlainan.",
+      "identity": "Syarikat dan ID kerja bersama tidak boleh diubah selepas dicipta.",
+      "access": "Rekod atau kebenaran yang diperlukan tidak tersedia.",
+      "reviewer": "Pilih penyemak dan pelulus semasa yang diberi kuasa serta tidak menyumbang kepada pindaan ini. Lengkapkan semua semakan sebelum kelulusan.",
+      "revise": "Buka pindaan terakhir yang diluluskan dan masukkan sebab untuk mencipta penggantinya.",
+      "reason": "Masukkan sebab pindaan.",
+      "onlyDraft": "Hanya draf boleh dihantar untuk semakan.",
+      "delete": "Hanya draf awal yang belum digunakan boleh dipadam. Buang dokumen sokongan dahulu.",
+      "feedback": "Masukkan maklum balas semakan.",
+      "active": "Semak status aktif semasa dan masukkan sebab perubahan.",
+      "documentControl": "Tetapkan pemilik dokumen, penyemak, pelulus, tarikh berkuat kuasa dan tarikh semakan seterusnya.",
+      "organization": "Pilih data induk organisasi aktif dalam Kriteria syarikat ini serta unit perniagaan / keluarga kerja yang serasi.",
+      "attachment": "Gunakan PDF, DOCX, teks biasa, PNG atau JPEG yang sepadan sehingga 2 MB; maksimum 20 bagi setiap pindaan.",
+      "receipt": "Rekodkan butiran penerima dan tarikh penerimaan sah bagi pindaan yang diluluskan.",
+      "configuration": "Semak takrif borang, jenis medan, had dan pilihan sah.",
+      "invalid": "Semak nilai, tarikh dan maklumat wajib yang dimasukkan."
+    }
   },
   "rewardsAccess": {
     "title": "Akses Ganjaran",

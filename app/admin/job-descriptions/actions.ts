@@ -1,5 +1,7 @@
 'use server';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
+import { jobErrorGuidance } from './error-guidance';
 import { requireAdmin } from '@/lib/authz';
 import { saveJobDraft, transitionJob, configureJobForm, attachJobDocument, removeJobAttachment, type JobInput, type FormDefinition } from '@/packs/job-descriptions/service';
 const BASE = '/admin/job-descriptions';
@@ -7,7 +9,7 @@ export type SaveState = {
     error: string;
 };
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
-const failure = (e: unknown) => e instanceof Error && e.name === 'JobDocumentError' ? e.message : 'The document could not be saved. Reopen it and try again.';
+const failure=async(e:unknown)=>jobErrorGuidance(e,await getTranslations('jobDescriptions'));
 export async function saveDraftAction(_state: SaveState, fd: FormData): Promise<SaveState> {
     const s = await requireAdmin();
     let id: string;
@@ -21,7 +23,7 @@ export async function saveDraftAction(_state: SaveState, fd: FormData): Promise<
         id = saved.jobId;
     }
     catch (e) {
-        return { error: failure(e) };
+        return { error: await failure(e) };
     }
     redirect(`${BASE}/${id}?saved=1`);
 }
@@ -32,7 +34,7 @@ export async function transitionAction(fd: FormData) { const s = await requireAd
     await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments'), receiptOn:text(fd,'receiptOn') });
 }
 catch (e) {
-    error = failure(e);
+    error = await failure(e);
 } redirect(error ? `${BASE}/${encodeURIComponent(id)}?error=${encodeURIComponent(error)}` : action === 'delete' ? BASE : `${BASE}/${id}?saved=1`); }
 export async function configureAction(_state: SaveState, fd: FormData): Promise<SaveState> { const s = await requireAdmin(); const companyId = text(fd, 'companyId'); try {
     const raw = text(fd, 'definition');
@@ -41,7 +43,7 @@ export async function configureAction(_state: SaveState, fd: FormData): Promise<
     await configureJobForm(s, companyId, Number(text(fd, 'expectedVersion')), JSON.parse(raw) as FormDefinition);
 }
 catch (e) {
-    return { error: failure(e) };
+    return { error: await failure(e) };
 } redirect(`${BASE}/configuration?company=${companyId}&saved=1`); }
 export async function uploadAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); let error = ''; try {
     const file = fd.get('attachment');
@@ -50,11 +52,11 @@ export async function uploadAction(fd: FormData) { const s = await requireAdmin(
     await attachJobDocument(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), name: file.name, type: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });
 }
 catch (e) {
-    error = failure(e);
+    error = await failure(e);
 } redirect(`${BASE}/${encodeURIComponent(id)}?${error ? `error=${encodeURIComponent(error)}` : 'saved=1'}`); }
 export async function removeAttachmentAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); let error = ''; try {
     await removeJobAttachment(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), attachmentId: text(fd, 'attachmentId') });
 }
 catch (e) {
-    error = failure(e);
+    error = await failure(e);
 } redirect(`${BASE}/${encodeURIComponent(id)}?${error ? `error=${encodeURIComponent(error)}` : 'saved=1'}`); }

@@ -22652,7 +22652,28 @@
     "receiptDetails": "Người nhận / chi tiết nhận",
     "receiptOn": "Ngày nhận",
     "receiptHint": "Nhân sự ghi nhận người được nêu đã nhận bản sửa đổi này. Chỉ ghi nhận việc nhận, không phải chữ ký đã xác minh của người đảm nhiệm.",
-    "unavailableReviewer": "{name} (không còn đủ quyền; xóa hoặc thay thế)"
+    "unavailableReviewer": "{name} (không còn đủ quyền; xóa hoặc thay thế)",
+    "errors": {
+      "required": "Hoàn thành {field}.",
+      "timeDistribution": "Nếu dùng tỷ lệ phần trăm, nhập tỷ lệ cho mọi nhiệm vụ và đảm bảo tổng bằng 100%.",
+      "stale": "Tài liệu đã thay đổi hoặc chỉ đọc. Mở lại bản nháp hiện tại trước khi tiếp tục.",
+      "duplicate": "Công ty đã có mã công việc chung này. Mở công việc hiện có hoặc dùng mã khác.",
+      "identity": "Không thể đổi công ty và mã công việc chung sau khi tạo.",
+      "access": "Không truy cập được bản ghi hoặc thiếu quyền cần thiết.",
+      "reviewer": "Chọn người đánh giá và phê duyệt hiện có quyền, không đóng góp vào bản sửa đổi này. Hoàn thành mọi đánh giá trước khi phê duyệt.",
+      "revise": "Mở bản đã phê duyệt mới nhất và nhập lý do để tạo bản sửa đổi tiếp theo.",
+      "reason": "Nhập lý do sửa đổi.",
+      "onlyDraft": "Chỉ bản nháp mới được gửi đánh giá.",
+      "delete": "Chỉ xóa được bản nháp đầu tiên chưa sử dụng. Gỡ tài liệu hỗ trợ trước.",
+      "feedback": "Nhập phản hồi đánh giá.",
+      "active": "Kiểm tra trạng thái hoạt động hiện tại và nhập lý do thay đổi.",
+      "documentControl": "Đặt người phụ trách, người đánh giá, người phê duyệt, ngày hiệu lực và ngày đánh giá tiếp theo.",
+      "organization": "Chọn dữ liệu tổ chức đang hoạt động phù hợp tiêu chí công ty và đơn vị kinh doanh / nhóm nghề tương thích.",
+      "attachment": "Dùng tệp PDF, DOCX, văn bản thuần, PNG hoặc JPEG đúng nội dung, tối đa 2 MB; tối đa 20 mỗi bản sửa đổi.",
+      "receipt": "Ghi nhận chi tiết người nhận và ngày nhận hợp lệ cho bản đã phê duyệt.",
+      "configuration": "Kiểm tra định nghĩa biểu mẫu, loại trường, giới hạn và lựa chọn hợp lệ.",
+      "invalid": "Kiểm tra giá trị, ngày và thông tin bắt buộc đã nhập."
+    }
   },
   "rewardsAccess": {
     "title": "Quyền truy cập Thưởng",

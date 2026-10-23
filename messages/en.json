@@ -22652,7 +22652,28 @@
     "receiptDetails": "Recipient / receipt details",
     "receiptOn": "Receipt date",
     "receiptHint": "HR records that the named recipient received this revision. This records receipt only and is not a verified job-holder signature.",
-    "unavailableReviewer": "{name} (no longer eligible; remove or replace)"
+    "unavailableReviewer": "{name} (no longer eligible; remove or replace)",
+    "errors": {
+      "required": "Complete {field}.",
+      "timeDistribution": "When percentages are used, enter every task percentage and make the distribution total 100%.",
+      "stale": "This document changed or is read-only. Reopen the current draft before continuing.",
+      "duplicate": "This company already has that common Job ID. Open the existing job or use a distinct ID.",
+      "identity": "The company and common Job ID cannot change after creation.",
+      "access": "The record or required permission is unavailable.",
+      "reviewer": "Choose current authorized reviewers and an approver who did not contribute to this revision. Complete all named reviews before approval.",
+      "revise": "Open the latest approved revision and enter a reason to create its successor.",
+      "reason": "Enter a revision reason.",
+      "onlyDraft": "Only a draft can be submitted for review.",
+      "delete": "Only an unused initial draft may be deleted. Supporting documents must be removed first.",
+      "feedback": "Enter review feedback.",
+      "active": "Check the current active status and enter a reason for changing it.",
+      "documentControl": "Set the document owner, named reviewers, approver, effective date and next review date.",
+      "organization": "Choose active organization masters within this company’s Criteria and compatible business unit / job family.",
+      "attachment": "Use a matching PDF, DOCX, plain text, PNG or JPEG file up to 2 MB; at most 20 per revision.",
+      "receipt": "Record recipient details and a valid receipt date for an approved revision.",
+      "configuration": "Check the form definition, field types, limits and valid choices.",
+      "invalid": "Check the entered values, dates and required information."
+    }
   },
   "rewardsAccess": {
     "title": "Rewards access",

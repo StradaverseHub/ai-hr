@@ -26,3 +26,6 @@ it('projects a successor by stable ID and type while preserving the approved ans
  const answers={analysisDetails:[{analyst:'Analyst',custom:42,removed:'Keep in original history'}]};
  expect(projectJobAnswers(old,next,answers)).toEqual({analysisDetails:[{analyst:'Analyst'}]});expect(answers.analysisDetails[0].custom).toBe(42);expect(answers.analysisDetails[0].removed).toBe('Keep in original history');
 });
+it('localizes validation field guidance while keeping diagnostic and custom captions stable',async()=>{
+ const{jobErrorGuidance}=await import('../app/admin/job-descriptions/error-guidance');const{JobDocumentError}=await import('../packs/job-descriptions/model');const{createTranslator}=await import('next-intl');for(const locale of ['en','ms','zh','vi','th','ta']){const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));const t=createTranslator({locale,messages,namespace:'jobDescriptions',onError:error=>{throw error;}});const result=jobErrorGuidance(new JobDocumentError('Complete Job purpose: Overall job purpose'),t);expect(result).toContain(t('fields.purpose.purpose'));expect(jobErrorGuidance(new JobDocumentError('Complete Custom section: HR Custom Label'),t)).toContain('HR Custom Label');expect(jobErrorGuidance(new Error('private SQL detail'),t)).toBe(t('saveFailed'));}
+});
