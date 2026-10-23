@@ -2859,7 +2859,9 @@ export async function reverseLeaveCredit(
     // without it. See payrollRunHoldingOvertimeTx.
     const {readOvertimeSettlementForDayTx,readOvertimeToilSettlementDatesTx,releaseOvertimeSettlementTx}=await import('../packs/attendance/service');
     const recordedSource=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate});
-    const protectedDates=await readOvertimeToilSettlementDatesTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate,toilAccrualId:acc.id});
+    const protectedDates=recordedSource?.settlement?.coverageKind==='policyPhysical'
+      ?await readOvertimeToilSettlementDatesTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate,toilAccrualId:acc.id})
+      :[acc.workedDate];
     if (((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0||recordedSource?.source.currentCalculationId||recordedSource?.settlement) && (await payrollStartedForDatesTx(tx, protectedDates))) {
       throw new LeaveCreditError(
         `${acc.workedDate} has overtime recorded, and payroll for that month has already been started without it. Reversing the credit now could leave that overtime unpaid. If that payroll is still a draft, delete it, reverse the credit, then start the payroll again.`,
