@@ -85,6 +85,19 @@ import {
 export { COMPARISON_KINDS, INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
 export type { ComparisonKind, MovementKind };
 
+/** Frozen resignation dates for the selected history event, independent of today's master. */
+export type MovementRecordedResignation={source:{eventId:string;role:'intent'|'effect'};tenderResignationDate:MovementRecordedValue<string|null>;resignationDate:MovementRecordedValue<string|null>;lastWorkingDate:MovementRecordedValue<string|null>};
+export function movementRecordedResignationOf(event:{id:string;eventType:string;payload:unknown}):MovementRecordedResignation|null{
+  const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
+  const payload=object(event.payload),tag=object(payload.movement);
+  const intent=event.eventType==='employment.movement.scheduled'&&payload.type==='resignation';
+  const effect=event.eventType==='employment.info.updated'&&tag.type==='resignation';
+  if(!intent&&!effect)return null;
+  const values=object(intent?payload.input:payload.after);
+  const recorded=(key:string):MovementRecordedValue<string|null>=>Object.hasOwn(values,key)&&(values[key]===null||typeof values[key]==='string'&&isCalendarDate(values[key] as string))?{known:true,value:values[key] as string|null}:{known:false,value:null};
+  return {source:{eventId:event.id,role:intent?'intent':'effect'},tenderResignationDate:recorded('tenderResignationDate'),resignationDate:recorded(intent?'resignationEffectiveDate':'resignationDate'),lastWorkingDate:intent?Object.hasOwn(payload,'endDate')&&(payload.endDate===null||typeof payload.endDate==='string'&&isCalendarDate(payload.endDate))?{known:true,value:payload.endDate as string|null}:{known:false,value:null}:recorded('lastWorkingDate')};
+}
+
 /** Recorded absence is distinct from a recorded blank/zero. Never hydrate these from live employment. */
 export type MovementRecordedValue<T> = { known: true; value: T } | { known: false; value: null };
 export type MovementRecordedExit = {
@@ -211,6 +224,7 @@ export type MovementHistoryRow = {
   /** Primary recorded exit values and effect/intent provenance. Optional for existing typed consumers;
    * canonical movementHistoryTx always supplies it, null for rows without a recorded exit event. */
   recordedExit?: MovementRecordedExit | null;
+  recordedResignation?: MovementRecordedResignation | null;
 };
 
 /**
@@ -293,6 +307,7 @@ export type MovementPendingIntent = { values: { field: MovementIntentField; valu
 
 export type MovementDetail = {
   row: MovementRowSummary;
+  recordedResignation?:MovementRecordedResignation|null;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
   actorName: string | null;
   /** When the change was recorded; null for the synthesized Hired row. */
@@ -1263,7 +1278,10 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       const terminal = status === 'superseded';
       // The window a correction disturbs runs from the effective date forward: undoing a raise changes
       // every period after it, not just the one it started in.
-      const locked = c.stateChanging && overlapsClosedPeriod(closed, r.effectiveDate, null);
+      const exitDates=r.kind==='resignation'?resignationFinancialDates(g):[];
+      const financial=c.stateChanging&&(r.kind!=='resignation'||exitDates.length>0);
+      const payrollFrom=[r.effectiveDate,...exitDates].sort()[0];
+      const locked = financial && overlapsClosedPeriod(closed, payrollFrom, null);
       return {
         id: r.id,
         kind: r.kind,
@@ -1276,13 +1294,14 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         canEdit: c.canEdit && !locked && !terminal,
         canReverse: c.canReverse && !locked && !terminal,
         payrollLocked: locked,
-        payrollWarning: c.stateChanging && !locked && overlapsClosedPeriod(processed, r.effectiveDate, null),
+        payrollWarning: financial && !locked && overlapsClosedPeriod(processed, payrollFrom, null),
         // The flat-column replay bounds on the WHOLE group's last sequence, exactly as the detail view's
         // After column does — the leg that wrote Division can carry a higher sequence than the leg that
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
         recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent) : null,
+        recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
       };
     });
   }
@@ -1562,6 +1581,7 @@ export async function movementDetailTx(tx: Tx,
         reversed: row.reversed,
       },
       actorName,
+      recordedResignation:ev?movementRecordedResignationOf(ev):null,
       occurredAt: row.occurredAt,
       before,
       after,
@@ -2245,6 +2265,7 @@ async function scheduleMovementTx(
 
 // Resignation information is a lifecycle effect, not a termination or final-pay command.
 const RESIGNATION_INFO_FIELDS=['tenderResignationDate','resignationDate','lastWorkingDate'] as const;
+function resignationFinancialDates(group:RawEvent[]):string[]{return group.flatMap(event=>{const payload=event.payload as {before?:Record<string,string|null>;after?:Record<string,string|null>};return ['resignationDate','lastWorkingDate'].flatMap(field=>payload?.before?.[field]===payload?.after?.[field]?[]:[payload?.before?.[field],payload?.after?.[field]]).filter((date):date is string=>!!date);});}
 async function resignationValuesTx(tx:Tx,p:CreateMovementInput){
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [before]=await tx.select({hiredOn:employment.hiredOn,tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,p.employmentId)).for('update');
@@ -2255,8 +2276,9 @@ async function resignationValuesTx(tx:Tx,p:CreateMovementInput){
   for(const date of Object.values(next))if(date!==null&&(!isCalendarDate(date)||date<before.hiredOn))throw new Error('Resignation dates must be valid dates on or after the hire date.');
   if(next.tenderResignationDate&&next.resignationDate&&next.tenderResignationDate>next.resignationDate||next.resignationDate&&next.lastWorkingDate&&next.resignationDate>next.lastWorkingDate||next.tenderResignationDate&&next.lastWorkingDate&&next.tenderResignationDate>next.lastWorkingDate)throw new Error('Resignation dates must follow tender date, resignation date, then last working date.');
   const changes=RESIGNATION_INFO_FIELDS.filter(field=>before[field]!==next[field]).map(field=>({field,before:before[field],after:next[field]}));
-  const from=[p.effectiveDate,...changes.flatMap(change=>[change.before,change.after]).filter((date):date is string=>!!date)].sort()[0];
-  if(changes.length&&overlapsClosedPeriod(await closedPeriodsTx(tx,p.employmentId),from,null))throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
+  const thresholds=changes.filter(change=>change.field!=='tenderResignationDate');
+  const from=[p.effectiveDate,...thresholds.flatMap(change=>[change.before,change.after]).filter((date):date is string=>!!date)].sort()[0];
+  if(thresholds.length&&overlapsClosedPeriod(await closedPeriodsTx(tx,p.employmentId),from,null))throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
   return {before,next,changes};
 }
 async function applyResignationMovementTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,opts?:{groupId?:string;allSecondary?:boolean}){
@@ -3339,9 +3361,9 @@ async function reverseMovementTx(
       'This event type cannot be rolled back from Employment History — use the screen that records it.',
     );
   }
-  if (c.stateChanging) {
+  const exitDates=row.kind==='resignation'?resignationFinancialDates(group):[];
+  if (c.stateChanging&&(row.kind!=='resignation'||exitDates.length>0)) {
     const closed = await closedPeriodsTx(tx, employmentId);
-    const exitDates=row.kind==='resignation'?group.flatMap(event=>{const payload=event.payload as {before?:Record<string,string|null>;after?:Record<string,string|null>};return RESIGNATION_INFO_FIELDS.flatMap(field=>[payload?.before?.[field],payload?.after?.[field]]).filter((value):value is string=>!!value);}):[];
     const from=[row.effectiveDate,...exitDates].sort()[0];
     if (overlapsClosedPeriod(closed, from, null)) {
       throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
@@ -3536,7 +3558,8 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       const original=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
       const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
-      const submitted={...p,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
+      const submitted={...p,endDate:p.endDate===undefined?row.endDate:p.endDate,remarks:rawEdit.remarks===undefined?row.remarks:p.remarks,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
+      if(submitted.effectiveDate===row.effectiveDate&&(submitted.endDate?.trim()||null)===row.endDate&&(submitted.remarks?.trim()||null)===row.remarks&&(submitted.tenderResignationDate??null)===(originalAfter?.tenderResignationDate??null)&&(submitted.resignationEffectiveDate??null)===(originalAfter?.resignationDate??null))throw new MovementNoChangeError();
       await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
       return recordResignationMovementTx(tx,ctx,submitted);
     }
@@ -3649,11 +3672,22 @@ export function resignationInformation(ctx:SessionContext,employmentId:string):P
     const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
     if(!current)throw new Error('Employment not found.');
     const {events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
-    const effects=rows.filter(row=>statusOf(row)==='applied').flatMap(row=>groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').map(event=>({row,event}))).sort((a,b)=>b.event.sequence-a.event.sequence);
+    const eventOwners=new Map<string,ProjectedRow>();
+    for(const movement of rows)for(const event of groupEventsOf(events,movement))eventOwners.set(event.id,movement);
     return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
       const value=current[field];
-      const owner=effects.find(({event})=>{const payload=event.payload as {fields?:unknown;after?:Record<string,unknown>};return Array.isArray(payload?.fields)&&payload.fields.includes(field)&&payload.after?.[field]===value;});
-      return [field,{value,source:owner?{kind:'movement',movementId:owner.row.id,effectiveDate:owner.row.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
+      const latest=[...events].reverse().find(event=>{
+        if(event.eventType!=='employment.info.updated')return false;
+        const payload=event.payload as {fields?:unknown};if(!Array.isArray(payload?.fields)||!payload.fields.includes(field))return false;
+        const source=eventOwners.get(event.id),tag=tagOf(event);
+        // A compensating companion restores the prior ledger owner; reversed effects do not own today.
+        if(tag?.secondary&&!source)return false;
+        return !source||statusOf(source)==='applied';
+      });
+      const source=latest?eventOwners.get(latest.id):undefined;
+      const after=(latest?.payload as {after?:Record<string,unknown>})?.after;
+      const owner=source&&after?.[field]===value?source:undefined;
+      return [field,{value,source:owner?{kind:'movement',movementId:owner.id,effectiveDate:owner.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
     })) as ResignationInformation;
   });
 }

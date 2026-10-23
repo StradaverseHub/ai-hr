@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -26,10 +25,8 @@ const identity='900101011234'; // Fictional fixture, never a runtime/UI example.
 const changedIdentity='900101011235';
 beforeAll(async () => {
   await migrateTestDb();
-  // Draft migration is deliberately not journaled by this worker. The final candidate will
-  // register it centrally; focused development can apply precisely this draft to its own worker DB.
   const [installed]=await owner.db.execute<{installed:boolean}>(sql`select to_regprocedure('app.people_general_read()') is not null as installed`);
-  if(!installed.installed)for(const statement of readFileSync(new URL('../db/migrations/0594_people_nric_policy.sql',import.meta.url),'utf8').split('--> statement-breakpoint'))if(statement.trim())await owner.db.execute(sql.raw(statement));
+  expect(installed.installed,'The integration journal must install migration0594').toBe(true);
 });
 afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});

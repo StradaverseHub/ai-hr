@@ -30,6 +30,15 @@ describe('authenticated per-type Movement workbook',()=>{
   const edited=await edit(bytes,book=>{for(let r=5;r<8;r++){book.Sheets.Increment[XLSX.utils.encode_cell({r,c:amount})]={t:'n',v:100};book.Sheets.Increment[XLSX.utils.encode_cell({r,c:date})]={t:'s',v:'01-Nov-2026'};}});
   const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(3);expect(parsed.records.every(r=>r.incrementAmount==='100'&&r.cells.kind==='increment')).toBe(true);expect(parsed.records.map(r=>r.source?.row)).toEqual([6,7,8]);
  });
+ it('round-trips the explicit resignation lifecycle dates including Excel numeric dates',async()=>{
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects,typeCode:'resignation',resolve});
+  const columns=movementWorkbookLayout(catalog.types.find(type=>type.code==='resignation')!,resolve);
+  const edited=await edit(bytes,book=>{
+   const sheet=book.Sheets.Resignation;
+   for(const [key,value]of Object.entries({tenderResignationDate:(Date.UTC(2026,9,1)-Date.UTC(1899,11,30))/86400000,resignationEffectiveDate:'15-Oct-2026',endDate:'20-Oct-2026',effectiveDate:'01-Nov-2026'}))sheet[XLSX.utils.encode_cell({r:5,c:columns.findIndex(column=>column.key===key)})]=typeof value==='number'?{t:'n',v:value}:{t:'s',v:value};
+  });
+  const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(1);expect(parsed.records[0].cells).toMatchObject({kind:'resignation',tenderResignationDate:'2026-10-01',resignationEffectiveDate:'15-Oct-2026',endDate:'20-Oct-2026',effectiveDate:'01-Nov-2026'});
+ });
  it('serializes formula notes as initially hidden VML shapes while retaining note text and sheet protection',async()=>{
   const bytes=await make(),zip=await JSZip.loadAsync(bytes),wb=XLSX.read(bytes,{type:'buffer',cellFormula:true});
   const drawings=Object.values(zip.files).filter(entry=>/^xl\/drawings\/.*\.vml$/.test(entry.name)),comments=Object.values(zip.files).filter(entry=>/^xl\/comments\d+\.xml$/.test(entry.name));expect(drawings).toHaveLength(1);expect(comments).toHaveLength(1);

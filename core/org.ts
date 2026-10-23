@@ -2751,6 +2751,9 @@ export async function setEmploymentInfo(
     throw new Error('Only an admin can edit employment information.');
   }
 
+  const exitAuthority=hasExitDateAuthorityTx(outerTx,p.employmentId);
+  const movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
+
   // Build the write set: only columns the caller actually provided. `undefined` = untouched; a period/text
   // field passed as '' or null clears to NULL. Validate + normalise as we go.
   const set: Record<string, string | number | null> = {};
@@ -2763,7 +2766,7 @@ export async function setEmploymentInfo(
   // under the `groupJoinDateCorrection` movement tag means every move of that date carries an effective date,
   // a reason and a history row. An untagged save posting it is silently IGNORED (forge-proof, as with
   // extendedConfirmationDate) rather than rejected, so a stale/tampered form cannot mutate it either.
-  if (p.hiredOn !== undefined && p.movement?.type === 'groupJoinDateCorrection') {
+  if (p.hiredOn !== undefined && movement?.type === 'groupJoinDateCorrection') {
     const v = String(p.hiredOn).trim();
     if (!isCalendarDate(v)) throw new Error('Hire date is required and must be a valid date.');
     set.hiredOn = v;
@@ -2782,7 +2785,7 @@ export async function setEmploymentInfo(
   // An untagged save posting joinDate is still silently ignored.
   if (
     p.joinDate !== undefined &&
-    (p.movement?.type === 'joinDateChange' || p.movement?.type === 'entityTransfer')
+    (movement?.type === 'joinDateChange' || movement?.type === 'entityTransfer')
   ) {
     const v = p.joinDate == null ? null : String(p.joinDate).trim();
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
@@ -2797,7 +2800,7 @@ export async function setEmploymentInfo(
   }
   // Exit dates are a Movement-owned effect. An arbitrary movement tag or a stale
   // general form cannot manufacture the transaction-bound authority held by apply/reverse.
-  if (hasExitDateAuthorityTx(outerTx,p.employmentId)) {
+  if (exitAuthority) {
     for (const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const) {
       const raw=p[field];if(raw===undefined)continue;const value=raw?.trim()||null;
       if(value&&!isCalendarDate(value))throw new Error('Enter a valid date (YYYY-MM-DD).');
@@ -2808,7 +2811,7 @@ export async function setEmploymentInfo(
   // EXCLUSIVELY through the Movement module (createMovementEvent 'probationExtension' delegates here with the
   // movement tag). Without that tag the field is silently IGNORED — a forged form submission cannot mutate it —
   // so the movement writer stays the single mutator. Derivation + ordering guards below are unchanged.
-  if (p.extendedConfirmationDate !== undefined && p.movement?.type === 'probationExtension') {
+  if (p.extendedConfirmationDate !== undefined && movement?.type === 'probationExtension') {
     const v = p.extendedConfirmationDate == null ? null : String(p.extendedConfirmationDate).trim();
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.extendedConfirmationDate = v || null;
@@ -3024,7 +3027,7 @@ export async function setEmploymentInfo(
     // the periods named, for any payslip — draft, processed or closed — between the old and the new date.
     // A Group Join Date Correction that carries the Join Date with it (the synchronised case above) moves
     // the same days, so asking about hired_on covers both.
-    if (p.movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
+    if (movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
       const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, before.hiredOn, set.hiredOn as string);
       if (periods.length) {
         throw new Error(
@@ -3032,7 +3035,7 @@ export async function setEmploymentInfo(
         );
       }
     }
-    if (p.movement?.type === 'joinDateChange' && 'joinDate' in set) {
+    if (movement?.type === 'joinDateChange' && 'joinDate' in set) {
       const oldJoin = before.joinDate ?? before.hiredOn;
       const newJoin = set.joinDate as string | null;
       if (newJoin && newJoin !== oldJoin) {
@@ -3049,7 +3052,7 @@ export async function setEmploymentInfo(
     // comment above EMPLOYMENT_INFO_DATE_FLOOR carries the whole reasoning and the per-field evidence.
     // Runs last, on the RESULTING values, so it asks the only question that matters: does the answer this
     // employment gives for some day inside a closed payroll month change because of this save?
-    if (!p.movement) {
+    if (!movement) {
       const windows: { from: string; to: string | null }[] = [];
 
       // 1. The probation threshold, compared as the value its readers actually read
@@ -3107,7 +3110,7 @@ export async function setEmploymentInfo(
       eventType: 'employment.info.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { fields: Object.keys(set), before, after, ...(p.movement ? { movement: p.movement } : {}) },
+      payload: { fields: Object.keys(set), before, after, ...(movement ? { movement: movement } : {}) },
     });
     return { id: p.employmentId };
   };
