@@ -33,7 +33,7 @@ describe('anonymous Home card observations',()=>{
  });
  it('refuses raw content-bearing batches, direct table access, missing own identity and revoked actual grants',async()=>{
   const own=await worker();
-  await expect(recordHomeCardInteractions(own.ctx,{...body,employeeName:'PRIVATE'})).rejects.toThrow();
+  expect(()=>recordHomeCardInteractions(own.ctx,{...body,employeeName:'PRIVATE'})).toThrow();
   await expect(withTenant(own.ctx,tx=>tx.execute(sql`SELECT app.record_home_card_interactions(${'[{"card":"today","action":"view","name":"PRIVATE"}]'}::jsonb)`))).rejects.toThrow();
   await expect(withTenant(own.ctx,tx=>tx.execute(sql`SELECT * FROM app.home_card_interaction_count`))).rejects.toThrow();
   await expect(recordHomeCardInteractions(adminCtx(b),body)).rejects.toThrow();
