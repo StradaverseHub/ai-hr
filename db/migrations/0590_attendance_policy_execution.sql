@@ -601,7 +601,8 @@ BEGIN
   OR anchor.ot_minutes IS NOT NULL OR anchor.calc_trace IS NOT NULL OR anchor.ot_flat_minutes IS NOT NULL
   OR anchor.ot00_minutes IS NOT NULL OR anchor.ot10_minutes IS NOT NULL OR anchor.ot15_minutes IS NOT NULL
   OR anchor.ot20_minutes IS NOT NULL OR anchor.ot30_minutes IS NOT NULL OR anchor.late_minutes IS NOT NULL
-  OR anchor.early_out_minutes IS NOT NULL OR anchor.under_minutes IS NOT NULL THEN
+  OR anchor.early_out_minutes IS NOT NULL OR anchor.under_minutes IS NOT NULL
+  OR anchor.late_deduct_minutes IS NOT NULL OR anchor.early_out_deduct_minutes IS NOT NULL THEN
   RAISE EXCEPTION 'The active unclocked-work identity must not contain invented raw clock figures' USING ERRCODE='23514';END IF;
  INSERT INTO public.attendance_policy_attested_effect(attendance_id,correction_id,tenant_id,company_id,employment_id,attendance_date,
   workflow_request_id,actor_user_id,requested_minutes,approved_minutes,manual_method,attested_work,context_evidence,policy_binding)

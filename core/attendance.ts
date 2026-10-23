@@ -4077,7 +4077,7 @@ export async function decideAttendanceCorrection(
           existingAnchor.ot15Minutes,existingAnchor.ot20Minutes,existingAnchor.ot30Minutes,existingAnchor.lateMinutes,
           existingAnchor.earlyOutMinutes,existingAnchor.underMinutes,existingAnchor.lateDeductMinutes,existingAnchor.earlyOutDeductMinutes,attendancePolicyAttestedRawTrace(existingAnchor.calcTrace)].some(value=>value!==null))
           throw Error('Retain the existing Attendance evidence and correct it through its own workflow before attesting this day.');
-        if(existingAnchor)await tx.update(attendance).set({attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'})
+        if(existingAnchor)await tx.update(attendance).set({attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present',calcTrace:null})
           .where(eq(attendance.id,existingAnchor.id));
         else await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,
           attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'});
