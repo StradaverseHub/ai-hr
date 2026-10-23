@@ -62,7 +62,13 @@ BEGIN
     THEN RAISE EXCEPTION 'Only an unchanged unused draft can be removed' USING ERRCODE='23514'; END IF;
   END IF;
   target:=NEW.parent_unit_id;
- ELSE target:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;
+ ELSE
+  -- Child identity belongs to one review for life; a tombstone cannot lose retained evidence
+  -- through UPDATE to a live destination whose NEW-row check alone would otherwise pass.
+  IF TG_OP='UPDATE' AND NEW.unit_id IS DISTINCT FROM OLD.unit_id THEN
+   RAISE EXCEPTION 'Reward evidence cannot move between reviews' USING ERRCODE='23514';
+  END IF;
+  target:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;
  END IF;
  IF target IS NOT NULL THEN
   SELECT * INTO u FROM reward_unit WHERE id=target FOR UPDATE;

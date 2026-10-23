@@ -166,6 +166,18 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         await expect(withTenant(admin, tx => tx.update(s.rewardUnit).set({ deletedAt: null, deletedBy: null }).where(eq(s.rewardUnit.id, id)))).rejects.toThrow();
         await expect(withTenant(admin, tx => tx.insert(s.rewardMember).values({ tenantId: b.tenantId, unitId: id, userId: reviewer.userId!, role: 'bu' }))).rejects.toThrow();
     });
+    it('refuses moving retained membership out of a removed review through the actual app role', async () => {
+        await setRewardMember(admin,id,await revision(),reviewer.userId!,'pbp');
+        const before=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
+        expect(before).toHaveLength(2);
+        const retainedMember=before.find(member=>member.userId===reviewer.userId)!;
+        expect(retainedMember.role).toBe('pbp');
+        await deleteRewardReview(admin,id,await revision(),id);
+        const replacement=await createRewardUnit(admin,{name:'Replacement review',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
+        await expect(withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)))).rejects.toThrow(/cannot move/);
+        const retained=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
+        expect(retained).toEqual(before);
+    });
     it('retains owned source snapshots on removal but refuses changed facts and recommendations', async () => {
         const hire = await hireEmployee(admin, { person: { fullName: 'Snapshot employee' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
         await owner.db.update(s.assignment).set({ businessUnitId: bu }).where(eq(s.assignment.employmentId, hire.employmentId));

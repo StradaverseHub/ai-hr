@@ -49,7 +49,6 @@ import { setEmploymentScheduleGroup } from '@/core/roster';
 import { setClockingControl, ClockingLocationRequiredError, ClockingLocationNotAvailableError, setAttendancePhotoSetting, type AttendancePhotoSetting } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionMidMonthError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
-import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
 import {
   addEmployeeDocument,
   deleteEmployeeDocument,
@@ -57,7 +56,6 @@ import {
   resolveDocumentUpload,
   updateEmployeeDocumentMeta,
 } from '@/core/employee-documents';
-import { buildReviewLetterPdf } from '@/lib/review-letter-build';
 import { setPersonComplianceFields } from '@/core/workforce-commands';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
@@ -93,7 +91,6 @@ function withTab(formData: FormData, url: string): string {
   return tab ? `${url}&tab=${encodeURIComponent(tab)}` : url;
 }
 
-const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
 /**
  * R45 7527ea5f — Automatic Leave Entitlement Recalculation. After a profile change that can move an
@@ -124,32 +121,6 @@ async function recomputeEntitlement(
   }
 }
 
-export async function setReviewEndDateAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const rawType = String(formData.get('reviewType') ?? '');
-  const reviewType = (REVIEW_TYPES as string[]).includes(rawType) ? (rawType as ReviewType) : 'probation';
-  try {
-    await setReviewEndDate(s, { employmentId, reviewType, endDate: String(formData.get('endDate') || '') || null });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
-
-export async function startReviewAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await startReview(s, { employmentId });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Review started`));
-}
-
 /** 6522d26a — derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown → null).
  *  Same rationale as the claims action: the service allowlist checks what the file IS, not what the
  *  browser claimed. */
@@ -158,51 +129,6 @@ function sniffMime(bytes: Buffer): string | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
   return null;
-}
-
-/** 6522d26a Fn 5 — HR uploads the final SIGNED review letter against a completed review. The service is
- *  admin-only, validates mime/size, and appends `employment-review.document-uploaded` with the session
- *  user as actor (actorOf(s) — the real user, never SYSTEM, threads through requireAdmin's session). */
-export async function uploadReviewDocumentAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const reviewId = String(formData.get('reviewId'));
-  try {
-    const file = formData.get('document');
-    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a file to upload.');
-    const content = Buffer.from(await file.arrayBuffer());
-    const mimeType = sniffMime(content);
-    if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
-    await uploadReviewDocument(s, { reviewId, kind: 'signed_letter', fileName: file.name, mimeType, content });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document uploaded`));
-}
-
-/** 6522d26a Fn 5 — persist the system-generated outcome letter to the review record (kind system_letter,
- *  at most one per review). Renders via the SAME builder as the download route, so the stored bytes match
- *  what HR previews. */
-export async function saveReviewLetterAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const reviewId = String(formData.get('reviewId'));
-  try {
-    const letter = await buildReviewLetterPdf(s, reviewId);
-    if (!letter) throw new Error('Review not found (or not completed).');
-    await uploadReviewDocument(s, {
-      reviewId,
-      kind: 'system_letter',
-      fileName: letter.fileName,
-      mimeType: 'application/pdf',
-      content: Buffer.from(letter.bytes),
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Letter saved`));
 }
 
 // ── f018ce8d — Employee document store (Documents tab) ─────────────────────────────────────────────
