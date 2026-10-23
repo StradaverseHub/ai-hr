@@ -19,8 +19,9 @@ function submissionSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyApprova
   date:contract.attendanceDate,companyId:contract.companyId,kind:contract.kind,visibleEpoch:contract.visibleEpoch,manualApprovalMethod:contract.manualApprovalMethod,policyBinding:structuredClone(contract.policyBinding),recordedAt:contract.recordedAt.toISOString(),
   ...(contract.attestedWork?{attestedWork:structuredClone(contract.attestedWork)}:{})};
 }
-/** Only the DB transition owner can mint this row. Its retained decision/effect is still not a
- * positioned plan, exception attestation, current physical replay or payable policy calculation. */
+/** Only the DB transition owner can mint this row. HR actual-work testimony additionally
+ * requires its distinct exact scoped effect below; a general decision never becomes a capture,
+ * positioned plan, current work replay or payable policy calculation. */
 function finalReceiptSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyApprovalSourceRow,
  contract:PolicySubmissionSourceRow|undefined,receipt:PolicyFinalReceiptSourceRow|undefined){
  if(!receipt)return {state:'missing' as const};
@@ -34,9 +35,21 @@ function finalReceiptSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyAppro
  if(contract.manualApprovalMethod!==row.otApprovalMethod||receipt.workflowEvidence?.submittedManualMethod!==contract.manualApprovalMethod
   ||!isDeepStrictEqual(receipt.workflowEvidence?.submittedPolicy??null,contract.policyBinding))
   return {state:'unavailable' as const,reason:'submissionMismatch' as const};
- if(contract.attestedWork&&(!isDeepStrictEqual(receipt.workflowEvidence?.submittedAttestedWork,contract.attestedWork)
-  ||!isDeepStrictEqual(contract.attestedWork.work,row.originalClockSnapshot?.unclockedWork)))
+ if(!isDeepStrictEqual(receipt.workflowEvidence?.submittedAttestedWork??null,contract.attestedWork??null))
   return {state:'unavailable' as const,reason:'submissionMismatch' as const};
+ if(contract.attestedWork){
+  const effect=receipt.workflowEvidence?.unclockedEffect as Record<string,unknown>|undefined;
+  if(!effect||effect.authority!=='attestedActualWorkOnly'||effect.correction_id!==row.id||effect.tenant_id!==row.tenantId
+   ||effect.company_id!==policy.companyId||effect.employment_id!==row.employmentId||effect.attendance_date!==row.attendanceDate
+   ||effect.workflow_request_id!==receipt.workflowRequestId||effect.actor_user_id!==receipt.actorUserId
+   ||effect.requested_minutes!==row.requestedOtMinutes||effect.approved_minutes!==row.approvedOtMinutes
+   ||effect.manual_method!==contract.manualApprovalMethod||!isDeepStrictEqual(effect.attested_work,contract.attestedWork)
+   ||!isDeepStrictEqual(effect.policy_binding,contract.policyBinding)
+   ||!isDeepStrictEqual(contract.attestedWork.work,row.originalClockSnapshot?.unclockedWork)
+   ||typeof effect.recorded_at!=='string'||!Number.isFinite(Date.parse(effect.recorded_at))
+   ||Date.parse(effect.recorded_at)<contract.recordedAt.getTime()||Date.parse(effect.recorded_at)>receipt.recordedAt.getTime())
+   return {state:'unavailable' as const,reason:'submissionMismatch' as const};
+ }
  const request={requestedMinutes:row.requestedOtMinutes,approvedMinutes:row.approvedOtMinutes,method:row.otApprovalMethod,
   plannedStartLabel:row.plannedStartTime,plannedEndLabel:row.plannedEndTime,
   checkIn:row.proposedCheckIn,checkOut:row.proposedCheckOut,clockChanges:row.clockChanges};

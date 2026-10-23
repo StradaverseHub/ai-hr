@@ -10526,7 +10526,19 @@ export const attendancePolicyRequestContract=pgTable('attendance_policy_request_
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 });
 
-/** Minted by the real final workflow transition; not a payment, positioned plan or exception attestation. */
+/** Separate current-work testimony effect; never a punch, capture, raw scalar or payment. */
+export const attendancePolicyAttestedEffect=pgTable('attendance_policy_attested_effect',{
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ attendanceDate:date('attendance_date').notNull(),workflowRequestId:uuid('workflow_request_id').notNull(),actorUserId:text('actor_user_id').notNull(),
+ authority:text('authority').notNull().$type<'attestedActualWorkOnly'>().default('attestedActualWorkOnly'),
+ requestedMinutes:integer('requested_minutes').notNull(),approvedMinutes:integer('approved_minutes').notNull(),
+ manualMethod:text('manual_method').notNull().$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
+ attestedWork:jsonb('attested_work').notNull().$type<Record<string,unknown>>(),policyBinding:jsonb('policy_binding').notNull().$type<TraceAttendancePolicyBinding>(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
+
+/** Minted by the real final workflow transition with its distinct scoped effect; never payment or clock evidence. */
 export const attendancePolicyFinalReceipt=pgTable('attendance_policy_final_receipt',{
  correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),

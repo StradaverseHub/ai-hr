@@ -1046,15 +1046,25 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id)))[0].releasedAt).not.toBeNull();
  });
 
- it('freezes explicit HR unclocked actual-work testimony without promoting it to captured work or payable duration',async()=>{
+ it.each(['requested','system_calculated','smaller_of','greater_of'] as const)('retains a real scoped unclocked-work %s final effect without captured clocks or scalar landing',async method=>{
+  await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:0,lateAfter:'09:00',
+   halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
   // This uses the SAME declared private historical baseline fixture as the Manual tests:
   // policy was genuinely scheduled then effectiveFrom restored with guards back on before work.
   // It is not evidence of a historical activation command or a ready unclocked financial path.
   const f=await fixture('manual','12','actual',true,undefined,0,false,{mode:'none',step:null},120,'earliest',false,undefined,true),
    date=day(0),midnight=Date.parse(date+'T00:00:00+08:00'),end=Math.max(midnight+1,Math.min(midnight+3600000,Date.now()-1));
+  const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional unclocked-work final reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+  const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),
+   reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'UNCLOCKED_'+randomUUID().slice(0,8),name:'Fictional actual-work review',
+   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+   stages:[{name:'Review actual-work testimony',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
   const reason='Fictional HR testimony of actual unclocked work, distinct from the requested overtime count.',
    work={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight,toEpochMillisecond:end}]};
-  const result=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date,requestedOtMinutes:60,reason,unclockedWork:work});
+  const result=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date,requestedOtMinutes:30,reason,unclockedWork:work});
   const [contract]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyRequestContract)
    .where(eq(s.attendancePolicyRequestContract.correctionId,result.correctionId)));
   expect(contract.attestedWork).toMatchObject({authority:'hrAttestedWorkSubmission',correctionId:result.correctionId,
@@ -1066,6 +1076,21 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.select().from(s.attendancePunch).innerJoin(s.attendance,eq(s.attendance.id,s.attendancePunch.attendanceId))
    .where(eq(s.attendance.employmentId,f.employmentId))).toEqual([]);
   expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date}))).toBeNull();
+  await decideAttendanceCorrection(reviewCtx,{correctionId:result.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  const physicalMinutes=Math.floor((end-midnight)/60000),expected=method==='requested'?30:method==='system_calculated'?physicalMinutes
+   :method==='smaller_of'?Math.min(30,physicalMinutes):Math.max(30,physicalMinutes);
+  const [effect]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyAttestedEffect)
+   .where(eq(s.attendancePolicyAttestedEffect.correctionId,result.correctionId)));
+  expect(effect).toMatchObject({authority:'attestedActualWorkOnly',actorUserId:userId,approvedMinutes:expected,manualMethod:method,attestedWork:contract.attestedWork});
+  const [receipt]=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,result.correctionId));
+  expect(receipt.rawEvidence).toBeNull();
+  expect(receipt.workflowEvidence).toMatchObject({unclockedEffect:{authority:'attestedActualWorkOnly',approved_minutes:expected},submittedAttestedWork:contract.attestedWork});
+  expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,result.correctionId)))[0])
+   .toMatchObject({status:'approved',approvedOtMinutes:expected,appliedAt:null});
+  expect(await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId))).toEqual([]);
+  await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyAttestedEffect).set({approvedMinutes:999})
+   .where(eq(s.attendancePolicyAttestedEffect.correctionId,result.correctionId)))).rejects.toThrow();
+  expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
  });
 
  it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{
