@@ -1180,7 +1180,8 @@ BEGIN
     OR plan_receipt.company_id IS DISTINCT FROM source.company_id OR plan_receipt.employment_id IS DISTINCT FROM source.employment_id
     OR plan_receipt.attendance_date IS DISTINCT FROM source.attendance_date OR plan_receipt.submission_epoch IS DISTINCT FROM plan_contract.visible_epoch
     OR plan_receipt.recorded_at<plan_contract.recorded_at OR plan_receipt.workflow_request_id::text IS DISTINCT FROM plan_ref->>'workflowRequestId'
-    OR plan_receipt.recorded_at IS DISTINCT FROM (plan_ref->>'recordedAt')::timestamptz
+    -- JS receipt projections retain millisecond precision; compare that exact representation.
+    OR date_trunc('milliseconds',plan_receipt.recorded_at) IS DISTINCT FROM (plan_ref->>'recordedAt')::timestamptz
     OR plan_receipt.workflow_evidence->'submittedPolicy' IS DISTINCT FROM plan_contract.policy_binding
     OR plan_receipt.workflow_evidence->>'submittedManualMethod' IS DISTINCT FROM plan_contract.manual_approval_method
     OR plan_receipt.workflow_evidence->'submittedPlan' IS DISTINCT FROM plan_window

@@ -989,7 +989,7 @@ describe('immutable non-payable policy part storage',()=>{
  });
 
  it('banks mixed normal/rest credits once and expires only the unused dated balance after real half-day leave',async()=>{
-  await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'leave','active');ctx=await entitledCtx(b);
+  await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,555,true,{mode:'none',step:null},120,'earliest',true);
   await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
    allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
@@ -1066,6 +1066,7 @@ describe('immutable non-payable policy part storage',()=>{
   await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
   // Payslip generation processed this run. Use the actual reasoned reset owner before
   // draft deletion and the next source's separate TOIL election.
+  await setSetting(b.tenantId,'payroll.reset_enabled',true);ctx=await entitledCtx(b);
   await resetProcessedBatch(ctx,{batchId:batch.batchId,reason:'Fictional reset before releasing the rounded cash election'});
   await deleteDraftBatch(ctx,{batchId:batch.batchId});
   // A separate actual source chooses TOIL, even after its cash earning mapping is archived.
@@ -1201,7 +1202,7 @@ describe('immutable non-payable policy part storage',()=>{
   await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical approved-plan settlement parent');
-  expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
+  expect(read.calculation,JSON.stringify(read.evidence.evidence)).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
   expect(read.policyParts.map(row=>[row.rawMinutes,row.allocatedPayableMinutes,row.sourceIntervals])).toEqual([[0,0,[]]]);
   const review=await withTenant(ctx,tx=>readOvertimePatternCalculationTx(tx,ctx,p));
   expect(review?.policyPayableParts).toEqual([{sequence:0,calendarDate:p.date,minutes:90}]);

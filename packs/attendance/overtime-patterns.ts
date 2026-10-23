@@ -284,7 +284,14 @@ export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOv
    const source=await lockOvertimeSourceTx(tx,ctx,p);let snapshot=await readCanonicalInputsTx(tx,ctx,p);
    // Policy part guards validate live formula state. Hold a scoped read barrier on the configuration epoch through
    // commit, then re-read after any wait; a concurrent stop cannot turn raw clocking into a SQL fault.
-   if(snapshot.attendanceGroupPolicy){await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);snapshot=await readCanonicalInputsTx(tx,ctx,p);}
+   if(snapshot.attendanceGroupPolicy){
+    // Attested work deliberately has an unknown raw trace. The raw subject/day barrier
+    // protects the same configuration epoch without treating a fake schedule trace as proof.
+    // The canonical re-read below still proves the immutable testimony and private final effect.
+    if(snapshot.policyRawEffectSource?.attested)await tx.execute(sql`select app.lock_attendance_policy_raw_context(${p.employmentId}::uuid,${p.date}::date)`);
+    else await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
+    snapshot=await readCanonicalInputsTx(tx,ctx,p);
+   }
    validateSnapshot(snapshot,ctx,p,source);const resolution=await snapshotResolutionTx(tx,ctx,snapshot,p);const handle=Object.freeze({});handles.set(handle,{tx,principal:principal(ctx),p:{...p},snapshotDigest:digest(snapshot),sourceId:source.id,resolutionDigest:digest(resolution)});return handle as PreparedOvertimeCalculation;},
   async recordTx(tx:Tx,ctx:SessionContext,p:{prepared:PreparedOvertimeCalculation;expectedCurrentRevision:number;reason?:string}):Promise<OvertimeRecordOutcome>{
    gate(ctx);const handle=p.prepared as object,bound=handle&&handles.get(handle);if(!bound||bound.tx!==tx||bound.principal!==principal(ctx))fail('permission','Use a fresh canonical input handle from this transaction and principal.');handles.delete(handle);
@@ -398,9 +405,11 @@ export async function assertOvertimeSettlementAvailableTx(tx:Tx,ctx:SessionConte
     if(expected.state!=='prepared'||!isDeepStrictEqual(expected,(recorded.evidence?.evidence as Record<string,unknown>)?.policyFinancialContract))
      fail('stale','Current policy source, approval, formula or financial references changed.');
    }else{
-    const {resolveOvertimeToilDurationTx}=await import('./overtime-toil');
-    const current=await resolveOvertimeToilDurationTx(tx,ctx,p);
-    if(current.kind!=='formula'||current.calculationId!==calculation.id||current.sourceRevision!==source.revision
+    const {resolveOvertimePolicyDatedToilQualificationTx}=await import('./overtime-toil');
+    // The election owner already retains each dated class. Revalidate through that same
+    // salary-free dated owner; the legacy single-kind DTO cannot represent a mixed parent.
+    const current=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,p);
+    if(!current||current.calculationId!==calculation.id||current.sourceRevision!==source.revision
      ||current.minutes<=0)fail('unavailable','Only complete current policy duration may settle in TOIL.');
    }
   }
