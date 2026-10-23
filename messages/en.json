@@ -12366,6 +12366,7 @@
       "toggle": "Toggle theme"
     },
     "uiTheme": {
+
       "label": "Theme",
       "monolith": "Monolith",
       "classic": "Classic",
@@ -21062,12 +21063,14 @@
     "photoAlreadyPending": "A photo is already waiting for review. Wait for the decision before submitting another.",
     "routingTypeMatched": "Matched employee/request-type pairs",
     "routingTypeMissing": "Missing employee/request-type pairs",
+
     "submitPhoto": "Submit photo for approval",
     "pendingPhoto": "Pending photo",
     "photoApprovalHelp": "Your current photo remains until HR approves. You will see the decision in My change requests.",
     "currentPhoto": "Current photo",
     "proposedPhoto": "Proposed photo",
     "photoProposed": "Photo submitted for HR approval",
+
     "approvalRules": "HR Approval Rules",
     "requestTypes": "Request types",
     "fieldRequests": "Profile fields",
@@ -21078,9 +21081,11 @@
     "unavailableSelection": "Unavailable selection — remove or replace",
     "noValidApprovers": "No eligible HR approvers. Check active employment, login and company authority.",
     "noMatches": "No matching options",
+
     "tabPermission": "Tab access",
     "sectionPermission": "Section access",
     "groupPermissionHelp": "Tab and section limits take priority. Editable follows each field; View only prevents changes; Hide removes the information from My Profile.",
+
     "requestEdit": "Request to edit",
     "save": "Save changes",
     "cancel": "Cancel",

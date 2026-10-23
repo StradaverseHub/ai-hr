@@ -12366,6 +12366,7 @@
       "toggle": "Chuyển giao diện"
     },
     "uiTheme": {
+
       "label": "Giao diện",
       "monolith": "Monolith",
       "classic": "Cổ điển",
@@ -21062,12 +21063,14 @@
     "photoAlreadyPending": "Đã có ảnh đang chờ xem xét. Hãy đợi quyết định trước khi gửi ảnh khác.",
     "routingTypeMatched": "Cặp nhân viên/loại yêu cầu phù hợp",
     "routingTypeMissing": "Cặp nhân viên/loại yêu cầu thiếu quy tắc",
+
     "submitPhoto": "Gửi ảnh để phê duyệt",
     "pendingPhoto": "Ảnh đang chờ",
     "photoApprovalHelp": "Ảnh hiện tại được giữ đến khi HR phê duyệt. Xem quyết định trong Yêu cầu thay đổi của tôi.",
     "currentPhoto": "Ảnh hiện tại",
     "proposedPhoto": "Ảnh đề xuất",
     "photoProposed": "Đã gửi ảnh để HR phê duyệt",
+
     "approvalRules": "Quy tắc phê duyệt HR",
     "requestTypes": "Loại yêu cầu",
     "fieldRequests": "Trường hồ sơ",
@@ -21078,9 +21081,11 @@
     "unavailableSelection": "Lựa chọn không khả dụng — xóa hoặc thay thế",
     "noValidApprovers": "Không có người duyệt HR hợp lệ. Kiểm tra việc làm hiện tại, đăng nhập và quyền công ty.",
     "noMatches": "Không có lựa chọn phù hợp",
+
     "tabPermission": "Quyền truy cập thẻ",
     "sectionPermission": "Quyền truy cập phần",
     "groupPermissionHelp": "Giới hạn thẻ và phần được ưu tiên. Có thể sửa tuân theo từng trường; Chỉ xem ngăn thay đổi; Ẩn loại bỏ thông tin khỏi Hồ sơ của tôi.",
+
     "requestEdit": "Yêu cầu chỉnh sửa",
     "save": "Lưu thay đổi",
     "cancel": "Hủy",

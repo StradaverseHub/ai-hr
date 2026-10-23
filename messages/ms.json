@@ -12366,6 +12366,7 @@
       "toggle": "Tukar tema"
     },
     "uiTheme": {
+
       "label": "Tema",
       "monolith": "Monolith",
       "classic": "Klasik",
@@ -21062,12 +21063,14 @@
     "photoAlreadyPending": "Foto sudah menunggu semakan. Tunggu keputusan sebelum menghantar foto lain.",
     "routingTypeMatched": "Pasangan pekerja/jenis permohonan sepadan",
     "routingTypeMissing": "Pasangan pekerja/jenis permohonan tanpa peraturan",
+
     "submitPhoto": "Hantar foto untuk kelulusan",
     "pendingPhoto": "Foto menunggu",
     "photoApprovalHelp": "Foto semasa kekal sehingga HR meluluskan. Keputusan dipaparkan dalam Permohonan perubahan saya.",
     "currentPhoto": "Foto semasa",
     "proposedPhoto": "Foto dicadangkan",
     "photoProposed": "Foto dihantar untuk kelulusan HR",
+
     "approvalRules": "Peraturan Kelulusan HR",
     "requestTypes": "Jenis permohonan",
     "fieldRequests": "Medan profil",
@@ -21078,9 +21081,11 @@
     "unavailableSelection": "Pilihan tidak tersedia — buang atau ganti",
     "noValidApprovers": "Tiada pelulus HR yang layak. Semak pekerjaan aktif, log masuk dan kuasa syarikat.",
     "noMatches": "Tiada pilihan sepadan",
+
     "tabPermission": "Akses tab",
     "sectionPermission": "Akses bahagian",
     "groupPermissionHelp": "Had tab dan bahagian diutamakan. Boleh sunting mengikut tetapan medan; Lihat sahaja menghalang perubahan; Sembunyi membuang maklumat daripada Profil Saya.",
+
     "requestEdit": "Mohon untuk mengedit",
     "save": "Simpan perubahan",
     "cancel": "Batal",
