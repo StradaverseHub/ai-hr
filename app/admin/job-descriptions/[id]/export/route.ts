@@ -1,0 +1,3 @@
+import {requireAdmin} from '@/lib/authz';
+import {readJobDocument,exportJobText} from '@/packs/job-descriptions/service';
+export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){const s=await requireAdmin();const{id}=await params;const revision=new URL(request.url).searchParams.get('revision')??undefined;try{const detail=await readJobDocument(s,id,revision);return new Response(exportJobText(detail),{headers:{'Content-Type':'text/plain; charset=utf-8','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(`${detail.job.job_code}-v${detail.revision.version}.txt`)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch{return new Response('Not found',{status:404});}}

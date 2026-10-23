@@ -1,0 +1,3 @@
+import {requireAdmin} from '@/lib/authz';
+import {downloadJobAttachment} from '@/packs/job-descriptions/service';
+export async function GET(_request:Request,{params}:{params:Promise<{attachmentId:string}>}){const s=await requireAdmin();const{attachmentId}=await params;try{const file=await downloadJobAttachment(s,attachmentId);return new Response(new Uint8Array(file.bytes),{headers:{'Content-Type':file.mimeType,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});}catch{return new Response('Not found',{status:404});}}

@@ -1,0 +1,21 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_FORM, normalizedJobCode, validateAnswers, validateDefinition, validateInput, type JobInput } from '../packs/job-descriptions/model';
+const input = (patch: Partial<JobInput> = {}): JobInput => ({ companyId: 'company', jobCode: 'FIN-001', title: 'Finance Analyst', owner: 'Finance owner', org: {}, answers: { purpose: [{ purpose: 'Maintain accurate reporting' }] }, effectiveOn: '', reviewOn: '', reason: '', reviewerIds: [], approverId: '', ...patch });
+describe('linked JA / JD / JS contract', () => {
+    it('normalizes equivalent company Job IDs without collapsing distinct IDs', () => { expect(normalizedJobCode('  ﬁn-001  ')).toBe('FIN-001'); expect(normalizedJobCode('a   b')).toBe('A B'); expect(normalizedJobCode('FIN-002')).not.toBe(normalizedJobCode('FIN-001')); });
+    it('keeps incomplete drafts editable but requires document control at submission', () => { expect(() => validateInput(input({ answers: {} }), DEFAULT_FORM)).not.toThrow(); expect(() => validateInput(input(), DEFAULT_FORM, true)).toThrow(/owner, reviewers, approver/); });
+    it('rejects partial or non-100 time distributions only at submission and accepts omitted percentages', () => { const answers = { tasks: [{ task: 'Review invoices', time: 50 }, { task: 'Reconcile ledgers', time: 40 }] }; expect(() => validateAnswers(DEFAULT_FORM, answers)).not.toThrow(); expect(() => validateAnswers(DEFAULT_FORM, answers, true)).toThrow(/100%/); expect(() => validateAnswers(DEFAULT_FORM, { tasks: [{ task: 'Review invoices', time: 100 }, { task: 'Reconcile ledgers' }] }, true)).toThrow(/100%/); expect(() => validateAnswers(DEFAULT_FORM, { tasks: [{ task: 'Review invoices' }] }, true)).toThrow(/purpose/); const valid = { ...answers, purpose: [{ purpose: 'Accurate ledgers' }], tasks: [{ task: 'Review invoices', time: 60 }, { task: 'Reconcile ledgers', time: 40 }] }; expect(() => validateAnswers(DEFAULT_FORM, valid, true)).not.toThrow(); });
+    it('rejects type confusion, unknown fields, overlong values and impossible dates', () => { expect(() => validateAnswers(DEFAULT_FORM, { tasks: [{ time: '100' }] })).toThrow(/Time/); expect(() => validateAnswers(DEFAULT_FORM, { tasks: [{ hiddenPay: 100 }] })).toThrow(/Unknown/); expect(() => validateAnswers(DEFAULT_FORM, { purpose: [{ purpose: 'a'.repeat(12001) }] })).toThrow(/Invalid/); expect(() => validateAnswers(DEFAULT_FORM, { analysisDetails: [{ analysisOn: '2025-02-30' }] })).toThrow(/Invalid/); expect(() => validateInput(input({ effectiveOn: '2026-05-02', reviewOn: '2026-05-01' }), DEFAULT_FORM)).toThrow(/precede/); });
+    it('types optional extensions and prevents removing or retyping attached template sections', () => { const def = structuredClone(DEFAULT_FORM); def.version = 2; def.sections[0].fields.push({ id: 'evidenceScore', label: 'Evidence score', type: 'number', required: true, custom: true }); expect(validateDefinition(def).version).toBe(2); expect(() => validateAnswers(def, { analysisDetails: [{ evidenceScore: '4' }] })).toThrow(/Evidence score/); expect(() => validateAnswers(def, { analysisDetails: [{}], purpose: [{ purpose: 'Clear role' }] }, true)).toThrow(/Evidence score/); def.sections[0].fields[0].type = 'number'; expect(() => validateDefinition(def)).toThrow(/standard field/); });
+    it('has every computed UI and template caption in all supported locales', () => { for (const locale of ['en', 'ms', 'zh', 'vi', 'th', 'ta']) {
+        const messages = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).jobDescriptions;
+        for (const section of DEFAULT_FORM.sections) {
+            expect(messages.sections[section.id], `${locale}/${section.id}`).toBeTruthy();
+            for (const field of section.fields)
+                expect(messages.fields[section.id][field.id], `${locale}/${section.id}.${field.id}`).toBeTruthy();
+        }
+        for (const status of ['draft', 'submitted', 'approved', 'inactive'])
+            expect(messages.statuses[status]).toBeTruthy();
+    } });
+});
