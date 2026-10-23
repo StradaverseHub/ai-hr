@@ -458,7 +458,10 @@
     "leaveSettings": "Cài đặt",
     "attendanceCalendar": "Lịch chấm công",
     "myEa": "EA của tôi",
-    "myTp3": "Mẫu TP3 của tôi"
+    "myTp3": "Mẫu TP3 của tôi",
+    "jobDescriptions": "Mô tả công việc",
+    "rewardsAccess": "Quyền truy cập đãi ngộ",
+    "peopleGeneral": "Thiết lập nhân sự chung"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

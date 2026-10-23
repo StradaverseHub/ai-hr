@@ -458,7 +458,10 @@
     "leaveSettings": "Settings",
     "attendanceCalendar": "Attendance Calendar",
     "myEa": "My EA",
-    "myTp3": "My Form TP3"
+    "myTp3": "My Form TP3",
+    "jobDescriptions": "Job Description",
+    "rewardsAccess": "Rewards Access",
+    "peopleGeneral": "People General"
   },
   "dashboard": {
     "title": "Dashboard",

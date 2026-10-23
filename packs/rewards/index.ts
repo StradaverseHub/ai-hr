@@ -6,6 +6,7 @@ export const rewardsPack: ModulePack = {
   navLinks: [
     { group: 'manage', href: '/rewards', labelKey: 'rewards', icon: Gift },
     { group: 'admin', href: '/admin/rewards', labelKey: 'rewards', icon: Gift, adminOnly: true },
+    { group: 'admin', href: '/admin/rewards/access', labelKey: 'rewardsAccess', icon: Gift, adminOnly: true },
   ],
   satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision'].map(table => ({ table })),
 };

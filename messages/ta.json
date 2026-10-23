@@ -458,7 +458,10 @@
     "leaveSettings": "அமைப்புகள்",
     "attendanceCalendar": "வருகைக் காலண்டர்",
     "myEa": "எனது EA",
-    "myTp3": "எனது TP3 படிவம்"
+    "myTp3": "எனது TP3 படிவம்",
+    "jobDescriptions": "பணி விவரம்",
+    "rewardsAccess": "வெகுமதி அணுகல்",
+    "peopleGeneral": "பணியாளர் பொதுவான அமைப்புகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

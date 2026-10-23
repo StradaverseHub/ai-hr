@@ -458,7 +458,10 @@
     "leaveSettings": "การตั้งค่า",
     "attendanceCalendar": "ปฏิทินการเข้างาน",
     "myEa": "EA ของฉัน",
-    "myTp3": "แบบฟอร์ม TP3 ของฉัน"
+    "myTp3": "แบบฟอร์ม TP3 ของฉัน",
+    "jobDescriptions": "รายละเอียดงาน",
+    "rewardsAccess": "สิทธิ์การเข้าถึงรางวัล",
+    "peopleGeneral": "การตั้งค่าบุคลากรทั่วไป"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

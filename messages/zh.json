@@ -458,7 +458,10 @@
     "leaveSettings": "设置",
     "attendanceCalendar": "考勤日历",
     "myEa": "我的 EA",
-    "myTp3": "我的 TP3 表格"
+    "myTp3": "我的 TP3 表格",
+    "jobDescriptions": "职位说明",
+    "rewardsAccess": "薪酬评审访问权限",
+    "peopleGeneral": "人员常规设置"
   },
   "dashboard": {
     "title": "仪表盘",

@@ -458,7 +458,10 @@
     "leaveSettings": "Tetapan",
     "attendanceCalendar": "Kalendar Kehadiran",
     "myEa": "EA Saya",
-    "myTp3": "Borang TP3 Saya"
+    "myTp3": "Borang TP3 Saya",
+    "jobDescriptions": "Huraian Kerja",
+    "rewardsAccess": "Akses Ganjaran",
+    "peopleGeneral": "Tetapan Am Kakitangan"
   },
   "dashboard": {
     "title": "Papan pemuka",
