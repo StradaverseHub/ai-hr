@@ -26,7 +26,7 @@ export const ESS_PROFILE_TABS=['Profile','Family','Employment','Employment Histo
 export const PERSONNEL_ESS_SECTION_LABEL_KEYS:Readonly<Record<string,string>>={
  'Personal details':'personalDetails','Identity and passport':'passportInfoTitle','Contact and permanent address':'contactAddressTitle','Correspondence address':'correspondenceAddressTitle','Emergency contact':'emergencyTitle',
  'Family and dependents':'family.title','Organisation assignment':'employmentInfo.title','Additional organisation labels':'employmentInfo.title','Employment dates and service':'employmentInfo.title','Direct superior and history':'directSuperiorTitle',
- 'Data classification':'dataClassification.title',
+ 'Data classification':'dataClassification.title','Cost Center Allocation':'costCenterAllocationTitle',
  'Event information':'tabs.careerMovement','Before Changes and After Changes':'tabs.careerMovement','Holiday calendar and schedule':'holidayCalendarCardTitle','Clocking and attendance photo':'tabs.attendance','Work location and shift arrangement':'shiftTypeTitle',
  'Bank Information':'bankCardTitle','EPF contribution':'epfContribTitle','SOCSO, EIS and Others Statutory':'socsoEisCardTitle','Income Tax (PCB)':'incomeTaxPcbSection','Basic Salary and salary history':'compensation','Payment method and payroll policy':'paymentMethod',
  'Pay items':'payComponentsTitle','CP38 Deduction':'cp38Title','Zakat summary':'zakatSummaryTitle','Grade and benefit scheme':'gradeCardTitle','Leave balance and breakdown':'tabs.leave','Employee documents':'tabs.documents','Academic and professional qualifications':'tabs.qualification','Leave requests':'tabs.others',

@@ -13,7 +13,7 @@ describe('884ea42d Personnel maintenance boundaries',()=>{
   expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start+700);
   const section=page.slice(start,end);
   for(const field of ['tenderresignationdate','resignationdate','lastworkingdate']){
-   expect(section).toContain(`fieldId="employment.employment_dates_and_service.${field}" mode="view"`);
+   expect(section).toContain(`fieldId="employment.employment_dates_and_service.${field}" mode="record"`);
    expect(section).toContain(`readOnlyValue("employment.employment_dates_and_service.${field}"`);
   }
   expect(section).not.toContain('<DateField');expect(section).not.toContain('personnelControl(');

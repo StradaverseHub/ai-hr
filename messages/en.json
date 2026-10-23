@@ -1929,8 +1929,10 @@
         "readOnly": "Resignation information is maintained through Movement.",
         "movementSource": "Movement event",
         "legacySource": "Legacy record — no originating Movement event",
-        "emptySource": "No recorded date"
-      }
+        "emptySource": "No recorded date",
+        "unknownSource": "Not recorded in this event"
+      },
+      "costCenterAllocationTitle": "Cost Center Allocation"
     },
     "import": {
       "title": "Import employees",
@@ -22874,6 +22876,8 @@
       "preview": "The input or reference data changed. Preview again.",
       "binding": "Match each allocation to one company and Employee ID.",
       "transfer": "Save a clear set at the transfer date and clear later scheduled sets before transferring. Then save a new destination-company allocation."
-    }
+    },
+    "totalField": "Total allocation",
+    "remainderField": "Unallocated remainder"
   }
 }

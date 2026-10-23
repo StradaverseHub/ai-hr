@@ -1929,8 +1929,10 @@
         "readOnly": "Maklumat peletakan jawatan diselenggara melalui Pergerakan.",
         "movementSource": "Peristiwa Pergerakan",
         "legacySource": "Rekod lama — tiada peristiwa Pergerakan asal",
-        "emptySource": "Tiada tarikh direkodkan"
-      }
+        "emptySource": "Tiada tarikh direkodkan",
+        "unknownSource": "Tidak direkodkan dalam peristiwa ini"
+      },
+      "costCenterAllocationTitle": "Peruntukan Pusat Kos"
     },
     "import": {
       "title": "Import pekerja",
@@ -22874,6 +22876,8 @@
       "preview": "Input atau data rujukan berubah. Pratonton semula.",
       "binding": "Padankan setiap peruntukan dengan satu syarikat dan ID Pekerja.",
       "transfer": "Simpan set kosong pada tarikh pertukaran dan kosongkan set terjadual kemudian sebelum berpindah. Kemudian simpan peruntukan syarikat destinasi."
-    }
+    },
+    "totalField": "Jumlah peruntukan",
+    "remainderField": "Baki belum diperuntukkan"
   }
 }

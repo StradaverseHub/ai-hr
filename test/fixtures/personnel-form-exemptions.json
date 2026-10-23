@@ -590,24 +590,6 @@
       "reason": "Generic table page-size navigation; no Personnel fact or writer."
     }
   ],
-  "app/admin/personnel/[employmentId]/review-section.tsx": [
-    {
-      "tag": "input",
-      "context": "ReviewSection",
-      "hidden": true,
-      "occurrences": 4,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by ReviewSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "ReviewSection",
-      "hidden": true,
-      "occurrences": 2,
-      "name": "reviewId",
-      "reason": "Guarded action record/subject pointer (reviewId) used by ReviewSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    }
-  ],
   "app/admin/personnel/[employmentId]/documents-manager.tsx": [
     {
       "tag": "input",

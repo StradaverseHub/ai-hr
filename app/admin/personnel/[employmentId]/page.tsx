@@ -1,3 +1,5 @@
+import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
+import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
 import Link from 'next/link';
@@ -93,6 +95,7 @@ import {
   movementHistory,
   movementDetail,
   movementPendingEditInput,
+  resignationInformation,
   movementCurrentState,
   INTERCHANGEABLE_COMPARISON_KINDS,
   isComparisonKind,
@@ -570,6 +573,8 @@ export default async function EmployeePage({
   const movementTypes = admin ? await listMovementEventTypes(s) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
+  const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
+  const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * Movement may write at all (the same `admin && !terminatedOn` gate `canCreateMovement` applies below).
@@ -3383,6 +3388,9 @@ export default async function EmployeePage({
           <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
         </div>
       </dl>
+      {movementDetailData.recordedResignation && <dl className="grid gap-4 border-t border-border p-4 text-sm sm:grid-cols-3">
+        {(['tenderResignationDate','resignationDate','lastWorkingDate'] as const).map(field=>{const recorded=movementDetailData.recordedResignation![field];return <div key={field}><dt className="text-xs text-muted-foreground">{t(`employmentInfo.${field}`)}</dt><dd className="mt-1 font-medium">{recorded.known ? recorded.value ? formatDmy(recorded.value) : t('optionNotSet') : t('resignationInformation.unknownSource')}</dd></div>;})}
+      </dl>}
       {movementDetailData.row.reversed && (
         // 66a63bd6 — the correction's own trace. The Before/After grid below still shows what the movement
         // DID: it is the record of an event that happened, and the rollback is a second fact about it.
@@ -3547,7 +3555,7 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
-  const movementEditInput = movementEditRow && movementEditRow.status === 'pending'
+  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation')
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
@@ -4202,14 +4210,17 @@ export default async function EmployeePage({
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="view">
-                {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", emp.tenderResignationDate ? formatDmy(emp.tenderResignationDate) : null)}
+              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", resignationInfo?.tenderResignationDate.value ? formatDmy(resignationInfo.tenderResignationDate.value) : null)}
+                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.tenderResignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
-              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="view">
-                {readOnlyValue("employment.employment_dates_and_service.resignationdate", emp.resignationDate ? formatDmy(emp.resignationDate) : null)}
+              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.resignationdate", resignationInfo?.resignationDate.value ? formatDmy(resignationInfo.resignationDate.value) : null)}
+                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.resignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
-              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="view">
-                {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", emp.lastWorkingDate ? formatDmy(emp.lastWorkingDate) : null)}
+              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", resignationInfo?.lastWorkingDate.value ? formatDmy(resignationInfo.lastWorkingDate.value) : null)}
+                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.lastWorkingDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>
@@ -4472,6 +4483,7 @@ export default async function EmployeePage({
         )}
         <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{directSuperiorCard}</fieldset>
         {delegationsCard}
+        {costAllocationView && <CostCenterAllocations key={employmentId} value={costAllocationView}/>}
       </>
     ),
     // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a

@@ -3396,6 +3396,13 @@
       "when": 1791900000083,
       "tag": "0596_rewards_review_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 597,
+      "version": "7",
+      "when": 1791900000084,
+      "tag": "0597_employment_cost_allocations",
+      "breakpoints": true
     }
   ]
 }

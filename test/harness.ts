@@ -15,6 +15,7 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'employment_cost_allocation_row','employment_cost_allocation_set','employment_cost_allocation_head',
   'job_document_attachment','job_document_review','job_document_audit','job_document_revision','job_document_form','job_document',
   // ESS pending photo bytes must not survive a fixture reset.
   'profile_photo_proposal',

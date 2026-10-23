@@ -1929,8 +1929,10 @@
         "readOnly": "离职资料通过员工异动维护。",
         "movementSource": "异动事件",
         "legacySource": "历史记录 — 无原始异动事件",
-        "emptySource": "未记录日期"
-      }
+        "emptySource": "未记录日期",
+        "unknownSource": "此事件未记录"
+      },
+      "costCenterAllocationTitle": "成本中心分配"
     },
     "import": {
       "title": "导入员工",
@@ -22874,6 +22876,8 @@
       "preview": "输入或参考数据已更改。请重新预览。",
       "binding": "每项分配须匹配一个公司及员工编号。",
       "transfer": "调动前，请在调动日期保存空集合，并清除之后已排定的集合。然后为目标公司保存新分配。"
-    }
+    },
+    "totalField": "分配总计",
+    "remainderField": "未分配余额"
   }
 }

@@ -1929,8 +1929,10 @@
         "readOnly": "Thông tin nghỉ việc được quản lý qua Biến động nhân sự.",
         "movementSource": "Sự kiện biến động",
         "legacySource": "Hồ sơ cũ — không có sự kiện biến động gốc",
-        "emptySource": "Chưa ghi ngày"
-      }
+        "emptySource": "Chưa ghi ngày",
+        "unknownSource": "Không được ghi nhận trong sự kiện này"
+      },
+      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -22874,6 +22876,8 @@
       "preview": "Dữ liệu đầu vào hoặc tham chiếu đã đổi. Xem trước lại.",
       "binding": "Khớp mỗi phân bổ với một công ty và mã nhân viên.",
       "transfer": "Lưu tập rỗng vào ngày chuyển và xóa các tập lên lịch sau đó trước khi chuyển. Sau đó lưu phân bổ mới của công ty đích."
-    }
+    },
+    "totalField": "Tổng phân bổ",
+    "remainderField": "Phần chưa phân bổ"
   }
 }
