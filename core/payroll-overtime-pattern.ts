@@ -264,27 +264,27 @@ export async function overtimePatternTransferOptions(ctx:SessionContext,p:{emplo
  return withPayrollTenant(ctx,async tx=>{
   const read=await readOvertimeCalculationTx(tx,ctx,p);if(!read)fail('unavailable');const claim=await readOvertimeSettlementForDayTx(tx,ctx,p);const c=read.calculation;
   const [entity]=await tx.select({currency:company.currency}).from(company).where(eq(company.id,read.source.companyId)).limit(1);if(!entity)fail('permission');
-  const batches=await tx.select({batch:payrollBatch,cycleName:payrollCycle.name}).from(payrollBatch).leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId)).where(and(eq(payrollBatch.companyId,read.source.companyId),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'))).orderBy(asc(payrollBatch.payPeriod),asc(payrollBatch.id)).limit(1001);if(batches.length>1000)fail('unavailable');
   const runs:{id:string;payPeriod:string;runType:string;batchDate:string;cycleName:string|null;status:'draft';transferable:boolean;refusal:OvertimePayrollErrorCode|null}[]=[];
-  for(const r of batches){try{await targetTx(tx,ctx,{batchId:r.batch.id,...p,dates:calculationDates(read),companyId:read.source.companyId,status:'draft'});runs.push({id:r.batch.id,payPeriod:r.batch.payPeriod,runType:r.batch.runType,batchDate:r.batch.batchDate,cycleName:r.cycleName,status:'draft',transferable:false,refusal:'unavailable'});}catch(error){if(!(error instanceof OvertimePayrollError)||error.code!=='coverage')throw error;}}
   const result=c?parseRecordedOvertimeEvaluation(record(read.evidence?.evidence)?.evaluation):null;
   const policyFinancial=record(record(read.evidence?.evidence)?.policyFinancialContract);
+  const review=(transferable:boolean)=>({companyId:read.source.companyId,currency:entity.currency,...p,calculation:c?{id:c.id,sourceRevision:read.source.revision,status:c.outcome,approvalStatus:c.approvalStatus,transferable,amountMinorUnits:c.bindingKind==='attendanceGroupPolicy'
+   ?policyFinancial?.state==='prepared'?String(policyFinancial.amountMinorUnits):null
+   :result&&result.status!=='refused'?result.amountMinorUnits:null,minorScale:c.minorScale}:null,runs,settlement:claim?.settlement?{id:claim.settlement.id,mode:claim.settlement.mode,batchId:claim.settlement.payrollBatchId}:null});
+  // A recorded refusal has no payment-date authority. Keep its validated history readable
+  // so the administrator can explicitly recalculate, without offering any Payroll target.
+  if(!c||c.outcome!=='ready'||!c.transferable)return review(false);
+  const batches=await tx.select({batch:payrollBatch,cycleName:payrollCycle.name}).from(payrollBatch).leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId)).where(and(eq(payrollBatch.companyId,read.source.companyId),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'))).orderBy(asc(payrollBatch.payPeriod),asc(payrollBatch.id)).limit(1001);if(batches.length>1000)fail('unavailable');
+  for(const r of batches){try{await targetTx(tx,ctx,{batchId:r.batch.id,...p,dates:calculationDates(read),companyId:read.source.companyId,status:'draft'});runs.push({id:r.batch.id,payPeriod:r.batch.payPeriod,runType:r.batch.runType,batchDate:r.batch.batchDate,cycleName:r.cycleName,status:'draft',transferable:false,refusal:'unavailable'});}catch(error){if(!(error instanceof OvertimePayrollError)||error.code!=='coverage')throw error;}}
   let transferable=false;
   for(const run of runs){
    if(claim?.settlement&&(claim.settlement.mode==='toil'||claim.settlement.payrollBatchId!==run.id)){run.refusal='conflict';continue;}
-   if(!c||c.outcome!=='ready'||!c.transferable){
-    // A refused/unknown source is not necessarily an approval failure.
-    run.refusal=c&&['pending','rejected'].includes(c.approvalStatus)?'approval':'unavailable';continue;
-   }
    try{
     const candidate=batches.find(r=>r.batch.id===run.id)!.batch;
     await pricedLinesTx(tx,ctx,read,candidate,claim?.settlement?.id??'preview');
     run.transferable=true;run.refusal=null;transferable=true;
    }catch(error){if(!(error instanceof OvertimePayrollError))throw error;run.refusal=error.code;}
   }
-  return {companyId:read.source.companyId,currency:entity.currency,...p,calculation:c?{id:c.id,sourceRevision:read.source.revision,status:c.outcome,approvalStatus:c.approvalStatus,transferable,amountMinorUnits:c.bindingKind==='attendanceGroupPolicy'
-   ?policyFinancial?.state==='prepared'?String(policyFinancial.amountMinorUnits):null
-   :result&&result.status!=='refused'?result.amountMinorUnits:null,minorScale:c.minorScale}:null,runs,settlement:claim?.settlement?{id:claim.settlement.id,mode:claim.settlement.mode,batchId:claim.settlement.payrollBatchId}:null};
+  return review(transferable);
  });
 }
 export async function transferOvertimePatternToPayroll(ctx:SessionContext,p:{employmentId:string;date:string;expectedCalculationId:string;expectedSourceRevision:number;batchId:string;reason:string}){

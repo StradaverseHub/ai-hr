@@ -3,7 +3,7 @@ import {requestLeave,decideLeave} from '../core/leave';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
 import {attendancePolicyAttestedWorkInput} from '../packs/attendance/policy-attested-work-input';
-import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch,resetProcessedBatch} from '../packs/payroll/service';
+import {createBatch,createPayComponent,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch,resetProcessedBatch} from '../packs/payroll/service';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
@@ -531,6 +531,7 @@ describe('immutable non-payable policy part storage',()=>{
  });
 
  it.each(['auto','manual'] as const)('records %s policy approval requirements independently of legacy scalar status',async approval=>{
+  await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
   const f=await fixture(approval,'12'),p={employmentId:f.employmentId,date:day(2)};
   if(approval==='auto'){
    const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional pending plan reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
@@ -555,6 +556,18 @@ describe('immutable non-payable policy part storage',()=>{
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.calculation).toMatchObject({approvalStatus:approval==='auto'?'notRequired':'unknown',outcome:approval==='auto'?'ready':'refused',durationOutcome:approval==='auto'?'ready':'refused',transferable:approval==='auto'});
   expect(reviewed?.lines.length).toBe(approval==='auto'?2:0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  if(approval==='manual'){
+   await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+   const before=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(s.attendanceOvertimeCalculation.ordinal);
+   const options=await overtimePatternTransferOptions(ctx,p);
+   expect(options.calculation).toMatchObject({id:reviewed!.calculation!.id,status:'refused',approvalStatus:'unknown',transferable:false,amountMinorUnits:null});
+   expect(options.runs).toEqual([]);expect(options.settlement).toBeNull();
+   expect(await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(s.attendanceOvertimeCalculation.ordinal)).toEqual(before);
+   const refreshed=await calculateOvertimePatternDay(ctx,{...p,expectedCurrentRevision:reviewed!.source.revision,reason:'Explicit review after refused calculation'});
+   expect(refreshed.status).toBe('recorded');
+   expect((await overtimePatternTransferOptions(ctx,p)).calculation).toMatchObject({status:'refused',transferable:false});
+   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  }
  });
 
  it.each(['cap','dayMapping'] as const)('prices whole-parent %s once across dated child allocations',async moneyScope=>{
