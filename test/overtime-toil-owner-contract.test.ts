@@ -22,7 +22,9 @@ describe('canonical TOIL source lifecycle',()=>{
  it('releases only the exact active claim after successful canonical reversal, preserving payroll closure',()=>{
   const reverse=section('export async function reverseLeaveCredit(', 'const LEAVE_CREDIT');
   expect(reverse.indexOf('pg_advisory_xact_lock')).toBeLessThan(reverse.indexOf(".for('update')"));
-  expect(reverse).toContain('payrollStartedForDateTx');expect(reverse).toContain("eq(toilAccrual.status, 'active')");expect(reverse).toContain("status: 'reversed'");
+  expect(reverse).toContain('payrollStartedForDatesTx(tx, protectedDates)');
+  expect(reverse).toContain("coverageKind==='policyPhysical'");expect(reverse).toContain('readOvertimeToilSettlementDatesTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate,toilAccrualId:acc.id})');
+  expect(reverse.indexOf('payrollStartedForDatesTx(tx, protectedDates)')).toBeLessThan(reverse.indexOf('.insert(leaveLedger)'));expect(reverse).toContain("eq(toilAccrual.status, 'active')");expect(reverse).toContain("status: 'reversed'");
   expect(reverse.indexOf('if (updated.length !== 1)')).toBeLessThan(reverse.indexOf('await releaseOvertimeSettlementTx'));
   expect(reverse).toContain('recordedSource.settlement.toilAccrualId!==acc.id');expect(reverse).toContain('expectedRevision:recordedSource.settlement.revision');
  });
