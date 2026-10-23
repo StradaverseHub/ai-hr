@@ -272,11 +272,11 @@ async function loadCompanyContext(
     listBusinessUnits(ctx, { companyIds: [co.id] }),
     listJobGrades(ctx),
   ]);
-  const deptByName=new PersonnelImportLookup<string>('label-first');
-  const posByName=new PersonnelImportLookup<string>('label-first');
-  const ccByName=new PersonnelImportLookup<string>('label-first');
-  const buByName=new PersonnelImportLookup<string>('label-first');
-  const gradeByName=new PersonnelImportLookup<string>('label-first');
+  const deptByName=new PersonnelImportLookup<string>();
+  const posByName=new PersonnelImportLookup<string>();
+  const ccByName=new PersonnelImportLookup<string>();
+  const buByName=new PersonnelImportLookup<string>();
+  const gradeByName=new PersonnelImportLookup<string>();
   for(const d of departments)deptByName.add(d.id,d.id,{codes:[d.code],names:[d.label]});
   for(const p of positions)posByName.add(p.id,p.id,{codes:[p.code],names:[p.label]});
   for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.label]});
@@ -401,7 +401,7 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new PersonnelImportCatalog(new Set(['division','branch','region','line','section','team','base','category']));
+    const catalog = new PersonnelImportCatalog();
     for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
     const superiorByEmail = new Map<string, string|null>();
@@ -499,14 +499,14 @@ async function analyze(
     else if (existingEmails.has(email.toLowerCase())) warnings.push('A person with this email already exists');
     if (email) seenEmails.add(email.toLowerCase());
 
-    // Department (required, resolved by name)
+    // Department (required, canonical code before an unambiguous legacy label)
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
     if (!deptName) errors.push('Missing department');
     else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — choose a distinct label or code`);
     else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
 
-    // Position / cost-center (optional, resolved by name; unknown = error so it's never dropped silently)
+    // Position / cost-center (optional; code first, unknown = error so it is never dropped silently)
     const posName = norm(rec.position);
     let positionId: string | undefined;
     if (posName) {
