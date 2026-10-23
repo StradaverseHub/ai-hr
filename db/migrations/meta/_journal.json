@@ -3375,6 +3375,27 @@
       "when": 1791900000073,
       "tag": "0593_my_ea_source_eligibility",
       "breakpoints": true
+    },
+    {
+      "idx": 594,
+      "version": "7",
+      "when": 1791900000081,
+      "tag": "0594_people_nric_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 595,
+      "version": "7",
+      "when": 1791900000082,
+      "tag": "0595_job_description_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 596,
+      "version": "7",
+      "when": 1791900000083,
+      "tag": "0596_rewards_review_maintenance",
+      "breakpoints": true
     }
   ]
 }
