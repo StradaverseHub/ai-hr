@@ -33,6 +33,17 @@ describe('explicit unclocked actual-work submission',()=>{
  });
 });
 
+describe('malformed retained HR actual-work evidence',()=>{
+ it.each(['nullActual','nullRequested','unrenderableInstant','invertedRequested','outsideRequested'] as const)('refuses %s evidence before rendering its instants',kind=>{
+  const work=fixture(),malformed:unknown=kind==='nullActual'?{...work,intervals:[null]}
+   :kind==='nullRequested'?{...work,requestedIntervals:[null]}
+   :kind==='unrenderableInstant'?{...work,intervals:[{fromEpochMillisecond:Number.MAX_SAFE_INTEGER-60000,toEpochMillisecond:Number.MAX_SAFE_INTEGER}]}
+   :{...work,requestedIntervals:[{fromEpochMillisecond:work.intervals[0].fromEpochMillisecond,
+    toEpochMillisecond:kind==='invertedRequested'?work.intervals[0].fromEpochMillisecond-1:work.intervals[0].toEpochMillisecond+1}]};
+  expect(()=>validateAttendancePolicyUnclockedWork(malformed as AttendancePolicyUnclockedWork,midnight+3*86400000)).toThrow();
+ });
+});
+
 describe('explicit Malaysia work-time entry',()=>{
  it('retains millisecond endpoints across midnight independently of the browser timezone',()=>{
   expect(attendancePolicyLocalWorkInstant('2026-09-20T23:59:59.555')).toBe(midnight+86400000-445);
