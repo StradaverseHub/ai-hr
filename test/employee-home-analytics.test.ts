@@ -49,6 +49,19 @@ describe('anonymous Home card observations',()=>{
   await expect(readHomeCardInteractions(scoped)).rejects.toThrow();
   const other=await seedBase();expect((await readHomeCardInteractions(adminCtx(other))).every(row=>row.views===0&&row.clicks===0)).toBe(true);
  });
+ it('uses the addressed Host for a browser request when Next exposes an internal listener URL',async()=>{
+  const own=await worker();caller=own.ctx;
+  const addressed=(origin:string,host:string)=>new Request('http://localhost:3311/api/home/interactions',{
+   method:'POST',headers:{origin,host,'Content-Type':'application/json'},body:JSON.stringify(body),
+  });
+  expect((await POST(addressed('http://127.0.0.1:3311','127.0.0.1:3311'))).status).toBe(204);
+  const before=Array.from(await saved());
+  expect((await POST(addressed('http://foreign.invalid','127.0.0.1:3311'))).status).toBe(400);
+  expect((await POST(new Request('http://localhost:3311/api/home/interactions',{
+   method:'POST',headers:{origin:'http://foreign.invalid',host:'127.0.0.1:3311','x-forwarded-host':'foreign.invalid','Content-Type':'application/json'},body:JSON.stringify(body),
+  }))).status).toBe(400);
+  expect(Array.from(await saved())).toEqual(before);
+ });
  it('accepts only the bounded same-origin contract and leaves malformed calls without counter effects',async()=>{
   const own=await worker();caller=own.ctx;
   expect((await POST(request(body,'https://other.invalid'))).status).toBe(400);
