@@ -6539,7 +6539,7 @@
         "historyNote": "Corrections are kept as history. Past assessment years are read-only.",
         "history": {
           "title": "Transaction history",
-          "subtitle": "One row per assessment year — the employee's current declaration for that year.",
+          "subtitle": "One row per deduction month in the selected assessment year; earlier versions remain in history.",
           "empty": "No TP1 relief declared yet.",
           "colYear": "Year",
           "colAmount": "Total relief",

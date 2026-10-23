@@ -6539,7 +6539,7 @@
         "historyNote": "Các bản đính chính được lưu làm lịch sử. Các năm tính thuế trước chỉ xem.",
         "history": {
           "title": "Lịch sử giao dịch",
-          "subtitle": "Mỗi năm tính thuế một dòng — bản khai hiện tại của nhân viên cho năm đó.",
+          "subtitle": "Mỗi tháng khấu trừ có một dòng trong năm tính thuế đã chọn; các phiên bản trước vẫn được lưu trong lịch sử.",
           "empty": "Chưa khai miễn trừ TP1 nào.",
           "colYear": "Năm",
           "colAmount": "Tổng miễn trừ",

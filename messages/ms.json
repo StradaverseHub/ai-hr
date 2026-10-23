@@ -6539,7 +6539,7 @@
         "historyNote": "Pembetulan disimpan sebagai sejarah. Tahun taksiran lepas adalah baca sahaja.",
         "history": {
           "title": "Sejarah transaksi",
-          "subtitle": "Satu baris bagi setiap tahun taksiran — perisytiharan semasa pekerja bagi tahun tersebut.",
+          "subtitle": "Satu baris bagi setiap bulan potongan dalam tahun taksiran yang dipilih; versi terdahulu kekal dalam sejarah.",
           "empty": "Belum ada pelepasan TP1 diisytiharkan.",
           "colYear": "Tahun",
           "colAmount": "Jumlah pelepasan",
