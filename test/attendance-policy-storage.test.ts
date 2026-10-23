@@ -28,7 +28,7 @@ import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,calculateOvertimePatternDay,
- checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,setAttendancePolicy} from '../packs/attendance/service';
+ checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,canSubmitUnclockedAttendanceWork,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
@@ -1207,6 +1207,8 @@ describe('immutable non-payable policy part storage',()=>{
    await generatePayslips(ctx,{batchId:batch.batchId});
    expect((await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId))))[0].overtimePay).toBe(expectedMoney);
    await closeBatch(ctx,{batchId:batch.batchId});await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
+   await expect(cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'cancelled',reason:'Fictional closed Payroll must retain original HR approval'})).rejects.toThrow();
+   expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId)))[0].status).toBe('approved');
   }else{
    await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,f.earningId));
    await calculateOvertimePatternDay(ctx,{...p,expectedCurrentRevision:read.source.revision,reason:'Fictional salary-free attested duration after cash mapping archival'});
@@ -1216,12 +1218,31 @@ describe('immutable non-payable policy part storage',()=>{
    await accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date});
    const [credit]=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId));
    expect(credit).toMatchObject({otMinutes:expectedMinutes,daysCredited:requestedWinner?'0.50':'1.00',workedDayKind:'workday',status:'active'});
+   await expect(cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'withdrawn',reason:'Fictional banked credit must be reversed first'})).rejects.toThrow();
+   expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId)))[0].status).toBe('approved');
    const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!current?.calculation)throw Error('Expected retained duration header');
    const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
    await expect(transferOvertimePatternToPayroll(ctx,{...p,expectedCalculationId:current.calculation.id,expectedSourceRevision:current.source.revision,
     batchId:batch.batchId,reason:'Fictional attested same-source cash exclusion'})).rejects.toThrow();
    await deleteDraftBatch(ctx,{batchId:batch.batchId});await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional reviewed attested credit reversal'});
    expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,read.source.id)))[0].releasedAt).not.toBeNull();
+   // A real HR approval can be withdrawn after the financial owner releases it. Its
+   // original testimony/effect/history remain immutable; a fresh workflow owns the replacement.
+   await cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'withdrawn',reason:'Fictional review of the complete unclocked-work statement'});
+   expect(await withTenant(ctx,tx=>recordedAttestedPolicyWorkTx(tx,ctx,p))).toBeNull();
+   expect(await canSubmitUnclockedAttendanceWork(ctx,f.employmentId,p.date)).toBe(true);
+   const historic=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{...p,revisionId:current.calculation!.id}));
+   expect(historic?.calculation).toEqual(current.calculation);expect(historic?.policyParts).toEqual(current.policyParts);
+   const replacement=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,
+    reason:'Fictional fresh complete HR statement after withdrawal',unclockedWork:actual});
+   await decideAttendanceCorrection(reviewCtx,{correctionId:replacement.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+   const fresh=await withTenant(ctx,tx=>recordedAttestedPolicyWorkTx(tx,ctx,p));
+   expect(fresh?.replay).toMatchObject({state:'known',correctionId:replacement.correctionId});
+   await accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date});
+   const [nextCredit]=await owner.db.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.employmentId,f.employmentId),eq(s.toilAccrual.status,'active')));
+   expect(nextCredit).toMatchObject({otMinutes:expectedMinutes,daysCredited:requestedWinner?'0.50':'1.00'});expect(nextCredit.id).not.toBe(credit.id);
+   await reverseLeaveCredit(ctx,{accrualId:nextCredit.id,reason:'Fictional replacement HR statement credit reversal'});
+
   }
  });
 

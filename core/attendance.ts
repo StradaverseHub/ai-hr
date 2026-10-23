@@ -1,3 +1,4 @@
+import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
@@ -9,7 +10,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -4074,7 +4075,7 @@ export async function decideAttendanceCorrection(
         if(existingAnchor&&[existingAnchor.checkInAt,existingAnchor.checkOutAt,existingAnchor.workedMinutes,
           existingAnchor.otMinutes,existingAnchor.otFlatMinutes,existingAnchor.ot00Minutes,existingAnchor.ot10Minutes,
           existingAnchor.ot15Minutes,existingAnchor.ot20Minutes,existingAnchor.ot30Minutes,existingAnchor.lateMinutes,
-          existingAnchor.earlyOutMinutes,existingAnchor.underMinutes,existingAnchor.calcTrace].some(value=>value!==null))
+          existingAnchor.earlyOutMinutes,existingAnchor.underMinutes,existingAnchor.lateDeductMinutes,existingAnchor.earlyOutDeductMinutes,attendancePolicyAttestedRawTrace(existingAnchor.calcTrace)].some(value=>value!==null))
           throw Error('Retain the existing Attendance evidence and correct it through its own workflow before attesting this day.');
         if(existingAnchor)await tx.update(attendance).set({attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'})
           .where(eq(attendance.id,existingAnchor.id));
@@ -6609,7 +6610,25 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
         if (cor.status !== 'pending' && cor.status !== 'approved')
             throw new Error('Only pending or approved applications can be cancelled or withdrawn.');
         let reversed = false;
-        if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
+        let attestedCancellation=false;
+        if(cor.status==='approved'&&cor.originalClockSnapshot?.unclockedWork){
+            // Employee advisory is already held by lockAttendanceApplicationTx. Preserve
+            // source/configuration/batch ordering and the original immutable HR evidence.
+            await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+            const reserved=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(reserved?.settlement)throw Error('Release the existing Payroll contribution or reverse its Leave Credit before cancelling this unclocked-work approval.');
+            const batches=await lockAttendancePayrollTx(tx,cor.employmentId,cor.attendanceDate);
+            const retained=await retainedAttestedPolicyCancellationTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(!retained||retained.correctionId!==cor.id)throw Error('The original unclocked-work approval no longer owns this day. Review its later changes first.');
+            const credits=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,cor.employmentId),
+                eq(toilAccrual.workedDate,cor.attendanceDate),sql`${toilAccrual.status}<>'reversed'`)).limit(1);
+            if(credits.length)throw Error('Review and reverse the dependent Leave Credit before cancelling this application.');
+            await tx.update(attendance).set({attestedWorkCorrectionId:null,attestedWorkContext:null})
+                .where(and(eq(attendance.id,retained.attendanceId),eq(attendance.tenantId,ctx.tenantId),eq(attendance.attestedWorkCorrectionId,cor.id)));
+            await markAttendancePayrollTx(tx,ctx,batches,cor.employmentId);
+            attestedCancellation=true;
+        }else if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
             const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
             const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, cor.decidedAt ? gt(attendanceCorrection.decidedAt, cor.decidedAt) : sql`false`)).limit(1);
             if (later.length)
@@ -6662,7 +6681,11 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
             reversed = true;
         }
         await tx.update(attendanceCorrection).set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: p.kind, cancellationReason: p.reason.trim() }).where(eq(attendanceCorrection.id, cor.id));
-        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
+        // The existing calculation owner refuses active cash/TOIL claims atomically. A
+        // cancellation cannot release money or credit, or keep a ready duration on a cancelled source.
+        if(attestedCancellation)await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,
+            reason:'Cancelled unclocked-work approval'});
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, ...(attestedCancellation?{attestedApprovalWithdrawn:true}:{}), date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
         return { status: 'cancelled' as const, reversed };
     });
 }
