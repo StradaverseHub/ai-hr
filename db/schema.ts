@@ -4535,6 +4535,7 @@ export const attendanceCorrection = pgTable(
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
       originalCheckOut: string | null; capturedAt: string; executionPolicy?: TraceAttendancePolicyBinding;
+      unclockedWork?:import('../lib/attendance-policy-unclocked-work').AttendancePolicyUnclockedWork;
     }>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
@@ -10519,6 +10520,7 @@ export const attendancePolicyRequestContract=pgTable('attendance_policy_request_
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),companyId:uuid('company_id').references(()=>company.id,{onDelete:'restrict'}),
  kind:text('kind').notNull().$type<'epoch'|'unavailable'>(),visibleEpoch:bigint('visible_epoch',{mode:'number'}),
  plannedWindow:jsonb('planned_window').$type<Record<string,unknown>>(),
+ attestedWork:jsonb('attested_work').$type<Record<string,unknown>>(),
  manualApprovalMethod:text('manual_approval_method').$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
  policyBinding:jsonb('policy_binding').$type<TraceAttendancePolicyBinding>(),
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),

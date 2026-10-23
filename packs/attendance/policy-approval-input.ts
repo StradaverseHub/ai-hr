@@ -4,8 +4,8 @@ import {plannedOvertimeMinutes} from '../../lib/overtime-duration';
 import type {attendanceCorrection,attendancePolicyRequestContract,attendancePolicyFinalReceipt} from '../../db/schema';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 
-export type PolicyApprovalSourceRow=Pick<typeof attendanceCorrection.$inferSelect,'id'|'tenantId'|'employmentId'|'attendanceDate'|'createdAt'|'status'|'requestedOtMinutes'|'approvedOtMinutes'|'otApprovalMethod'|'decidedByEmploymentId'|'decidedAt'|'appliedAt'|'cancelledAt'|'plannedStartTime'|'plannedEndTime'|'proposedCheckIn'|'proposedCheckOut'|'clockChanges'>;
-export type PolicySubmissionSourceRow=typeof attendancePolicyRequestContract.$inferSelect;
+export type PolicyApprovalSourceRow=Pick<typeof attendanceCorrection.$inferSelect,'id'|'tenantId'|'employmentId'|'attendanceDate'|'createdAt'|'status'|'requestedOtMinutes'|'approvedOtMinutes'|'otApprovalMethod'|'decidedByEmploymentId'|'decidedAt'|'appliedAt'|'cancelledAt'|'plannedStartTime'|'plannedEndTime'|'proposedCheckIn'|'proposedCheckOut'|'clockChanges'> & Partial<Pick<typeof attendanceCorrection.$inferSelect,'originalClockSnapshot'>>;
+export type PolicySubmissionSourceRow=Omit<typeof attendancePolicyRequestContract.$inferSelect,'attestedWork'> & Partial<Pick<typeof attendancePolicyRequestContract.$inferSelect,'attestedWork'>>;
 export type PolicyFinalReceiptSourceRow=typeof attendancePolicyFinalReceipt.$inferSelect;
 /** The submission receipt chooses a routing contract; it does not prove a completed approval. */
 function submissionSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyApprovalSourceRow,contract:PolicySubmissionSourceRow|undefined){
@@ -16,7 +16,8 @@ function submissionSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyApprova
   :contract.kind!=='unavailable'||contract.companyId!==null||contract.visibleEpoch!==null)
   return {state:'unavailable' as const,reason:'invalidContract' as const};
  return {state:'recorded' as const,correctionId:contract.correctionId,tenantId:contract.tenantId,employmentId:contract.employmentId,
-  date:contract.attendanceDate,companyId:contract.companyId,kind:contract.kind,visibleEpoch:contract.visibleEpoch,manualApprovalMethod:contract.manualApprovalMethod,policyBinding:structuredClone(contract.policyBinding),recordedAt:contract.recordedAt.toISOString()};
+  date:contract.attendanceDate,companyId:contract.companyId,kind:contract.kind,visibleEpoch:contract.visibleEpoch,manualApprovalMethod:contract.manualApprovalMethod,policyBinding:structuredClone(contract.policyBinding),recordedAt:contract.recordedAt.toISOString(),
+  ...(contract.attestedWork?{attestedWork:structuredClone(contract.attestedWork)}:{})};
 }
 /** Only the DB transition owner can mint this row. Its retained decision/effect is still not a
  * positioned plan, exception attestation, current physical replay or payable policy calculation. */
@@ -32,6 +33,9 @@ function finalReceiptSource(policy:ResolvedAttendanceGroupPolicy,row:PolicyAppro
   ||receipt.authority!=='finalWorkflowDecisionOnly')return {state:'unavailable' as const,reason:'submissionMismatch' as const};
  if(contract.manualApprovalMethod!==row.otApprovalMethod||receipt.workflowEvidence?.submittedManualMethod!==contract.manualApprovalMethod
   ||!isDeepStrictEqual(receipt.workflowEvidence?.submittedPolicy??null,contract.policyBinding))
+  return {state:'unavailable' as const,reason:'submissionMismatch' as const};
+ if(contract.attestedWork&&(!isDeepStrictEqual(receipt.workflowEvidence?.submittedAttestedWork,contract.attestedWork)
+  ||!isDeepStrictEqual(contract.attestedWork.work,row.originalClockSnapshot?.unclockedWork)))
   return {state:'unavailable' as const,reason:'submissionMismatch' as const};
  const request={requestedMinutes:row.requestedOtMinutes,approvedMinutes:row.approvedOtMinutes,method:row.otApprovalMethod,
   plannedStartLabel:row.plannedStartTime,plannedEndLabel:row.plannedEndTime,

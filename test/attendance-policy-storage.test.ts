@@ -39,7 +39,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false,sourceDateOverride?:string){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false,sourceDateOverride?:string,unclocked=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -85,7 +85,7 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   compatibleVersionId=compatible.versionId;
  }
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
-  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding,
+  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:unclocked,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding,
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:mixedCompatible&&key==='rest'?compatibleVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
  if(currentManual){
@@ -108,9 +108,11 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  const sourceDate=sourceDateOverride??day(sourceOffset),nextDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
  if(mixedCompatible)await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:nextDate});
+ if(!unclocked){
  await capturedClock(worker.employmentId,sourceDate,'in',financial?'23:00:00':'23:50:00',sourceDate,captureMillisecond);
  const endMinute=1380+financialMinutes,financialOut=`${String(Math.floor(endMinute/60)%24).padStart(2,'0')}:${String(endMinute%60).padStart(2,'0')}:00`;
  await capturedClock(worker.employmentId,sourceDate,'out',financial?financialOut:'00:10:00',nextDate,captureMillisecond);
+ }
  return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate,earningId:earning.id,compatibleVersionId};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -1042,6 +1044,28 @@ describe('immutable non-payable policy part storage',()=>{
   await deleteDraftBatch(ctx,{batchId:later.batchId});
   await reverseLeaveCredit(ctx,{accrualId:credits[0].id,reason:'Fictional canonical release after removing the later cutoff Payroll draft'});
   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id)))[0].releasedAt).not.toBeNull();
+ });
+
+ it('freezes explicit HR unclocked actual-work testimony without promoting it to captured work or payable duration',async()=>{
+  // This uses the SAME declared private historical baseline fixture as the Manual tests:
+  // policy was genuinely scheduled then effectiveFrom restored with guards back on before work.
+  // It is not evidence of a historical activation command or a ready unclocked financial path.
+  const f=await fixture('manual','12','actual',true,undefined,0,false,{mode:'none',step:null},120,'earliest',false,undefined,true),
+   date=day(0),midnight=Date.parse(date+'T00:00:00+08:00'),end=Math.max(midnight+1,Math.min(midnight+3600000,Date.now()-1));
+  const reason='Fictional HR testimony of actual unclocked work, distinct from the requested overtime count.',
+   work={intervals:[{fromEpochMillisecond:midnight,toEpochMillisecond:end}]};
+  const result=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date,requestedOtMinutes:60,reason,unclockedWork:work});
+  const [contract]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyRequestContract)
+   .where(eq(s.attendancePolicyRequestContract.correctionId,result.correctionId)));
+  expect(contract.attestedWork).toMatchObject({authority:'hrAttestedWorkSubmission',correctionId:result.correctionId,
+   tenantId:b.tenantId,employmentId:f.employmentId,date,work:{version:1,sourceDate:date,reason,intervals:work.intervals}});
+  expect(contract.attestedWork).not.toHaveProperty('captureId');
+  expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,result.correctionId))).toEqual([]);
+  await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyRequestContract).set({attestedWork:{}})
+   .where(eq(s.attendancePolicyRequestContract.correctionId,result.correctionId)))).rejects.toThrow();
+  expect(await owner.db.select().from(s.attendancePunch).innerJoin(s.attendance,eq(s.attendance.id,s.attendancePunch.attendanceId))
+   .where(eq(s.attendance.employmentId,f.employmentId))).toEqual([]);
+  expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date}))).toBeNull();
  });
 
  it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{

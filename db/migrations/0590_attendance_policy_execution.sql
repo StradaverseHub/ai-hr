@@ -223,6 +223,7 @@ CREATE TABLE public.attendance_policy_request_contract(
  kind text NOT NULL CHECK(kind IN('epoch','unavailable')),
  visible_epoch bigint CHECK(visible_epoch BETWEEN 0 AND 9007199254740991),
  planned_window jsonb CHECK(planned_window IS NULL OR jsonb_typeof(planned_window)='object'),
+ attested_work jsonb CHECK(attested_work IS NULL OR jsonb_typeof(attested_work)='object'),
  policy_binding jsonb CHECK(policy_binding IS NULL OR jsonb_typeof(policy_binding)='object'),
  manual_approval_method text CHECK(manual_approval_method IS NULL OR manual_approval_method IN('requested','system_calculated','smaller_of','greater_of')),
  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -272,7 +273,13 @@ CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
 DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
  plan jsonb;start_min integer;end_min integer;duration_min integer;manual_method text;
  binding jsonb;bound public.attendance_group_policy_revision;
+ work jsonb;attested jsonb;span jsonb;from_ms bigint;to_ms bigint;previous_ms bigint;midnight_ms bigint;
 BEGIN
+ IF NEW.original_clock_snapshot->'unclockedWork' IS NOT NULL THEN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':'||NEW.employment_id::text,0));
+  PERFORM 1 FROM public.attendance_overtime_source source WHERE source.tenant_id=NEW.tenant_id
+   AND source.employment_id=NEW.employment_id AND source.attendance_date=NEW.attendance_date FOR SHARE;
+ END IF;
  IF NEW.tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() THEN
   SELECT count(*),min(a.company_id::text)::uuid INTO v_count,v_company
    FROM public.employment e JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
@@ -312,6 +319,48 @@ BEGIN
   END IF;
  END IF;
 
+
+ -- Actual-work testimony is an explicit HR-only submission, not a clock or approved-plan alias.
+ -- The immutable contract records the database principal/time; supplied actor or authority is ignored.
+ work:=NEW.original_clock_snapshot->'unclockedWork';
+ IF work IS NOT NULL THEN
+  IF v_kind<>'epoch' OR binding IS NULL OR bound.id IS NULL OR bound.activation_epoch<1
+   OR bound.policy#>>'{overtime,enabled}' IS DISTINCT FROM 'true'
+   OR bound.policy#>>'{overtime,allowBackdatedWithoutClock}' IS DISTINCT FROM 'true'
+   OR app.can_admin_employment(NEW.employment_id) IS NOT TRUE
+   OR EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND app.is_self_person(e.person_id)) THEN
+   RAISE EXCEPTION 'Scoped HR authority and an active unclocked-work policy are required' USING ERRCODE='42501';END IF;
+  IF NEW.attendance_date>(clock_timestamp() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   OR NEW.requested_ot_minutes IS NULL OR NEW.requested_ot_minutes<=0
+   OR NEW.proposed_check_in IS NOT NULL OR NEW.proposed_check_out IS NOT NULL OR NEW.clock_changes IS NOT NULL
+   OR NEW.planned_start_time IS NOT NULL OR NEW.planned_end_time IS NOT NULL
+   OR EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance a ON a.id=p.attendance_id AND a.tenant_id=p.tenant_id
+    WHERE a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id
+    AND a.attendance_date=NEW.attendance_date AND p.voided_at IS NULL)
+   OR work IS DISTINCT FROM jsonb_build_object('version',1,'sourceDate',NEW.attendance_date,
+    'reason',NEW.reason,'intervals',work->'intervals')
+   OR char_length(btrim(NEW.reason)) NOT BETWEEN 1 AND 500 OR NEW.reason IS DISTINCT FROM btrim(NEW.reason)
+   OR jsonb_typeof(work->'intervals') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(work->'intervals') NOT BETWEEN 1 AND 16 THEN
+   RAISE EXCEPTION 'Record separate actual completed unclocked work and its reason' USING ERRCODE='23514';END IF;
+  midnight_ms:=(extract(epoch FROM(NEW.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint;
+  previous_ms:=midnight_ms;
+  FOR span IN SELECT value FROM jsonb_array_elements(work->'intervals') LOOP
+   IF coalesce(span->>'fromEpochMillisecond','') !~ '^[0-9]{1,16}$'
+    OR coalesce(span->>'toEpochMillisecond','') !~ '^[0-9]{1,16}$' THEN
+    RAISE EXCEPTION 'Unclocked work requires exact integer instants' USING ERRCODE='23514';END IF;
+   from_ms:=(span->>'fromEpochMillisecond')::bigint;to_ms:=(span->>'toEpochMillisecond')::bigint;
+   IF span IS DISTINCT FROM jsonb_build_object('fromEpochMillisecond',from_ms,'toEpochMillisecond',to_ms)
+    OR from_ms<previous_ms OR to_ms<=from_ms OR to_ms>midnight_ms+259200000
+    OR to_ms>floor(extract(epoch FROM clock_timestamp())*1000)::bigint THEN
+    RAISE EXCEPTION 'Unclocked work intervals must be completed and ordered in the dated period' USING ERRCODE='23514';END IF;
+   previous_ms:=to_ms;
+  END LOOP;
+  attested:=jsonb_build_object('version',1,'authority','hrAttestedWorkSubmission','correctionId',NEW.id,
+   'tenantId',NEW.tenant_id,'companyId',v_company,'employmentId',NEW.employment_id,'date',NEW.attendance_date,
+   'actorUserId',app.current_user_id(),'recordedAt',clock_timestamp(),'work',work);
+ END IF;
+
  -- Only newly submitted explicit minute windows acquire the dated plan contract. Historical
  -- labels, missing/equal/subminute endpoints and count-only requests cannot acquire one by replay.
  -- Reuse the existing Plan OT convention: date belongs to start; earlier end is the next day.
@@ -327,8 +376,8 @@ BEGIN
     'from',start_min,'to',start_min+duration_min,'requestedMinutes',duration_min);
   END IF;
  END IF;
- INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window,manual_approval_method,policy_binding)
-  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan,manual_method,binding);
+ INSERT INTO public.attendance_policy_request_contract(correction_id,tenant_id,employment_id,attendance_date,company_id,kind,visible_epoch,planned_window,attested_work,manual_approval_method,policy_binding)
+  VALUES(NEW.id,NEW.tenant_id,NEW.employment_id,NEW.attendance_date,v_company,v_kind,v_epoch,plan,attested,manual_method,binding);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_request_contract() FROM PUBLIC,ai_hr_app;
@@ -580,7 +629,8 @@ BEGIN
    'plannedStartLabel',NEW.planned_start_time,'plannedEndLabel',NEW.planned_end_time,
    'checkIn',NEW.proposed_check_in,'checkOut',NEW.proposed_check_out,'clockChanges',NEW.clock_changes),
   jsonb_build_object('requestId',w.id,'routingVersion',w.routing_version,'stageCount',jsonb_array_length(w.stages),
-   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window,'submittedManualMethod',contract.manual_approval_method,'submittedPolicy',contract.policy_binding),raw);
+   'completion',to_jsonb(completion),'participants',participants,'submittedPlan',contract.planned_window,'submittedManualMethod',contract.manual_approval_method,'submittedPolicy',contract.policy_binding)
+   ||CASE WHEN contract.attested_work IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('submittedAttestedWork',contract.attested_work) END,raw);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_final_receipt() FROM PUBLIC,ai_hr_app;

@@ -1,3 +1,4 @@
+import {validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
@@ -8,7 +9,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { lockOvertimeDayForAttendanceWriteTx, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -3465,6 +3466,8 @@ export async function requestAttendanceCorrection(
     checkIn?: string | null;
     checkOut?: string | null;
     requestedOtMinutes?: number | null;
+    /** HR records actual completed work separately from a clock correction or approved plan. */
+    unclockedWork?:{intervals:AttendancePolicyUnclockedWork['intervals']};
     reason?: string;
     // 1e9145d4 Plan OT — the planned window and the reason category the Apply OT Plan form collects. All
     // optional: every existing caller (the clock-correction form, the tests, the import paths) omits them
@@ -3522,6 +3525,10 @@ export async function requestAttendanceCorrection(
   if (plannedStartTime && plannedEndTime && plannedOvertimeMinutes(plannedStartTime, plannedEndTime) == null) {
     throw new Error('Enter different valid start and end times.');
   }
+  const unclockedWork=p.unclockedWork?validateAttendancePolicyUnclockedWork({version:1,sourceDate:p.date,reason,
+    intervals:p.unclockedWork.intervals},Date.now()):undefined;
+  if(unclockedWork&&(clockChanges||checkIn||checkOut||plannedStartTime||plannedEndTime||!requestedOtMinutes
+    ||p.date>todayInKualaLumpur()))throw Error('Unclocked overtime needs a completed worked day and a separate overtime-only request.');
   const otReasonCategory = p.otReasonCategory ?? null;
   // 2166ef79 — the remark is OPTIONAL and stays optional in stage one: the reporter's "Require Remark"
   // switch belongs to the Attendance Request Settings screen, which is deliberately stage two. An empty
@@ -3531,6 +3538,18 @@ export async function requestAttendanceCorrection(
   const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
   return withTenant(ctx, async (tx) => {
+    if(unclockedWork){
+      const [subject]=await tx.select({admin:sql<boolean>`app.can_admin_employment(${employment.id})`,
+        own:sql<boolean>`app.is_self_person(${employment.personId})`}).from(employment)
+        .where(eq(employment.id,p.employmentId)).limit(1);
+      if(!subject?.admin||subject.own)throw Error('Another authorised HR administrator must attest this employee’s unclocked work.');
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+      await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date:p.date});
+      await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+      await lockAttendancePayrollTx(tx,p.employmentId,p.date);
+      const punches=await punchesForCorrectionTx(tx,p.employmentId,p.date);
+      if(punches.some(row=>!row.voidedAt))throw Error('Retain existing clock evidence and use the clock-correction workflow for this day.');
+    }
     if (clockChanges) {
       const [subject] = await tx.select({ allowed: sql<boolean>`app.can_admin_employment(${employment.id})` })
         .from(employment).where(eq(employment.id, p.employmentId)).limit(1);
@@ -3604,7 +3623,7 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
-    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind});
+    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork});
   }).catch((error: unknown) => {
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
     let cause: unknown = error;
@@ -6658,7 +6677,7 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
   id?:string;removalPunchId?:string;employmentId:string;date:string;clockChanges:ClockChanges|null;
   checkIn:string|null;checkOut:string|null;requestedOtMinutes:number|null;reason:string;
   plannedStartTime:string|null;plannedEndTime:string|null;otReasonCategory:OtReasonCategory|null;
-  remark:string|null;requestKind:AttendanceRequestKind;
+  remark:string|null;requestKind:AttendanceRequestKind;unclockedWork?:AttendancePolicyUnclockedWork;
 }){
   const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
   // Freeze the server resolver's selected identity, never a form-supplied rule/revision. Use the
@@ -6669,6 +6688,9 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
     await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
     const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
     if(context.state==='unavailable')throw Error('The submitted Attendance policy is unavailable.');
+    if(p.unclockedWork&&(context.state!=='policy'||!context.selected.policy.overtime.enabled
+      ||!context.selected.policy.overtime.allowBackdatedWithoutClock||context.selected.activation.epoch<1))
+      throw Error('The dated Schedule Group policy does not permit unclocked overtime.');
     if(context.state==='policy'){
       executionPolicy=attendancePolicyTraceBinding(context);
       if(!executionPolicy)throw Error('The submitted Attendance policy identity is unavailable.');
@@ -6683,6 +6705,7 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
       originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
       capturedAt: new Date().toISOString(),
       ...(executionPolicy?{executionPolicy}:{}),
+      ...(p.unclockedWork?{unclockedWork:structuredClone(p.unclockedWork)}:{}),
     } : null;
     const [row] = await tx
       .insert(attendanceCorrection)
