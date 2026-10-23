@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Badge, inputCls } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
-import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+import { ClientPager, useClientPageQuery, useClampPagePastEnd, useResetPageOnFilterChange } from '@/components/client-pager';
 
 /**
  * 3e3d3fb2 — the TP1 Relief "Transaction history" list, with the search, sorting and paging the screen
@@ -87,6 +87,7 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
   // Months open in calendar order (January first), which is the order the reporter's own sketch shows.
   const [sortKey, setSortKey] = useState<SortKey>('month');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  useResetPageOnFilterChange(JSON.stringify([query, sortKey, sortDir]), { page: 'dPage', size: 'dSize' });
 
   const statusLabel = (s: Tp1DeclarationListRow['status']) => t(`history.status_${s}`);
   /** Approved is the only status that feeds payroll, so it is the only one that reads as success. */
@@ -132,6 +133,7 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
   }, [rows, query, sortKey, sortDir]);
 
   const { rows: pageRows, state } = paginateRows(sorted, q);
+  useClampPagePastEnd(state, { page: 'dPage', size: 'dSize' });
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));

@@ -6,7 +6,7 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections} from '../core/attendance';
+import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
@@ -37,6 +37,13 @@ const detail=async(f:Fixture)=>(await attendanceApplicationDetail(f.root,[base.c
 const decide=(f:Fixture,who:Fixture['first'],slot:string,decision:'approved'|'rejected'='approved')=>decideAttendanceCorrection(who.ctx,{correctionId:f.id,expectedStageIndex:0,expectedParticipantSlot:slot,decision,...(decision==='rejected'?{rejectReason:'Fictional rejection'}:{})});
 const day=async(f:Fixture)=>(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.worker.employmentId),eq(schema.attendance.attendanceDate,f.on))).orderBy(asc(schema.attendance.id)))[0];
 describe('v4 uses the immutable participant and final Attendance owners',()=>{
+ it('shows the saved current overtime level instead of substituting the live reporting-line superior',async()=>{
+  const f=await fixture('all_required','self_overtime');
+  const plan=async()=> (await myOvertimePlans(f.worker.ctx,f.worker.employmentId)).find(row=>row.id===f.id);
+  expect(await plan()).toMatchObject({assignedApproverNames:['Fictional v4 superior','Fictional v4 selected participant']});
+  await decide(f,f.second,'0:1');await decide(f,f.first,'0:0');
+  expect(await plan()).toMatchObject({assignedApproverNames:['Fictional v4 final HR']});
+ });
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true};

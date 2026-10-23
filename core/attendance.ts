@@ -4372,6 +4372,8 @@ export type PlanOtDayType = 'workday' | 'rest_day' | 'holiday';
 /** One row of the Plan OT list. */
 export type OvertimePlanRow = {
   id: string;
+  /** Saved current-level names; null/absent identifies a legacy reporting-line request. */
+  assignedApproverNames?: string[] | null;
   attendanceDate: string;
   plannedStartTime: string | null;
   plannedEndTime: string | null;
@@ -4951,8 +4953,8 @@ export function myOvertimePlans(
       : opts.sort === 'submitted'
         ? [dirFn(attendanceCorrection.createdAt), desc(attendanceCorrection.attendanceDate)]
         : [dirFn(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt)];
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: attendanceCorrection.id,
         attendanceDate: attendanceCorrection.attendanceDate,
@@ -4975,8 +4977,15 @@ export function myOvertimePlans(
       .where(and(...window))
       .orderBy(...orderBy)
       .limit(limit)
-      .offset(offset),
-  );
+      .offset(offset);
+    const workflows = await attendanceWorkflowsForTx(tx, rows.map(row => row.id));
+    return rows.map(row => {
+      const workflow = workflows.get(row.id);
+      return {...row, assignedApproverNames: workflow
+        ? (workflow.effectiveStages[workflow.currentStage]?.approvers.map(actor => actor.name) ?? [])
+        : null};
+    });
+  });
 }
 
 /**
