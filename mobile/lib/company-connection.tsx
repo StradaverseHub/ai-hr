@@ -32,6 +32,7 @@ export function useCompanyConnection() {
 function RuntimeCompanyProvider({children}:{children:ReactNode}) {
   const [incoming, setIncoming] = useState<IncomingSetup | null>(null);
   const [intentReady, setIntentReady] = useState(false);
+  const [workspaceMounted, setWorkspaceMounted] = useState(false);
   const intentGeneration = useRef(0);
   const [controller] = useState(()=>createConnectionState({
     async read() { const f=new File(Paths.document,'aihr-company-v1.json'); return f.exists?f.text():null; },
@@ -64,21 +65,35 @@ function RuntimeCompanyProvider({children}:{children:ReactNode}) {
   },[controller]);
   // First-launch enrollment precedes the session navigator; don't leave it behind the native splash.
   useEffect(()=>{if(intentReady&&(state.status==='ready'||state.status==='error'))void SplashScreen.hideAsync();},[intentReady,state.status]);
+  useEffect(()=>{if(intentReady&&state.status==='ready'&&state.selection&&!incoming)setWorkspaceMounted(true);},[intentReady,state.status,state.selection,incoming]);
   const c=companyCopy();
+  const review = incoming ? <CompanySetup key={incoming.id} incoming={incoming} failed={!incoming.raw}/> : null;
   return <Context.Provider value={controller}><IntentContext.Provider value={{incoming,dismiss(id){setIncoming(current=>current?.id===id?null:current);}}}>
     {!intentReady||state.status==='loading'||state.status==='switching'?<SafeAreaView style={styles.center}><ActivityIndicator accessibilityLabel={c.loading}/><Text>{c.loading}</Text></SafeAreaView>:
-      incoming?<CompanySetup key={incoming.id} failed={!incoming.raw}/>:
-      state.status==='error'||!state.selection?<CompanySetup failed={state.status==='error'}/>:
-      <View key={state.generation} style={styles.fill}>{children}</View>}
+      state.status==='ready'&&state.selection&&(!incoming||workspaceMounted)?<View key={state.generation} style={styles.fill}>{children}</View>:
+      review??<CompanySetup failed={state.status==='error'}/>}
   </IntentContext.Provider></Context.Provider>;
 }
 export function CompanyConnectionProvider({children}:{children:ReactNode}) { return runtimeConnections?<RuntimeCompanyProvider>{children}</RuntimeCompanyProvider>:children; }
-export function CompanySetup({failed=false}:{failed?:boolean}) {
+/** Place inside session/draft providers: close private screens while retaining their in-memory drafts. */
+export function WorkplaceReviewBoundary({children}:{children:ReactNode}) {
+  const intent=useContext(IntentContext);
+  return intent?.incoming?<CompanySetup key={intent.incoming.id} incoming={intent.incoming} failed={!intent.incoming.raw}/>:children;
+}
+export function CompanySetup({failed=false,incoming=null}:{failed?:boolean;incoming?:IncomingSetup|null}) {
   const controller=useContext(Context),c=companyCopy();
   const intent=useContext(IntentContext);
-  const [candidate,setCandidate]=useState<string|null>(intent?.incoming?.raw??null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [candidate,setCandidate]=useState<string|null>(incoming?.raw??null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [setupLink,setSetupLink]=useState('');
-  useEffect(()=>{if(!candidate)return;const listener=BackHandler.addEventListener('hardwareBackPress',()=>{if(busy)return true;setCandidate(null);return true;});return()=>listener.remove();},[candidate,busy]);
+  useEffect(()=>{
+    if(!candidate&&!incoming)return;
+    const listener=BackHandler.addEventListener('hardwareBackPress',()=>{
+      if(busy)return true;
+      if(incoming){intent?.dismiss(incoming.id);router.replace('/');}else setCandidate(null);
+      return true;
+    });
+    return()=>listener.remove();
+  },[candidate,busy,incoming?.id,intent]);
   let profile:ReturnType<typeof verifyCompanyProfile>|null=null;
   try{if(candidate)profile=verifyCompanyProfile(candidate,trust);}catch{}
   async function importFile() {
@@ -94,7 +109,7 @@ export function CompanySetup({failed=false}:{failed?:boolean}) {
   async function choose() {
     if(!controller||!candidate||busy)return;
     setBusy(true);setError('');
-    try{await controller.select(candidate);if(intent?.incoming)intent.dismiss(intent.incoming.id);}catch{setError(c.error);}finally{setBusy(false);}
+    try{await controller.select(candidate);if(incoming)intent?.dismiss(incoming.id);}catch{setError(c.error);}finally{setBusy(false);}
   }
   function reviewLink() {
     try {
@@ -103,7 +118,7 @@ export function CompanySetup({failed=false}:{failed?:boolean}) {
     } catch { setError(c.expired); }
   }
   function cancel() {
-    if(intent?.incoming){intent.dismiss(intent.incoming.id);router.replace('/');}
+    if(incoming){intent?.dismiss(incoming.id);router.replace('/');}
     else router.back();
   }
   return <SafeAreaView style={styles.fill}><ScrollView contentContainerStyle={styles.wrap}>
@@ -113,11 +128,11 @@ export function CompanySetup({failed=false}:{failed?:boolean}) {
       catalogue.map((item,index)=>{let p;try{p=verifyCompanyProfile(JSON.stringify(item),trust);}catch{return null;}return <Button key={p.id} title={p.name+' · '+new URL(p.apiOrigin).hostname} onPress={()=>setCandidate(JSON.stringify(catalogue[index]))} disabled={busy} kind="quiet"/>;})}
     {(error||(failed&&!profile))&&<Text selectable accessibilityRole="alert" style={styles.error}>{error||c.error}</Text>}
     {profile?<><Button title={c.use} onPress={()=>void choose()} disabled={busy}/><Button title={c.choose} kind="quiet" disabled={busy} onPress={()=>setCandidate(null)}/></>:<>
-      <Text style={styles.label}>{c.setupLink}</Text><TextInput accessibilityLabel={c.setupLink} value={setupLink} onChangeText={setSetupLink} autoCapitalize="none" autoCorrect={false} maxLength={24000} style={styles.linkInput} editable={!busy}/>
+      <Text style={styles.label}>{c.setupLink}</Text><TextInput accessibilityLabel={c.setupLink} value={setupLink} onChangeText={setSetupLink} autoCapitalize="none" autoCorrect={false} keyboardType="url" autoComplete="off" maxLength={24000} style={styles.linkInput} editable={!busy}/>
       <Button title={c.reviewLink} kind="quiet" disabled={busy||!setupLink.trim()} onPress={reviewLink}/>
       <Button title={c.import} onPress={()=>void importFile()} disabled={busy}/>
     </>}
-    {(intent?.incoming||controller?.getSnapshot().selection)&&!busy&&<Button title={c.cancel} kind="quiet" onPress={cancel}/>}
+    {(incoming||controller?.getSnapshot().selection)&&!busy&&<Button title={c.cancel} kind="quiet" onPress={cancel}/>}
     <Text style={styles.note}>{c.test}</Text>
   </ScrollView></SafeAreaView>;
 }

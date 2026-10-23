@@ -20,6 +20,7 @@ function fixture() {
  const clear=vi.fn(async()=>{authOwner++;}),picker=vi.fn(async()=>({canceled:false,assets:[{uri:'cache/company.json'}]}));
  const linking={initial:null as string|null,listener:null as ((event:{url:string})=>void)|null};
  const getInitialURL=vi.fn(async()=>linking.initial);
+ const back={handler:null as (()=>boolean)|null};
  const Container=({children,style,accessibilityElementsHidden}:React.PropsWithChildren<{style?:{display?:string};accessibilityElementsHidden?:boolean}>)=><div style={{display:style?.display}} aria-hidden={accessibilityElementsHidden||undefined}>{children}</div>;
  const drafts={exports:{} as any};
  runInNewContext(transpileModule(readFileSync('mobile/lib/journey-drafts.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
@@ -31,7 +32,7 @@ function fixture() {
     throw new Error('Unexpected drafts dependency '+id);
   }});
  const ports:Record<string,unknown>={react:React,'react/jsx-runtime':jsx,
-  'react-native':{ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:()=>({remove:()=>{}})},ScrollView:Container,Text:Container,View:Container,TextInput:({accessibilityLabel,value,onChangeText,editable}:any)=><input aria-label={accessibilityLabel} value={value} onChange={e=>onChangeText(e.target.value)} disabled={editable===false}/>,StyleSheet:{create:(x:unknown)=>x}},
+  'react-native':{ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:(_type:string,handler:()=>boolean)=>{back.handler=handler;return{remove(){if(back.handler===handler)back.handler=null;}};}},ScrollView:Container,Text:Container,View:Container,TextInput:({accessibilityLabel,value,onChangeText,editable}:any)=><input aria-label={accessibilityLabel} value={value} onChange={e=>onChangeText(e.target.value)} disabled={editable===false}/>,StyleSheet:{create:(x:unknown)=>x}},
   'expo-linking':{getInitialURL,clearInitialURL:vi.fn(),addEventListener:(_type:string,listener:typeof linking.listener)=>{linking.listener=listener;return{remove(){linking.listener=null;}};}},
   'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()},SplashScreen:{hideAsync:vi.fn(async()=>{})}},
   './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':{verifyCompanyProfile},'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en'},
@@ -39,12 +40,15 @@ function fixture() {
   './ui':{colors:{},Button:({title,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{title}</button>},'../connections/trust.json':trust,'../connections/profiles.json':[setup('Test cloud','https://cloud.example.test')]};
  const output={exports:{} as any};
  runInNewContext(transpileModule(readFileSync('mobile/lib/company-connection.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports:output.exports,module:output,URL,JSON,console,require:(id:string)=>{if(id in ports)return ports[id];throw new Error('Unexpected company setup dependency '+id);}});
- const Provider=output.exports.CompanyConnectionProvider as React.ComponentType<React.PropsWithChildren>;
+ const ConnectionProvider=output.exports.CompanyConnectionProvider as React.ComponentType<React.PropsWithChildren>;
  const Setup=output.exports.CompanySetup as React.ComponentType;
  const DraftProvider=drafts.exports.JourneyDraftProvider as React.ComponentType<React.PropsWithChildren>;
+ // The fallback reproduces the old root composition when the same test runs against a pre-fix source snapshot.
+ const ReviewBoundary=(output.exports.WorkplaceReviewBoundary??React.Fragment) as React.ComponentType<React.PropsWithChildren>;
+ function Provider({children}:React.PropsWithChildren){return <ConnectionProvider><DraftProvider><ReviewBoundary>{children}</ReviewBoundary></DraftProvider></ConnectionProvider>;}
  function DraftEditor(){const state=drafts.exports.useJourneyDrafts();return <input aria-label="Employee draft" value={state.clock?.message??''} onChange={e=>state.putClock({action:'in',phase:'review',message:e.target.value,photo:{uri:'cache/employee-photo.jpg',name:'photo.jpg',mimeType:'image/jpeg',size:5}})}/>;}
  function PrivateView(){const p=output.exports.useCompanyConnection();return <><p>Signed-out connection: {p?.name}</p><Setup/></>;}
- return {Provider,PrivateView,DraftProvider,DraftEditor,files,deleted,clear,picker,linking,getInitialURL,applied:()=>applied};
+ return {Provider,PrivateView,DraftProvider,DraftEditor,files,deleted,clear,picker,linking,back,getInitialURL,applied:()=>applied};
 }
 afterEach(cleanup);
 describe('shipped company setup screen',()=>{
@@ -61,22 +65,35 @@ describe('shipped company setup screen',()=>{
   const f=fixture(),user=userEvent.setup();const old=JSON.stringify(setup('Old company','https://cloud.example.test','old'));f.files.set('doc/aihr-company-v1.json',old);
   render(<f.Provider><f.PrivateView/></f.Provider>);await screen.findByText('Signed-out connection: Old company');
   act(()=>f.linking.listener?.({url:workplaceSetupLinks(JSON.stringify(setup('New company','https://cloud.example.test','new'))).app}));
-  await screen.findByText('New company');expect(screen.queryByText('Signed-out connection: Old company')).not.toBeVisible();
+  await screen.findByText('New company');expect(screen.queryByText('Signed-out connection: Old company')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:'Back'}));await screen.findByText('Signed-out connection: Old company');
   expect(f.clear).not.toHaveBeenCalled();expect(f.files.get('doc/aihr-company-v1.json')).toBe(old);
  });
  it('preserves actual employee drafts and attachments through link review/cancel, clearing only after confirmation',async()=>{
   const f=fixture(),user=userEvent.setup();f.files.set('doc/aihr-company-v1.json',JSON.stringify(setup('Current workplace','https://cloud.example.test','current')));
-  render(<f.Provider><f.DraftProvider><f.PrivateView/><f.DraftEditor/></f.DraftProvider></f.Provider>);
+  render(<f.Provider><f.PrivateView/><f.DraftEditor/></f.Provider>);
   await user.type(await screen.findByLabelText('Employee draft'),'Attendance review in progress');f.files.set('cache/employee-photo.jpg','photo');
   const incoming=workplaceSetupLinks(JSON.stringify(setup('New workplace','https://cloud.example.test','new'))).app;
   act(()=>f.linking.listener?.({url:incoming}));await screen.findByText('New workplace');
-  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(screen.getByLabelText('Employee draft')).not.toBeVisible();
+  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(screen.queryByLabelText('Employee draft')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:'Back'}));expect(await screen.findByLabelText('Employee draft')).toHaveValue('Attendance review in progress');
   expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(f.clear).not.toHaveBeenCalled();
   act(()=>f.linking.listener?.({url:incoming}));await screen.findByText('New workplace');await user.click(screen.getByRole('button',{name:'Use this company'}));
   await screen.findByText('Signed-out connection: New workplace');expect(screen.getByLabelText('Employee draft')).toHaveValue('');
   expect(f.files.has('cache/employee-photo.jpg')).toBe(false);expect(f.clear).toHaveBeenCalledOnce();
+ });
+ it('preserves the employee draft when Android back cancels an invalid incoming link',async()=>{
+  const f=fixture(),user=userEvent.setup();const stored=JSON.stringify(setup('Current workplace','https://cloud.example.test','current'));f.files.set('doc/aihr-company-v1.json',stored);
+  render(<f.Provider><f.PrivateView/><f.DraftEditor/></f.Provider>);
+  await user.type(await screen.findByLabelText('Employee draft'),'Keep my attendance draft');f.files.set('cache/employee-photo.jpg','photo');
+  act(()=>f.linking.listener?.({url:'aihr://company#setup=invalid'}));await screen.findByText(/could not be completed/);
+  expect(f.back.handler).not.toBeNull();act(()=>{expect(f.back.handler?.()).toBe(true);});
+  expect(await screen.findByLabelText('Employee draft')).toHaveValue('Keep my attendance draft');
+  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(f.files.get('doc/aihr-company-v1.json')).toBe(stored);expect(f.clear).not.toHaveBeenCalled();
+ });
+ it('places link review inside the shipped session and draft providers',()=>{
+  const layout=readFileSync('mobile/app/_layout.tsx','utf8');
+  expect(layout).toMatch(/<CompanyConnectionProvider><SessionProvider>[\s\S]*<JourneyDraftProvider><WorkplaceReviewBoundary><Gate \/><\/WorkplaceReviewBoundary><\/JourneyDraftProvider>[\s\S]*<\/SessionProvider><\/CompanyConnectionProvider>/);
  });
  it('pastes and verifies an on-prem setup link without opening another host or sending credentials',async()=>{
   const f=fixture(),user=userEvent.setup();render(<f.Provider><f.PrivateView/></f.Provider>);
