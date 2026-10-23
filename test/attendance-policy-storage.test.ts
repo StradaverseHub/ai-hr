@@ -1,4 +1,4 @@
-import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,deleteDraftBatch} from '../packs/payroll/service';
+import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch} from '../packs/payroll/service';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
@@ -789,6 +789,9 @@ describe('immutable non-payable policy part storage',()=>{
   await generatePayslips(ctx,{batchId:batch.batchId});
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
   expect(slip.overtimePay).toBe('36.00');
+  await closeBatch(ctx,{batchId:batch.batchId});
+  await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
+  await expect(deleteDraftBatch(ctx,{batchId:batch.batchId})).rejects.toThrow();
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,read.source.id),sql`released_at IS NULL`))).toHaveLength(1);
  });
  it('banks actual policy TOIL under its existing credit owner, excludes cash, and releases on canonical reversal',async()=>{

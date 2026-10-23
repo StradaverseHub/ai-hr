@@ -495,7 +495,9 @@ export async function readOvertimePolicyDurationTx(tx:Tx,ctx:SessionContext,p:{e
   'policyExecutionProposal',evidence->'policyExecutionProposal','policyDurationFormulaInput',evidence->'policyDurationFormulaInput'
  ) as independent,evidence->'policyFinancialDurationContract' as recorded
  from attendance_overtime_calculation_evidence where tenant_id=${ctx.tenantId}::uuid
-  and company_id=${source.companyId}::uuid and calculation_id=${calculation.id}::uuid`) as unknown as {
+  and company_id=${source.companyId}::uuid and calculation_id=${calculation.id}::uuid
+  and inputs->>'mode'='actual' and inputs->>'layer'='raw'
+  and inputs->'patternVersionId'='null'::jsonb and inputs->'assignmentId'='null'::jsonb`) as unknown as {
    independent:import('./policy-duration-replay').IndependentPolicyDurationSource;recorded:unknown}[];
  const row=rows[0],input=row?.independent;
  // jsonb_build_object emits SQL NULL for absent optional top-level fields. Normalize only

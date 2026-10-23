@@ -976,6 +976,10 @@ BEGIN
  IF actual_count<>header.policy_part_count THEN
   RAISE EXCEPTION 'Financial policy requires its entire dated part set' USING ERRCODE='23514';END IF;
  IF header.duration_outcome='ready' THEN
+  IF evidence.inputs->>'mode' IS DISTINCT FROM 'actual' OR evidence.inputs->>'layer' IS DISTINCT FROM 'raw'
+   OR evidence.inputs->'patternVersionId' IS DISTINCT FROM 'null'::jsonb
+   OR evidence.inputs->'assignmentId' IS DISTINCT FROM 'null'::jsonb THEN
+   RAISE EXCEPTION 'Financial policy evidence must retain its actual raw policy identity' USING ERRCODE='23514';END IF;
   IF duration->>'state' IS DISTINCT FROM 'prepared' OR duration->>'authority' IS DISTINCT FROM 'policyFinancialDurationContractOnly'
    OR duration->'identity' IS DISTINCT FROM identity OR duration->>'policyRevisionId' IS DISTINCT FROM header.policy_revision_id::text
    OR duration->>'approvalStatus' IS DISTINCT FROM header.approval_status OR header.approval_status NOT IN('approved','notRequired')
