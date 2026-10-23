@@ -3,9 +3,11 @@ import {isCalendarDate} from './calendar-date';
 /** Explicit HR testimony of actual work. These are entered instants, never clock captures,
  * approved-plan positions, computed payable counts or an approval capability. */
 export type AttendancePolicyUnclockedWork={version:1;completeWorkedDay:true;sourceDate:string;reason:string;
- intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+ intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[];
+ /** Explicit actual-work subset requested as overtime; never an approved plan. */
+ requestedIntervals?:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
 
-export function validateAttendancePolicyUnclockedWork(value:AttendancePolicyUnclockedWork,nowMillisecond:number):AttendancePolicyUnclockedWork{
+export function validateAttendancePolicyUnclockedWork(value:AttendancePolicyUnclockedWork,nowMillisecond:number,requestedMinutes?:number):AttendancePolicyUnclockedWork{
  if(!value||value.version!==1||value.completeWorkedDay!==true||!isCalendarDate(value.sourceDate)||!Number.isSafeInteger(nowMillisecond)
   ||typeof value.reason!=='string'||value.reason!==value.reason.trim()||value.reason.length<1||value.reason.length>500
   ||!Array.isArray(value.intervals)||value.intervals.length<1||value.intervals.length>16)
@@ -20,7 +22,25 @@ export function validateAttendancePolicyUnclockedWork(value:AttendancePolicyUncl
   previous=row.toEpochMillisecond;
   return {fromEpochMillisecond:row.fromEpochMillisecond,toEpochMillisecond:row.toEpochMillisecond};
  });
- return {version:1,completeWorkedDay:true,sourceDate:value.sourceDate,reason:value.reason,intervals};
+ let requestedIntervals:AttendancePolicyUnclockedWork['requestedIntervals'];
+ if(value.requestedIntervals!==undefined){
+  if(!Array.isArray(value.requestedIntervals)||!value.requestedIntervals.length||value.requestedIntervals.length>16)
+   throw Error('Record the actual intervals covered by the requested overtime count.');
+  previous=midnight;let count=0;
+  requestedIntervals=value.requestedIntervals.map(row=>{
+   if(!row||!Number.isSafeInteger(row.fromEpochMillisecond)||!Number.isSafeInteger(row.toEpochMillisecond)
+    ||row.fromEpochMillisecond<previous||row.toEpochMillisecond<=row.fromEpochMillisecond
+    ||!intervals.some(actual=>actual.fromEpochMillisecond<=row.fromEpochMillisecond&&actual.toEpochMillisecond>=row.toEpochMillisecond))
+    throw Error('Requested overtime intervals must be ordered, nonoverlapping subsets of the stated actual work.');
+   const minutes=Math.floor((row.toEpochMillisecond-midnight)/60000)-Math.floor((row.fromEpochMillisecond-midnight)/60000);
+   if(minutes<=0)throw Error('Each requested overtime interval must identify a positive minute count.');
+   count+=minutes;previous=row.toEpochMillisecond;
+   return {fromEpochMillisecond:row.fromEpochMillisecond,toEpochMillisecond:row.toEpochMillisecond};
+  });
+  if(requestedMinutes!==undefined&&count!==requestedMinutes)throw Error('The requested overtime count must match its explicitly positioned intervals.');
+ }
+ return {version:1,completeWorkedDay:true,sourceDate:value.sourceDate,reason:value.reason,intervals,
+  ...(requestedIntervals?{requestedIntervals}:{})};
 }
 
 /** Explicit Malaysia local input, independent of the browser/server's own timezone. */

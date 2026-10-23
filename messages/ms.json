@@ -3948,7 +3948,10 @@
       "submitting": "Sedang menghantar…",
       "submitted": "Dihantar — lihat permohonan",
       "evidence": "Kerja sebenar yang dihantar tanpa rekod waktu",
-      "unavailable": "Selang kerja sebenar yang dihantar tidak tersedia."
+      "unavailable": "Selang kerja sebenar yang dihantar tidak tersedia.",
+      "positionedRequest": "Nyatakan selang sebenar yang diminta sebagai kerja lebih masa",
+      "requestedIntervals": "Selang kerja lebih masa yang diminta",
+      "requestedHelp": "Pilih selang dalam pernyataan kerja sebenar yang lengkap. Bilangan minit mesti sama dengan kerja lebih masa yang diminta; kaedah kelulusan yang ditetapkan masih terpakai."
     }
   },
   "org": {

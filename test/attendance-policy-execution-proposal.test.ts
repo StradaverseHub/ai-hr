@@ -305,3 +305,23 @@ describe('complete positioned-plan source and shared duration replay',()=>{
   expect(materialize({...input,approvals:changed})).toBeNull();
  });
 });
+
+describe('frozen scalar methods with separate attested requested positions',()=>{
+ it.each(['requested','system_calculated','smaller_of','greater_of'] as const)('preserves the exact winner for %s',method=>{
+  const requestedWinner=method==='requested'||method==='smaller_of';
+  const result=selectAttendancePolicyManualPositions({method,requestedMinutes:30,approvedMinutes:requestedWinner?30:60,
+   systemMinutes:60,actualIntervals:[{from:1080,to:1140}],requestedIntervals:[{from:1110,to:1140}],hasSubmittedWindow:false,
+   periodMinutes:4320,plan:{state:'unavailable',authority:'approvedPlanOnly',reason:'planUnavailable'}});
+  expect(result).toMatchObject({state:'known',basis:requestedWinner?'completeAttestedRequest':'completeActualCount',
+   intervals:requestedWinner?[{from:1110,to:1140}]:[{from:1080,to:1140}]});
+ });
+ it('keeps explicit requested positions on a tie and refuses out-of-source, duplicated or scalar-only subsets',()=>{
+  const input={method:'smaller_of' as const,requestedMinutes:30,approvedMinutes:30,systemMinutes:60,actualIntervals:[{from:1080,to:1140}],
+   requestedIntervals:[{from:1110,to:1140}],hasSubmittedWindow:false,periodMinutes:4320,
+   plan:{state:'unavailable' as const,authority:'approvedPlanOnly' as const,reason:'planUnavailable' as const}};
+  expect(selectAttendancePolicyManualPositions({...input,systemMinutes:30,actualIntervals:[{from:1110,to:1140}]}))
+   .toMatchObject({state:'known',basis:'completeAttestedRequest',intervals:[{from:1110,to:1140}]});
+  for(const requestedIntervals of [[{from:1100,to:1130},{from:1100,to:1130}],[{from:1140,to:1170}],undefined])
+   expect(selectAttendancePolicyManualPositions({...input,requestedIntervals}).state).toBe('unavailable');
+ });
+});

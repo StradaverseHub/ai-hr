@@ -19,7 +19,8 @@ export type PolicyAttestedCoveragePrepared={state:'prepared';authority:'attested
  durationDigest:string;countBasis:'attestedBoundaryFloor';minutes:number;correctionId:string;workflowRequestId:string;
  countAttribution?:Extract<PolicyCountAttribution,{state:'known'}>;
  allocations:{sequence:number;calendarDate:string;fromMinute:number;toMinute:number;minutes:number;attestedIntervalIndex:number;
-  attestedFromEpochMillisecond:number;attestedToEpochMillisecond:number;fromEpochMillisecond:number;toEpochMillisecond:number}[];
+  attestedFromEpochMillisecond:number;attestedToEpochMillisecond:number;fromEpochMillisecond:number;toEpochMillisecond:number;
+  requestedIntervalIndex?:number;requestedFromEpochMillisecond?:number;requestedToEpochMillisecond?:number}[];
  intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
 export type PolicySourceCoverageProposal=PolicyCapturedCoverageProposal|PolicyAttestedCoveragePrepared;
 function attestedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicySourceCoverageProposal{
@@ -33,15 +34,22 @@ function attestedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPo
  const midnight=Date.parse(identity.date+'T00:00:00+08:00'),allocations:PolicyAttestedCoveragePrepared['allocations']=[];
  for(const [sequence,part]of proposal.duration.parts.entries())for(const allocated of part.allocations){
   let owned=0;
+  const requested=proposal.manualEvidence?.basis==='completeAttestedRequest'?replay.actualWork.requestedIntervals:undefined;
+  if(proposal.manualEvidence?.basis==='completeAttestedRequest'&&!requested?.length)return refuse();
   for(const [attestedIntervalIndex,span]of replay.actualWork.intervals.entries()){
-   const from=Math.max(allocated.from,Math.floor((span.fromEpochMillisecond-midnight)/60000)),
-    to=Math.min(allocated.to,Math.floor((span.toEpochMillisecond-midnight)/60000));
-   if(to<=from)continue;
-   const physicalFrom=Math.max(span.fromEpochMillisecond,midnight+from*60000),physicalTo=Math.min(span.toEpochMillisecond,midnight+to*60000);
-   if(physicalFrom>=physicalTo)return refuse();
-   owned+=to-from;allocations.push({sequence,calendarDate:part.date,fromMinute:from,toMinute:to,minutes:to-from,attestedIntervalIndex,
-    attestedFromEpochMillisecond:span.fromEpochMillisecond,attestedToEpochMillisecond:span.toEpochMillisecond,
-    fromEpochMillisecond:physicalFrom,toEpochMillisecond:physicalTo});
+   const selections=requested?requested.map((row,index)=>({span:row,index})):[{span,index:undefined}];
+   for(const selected of selections){
+    const inMs=Math.max(span.fromEpochMillisecond,selected.span.fromEpochMillisecond),outMs=Math.min(span.toEpochMillisecond,selected.span.toEpochMillisecond);
+    if(outMs<=inMs)continue;
+    const from=Math.max(allocated.from,Math.floor((inMs-midnight)/60000)),to=Math.min(allocated.to,Math.floor((outMs-midnight)/60000));
+    if(to<=from)continue;
+    const physicalFrom=Math.max(inMs,midnight+from*60000),physicalTo=Math.min(outMs,midnight+to*60000);
+    if(physicalFrom>=physicalTo)return refuse();
+    owned+=to-from;allocations.push({sequence,calendarDate:part.date,fromMinute:from,toMinute:to,minutes:to-from,attestedIntervalIndex,
+     attestedFromEpochMillisecond:span.fromEpochMillisecond,attestedToEpochMillisecond:span.toEpochMillisecond,
+     fromEpochMillisecond:physicalFrom,toEpochMillisecond:physicalTo,
+     ...(selected.index!==undefined?{requestedIntervalIndex:selected.index,requestedFromEpochMillisecond:selected.span.fromEpochMillisecond,requestedToEpochMillisecond:selected.span.toEpochMillisecond}:{})});
+   }
   }
   if(owned!==allocated.to-allocated.from)return refuse();
  }

@@ -3948,7 +3948,10 @@
       "submitting": "正在提交…",
       "submitted": "已提交 — 查看申请",
       "evidence": "已提交的无打卡实际工作",
-      "unavailable": "无法获取已提交的实际工作时段。"
+      "unavailable": "无法获取已提交的实际工作时段。",
+      "positionedRequest": "指定申请加班的实际工作时段",
+      "requestedIntervals": "申请加班时段",
+      "requestedHelp": "请选择完整实际工作声明内的时段。时段分钟数须与申请加班分钟数一致，仍按已配置的审批计算方式处理。"
     }
   },
   "org": {

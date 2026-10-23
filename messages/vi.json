@@ -3948,7 +3948,10 @@
       "submitting": "Đang gửi…",
       "submitted": "Đã gửi — xem đơn",
       "evidence": "Công việc thực tế đã khai không có bản ghi chấm công",
-      "unavailable": "Không có các khoảng làm việc thực tế đã gửi."
+      "unavailable": "Không có các khoảng làm việc thực tế đã gửi.",
+      "positionedRequest": "Chỉ rõ các khoảng thực tế đề nghị tính làm thêm",
+      "requestedIntervals": "Các khoảng làm thêm đề nghị",
+      "requestedHelp": "Chọn các khoảng trong bản khai toàn bộ công việc thực tế. Số phút phải bằng thời gian làm thêm đề nghị; phương pháp phê duyệt đã cấu hình vẫn được áp dụng."
     }
   },
   "org": {

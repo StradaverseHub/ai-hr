@@ -61,7 +61,7 @@ export function attendancePolicyAttestedWorkInput(context:AttendancePolicyExecut
    activatedAt=Date.parse(context.selected.activation.recordedAt);
   if(![submittedAt,attestedAt,finalAt,effectAt,activatedAt].every(Number.isFinite)
    ||attestedAt<activatedAt||submittedAt<attestedAt||effectAt<submittedAt||finalAt<effectAt)return refuse();
-  const work=validateAttendancePolicyUnclockedWork(submitted.work as AttendancePolicyUnclockedWork,Math.floor(attestedAt));
+  const work=validateAttendancePolicyUnclockedWork(submitted.work as AttendancePolicyUnclockedWork,Math.floor(attestedAt),request.requestedMinutes??undefined);
   if(!same(work,submitted.work))return refuse();
   const comparison=attendancePolicyUnclockedWorkComparison(context,work,Math.floor(attestedAt));
   if(comparison.state!=='known')return refuse();

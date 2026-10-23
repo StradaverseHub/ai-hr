@@ -273,7 +273,7 @@ CREATE FUNCTION app.capture_attendance_policy_request_contract() RETURNS trigger
 DECLARE v_count integer;v_company uuid;v_epoch bigint;v_kind text:='unavailable';
  plan jsonb;start_min integer;end_min integer;duration_min integer;manual_method text;
  binding jsonb;bound public.attendance_group_policy_revision;
- work jsonb;attested jsonb;span jsonb;from_ms bigint;to_ms bigint;previous_ms bigint;midnight_ms bigint;
+ work jsonb;attested jsonb;span jsonb;from_ms bigint;to_ms bigint;previous_ms bigint;midnight_ms bigint;requested_total integer:=0;
 BEGIN
  IF NEW.original_clock_snapshot->'unclockedWork' IS NOT NULL THEN
   PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':'||NEW.employment_id::text,0));
@@ -337,8 +337,8 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance a ON a.id=p.attendance_id AND a.tenant_id=p.tenant_id
     WHERE a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id
     AND a.attendance_date=NEW.attendance_date AND p.voided_at IS NULL)
-   OR work IS DISTINCT FROM jsonb_build_object('version',1,'completeWorkedDay',true,'sourceDate',NEW.attendance_date,
-    'reason',NEW.reason,'intervals',work->'intervals')
+   OR work IS DISTINCT FROM(jsonb_build_object('version',1,'completeWorkedDay',true,'sourceDate',NEW.attendance_date,
+    'reason',NEW.reason,'intervals',work->'intervals')||CASE WHEN work?'requestedIntervals' THEN jsonb_build_object('requestedIntervals',work->'requestedIntervals') ELSE '{}'::jsonb END)
    OR char_length(btrim(NEW.reason)) NOT BETWEEN 1 AND 500 OR NEW.reason IS DISTINCT FROM btrim(NEW.reason)
    OR jsonb_typeof(work->'intervals') IS DISTINCT FROM 'array'
    OR jsonb_array_length(work->'intervals') NOT BETWEEN 1 AND 16 THEN
@@ -356,6 +356,25 @@ BEGIN
     RAISE EXCEPTION 'Unclocked work intervals must be completed and ordered in the dated period' USING ERRCODE='23514';END IF;
    previous_ms:=to_ms;
   END LOOP;
+  IF work?'requestedIntervals' THEN
+   IF jsonb_typeof(work->'requestedIntervals') IS DISTINCT FROM 'array' OR jsonb_array_length(work->'requestedIntervals') NOT BETWEEN 1 AND 16 THEN
+    RAISE EXCEPTION 'Complete requested actual-work intervals required' USING ERRCODE='23514';END IF;
+   previous_ms:=midnight_ms;
+   FOR span IN SELECT value FROM jsonb_array_elements(work->'requestedIntervals') LOOP
+    IF coalesce(span->>'fromEpochMillisecond','')!~'^[0-9]{1,16}$' OR coalesce(span->>'toEpochMillisecond','')!~'^[0-9]{1,16}$' THEN
+     RAISE EXCEPTION 'Exact requested actual-work instants required' USING ERRCODE='23514';END IF;
+    from_ms:=(span->>'fromEpochMillisecond')::bigint;to_ms:=(span->>'toEpochMillisecond')::bigint;
+    IF span IS DISTINCT FROM jsonb_build_object('fromEpochMillisecond',from_ms,'toEpochMillisecond',to_ms)
+     OR from_ms<previous_ms OR to_ms<=from_ms
+     OR floor((to_ms-midnight_ms)::numeric/60000)<=floor((from_ms-midnight_ms)::numeric/60000)
+     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(work->'intervals') actual
+      WHERE(actual->>'fromEpochMillisecond')::bigint<=from_ms AND(actual->>'toEpochMillisecond')::bigint>=to_ms) THEN
+     RAISE EXCEPTION 'Requested overtime must retain ordered exact actual-work subsets' USING ERRCODE='23514';END IF;
+    requested_total:=requested_total+floor((to_ms-midnight_ms)::numeric/60000)::integer-floor((from_ms-midnight_ms)::numeric/60000)::integer;
+    previous_ms:=to_ms;
+   END LOOP;
+   IF requested_total<>NEW.requested_ot_minutes THEN RAISE EXCEPTION 'Requested count differs from its actual positioned intervals' USING ERRCODE='23514';END IF;
+  END IF;
   attested:=jsonb_build_object('version',1,'authority','hrAttestedWorkSubmission','correctionId',NEW.id,
    'tenantId',NEW.tenant_id,'companyId',v_company,'employmentId',NEW.employment_id,'date',NEW.attendance_date,
    'actorUserId',app.current_user_id(),'recordedAt',clock_timestamp(),'work',work);
@@ -926,6 +945,7 @@ DECLARE header public.attendance_overtime_calculation;source public.attendance_o
  ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
  count_ranges int8multirange;expected_ranges int8multirange;span int8range;last_ms bigint;
  is_attested boolean:=false;attested public.attendance_policy_attested_effect;anchor public.attendance;testimony jsonb;testimony_span jsonb;
+ requested_basis boolean:=false;requested_span jsonb;selected_from bigint;selected_to bigint;
  pin public.attendance_punch;pout public.attendance_punch;cin public.attendance_clock_capture;cout public.attendance_clock_capture;
 BEGIN
  IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current captured coverage principal required' USING ERRCODE='42501';END IF;
@@ -1007,6 +1027,14 @@ BEGIN
   IF testimony->>'completeWorkedDay' IS DISTINCT FROM 'true' OR testimony->>'sourceDate' IS DISTINCT FROM source.attendance_date::text
    OR jsonb_typeof(testimony->'intervals') IS DISTINCT FROM 'array' OR jsonb_array_length(testimony->'intervals') NOT BETWEEN 1 AND 16 THEN
    RAISE EXCEPTION 'Complete actual attested day required' USING ERRCODE='23514';END IF;
+  requested_basis:=coalesce(data#>>'{policyExecutionProposal,manualEvidence,basis}'='completeAttestedRequest',false);
+  IF attested.context_evidence#>>'{selected,policy,overtime,approval}'='manual' AND testimony?'requestedIntervals'
+   AND attested.manual_method<>'system_calculated' AND attested.approved_minutes=attested.requested_minutes THEN
+   IF NOT requested_basis OR data#>>'{policyExecutionProposal,manualEvidence,correctionId}' IS DISTINCT FROM attested.correction_id::text
+    OR data#>>'{policyExecutionProposal,manualEvidence,workflowRequestId}' IS DISTINCT FROM attested.workflow_request_id::text THEN
+    RAISE EXCEPTION 'Retain the complete submitted actual overtime request positions' USING ERRCODE='23514';END IF;
+  ELSIF requested_basis THEN RAISE EXCEPTION 'This scalar method did not choose the submitted actual overtime positions' USING ERRCODE='23514';END IF;
+
  ELSE
  FOR clock_row IN SELECT value FROM jsonb_array_elements(clock_source->'clocks') LOOP
   IF NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_clock_capture c ON c.id=p.clock_capture_id AND c.tenant_id=p.tenant_id
@@ -1062,11 +1090,27 @@ BEGIN
     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyClockReview,evidence,intervals}') x WHERE x->>'inMillisecond'=(in_ms-epoch_ms)::text AND x->>'outMillisecond'=(out_ms-epoch_ms)::text) THEN
     RAISE EXCEPTION 'Captured allocation changed original geometry' USING ERRCODE='23514';END IF;
    END IF;
-   from_ms:=greatest(in_ms,epoch_ms+lo::bigint*60000);to_ms:=least(out_ms,epoch_ms+hi::bigint*60000);
+   selected_from:=in_ms;selected_to:=out_ms;
+   IF is_attested AND requested_basis THEN
+    IF coalesce(item->>'requestedIntervalIndex','')!~'^[0-9]{1,2}$' THEN
+     RAISE EXCEPTION 'Exact requested interval identity required' USING ERRCODE='23514';END IF;
+    requested_span:=testimony->'requestedIntervals'->((item->>'requestedIntervalIndex')::integer);
+    IF requested_span IS NULL OR coalesce(requested_span->>'fromEpochMillisecond','')!~'^[0-9]{1,16}$'
+     OR coalesce(requested_span->>'toEpochMillisecond','')!~'^[0-9]{1,16}$' THEN
+     RAISE EXCEPTION 'Original requested actual-work interval unavailable' USING ERRCODE='23514';END IF;
+    selected_from:=(requested_span->>'fromEpochMillisecond')::bigint;selected_to:=(requested_span->>'toEpochMillisecond')::bigint;
+    IF selected_from<in_ms OR selected_to>out_ms OR selected_to<=selected_from
+     OR lo<floor((selected_from-epoch_ms)::numeric/60000) OR hi>floor((selected_to-epoch_ms)::numeric/60000)
+     OR item->>'requestedFromEpochMillisecond' IS DISTINCT FROM selected_from::text OR item->>'requestedToEpochMillisecond' IS DISTINCT FROM selected_to::text THEN
+     RAISE EXCEPTION 'Requested physical subset changed its original actual-work positions' USING ERRCODE='23514';END IF;
+   END IF;
+   from_ms:=greatest(selected_from,epoch_ms+lo::bigint*60000);to_ms:=least(selected_to,epoch_ms+hi::bigint*60000);
    IF from_ms>=to_ms OR item->>'fromEpochMillisecond' IS DISTINCT FROM from_ms::text OR item->>'toEpochMillisecond' IS DISTINCT FROM to_ms::text THEN RAISE EXCEPTION 'Captured footprint is not original source intersection' USING ERRCODE='23514';END IF;
-   IF is_attested AND item IS DISTINCT FROM jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,
+   IF is_attested AND item IS DISTINCT FROM(jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,
     'fromMinute',lo,'toMinute',hi,'minutes',hi-lo,'attestedIntervalIndex',(item->>'attestedIntervalIndex')::integer,
-    'attestedFromEpochMillisecond',in_ms,'attestedToEpochMillisecond',out_ms,'fromEpochMillisecond',from_ms,'toEpochMillisecond',to_ms) THEN
+    'attestedFromEpochMillisecond',in_ms,'attestedToEpochMillisecond',out_ms,'fromEpochMillisecond',from_ms,'toEpochMillisecond',to_ms)
+    ||CASE WHEN requested_basis THEN jsonb_build_object('requestedIntervalIndex',(item->>'requestedIntervalIndex')::integer,
+     'requestedFromEpochMillisecond',selected_from,'requestedToEpochMillisecond',selected_to) ELSE '{}'::jsonb END) THEN
     RAISE EXCEPTION 'Distinct complete attested allocation required' USING ERRCODE='23514';END IF;
    span:=int8range(lo,hi,'[)');IF count_ranges&&span THEN RAISE EXCEPTION 'Captured count claimed twice' USING ERRCODE='23514';END IF;count_ranges:=count_ranges+int8multirange(span);
    span:=int8range(from_ms,to_ms,'[)');IF ranges&&span THEN RAISE EXCEPTION 'Captured physical source claimed twice' USING ERRCODE='23514';END IF;ranges:=ranges+int8multirange(span);

@@ -3948,7 +3948,10 @@
       "submitting": "Submitting…",
       "submitted": "Submitted — view application",
       "evidence": "Submitted actual work without clock records",
-      "unavailable": "The submitted actual-work intervals are unavailable."
+      "unavailable": "The submitted actual-work intervals are unavailable.",
+      "positionedRequest": "Specify the actual intervals requested as overtime",
+      "requestedIntervals": "Requested overtime intervals",
+      "requestedHelp": "Choose intervals within the complete actual-work statement. Their minute count must equal the requested overtime count; the configured approval method still applies."
     }
   },
   "org": {

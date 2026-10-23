@@ -110,8 +110,13 @@ export async function submitUnclockedAttendanceWorkAction(formData:FormData){
   if(starts.length!==ends.length||starts.length<1||starts.length>16||formData.get('completeWorkedDay')!=='on')
    throw Error('Confirm the complete work date and enter every actual work interval.');
   const intervals=starts.map((start,index)=>({fromEpochMillisecond:attendancePolicyLocalWorkInstant(String(start)),toEpochMillisecond:attendancePolicyLocalWorkInstant(String(ends[index]))}));
+  const requestedStarts=formData.getAll('requestedStart'),requestedEnds=formData.getAll('requestedEnd'),positioned=formData.get('useRequestedPositions')==='on';
+  if(positioned?(requestedStarts.length<1||requestedStarts.length>16||requestedStarts.length!==requestedEnds.length):(requestedStarts.length>0||requestedEnds.length>0))
+   throw Error('Record every interval covered by the requested overtime count.');
+  const requestedIntervals=positioned?requestedStarts.map((start,index)=>({fromEpochMillisecond:attendancePolicyLocalWorkInstant(String(start)),
+   toEpochMillisecond:attendancePolicyLocalWorkInstant(String(requestedEnds[index]))})):undefined;
   const result=await requestAttendanceCorrection(s,{employmentId,date,reason:String(formData.get('reason')??''),
-   requestedOtMinutes:Number(formData.get('requestedOtMinutes')),unclockedWork:{completeWorkedDay:true,intervals}});
+   requestedOtMinutes:Number(formData.get('requestedOtMinutes')),unclockedWork:{completeWorkedDay:true,intervals,...(requestedIntervals?{requestedIntervals}:{})}});
   refreshAttendanceDay();return {ok:true as const,correctionId:result.correctionId};
  }catch(error){return {ok:false as const,message:publicErrorMessage(error)};}
 }

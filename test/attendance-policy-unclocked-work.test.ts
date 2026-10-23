@@ -32,3 +32,22 @@ describe('explicit Malaysia work-time entry',()=>{
   expect(()=>attendancePolicyLocalWorkInstant(value)).toThrow();
  });
 });
+
+describe('explicit requested positions within complete HR actual work',()=>{
+ it('retains the later requested subset and original milliseconds without turning it into a plan',()=>{
+  const work=fixture();work.requestedIntervals=[{fromEpochMillisecond:midnight+24*3600000+777,toEpochMillisecond:midnight+24.5*3600000+777}];
+  const result=validateAttendancePolicyUnclockedWork(work,midnight+3*86400000,30);
+  expect(result).toEqual(work);expect(result.requestedIntervals).not.toBe(work.requestedIntervals);
+  expect(result).not.toHaveProperty('plannedWindow');
+ });
+ it.each(['count','outside','overlap','unordered','subminute','empty'] as const)('refuses %s requested positions',kind=>{
+  const work=fixture();const interval={fromEpochMillisecond:midnight+24*3600000+777,toEpochMillisecond:midnight+24.5*3600000+777};
+  work.requestedIntervals=[interval];
+  if(kind==='outside')work.requestedIntervals[0]={...interval,toEpochMillisecond:midnight+26*3600000};
+  if(kind==='overlap')work.requestedIntervals.push({...interval});
+  if(kind==='unordered')work.requestedIntervals.push({fromEpochMillisecond:midnight+23.5*3600000,toEpochMillisecond:midnight+24*3600000});
+  if(kind==='subminute')work.requestedIntervals[0]={...interval,toEpochMillisecond:interval.fromEpochMillisecond+1000};
+  if(kind==='empty')work.requestedIntervals=[];
+  expect(()=>validateAttendancePolicyUnclockedWork(work,midnight+3*86400000,kind==='count'?31:30)).toThrow();
+ });
+});
