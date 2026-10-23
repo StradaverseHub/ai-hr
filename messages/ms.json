@@ -22651,7 +22651,8 @@
     "recordReceipt": "Rekod penerimaan yang dilaporkan",
     "receiptDetails": "Penerima / butiran penerimaan",
     "receiptOn": "Tarikh penerimaan",
-    "receiptHint": "HR merekodkan penerima yang dinamakan menerima pindaan ini. Ini merekodkan penerimaan sahaja dan bukan tandatangan penyandang kerja yang disahkan."
+    "receiptHint": "HR merekodkan penerima yang dinamakan menerima pindaan ini. Ini merekodkan penerimaan sahaja dan bukan tandatangan penyandang kerja yang disahkan.",
+    "unavailableReviewer": "{name} (tidak lagi layak; buang atau ganti)"
   },
   "rewardsAccess": {
     "title": "Akses Ganjaran",

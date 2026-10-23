@@ -22651,7 +22651,8 @@
     "recordReceipt": "Record reported receipt",
     "receiptDetails": "Recipient / receipt details",
     "receiptOn": "Receipt date",
-    "receiptHint": "HR records that the named recipient received this revision. This records receipt only and is not a verified job-holder signature."
+    "receiptHint": "HR records that the named recipient received this revision. This records receipt only and is not a verified job-holder signature.",
+    "unavailableReviewer": "{name} (no longer eligible; remove or replace)"
   },
   "rewardsAccess": {
     "title": "Rewards access",

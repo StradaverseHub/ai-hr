@@ -22651,7 +22651,8 @@
     "recordReceipt": "Ghi nhận đã nhận theo báo cáo",
     "receiptDetails": "Người nhận / chi tiết nhận",
     "receiptOn": "Ngày nhận",
-    "receiptHint": "Nhân sự ghi nhận người được nêu đã nhận bản sửa đổi này. Chỉ ghi nhận việc nhận, không phải chữ ký đã xác minh của người đảm nhiệm."
+    "receiptHint": "Nhân sự ghi nhận người được nêu đã nhận bản sửa đổi này. Chỉ ghi nhận việc nhận, không phải chữ ký đã xác minh của người đảm nhiệm.",
+    "unavailableReviewer": "{name} (không còn đủ quyền; xóa hoặc thay thế)"
   },
   "rewardsAccess": {
     "title": "Quyền truy cập Thưởng",

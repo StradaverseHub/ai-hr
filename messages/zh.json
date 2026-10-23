@@ -22651,7 +22651,8 @@
     "recordReceipt": "记录报告的收悉情况",
     "receiptDetails": "收件人 / 收悉详情",
     "receiptOn": "收悉日期",
-    "receiptHint": "人力资源人员记录指定收件人已收到此修订。此记录仅表示收悉，并非经验证的在岗人员签名。"
+    "receiptHint": "人力资源人员记录指定收件人已收到此修订。此记录仅表示收悉，并非经验证的在岗人员签名。",
+    "unavailableReviewer": "{name}（已不符合条件；请移除或更换）"
   },
   "rewardsAccess": {
     "title": "奖励访问权限",

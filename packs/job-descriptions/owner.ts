@@ -112,12 +112,14 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
         const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
         const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.access_workforce_company(${location.companyId},'workforce.view')`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
-        const people = await rows<{
-            value: string;
-            label: string;
-            companyIds: string[];
-            isGlobal: boolean;
-        }>(tx, sql `select u.id::text as value, coalesce(p.full_name,u.id::text) as label, array_agg(distinct ra.company_id::text) filter(where ra.company_id is not null) as "companyIds", bool_or(ra.company_id is null or ra.role='super_admin') as "isGlobal" from app_user u join role_assignment ra on ra.app_user_id=u.id and ra.tenant_id=u.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and ra.role in ('hr_admin','super_admin') and (ra.company_id is null or app.is_admin_for(ra.company_id)) group by u.id,p.full_name order by label,u.id`);
+        const people = await rows<{value:string;label:string;companyIds:string[];isGlobal:boolean}>(tx,sql`
+          select u.id::text as value,coalesce(p.full_name,u.id::text) as label,false as "isGlobal",
+           array(select c.id::text from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id) order by c.id) as "companyIds"
+          from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
+          where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
+           and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id))
+          order by label,u.id`);
+
         const map = (rs: typeof bus | typeof departments | typeof positions) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
         return { companies, businessUnit: map(bus), department: map(departments), position: map(positions), grade: organisationChoiceLabels(grades).map(v => ({ value: v.id, label: v.displayLabel })), location: locations.map(v => ({ value: v.id, label: v.name, companyIds: [v.companyId] })), section: profiles.filter(v => v.category === 'section').map(v => ({ value: v.value, label: v.label })), team: profiles.filter(v => v.category === 'team').map(v => ({ value: v.value, label: v.label })), family: [...new Set(positions.map(v => v.family).filter((v): v is string => !!v))].sort().map(v => ({ value: v, label: v })), employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(v => ({ value: v, label: v.replaceAll('_', ' ') })), people: people.map(v => ({ ...v, companyIds: v.companyIds ?? [] })) };
     });
