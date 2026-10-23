@@ -210,6 +210,28 @@ describe('one central parent money scope over dated allocations',()=>{
   const tierChange=structuredClone(second);tierChange.rates[0].accumulation='session';
   expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{pattern:tierChange,input:f.parts[1]}],'datedRateExpressions').state).toBe('unavailable');
  });
+ it.each(['day','session'] as const)('keeps one shared %s tier counter across distinct dated hourly expressions and rounded quantities',accumulation=>{
+  const f=parentAllocations(),first=definition();f.parts[1].patternVersionId=uuid(99);
+  const rate=first.rates[0];rate.accumulation=accumulation;rate.tiers[0].to='15';
+  rate.tiers.push({...structuredClone(rate.tiers[0]),id:'tier_second',from:'15',to:null,
+   payment:{method:'hourly',rate:{id:'hourly_second',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'12'},
+    multiplier:{id:'multiplier_second',type:'literal',unit:'scalar',value:'3'}}});
+  const second=structuredClone(first);
+  for(const tier of second.rates[0].tiers){
+   if(tier.payment.method!=='hourly'||tier.payment.rate.type!=='literal')throw Error('Expected actual hourly tiers');
+   tier.payment.rate.value='24';
+  }
+  const parts=[{pattern:first,input:f.parts[0]},{pattern:second,input:f.parts[1]}];
+  // 10min @12x1.5 + 5min @24x1.5 + 5min @24x3. Resetting either
+  // date's counter incorrectly yields 9.00 instead of the shared 12.00.
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'datedRateExpressions')).toMatchObject({state:'proposed',amountMinorUnits:'1200'});
+  f.parts[1].approval.minutes=fact('20','approval');f.parent.approval.minutes=fact('30','approval');
+  const rounded=roundedCount(f.parts[1],10),before=structuredClone(f);
+  const result=evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{...parts[1],roundedCounts:[rounded]}],'datedRateExpressions');
+  expect(result).toMatchObject({state:'proposed',amountMinorUnits:'2400'});
+  if(result.state!=='proposed')throw Error('Expected one rounded dated-rate tier scope');
+  expect(result.parts.map(part=>part.minutes)).toEqual([10,20]);expect(f).toEqual(before);
+ });
  it('requires explicit identical-definition scope for different immutable versions and retains every dated version under one cap',()=>{
   const f=parentAllocations(),pattern=definition();f.parts[1].patternVersionId=uuid(99);
   pattern.paymentCap={id:'compatible_versions_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
