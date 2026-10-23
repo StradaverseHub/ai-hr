@@ -3,14 +3,14 @@ import {and,asc,eq,isNull,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
-import {createCostCenter,deleteCostCenter} from '../core/admin';
+import {createCostCenter,deleteCostCenter,listCostCenters,listCostCentersForLabels} from '../core/admin';
 import {setLabelCriteria} from '../core/system-labels';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
-import {previewCostAllocationImport,commitCostAllocationImport} from '../core/cost-allocation-import';
+import {previewCostAllocationImport,commitCostAllocationImport,costAllocationWorkbookReferences} from '../core/cost-allocation-import';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {dayBefore} from '../core/employment-company';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-1}-01-01`,future=`${year+1}-01-01`;
 describe('Effective-dated employment cost allocation owner',()=>{
  let b:Base,a:ReturnType<typeof adminCtx>,employmentId:string,cc1:string,cc2:string;
@@ -39,7 +39,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
   await owner.db.update(s.costCenter).set({archivedAt:new Date()}).where(eq(s.costCenter.id,cc2));await expect(saveEmploymentCostAllocations(a,next,{digest:q.digest})).rejects.toThrow(/inactive|unavailable/);expect((await read()).rows[0].costCenterId).toBe(cc1);
  });
  it('blocks deletion and active Criteria removal, but retains identity when a closed historical set is no longer applicable',async()=>{
-  await save([{costCenterId:cc1,percentage:'100'}],hireDate);await expect(deleteCostCenter(a,{id:cc1})).rejects.toThrow(/in use/i);
+  await save([{costCenterId:cc1,percentage:'100'}],hireDate);expect((await listCostCenters(a)).find(c=>c.id===cc1)?.inUse).toBe(true);expect((await listCostCentersForLabels(a)).find(c=>c.id===cc1)?.inUse).toBe(true);await expect(deleteCostCenter(a,{id:cc1})).rejects.toThrow(/in use/i);
   const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other Company'}).returning();
   await expect(setLabelCriteria(a,{kind:'cost_center',labelId:cc1,isGlobal:false,companyIds:[other.id]})).rejects.toThrow(/uses/);
   await save([],today);await setLabelCriteria(a,{kind:'cost_center',labelId:cc1,isGlobal:false,companyIds:[other.id]});
@@ -62,6 +62,13 @@ describe('Effective-dated employment cost allocation owner',()=>{
  it('protects full-set invariants even when bypassing the JS facade and refuses direct table writes',async()=>{
   await expect(withTenant(a,tx=>tx.execute(sql`select app.employment_cost_allocation_commit(${employmentId}::uuid,${b.companyId}::uuid,${today}::date,0,'replace',${JSON.stringify([{costCenterId:cc1,hundredths:6000},{costCenterId:cc2,hundredths:5000}])}::jsonb,'manual')`))).rejects.toThrow();
   await expect(withTenant(a,tx=>tx.insert(s.employmentCostAllocationHead).values({tenantId:b.tenantId,employmentId,revision:0}))).rejects.toThrow();expect((await read()).revision).toBe(0);
+ });
+ it('filters workbook code references by current maintain authority and refuses a denied selected company',async()=>{
+  const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Hidden catalogue company'}).returning();await createCostCenter(a,{companyId:other.id,code:'HIDDEN-CODE',name:'Hidden cost centre'});
+  const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Scoped allocation administrator'}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const scoped={...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const refs=await costAllocationWorkbookReferences(scoped,[b.companyId,other.id],b.companyId);expect(refs.some(r=>r.code==='ALLOC-A')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);expect(refs.every(r=>r.companyId===b.companyId)).toBe(true);
+  await expect(costAllocationWorkbookReferences(scoped,[b.companyId,other.id],other.id)).rejects.toThrow(/permission|unavailable/i);
  });
  it('groups repeated update rows, refuses the whole invalid employee set and rechecks the preview token',async()=>{
   const records=[{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'50.01'},{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'50'}];

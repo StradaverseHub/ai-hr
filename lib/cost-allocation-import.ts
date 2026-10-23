@@ -6,6 +6,7 @@ export type AllocationImportPreview={groups:AllocationImportGroup[];token:string
 export function parseCostAllocationCsv(text:string):AllocationImportRecords{
  if(BufferSafeBytes(text)>900000)throw new Error('Allocation file exceeds the supported size.');
  if(!text.trim())return[];const{records,headers}=parseCsvRecords(text);
+ if(new Set(headers).size!==headers.length)throw new Error('Duplicate allocation column headers are not allowed.');
  const missing=ALLOCATION_COLUMNS.filter(c=>!headers.includes(c));if(missing.length)throw new Error(`Missing allocation columns: ${missing.join(', ')}`);
  const unknown=headers.filter(c=>!(ALLOCATION_COLUMNS as readonly string[]).includes(c));if(unknown.length)throw new Error(`Unexpected allocation columns: ${unknown.join(', ')}`);
  if(records.length>5000)throw new Error('Use at most 5000 allocation rows per file.');return records;

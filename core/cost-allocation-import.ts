@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {and,asc,eq,isNull,sql} from 'drizzle-orm';
+import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead} from '../db/schema';
@@ -14,6 +14,17 @@ export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,compan
  return tx.select({companyId:sql<string>`${companyId}`,id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
 }
 export function costAllocationReferences(ctx:SessionContext,companyId:string){return withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId));}
+/** The chosen company must be writable. Other catalogues are narrowed before names or counts leave. */
+export function costAllocationWorkbookReferences(ctx:SessionContext,companyIds:string[],selectedCompanyId:string){
+ const ids=z.array(z.uuid()).max(500).parse(companyIds);z.uuid().parse(selectedCompanyId);
+ if(!ids.includes(selectedCompanyId))throw new CostAllocationError('scope');
+ return withTenant(ctx,async tx=>{
+  const selected=await costAllocationReferencesTx(tx,ctx,selectedCompanyId);
+  const permitted=await tx.select({id:company.id}).from(company).where(and(inArray(company.id,ids),isNull(company.archivedAt),sql`app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.id));
+  const result=[...selected];for(const row of permitted)if(row.id!==selectedCompanyId)result.push(...await costAllocationReferencesTx(tx,ctx,row.id));return result;
+ });
+}
+
 export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,records:AllocationImportRecords,newEmployees?:NewAllocationEmployee[]):Promise<AllocationImportPreview>{
  if(records.length>5000)throw new CostAllocationError('invalid');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);
  const groups=new Map<string,AllocationImportGroup>(),snapshots:unknown[]=[];

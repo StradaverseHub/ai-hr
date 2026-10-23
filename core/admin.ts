@@ -1386,7 +1386,7 @@ export function listCostCenters(
         isGlobal: costCenter.isGlobal,
         assignedCompanyIds: labelCompanyIdsSql(costCenter, 'cost_center'),
         archivedAt: costCenter.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null) or app.cost_allocation_label_in_use(cost_center.id)`,
       })
       .from(costCenter)
       .where(
@@ -1563,7 +1563,7 @@ export function listCostCentersForLabels(
         createdAt: costCenter.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('cost-center', costCenter.id),
         lastUpdatedBy: lastUpdatedBySql('cost-center', costCenter.id),
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null) or app.cost_allocation_label_in_use(cost_center.id)`,
       })
       .from(costCenter)
       .where(

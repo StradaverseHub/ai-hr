@@ -2,7 +2,7 @@
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
 import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
-import {allocationImportReferencesAction} from './cost-allocation-actions';
+import {allocationWorkbookReferencesAction} from './cost-allocation-actions';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
@@ -212,7 +212,9 @@ export function EmployeeImport({
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
-      const allocationReferences=(await Promise.all(companies.map(c=>allocationImportReferencesAction(c.id)))).flat();
+      const allocationReferenceResult=await allocationWorkbookReferencesAction(companies.map(c=>c.id),companyId);
+      if(!allocationReferenceResult.ok){setError(ta(`errors.${allocationReferenceResult.error}`));return;}
+      const allocationReferences=allocationReferenceResult.rows;
       const enumList = (key: keyof typeof EMPLOYEE_ENUM_VALUES) => ({
         label: employeeColumnLabel(key),
         values: [...EMPLOYEE_ENUM_VALUES[key]],

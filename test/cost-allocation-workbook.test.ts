@@ -12,3 +12,5 @@ it('round-trips a genuine repeated-row workbook and a CSV with code-only referen
 it('refuses ambiguous or misplaced master-sheet columns instead of treating repeated employee rows as new hires',()=>{
  expect(()=>parseCostAllocationCsv('full_name,email\nExample,person@example.test')).toThrow(/Missing allocation columns/);expect(()=>parseCostAllocationCsv(ALLOCATION_COLUMNS.join(',')+',basic_salary\n')).toThrow(/Unexpected allocation columns/);
 });
+
+it('rejects duplicate normalized headers instead of accepting a last-wins identity column',()=>{expect(()=>parseCostAllocationCsv(ALLOCATION_COLUMNS.join(',')+', COMPANY ID\n')).toThrow(/Duplicate allocation column/);});
