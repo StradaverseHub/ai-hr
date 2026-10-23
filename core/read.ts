@@ -6055,6 +6055,7 @@ export function myEmployment(ctx: SessionContext) {
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
+        companyId: employment.companyId,
         company: company.legalName,
         department: department.name,
         position: position.title,
