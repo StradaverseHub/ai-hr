@@ -21,6 +21,14 @@ describe('Effective-dated employment cost allocation owner',()=>{
   ({employmentId}=await hireEmployee(a,{person:{fullName:'Allocation Employee',primaryEmail:'allocation@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:hireDate,employeeCode:'ALLOC01'}));
   cc1=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-A',name:'Allocation A'})).id;cc2=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-B',name:'Allocation B'})).id;
  });afterAll(closeAll);
+ it('qualifies equal configured labels in the actual allocation choices while retaining cost center IDs and codes',async()=>{
+  await owner.db.update(s.costCenter).set({label:'Shared services'}).where(eq(s.costCenter.id,cc1));
+  await owner.db.update(s.costCenter).set({label:'Shared services'}).where(eq(s.costCenter.id,cc2));
+  const choices=(await read()).choices;
+  expect(choices.find(row=>row.id===cc1)).toMatchObject({id:cc1,code:'ALLOC-A',label:'Shared services',displayLabel:'Shared services (ALLOC-A)'});
+  expect(choices.find(row=>row.id===cc2)).toMatchObject({id:cc2,code:'ALLOC-B',label:'Shared services',displayLabel:'Shared services (ALLOC-B)'});
+  expect((await read()).rows).toEqual([]);expect((await read()).revision).toBe(0);
+ });
  it('starts unset, saves/reopens a partial set, preserves primary assignment and pay, and keeps historical snapshots',async()=>{
   expect((await read()).rows).toEqual([]);expect((await read()).revision).toBe(0);
   const primary=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,employmentId)).orderBy(asc(s.assignment.id));const compensation=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,employmentId)).orderBy(asc(s.compensation.id));

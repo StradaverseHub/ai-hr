@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { appUser, company, department, person, roleAssignment } from '../db/schema';
+import { appUser, company, department, person, position, profileOption, roleAssignment } from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { DEFAULT_FORM, saveJobDraft, readJobDocument, listJobDocuments, transitionJob, configureJobForm, getJobForm, getJobMasters, attachJobDocument, downloadJobAttachment, removeJobAttachment, type JobInput } from '../packs/job-descriptions/service';
@@ -18,6 +18,23 @@ const input = (patch: Partial<JobInput> = {}): JobInput => ({ companyId: b.compa
 async function command(ctx: SessionContext, id: string, action: Parameters<typeof transitionJob>[1]['action'], comments = 'Verified against work evidence') { const d = await readJobDocument(ctx, id); return transitionJob(ctx, { jobId: id, revisionId: d.revision.id, lockVersion: d.revision.lock_version, action, comments }); }
 async function approved() { const saved = await saveJobDraft(adminCtx(b), input()); await command(adminCtx(b), saved.jobId, 'submit'); await command(reviewer, saved.jobId, 'review'); await command(approver, saved.jobId, 'approve'); return saved; }
 describe('job document owner and restricted runtime role', () => {
+    it('uses meaningful blank-label fallbacks and code-qualified section choices without changing master identities', async () => {
+        await owner.db.update(department).set({ label: '  ', description: 'Finance services' }).where(eq(department.id, b.deptA));
+        await owner.db.update(position).set({ label: ' ', description: 'Financial analyst' }).where(eq(position.id, b.positionId));
+        await owner.db.insert(profileOption).values([
+            { tenantId: b.tenantId, category: 'section', value: 'JD-SEC-A', label: 'Shared services' },
+            { tenantId: b.tenantId, category: 'section', value: 'JD-SEC-B', label: 'Shared services' },
+        ]);
+        const masters = await getJobMasters(adminCtx(b));
+        expect(masters.department.find(v => v.value === b.deptA)?.label).toBe('Finance services');
+        expect(masters.position.find(v => v.value === b.positionId)?.label).toBe('Financial analyst');
+        expect(masters.section.filter(v => v.value.startsWith('JD-SEC-')).sort((a,b) => a.value.localeCompare(b.value))).toEqual([
+            { value: 'JD-SEC-A', label: 'Shared services (JD-SEC-A)' },
+            { value: 'JD-SEC-B', label: 'Shared services (JD-SEC-B)' },
+        ]);
+        const [stored] = await owner.db.select().from(department).where(eq(department.id, b.deptA));
+        expect(stored).toMatchObject({ id: b.deptA, name: 'Finance', label: '  ', description: 'Finance services' });
+    });
     it('saves/reopens every template section and preserves repeated row order in readable export', async () => { const answers: JobInput['answers'] = {}; for (const section of DEFAULT_FORM.sections) {
         answers[section.id] = [Object.fromEntries(section.fields.map(f => [f.id, f.type === 'boolean' ? true : f.type === 'number' ? 100 : f.type === 'date' ? todayInKualaLumpur() : f.type === 'choice' ? f.options![0] : `Evidence for ${f.id}`]))];
         if (section.repeated && section.id !== 'tasks' && section.id !== 'responsibilities')

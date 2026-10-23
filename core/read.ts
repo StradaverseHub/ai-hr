@@ -2614,6 +2614,8 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         id: jobGrade.id,
         code: jobGrade.code,
         name: jobGrade.name,
+        // Job Grade stores its configured Label in name; description is secondary detail.
+        label: jobGrade.name,
         // e3c733df — MUST be projected or the Description cell renders empty on every reload, the same
         // trap the leave-type projection documents field by field.
         description: jobGrade.description,

@@ -135,7 +135,7 @@ export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteri
         // DERIVED, as at the effective date — core/employment-status.ts, via its SQL twin. Not a stored
         // column, which is why it can be resolved for a backdated action at all.
         { name: 'employmentStatuses', label: t.crit('employeeStatus'), kind: 'multi', options: EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: t.crit(`status_${v}`) })) },
-        { name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: organisationChoiceLabels(c.grades).map((g) => ({ value: g.id, label: g.displayLabel })) },
+        { name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: organisationChoiceLabels(c.grades.map(g => ({ ...g, label: g.name }))).map((g) => ({ value: g.id, label: g.displayLabel })) },
         { name: 'positionIds', label: t.crit('position'), kind: 'multi', options: organisationChoiceLabels(c.positions).map((p) => ({ value: p.id, label: p.displayLabel })) },
         { name: 'costCenterIds', label: t.crit('costCentre'), kind: 'multi', options: organisationChoiceLabels(c.costCenters).map((x) => ({ value: x.id, label: x.displayLabel })) },
         // 18103ba4 (r155) — EMPLOYMENT CATEGORY MOVED HERE FROM "Employee Information", and was NOT deleted.
