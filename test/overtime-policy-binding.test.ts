@@ -1,6 +1,6 @@
 /** Pure formula proposals. No row, policy activation, approval, source reservation or payment. */
 import {describe,expect,it} from 'vitest';
-import {evaluateOvertimePolicyAllocatedParentPrice,evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
+import {evaluateOvertimePolicyAllocatedParentPrice,evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,type OvertimePolicyRoundedCount,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
 import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation,parseRecordedOvertimePolicyEvaluation,parseRecordedOvertimePolicyDurationEvaluation} from '../lib/overtime-pattern-result';
 import {overtimeSourceKey,type OvertimeFact,type OvertimeInput,type OvertimePattern} from '../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../lib/overtime-pattern-binding';
@@ -72,6 +72,11 @@ function positionedPolicy(){
  input.segments[0].clock=fact({startEpochSeconds:String(Date.parse(input.policyBinding.calendarDate+'T00:00:00+08:00')/1000),
   localDate:input.policyBinding.calendarDate,localStartSecond:0,elapsedSeconds:7200});return input;
 }
+function roundedCount(input:OvertimeInput<OvertimePolicyBinding>,minutes=30):OvertimePolicyRoundedCount{
+ if(input.layer!=='raw'||input.segments[0].clock.state!=='known')throw Error('Original placed segment required');
+ return {segmentId:input.segments[0].id,minutes,allocationPolicy:'earliest',source:{...input.source},
+  policyBinding:{...input.policyBinding},anchor:{...input.segments[0].clock.value}};
+}
 describe('central pricing of finalized group-policy allocations',()=>{
  it('retains the same exact rates, money rounding and immutable inputs without exposing a payable capability',()=>{
   const input=positionedPolicy(),pattern=definition(),before=structuredClone({input,pattern});
@@ -104,6 +109,34 @@ describe('central pricing of finalized group-policy allocations',()=>{
   expect(evaluateOvertimePolicyPart(pattern,input)).toMatchObject({status:'refused',issues:[{code:'deductionConflict'}]});
   expect(evaluateOvertimePolicyAllocatedPrice(pattern,input)).toMatchObject({state:'unavailable',reason:'formulaUnavailable'});
  });
+ it('prices an explicitly attributed rounding quantity without changing its original clock or applying duration twice',()=>{
+  const pattern=definition(),input=positionedPolicy();input.approval.minutes=fact('150','approval');
+  pattern.durationRounding={mode:'down',step:'60'};pattern.durationCap={id:'old_duration_cap',unit:'minutes',type:'literal',value:'1'};
+  const attribution=roundedCount(input),before=structuredClone({pattern,input,attribution});
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[attribution])).toMatchObject({state:'proposed',minutes:150,amountMinorUnits:'4500'});
+  expect({pattern,input,attribution}).toEqual(before);
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input).state).toBe('unavailable');
+  for(const changed of [{...attribution,minutes:31},{...attribution,anchor:{...attribution.anchor,elapsedSeconds:7201}},
+   {...attribution,policyBinding:{...attribution.policyBinding,calendarDate:'2024-03-02'}},
+   {...attribution,source:{...attribution.source,approvalDigest:'f'.repeat(64)}}])
+   expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[changed]).state).toBe('unavailable');
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[attribution,attribution]).state).toBe('unavailable');
+  pattern.paymentCap={id:'same_money_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[attribution])).toMatchObject({state:'proposed',minutes:150,amountMinorUnits:'400'});
+ });
+ it.each(['earliest','latest'] as const)('binds rounded money to the %s real rate slice across a time-band boundary',direction=>{
+  const pattern=definition(),input=positionedPolicy();pattern.durationAllocation=direction;
+  input.approval.minutes=fact('150','approval');
+  const later=structuredClone(pattern.rates[0]);later.id='later_rate';later.priority=1;
+  later.timeBand={fromMinute:60,toMinute:120,endDayOffset:0};
+  if(later.tiers[0].payment.method!=='hourly')throw Error('Hourly fixture required');
+  later.tiers[0].payment.rate={id:'later_hourly',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'};
+  pattern.rates.push(later);const attribution={...roundedCount(input),allocationPolicy:direction};
+  const before=structuredClone(input);
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[attribution])).toMatchObject({state:'proposed',minutes:150,
+   amountMinorUnits:direction==='earliest'?'6300':'7200'});
+  expect(input).toEqual(before);
+ });
  it('refuses unplaced counts, unequal approval, changed formula eligibility and mixed resource units',()=>{
   const unknown=policy();expect(evaluateOvertimePolicyAllocatedPrice(definition(),unknown).state).toBe('unavailable');
   const partial=positionedPolicy();if(partial.layer!=='raw')throw Error('Raw required');partial.segments[0].approvedMinutes=fact('60','approval');
@@ -135,6 +168,19 @@ function parentPrice(pattern:OvertimePattern,fixture=parentAllocations()){
  return evaluateOvertimePolicyAllocatedParentPrice(fixture.parent,fixture.parts.map(input=>({pattern,input})));
 }
 describe('one central parent money scope over dated allocations',()=>{
+ it('keeps one parent monetary cap when a dated source owns a rounded count without extra physical work',()=>{
+  const f=parentAllocations(),pattern=definition();f.parts[0].approval.minutes=fact('20','approval');
+  f.parent.approval.minutes=fact('30','approval');
+  pattern.paymentCap={id:'rounded_parent_cap',type:'literal',unit:'money',currency:'MYR',value:'7'};
+  const before=structuredClone(f),rounded=roundedCount(f.parts[0],10);
+  const result=evaluateOvertimePolicyAllocatedParentPrice(f.parent,f.parts.map((input,index)=>({pattern,input,
+   roundedCounts:index===0?[rounded]:[]})));
+  expect(result).toMatchObject({state:'proposed',amountMinorUnits:'700'});
+  if(result.state!=='proposed')throw Error('Expected a single parent count/money proposal');
+  expect(result.parts.map(part=>part.minutes)).toEqual([20,10]);
+  expect(result.parts.reduce((n,part)=>n+BigInt(part.amountMinorUnits),BigInt('0'))).toBe(BigInt('700'));
+  expect(f).toEqual(before);
+ });
  it('applies a cap once and keeps exact dated parts nontransferable proposals',()=>{
   const p=definition();p.paymentCap={id:'parent_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
   const f=parentAllocations(),before=structuredClone({p,f}),result=parentPrice(p,f);

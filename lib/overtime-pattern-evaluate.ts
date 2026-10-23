@@ -687,7 +687,12 @@ function policyPriceResourcesAvailable(pattern:OvertimePattern,input:OvertimeInp
    &&rule.basis===resource.basis)&&resource.sourceKeys.some(key=>minuteKeys.has(key))))return false;
  return true;
 }
-function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>){
+/** Explicit finalized count attached to an existing source/segment, never a longer clock.
+ * Canonical policy callers must independently replay the group rounding/date attribution. This
+ * pure money API grants no approval, readiness or financial capability. */
+export type OvertimePolicyRoundedCount={segmentId:string;minutes:number;allocationPolicy:'earliest'|'latest';
+ source:OvertimeSource;policyBinding:OvertimePolicyBinding['policyBinding'];anchor:OvertimeClockSpan};
+function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[]){
  const unavailable=(reason:Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>['reason']):Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>=>
   ({state:'unavailable',authority:'pricingProposalOnly',reason});
  try{
@@ -702,15 +707,34 @@ function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<
     return unavailable('allocationUnavailable');
    total=add(total,count);
   }
-  if(total.n<=BigInt('0')||total.d!==BigInt('1')||total.n>BigInt(Number.MAX_SAFE_INTEGER)
+  const physicalTotal=total,roundedBySegment=new Map<string,Q>();
+  if(roundedCounts.length>input.segments.length)return unavailable('allocationUnavailable');
+  for(const row of roundedCounts){
+   const segment=input.segments.find(segment=>segment.id===row.segmentId),clock=segment?.clock;
+   if(!segment||clock?.state!=='known'||!Number.isSafeInteger(row.minutes)||row.minutes<=0||row.minutes>4320
+    ||roundedBySegment.has(row.segmentId)||row.allocationPolicy!==pattern.durationAllocation
+    ||(['tenantId','employmentId','attendanceId','date','inputDigest','approvalDigest'] as const).some(key=>row.source[key]!==input.source[key])
+    ||(['kind','revisionId','dayClass','calendarDate','dayOffset'] as const).some(key=>row.policyBinding[key]!==input.policyBinding[key])
+    ||(['startEpochSeconds','localDate','localStartSecond','elapsedSeconds'] as const).some(key=>row.anchor[key]!==clock.value[key]))
+    return unavailable('allocationUnavailable');
+   const extra=q(BigInt(row.minutes));roundedBySegment.set(row.segmentId,extra);total=add(total,extra);
+  }
+  if(total.n<=BigInt('0')||total.d!==BigInt('1')||total.n>BigInt(Number.MAX_SAFE_INTEGER)||roundedCounts.length>0&&total.n>BigInt('4320')
    ||input.approval.minutes.state!=='known'||compare(total,decimal(input.approval.minutes.value))!==0)return unavailable('allocationUnavailable');
   const pricing:OvertimePattern={...pattern,eligibleMinutes:null,durationCap:null,durationRounding:null,
    deductions:pattern.deductions.filter(rule=>rule.unit==='money')};
   let stage:ReturnType<typeof runDurationStage<OvertimePolicyBinding>>;
   try{stage=runDurationStage(pricing,input,()=>{},overtimePolicyBinding);}
   catch{return unavailable('formulaUnavailable');}
-  if(compare(total,sum(stage.work.map(w=>w.payable)))!==0)return unavailable('durationChanged');
-  return {state:'known' as const,pattern,total,stage};
+  if(compare(physicalTotal,sum(stage.work.map(w=>w.payable)))!==0)return unavailable('durationChanged');
+  for(const work of stage.work){
+   const extra=roundedBySegment.get(work.id);if(!extra)continue;
+   work.payable=add(work.payable,extra);work.approved=add(work.approved,extra);work.approvalAllocated=add(work.approvalAllocated,extra);
+  }
+  stage.canonicalApproved=total;
+  if(roundedCounts.length)stage.e.emit('duration','policyRoundedCountAttribution',{physicalMinutes:exact(physicalTotal,'minutes'),
+   payableMinutes:exact(total,'minutes'),attributions:roundedCounts,physicalClockExtended:false});
+  return {state:'known' as const,pattern,total,stage,roundedBySegment};
  }catch{return unavailable('allocationUnavailable');}
 }
 function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAllocatedStage>,{state:'known'}>,result:OvertimeEvaluation<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
@@ -724,9 +748,9 @@ function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAlloc
   retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
    minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
 }
-export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
- const prepared=policyAllocatedStage(rawPattern,rawInput);if(prepared.state==='unavailable')return prepared;
- try{return allocatedPriceProjection(prepared,priceOvertimeStage(prepared.stage));}
+export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[]):OvertimePolicyAllocatedPrice{
+ const prepared=policyAllocatedStage(rawPattern,rawInput,roundedCounts);if(prepared.state==='unavailable')return prepared;
+ try{return allocatedPriceProjection(prepared,priceOvertimeStage(prepared.stage,undefined,prepared.roundedBySegment));}
  catch{return {state:'unavailable',authority:'pricingProposalOnly',reason:'formulaUnavailable'};}
 }
 export type OvertimePolicyAllocatedParentPrice=
@@ -737,12 +761,12 @@ export type OvertimePolicyAllocatedParentPrice=
  * Dated facts belong to each physical segment; aggregate rules retain canonical parent facts.
  * Incompatible versions/definitions refuse rather than inventing a shared cap or charge policy.
  * This emits proposal evidence only, never a transferable calculation or settlement authority. */
-export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>}[]):OvertimePolicyAllocatedParentPrice{
+export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[]):OvertimePolicyAllocatedParentPrice{
  const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
   ({state:'unavailable',authority:'parentPricingProposalOnly',reason});
  try{
   if(rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
-  const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input));
+  const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input,p.roundedCounts));
   if(prepared.some(p=>p.state!=='known'))return refuse('allocationUnavailable');
   const parts=prepared.filter((p):p is Extract<typeof p,{state:'known'}>=>p.state==='known'),first=parts[0];
   const definition=JSON.stringify(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
@@ -768,15 +792,17 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
    ||!['approved','notRequired'].includes(parent.approval.status))return refuse('allocationUnavailable');
   if(!policyPriceResourcesAvailable(first.pattern,parent)||parent.approval.provenance.owner==='sample'||parent.approval.provenance.basis==='sample')return refuse('parentScopeUnavailable');
   const work=parts.flatMap(p=>p.stage.work).map((w,index)=>({...w,index}));
+  const physicalTotal=sum(parts.map(p=>p.stage.rawTotal??ZERO));
   const e=new Engine(first.stage.pattern,'actual',parent.facts,parent.source.date);
   if(parent.facts.employmentId&&e.field('employmentId',{})!==parent.source.employmentId)return refuse('parentScopeUnavailable');
-  const setComputed=computedScope(e,total,total,total),deductions=deductionScope(first.stage.pattern,parent,e,work,setComputed);
+  const setComputed=computedScope(e,physicalTotal,physicalTotal,total),deductions=deductionScope(first.stage.pattern,parent,e,work,setComputed);
   const dated=new Map(parts.flatMap(p=>p.stage.work.map(w=>[w.id,p.stage.input.facts] as const)));
   e.emit('duration','parentAllocatedPricing',{source:parent.source,parts:parts.map(p=>({binding:p.stage.input.policyBinding,patternVersionId:p.stage.input.patternVersionId,
    facts:p.stage.input.facts,segments:p.stage.input.segments,validationTrace:p.stage.e.trace})),parentFacts:parent.facts,resources:parent.resources});
   const stage={pattern:first.stage.pattern,input:parent,identity:{source:parent.source,patternVersionId:parent.patternVersionId,...overtimePolicyBinding.read(parent,parent.source.date)},
-   e,work,rawTotal:total,eligibleTotal:total,canonicalApproved:total,dayApproval:total,setComputed,deductions};
-  const result=priceOvertimeStage(stage,dated);if(result.status==='refused')return refuse('formulaUnavailable');
+   e,work,rawTotal:physicalTotal,eligibleTotal:physicalTotal,canonicalApproved:total,dayApproval:total,setComputed,deductions};
+  const roundedBySegment=new Map(parts.flatMap(part=>[...part.roundedBySegment]));
+  const result=priceOvertimeStage(stage,dated,roundedBySegment);if(result.status==='refused')return refuse('formulaUnavailable');
   const projected:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[]=[];
   for(const p of parts){
    const own=new Set(p.stage.work.map(w=>w.id)),lines=result.lines.filter(l=>own.has(l.segmentId));
@@ -804,7 +830,7 @@ function evaluateMoney<B extends OvertimeBinding>(rawPattern:OvertimePattern,raw
 
 /** Shared money owner over an already established internal duration stage.
  * Private extraction only: no caller-supplied stage, new policy authority or settlement API. */
-function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>,datedFacts?:ReadonlyMap<string,OvertimeFacts>):OvertimeEvaluation<B>{
+function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof runDurationStage<B>>,datedFacts?:ReadonlyMap<string,OvertimeFacts>,roundedCounts?:ReadonlyMap<string,Q>):OvertimeEvaluation<B>{
         const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
         const identity = stage.identity;
         if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
@@ -882,7 +908,9 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
                 continue;
             }
             const sorted = [...new Set(points)].sort((a, b) => a - b);
-            let remaining = w.payable;
+            const rounded=roundedCounts?.get(w.id)??ZERO;
+            let remaining = sub(w.payable,rounded);
+            if(remaining.n<BigInt('0'))fail('source',w.id,'Rounded count exceeds its bound policy quantity.');
             const selectedSlices: typeof slices = [];
             const indexes = Array.from({ length: sorted.length - 1 }, (_, i) => i);
             if (pattern.durationAllocation === 'latest')
@@ -895,9 +923,18 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
                     selectedSlices.push({ w, rate: selectRate(w, start + sorted[i]), minutes: count, ordinal: i });
                 remaining = sub(remaining, count);
             }
-            slices.push(...selectedSlices.sort((a, b) => a.ordinal - b.ordinal));
             if (remaining.n > BigInt('0'))
                 fail('source', w.id, 'Payable count exceeds the precisely placed recorded span.');
+            if(rounded.n>BigInt('0')){
+                // selectedSlices follows the existing earliest/latest count order. Its first
+                // real slice supplies the rate; adding quantity never changes clock endpoints.
+                const anchor=selectedSlices[0];
+                if(!anchor)fail('source',w.id,'A rounded count requires an existing physical rate anchor.');
+                anchor.minutes=add(anchor.minutes,rounded);
+                e.emit('duration','roundedBands-'+w.id,{segmentId:w.id,rateId:anchor.rate.id,
+                    minutes:exact(rounded,'minutes'),originalClock:w.clock,physicalClockExtended:false});
+            }
+            slices.push(...selectedSlices.sort((a, b) => a.ordinal - b.ordinal));
             e.emit('duration', 'bands-' + w.id, { rawClock: w.clock, allocatedMinutes: exact(w.payable, 'minutes'), policy: pattern.durationAllocation + 'CountAttribution', physicalApproval: false });
         }
         const rateTotals = new Map<string, Q>();
