@@ -36,7 +36,7 @@ describe('employee attendance day action', () => {
   it('retains safe calendar coordinates through submission and refreshes the calendar', async () => {
     const data = form();
     for (const [key, value] of Object.entries({ calendar: '1', calendarView: 'week', calendarMonth: '2025-06', calendarDate: '2025-06-02', returnTo: 'https://untrusted.invalid' })) data.set(key,value);
-    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('calendar=1&calendarView=week&calendarMonth=2025-06&calendarDate=2025-06-02&corrected=1');
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('calendar=1&calendarView=week&calendarMonth=2025-06&calendarDate=2025-06-02&calendarPage=0&calendarSize=25&corrected=1');
     expect(state.revalidate).toHaveBeenCalledWith('/attendance/my-roster');
     expect(state.request).toHaveBeenCalledWith(state.session, expect.objectContaining({ employmentId: 'manager-own-employment' }));
   });

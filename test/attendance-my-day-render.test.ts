@@ -53,11 +53,13 @@ describe('employee day render', () => {
     expect(state.requests).toHaveBeenCalledWith(expect.anything(), 'manager-own', { date: '2025-06-04', limit: 100 });
     expect(html).toContain('Own day');
     expect(html).not.toContain('report-employment');
-    expect(html).toContain('/attendance/my-roster?view=month&amp;month=2025-06&amp;selected=2025-06-04');
+    const back=new URL(/href="([^"]*\/attendance\/my-roster[^"]*)"/.exec(html)![1].replaceAll('&amp;','&'),'https://local.invalid');
+    expect(Object.fromEntries(back.searchParams)).toMatchObject({tab:'calendar',view:'month',month:'2025-06',selected:'2025-06-04',page:'0',size:'25'});
   });
   it('returns to the original weekly window and retains it through a correction form', async () => {
     const html = await render({ calendar: '1', calendarView: 'week', calendarMonth: '2025-06', calendarDate: '2025-06-02' });
-    expect(html).toContain('/attendance/my-roster?view=week&amp;date=2025-06-02&amp;selected=2025-06-04');
+    const back=new URL(/href="([^"]*\/attendance\/my-roster[^"]*)"/.exec(html)![1].replaceAll('&amp;','&'),'https://local.invalid');
+    expect(Object.fromEntries(back.searchParams)).toMatchObject({tab:'calendar',view:'week',date:'2025-06-02',selected:'2025-06-04',page:'0',size:'25'});
     expect(html).toContain('name="calendarView" value="week"');
     expect(html).toContain('name="calendarDate" value="2025-06-02"');
   });
@@ -67,8 +69,9 @@ describe('employee day render', () => {
     expect(html).toContain('<fieldset disabled=""');
     expect(html).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
     expect(html).toContain('AM01');
-    expect(html).toContain('Fixture correction');
-    expect(html).toContain('09:00 → 18:00');
+    expect(html).not.toContain('Fixture correction'); // Request history belongs to Application History.
+    expect(html).toContain('name="checkIn" value="09:00"');
+    expect(html).toContain('name="checkOut" value="18:00"');
     const catalogue = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).attendance;
     for (const key of ['daySecShift', 'daySecBreak', 'daySecClock', 'daySecOt', 'daySecIrregular', 'myDayPending']) expect(html).toContain(catalogue[key]);
   });
