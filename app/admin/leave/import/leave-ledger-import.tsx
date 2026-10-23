@@ -1,4 +1,5 @@
 'use client';
+import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
 import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -51,6 +52,7 @@ type Phase = 'idle' | 'previewed' | 'done';
 
 export function LeaveLedgerImport() {
   const t = useTranslations('admin.leave.import');
+  const nricMessage = useNricPolicyMessage();
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<LeaveImportPreview | null>(null);
@@ -321,7 +323,7 @@ export function LeaveLedgerImport() {
               {result.failed.map((f) => (
                 <li key={f.rowNum} className="px-4 py-2">
                   <span className="text-muted-foreground">{t('colRow')} {f.rowNum}</span> ·{' '}
-                  {f.employeeRef} — <span className="text-red-600 dark:text-red-400">{f.message}</span>
+                  {f.employeeRef} — <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
                 </li>
               ))}
             </ul>
@@ -370,6 +372,7 @@ function PreviewTable({
   busy: boolean;
 }) {
   const t = useTranslations('admin.leave.import');
+  const nricMessage = useNricPolicyMessage();
   const invalid = preview.total - preview.validCount;
   return (
     <Card className="overflow-hidden">
@@ -430,7 +433,7 @@ function PreviewTable({
                 </td>
                 <td className="px-4 py-2">
                   {r.errors.length > 0 && (
-                    <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                    <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                   )}
                   {r.warnings.length > 0 && (
                     <span className="text-amber-600 dark:text-amber-400">

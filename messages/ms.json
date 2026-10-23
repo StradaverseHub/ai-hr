@@ -289,7 +289,8 @@
       "linked": "Rekod ini masih dipautkan kepada rekod lain, jadi ia tidak boleh diubah atau dikeluarkan dengan cara ini. Rujukan {ref}.",
       "invalidValue": "Salah satu nilai yang dimasukkan tidak dibenarkan di sini. Rujukan {ref}.",
       "rule": "Perubahan ini ditolak oleh perlindungan yang melindungi rekod sedia ada, seperti gaji yang telah ditutup. Rujukan {ref}.",
-      "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}."
+      "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}.",
+      "nricDuplicate": "NRIC ini sudah wujud dalam rekod pekerja lain. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa. Rujukan {ref}."
     }
   },
   "nav": {
@@ -461,7 +462,7 @@
     "myTp3": "Borang TP3 Saya",
     "jobDescriptions": "Huraian Kerja",
     "rewardsAccess": "Akses Ganjaran",
-    "peopleGeneral": "Tetapan Am Kakitangan"
+    "peopleGeneral": "Umum"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -22676,5 +22677,33 @@
       "deleted": "Semakan ini telah dibuang."
     },
     "viewHelp": "Paparan baca sahaja. Polisi dan penugasan penyemak tidak boleh diubah di sini."
+  },
+  "peopleGeneral": {
+    "title": "Umum",
+    "description": "Peraturan seluruh organisasi untuk kemasukan data pekerja.",
+    "identityValidation": "Pengesahan identiti",
+    "allowDuplicatedNric": "Benarkan NRIC Pendua",
+    "toggleHint": "Benarkan ID Pekerja yang berbeza menggunakan NRIC yang sama.",
+    "currentSetting": "Tetapan semasa: {state}",
+    "on": "HIDUP",
+    "off": "MATI",
+    "onExplanation": "ID Pekerja yang berbeza boleh berkongsi NRIC. ID Pekerja mesti sentiasa unik.",
+    "offExplanation": "NRIC pendua baharu disekat dalam kemasukan manual, pengaktifan dan import. ID Pekerja mesti sentiasa unik.",
+    "preserveExisting": "Menukar tetapan ini tidak memadam atau menggabungkan pekerja sedia ada. Nilai identiti yang tidak berubah dikekalkan apabila maklumat lain disimpan.",
+    "authority": "Hanya pentadbir yang diberi kuasa untuk seluruh organisasi boleh menukar tetapan ini.",
+    "saveHint": "Perubahan berkuat kuasa selepas disimpan sahaja.",
+    "cancel": "Batal",
+    "save": "Simpan tetapan",
+    "saved": "Tetapan Umum Orang disimpan.",
+    "errors": {
+      "forbidden": "Hanya pentadbir yang diberi kuasa untuk seluruh organisasi boleh menukar tetapan ini.",
+      "stale": "Tetapan Umum Orang telah berubah. Muat semula halaman ini sebelum menyimpan.",
+      "invalid": "Semak tetapan dan cuba lagi."
+    },
+    "duplicate": "NRIC ini sudah wujud dalam rekod pekerja lain. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa.",
+    "duplicateFile": "Fail ini menetapkan NRIC yang sama kepada lebih daripada seorang pekerja. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa.",
+    "importOn": "Benarkan NRIC Pendua HIDUP: ID Pekerja yang berbeza boleh berkongsi NRIC. ID Pekerja mesti kekal unik. Dasar semasa diperiksa semula semasa import.",
+    "importOff": "Benarkan NRIC Pendua MATI: pendua baharu dengan pekerja sedia ada atau dalam fail ini disekat. NRIC sedia ada yang tidak berubah dikekalkan. Dasar semasa diperiksa semula semasa import.",
+    "ambiguous": "Identiti pekerja tidak jelas. Gunakan ID Pekerja yang unik."
   }
 }

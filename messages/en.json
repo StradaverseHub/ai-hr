@@ -289,7 +289,8 @@
       "linked": "This record is still linked to other records, so it cannot be changed or removed this way. Reference {ref}.",
       "invalidValue": "One of the values entered is not allowed here. Reference {ref}.",
       "rule": "This change was refused by a safeguard that protects existing records, such as a closed payroll. Reference {ref}.",
-      "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}."
+      "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}.",
+      "nricDuplicate": "This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}."
     }
   },
   "nav": {
@@ -461,7 +462,7 @@
     "myTp3": "My Form TP3",
     "jobDescriptions": "Job Description",
     "rewardsAccess": "Rewards Access",
-    "peopleGeneral": "People General"
+    "peopleGeneral": "General"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -22676,5 +22677,33 @@
       "deleted": "This review has already been removed."
     },
     "viewHelp": "Read-only view. Policy and reviewer assignments cannot be changed here."
+  },
+  "peopleGeneral": {
+    "title": "General",
+    "description": "Organisation-wide rules for employee data entry.",
+    "identityValidation": "Identity validation",
+    "allowDuplicatedNric": "Allow Duplicated NRIC",
+    "toggleHint": "Allow different Employee IDs to carry the same NRIC.",
+    "currentSetting": "Current setting: {state}",
+    "on": "ON",
+    "off": "OFF",
+    "onExplanation": "Different Employee IDs may share an NRIC. Employee ID uniqueness is always required.",
+    "offExplanation": "New duplicate NRIC values are blocked in manual entry, activation and imports. Employee ID uniqueness is always required.",
+    "preserveExisting": "Changing this setting does not delete or merge existing employees. Unchanged identity values remain when unrelated information is saved.",
+    "authority": "Only an administrator authorised for the whole organisation may change this setting.",
+    "saveHint": "Changes apply only after saving.",
+    "cancel": "Cancel",
+    "save": "Save setting",
+    "saved": "People General settings saved.",
+    "errors": {
+      "forbidden": "Only an administrator authorised for the whole organisation may change this setting.",
+      "stale": "People General settings changed. Reload this page before saving.",
+      "invalid": "Review the setting and try again."
+    },
+    "duplicate": "This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings.",
+    "duplicateFile": "This file assigns the same NRIC to more than one employee. Duplicate NRIC numbers are not allowed under the current People General Settings.",
+    "importOn": "Allow Duplicated NRIC is ON: different Employee IDs may share an NRIC. Employee IDs must remain unique. The current policy is checked again when importing.",
+    "importOff": "Allow Duplicated NRIC is OFF: new duplicates against existing employees or within this file are blocked. Unchanged existing NRICs are retained. The current policy is checked again when importing.",
+    "ambiguous": "Employee identity is ambiguous. Use a unique Employee ID."
   }
 }

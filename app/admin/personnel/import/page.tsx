@@ -1,3 +1,4 @@
+import { getPeopleGeneral } from '@/core/people-general';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
@@ -27,6 +28,7 @@ export default async function ImportPage() {
     // and the only way to guarantee that is to generate it from the list `analyze()` reads.
     allProfileOptions,
     importRuns,
+    nricPolicy,
   ] = await Promise.all([
     listCompanies(s,{adminOnly:true}),
     listDepartments(s),
@@ -36,6 +38,7 @@ export default async function ImportPage() {
     // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
     // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
     listEmployeeImportRuns(s),
+    getPeopleGeneral(s),
   ]);
   // Company-specific guidance uses the same visibility owners as full-import validation.
   // The Company cell can override Target company; preview is authoritative in that case.
@@ -79,6 +82,7 @@ export default async function ImportPage() {
             defaultCompanyId={defaultCompanyId}
             reference={{
               organisationByCompany,
+              allowDuplicatedNric:nricPolicy.allowDuplicatedNric,
               // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
               // would otherwise appear once per company in the reference list.
               departments: uniqSorted(departments.map((d) => d.name)),

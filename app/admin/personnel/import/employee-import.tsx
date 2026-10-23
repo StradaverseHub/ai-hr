@@ -1,4 +1,5 @@
 'use client';
+import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
@@ -41,6 +42,7 @@ Siti Aminah,siti@demo.test,Operations,,2026-06-15,contract,950909093456,4100,0,,
 type Phase = 'idle' | 'previewed' | 'done';
 
 export type ImportReference = {
+  allowDuplicatedNric?:boolean;
   organisationByCompany?:Record<string,Record<string,string[]>>;
   departments: string[];
   positions: string[];
@@ -73,9 +75,12 @@ export function EmployeeImport({
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
+  const nricTexts = useTranslations('peopleGeneral');
+  const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
-  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
+  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>[key==='ic_number'?nricGuidance:'',personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')})].filter(Boolean).join(' · ');
   const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
@@ -261,6 +266,7 @@ export function EmployeeImport({
                 t('instructionRequired', { columns: IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ') }),
                 t('instructionDates'),
                 t('instructionIdentityText'),
+                nricGuidance,
                 t('instructionCompany'),
                 t('instructionReference'),
                 t('instructionPassport'),
@@ -303,7 +309,7 @@ export function EmployeeImport({
   const downloadErrors = (rows: { rowNum: number; fullName: string; email: string; errors: string[] }[]) => {
     const csvOut = toCsv([
       [t('colRow'), t('colName'), t('colEmail'), t('colResult')],
-      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.join('; ')]),
+      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.map(nricMessage).join('; ')]),
     ]);
     const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -557,7 +563,7 @@ export function EmployeeImport({
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
+          {nricMessage(error)}
         </div>
       )}
 
@@ -600,7 +606,7 @@ export function EmployeeImport({
               <ul className="list-disc space-y-0.5 pl-5">
                 {result.superiorFailed.map((f) => (
                   <li key={f.rowNum}>
-                    {t('row', { num: f.rowNum })} · {f.email} — {f.message}
+                    {t('row', { num: f.rowNum })} · {f.email} — {nricMessage(f.message)}
                   </li>
                 ))}
               </ul>
@@ -611,7 +617,7 @@ export function EmployeeImport({
               {result.failed.map((f) => (
                 <li key={f.rowNum} className="px-4 py-2">
                   <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> ·{' '}
-                  {f.email} — <span className="text-red-600 dark:text-red-400">{f.message}</span>
+                  {f.email} — <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
                 </li>
               ))}
             </ul>
@@ -658,6 +664,7 @@ export function EmployeeImport({
  */
 function StepRail({ current }: { current: number }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const labels = [t('step1'), t('step2'), t('step3'), t('step4'), t('step5'), t('step6')];
   return (
     <ol className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs" aria-label={t('stepsAria')}>
@@ -695,6 +702,7 @@ function StepRail({ current }: { current: number }) {
 /** The same numbering, repeated over the control that performs that step. */
 function StepHeading({ num, label }: { num: number; label: string }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   return (
     <div className="flex items-baseline gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -717,6 +725,7 @@ function PreviewTable({
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const invalid = preview.total - preview.validCount;
   return (
     <Card className="overflow-hidden">
@@ -812,7 +821,7 @@ function PreviewTable({
                     )}
                   </span>
                 ) : (
-                  <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                  <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                 )}
               </td>
             </tr>
@@ -858,7 +867,7 @@ function PreviewTable({
                     {r.ok ? (
                       <span className="text-emerald-600 dark:text-emerald-400">{t('ready')}</span>
                     ) : (
-                      <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                      <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                     )}
                   </td>
                 </tr>
@@ -871,7 +880,7 @@ function PreviewTable({
       {preview.registers?.filter(register=>register.total>0).map(register=><div key={register.kind} className="overflow-x-auto border-t border-border">
         <h3 className="bg-muted/30 px-4 py-2 text-sm font-semibold">{register.kind==='qualification'?t('sectionQualification'):t('sectionEmergency')} · {register.total}</h3>
         <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs"><tr><th className="px-4 py-2">#</th><th>{t('colEmployeeCode')}</th><th>{t('colName')}</th><th>{t('colResult')}</th></tr></thead>
-          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2">{row.rowNum}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):row.errors.join('; ')}</td></tr>)}</tbody>
+          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2">{row.rowNum}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):row.errors.map(nricMessage).join('; ')}</td></tr>)}</tbody>
         </table>
       </div>)}
 

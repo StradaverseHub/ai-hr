@@ -3461,7 +3461,7 @@ export const employeeStatutoryMy = pgTable(
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
     // null IC (identified by passport instead) don't collide.
-    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
+    index('employee_statutory_my_ic_idx').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
   ],
 );
 

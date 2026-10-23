@@ -289,7 +289,8 @@
       "linked": "Bản ghi này vẫn được liên kết với các bản ghi khác nên không thể thay đổi hoặc xóa theo cách này. Mã tham chiếu {ref}.",
       "invalidValue": "Một trong các giá trị đã nhập không được phép ở đây. Mã tham chiếu {ref}.",
       "rule": "Thay đổi này bị từ chối bởi cơ chế bảo vệ các bản ghi hiện có, chẳng hạn như kỳ lương đã đóng. Mã tham chiếu {ref}.",
-      "busy": "Hệ thống đang bận và thay đổi chưa được hoàn tất. Vui lòng thử lại. Mã tham chiếu {ref}."
+      "busy": "Hệ thống đang bận và thay đổi chưa được hoàn tất. Vui lòng thử lại. Mã tham chiếu {ref}.",
+      "nricDuplicate": "NRIC này đã tồn tại trong hồ sơ nhân viên khác. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp. Mã tham chiếu {ref}."
     }
   },
   "nav": {
@@ -461,7 +462,7 @@
     "myTp3": "Mẫu TP3 của tôi",
     "jobDescriptions": "Mô tả công việc",
     "rewardsAccess": "Quyền truy cập đãi ngộ",
-    "peopleGeneral": "Thiết lập nhân sự chung"
+    "peopleGeneral": "Chung"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -22676,5 +22677,33 @@
       "deleted": "Kỳ xét duyệt này đã bị gỡ."
     },
     "viewHelp": "Chế độ chỉ đọc. Không thể thay đổi chính sách và phân công người xét duyệt tại đây."
+  },
+  "peopleGeneral": {
+    "title": "Chung",
+    "description": "Quy tắc nhập dữ liệu nhân viên áp dụng cho toàn tổ chức.",
+    "identityValidation": "Xác thực danh tính",
+    "allowDuplicatedNric": "Cho phép NRIC trùng lặp",
+    "toggleHint": "Cho phép các mã nhân viên khác nhau sử dụng cùng một NRIC.",
+    "currentSetting": "Cài đặt hiện tại: {state}",
+    "on": "BẬT",
+    "off": "TẮT",
+    "onExplanation": "Các mã nhân viên khác nhau có thể dùng chung NRIC. Mã nhân viên luôn phải duy nhất.",
+    "offExplanation": "Chặn NRIC trùng lặp mới khi nhập thủ công, kích hoạt và nhập tệp. Mã nhân viên luôn phải duy nhất.",
+    "preserveExisting": "Thay đổi cài đặt này không xóa hoặc hợp nhất nhân viên hiện có. Giá trị danh tính không thay đổi được giữ lại khi lưu thông tin khác.",
+    "authority": "Chỉ quản trị viên được ủy quyền cho toàn tổ chức mới có thể thay đổi cài đặt này.",
+    "saveHint": "Thay đổi chỉ áp dụng sau khi lưu.",
+    "cancel": "Hủy",
+    "save": "Lưu cài đặt",
+    "saved": "Đã lưu cài đặt chung về nhân sự.",
+    "errors": {
+      "forbidden": "Chỉ quản trị viên được ủy quyền cho toàn tổ chức mới có thể thay đổi cài đặt này.",
+      "stale": "Cài đặt chung về nhân sự đã thay đổi. Hãy tải lại trang trước khi lưu.",
+      "invalid": "Kiểm tra cài đặt rồi thử lại."
+    },
+    "duplicate": "NRIC này đã tồn tại trong hồ sơ nhân viên khác. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp.",
+    "duplicateFile": "Tệp này gán cùng một NRIC cho nhiều nhân viên. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp.",
+    "importOn": "Cho phép NRIC trùng lặp đang BẬT: các mã nhân viên khác nhau có thể dùng chung NRIC. Mã nhân viên phải duy nhất. Chính sách hiện tại được kiểm tra lại khi nhập.",
+    "importOff": "Cho phép NRIC trùng lặp đang TẮT: chặn NRIC trùng lặp mới với nhân viên hiện có hoặc trong tệp này. NRIC hiện có không thay đổi được giữ lại. Chính sách hiện tại được kiểm tra lại khi nhập.",
+    "ambiguous": "Danh tính nhân viên không rõ ràng. Hãy sử dụng mã nhân viên duy nhất."
   }
 }

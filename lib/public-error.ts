@@ -30,12 +30,14 @@ export const DATABASE_ERROR_TEXT_EN: Record<DatabaseErrorKind, string> = {
   linked: 'This record is still linked to other records, so it cannot be changed or removed this way. Reference {ref}.',
   invalidValue: 'One of the values entered is not allowed here. Reference {ref}.',
   rule: 'This change was refused by a safeguard that protects existing records, such as a closed payroll. Reference {ref}.',
+  nricDuplicate: 'This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}.',
   busy: 'The system was busy and the change was not completed. Please try again. Reference {ref}.',
 };
 
 /** Which plain sentence a SQLSTATE gets. Unknown or absent codes (a dropped connection) are 'system'. */
 export function databaseErrorKind(sqlState: string | undefined): DatabaseErrorKind {
   if (!sqlState) return 'system';
+  if (sqlState === 'PN001') return 'nricDuplicate';
   if (sqlState === '42501') return 'permission'; // insufficient_privilege, including an RLS refusal
   if (sqlState === '23505') return 'duplicate'; // unique_violation
   if (sqlState === '23503') return 'linked'; // foreign_key_violation
@@ -51,6 +53,7 @@ export function publicErrorMessage(e: unknown): string {
   const sqlState = pgSqlState(e);
   const kind = databaseErrorKind(sqlState);
   const ref = formatDatabaseErrorRef(kind, randomBytes(3).toString('hex').toUpperCase());
-  console.error(`[database error ${ref}] sqlstate=${sqlState ?? 'none'}`, e);
+  if (sqlState === 'PN001') console.error(`[database error ${ref}] sqlstate=PN001`);
+  else console.error(`[database error ${ref}] sqlstate=${sqlState ?? 'none'}`, e);
   return DATABASE_ERROR_TEXT_EN[kind].replace('{ref}', ref);
 }

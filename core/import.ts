@@ -1,3 +1,5 @@
+import { getPeopleGeneral, occupiedNricsTx } from './people-general';
+import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
@@ -344,6 +346,7 @@ async function analyze(
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
+  const { allowDuplicatedNric } = await getPeopleGeneral(ctx);
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const {
     existingEmails,
@@ -367,6 +370,7 @@ async function analyze(
       normPack = requirePackFor(co?.country);
     }
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
+    const hiddenConflicts = allowDuplicatedNric ? [] : await occupiedNricsTx(tx,{companyId,keys:records.map(record=>normPack!.statutory.normalizeIC(norm(record.ic_number)))});
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
     // existing staff ID. Compared on the normalized (uppercased) value, matching the uniqueness rule.
@@ -412,7 +416,7 @@ async function analyze(
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
       // enters the collision set (mirrors the employeeCode filter below).
       existingIcs: new Set(
-        ics.filter((r) => r.ic).map((r) => normPack!.statutory.normalizeIC(r.ic as string)),
+        [...hiddenConflicts,...ics.filter((r) => r.ic).map((r) => normPack!.statutory.normalizeIC(r.ic as string))],
       ),
       existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
     };
@@ -541,12 +545,12 @@ async function analyze(
       else errors.push(`Unknown employment_type "${rec.employment_type}"`);
     }
 
-    // IC (required, format + uniqueness — DB enforces tenant-unique IC; rules from the company's pack)
+    // Optional NRIC: format is unconditional; duplication follows the current tenant policy.
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
     if (icRaw && !pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (icRaw && seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
-    else if (icRaw && existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
+    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
+    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) errors.push(NRIC_DUPLICATE_MESSAGE);
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary

@@ -477,11 +477,8 @@ export async function decideProfileChange(
       const allowedNow = profileChangeAllowedKeys(ctx);
       const closedKeys = Object.keys(proposed).filter((k) => !allowedNow.has(k));
       if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);
-      // Keep the existing finite duplicate-identity refusal before the canonical country writer.
-      if(typeof proposed.icNumber==='string'&&proposed.icNumber){
-        const [clash]=await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.icNumber,proposed.icNumber),sql`${employeeStatutoryMy.personId} <> ${req.personId}`)).limit(1);
-        if(clash)throw new Error('That identity number is already filed against another employee.');
-      }
+      // The statutory database admission owner applies the current tenant policy, including
+      // legacy requests. An unconditional pre-check here would incorrectly refuse ON-mode approvals.
       const {applyStoredLegacyProfileProposalTx}=await import('./profile-edit');
       await applyStoredLegacyProfileProposalTx(tx,ctx,req.employmentId,proposed);
     }

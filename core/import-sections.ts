@@ -1,3 +1,7 @@
+import { getPeopleGeneral, occupiedNricsTx } from './people-general';
+import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
+import { pgSqlState } from '../lib/db-error';
+import { publicErrorMessage } from '../lib/public-error';
 import {assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {personnelOperationalValues,PERSONNEL_OPERATIONAL_FIELDS,type PersonnelOperationalPatch} from '../lib/personnel-operational-import';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
@@ -253,8 +257,10 @@ async function analyze(
     ctx,
     codes,
     section,
+    records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
   );
 
+  const { allowDuplicatedNric } = await getPeopleGeneral(ctx);
   const seenCodes = new Set<string>();
   /**
    * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
@@ -323,6 +329,7 @@ async function analyze(
         buildProfile(rec, cell, subject, row, {
           catalog,
           icOwners,
+          allowDuplicatedNric,
           emailOwners,
           seenIcs,
           seenEmails,
@@ -392,7 +399,7 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[]) {
   return withTenant(ctx, async (tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
     // Direct Superior column accepts either, exactly as the wide importer's does.
@@ -511,16 +518,20 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
       .from(profileOption);
     const catalog = new PersonnelImportCatalog();
     for(const option of options)catalog.addOption(option);
-    const icOwners = new Map<string, string>();
+    const icOwners = new Map<string, Set<string>>();
     // …and who owns which WORK EMAIL, which is the login identity and has NO unique index behind it
     // (db/schema.ts: `primaryEmail` carries only `person_tenant_idx`). Without this check a Profile
     // file quietly gave two employees one login address and the preview said nothing at all.
     const emailOwners = new Map<string, string>();
     if (section === 'profile') {
+      if(wanted[0])for(const key of await occupiedNricsTx(tx,{personId:wanted[0].personId,keys:submittedNrics}))icOwners.set(key,new Set(['occupied']));
       const allStat = await tx
         .select({ personId: employeeStatutoryMy.personId, icNumber: employeeStatutoryMy.icNumber })
         .from(employeeStatutoryMy);
-      for (const s of allStat) if (s.icNumber) icOwners.set(s.icNumber, s.personId);
+      for (const s of allStat) if (s.icNumber) {
+        const key=s.icNumber.replace(/\D/g,'');const owners=icOwners.get(key)??new Set<string>();
+        owners.add(s.personId);icOwners.set(key,owners);
+      }
       const allPeople = await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person);
       for (const p of allPeople) if (p.primaryEmail) emailOwners.set(p.primaryEmail.trim().toLowerCase(), p.id);
     }
@@ -556,7 +567,8 @@ function buildProfile(
   row: ResolvedSectionRow,
   x: BuildCtx & {
     catalog: Map<string, Set<string>>;
-    icOwners: Map<string, string>;
+    icOwners: Map<string, Set<string>>;
+    allowDuplicatedNric: boolean;
     emailOwners: Map<string, string>;
     seenIcs: Map<string, number>;
     seenEmails: Map<string, number>;
@@ -638,17 +650,15 @@ function buildProfile(
       const icNorm = subject.pack.statutory.normalizeIC(icRaw);
       const owner = x.icOwners.get(icNorm);
       const alreadyInFile = x.seenIcs.get(icNorm);
-      if (alreadyInFile !== undefined) {
-        // The identity number is UNIQUE in the database, so this row would have died at COMMIT with a
-        // driver error carrying the NRIC itself as a bound parameter — into the admin's screen and into
-        // the stored import history. Caught here instead, and the message names the ROW, never the value.
-        errors.push(`Duplicate ic_number in this file — row ${alreadyInFile} already assigns this identity number`);
-      } else if (owner && owner !== subject.personId) {
-        errors.push('Another employee already has this IC');
+      const unchanged = icNorm === String(subject.statutory?.icNumber ?? '').replace(/\D/g, '');
+      if (!x.allowDuplicatedNric && !unchanged && alreadyInFile !== undefined) {
+        errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
+      } else if (!x.allowDuplicatedNric && !unchanged && owner && [...owner].some(id => id !== subject.personId)) {
+        errors.push(NRIC_DUPLICATE_MESSAGE);
       } else {
         x.seenIcs.set(icNorm, x.rowNum);
         row.ic = { icNumber: icNorm };
-        if (icNorm !== (subject.statutory?.icNumber ?? '')) changes.push('ic_number');
+        if (!unchanged) changes.push('ic_number');
       }
     }
   }
@@ -878,6 +888,7 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 export function writeFailureMessage(step: WriteStep, e: unknown): string {
+  if (pgSqlState(e) === 'PN001') return publicErrorMessage(e);
   const cols = WRITE_STEP_COLUMNS[step];
   // All row writers share one explicit transaction; a refused writer rolls the row back.
   return isUniqueViolation(e)
@@ -997,7 +1008,7 @@ export async function commitSectionImport(
       // row and nothing else; the detail stays in the server log where an engineer can still find it.
       console.error(
         `[section-import] row ${row.result.rowNum} (${row.result.employeeCode}) failed at step "${step}":`,
-        e,
+        pgSqlState(e)==='PN001'?'NRIC duplicate policy refusal':e,
       );
       failed.push({
         rowNum: row.result.rowNum,
