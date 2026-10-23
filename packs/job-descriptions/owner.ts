@@ -120,7 +120,7 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
            and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id))
           order by label,u.id`);
 
-        const map = (rs: typeof bus | typeof departments | typeof positions) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
+        const map = (rs: readonly ((typeof bus)[number] | (typeof departments)[number] | (typeof positions)[number])[]) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
         return { companies, businessUnit: map(bus), department: map(departments), position: map(positions), grade: organisationChoiceLabels(grades).map(v => ({ value: v.id, label: v.displayLabel })), location: locations.map(v => ({ value: v.id, label: v.name, companyIds: [v.companyId] })), section: profiles.filter(v => v.category === 'section').map(v => ({ value: v.value, label: v.label })), team: profiles.filter(v => v.category === 'team').map(v => ({ value: v.value, label: v.label })), family: [...new Set(positions.map(v => v.family).filter((v): v is string => !!v))].sort().map(v => ({ value: v, label: v })), employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(v => ({ value: v, label: v.replaceAll('_', ' ') })), people: people.map(v => ({ ...v, companyIds: v.companyIds ?? [] })) };
     });
 }

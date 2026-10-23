@@ -22673,6 +22673,26 @@
       "receipt": "Ghi nhận chi tiết người nhận và ngày nhận hợp lệ cho bản đã phê duyệt.",
       "configuration": "Kiểm tra định nghĩa biểu mẫu, loại trường, giới hạn và lựa chọn hợp lệ.",
       "invalid": "Kiểm tra giá trị, ngày và thông tin bắt buộc đã nhập."
+    },
+    "eventLabels": {
+      "created": "Đã tạo",
+      "draft": {
+        "updated": "Đã cập nhật bản nháp"
+      },
+      "revised": "Đã tạo bản sửa đổi tiếp theo",
+      "submit": "Đã gửi đánh giá",
+      "review": "Đã ghi nhận đánh giá",
+      "return": "Đã trả về bản nháp",
+      "approve": "Đã phê duyệt",
+      "inactivate": "Đã ngừng hoạt động",
+      "reactivate": "Đã kích hoạt lại",
+      "attachment": {
+        "added": "Đã thêm tệp đính kèm",
+        "removed": "Đã xóa tệp đính kèm"
+      },
+      "holder": {
+        "acknowledged": "Đã ghi nhận đã nhận theo báo cáo"
+      }
     }
   },
   "rewardsAccess": {

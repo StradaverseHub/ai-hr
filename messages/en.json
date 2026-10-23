@@ -22673,6 +22673,26 @@
       "receipt": "Record recipient details and a valid receipt date for an approved revision.",
       "configuration": "Check the form definition, field types, limits and valid choices.",
       "invalid": "Check the entered values, dates and required information."
+    },
+    "eventLabels": {
+      "created": "Created",
+      "draft": {
+        "updated": "Draft updated"
+      },
+      "revised": "Successor created",
+      "submit": "Submitted for review",
+      "review": "Review recorded",
+      "return": "Returned to draft",
+      "approve": "Approved",
+      "inactivate": "Made inactive",
+      "reactivate": "Reactivated",
+      "attachment": {
+        "added": "Attachment added",
+        "removed": "Attachment removed"
+      },
+      "holder": {
+        "acknowledged": "Reported receipt recorded"
+      }
     }
   },
   "rewardsAccess": {

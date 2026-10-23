@@ -22673,6 +22673,26 @@
       "receipt": "Rekodkan butiran penerima dan tarikh penerimaan sah bagi pindaan yang diluluskan.",
       "configuration": "Semak takrif borang, jenis medan, had dan pilihan sah.",
       "invalid": "Semak nilai, tarikh dan maklumat wajib yang dimasukkan."
+    },
+    "eventLabels": {
+      "created": "Dicipta",
+      "draft": {
+        "updated": "Draf dikemas kini"
+      },
+      "revised": "Pindaan pengganti dicipta",
+      "submit": "Dihantar untuk semakan",
+      "review": "Semakan direkodkan",
+      "return": "Dikembalikan ke draf",
+      "approve": "Diluluskan",
+      "inactivate": "Dijadikan tidak aktif",
+      "reactivate": "Diaktifkan semula",
+      "attachment": {
+        "added": "Lampiran ditambah",
+        "removed": "Lampiran dibuang"
+      },
+      "holder": {
+        "acknowledged": "Penerimaan dilaporkan direkodkan"
+      }
     }
   },
   "rewardsAccess": {
