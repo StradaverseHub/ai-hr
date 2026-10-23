@@ -69,6 +69,7 @@ describe('central HR orchestrator', () => {
     expect((await cases()).length).toBeGreaterThan(0);
     const employee = { ...adminCtx(base), roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
     await expect(reconcileReadinessCases(employee)).rejects.toThrow('access denied');
+    await expect(runHrOrchestrator(employee)).rejects.toThrow('access denied');
     expect(await withTenant(employee, tx => tx.select().from(schema.hrOrchestrationCase))).toEqual([]);
   });
 
@@ -123,6 +124,38 @@ describe('central HR orchestrator', () => {
       expect(result.failed).toBe(true);
       expect((await orchestrationQueue(adminCtx(base))).lastRun?.failed).toBe(true);
     } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
+  });
+
+  it('fails the run when only its trace receipt cannot commit, while preserving source observations', async () => {
+    await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    await owner.db.execute(sql`create function public.test_refuse_orchestrator_trace() returns trigger
+      language plpgsql as $$ begin
+        if new.event_type = 'orchestrator.pass-finished' then raise exception 'fictional trace refusal'; end if;
+        return new;
+      end $$`);
+    try {
+      await owner.db.execute(sql`create trigger test_refuse_orchestrator_trace before insert on domain_event
+        for each row execute function public.test_refuse_orchestrator_trace()`);
+      const ctx = adminCtx(base);
+      const result = await runHrOrchestrator(ctx);
+      expect(result.before.status).toBe('succeeded');
+      expect(result.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+      expect(result.triage).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+      expect(result.after.status).toBe('succeeded');
+      expect(result.failed).toBe(true);
+      const view = await orchestrationQueue(ctx);
+      expect(view.total).toBeGreaterThan(0);
+      expect(view.observedAt).not.toBeNull();
+      expect(view.lastRun).toBeNull(); // No invented receipt for a run whose trace did not commit.
+      const checks = await owner.db.select().from(schema.domainEvent)
+        .where(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked')).orderBy(schema.domainEvent.sequence);
+      expect(checks).toHaveLength(2);
+    } finally {
+      await owner.db.execute(sql`drop trigger if exists test_refuse_orchestrator_trace on domain_event`);
+      await owner.db.execute(sql`drop function public.test_refuse_orchestrator_trace()`);
+    }
   });
 
   it('does not duplicate a reminder after the best-effort proposal write fails', async () => {
