@@ -58,7 +58,7 @@ export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type 
 export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, overtimePatternSetup, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
 export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOvertimeToilSettlementDatesTx, readOvertimeCashDefinitionTx, readOvertimeDurationsTx, readOvertimeDurationDefinitionTx, hasOvertimePatternForDayTx, lockOvertimeDayForAttendanceWriteTx,
   type OvertimePatternVersionView, type OvertimeDurationRead, type CanonicalOvertimeInput, type CanonicalOvertimeSnapshot } from './overtime-patterns';
-export {resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
+export {resolveOvertimePolicyDatedToilQualificationTx, resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
 
 export {formulaOvertimeForRowsTx, formulaOvertimeCashForRowsTx, type FormulaOvertimeCashRecord} from './overtime-records';
 

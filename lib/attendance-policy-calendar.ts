@@ -8,4 +8,7 @@ export const ATTENDANCE_POLICY_MONEY_DAY:Record<AttendancePolicyDayClass,PolicyM
 export type PolicyCalendarProof={date:string}&({
   state:'known';companyId:string;dayClass:AttendancePolicyDayClass;moneyDay:PolicyMoneyDay;
   references:string[];
+  /** Optional new frozen qualification evidence; absence never invents a dated shift end. */
+  toilQualification?:{state:'known';basis:'datedScheduleOnly';shiftId:string|null;ruleId:string;scheduled:{from:number;to:number}}
+   |{state:'unavailable';basis:'datedScheduleOnly';reason:'noFixedShift'};
 }|{state:'unknown';reason:'calendarUnavailable'|'holidayDesignationUnavailable'});

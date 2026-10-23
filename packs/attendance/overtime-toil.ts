@@ -1,3 +1,4 @@
+import {attendancePolicyDatedToilQualification} from './policy-toil-dated-qualification';
 import {isDeepStrictEqual} from 'node:util';
 /** Fresh duration proof for the canonical TOIL executor. No cash evidence or new ledger. */
 import {createHash} from 'node:crypto';
@@ -177,4 +178,27 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
   audit:{durationInputDigest:contract.durationDigest,calculationId:calculation.id,sourceRevision:source.revision,
    recordedShiftEndAbs,recordedShiftEndEpochSeconds,claimWindow:p.claimWindow?{...p.claimWindow}:null,
    qualifyingMinutes:recordedWorkedDayKind==='workday'?afterShiftMinutes:contract.minutes,allocationPolicy,datedAllocations}};
+}
+
+/** Salary-free dated qualification for the credit owner. It deliberately has no
+ * scalar worked-day kind: every dated class stays attached to its own quantity.
+ * Existing uniform/legacy readers retain their original contract. */
+export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+ const [locked]=await tx.select().from(attendanceOvertimeSource).where(and(eq(attendanceOvertimeSource.tenantId,ctx.tenantId),
+  eq(attendanceOvertimeSource.employmentId,p.employmentId),eq(attendanceOvertimeSource.attendanceDate,p.date))).limit(1).for('update');
+ const existing=await readOvertimeSettlementForDayTx(tx,ctx,p);
+ if(existing?.settlement?.mode==='cash')throw new OvertimeToilEligibilityError('This overtime day is already reserved for cash. Release its unfinalized Payroll contribution before electing Leave Credit.','cashConflict');
+ const stored=await readOvertimePolicyDurationTx(tx,ctx,p);
+ if(!stored)return null;
+ if(!locked||locked.id!==stored.source.id||locked.currentCalculationId!==stored.calculation.id)unavailable('stale');
+ const snapshot=await canonicalOvertimeToilInputTx(tx,ctx,p),independent=attendancePolicyIndependentSource(snapshot);
+ if(!independent)unavailable();
+ const contract=attendancePolicyFinancialDurationContract({tenantId:ctx.tenantId,companyId:stored.source.companyId,
+  employmentId:p.employmentId,sourceId:stored.source.id,calculationId:stored.calculation.id,date:p.date},independent);
+ if(contract.state!=='prepared'||!isDeepStrictEqual(contract,stored.contract)
+  ||!isDeepStrictEqual(JSON.parse(JSON.stringify(independent)),JSON.parse(JSON.stringify(stored.independent))))unavailable('stale');
+ const qualified=attendancePolicyDatedToilQualification(independent);
+ if(qualified.state!=='prepared'||qualified.durationDigest!==contract.durationDigest||qualified.minutes!==contract.minutes)unavailable();
+ return {...qualified,companyId:stored.source.companyId,calculationId:stored.calculation.id,sourceRevision:stored.source.revision};
 }

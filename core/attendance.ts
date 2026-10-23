@@ -4709,7 +4709,16 @@ export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;da
       ...(adjustment?[`attendance-day-adjustment:${adjustment.id}:${adjustment.version}`]:[])];
     const kind=workedDayKindForSchedule(schedule);
     if(kind!=='holiday'){
-      out.push({date,state:'known',companyId:company.companyId,dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references});continue;
+      // Reuse this same memoized dated schedule. Retain ordinary-day qualification
+      // separately from calendar class and payable quantity, without another schedule query.
+      const boundary=kind==='workday'?attendancePolicyClockPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,
+       crossesMidnight:schedule.crossesMidnight,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
+       dayType:schedule.dayType,includeGraceInLateness:false,includeGraceInEarlyOut:false}):undefined;
+      const toilQualification:Extract<PolicyCalendarProof,{state:'known'}>['toilQualification']=kind!=='workday'?undefined
+       :boundary?.state==='known'&&schedule.rule?{state:'known',basis:'datedScheduleOnly',shiftId:schedule.displayShiftId??null,
+        ruleId:schedule.rule.id,scheduled:{...boundary.scheduled}}:{state:'unavailable',basis:'datedScheduleOnly',reason:'noFixedShift'};
+      out.push({date,state:'known',companyId:company.companyId,dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references,
+       ...(toilQualification?{toilQualification}:{})});continue;
     }
     const originals=provenance.originals.filter(row=>row.date===date&&row.companyId===company.companyId);
     const replacements=provenance.replacements.filter(row=>row.replacementDate===date&&row.companyId===company.companyId);
