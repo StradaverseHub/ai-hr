@@ -15,6 +15,7 @@ export const config = {
   get keycloakClientId() { return selected?.clientId ?? (runtimeConnections ? '' : process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? ''); },
   /** The AI HR server, e.g. https://hr.example.com. No trailing slash. */
   get apiUrl(): string { return selected?.apiOrigin ?? (runtimeConnections ? '' : (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '')); },
+  get organization(): string { return selected?.organization ?? ''; },
   /** The WorkOS client id of the environment this build signs in against (Staging or Production). */
   workosClientId: process.env.EXPO_PUBLIC_WORKOS_CLIENT_ID ?? '',
   /** The custom URL scheme registered with WorkOS as `aihr://auth/callback` (placeholder until the store name is chosen). */
@@ -51,4 +52,9 @@ export function apiOriginProblem(value: string): string | null {
 }
 
 export function identityClientId(): string { return config.authProvider === 'internal' ? 'aihr-mobile' : config.authProvider === 'keycloak' ? config.keycloakClientId : config.workosClientId; }
-export function identityNamespace(): string { const base=[config.authProvider,config.apiUrl,config.issuer,identityClientId()];return JSON.stringify(selected?[...base,selected.id,selected.audience]:base); }
+export function identityNamespace(): string {
+  const base=[config.authProvider,config.apiUrl,config.issuer,identityClientId()];
+  // A shared cloud installation can host several organizations, including identical usernames.
+  // Keep old setup-file namespaces stable; organization-bound setups get separate credential storage.
+  return JSON.stringify(selected?[...base,selected.id,selected.audience,...(selected.organization?[selected.organization]:[])]:base);
+}

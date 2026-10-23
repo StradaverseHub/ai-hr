@@ -21,3 +21,28 @@ Private authentication records are AES-256-GCM encrypted in the application usin
 - Installation: explicit internal provider configuration, operator bootstrap, key backup/restore and rotation procedure, owner MFA enrollment, tested SMTP, TLS and secure cutover/rollback. Certificate renewal remains infrastructure work, independent of the cancelled Keycloak route.
 
 Verification must include actual browser/native journeys, two organizations with colliding usernames, concurrent OTP/recovery/refresh replay, forged/expired records, anonymous refusals, role escalation and cross-tenant invitations. Focused cryptography/state tests do not establish UI or deployment acceptance. Existing Keycloak/WorkOS adapters remain inactive compatibility code until a separately verified cleanup; never activate or automatically fall back to them in internal mode. Enterprise SSO federation/passkeys are separate capabilities, not silently represented as implemented by local passwords and MFA.
+
+## Signed workplace onboarding — 2026-10-23
+
+The owner requested one mobile app that connects by QR code or setup link to an exact cloud or
+on-prem installation and organization. Extend the existing signed company profile with an optional
+canonical `organization` code for embedded authentication. The operator signs this alongside the
+installation addresses; it does not carry a tenant UUID, identity, password, invitation or grant.
+Existing profiles without the field retain their original behavior and credential storage namespace.
+
+Offline operator tooling produces a signed setup file, an HTTPS fragment link and its QR image. The
+installation's public `/login/mobile-setup` page hands off through the existing app scheme only after
+an explicit tap. This requires no central directory or per-client associated-domain app rebuild. The
+app verifies its installed signing anchors and asks the employee to review the workplace, server and
+organization before changing anything. A confirmation uses the existing session/file/device cleanup;
+cancelled or invalid setups do not change credentials or saved selection. A new incoming link cannot
+automatically select a different tenant. Organization-bound profiles add the organization to the
+credential namespace, preventing a shared cloud URL/profile ID from reopening another tenant's stored
+credentials. Login uses that signed organization with username/password and the normal MFA process.
+
+Cloud and on-prem share this contract. Reachability, VPN and phone-trusted TLS remain installation
+requirements. The setup is public routing information, not proof of membership; the server still
+resolves the exact existing HR identity and grants. Production authentication remains dormant until
+valid origin TLS, supported operator runtime, private key/database backup, owner setup and reviewed
+activation prerequisites pass. This decision does not assert production activation or physical-device
+acceptance.
