@@ -762,7 +762,8 @@ function policyDatedRateShape(pattern:OvertimePattern):string{
  * same definition; the explicit dated-expression proposal permits only hourly expressions
  * to differ under identical shared rules. Canonical consumers retain the explicit scope
  * and independently validate the complete dated source and original version tuple.
- * Incompatible caps, charges or tier identities remain refused, never guessed. */
+ * Shared-rule scopes retain their original comparison. Explicit datedFormulaRules
+ * gives each dated formula its own money rules and shares deduction-source consumption. */
 export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[],formulaScope:'sameVersion'|'identicalDefinitions'|'datedRateExpressions'|'datedFormulaRules'='sameVersion'):OvertimePolicyAllocatedParentPrice{
  const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
   ({state:'unavailable',authority:'parentPricingProposalOnly',reason});

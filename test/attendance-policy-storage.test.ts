@@ -1,6 +1,7 @@
+import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
 import {attendancePolicyAttestedWorkInput} from '../packs/attendance/policy-attested-work-input';
-import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch} from '../packs/payroll/service';
+import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,closeBatch,deleteDraftBatch,resetProcessedBatch} from '../packs/payroll/service';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
@@ -115,7 +116,10 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  }
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  const sourceDate=sourceDateOverride??day(sourceOffset),nextDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
- if(mixedCompatible)await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:nextDate});
+ if(mixedCompatible){
+  await saveScheduleGroupControl(ctx,{ruleId,kind:'duty',enabled:true});
+  await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:nextDate});
+ }
  if(!unclocked){
  await capturedClock(worker.employmentId,sourceDate,'in',financial?'23:00:00':'23:50:00',sourceDate,captureMillisecond);
  const endMinute=1380+financialMinutes,financialOut=`${String(Math.floor(endMinute/60)%24).padStart(2,'0')}:${String(endMinute%60).padStart(2,'0')}:00`;
@@ -1005,9 +1009,9 @@ describe('immutable non-payable policy part storage',()=>{
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
   expect(slip.overtimePay).toBe('45.00');
   await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
-  // The cash/TOIL conflict above is proved while the Payroll draft exists. Remove that
-  // draft through its real owner before the separate day elects TOIL: the tenant-wide
-  // started-Payroll guard must keep refusing credit changes in an existing run's period.
+  // Payslip generation processed this run. Use the actual reasoned reset owner before
+  // draft deletion and the next source's separate TOIL election.
+  await resetProcessedBatch(ctx,{batchId:batch.batchId,reason:'Fictional reset before releasing the rounded cash election'});
   await deleteDraftBatch(ctx,{batchId:batch.batchId});
   // A separate actual source chooses TOIL, even after its cash earning mapping is archived.
   const next=new Date(Date.parse(p.date+'T00:00:00Z')+86400000).toISOString().slice(0,10),

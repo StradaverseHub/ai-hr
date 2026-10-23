@@ -1,3 +1,4 @@
+import {toilMeasuredCreditDays,TOIL_STANDARD_DAY_MINUTES} from '../lib/toil-dated-credit';
 /**
  * Leave-in-lieu (TOIL) — ADR-0033. A contractual replacement-leave engine: elected+approved rest-day /
  * holiday / OT work becomes a REPLACEMENT-type leave credit, mutually exclusive with OT pay. Gated by
@@ -207,7 +208,7 @@ function isAdminCtx(ctx: SessionContext): boolean {
   return isAdmin({ ...ctx, roles: ctx.roles ?? (ctx.grants ?? []).map((g) => g.role) });
 }
 
-const STD_DAY_MINUTES = 480; // 8h — the ORP/standard-day convention (wages / 26 / 8) used across payroll
+const STD_DAY_MINUTES = TOIL_STANDARD_DAY_MINUTES; // 8h — the ORP/standard-day convention (wages / 26 / 8) used across payroll
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const addDays = (date: string, n: number): string =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -259,7 +260,6 @@ export function resolveExpiry(
 }
 // premium_equivalent banks the worked time uplifted by the day-type OT multiplier (itself contractual for
 // TOIL; the exact EA ½/1-day rest-day rule governs cash pay, not in-lieu banking).
-const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workday: 1.5, rest_day: 2, holiday: 3 };
 
 /**
  * TOIL is now a per-TENANT entitlement, not a deployment flag (ADR-0077 slice 3). Same shape as the
@@ -1122,8 +1122,7 @@ export async function bankToilCreditTx(
   // would mean picking a multiplier at random.
   const dayType = p.dayType;
   const otMinutes = p.otMinutes;
-  const mult = dayType != null && policy.accrualBasis === 'premium_equivalent' ? PREMIUM_MULT[dayType] : 1;
-  const daysCredited = p.declaredDays != null ? round2(p.declaredDays) : round2((otMinutes / STD_DAY_MINUTES) * mult);
+  const daysCredited = p.declaredDays != null ? round2(p.declaredDays) : toilMeasuredCreditDays(otMinutes,dayType,policy.accrualBasis);
 
   // 00307068 · THE EXPIRY ANCHOR MOVES FROM THE WORKED DAY TO THE APPROVAL. This is a behaviour change, not
   // a display one, and it is the reason the item is Large. Reaching this line IS the approval: the manual

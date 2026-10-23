@@ -640,10 +640,10 @@ BEGIN
    AND attested.authority='attestedActualWorkOnly' AND attested.requested_minutes=c.requested_ot_minutes
    AND attested.approved_minutes=approved_minutes AND attested.manual_method=contract.manual_approval_method
    AND attested.attested_work=contract.attested_work AND attested.policy_binding=contract.policy_binding
-   AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.id=attested.attendance_id AND a.tenant_id=c.tenant_id
-    AND a.employment_id=c.employment_id AND a.attendance_date=c.attendance_date AND a.attested_work_correction_id=c.id
-    AND a.check_in_at IS NULL AND a.check_out_at IS NULL AND a.worked_minutes IS NULL AND a.ot_minutes IS NULL
-    AND a.calc_trace IS NULL AND a.attested_work_context=attested.context_evidence AND app.attendance_workflow_active_write(a.xmin))
+   AND EXISTS(SELECT 1 FROM public.attendance anchor_day WHERE anchor_day.id=attested.attendance_id AND anchor_day.tenant_id=c.tenant_id
+    AND anchor_day.employment_id=c.employment_id AND anchor_day.attendance_date=c.attendance_date AND anchor_day.attested_work_correction_id=c.id
+    AND anchor_day.check_in_at IS NULL AND anchor_day.check_out_at IS NULL AND anchor_day.worked_minutes IS NULL AND anchor_day.ot_minutes IS NULL
+    AND anchor_day.calc_trace IS NULL AND anchor_day.attested_work_context=attested.context_evidence AND app.attendance_workflow_active_write(anchor_day.xmin))
    AND NOT EXISTS(SELECT 1 FROM public.attendance_punch p WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id
     AND p.attendance_date=c.attendance_date AND p.voided_at IS NULL);
  END IF;
