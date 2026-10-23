@@ -814,4 +814,49 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,accrual.id)))[0].status).toBe('reversed');
  });
 
+ it('serializes independent app reservations across overlapping source parents and releases coverage through the canonical owner',async()=>{
+  await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true);
+  const next=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+  // Distinct original captures, same employee, overlapping real millisecond geometry across
+  // two Attendance parents: 23:00–01:00 versus next-day00:30–02:30. No source restoration.
+  await capturedClock(f.employmentId,next,'in','00:30:00');await capturedClock(f.employmentId,next,'out','02:30:00');
+  const left=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:f.sourceDate}));
+  const right=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:next}));
+  if(!left?.calculation||!right?.calculation)throw Error('Expected both canonical policy parents');
+  expect(left.calculation.outcome).toBe('ready');expect(right.calculation.outcome).toBe('ready');
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:f.sourceDate.slice(0,7)});
+  let held!:()=>void,release!:()=>void,started!:(pid:number)=>void;
+  const heldPromise=new Promise<void>(done=>{held=done;}),releasePromise=new Promise<void>(done=>{release=done;}),
+   startedPromise=new Promise<number>(done=>{started=done;});
+  const first=withTenant(ctx,async tx=>{
+   const claim=await reserveOvertimeSettlementTx(tx,ctx,{employmentId:f.employmentId,date:f.sourceDate,mode:'cash',
+    calculationId:left.calculation!.id,payrollBatchId:batch.batchId});held();await releasePromise;return claim;
+  });
+  let second:Promise<{ok:true}|{ok:false;error:unknown}>|undefined;
+  try{
+   await Promise.race([heldPromise,first.then(()=>{throw Error('First reservation ended before its hold');})]);
+   second=withTenant(ctx,async tx=>{
+    const [row]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];started(row.pid);
+    await reserveOvertimeSettlementTx(tx,ctx,{employmentId:f.employmentId,date:next,mode:'cash',
+     calculationId:right.calculation!.id,payrollBatchId:batch.batchId});
+   }).then(()=>({ok:true as const}),error=>({ok:false as const,error}));
+   const backend=await startedPromise,until=Date.now()+5000;let waited=false;
+   while(Date.now()<until){const rows=await owner.db.execute(sql`select wait_event_type from pg_stat_activity where pid=${backend}`);
+    if(rows[0]?.wait_event_type==='Lock'){waited=true;break;}await new Promise(done=>setTimeout(done,20));}
+   expect(waited).toBe(true);release();await first;
+   const outcome=await second;expect(outcome.ok).toBe(false);
+   if(outcome.ok)throw Error('Overlapping parent reservation unexpectedly succeeded');
+   const error=outcome.error as {cause?:{code?:string};code?:string};expect(error.cause?.code??error.code).toBe('23P01');
+  }finally{release();await Promise.allSettled([first,...(second?[second]:[])]);}
+  const active=await owner.db.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.tenantId,b.tenantId),sql`released_at IS NULL`));
+  expect(active).toHaveLength(1);expect(active[0]).toMatchObject({sourceId:left.source.id,coverageKind:'policyPhysical'});
+  await deleteDraftBatch(ctx,{batchId:batch.batchId});
+  expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,active[0].id)))[0].releasedAt).not.toBeNull();
+  const replacement=await createBatch(ctx,{companyId:b.companyId,payPeriod:f.sourceDate.slice(0,7)});
+  expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
+   expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
+   .toMatchObject({status:'transferred'});
+ });
+
 });
