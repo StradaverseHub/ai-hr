@@ -137,7 +137,7 @@ export function UserMenu({
         aria-controls={open ? menuId : undefined}
         aria-label={t('accountMenu')}
         data-tour="account"
-        className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-left transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+        className="flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-left transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
       >
         {named ? (
           <Avatar name={displayName} className="size-7" />

@@ -19,7 +19,7 @@ export function ThemeToggle() {
       type="button"
       aria-label={t("toggle")}
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
       {/* Render nothing until mounted to avoid a hydration icon flip. */}
       {!mounted ? (

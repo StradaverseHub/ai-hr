@@ -233,7 +233,7 @@ export function NotificationCenter({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
-        className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
+        className="relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
         {monolith ? (
           // The button's aria-label carries the full count; this text is its visible form.
