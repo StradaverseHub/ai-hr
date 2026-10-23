@@ -24,7 +24,7 @@ export function movementWorkbookLayout(type:MovementWorkbookType,resolve:Personn
  return columns;
 }
 export function movementTabNames(types:MovementWorkbookType[],resolve:PersonnelLabelResolver){
- const used=new Set(['instructions','lists','_meta']);return types.map(type=>{
+ const used=new Set(['instructions','reference','lists','_meta']);return types.map(type=>{
   const base=(type.label??resolve('people.detail.movement.eventType.'+type.behaviour,type.code)).replace(/[\[\]:*?\/\\]/g,' ').replace(/^'+|'+$/g,'').trim()||type.code;
   let name=base.slice(0,31),n=1;while(used.has(name.toLowerCase())){const suffix=' ('+(++n)+')';name=base.slice(0,31-suffix.length)+suffix;}used.add(name.toLowerCase());return name;
  });
