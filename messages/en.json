@@ -22651,7 +22651,8 @@
       "used": "This review is in use; retain its history.",
       "missing": "This review is unavailable or access was removed.",
       "system": "The change could not be saved. Reload and try again."
-    }
+    },
+    "unavailable": "Unavailable account · {id}"
   },
   "rewardsDeletion": {
     "view": "View",

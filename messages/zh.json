@@ -22651,7 +22651,8 @@
       "used": "此评审已在使用，须保留历史。",
       "missing": "评审不可用或权限已被移除。",
       "system": "无法保存更改。请重新加载后再试。"
-    }
+    },
+    "unavailable": "不可用账户 · {id}"
   },
   "rewardsDeletion": {
     "view": "查看",

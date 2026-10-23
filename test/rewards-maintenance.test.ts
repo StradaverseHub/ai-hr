@@ -110,6 +110,34 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         await expect(preview({ userId: foreign, role: 'bu' })).rejects.toThrow(/active existing/);
         expect(await revision()).toBe(v);
     });
+    it('uses current workforce visibility for candidates, legacy writes and masked retained memberships', async () => {
+        const [foreignCompany] = await owner.db.insert(s.company).values({ tenantId: b.tenantId, legalName: 'Foreign Company' }).returning();
+        const [foreignDept] = await owner.db.insert(s.department).values({ tenantId: b.tenantId, companyId: foreignCompany.id, name: 'Foreign Department' }).returning();
+        const foreignHire = await hireEmployee(admin, { person: { fullName: 'Hidden Foreign Reviewer', primaryEmail: 'hidden@foreign.test' }, companyId: foreignCompany.id, departmentId: foreignDept.id, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
+        const [foreignEmployee] = await owner.db.select().from(s.employment).where(eq(s.employment.id, foreignHire.employmentId)).orderBy(asc(s.employment.id));
+        const foreignUser = await createAppUser(b.tenantId, foreignEmployee.personId, 'employee');
+        const scoped = await user('hr_admin');
+        await owner.db.update(s.roleAssignment).set({ companyId: b.companyId }).where(eq(s.roleAssignment.appUserId, scoped.userId!));
+        const companyAdmin = { ...scoped, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
+        await owner.db.insert(s.rewardMember).values({ tenantId: b.tenantId, unitId: id, userId: foreignUser, role: 'pbp' });
+        const summary = await rewardAccessAdministration(companyAdmin, [b.companyId, foreignCompany.id]);
+        expect(summary.users.some(u => u.id === foreignUser)).toBe(false);
+        expect(summary.members.find(m => m.userId === foreignUser)).toMatchObject({ name: null, email: null });
+        expect(JSON.stringify(summary)).not.toMatch(/Hidden Foreign Reviewer|hidden@foreign.test|Foreign Company/);
+        const change = { unitId: id, revision: await revision(), before: null, after: { userId: foreignUser, role: 'bu' } };
+        await expect(previewRewardAccessChange(companyAdmin, change)).rejects.toThrow(/active existing/);
+        await expect(setRewardMember(companyAdmin, id, await revision(), foreignUser, 'bu')).rejects.toThrow(/active existing/);
+        const removal = await previewRewardAccessChange(companyAdmin, { ...change, before: { userId: foreignUser, role: 'pbp' }, after: null });
+        const { digest, ...input } = removal;
+        await saveRewardAccessChange(companyAdmin, input, digest);
+        expect((await rewardAccessAdministration(companyAdmin, [b.companyId])).members.some(m => m.userId === foreignUser)).toBe(false);
+    });
+    it('permits a readable group reviewer without employment while rejecting a personless new grant', async () => {
+        const summary = await rewardAccessAdministration(admin, [b.companyId]);
+        expect(summary.users.some(u => u.id === reviewer.userId)).toBe(true);
+        await save(await preview({ userId: reviewer.userId!, role: 'gr' }));
+        await expect(preview({ userId: admin.userId!, role: 'payroll' })).rejects.toThrow(/active existing/);
+    });
     it('shows disabled accounts and locked assignments without permitting changes', async () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'pbp');
         await owner.db.update(s.appUser).set({ archivedAt: new Date() }).where(eq(s.appUser.id, reviewer.userId!));

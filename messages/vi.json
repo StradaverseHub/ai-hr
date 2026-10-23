@@ -22651,7 +22651,8 @@
       "used": "Kỳ xét duyệt đang được sử dụng; giữ lại lịch sử.",
       "missing": "Kỳ xét duyệt không khả dụng hoặc quyền đã bị gỡ.",
       "system": "Không thể lưu thay đổi. Tải lại và thử lại."
-    }
+    },
+    "unavailable": "Tài khoản không khả dụng · {id}"
   },
   "rewardsDeletion": {
     "view": "Xem",

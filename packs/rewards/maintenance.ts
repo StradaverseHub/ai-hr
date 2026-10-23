@@ -16,10 +16,13 @@ const uuid = z.uuid();
 const memberSchema = z.object({ userId: uuid, role: z.enum(rewardRoles) }).strict();
 export const rewardAccessChangeSchema = z.object({ unitId: uuid, revision: z.number().int().positive(), before: memberSchema.nullable(), after: memberSchema.nullable() }).strict().refine(v => v.before || v.after);
 export type RewardAccessChange = z.infer<typeof rewardAccessChangeSchema>;
-async function admin(tx: Tx, companyId: string) { const [r] = await tx.execute<{
-    ok: boolean;
-}>(sql `select app.reward_admin(${companyId}::uuid) as ok`); if (!r?.ok)
-    throw new RewardMaintenanceError('scope'); }
+async function admin(tx: Tx, companyId: string) {
+    const [r] = await tx.execute<{
+        ok: boolean;
+    }>(sql `select app.reward_admin(${companyId}::uuid) as ok`);
+    if (!r?.ok)
+        throw new RewardMaintenanceError('scope');
+}
 async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
     const q = tx.select().from(rewardUnit).where(and(eq(rewardUnit.id, uuid.parse(id)), isNull(rewardUnit.deletedAt)));
     const [unit] = await (lock ? q.for('update') : q);
@@ -32,6 +35,9 @@ async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
         throw new RewardMaintenanceError('locked');
     return unit;
 }
+// General person RLS has a legacy any-admin read arm. Candidate names and new grants instead
+// use the canonical workforce read policy, which retains group-wide unassigned-person access.
+const visibleCandidate = sql<boolean> `app.access_workforce_person(${person.id}, 'workforce.view')`;
 const pairKey = (m: {
     userId: string;
     role: string;
@@ -43,7 +49,7 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
         throw new RewardMaintenanceError('membership');
     const next = current.filter(m => !input.before || pairKey(m) !== pairKey(input.before));
     if (input.after) {
-        const [account] = await tx.select({ id: appUser.id }).from(appUser).where(and(eq(appUser.id, input.after.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).for('share');
+        const [account] = await tx.select({ id: appUser.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.id, input.after.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).for('share');
         if (!account)
             throw new RewardMaintenanceError('account');
         if (next.some(m => pairKey(m) === pairKey(input.after!)))
@@ -84,16 +90,22 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
         const reviews = await tx.select({ id: rewardUnit.id, companyId: company.id, company: company.legalName, businessUnitId: businessUnit.id, unit: sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, cycleId: rewardCycle.id, cycle: rewardCycle.name, year: rewardCycle.year, kind: rewardUnit.kind, status: rewardUnit.status, revision: rewardUnit.revision }).from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(and(inArray(rewardUnit.companyId, ids), isNull(rewardUnit.deletedAt), sql `app.reward_admin(${rewardUnit.companyId})`)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(company.legalName), asc(businessUnit.code), asc(rewardUnit.id));
         if (!reviews.length)
             return { reviews: [], members: [], users: [] };
-        const members = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, eq(person.id, appUser.personId)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
-        const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
+        const members = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
+        const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
         return { reviews, members, users };
     });
 }
 export type RewardAccessAdministration = Awaited<ReturnType<typeof rewardAccessAdministration>>;
 export type RewardDeletionReason = 'locked' | 'recommendations' | 'decisions' | 'children' | 'payroll' | 'external' | 'deleted';
-export async function rewardDeletionEligibility(ctx: SessionContext, unitId: string) { return withRewardsTenant(ctx, async (tx) => { await adminUnit(tx, unitId); const [r] = await tx.execute<{
-    reason: RewardDeletionReason | null;
-}>(sql `select app.reward_deletion_reason(${unitId}::uuid) as reason`); return r.reason; }); }
+export async function rewardDeletionEligibility(ctx: SessionContext, unitId: string) {
+    return withRewardsTenant(ctx, async (tx) => {
+        await adminUnit(tx, unitId);
+        const [r] = await tx.execute<{
+            reason: RewardDeletionReason | null;
+        }>(sql `select app.reward_deletion_reason(${unitId}::uuid) as reason`);
+        return r.reason;
+    });
+}
 export async function deleteRewardReview(ctx: SessionContext, unitId: string, revision: number, confirmation: string) {
     uuid.parse(unitId);
     z.number().int().positive().parse(revision);

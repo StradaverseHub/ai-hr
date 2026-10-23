@@ -22651,7 +22651,8 @@
       "used": "Semakan sedang digunakan; kekalkan sejarahnya.",
       "missing": "Semakan tidak tersedia atau akses dibuang.",
       "system": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi."
-    }
+    },
+    "unavailable": "Akaun tidak tersedia · {id}"
   },
   "rewardsDeletion": {
     "view": "Lihat",
