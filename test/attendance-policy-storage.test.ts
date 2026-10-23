@@ -395,8 +395,9 @@ describe('immutable non-payable policy part storage',()=>{
    if(proof.state!=='prepared'||!proof.countAttribution)throw Error('Expected bound rounded source');
    if(kind==='count')proof.countAttribution.parts[0].roundedMinutes++;
    if(kind==='date'){
-    const part=parts[0].durationEvidence as {roundingCountAttributions:{calendarDate:string}[]};
-    part.roundingCountAttributions[0].calendarDate=day(3);
+    const attributions=parts[0].durationEvidence.roundingCountAttributions;
+    if(!Array.isArray(attributions)||!attributions[0]||typeof attributions[0]!=='object')throw Error('Expected dated rounded count attribution');
+    attributions[0].calendarDate=day(3);
    }
    if(kind==='anchor'){
     const proposal=structuredClone(snapshot.policyExecutionProposal);
