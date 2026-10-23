@@ -245,7 +245,9 @@ Link domain registrations.
 Employees scan the QR with their phone's camera, tap a shared setup link, or paste it into
 **Connect to your company → Paste setup link**. The app verifies the signature with its installed trust
 anchors and presents the workplace, server and organization for review. Nothing is saved or signed out
-until confirmation. Confirmation clears the old session, private drafts, files and device registration
+until confirmation. Reviewing a link temporarily closes private screens while retaining the session,
+employee drafts and attachments. Cancel and Android Back restore them; confirmation clears the old
+session, private drafts, files and device registration
 before changing workplaces. A malformed, expired or unapproved setup is refused. Organizations on one
 cloud URL get separate credential storage namespaces, even when usernames match. Only one workplace
 session is active at a time.
@@ -270,7 +272,7 @@ employments within the resolved tenant; a new cross-tenant identity-adoption flo
 Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to the
 HR server (and a separate identity server only when using a legacy adapter). Private certificate authorities require OS/customer provisioning and verification on each
 supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
-QR scanning and a hosted company directory are not part of this setup-file slice.
+QR scanning uses the phone’s camera and the HTTPS setup page; there is no in-app scanner or hosted company directory.
 
 ### Installable test builds
 

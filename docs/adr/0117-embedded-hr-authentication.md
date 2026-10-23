@@ -35,7 +35,8 @@ installation's public `/login/mobile-setup` page hands off through the existing 
 an explicit tap. This requires no central directory or per-client associated-domain app rebuild. The
 app verifies its installed signing anchors and asks the employee to review the workplace, server and
 organization before changing anything. A confirmation uses the existing session/file/device cleanup;
-cancelled or invalid setups do not change credentials or saved selection. A new incoming link cannot
+review retains the mounted session/draft providers while closing private screens. Cancel, including
+Android Back, preserves employee drafts and attachments as well as credentials and saved selection. A new incoming link cannot
 automatically select a different tenant. Organization-bound profiles add the organization to the
 credential namespace, preventing a shared cloud URL/profile ID from reopening another tenant's stored
 credentials. Login uses that signed organization with username/password and the normal MFA process.
