@@ -21,6 +21,14 @@ const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale
 beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.listAttendanceWorkflowSettings.mockResolvedValue([{ companyId, applicationType: 'irregularity', enabled: true }]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); });
 afterEach(cleanup);
 describe('workflow company navigation and scope', () => {
+  it('describes a saved named-person route with per-level guidance rather than legacy manager-only guidance', async () => {
+    service.getAttendanceWorkflow.mockResolvedValue({...row,routingVersion:4,cc:[],stages:[{name:'Level 1',mode:'all_required',sources:[{kind:'specific_employee',employmentIds:[other]}],hrAlternative:false}]});
+    service.attendanceApplicationFilterOptions.mockResolvedValue({...options,employees:[],approverEmployees:[{id:other,name:'Fictional named approver',employeeCode:'E00042'}]});
+    show(await ViewPage({params:Promise.resolve({lineageId})}));
+    expect(screen.getByText(/E00042 · Fictional named approver/)).toBeVisible();
+    expect(screen.getByText(en.attendanceWorkflow.v3.levelHelp)).toBeVisible();
+    expect(screen.queryByText(en.attendanceWorkflow.supportedApprovers)).not.toBeInTheDocument();
+  });
   it('lists each company once with counts, including a company without workflows', async () => {
     show(await Page({ searchParams: Promise.resolve({}) }));
     const rows = screen.getAllByRole('row'); expect(rows).toHaveLength(3);
