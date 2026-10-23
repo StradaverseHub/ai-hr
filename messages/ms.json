@@ -12366,7 +12366,6 @@
       "toggle": "Tukar tema"
     },
     "uiTheme": {
-
       "label": "Tema",
       "monolith": "Monolith",
       "classic": "Klasik",
@@ -16258,7 +16257,30 @@
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI",
-      "opportunities": "Peluang"
+      "opportunities": "Peluang",
+      "runDetails": {
+        "title": "Pelaksanaan orkestrasi terkini",
+        "recorded": "Direkodkan: {date}",
+        "version": "Harnes: {version}",
+        "steps": {
+          "observe": "Semak rekod sumber",
+          "readiness": "Peringatan kelengkapan",
+          "claims": "Saringan tuntutan",
+          "verify": "Semak semula rekod sumber"
+        },
+        "states": {
+          "succeeded": "Selesai tanpa ralat",
+          "failed": "Gagal",
+          "unknown": "Tidak direkodkan"
+        },
+        "outcomes": {
+          "succeeded": "Selesai",
+          "failed": "Gagal",
+          "unknown": "Penyelesaian belum disahkan"
+        },
+        "incomplete": "Sesetengah butiran pelaksanaan tidak direkodkan atau tidak dapat dibaca.",
+        "evidenceNote": "Langkah yang selesai tanpa ralat mungkin telah dimatikan atau tiada kerja untuk dilakukan. Hasil HR memerlukan bukti daripada sumber."
+      }
     },
     "corrections": {
       "employeeTitle": "Lengkapkan rekod anda",
@@ -21040,14 +21062,12 @@
     "photoAlreadyPending": "Foto sudah menunggu semakan. Tunggu keputusan sebelum menghantar foto lain.",
     "routingTypeMatched": "Pasangan pekerja/jenis permohonan sepadan",
     "routingTypeMissing": "Pasangan pekerja/jenis permohonan tanpa peraturan",
-
     "submitPhoto": "Hantar foto untuk kelulusan",
     "pendingPhoto": "Foto menunggu",
     "photoApprovalHelp": "Foto semasa kekal sehingga HR meluluskan. Keputusan dipaparkan dalam Permohonan perubahan saya.",
     "currentPhoto": "Foto semasa",
     "proposedPhoto": "Foto dicadangkan",
     "photoProposed": "Foto dihantar untuk kelulusan HR",
-
     "approvalRules": "Peraturan Kelulusan HR",
     "requestTypes": "Jenis permohonan",
     "fieldRequests": "Medan profil",
@@ -21058,11 +21078,9 @@
     "unavailableSelection": "Pilihan tidak tersedia — buang atau ganti",
     "noValidApprovers": "Tiada pelulus HR yang layak. Semak pekerjaan aktif, log masuk dan kuasa syarikat.",
     "noMatches": "Tiada pilihan sepadan",
-
     "tabPermission": "Akses tab",
     "sectionPermission": "Akses bahagian",
     "groupPermissionHelp": "Had tab dan bahagian diutamakan. Boleh sunting mengikut tetapan medan; Lihat sahaja menghalang perubahan; Sembunyi membuang maklumat daripada Profil Saya.",
-
     "requestEdit": "Mohon untuk mengedit",
     "save": "Simpan perubahan",
     "cancel": "Batal",

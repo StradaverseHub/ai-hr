@@ -89,6 +89,19 @@ party, next action, explicit refresh and recorded observation time. Retain payro
 metrics in an expandable section. Keep agent configuration and approval actions in their existing
 governed screens. Show a visible count when the overview is limited to 50 issues.
 
+The work queue also projects the latest matching `orchestrator.pass-finished` receipt into expandable
+step details: source observation, readiness reminders, claims triage and source recheck, with its
+recorded time and harness version. This reads the existing event; it creates no second execution
+ledger. The existing administrative scope digest and tenant RLS constrain the read. Tied timestamps
+use event sequence as the deterministic tiebreaker. Only normalized statuses and a bounded version
+label reach the screen, never arbitrary event payloads or exception text.
+
+A recorded failure wins over a contradictory success flag. Missing, invalid or legacy partial
+metadata does not establish completion. A normally returned step may have been switched off or had
+no work; the screen must explain that execution status does not prove an HR outcome. The existing
+source-observation queue remains authoritative for verified closures. This is observability of the
+current deterministic harness, not the held action registry or durable acting-agent runtime.
+
 ## Harness engineering
 
 `core/orchestrator-harness.ts` versions the initial coordination policy. Deterministic replay scenarios

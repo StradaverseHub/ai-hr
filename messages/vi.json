@@ -12366,7 +12366,6 @@
       "toggle": "Chuyển giao diện"
     },
     "uiTheme": {
-
       "label": "Giao diện",
       "monolith": "Monolith",
       "classic": "Cổ điển",
@@ -16258,7 +16257,30 @@
       "shown": "Hiển thị {shown} trên {total} vấn đề.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
       "quality": "Chất lượng bảng lương và AI",
-      "opportunities": "Cơ hội"
+      "opportunities": "Cơ hội",
+      "runDetails": {
+        "title": "Lần điều phối gần nhất",
+        "recorded": "Đã ghi nhận: {date}",
+        "version": "Bộ điều phối: {version}",
+        "steps": {
+          "observe": "Kiểm tra hồ sơ nguồn",
+          "readiness": "Nhắc bổ sung thông tin",
+          "claims": "Sàng lọc yêu cầu hoàn phí",
+          "verify": "Kiểm tra lại hồ sơ nguồn"
+        },
+        "states": {
+          "succeeded": "Kết thúc bình thường",
+          "failed": "Thất bại",
+          "unknown": "Chưa ghi nhận"
+        },
+        "outcomes": {
+          "succeeded": "Đã hoàn thành",
+          "failed": "Thất bại",
+          "unknown": "Chưa xác nhận hoàn thành"
+        },
+        "incomplete": "Một số chi tiết thực thi chưa được ghi nhận hoặc không đọc được.",
+        "evidenceNote": "Bước kết thúc bình thường có thể đã bị tắt hoặc không có việc cần làm. Kết quả nhân sự cần bằng chứng từ hồ sơ nguồn."
+      }
     },
     "corrections": {
       "employeeTitle": "Hoàn thiện hồ sơ của bạn",
@@ -21040,14 +21062,12 @@
     "photoAlreadyPending": "Đã có ảnh đang chờ xem xét. Hãy đợi quyết định trước khi gửi ảnh khác.",
     "routingTypeMatched": "Cặp nhân viên/loại yêu cầu phù hợp",
     "routingTypeMissing": "Cặp nhân viên/loại yêu cầu thiếu quy tắc",
-
     "submitPhoto": "Gửi ảnh để phê duyệt",
     "pendingPhoto": "Ảnh đang chờ",
     "photoApprovalHelp": "Ảnh hiện tại được giữ đến khi HR phê duyệt. Xem quyết định trong Yêu cầu thay đổi của tôi.",
     "currentPhoto": "Ảnh hiện tại",
     "proposedPhoto": "Ảnh đề xuất",
     "photoProposed": "Đã gửi ảnh để HR phê duyệt",
-
     "approvalRules": "Quy tắc phê duyệt HR",
     "requestTypes": "Loại yêu cầu",
     "fieldRequests": "Trường hồ sơ",
@@ -21058,11 +21078,9 @@
     "unavailableSelection": "Lựa chọn không khả dụng — xóa hoặc thay thế",
     "noValidApprovers": "Không có người duyệt HR hợp lệ. Kiểm tra việc làm hiện tại, đăng nhập và quyền công ty.",
     "noMatches": "Không có lựa chọn phù hợp",
-
     "tabPermission": "Quyền truy cập thẻ",
     "sectionPermission": "Quyền truy cập phần",
     "groupPermissionHelp": "Giới hạn thẻ và phần được ưu tiên. Có thể sửa tuân theo từng trường; Chỉ xem ngăn thay đổi; Ẩn loại bỏ thông tin khỏi Hồ sơ của tôi.",
-
     "requestEdit": "Yêu cầu chỉnh sửa",
     "save": "Lưu thay đổi",
     "cancel": "Hủy",

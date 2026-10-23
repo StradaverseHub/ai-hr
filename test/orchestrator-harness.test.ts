@@ -1,12 +1,46 @@
 import { describe, expect, it, vi } from 'vitest';
 import { drainNotificationProjection, HR_HARNESS_VERSION, readinessTransition, runHarnessStep,
-  runOrchestrationPass, type OrchestrationPassTrace } from '../core/orchestrator-harness';
+  runOrchestrationPass, summarizeOrchestrationPass, type OrchestrationPassTrace } from '../core/orchestrator-harness';
 
 const passStages = ['observe', 'readiness', 'claims', 'verify', 'trace'] as const;
 // Every combination of successful, failed and uncertain steps, with no employee/provider data.
 const passScenarios = Array.from({ length: 2 ** passStages.length }, (_, mask) => {
   const failures = passStages.filter((_, bit) => (mask & (1 << bit)) !== 0);
   return { name: failures.length ? failures.join(' + ') : 'none', failures };
+});
+
+describe('recorded orchestration pass summary', () => {
+  const complete = { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } as const;
+  const unknown = { observe: 'unknown', readiness: 'unknown', claims: 'unknown', verify: 'unknown' } as const;
+
+  it('recognizes a complete receipt without projecting any source values', () => {
+    expect(summarizeOrchestrationPass({ harnessVersion: HR_HARNESS_VERSION, failed: false, steps: complete,
+      prompt: 'private source', employee: 'private name' })).toEqual({ harnessVersion: HR_HARNESS_VERSION, failed: false, steps: complete });
+  });
+  it.each([null, [], 4, 'private exception', { failed: false }, { failed: 'false', steps: [] }])(
+    'does not infer success from missing or malformed metadata: %j', payload => {
+      expect(summarizeOrchestrationPass(payload)).toEqual({ harnessVersion: null, failed: null, steps: unknown });
+    },
+  );
+  it('preserves a legacy failure and never lets a success flag hide a failed step', () => {
+    expect(summarizeOrchestrationPass({ failed: true })).toEqual({ harnessVersion: null, failed: true, steps: unknown });
+    expect(summarizeOrchestrationPass({ failed: false, steps: { ...complete, claims: 'failed' } })).toMatchObject({
+      failed: true, steps: { claims: 'failed' },
+    });
+  });
+  it('requires an explicit successful run receipt as well as successful steps', () => {
+    expect(summarizeOrchestrationPass({ steps: complete }).failed).toBeNull();
+    expect(summarizeOrchestrationPass({ failed: false, steps: complete }).failed).toBeNull();
+    expect(summarizeOrchestrationPass({ failed: true, steps: complete }).failed).toBe(true);
+  });
+  it('discards unrecognized versions, step text and extra private payloads', () => {
+    const result = summarizeOrchestrationPass({ harnessVersion: 'private employee payload', failed: 'private exception',
+      steps: { observe: 'private instruction', claims: 'failed' }, response: 'private response' });
+    expect(result).toEqual({ harnessVersion: null, failed: true,
+      steps: { observe: 'unknown', readiness: 'unknown', claims: 'failed', verify: 'unknown' } });
+    expect(JSON.stringify(result)).not.toContain('private');
+    expect(summarizeOrchestrationPass({ harnessVersion: 'readiness-v1' }).harnessVersion).toBe('readiness-v1');
+  });
 });
 
 describe('production orchestration pass replay', () => {

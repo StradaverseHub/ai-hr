@@ -12366,7 +12366,6 @@
       "toggle": "切换主题"
     },
     "uiTheme": {
-
       "label": "主题",
       "monolith": "Monolith",
       "classic": "经典",
@@ -16258,7 +16257,30 @@
       "shown": "显示 {total} 个问题中的 {shown} 个。",
       "verificationNote": "关闭表示检查时相关信息已填写或已不再需要。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
       "quality": "薪资与 AI 质量",
-      "opportunities": "机会"
+      "opportunities": "机会",
+      "runDetails": {
+        "title": "最近一次协调执行",
+        "recorded": "记录时间：{date}",
+        "version": "运行框架：{version}",
+        "steps": {
+          "observe": "检查源记录",
+          "readiness": "资料补全提醒",
+          "claims": "报销初步检查",
+          "verify": "复查源记录"
+        },
+        "states": {
+          "succeeded": "正常结束",
+          "failed": "失败",
+          "unknown": "未记录"
+        },
+        "outcomes": {
+          "succeeded": "已完成",
+          "failed": "失败",
+          "unknown": "完成情况未确认"
+        },
+        "incomplete": "部分执行详情未记录或无法读取。",
+        "evidenceNote": "正常结束的步骤可能已关闭或没有待处理工作。人力资源事项的结果仍须由源记录证据确认。"
+      }
     },
     "corrections": {
       "employeeTitle": "完善您的资料",
@@ -21040,14 +21062,12 @@
     "photoAlreadyPending": "已有照片等待审批。请等待决定后再提交。",
     "routingTypeMatched": "匹配的员工／申请类型组合",
     "routingTypeMissing": "缺少规则的员工／申请类型组合",
-
     "submitPhoto": "提交照片审批",
     "pendingPhoto": "待审批照片",
     "photoApprovalHelp": "HR 批准前保留当前照片。可在“我的变更申请”查看决定。",
     "currentPhoto": "当前照片",
     "proposedPhoto": "拟用照片",
     "photoProposed": "照片已提交 HR 审批",
-
     "approvalRules": "HR 审批规则",
     "requestTypes": "申请类型",
     "fieldRequests": "资料字段",
@@ -21058,11 +21078,9 @@
     "unavailableSelection": "选项不可用，请移除或替换",
     "noValidApprovers": "没有符合条件的 HR 审批人。请检查在职状态、登录和公司权限。",
     "noMatches": "没有匹配的选项",
-
     "tabPermission": "页签权限",
     "sectionPermission": "分组权限",
     "groupPermissionHelp": "页签和分组限制优先。可编辑遵循各字段设置；只读禁止修改；隐藏会从“我的资料”移除信息。",
-
     "requestEdit": "申请编辑",
     "save": "保存更改",
     "cancel": "取消",

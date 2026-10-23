@@ -7,6 +7,7 @@ import { reconcileReadinessCases, orchestrationQueue, runHrOrchestrator } from '
 import { sweepReadinessNudges } from '../core/readiness-nudge';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotifications } from '../core/notifications';
+import { digestOf } from '../core/agent-proposal';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 describe('central HR orchestrator', () => {
@@ -109,7 +110,39 @@ describe('central HR orchestrator', () => {
       { role: 'hr_admin', companyId: null }, { role: 'employee', companyId: null },
     ] };
     expect((await orchestrationQueue(reader)).lastRun?.failed).toBe(false);
+    expect((await orchestrationQueue(reader)).lastRun?.steps).toEqual({
+      observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded',
+    });
     expect((await orchestrationQueue({ ...adminCtx(base), grants: [{ role: 'super_admin', companyId: null }] })).observedAt).not.toBeNull();
+  });
+
+  it('keeps pass receipts scoped to the matching administrative authority and tenant', async () => {
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    await runHrOrchestrator(adminCtx(base));
+    expect((await orchestrationQueue(adminCtx(base))).lastRun).not.toBeNull();
+    const scoped = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: base.companyId }] };
+    // A tenant-wide pass exists, but is not a receipt for this company-scoped observer.
+    expect((await orchestrationQueue(scoped)).lastRun).toBeNull();
+    await runHrOrchestrator(scoped);
+    expect((await orchestrationQueue(scoped)).lastRun?.failed).toBe(false);
+    const other = await seedBase();
+    expect((await orchestrationQueue(adminCtx(other))).lastRun).toBeNull();
+  });
+
+  it('uses the latest tied receipt and safely projects malformed metadata without source text', async () => {
+    const at = new Date();
+    const event = { tenantId: base.tenantId, aggregateType: 'hr_orchestrator', aggregateId: base.tenantId,
+      eventType: 'orchestrator.pass-finished', actorType: 'agent' as const, occurredAt: at };
+    const scopeDigest = digestOf(['all-employments']);
+    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, harnessVersion: 'readiness-v2', failed: false,
+      steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } } });
+    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, harnessVersion: 'private source text',
+      failed: 'private exception', steps: { claims: 'private instruction' }, prompt: 'private prompt' } });
+    const view = await orchestrationQueue(adminCtx(base));
+    expect(view.lastRun).toEqual({ at, harnessVersion: null, failed: null,
+      steps: { observe: 'unknown', readiness: 'unknown', claims: 'unknown', verify: 'unknown' } });
+    expect(JSON.stringify(view.lastRun)).not.toContain('private');
   });
 
   it('a failed specialist does not suppress verification and is recorded as failed', async () => {
