@@ -1,3 +1,4 @@
+import type {PolicyFinancialContract,PolicyFinancialDurationContract} from './policy-financial-contract';
 /** Bind canonical input authority once. Public previews never mint actual recording handles. */
 import type {SessionContext, Tx} from '../../db/client';
 import {actorOf, appendEvent} from '../../db/events';
@@ -33,9 +34,9 @@ async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutco
     await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
     return;
   }
-  // Retaining a dated-policy identity is not complete execution or financial approval. Keep the
-  // existing unresolved-coverage fence until the staged policy owner can produce those proofs.
-  const marker = result.policyRevisionId?{status:'refused',reason:'sourceUnavailable'} as const:
+  // A selected policy alone cannot establish coverage. Complete independently replayed duration
+  // can mark its stored source as recorded even if the separate cash contract is unavailable.
+  const marker = result.policyRevisionId&&result.policyFinancialDurationContract?.state!=='prepared'?{status:'refused',reason:'sourceUnavailable'} as const:
     {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
   await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,dayId));
 }
@@ -82,7 +83,7 @@ export async function overtimeSourceRevisionTx(tx: Tx, ctx: SessionContext, p: {
   return row ?? null;
 }
 
-export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null};
+export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null;policyFinancial?:PolicyFinancialContract;policyDuration?:PolicyFinancialDurationContract};
 /** Immutable evidence is validated structurally and bound to actual stored identities, never replayed
  * against a current definition merely to explain an old amount. */
 export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string; revisionId?: string}): Promise<OvertimePatternCalculationReview | null> {
@@ -92,6 +93,15 @@ export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionConte
   if (!calculation) return {sourceId: source.id, sourceRevision: source.revision, calculationId: null, status: null, durationStatus: null, approvalStatus: null, evaluation: null, duration: null, recordedAt: null};
   const stored = evidence?.evidence;
   const wrapper = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored as Record<string, unknown> : null;
+  if(calculation.bindingKind==='attendanceGroupPolicy'){
+    // readOvertimeCalculationTx already independently validated the entire historical policy
+    // parent, duration/cash contracts, every dated part and every persisted line.
+    return {sourceId:source.id,sourceRevision:source.revision,calculationId:calculation.id,
+      status:calculation.outcome,durationStatus:calculation.durationOutcome,approvalStatus:calculation.approvalStatus,
+      evaluation:null,duration:null,recordedAt:calculation.createdAt.toISOString(),
+      policyFinancial:wrapper?.policyFinancialContract as PolicyFinancialContract|undefined,
+      policyDuration:wrapper?.policyFinancialDurationContract as PolicyFinancialDurationContract|undefined};
+  }
   const evaluation = parseRecordedOvertimeEvaluation(wrapper?.evaluation);
   const duration = parseRecordedOvertimeDurationEvaluation(wrapper?.duration);
   // An unresolved assignment has a recorded refusal/resolution but no selected formula evaluation.

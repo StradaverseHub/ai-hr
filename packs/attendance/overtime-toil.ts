@@ -36,14 +36,14 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   const trace=day?.calcTrace as unknown;
   const object=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
   const marker=object(trace)&&object(trace.overtimePattern)?trace.overtimePattern:null;
-  if(marker?.status==='refused'&&marker.reason==='sourceUnavailable')unavailable();
   const existing=await readOvertimeSettlementForDayTx(tx,ctx,p);
-  if(!existing){if(lockedSource||marker?.status==='recorded')unavailable();return {kind:'legacy'};}
+  if(!existing){if(lockedSource||marker?.status==='recorded'||marker?.status==='refused'&&marker.reason==='sourceUnavailable')unavailable();return {kind:'legacy'};}
   if(!lockedSource||existing.source.id!==lockedSource.id)unavailable();
   if(existing.settlement?.mode==='cash')throw new OvertimeToilEligibilityError('This overtime day is already reserved for cash. Release its unfinalized Payroll contribution before electing Leave Credit.','cashConflict');
   if(!existing.source.currentCalculationId){if(marker?.status==='recorded')unavailable();return {kind:'legacy'};}
   const policy=await readOvertimePolicyDurationTx(tx,ctx,p);
   if(policy)return resolvePolicyToilDurationTx(tx,ctx,p,policy,day);
+  if(marker?.status==='refused'&&marker.reason==='sourceUnavailable')unavailable();
   const stored=await readOvertimeDurationDefinitionTx(tx,ctx,p);
   if(!stored||stored.source.id!==existing.source.id||stored.calculation.id!==existing.source.currentCalculationId||stored.calculation.durationOutcome!=='ready'||!stored.calculation.durationInputDigest)unavailable();
   const snapshot=await canonicalOvertimeToilInputTx(tx,ctx,p),calculation=stored.calculation,source=stored.source;

@@ -1,3 +1,8 @@
+import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,generatePayslips,deleteDraftBatch} from '../packs/payroll/service';
+import {setCompensation} from '../core/comp';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {requirePackFor} from '../localization/registry';
+import {accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
 import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
 import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
 import {recordedAttendancePolicyProposalPartsMatch} from '../packs/attendance/policy-proposal-parts';
@@ -7,8 +12,8 @@ import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../
 import {attendancePolicyPricingProposal} from '../packs/attendance/policy-pricing-proposal';
 import {attendancePolicyDurationReplay,attendancePolicyCurrentDurationMatches,attendancePolicyIndependentDurationReplay,type IndependentPolicyDurationSource} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/policy-formula-source';
-/** Development storage probes, not execution/approval/Payroll acceptance. SQL0590 is still unshipped.
- * Only the non-payable staged contract is allowed; no test turns proposal arithmetic into money. */
+/** Development canonical policy storage and financial integration regressions. SQL0590 remains
+ * unshipped; full release, browser and current Board2 union evidence are separate requirements. */
 import {randomUUID,createHash} from 'node:crypto';
 import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
@@ -22,7 +27,7 @@ import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/a
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,setAttendancePolicy} from '../packs/attendance/service';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
@@ -34,14 +39,19 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
  const shift=await createShift(ctx,{code:'POLICY_'+randomUUID().slice(0,6),name:'Fictional after-shift storage fixture',startTime:'09:00',endTime:'18:00',
   breakMinutes:0,weeklyPattern:[1,2,3,4,5,6,7],ruleId});
  await assignDefaultShift(ctx,{employmentId:worker.employmentId,shiftId:shift.id});
- const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
+ let earning:{id:string};
+ if(financial){
+  await setCompensation(ctx,{employmentId:worker.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:day(-10)});
+  const pack=requirePackFor('MY'),seed=pack.payComponents.defaults.find(row=>row.code===pack.payComponents.backfillCodes.overtime)!;
+  earning=await createPayComponent(ctx,{...seed,code:'POLICY_OT',name:'Fictional policy earning',label:'Fictional policy earning'});
+ }else [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
  const definition=prepareOvertimeStarter('ot15','day','earliest');definition.currency={code:'MYR',minorScale:2};
  definition.eligibility={id:'eligible',type:'constant',value:true};definition.rates[0].when={id:'rate_eligible',type:'constant',value:true};
  const tier=definition.rates[0].tiers[0];tier.mapping={earningItemId:earning.id,currency:'MYR'};
@@ -86,10 +96,10 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
    and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
  }
- const sourceOffset=currentManual?0:2;
- await capturedClock(worker.employmentId,day(sourceOffset),'in','23:50:00',day(sourceOffset),captureMillisecond);
- await capturedClock(worker.employmentId,day(sourceOffset),'out','00:10:00',day(sourceOffset+1),captureMillisecond);
- return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy};
+ const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
+ await capturedClock(worker.employmentId,day(sourceOffset),'in',financial?'23:00:00':'23:50:00',day(sourceOffset),captureMillisecond);
+ await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?'01:00:00':'00:10:00',day(sourceOffset+1),captureMillisecond);
+ return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset)};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 async function header(tx:Tx,f:Fixture,count:number,patch:Partial<typeof s.attendanceOvertimeCalculation.$inferInsert>={}){
@@ -107,7 +117,7 @@ function part(f:Fixture,calculationId:string,sequence=0):typeof s.attendanceOver
   durationEvidence:{authority:'proposalOnly',steps:[]}};
 }
 describe('immutable non-payable policy part storage',()=>{
- it('reads policy TOIL duration without salary or cash earning mappings and retains the settlement refusal',async()=>{
+ it('reads current policy TOIL source without salary or cash earning mappings',async()=>{
   const f=await fixture('auto');await setModule(b.tenantId,'toil','active');const actor=adminCtx(b);
   const forbidden:string[]=[];let reads=0,formulaStateReads=0;
   await withTenant(actor,async tx=>{
@@ -125,7 +135,8 @@ describe('immutable non-payable policy part storage',()=>{
     };
     const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
    }}) as Tx;
-   await expect(canonicalOvertimeToilInputTx(guarded,actor,{employmentId:f.employmentId,date:day(2)})).rejects.toThrow('Recorded overtime inputs are unavailable for this employee and date.');
+   const snapshot=await canonicalOvertimeToilInputTx(guarded,actor,{employmentId:f.employmentId,date:day(2)});
+   expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:20});
   });
   expect(reads).toBeGreaterThan(0);expect(formulaStateReads).toBeGreaterThan(0);expect(forbidden).toEqual([]);
  });
@@ -262,7 +273,7 @@ describe('immutable non-payable policy part storage',()=>{
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyDurationFormulaInput).toEqual(snapshot.policyDurationFormulaInput);
   expect(reviewed?.evidence?.evidence.policyDurationReplay).toEqual(proof);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:state==='known'?'ready':'refused',transferable:false});
   expect(reviewed?.lines).toEqual([]);
  });
 
@@ -285,7 +296,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(reviewed?.policyParts).toHaveLength(2);
   expect(reviewed?.evidence?.evidence.policyDurationReplay).toEqual(attendancePolicyDurationReplay(snapshot));
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(attendancePolicyCashReplay(snapshot));
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
+  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'ready',transferable:false});
   expect(reviewed?.lines).toEqual([]);
  });
 
@@ -316,7 +327,7 @@ describe('immutable non-payable policy part storage',()=>{
   const altered=structuredClone(reviewed.evidence);if(!altered||!reviewed.policyParts)throw Error('Expected complete stored evidence');
   altered.evidence.policyCapturedCoverage=changed;
   expect(recordedAttendancePolicyProposalPartsMatch(reviewed.source,reviewed.calculation,altered,reviewed.policyParts)).toBe(false);
-  expect(reviewed.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});expect(reviewed.lines).toEqual([]);
+  expect(reviewed.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});expect(reviewed.lines).toHaveLength(2);
  });
 
  it.each(['capture','boundary','count','missingClock'] as const)('refuses forged %s capture evidence at actual deferred app-write commit',async kind=>{
@@ -330,6 +341,9 @@ describe('immutable non-payable policy part storage',()=>{
    const {saved}=await header(tx,f,original.policyParts!.length,{inputDigest:original.calculation!.inputDigest,
     approvalDigest:original.calculation!.approvalDigest,referenceDigest:original.calculation!.referenceDigest});attempted=saved.id;
    const evidence=structuredClone(original.evidence!);
+   // This independent captured-source forgery remains a refused structural parent, so it
+   // does not claim a ready financial contract copied from a different calculation.
+   delete evidence.evidence.policyFinancialContract;delete evidence.evidence.policyFinancialDurationContract;
    const proof=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
     sourceId:saved.sourceId,calculationId:saved.id,date:p.date},await canonicalOvertimeInputTx(tx,ctx,p));
    if(proof.state!=='prepared')throw Error('Expected original captured geometry');
@@ -408,8 +422,8 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional current Manual count replay'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});
+  expect(reviewed?.lines.length).toBeGreaterThan(0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
  it.each(['preApproved','intersect'] as const)('replays a real approved %s plan against its exact policy across a later unrelated epoch',async autoMethod=>{
@@ -445,8 +459,8 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional complete approved plan replay'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});
+  expect(reviewed?.lines.length).toBeGreaterThan(0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
  it.each(['auto','manual'] as const)('records %s policy approval requirements independently of legacy scalar status',async approval=>{
@@ -472,8 +486,8 @@ describe('immutable non-payable policy part storage',()=>{
   await withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p),source=await lockOvertimeSourceTx(tx,ctx,p);
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional exact policy approval status'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
-  expect(reviewed?.calculation).toMatchObject({approvalStatus:approval==='auto'?'notRequired':'unknown',outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({approvalStatus:approval==='auto'?'notRequired':'unknown',outcome:approval==='auto'?'ready':'refused',durationOutcome:approval==='auto'?'ready':'refused',transferable:approval==='auto'});
+  expect(reviewed?.lines.length).toBe(approval==='auto'?2:0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
  it.each(['cap','dayMapping'] as const)('prices whole-parent %s once across dated child allocations',async moneyScope=>{
@@ -493,8 +507,8 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:source.revision,reason:'Fictional one-parent money scope'})).toMatchObject({status:'recorded'});});
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});
+  expect(reviewed?.lines.length).toBeGreaterThan(0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
  it.each([
@@ -521,11 +535,11 @@ describe('immutable non-payable policy part storage',()=>{
   const reviewed=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   expect(reviewed?.evidence?.evidence.policyPricingProposal).toEqual(pricing);
   expect(reviewed?.evidence?.evidence.policyCashReplay).toEqual(cash);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});
+  expect(reviewed?.lines.length).toBeGreaterThan(0);expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
 
- it('records and replays exact central pricing for both dated parts without enabling payment',async()=>{
+ it('records and replays exact central pricing and owned lines for both dated parts',async()=>{
   const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
   const pricing=attendancePolicyPricingProposal(snapshot);
@@ -551,8 +565,8 @@ describe('immutable non-payable policy part storage',()=>{
   const changed=structuredClone(snapshot);changed.referenceDigest='8'.repeat(64);
   expect(attendancePolicyPricingProposal(changed)).toEqual(pricing);
   expect(attendancePolicyCurrentCashMatches(changed,cash)).toBe(false);
-  expect(reviewed?.calculation).toMatchObject({outcome:'refused',durationOutcome:'refused',transferable:false});
-  expect(reviewed?.lines).toEqual([]);
+  expect(reviewed?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true});
+  expect(reviewed?.lines).toHaveLength(2);
  });
 
  it('records a complete proposal part set atomically through the existing parent calculation writer',async()=>{
@@ -686,17 +700,17 @@ describe('immutable non-payable policy part storage',()=>{
   const targetId=randomUUID();const reservation:Parameters<typeof reserveOvertimeSettlementTx>[2]=mode==='cash'?{...p,mode,calculationId:current.calculation.id,payrollBatchId:targetId}
    :{...p,mode,toilAccrualId:targetId};
   await expect(withTenant(ctx,tx=>reserveOvertimeSettlementTx(tx,ctx,reservation))).rejects.toMatchObject({code:'unavailable',
-   message:'Policy overtime cannot settle before complete execution, approval and independent financial replay.'});
+   message:mode==='cash'?'Only a complete payable policy parent may settle in cash.':'The policy duration is not ready.'});
   let sqlError:unknown;
   try{await withTenant(ctx,tx=>tx.insert(s.overtimeSourceSettlement).values({tenantId:b.tenantId,companyId:b.companyId,sourceId:current.source.id,
    mode,calculationId:mode==='cash'?current.calculation!.id:null,ownerReference:{type:mode==='cash'?'payroll_batch':'toil_accrual',id:targetId},
    payrollBatchId:mode==='cash'?targetId:null,toilAccrualId:mode==='toil'?targetId:null}));}catch(error){sqlError=error;}
   const outer=sqlError as {cause?:{code?:unknown;message?:unknown}}|undefined;
   const cause=(outer?.cause??sqlError) as {code?:unknown;message?:unknown}|undefined;
-  expect(cause?.code).toBe('23514');expect(String(cause?.message)).toContain('Policy overtime settlement remains unavailable before complete execution and independent replay');
+  expect(cause?.code).toBe('23514');expect(String(cause?.message)).toContain('Complete current policy duration and approval required');
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,current.source.id))).toEqual([]);
  });
- it('refuses a payable policy header while execution receipts and financial replay are not implemented',async()=>{
+ it('refuses a payable policy header without its complete execution and financial evidence',async()=>{
   const f=await fixture();
   await expect(withTenant(ctx,tx=>header(tx,f,0,{outcome:'ready',durationOutcome:'ready',durationInputDigest:'d'.repeat(64),
    approvalStatus:'approved',transferable:true,payableNumerator:'20',payableDenominator:'1'}))).rejects.toThrow();
@@ -754,6 +768,50 @@ describe('immutable non-payable policy part storage',()=>{
   expect(current).toMatchObject({kind:'formula',minutes:20,afterShiftMinutes:20,recordedWorkedDayKind:'workday',
    audit:{datedAllocations:[{date:day(2),minutes:10,afterShiftMinutes:10},{date:day(3),minutes:10,afterShiftMinutes:10}]}});
 
+ });
+
+ it('transfers an actual split policy parent into Payroll once and generates the canonical payslip',async()=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!read?.calculation)throw Error('Expected complete policy parent');
+  expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'120'});
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+  const transfer={...p,expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,
+   batchId:batch.batchId,reason:'Fictional full current policy Payroll flow'};
+  const first=await transferOvertimePatternToPayroll(ctx,transfer),retry=await transferOvertimePatternToPayroll(ctx,transfer);
+  expect(first.status).toBe('transferred');expect(retry).toMatchObject({status:'unchanged',settlementId:first.settlementId});
+  const cash=await withTenant(ctx,tx=>readPayrollOvertimePatternCashTx(tx,ctx,{batchId:batch.batchId}));
+  expect(cash.lines.map(row=>({date:row.date,amount:row.amountMinorUnits}))).toEqual([
+   {date:p.date,amount:'1800'},{date:new Date(Date.parse(p.date+'T00:00:00Z')+86400000).toISOString().slice(0,10),amount:'1800'}]);
+  await generatePayslips(ctx,{batchId:batch.batchId});
+  const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
+  expect(slip.overtimePay).toBe('36.00');
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,read.source.id),sql`released_at IS NULL`))).toHaveLength(1);
+ });
+ it('banks actual policy TOIL under its existing credit owner, excludes cash, and releases on canonical reversal',async()=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  await accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date});
+  const [accrual]=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId));
+  expect(accrual).toMatchObject({otMinutes:120,workedDayKind:'workday',daysCredited:'1.00',status:'active'});
+  await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow();
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation)throw Error('Expected current parent');
+  const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,read.source.id));
+  expect(claim).toMatchObject({mode:'toil',toilAccrualId:accrual.id,coverageCalculationId:read.calculation.id,coverageKind:'policyPhysical'});
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+  await expect(transferOvertimePatternToPayroll(ctx,{...p,expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,
+   batchId:batch.batchId,reason:'Fictional cash must refuse active TOIL'})).rejects.toThrow();
+  await deleteDraftBatch(ctx,{batchId:batch.batchId});
+  await reverseLeaveCredit(ctx,{accrualId:accrual.id,reason:'Fictional reviewed credit reversal'});
+  const [released]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id));
+  expect(released.releasedAt).not.toBeNull();
+  expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,accrual.id)))[0].status).toBe('reversed');
  });
 
 });
