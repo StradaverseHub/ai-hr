@@ -919,4 +919,23 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.tenantId,b.tenantId))).toEqual([]);
  });
 
+ it('refuses an oversized complete retained witness before any calculation header or line can be written',async()=>{
+  const f=await fixture('auto','12'),p={employmentId:f.employmentId,date:day(2)};
+  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!before?.calculation)throw Error('Expected actual retained source');
+  // Deliberately injected trusted-reader metadata tests the storage refusal boundary only;
+  // it does not claim a new current source capability or a genuine large payroll fixture.
+  const reader:typeof canonicalOvertimeInputTx=async(tx,actor,input)=>{
+   const snapshot=await canonicalOvertimeInputTx(tx,actor,input);
+   snapshot.policyPricingFacts={...snapshot.policyPricingFacts,[day(50)]:{
+    basicSalary:{state:'known',value:'5000',provenance:{owner:'personnel',reference:'x'.repeat(2097152),asOf:input.date,basis:'recorded'}},
+    calculationBase:{state:'unknown',reason:'unavailable'}}};
+   return snapshot;
+  };
+  const calculator=createOvertimeCalculationOwner(reader);
+  await expect(withTenant(ctx,async tx=>{const prepared=await calculator.prepareTx(tx,ctx,p);
+   return calculator.recordTx(tx,ctx,{prepared,expectedCurrentRevision:before.source.revision,reason:'Fictional bounded complete evidence refusal'});
+  })).rejects.toMatchObject({code:'unavailable',message:'Complete overtime evidence exceeds its storage budget. Review the source and formula complexity.'});
+  expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p))).toEqual(before);
+ });
+
 });
