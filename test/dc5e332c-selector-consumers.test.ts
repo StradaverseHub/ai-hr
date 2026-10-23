@@ -6,6 +6,9 @@ import { criteriaVocabulary } from '../app/admin/notice-board/criteria-options';
 import { overtimePatternSetup } from '../packs/attendance/overtime-patterns';
 import { onboardingOptions, onboardingSetup } from '../packs/lifecycle/onboarding/service';
 import { resolveMyTeamScope } from '../core/my-team-scope';
+import { listJobGrades } from '../core/read';
+import { buildOrgCriteriaSections } from '../core/org-criteria-form';
+import { organisationChoiceLabels } from '../lib/organisation-choice-label';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key }));
@@ -21,6 +24,24 @@ beforeEach(async () => {
 afterAll(closeAll);
 
 describe('configured organisation labels in remaining selector owners', () => {
+  it('keeps the canonical Job Grade Label ahead of Description through the real criteria consumer', async () => {
+    const [created] = await owner.db.insert(s.jobGrade).values({
+      tenantId: b.tenantId, code: 'JG-SELECTOR', name: 'Principal Specialist',
+      description: 'Internal grade detail that is not its configured Label', rank: 7,
+    }).returning();
+    const grades = await listJobGrades(await entitledCtx(b));
+    const row = grades.find(g => g.id === created.id)!;
+    expect(row).toMatchObject({ id: created.id, code: created.code, name: created.name, description: created.description });
+    expect(organisationChoiceLabels(grades).find(g => g.id === created.id)?.displayLabel).toBe(created.name);
+    const translate = (key: string) => key;
+    const sections = buildOrgCriteriaSections({
+      companies: [], departments: [], positions: [], costCenters: [], businessUnits: [], profileOptions: {}, grades,
+    }, { crit: translate, org: translate, employmentType: translate });
+    const grade = sections.flatMap(section => section.fields).find(field => field.name === 'gradeIds');
+    expect(grade?.options?.find(option => option.value === created.id)).toEqual({ value: created.id, label: created.name });
+    const [stored] = await owner.db.select().from(s.jobGrade).where(eq(s.jobGrade.id, created.id));
+    expect(stored).toEqual(created);
+  });
   it('uses qualified department labels in Notice audience choices and reflects a rename on reload', async () => {
     const ctx = await entitledCtx(b);
     const before = await criteriaVocabulary(ctx);
