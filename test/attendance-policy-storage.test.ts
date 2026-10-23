@@ -1032,8 +1032,16 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id))).toEqual([]);
   await deleteDraftBatch(ctx,{batchId:batch.batchId});
   await accrueToil(ctx,{employmentId:f.employmentId,workedDate:sourceDate});
-  expect(await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId))).toMatchObject([
-   {workedDate:sourceDate,otMinutes:150,daysCredited:'1.00'}]);
+  const credits=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId));
+  expect(credits).toMatchObject([{workedDate:sourceDate,otMinutes:150,daysCredited:'1.00'}]);
+  const later=await createBatch(ctx,{companyId:b.companyId,payPeriod:carriedPeriod});
+  await expect(reverseLeaveCredit(ctx,{accrualId:credits[0].id,reason:'Fictional cross-month reversal must retain child cutoff protection'}))
+   .rejects.toThrow('payroll for that month has already been started');
+  expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credits[0].id)))[0].status).toBe('active');
+  expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id)))[0].releasedAt).toBeNull();
+  await deleteDraftBatch(ctx,{batchId:later.batchId});
+  await reverseLeaveCredit(ctx,{accrualId:credits[0].id,reason:'Fictional canonical release after removing the later cutoff Payroll draft'});
+  expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,source!.source.id)))[0].releasedAt).not.toBeNull();
  });
 
  it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{

@@ -2857,9 +2857,10 @@ export async function reverseLeaveCredit(
     if (acc.expiresOn < today) throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
     // r299 fix pass — a reversal only puts the overtime back if payroll has not already worked that date out
     // without it. See payrollRunHoldingOvertimeTx.
-    const {readOvertimeSettlementForDayTx,releaseOvertimeSettlementTx}=await import('../packs/attendance/service');
+    const {readOvertimeSettlementForDayTx,readOvertimeToilSettlementDatesTx,releaseOvertimeSettlementTx}=await import('../packs/attendance/service');
     const recordedSource=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate});
-    if (((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0||recordedSource?.source.currentCalculationId) && (await payrollStartedForDateTx(tx, acc.workedDate))) {
+    const protectedDates=await readOvertimeToilSettlementDatesTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate,toilAccrualId:acc.id});
+    if (((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0||recordedSource?.source.currentCalculationId||recordedSource?.settlement) && (await payrollStartedForDatesTx(tx, protectedDates))) {
       throw new LeaveCreditError(
         `${acc.workedDate} has overtime recorded, and payroll for that month has already been started without it. Reversing the credit now could leave that overtime unpaid. If that payroll is still a draft, delete it, reverse the credit, then start the payroll again.`,
       );

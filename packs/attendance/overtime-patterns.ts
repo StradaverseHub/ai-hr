@@ -348,6 +348,31 @@ export async function readOvertimeSettlementForDayTx(tx:Tx,ctx:SessionContext,p:
  uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);if(!source)return null;
  const [settlement]=await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,source.id),isNull(s.overtimeSourceSettlement.releasedAt))).limit(1);return {source,settlement:settlement??null};
 }
+/** Dates protected by an already banked claim, even after its source was recalculated.
+ * This is a conservative Payroll-period safeguard, not fresh work, pricing or bank authority.
+ * Read the immutable calculation pinned by the reservation, never its source's new current head.
+ * Include zero-count parts too: refusing a reversal is safer than dropping a retained dated scope. */
+export async function readOvertimeToilSettlementDatesTx(tx:Tx,ctx:SessionContext,
+ p:{employmentId:string;date:string;toilAccrualId:string}):Promise<string[]>{
+ const retained=await readOvertimeSettlementForDayTx(tx,ctx,p);
+ if(!retained?.settlement)return [p.date];
+ const {source,settlement}=retained;
+ if(settlement.mode!=='toil'||settlement.toilAccrualId!==p.toilAccrualId)
+  fail('unavailable','The retained overtime reservation belongs to another election.');
+ if(settlement.coverageKind!=='policyPhysical')return [p.date];
+ if(!settlement.coverageCalculationId)fail('unavailable','The policy reservation has no retained calculation.');
+ const [calculation]=await tx.select({partCount:s.attendanceOvertimeCalculation.policyPartCount})
+  .from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,settlement.coverageCalculationId),
+   eq(s.attendanceOvertimeCalculation.tenantId,ctx.tenantId),eq(s.attendanceOvertimeCalculation.sourceId,source.id),
+   eq(s.attendanceOvertimeCalculation.bindingKind,'attendanceGroupPolicy'))).limit(1);
+ const parts=await tx.select({date:s.attendanceOvertimePolicyPart.calendarDate,sequence:s.attendanceOvertimePolicyPart.sequence})
+  .from(s.attendanceOvertimePolicyPart).where(and(eq(s.attendanceOvertimePolicyPart.tenantId,ctx.tenantId),
+   eq(s.attendanceOvertimePolicyPart.calculationId,settlement.coverageCalculationId)))
+  .orderBy(asc(s.attendanceOvertimePolicyPart.sequence)).limit(4);
+ if(!calculation||calculation.partCount<1||calculation.partCount>3||parts.length!==calculation.partCount
+  ||parts.some((part,index)=>part.sequence!==index))fail('unavailable','The retained policy reservation dated scope is incomplete.');
+ return [...new Set([p.date,...parts.map(part=>part.date)])];
+}
 async function lockExistingOvertimeSourceTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  uuid(p.employmentId);date(p.date);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
  const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1).for('update');if(!source)fail('unavailable','No recorded overtime source exists for this day.');return source;
