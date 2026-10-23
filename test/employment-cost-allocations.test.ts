@@ -21,6 +21,19 @@ describe('Effective-dated employment cost allocation owner',()=>{
   ({employmentId}=await hireEmployee(a,{person:{fullName:'Allocation Employee',primaryEmail:'allocation@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:hireDate,employeeCode:'ALLOC01'}));
   cc1=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-A',name:'Allocation A'})).id;cc2=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-B',name:'Allocation B'})).id;
  });afterAll(closeAll);
+ it('gives the actual application role SELECT only on allocation tables, independently of RLS refusal',async()=>{
+  for(const table of ['employment_cost_allocation_head','employment_cost_allocation_set','employment_cost_allocation_row']){
+   const[privileges]=await withTenant(a,tx=>tx.execute(sql`select current_user as role,
+    has_table_privilege(current_user,${'public.'+table},'SELECT') as read,
+    has_table_privilege(current_user,${'public.'+table},'INSERT') as insert,
+    has_table_privilege(current_user,${'public.'+table},'UPDATE') as update,
+    has_table_privilege(current_user,${'public.'+table},'DELETE') as delete,
+    has_table_privilege(current_user,${'public.'+table},'TRUNCATE') as truncate,
+    has_table_privilege(current_user,${'public.'+table},'REFERENCES') as references,
+    has_table_privilege(current_user,${'public.'+table},'TRIGGER') as trigger`));
+   expect(privileges).toEqual({role:'ai_hr_app',read:true,insert:false,update:false,delete:false,truncate:false,references:false,trigger:false});
+  }
+ });
  it('qualifies equal configured labels in the actual allocation choices while retaining cost center IDs and codes',async()=>{
   await owner.db.update(s.costCenter).set({label:'Shared services'}).where(eq(s.costCenter.id,cc1));
   await owner.db.update(s.costCenter).set({label:'Shared services'}).where(eq(s.costCenter.id,cc2));

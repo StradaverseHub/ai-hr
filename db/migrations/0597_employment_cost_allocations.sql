@@ -20,6 +20,8 @@ ALTER TABLE employment_cost_allocation_row ENABLE ROW LEVEL SECURITY;
 CREATE POLICY cost_allocation_head_read ON employment_cost_allocation_head FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.access_workforce_employment(employment_id,'workforce.view'));
 CREATE POLICY cost_allocation_set_read ON employment_cost_allocation_set FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.access_workforce_employment(employment_id,'workforce.view') AND app.access_workforce_company(company_id,'workforce.view'));
 CREATE POLICY cost_allocation_row_read ON employment_cost_allocation_row FOR SELECT USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM employment_cost_allocation_set s WHERE s.id=set_id AND s.tenant_id=employment_cost_allocation_row.tenant_id));
+-- Production bootstrap grants arwd on new public tables by default. State SELECT-only explicitly.
+REVOKE ALL ON employment_cost_allocation_head,employment_cost_allocation_set,employment_cost_allocation_row FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON employment_cost_allocation_head,employment_cost_allocation_set,employment_cost_allocation_row TO ai_hr_app;
 --> statement-breakpoint
 -- The only write seam. Header CAS, company proof, Criteria, full-set sum and history commit together.
