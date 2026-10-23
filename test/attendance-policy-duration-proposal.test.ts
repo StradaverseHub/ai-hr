@@ -58,7 +58,7 @@ describe('shared dated-policy duration proposal',()=>{
   expect(result.parts.flatMap(part=>part.allocations)).toEqual(expected);
   expect(result.payableMinutes).toBe(method==='intersect'?(geometry==='overlapping'?30:0):40);
   expect(result.parts.every(part=>part.dayClass===dayClass)).toBe(true);
-  expect(result.parts.map(part=>part.calendarDate)).toEqual(expected.map(span=>span.from<1440?sourceDate:nextDate));
+  expect(result.parts.map(part=>part.date)).toEqual(expected.map(span=>span.from<1440?sourceDate:nextDate));
   expect(result.intervalBasis).toBe(method==='preApproved'?'approvedPlan':'actual');
   expect(f).toEqual(before);
  });
