@@ -450,13 +450,15 @@
     "systemConfiguration": "系统配置",
     "inbox": "收件箱",
     "myPayslips": "我的工资单",
-    "taxRelief": "税务减免",
+    "taxRelief": "税务减免（TP1 表格）",
     "reimbursementsDue": "待支付报销",
     "workLocations": "地点",
     "sharedNavigation": "通用导航",
     "profileChanges": "个人资料变更",
     "leaveSettings": "设置",
-    "attendanceCalendar": "考勤日历"
+    "attendanceCalendar": "考勤日历",
+    "myEa": "我的 EA",
+    "myTp3": "我的 TP3 表格"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -3785,6 +3787,7 @@
     "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
     "correctionSaved": "更正已保存并生效。",
     "myDayBack": "返回考勤日历",
+    "myDayWorkflowUnavailable": "没有可用的审批流程。请联系人力资源部门检查流程分配。",
     "myDayPending": "待审批 — 此日期无法再次提交更正。",
     "myDayFuture": "无法更正未来日期。",
     "myDayBadTimes": "签退时间必须晚于签到时间。",
@@ -3929,7 +3932,19 @@
     "myCalendar": {
       "title": "考勤日历",
       "records": "考勤记录列表",
-      "viewDate": "查看 {date} 的考勤"
+      "viewDate": "查看 {date} 的考勤",
+      "calendarView": "日历视图",
+      "listView": "列表视图",
+      "viewNavigation": "考勤视图",
+      "shortHours": "工时不足",
+      "incompleteEntry": "打卡不完整",
+      "attendanceLegend": "考勤与提醒",
+      "selectDay": "选择日期以查看考勤详情。",
+      "invalidRange": "请输入有效的日期范围。",
+      "contextHelp": "提醒与考勤状态分开显示。假日名称显示在对应日期。",
+      "loading": "正在加载您的考勤日历…",
+      "loadError": "无法加载您的考勤日历，请重试。",
+      "retry": "重试"
     }
   },
   "org": {
@@ -4303,7 +4318,7 @@
     "myTravelNone": "[retired r362 — the empty state of the 'My travel requests' list on the removed My Travel screen (item b833a077)]",
     "travelAuditNote": "[retired r362 — the footnote on the removed My Travel form saying an approved travel request is a record for approval and audit and does not mark you present on its own (item b833a077)]",
     "requestOvertime": "提交加班申请",
-    "overtimeRequestHelp": "可在当日之前（计划）或之后（实际）提交。两者都会送交您的上级；进入薪资的是经批准的时数，并与您实际打卡的时间比对。",
+    "overtimeRequestHelp": "可在当日之前（计划）或之后（实际）提交。申请会送交指定审批人；进入薪资的是经批准的时数，并与您实际打卡的时间比对。",
     "otReasonPlaceholder": "为何需要加班",
     "planOtTitle": "自助加班",
     "planOtDescription": "您申请的加班，以及每一项的进展。",
@@ -4352,6 +4367,8 @@
     "otReasonOtherHelp": "无论选择哪个类别，都仍须填写文字说明，与现在一样。",
     "otGoesToLabel": "审批人",
     "otGoesToHelp": "根据您的汇报关系自动填写，方便您跟进。此处不可更改。",
+    "otWorkflowGoesToHelp": "提交时，由匹配的公司流程指定审批人。已保存的申请会显示指定的审批层级。",
+    "otWorkflowGoesTo": "公司审批流程",
     "otGoesToUnknown": "您的人力资源管理员",
     "otSubmitPlan": "提交计划",
     "otDateOpensTomorrow": "默认为明天。仍可选择过去的日期，行为与现在完全相同，事后申报加班的方式并未取消。",
@@ -4386,7 +4403,7 @@
     "otCalPlannedHours": "已计划",
     "otCalApprovedHours": "已批准",
     "otCalClockedHours": "实际打卡",
-    "otCalSummaryHelp": "「已计划」统计仍然有效的计划，即待审与已批准。「已批准」是您上级同意的时数。「实际打卡」是本月考勤记录上的加班时数。",
+    "otCalSummaryHelp": "「已计划」统计仍然有效的计划，即待审与已批准。「已批准」是审批人同意的时数。「实际打卡」是本月考勤记录上的加班时数。",
     "otCalCountPending": "{n} 项待审",
     "otCalCountApproved": "{n} 项已批准",
     "otCalCountRejected": "{n} 项未批准",
@@ -4416,7 +4433,7 @@
     "otCalHoursValue": "{hours}",
     "otCalManageOnList": "打开「自助加班」以撤回或查看",
     "otCalOvertimeHeading": "加班",
-    "otStaysOnCalendarHelp": "在您提交之前不会保存任何内容。计划送达时会通知您的上级，批准或驳回时会通知您。提交后您会留在此日历上。",
+    "otStaysOnCalendarHelp": "在您提交之前不会保存任何内容。申请送达时会通知指定审批人，批准或驳回时会通知您。提交后您会留在此日历上。",
     "otStartFromShiftEnd": "已依您的下班时间自动填入",
     "otApprovedHoursColumn": "批准时数",
     "otViewTable": "表格",
@@ -6527,7 +6544,7 @@
         "historyNote": "更正将保留为历史记录。过往课税年度为只读。",
         "history": {
           "title": "交易历史",
-          "subtitle": "每个课税年度一行 — 该年度员工的当前申报。",
+          "subtitle": "所选课税年度内，每个扣税月份各列一行；较早版本保留在历史记录中。",
           "empty": "尚未申报 TP1 减免。",
           "colYear": "年度",
           "colAmount": "减免总额",
@@ -10050,7 +10067,11 @@
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
         "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
-        "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。"
+        "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。",
+        "myPayslip": "您只能查看自己已发布的工资单，包括保留的过往雇佣记录。",
+        "myTp1": "仅限您本人的 TP1 申报。雇主同意仍须由获授权的薪资人员操作。",
+        "myEa": "此处仅可查看属于您本人任职记录和支付薪资雇主的 EA 表格。",
+        "myTp3": "仅可查看本人的 TP3。新建记录受本公司入职日期限制；更正权限仍属于 Payroll。"
       },
       "status": {
         "active": "启用",
@@ -12366,7 +12387,6 @@
       "toggle": "切换主题"
     },
     "uiTheme": {
-
       "label": "主题",
       "monolith": "Monolith",
       "classic": "经典",
@@ -13810,8 +13830,8 @@
     "accountReporter": "账号报告者"
   },
   "taxRelief": {
-    "title": "个人税务减免 (TP1)",
-    "intro": "申报您在某个课税年度的可选个人税务减免总额（LHDN TP1 表格）。最新提交的金额将减少您的每月预扣税（PCB/MTD）。",
+    "title": "税务减免（TP1 表格）",
+    "intro": "按月提交 TP1 减免并跟进审批。只有获批减免会用于薪资计算。",
     "backToWorkspace": "返回我的资料",
     "yearLabel": "课税年度",
     "viewYear": "查看年度",
@@ -13822,7 +13842,7 @@
     "submit": "提交",
     "submitCorrection": "提交更正",
     "correctedAmountLabel": "更正后的年度 TP1 减免（RM）",
-    "submittedNotice": "本年度已提交。最新提交的金额将用于您的薪资计算。如需更改，请提交更正。",
+    "submittedNotice": "提交的申报须经雇主批准后才会影响薪资。更正会保留原记录。",
     "historicalSubmitted": "本课税年度已提交。",
     "historicalDraft": "本课税年度已保存为草稿。",
     "historicalNone": "本课税年度未作任何申报。",
@@ -14135,7 +14155,15 @@
       "totalPlusExcess": "加：超出免税限额的应税部分（C2）",
       "totalExemptNote": "在 C2 各栏录入的 RM {entered} 之中，RM {exempt} 在法定免税限额之内，不课税。C1 仅包含应税薪酬，因此免税金额从不从中扣除——只有超出限额的 RM {excess} 会被加入。",
       "totalNoLimitNote": "C2(iii) 与 C2(v) 没有公布的年度免税限额，因此无法认定其中任何部分应课税，也不会加入任何金额。"
-    }
+    },
+    "monthlyIntro": "按月提交 TP1 减免并跟进审批。只有获批减免会用于薪资计算。",
+    "notLinked": "此账户未关联有效雇佣。您仍可查看已有申报。",
+    "changed": "编辑期间此 TP1 已发生变化。请重新加载申报后再保存。",
+    "pastReadOnly": "过往课税年份仅供查看。",
+    "invalidIntent": "请选择保存草稿或提交。",
+    "savedDraft": "草稿已保存。",
+    "savedSubmitted": "已提交，等待雇主审批。",
+    "recordHistory": "记录历史"
   },
   "payRule": {
     "sectionTitle": "如何计算？",
@@ -17844,7 +17872,22 @@
     "reportConsentHelp": "报表附件须按每份雇佣记录单独同意。更改个人档案邮箱后须重新同意。系统只会发送您当前有权访问的报表。",
     "reportPolicyHelp": "员工主档附件默认关闭，须同时启用此政策并取得每位收件人的明确报表邮件同意。",
     "recipientCode": "员工编号",
-    "deliveryReference": "发送记录编号"
+    "deliveryReference": "发送记录编号",
+    "attendanceCc": {
+      "reference": "参考编号",
+      "applicant": "申请人",
+      "level": "审批层级",
+      "action": "操作",
+      "actor": "决定人",
+      "when": "日期与时间",
+      "notice": "仅供通知。此邮件不授予审批或申请访问权限。",
+      "actions": {
+        "approved": "已批准",
+        "rejected": "已驳回",
+        "cancelled": "已取消",
+        "withdrawn": "已撤回"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19544,6 +19587,37 @@
       "chooseSlot": "请选择待处理参与者…",
       "calculationHandoff": "此最终决定需要具备相应范围计算权限的 HR。请 HR 对待处理参与者记录有理由的重新分配；此前审批会保留。",
       "identityUnavailable": "所需审批人未启用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换人选，或让 HR 修正其访问权限。"
+    },
+    "v4": {
+      "allRequired": "所有人均须批准",
+      "allRequiredHelp": "每位列出的人员都必须批准，顺序不限。",
+      "levelHelp": "按显示顺序添加审批来源。每个上级层级均从申请人开始计算。",
+      "sourceNumber": "来源 {number}",
+      "addSource": "添加审批来源",
+      "searchEmployees": "搜索员工编号或姓名",
+      "noEligible": "本公司及获准的上级公司中没有符合条件的关联登录账号。请 HR 检查任职日期、登录状态和公司角色。",
+      "cc": "抄送收件人",
+      "ccHelp": "仅用于通知。抄送不授予审批或申请访问权限。邮件不含原因、薪资、医疗资料或附件。",
+      "customEmail": "自定义电子邮箱",
+      "emailHelp": "每行输入一个地址，最多 50 个唯一收件人；不接受显示名称或邮件标头。",
+      "addCc": "添加抄送来源",
+      "conversionHelp": "保存后仅影响以后的申请。已提交的申请保留原有流程和决定。",
+      "convert": "配置多来源流程",
+      "invalidCc": "请输入有效的邮箱地址，不含姓名或邮件标头。",
+      "unavailableCc": "抄送收件人不可用。保存前请检查员工账号、邮箱和上级关系。",
+      "delete": "删除",
+      "deleteTitle": "删除 {name}？",
+      "deleteImpact": "从 {company} 的未来流程中移除此工作流。现有申请和历史保留。流程仍启用，没有匹配模板的申请将被拒绝。",
+      "deletePending": "仍有待处理的申请依赖此工作流。请先完成或取消这些申请。",
+      "deleteChanged": "工作流已更改。删除前请重新加载。",
+      "deleted": "已从未来配置中删除工作流。",
+      "retained": "已删除的工作流",
+      "restore": "恢复配置",
+      "restoreHelp": "恢复时会检查当前员工和汇报关系，并创建新版本。",
+      "restored": "已恢复工作流并创建新版本。",
+      "noEmployees": "本公司及获准的上级公司中没有任职记录。",
+      "noActiveEmployees": "目前没有符合任职日期和有效状态要求的员工。",
+      "noLinkedLogin": "存在员工，但都没有有效的关联登录账号。请 HR 检查账号关联后再将他们设为审批人。"
     }
   },
   "attendanceHistory": {
@@ -19754,7 +19828,8 @@
     "backToOverview": "返回概览",
     "notWaitingForYou": "此阶段无需您操作。",
     "recordedOvertime": "已记录实际加班",
-    "previewOvertime": "审批预览"
+    "previewOvertime": "审批预览",
+    "modeAllRequired": "所有人均须批准"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
@@ -21064,14 +21139,12 @@
     "photoAlreadyPending": "已有照片等待审批。请等待决定后再提交。",
     "routingTypeMatched": "匹配的员工／申请类型组合",
     "routingTypeMissing": "缺少规则的员工／申请类型组合",
-
     "submitPhoto": "提交照片审批",
     "pendingPhoto": "待审批照片",
     "photoApprovalHelp": "HR 批准前保留当前照片。可在“我的变更申请”查看决定。",
     "currentPhoto": "当前照片",
     "proposedPhoto": "拟用照片",
     "photoProposed": "照片已提交 HR 审批",
-
     "approvalRules": "HR 审批规则",
     "requestTypes": "申请类型",
     "fieldRequests": "资料字段",
@@ -21082,11 +21155,9 @@
     "unavailableSelection": "选项不可用，请移除或替换",
     "noValidApprovers": "没有符合条件的 HR 审批人。请检查在职状态、登录和公司权限。",
     "noMatches": "没有匹配的选项",
-
     "tabPermission": "页签权限",
     "sectionPermission": "分组权限",
     "groupPermissionHelp": "页签和分组限制优先。可编辑遵循各字段设置；只读禁止修改；隐藏会从“我的资料”移除信息。",
-
     "requestEdit": "申请编辑",
     "save": "保存更改",
     "cancel": "取消",
@@ -22106,5 +22177,114 @@
       "denied": "您的权限已更改，请重新打开此记录以检查访问权限。",
       "invalid": "请输入未被占用的员工编号，可使用字母、数字或连字符，最多30个字符。"
     }
+  },
+  "myPayslip": {
+    "title": "我的工资单",
+    "intro": "您已发布的工资单",
+    "cycle": "薪资周期（运行类型）",
+    "unavailableChoice": "所选项目不可用",
+    "releasedHelp": "选项仅来自您已最终确认并发布的工资单。",
+    "unavailable": "此选项暂无已发布的工资单。",
+    "review": "预览工资单",
+    "download": "下载 PDF",
+    "back": "返回我的工资单",
+    "openInNewTab": "在新标签页中打开",
+    "loadError": "无法加载您的工资单",
+    "retry": "重试",
+    "loading": "正在加载您的工资单…"
+  },
+  "myEa": {
+    "title": "我的 EA",
+    "intro": "按年份和支付薪资的雇主查看年度 EA 表格。",
+    "year": "年份",
+    "employer": "雇主",
+    "language": "文件语言",
+    "view": "查看 EA",
+    "unavailable": "EA 暂不可用",
+    "unavailableHelp": "所有相关薪资批次关闭并发布后，完整表格才会开放。如需帮助，请联系 HR。",
+    "download": "下载 PDF",
+    "back": "返回我的 EA",
+    "openInNewTab": "在新标签页打开 PDF",
+    "loadError": "无法加载您的 EA 表格。",
+    "retry": "重试",
+    "loading": "正在加载您的 EA 表格…"
+  },
+  "allowanceV4": {
+    "available": "可选员工",
+    "included": "已加入员工",
+    "includeChecked": "加入勾选项（{count}）",
+    "removeChecked": "移除勾选项（{count}）",
+    "includedCount": "已加入 {count} 名员工",
+    "limit": "每项政策最多可加入 2,000 名员工。请先移除部分员工。",
+    "clearIncluded": "清空已加入员工",
+    "selectionHelp": "仅已加入员工符合条件。勾选会跨搜索及分页保留。“选择本页”仅影响当前页。",
+    "searchSide": "搜索{side}",
+    "search": "搜索员工编号或姓名",
+    "loadError": "无法加载选项。",
+    "retry": "重试",
+    "selectVisible": "选择本页（{count}）",
+    "loading": "正在加载选项…",
+    "empty": "没有匹配选项。",
+    "noCode": "无员工编号",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {page} 页",
+    "unavailable": "部分员工引用不可用。请移除，或联系 HR 修正访问权限后再保存。",
+    "unavailableMore": "另有 {count} 个不可用引用。",
+    "searchValues": "搜索值",
+    "removeValue": "移除 {value}",
+    "employeeGroup": "员工条件",
+    "emptyGroup": "保存前请为此组添加条件。",
+    "branch": "分行",
+    "division": "事业部门",
+    "upgradeHelp": "分组员工条件会保存为新政策版本。历史结果和考勤条件保持原有含义。",
+    "upgrade": "使用分组员工条件",
+    "operators": {
+      "is": "等于",
+      "isNot": "不等于",
+      "in": "属于",
+      "notIn": "不属于"
+    },
+    "previewTitle": "预览匹配员工",
+    "previewAction": "预览员工",
+    "previewHelp": "使用每个周期内员工归属的最后一天。部门、业务单位、职位及用工类型使用带日期的任职资料；职级、类别、分行及事业部门使用当前 Personnel 档案。考勤条件也必须满足。",
+    "previewError": "无法预览匹配员工。请检查选择和周期后重试。",
+    "previewCount": "共 {count} 个员工与周期匹配项",
+    "asOf": "资料日期：{date}",
+    "previewTruncated": "显示前 100 个员工与周期匹配项。"
+  },
+  "myTp3": {
+    "title": "我的 TP3 表格",
+    "intro": "填写加入本公司年份的前雇主资料。",
+    "employment": "任职记录",
+    "chooseEmployment": "选择您的任职记录",
+    "year": "课税年度",
+    "view": "查看",
+    "joinDate": "本公司入职日期",
+    "state": "记录状态",
+    "fallback": "尚未填写本公司入职日期；现使用已有的集团入职日期。",
+    "chooseHelp": "请选择任职记录，查看对应入职日期及填写资格。",
+    "ineligible": "新建记录须有有效任职，且本公司入职日期已到、属于当前日历年。已有记录仍可在下方查看。",
+    "correctionHelp": "此处仅可查看本记录。如需授权更正，请联系 Payroll。",
+    "held": "表格已记录，但薪资期初余额仍归属 {year} 年。",
+    "savedAt": "上次保存：{at}",
+    "draftSaved": "草稿已保存。薪资输入保持不变。",
+    "submitted": "已提交",
+    "notLinked": "此账号未关联员工档案。",
+    "history": "往年记录",
+    "new": "尚无保存记录",
+    "draft": "草稿",
+    "declared": "员工已声明",
+    "payrollSaved": "Payroll 已保存",
+    "saveDraft": "保存草稿",
+    "submit": "提交声明",
+    "saving": "正在保存…",
+    "draftHelp": "草稿不影响薪资。提交后将记录您的声明，并按现有 TP3 计算规则处理。",
+    "invalid": "无效的 TP3 表格操作。",
+    "invalidMoney": "请输入非负金额，最多保留两位小数。",
+    "changed": "记录或填写资格已更改。请重新加载并核对当前 TP3 后再保存。",
+    "loadError": "无法加载您的 TP3 表格。",
+    "retry": "重试",
+    "loading": "正在加载您的 TP3 表格…"
   }
 }

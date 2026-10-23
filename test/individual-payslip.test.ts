@@ -52,6 +52,19 @@ const CURRENT: PcbReliefBreakdown = {
   individual: 9000, spouse: 0, children: 4000, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 13000,
 };
 
+
+/** Board2 shares the own-only assembly between HTML preview and PDF, without moving its guards. */
+const ownDocumentSource = () => {
+  const route = read('app/me/payslip/[payslipId]/pdf/route.ts');
+  expect(route).toContain("import { myPayslipDocument } from '../../document'");
+  expect(route).toContain('myPayslipDocument(await getSession(),payslipId)');
+  expect(route).toContain('renderPayslipPdf(data, strings.labels)');
+  const model = read('app/me/payslip/document.ts');
+  expect(model).toContain("import 'server-only'");
+  expect(model).toContain('await myPayslipDetail(s, payslipId)');
+  return model;
+};
+const pdfAssemblySource = (file: string) => file === 'app/me/payslip/[payslipId]/pdf/route.ts' ? ownDocumentSource() : read(file);
 describe('169e3c24 — explaining the PCB figure from what the payslip recorded', () => {
   it('says so plainly when no working was recorded (imported / pre-stamp run)', () => {
     // 45df860a fix pass — every shape now also carries `pcbSystem` (what the working explains) and
@@ -173,7 +186,7 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
   });
 
   it('the ESS route and payslipDetail keep the gate exactly as they had it', () => {
-    expect(read('app/me/payslip/[payslipId]/pdf/route.ts')).toContain('payslipDetail');
+    expect(ownDocumentSource()).toContain('myPayslipDetail');
     const core = read('core/payroll.ts');
     expect(core).toContain("const released = row.status === 'closed'");
     expect(core).toContain('if (!released) return null;');
@@ -261,19 +274,19 @@ describe('5c198931 — one document, printed by both routes', () => {
     // fields, and two hand-maintained copies is precisely how the employee's payslip stops being the
     // document the reviewer approved — the failure this board item was raised about.
     for (const f of [ESS, ADMIN]) {
-      const route = read(f);
+      const route = pdfAssemblySource(f);
       expect(route, `${f} must resolve labels through the shared module`).toContain('payslipPdfStrings');
       expect(route).toContain('buildPayslipPdfData');
-      expect(route).toContain('renderPayslipPdf');
+      expect(read(f)).toContain('renderPayslipPdf');
     }
   });
 
   it('both print the year-to-date column through the shared summation', () => {
-    expect(read(ESS)).toContain('sumPayslipYtd');
+    expect(pdfAssemblySource(ESS)).toContain('sumPayslipYtd');
     expect(read(ADMIN)).toContain('sumPayslipYtd');
     // …and the EMPLOYEE's own copy sums only RELEASED months. An employee must not read a year total
     // containing a run they cannot open; a reviewer legitimately may.
-    expect(read(ESS)).toMatch(/r\.released/);
+    expect(pdfAssemblySource(ESS)).toMatch(/r\.released/);
   });
 
   it('payslipDetail’s new joins are LEFT joins, every one of them', () => {
@@ -599,7 +612,7 @@ describe('r360 — the cycle name and the registration label are decided in ONE 
     // BOTH PDF routes feed the cycle name in. The two print ONE document through one strings module; only
     // one of them fed would print "Monthly" on the reviewer's copy and "Regular" on the employee's.
     for (const r of [ESS_PDF, ADMIN_PDF]) {
-      expect(read(r), `${r} must pass the cycle name to payslipPdfStrings`).toContain('cycleName: p.cycleName');
+      expect(pdfAssemblySource(r), `${r} must pass the cycle name to payslipPdfStrings`).toContain('cycleName: p.cycleName');
     }
   });
 
@@ -767,8 +780,8 @@ describe('169e3c24 — the admin review read', () => {
       'app/me/payslip/[payslipId]/pdf/route.ts',
     ]) {
       // Both routes, the employee's own copy included: it is one document and their own account number.
-      expect(read(route), `${route} must print the whole account number`).toContain('bankAccountFull');
-      expect(read(route), `${route} must not fall back to the mask`).not.toContain('bankAccountMasked');
+      expect(pdfAssemblySource(route), `${route} must print the whole account number`).toContain('bankAccountFull');
+      expect(pdfAssemblySource(route), `${route} must not fall back to the mask`).not.toContain('bankAccountMasked');
     }
   });
 

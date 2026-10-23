@@ -565,18 +565,19 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     expect(block).not.toMatch(/Object\.entries\(x\.criteria as Record<string, unknown>\)/);
   });
 
-  it('the employee’s warning and the administrator’s list are both wired to the screens', () => {
+  it('Leave inquiry retains dated grade history and configuration retains uncovered employees', () => {
     const profile = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(profile).toContain("tScheme('unmatchedWarning'");
-    expect(profile).toContain("tScheme('unmatchedNoGrade')");
+    // Approved Personnel cleanup removes its duplicate Leave warning/card. Coverage remains in
+    // Leave configuration, and dated grade effects remain visible in the canonical inquiry history.
+    expect(profile).not.toContain('schemeUnmatchedNotice');
     const history = read('components/leave/entitlement-recalc-history.tsx');
     expect(history).toContain("t('recalcColGrade')");
     // 39306a9e retains this history under Leave inquiry after removing the Personnel duplicate.
     expect(history).toContain('{formatDmy(r.tookEffectOn)}');
     expect(read('app/leave/employee-balances/page.tsx')).toContain('<EntitlementRecalcHistory rows={recalcAudit} />');
     expect(profile).not.toContain('recalcHistoryCard');
-    // Rendered in BOTH states of the card: the one that matters most is "some types resolved, some did not".
-    expect((profile.match(/\{schemeUnmatchedNotice\}/g) ?? []).length).toBe(2);
+    // The redundant Personnel Leave summary remains absent after the approved cleanup.
+    expect(profile).not.toContain('leaveBalancesCard');
 
     const page = read('app/admin/leave-config/entitlement-tables/page.tsx');
     expect(page).toContain('<UncoveredEmployeesCard s={s} asOf={data.today} />');

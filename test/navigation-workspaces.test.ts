@@ -17,6 +17,8 @@ describe('Ops and Strata placement never grants authority',()=>{
   ['/attendance/requests','ops','attendance','mine'],['/roster','ops','attendance','hr'],
   ['/payroll','ops','payroll','hr'],['/payroll/setup','ops','payroll','config'],
   ['/me?tab=payroll','ops','payroll','mine'],['/me/tax-relief','ops','payroll','mine'],
+  ['/me/payslip','ops','payroll','mine'],['/me/payslip/fictional','ops','payroll','mine'],
+  ['/me/tp3','ops','payroll','mine'],['/me/ea','ops','payroll','mine'],
   ['/admin/claims/reimbursements','ops','claims','hr'],['/admin/claims','ops','claims','config'],
   ['/performance/workspace?module=tm','strata','talent','team'],['/performance/workspace?module=idp','strata','development','mine'],
   ['/performance/workspace','strata','performance','mine'],['/reports?cat=leave','strata','workforceInsights','hr'],

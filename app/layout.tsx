@@ -172,7 +172,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
-  // The canonical inbox admits ordinary employees only for an actionable, non-self v3 assignment.
+  // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};

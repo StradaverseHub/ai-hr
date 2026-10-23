@@ -483,10 +483,16 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
-      expect(src, `${href} resolves the caller's own employment (67268d83)`).toMatch(/myEmployment\(\s*s\s*\)/);
-      expect(src, `${href} reads that employment's attendance, and only that employment's`).toMatch(
-        /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
-      );
+      // Board2 retains this bookmark as a typed List redirect into the one own-only Calendar.
+      expect(src).toContain("resolveAttendanceCalendarState({...query,tab:'list'},todayInKualaLumpur())");
+      expect(src).toContain('redirect(attendanceCalendarHref(');
+      expect(src).toContain("await requireModule('attendance')");
+      const calendar = read('app/attendance/my-roster/page.tsx');
+      expect(calendar).toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to })');
+      expect(calendar).toContain('<AttendanceRecordList s={s} state={state} query={sp}/>');
+      const list = read('app/attendance/my-roster/record-list.tsx');
+      expect(list).toMatch(/myEmployment\(\s*s\s*\)/);
+      expect(list).toMatch(/attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/);
       expect(src, `${href} is still an authenticated page`).toContain('await scopedSession()');
     }
     {

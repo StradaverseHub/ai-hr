@@ -450,13 +450,15 @@
     "systemConfiguration": "Konfigurasi Sistem",
     "inbox": "Peti masuk",
     "myPayslips": "Slip Gaji Saya",
-    "taxRelief": "Pelepasan cukai",
+    "taxRelief": "Pelepasan Cukai (Borang TP1)",
     "reimbursementsDue": "Bayaran balik belum dibayar",
     "workLocations": "Lokasi",
     "sharedNavigation": "Navigasi bersama",
     "profileChanges": "Perubahan profil",
     "leaveSettings": "Tetapan",
-    "attendanceCalendar": "Kalendar Kehadiran"
+    "attendanceCalendar": "Kalendar Kehadiran",
+    "myEa": "EA Saya",
+    "myTp3": "Borang TP3 Saya"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3785,6 +3787,7 @@
     "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
     "correctionSaved": "Pembetulan disimpan dan digunakan.",
     "myDayBack": "Kembali ke Kalendar Kehadiran",
+    "myDayWorkflowUnavailable": "Tiada laluan kelulusan yang boleh digunakan. Minta HR menyemak penetapan aliran kerja.",
     "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
     "myDayFuture": "Tarikh akan datang tidak boleh dibetulkan.",
     "myDayBadTimes": "Waktu keluar mestilah selepas waktu masuk.",
@@ -3929,7 +3932,19 @@
     "myCalendar": {
       "title": "Kalendar Kehadiran",
       "records": "Senarai rekod kehadiran",
-      "viewDate": "Lihat kehadiran untuk {date}"
+      "viewDate": "Lihat kehadiran untuk {date}",
+      "calendarView": "Paparan Kalendar",
+      "listView": "Paparan Senarai",
+      "viewNavigation": "Paparan kehadiran",
+      "shortHours": "Jam Tidak Mencukupi",
+      "incompleteEntry": "Rekod Tidak Lengkap",
+      "attendanceLegend": "Kehadiran dan amaran",
+      "selectDay": "Pilih tarikh untuk menyemak butiran kehadiran.",
+      "invalidRange": "Masukkan julat tarikh yang sah.",
+      "contextHelp": "Amaran berasingan daripada status kehadiran. Nama cuti dipaparkan pada tarikh berkenaan.",
+      "loading": "Memuatkan kalendar kehadiran anda…",
+      "loadError": "Kalendar kehadiran anda tidak dapat dimuatkan. Cuba lagi.",
+      "retry": "Cuba lagi"
     }
   },
   "org": {
@@ -4303,7 +4318,7 @@
     "myTravelNone": "[retired r362 — the empty state of the 'My travel requests' list on the removed My Travel screen (item b833a077)]",
     "travelAuditNote": "[retired r362 — the footnote on the removed My Travel form saying an approved travel request is a record for approval and audit and does not mark you present on its own (item b833a077)]",
     "requestOvertime": "Hantar permohonan kerja lebih masa",
-    "overtimeRequestHelp": "Failkan sebelum hari itu (dirancang) atau selepasnya (sebenar). Kedua-duanya pergi kepada penyelia anda, dan jam yang sampai ke penggajian ialah jam yang diluluskan, dibandingkan dengan waktu sebenar anda.",
+    "overtimeRequestHelp": "Failkan sebelum hari itu (dirancang) atau selepasnya (sebenar). Permohonan dihantar kepada pelulus yang ditetapkan, dan jam yang sampai ke penggajian ialah jam yang diluluskan, dibandingkan dengan waktu sebenar anda.",
     "otReasonPlaceholder": "Mengapa lebih masa itu diperlukan",
     "planOtTitle": "Kerja Lebih Masa Sendiri",
     "planOtDescription": "Kerja lebih masa yang anda pohon, dan status setiap satu.",
@@ -4352,6 +4367,8 @@
     "otReasonOtherHelp": "Teks bebas tetap diperlukan untuk mana-mana kategori, sama seperti hari ini.",
     "otGoesToLabel": "Kepada",
     "otGoesToHelp": "Diisi daripada garis pelaporan anda, supaya anda tahu siapa untuk dihubungi. Ia tidak boleh diubah di sini.",
+    "otWorkflowGoesToHelp": "Aliran kerja syarikat yang sepadan menetapkan pelulus apabila anda menghantar. Permohonan tersimpan menunjukkan peringkat kelulusan yang ditetapkan.",
+    "otWorkflowGoesTo": "Aliran kelulusan syarikat",
     "otGoesToUnknown": "Pentadbir HR anda",
     "otSubmitPlan": "Hantar rancangan",
     "otDateOpensTomorrow": "Dibuka pada esok. Tarikh lepas masih diterima dan berkelakuan sama seperti hari ini, jadi tuntutan lebih masa selepas bekerja tidak dihapuskan.",
@@ -4386,7 +4403,7 @@
     "otCalPlannedHours": "Dirancang",
     "otCalApprovedHours": "Diluluskan",
     "otCalClockedHours": "Direkod sebenar",
-    "otCalSummaryHelp": "Dirancang mengira rancangan yang masih berkuat kuasa — yang menunggu dan yang diluluskan. Diluluskan ialah angka yang dipersetujui penyelia anda. Direkod sebenar ialah kerja lebih masa pada rekod kehadiran bulan ini.",
+    "otCalSummaryHelp": "Dirancang mengira rancangan yang masih berkuat kuasa — yang menunggu dan yang diluluskan. Diluluskan ialah angka yang dipersetujui pelulus. Direkod sebenar ialah kerja lebih masa pada rekod kehadiran bulan ini.",
     "otCalCountPending": "{n} menunggu",
     "otCalCountApproved": "{n} diluluskan",
     "otCalCountRejected": "{n} tidak diluluskan",
@@ -4416,7 +4433,7 @@
     "otCalHoursValue": "{hours}",
     "otCalManageOnList": "Buka Kerja Lebih Masa Sendiri untuk menarik balik atau menyemak",
     "otCalOvertimeHeading": "Kerja lebih masa",
-    "otStaysOnCalendarHelp": "Tiada apa disimpan sehingga anda menghantar. Penyelia anda diberitahu apabila ia tiba, dan anda diberitahu apabila ia diluluskan atau ditolak. Anda kekal pada kalendar ini selepas itu.",
+    "otStaysOnCalendarHelp": "Tiada apa disimpan sehingga anda menghantar. Pelulus yang ditetapkan diberitahu apabila permohonan tiba, dan anda diberitahu apabila ia diluluskan atau ditolak. Anda kekal pada kalendar ini selepas itu.",
     "otStartFromShiftEnd": "Diisi daripada waktu tamat kerja anda",
     "otApprovedHoursColumn": "Jam diluluskan",
     "otViewTable": "Jadual",
@@ -6527,7 +6544,7 @@
         "historyNote": "Pembetulan disimpan sebagai sejarah. Tahun taksiran lepas adalah baca sahaja.",
         "history": {
           "title": "Sejarah transaksi",
-          "subtitle": "Satu baris bagi setiap tahun taksiran — perisytiharan semasa pekerja bagi tahun tersebut.",
+          "subtitle": "Satu baris bagi setiap bulan potongan dalam tahun taksiran yang dipilih; versi terdahulu kekal dalam sejarah.",
           "empty": "Belum ada pelepasan TP1 diisytiharkan.",
           "colYear": "Tahun",
           "colAmount": "Jumlah pelepasan",
@@ -10050,7 +10067,11 @@
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
-        "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses."
+        "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses.",
+        "myPayslip": "Anda hanya boleh melihat slip gaji anda yang telah dikeluarkan, termasuk rekod pekerjaan terdahulu yang disimpan.",
+        "myTp1": "Pengisytiharan TP1 anda sendiri sahaja. Persetujuan majikan kekal sebagai tindakan Gaji yang dibenarkan.",
+        "myEa": "Hanya borang EA milik pekerjaan dan majikan pembayar anda tersedia di sini.",
+        "myTp3": "Hanya rekod TP3 anda kelihatan. Kemasukan baharu dihadkan oleh Tarikh Sertai syarikat semasa; Payroll mengekalkan kuasa pembetulan."
       },
       "status": {
         "active": "Aktif",
@@ -12366,7 +12387,6 @@
       "toggle": "Tukar tema"
     },
     "uiTheme": {
-
       "label": "Tema",
       "monolith": "Monolith",
       "classic": "Klasik",
@@ -13810,8 +13830,8 @@
     "accountReporter": "Pelapor akaun"
   },
   "taxRelief": {
-    "title": "Pelepasan Cukai Peribadi (TP1)",
-    "intro": "Isytiharkan jumlah pelepasan cukai peribadi pilihan anda (borang TP1 LHDN) bagi sesuatu tahun taksiran. Jumlah terkini yang dihantar akan mengurangkan potongan cukai bulanan anda (PCB/MTD).",
+    "title": "Pelepasan Cukai (Borang TP1)",
+    "intro": "Hantar pelepasan TP1 bulanan dan ikuti kelulusannya. Hanya pelepasan yang diluluskan digunakan dalam gaji.",
     "backToWorkspace": "Kembali ke Profil Saya",
     "yearLabel": "Tahun taksiran",
     "viewYear": "Lihat tahun",
@@ -13822,7 +13842,7 @@
     "submit": "Hantar",
     "submitCorrection": "Hantar pembetulan",
     "correctedAmountLabel": "Pelepasan TP1 tahunan yang dibetulkan (RM)",
-    "submittedNotice": "Tahun ini telah dihantar. Jumlah terkini yang dihantar akan digunakan dalam gaji anda. Untuk mengubahnya, hantar pembetulan.",
+    "submittedNotice": "Pengisytiharan yang dihantar memerlukan kelulusan majikan sebelum mempengaruhi gaji. Pembetulan mengekalkan rekod terdahulu.",
     "historicalSubmitted": "Dihantar bagi tahun taksiran ini.",
     "historicalDraft": "Disimpan sebagai draf bagi tahun taksiran ini.",
     "historicalNone": "Tiada pengisytiharan dibuat bagi tahun taksiran ini.",
@@ -14135,7 +14155,15 @@
       "totalPlusExcess": "Campur lebihan bercukai melebihi pengecualian (C2)",
       "totalExemptNote": "Daripada RM {entered} yang dikunci masuk ke dalam kotak C2, RM {exempt} berada dalam had pengecualian berkanun dan tidak dikenakan cukai. C1 hanya mengandungi saraan yang dikenakan cukai, jadi amaun yang dikecualikan tidak pernah ditolak daripadanya — hanya RM {excess} yang melebihi had ditambah.",
       "totalNoLimitNote": "Tiada had pengecualian tahunan diterbitkan bagi C2(iii) atau C2(v), jadi tiada bahagian kotak tersebut boleh ditunjukkan sebagai dikenakan cukai dan tiada apa-apa daripadanya ditambah."
-    }
+    },
+    "monthlyIntro": "Hantar pelepasan TP1 bulanan dan ikuti kelulusannya. Hanya pelepasan yang diluluskan digunakan dalam gaji.",
+    "notLinked": "Akaun ini tiada pekerjaan aktif yang dipautkan. Pengisytiharan sedia ada masih boleh dilihat.",
+    "changed": "TP1 ini telah berubah semasa anda menyunting. Muat semula pengisytiharan sebelum menyimpan.",
+    "pastReadOnly": "Tahun taksiran terdahulu hanya boleh dilihat.",
+    "invalidIntent": "Pilih Simpan draf atau Hantar.",
+    "savedDraft": "Draf disimpan.",
+    "savedSubmitted": "Dihantar untuk kelulusan majikan.",
+    "recordHistory": "Sejarah rekod"
   },
   "payRule": {
     "sectionTitle": "Bagaimana ia dikira?",
@@ -17844,7 +17872,22 @@
     "reportConsentHelp": "Lampiran laporan memerlukan persetujuan berasingan bagi setiap pekerjaan. Jika e-mel profil berubah, berikan persetujuan semula. Hanya laporan yang masih boleh anda akses boleh dihantar.",
     "reportPolicyHelp": "Lampiran Induk Pekerja dimatikan secara lalai dan memerlukan dasar ini serta persetujuan laporan yang jelas daripada setiap penerima.",
     "recipientCode": "Kod pekerja",
-    "deliveryReference": "Rujukan penghantaran"
+    "deliveryReference": "Rujukan penghantaran",
+    "attendanceCc": {
+      "reference": "Rujukan",
+      "applicant": "Pemohon",
+      "level": "Peringkat",
+      "action": "Tindakan",
+      "actor": "Pelulus yang membuat keputusan",
+      "when": "Tarikh/masa",
+      "notice": "Pemberitahuan sahaja. E-mel ini tidak memberi hak meluluskan atau akses permohonan.",
+      "actions": {
+        "approved": "Diluluskan",
+        "rejected": "Ditolak",
+        "cancelled": "Dibatalkan",
+        "withdrawn": "Ditarik balik"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19544,6 +19587,37 @@
       "chooseSlot": "Pilih peserta tertunggak…",
       "calculationHandoff": "Keputusan akhir ini memerlukan akses pengiraan HR berskop. Minta HR merekodkan penugasan semula bersebab bagi peserta tertunggak; kelulusan terdahulu dikekalkan.",
       "identityUnavailable": "Pelulus yang diperlukan tidak aktif, tiada satu akaun log masuk yang boleh digunakan, atau di luar skop syarikat yang dibenarkan. Ganti pilihan atau minta HR membetulkan aksesnya."
+    },
+    "v4": {
+      "allRequired": "Semua perlu meluluskan",
+      "allRequiredHelp": "Setiap orang yang disenaraikan mesti meluluskan, dalam sebarang urutan.",
+      "levelHelp": "Tambah sumber mengikut urutan paparan. Setiap aras penyelia bermula daripada pemohon.",
+      "sourceNumber": "Sumber {number}",
+      "addSource": "Tambah sumber pelulus",
+      "searchEmployees": "Cari ID atau nama pekerja",
+      "noEligible": "Tiada log masuk terpaut yang layak dalam syarikat ini atau syarikat induk yang dibenarkan. Minta HR menyemak tarikh pekerjaan, status log masuk dan peranan syarikat.",
+      "cc": "Penerima CC",
+      "ccHelp": "Untuk pemberitahuan sahaja. CC tidak memberi akses meluluskan atau melihat permohonan. Mesej tidak menyertakan sebab, gaji, maklumat perubatan atau lampiran.",
+      "customEmail": "Alamat e-mel tersuai",
+      "emailHelp": "Masukkan satu alamat setiap baris. Maksimum 50 penerima unik, tanpa nama paparan atau pengepala e-mel.",
+      "addCc": "Tambah sumber CC",
+      "conversionHelp": "Simpanan ini terpakai kepada permohonan akan datang. Permohonan yang telah dihantar mengekalkan laluan dan keputusan tersimpan.",
+      "convert": "Konfigurasi laluan pelbagai sumber",
+      "invalidCc": "Masukkan alamat e-mel sah tanpa nama atau pengepala.",
+      "unavailableCc": "Penerima CC tidak tersedia. Semak log masuk, e-mel dan hubungan penyelia sebelum menyimpan.",
+      "delete": "Padam",
+      "deleteTitle": "Padam {name}?",
+      "deleteImpact": "Keluarkan aliran kerja ini daripada penghalaan akan datang untuk {company}. Permohonan dan sejarah kekal. Penghalaan kekal aktif dan menolak permohonan tanpa templat sepadan.",
+      "deletePending": "Permohonan belum selesai masih menggunakan aliran kerja ini. Selesaikan atau batalkannya sebelum memadam.",
+      "deleteChanged": "Aliran kerja telah berubah. Muat semula sebelum memadam.",
+      "deleted": "Aliran kerja dipadam daripada konfigurasi akan datang.",
+      "retained": "Aliran kerja dipadam",
+      "restore": "Pulihkan konfigurasi",
+      "restoreHelp": "Pemulihan menghasilkan versi baharu selepas menyemak pekerja dan hubungan pelaporan semasa.",
+      "restored": "Aliran kerja dipulihkan sebagai versi baharu.",
+      "noEmployees": "Tiada rekod pekerjaan dalam syarikat ini atau syarikat induk yang dibenarkan.",
+      "noActiveEmployees": "Tiada pekerjaan yang memenuhi syarat tarikh dan status aktif semasa.",
+      "noLinkedLogin": "Pekerja tersedia tetapi tiada log masuk terpaut yang aktif. HR perlu menyemak pautan akaun sebelum mereka boleh meluluskan."
     }
   },
   "attendanceHistory": {
@@ -19754,7 +19828,8 @@
     "backToOverview": "Kembali ke Gambaran Keseluruhan",
     "notWaitingForYou": "Tiada tindakan menunggu anda pada peringkat ini.",
     "recordedOvertime": "Lebih masa sebenar direkodkan",
-    "previewOvertime": "Pratonton kelulusan"
+    "previewOvertime": "Pratonton kelulusan",
+    "modeAllRequired": "Semua perlu meluluskan"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
@@ -21064,14 +21139,12 @@
     "photoAlreadyPending": "Foto sudah menunggu semakan. Tunggu keputusan sebelum menghantar foto lain.",
     "routingTypeMatched": "Pasangan pekerja/jenis permohonan sepadan",
     "routingTypeMissing": "Pasangan pekerja/jenis permohonan tanpa peraturan",
-
     "submitPhoto": "Hantar foto untuk kelulusan",
     "pendingPhoto": "Foto menunggu",
     "photoApprovalHelp": "Foto semasa kekal sehingga HR meluluskan. Keputusan dipaparkan dalam Permohonan perubahan saya.",
     "currentPhoto": "Foto semasa",
     "proposedPhoto": "Foto dicadangkan",
     "photoProposed": "Foto dihantar untuk kelulusan HR",
-
     "approvalRules": "Peraturan Kelulusan HR",
     "requestTypes": "Jenis permohonan",
     "fieldRequests": "Medan profil",
@@ -21082,11 +21155,9 @@
     "unavailableSelection": "Pilihan tidak tersedia — buang atau ganti",
     "noValidApprovers": "Tiada pelulus HR yang layak. Semak pekerjaan aktif, log masuk dan kuasa syarikat.",
     "noMatches": "Tiada pilihan sepadan",
-
     "tabPermission": "Akses tab",
     "sectionPermission": "Akses bahagian",
     "groupPermissionHelp": "Had tab dan bahagian diutamakan. Boleh sunting mengikut tetapan medan; Lihat sahaja menghalang perubahan; Sembunyi membuang maklumat daripada Profil Saya.",
-
     "requestEdit": "Mohon untuk mengedit",
     "save": "Simpan perubahan",
     "cancel": "Batal",
@@ -22106,5 +22177,114 @@
       "denied": "Kebenaran anda telah berubah. Buka semula rekod ini untuk menyemak akses anda.",
       "invalid": "Masukkan ID Pekerja yang belum digunakan dengan huruf, nombor atau sempang, maksimum 30 aksara."
     }
+  },
+  "myPayslip": {
+    "title": "Slip Gaji Saya",
+    "intro": "Slip gaji anda yang telah dikeluarkan",
+    "cycle": "Kitaran Gaji (Jenis Larian)",
+    "unavailableChoice": "Pilihan tidak tersedia",
+    "releasedHelp": "Pilihan berdasarkan slip gaji akhir anda yang telah dikeluarkan.",
+    "unavailable": "Tiada slip gaji yang telah dikeluarkan tersedia untuk pilihan ini.",
+    "review": "Semak Slip Gaji",
+    "download": "Muat Turun PDF",
+    "back": "Kembali ke Slip Gaji Saya",
+    "openInNewTab": "Buka dalam tab baharu",
+    "loadError": "Slip gaji anda tidak dapat dimuatkan",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan slip gaji anda…"
+  },
+  "myEa": {
+    "title": "EA Saya",
+    "intro": "Lihat borang EA tahunan mengikut tahun dan majikan pembayar.",
+    "year": "Tahun",
+    "employer": "Majikan",
+    "language": "Bahasa dokumen",
+    "view": "Lihat EA",
+    "unavailable": "EA belum tersedia",
+    "unavailableHelp": "Borang lengkap tersedia apabila semua pemprosesan gaji berkaitan ditutup dan diterbitkan. Hubungi HR jika anda memerlukan bantuan.",
+    "download": "Muat turun PDF",
+    "back": "Kembali ke EA Saya",
+    "openInNewTab": "Buka PDF dalam tab baharu",
+    "loadError": "Borang EA anda tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan borang EA anda…"
+  },
+  "allowanceV4": {
+    "available": "Tersedia",
+    "included": "Disertakan",
+    "includeChecked": "Sertakan yang ditanda ({count})",
+    "removeChecked": "Buang yang ditanda ({count})",
+    "includedCount": "{count} pekerja disertakan",
+    "limit": "Satu polisi menyokong sehingga 2,000 pekerja. Buang sebahagian sebelum menambah lagi.",
+    "clearIncluded": "Kosongkan senarai",
+    "selectionHelp": "Hanya pekerja Disertakan layak. Tanda kekal merentas carian dan halaman. Pilih yang dipaparkan hanya meliputi halaman ini.",
+    "searchSide": "Cari {side}",
+    "search": "Cari ID Pekerja atau nama",
+    "loadError": "Pilihan tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "selectVisible": "Pilih yang dipaparkan ({count})",
+    "loading": "Memuatkan pilihan…",
+    "empty": "Tiada pilihan sepadan.",
+    "noCode": "Tiada ID Pekerja",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "page": "Halaman {page}",
+    "unavailable": "Sesetengah rujukan tidak tersedia. Buang atau minta HR membetulkan akses sebelum menyimpan.",
+    "unavailableMore": "{count} lagi rujukan tidak tersedia.",
+    "searchValues": "Cari nilai",
+    "removeValue": "Buang {value}",
+    "employeeGroup": "Kriteria pekerja",
+    "emptyGroup": "Tambah syarat pada kumpulan ini sebelum menyimpan.",
+    "branch": "Cawangan",
+    "division": "Bahagian",
+    "upgradeHelp": "Kriteria berkumpulan memulakan versi polisi baharu. Hasil terdahulu dan syarat kehadiran mengekalkan maknanya.",
+    "upgrade": "Gunakan kriteria pekerja berkumpulan",
+    "operators": {
+      "is": "Adalah",
+      "isNot": "Bukan",
+      "in": "Dalam",
+      "notIn": "Bukan Dalam"
+    },
+    "previewTitle": "Pratonton pekerja sepadan",
+    "previewAction": "Pratonton pekerja",
+    "previewHelp": "Menggunakan hari terakhir pekerjaan dalam setiap tempoh. Jabatan, Unit Perniagaan, Jawatan dan Jenis Pekerjaan menggunakan penempatan bertarikh; Gred, Kategori, Cawangan dan Bahagian menggunakan profil Personnel semasa. Syarat kehadiran juga perlu dipenuhi.",
+    "previewError": "Pratonton tidak dapat dimuatkan. Semak pilihan dan tempoh, kemudian cuba lagi.",
+    "previewCount": "{count} padanan pekerja-tempoh",
+    "asOf": "Fakta pada {date}",
+    "previewTruncated": "Memaparkan 100 padanan pekerja-tempoh pertama."
+  },
+  "myTp3": {
+    "title": "Borang TP3 Saya",
+    "intro": "Rekodkan maklumat majikan terdahulu bagi tahun anda menyertai syarikat ini.",
+    "employment": "Pekerjaan",
+    "chooseEmployment": "Pilih pekerjaan anda",
+    "year": "Tahun taksiran",
+    "view": "Lihat",
+    "joinDate": "Tarikh Sertai Syarikat",
+    "state": "Keadaan rekod",
+    "fallback": "Tarikh Sertai belum direkodkan; Tarikh Sertai Kumpulan sedia ada digunakan.",
+    "chooseHelp": "Pilih pekerjaan untuk melihat Tarikh Sertai dan kelayakan kemasukan.",
+    "ineligible": "Kemasukan baharu memerlukan pekerjaan aktif dengan Tarikh Sertai syarikat yang telah tiba dalam tahun kalendar semasa. Rekod sedia ada kekal tersedia di bawah.",
+    "correctionHelp": "Rekod ini baca sahaja di sini. Hubungi Payroll untuk pembetulan yang dibenarkan.",
+    "held": "Borang direkodkan, tetapi {year} masih memiliki baki pembukaan gaji.",
+    "savedAt": "Terakhir disimpan {at}",
+    "draftSaved": "Draf disimpan. Input Payroll tidak berubah.",
+    "submitted": "Dihantar",
+    "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja.",
+    "history": "Tahun terdahulu",
+    "new": "Tiada rekod disimpan",
+    "draft": "Draf",
+    "declared": "Diisytiharkan pekerja",
+    "payrollSaved": "Disimpan oleh Payroll",
+    "saveDraft": "Simpan draf",
+    "submit": "Hantar pengisytiharan",
+    "saving": "Menyimpan…",
+    "draftHelp": "Draf tidak menjejaskan Payroll. Penghantaran merekodkan pengisytiharan anda dan menggunakan pengiraan TP3 sedia ada.",
+    "invalid": "Tindakan borang TP3 tidak sah.",
+    "invalidMoney": "Masukkan amaun bukan negatif dengan maksimum dua tempat perpuluhan.",
+    "changed": "Rekod atau kelayakan anda telah berubah. Muat semula dan semak TP3 semasa sebelum menyimpan lagi.",
+    "loadError": "Borang TP3 anda tidak dapat dimuatkan.",
+    "retry": "Cuba lagi",
+    "loading": "Memuatkan Borang TP3 anda…"
   }
 }

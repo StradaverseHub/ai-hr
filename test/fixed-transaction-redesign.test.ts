@@ -200,7 +200,10 @@ describe('009c8a37 — one header line, in both panel states, on every screen wi
     // It used to be the FIRST CHILD of the left column, which pushed the list down by its own height
     // (~38px) while the detail card beside it still started at the container top. That offset IS the
     // card-top mismatch the reporter marked in red.
-    const panelBranch = shellBody.slice(shellBody.indexOf('{open && '), shellBody.indexOf('<div className="min-w-0 space-y-4">'));
+    const panelStart = shellBody.indexOf('{(open || keepPanelMounted)');
+    const panelEnd = shellBody.indexOf('<div className="min-w-0 space-y-4">');
+    expect(panelStart).toBeGreaterThanOrEqual(0); expect(panelEnd).toBeGreaterThan(panelStart);
+    const panelBranch = shellBody.slice(panelStart, panelEnd);
     expect(panelBranch, 'the expanded branch renders the list and nothing else').not.toContain('<button');
     expect(panelBranch).toContain('{panel}');
   });
@@ -215,7 +218,7 @@ describe('009c8a37 — one header line, in both panel states, on every screen wi
     expect(panelSrc, 'no 40px strip').not.toContain('lg:w-10');
     expect(panelSrc, 'no empty auto column while collapsed').not.toContain('lg:grid-cols-[auto_');
     expect(shellBody, 'collapsed is ONE column, with no left cell rendered at all').toContain('lg:grid-cols-1');
-    expect(shellBody).toContain('{open && <div className="min-w-0">{panel}</div>}');
+    expect(shellBody).toContain('{(open || keepPanelMounted) && <div id={panelId} hidden={!open} className="min-w-0">{panel}</div>}');
   });
 
   it('the prop that fed the rail is gone from the shell AND from both screens that passed it', () => {
@@ -251,8 +254,9 @@ describe('009c8a37 — one header line, in both panel states, on every screen wi
     // and the mobile one is OUTSIDE the `{open && …}` branch, which is what makes it survive.
     expect(shellBody.match(/toggleButton\(/g) ?? [], 'exactly two positions').toHaveLength(2);
     const mobile = shellBody.indexOf('<div className="lg:hidden">{toggleButton(');
-    const panelBranch = shellBody.indexOf('{open && ');
+    const panelBranch = shellBody.indexOf('{(open || keepPanelMounted)');
     expect(mobile, 'the narrow-viewport copy exists').toBeGreaterThan(-1);
+    expect(panelBranch, 'the bounded panel branch exists').toBeGreaterThan(-1);
     expect(mobile, 'and it is rendered BEFORE the panel branch, in both states').toBeLessThan(panelBranch);
     expect(shellBody, 'the wide-viewport copy lives in the header row').toContain("toggleButton('hidden shrink-0 lg:flex')");
     // One handler, one cookie key, so the two copies cannot disagree about the state.

@@ -1,7 +1,7 @@
 import type { SessionContext } from '../../db/client';
 import { myRosterWindow } from '../../core/roster';
 import { attendanceForEmploymentRange } from '../../core/attendance';
-import { flagOf, statusOf } from '../../core/attendance-derive';
+import { flagOf, personalAttendanceStatus } from '../../core/attendance-derive';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { assertModuleGate } from '../../core/module-gate';
 
@@ -13,10 +13,9 @@ export async function myAttendanceCalendarWindow(ctx: SessionContext, window: { 
   const rows = await attendanceForEmploymentRange(ctx, roster.employmentId, window.from, window.to);
   const today = todayInKualaLumpur();
   const attendance = new Map(rows.map(row => {
-    const status = statusOf(row);
     return [row.date, {
       // A planned working day in the future is not an absence.
-      status: row.date > today && !row.attendanceId && status === 'absent' ? null : status,
+      status: personalAttendanceStatus(row, today),
       flag: flagOf(row),
       checkInAt: row.checkInAt,
       checkOutAt: row.checkOutAt,

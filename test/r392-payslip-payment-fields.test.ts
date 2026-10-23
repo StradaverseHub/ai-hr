@@ -246,7 +246,9 @@ describe('r392 every surface feeds the translated method, the full account and t
     expect(review).toContain('payrollCycle: payslipCycleLabel({cycleName:row.cycleName,runTypeLabel:tTxn(`individual.cycle.${row.runType}`)}),');
     for (const f of [SURFACES.adminPdf, SURFACES.essPdf]) {
       const src = read(f);
-      const call = src.slice(src.indexOf('informationRows: selectPayslipInformation(payslipInformationData(p, {'), src.indexOf('p.informationFields', src.indexOf('informationRows:')));
+      const assembly = f === 'app/me/payslip/[payslipId]/pdf/route.ts' ? read('app/me/payslip/document.ts') : src;
+      if (f === 'app/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
+      const call = assembly.slice(assembly.indexOf('informationRows: selectPayslipInformation(payslipInformationData(p, {'), assembly.indexOf('p.informationFields', assembly.indexOf('informationRows:')));
       expect(call.length, `${f}: the informationRows call was found`).toBeGreaterThan(100);
       expect(call, `${f} must feed the TRANSLATED method`).toContain('paymentMethod: strings.paymentMethod');
       expect(call, `${f} must feed the FULL account`).toContain('bankAccount: p.bankAccountFull');

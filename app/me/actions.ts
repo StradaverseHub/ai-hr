@@ -74,7 +74,7 @@ import {
   type OtReasonCategory,
 } from '@/db/schema';
 import { updateOwnContact } from '@/core/profile';
-import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
+import { saveMyTp1Draft, submitMyTp1 } from '@/packs/payroll/service';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
 import type { Tp1FormState } from '@/lib/tp1-form-state';
 import { tp1RefusalMessage } from '@/lib/tp1-refusal';
@@ -840,18 +840,23 @@ export async function myRequestProfileChange(_formData: FormData) {
  */
 export async function myTp1FormAction(_prev: Tp1FormState, formData: FormData): Promise<Tp1FormState> {
   const { s } = await resolveMe();
-  const input = readTp1FormInput(formData);
-  const draft = String(formData.get('intent') ?? 'submit') === 'draft';
+  const t=await getTranslations('taxRelief');
+  const input = {...readTp1FormInput(formData),expectedRevision:String(formData.get('tp1Revision')??'invalid')};
+  const intent=String(formData.get('intent')??'submit');
+  if(intent!=='draft'&&intent!=='submit')return {error:t('invalidIntent')};
+  if(input.assessmentYear<Number(todayInKualaLumpur().slice(0,4)))return {error:t('pastReadOnly')};
+  let saved:{id:string};
   try {
-    if (draft) await saveTp1Draft(s, input);
-    else await submitTp1(s, input);
-  } catch (e) {
-    return { error: await tp1RefusalMessage(e) };
-  }
+    saved=intent==='draft'?await saveMyTp1Draft(s,input):await submitMyTp1(s,input);
+  } catch(e) {return {error:await tp1RefusalMessage(e)};}
   revalidatePath('/me/tax-relief');
-  redirect(
-    `/me/tax-relief?year=${input.assessmentYear}&toast=${draft ? 'Draft+saved' : 'TP1+submitted'}`,
-  );
+  revalidatePath('/payroll/transactions/tp1','layout');
+  const context=new URLSearchParams({id:saved.id,saved:intent});
+  for(const key of ['dPage','dSize']){
+    const value=String(formData.get(key)??'');
+    if(/^(?:\d{1,6}|all)$/.test(value))context.set(key,value);
+  }
+  redirect(`/me/tax-relief?${context}`);
 }
 
 // ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──

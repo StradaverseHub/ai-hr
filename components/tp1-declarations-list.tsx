@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Badge, inputCls } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
-import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+import { ClientPager, useClientPageQuery, useClampPagePastEnd, useResetPageOnFilterChange } from '@/components/client-pager';
 
 /**
  * 3e3d3fb2 — the TP1 Relief "Transaction history" list, with the search, sorting and paging the screen
@@ -80,13 +80,14 @@ type SortKey = 'year' | 'month' | 'amount' | 'status' | 'lastSaved';
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] }) {
+export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1DeclarationListRow[]; compactOnMobile?:boolean }) {
   const t = useTranslations('payroll.transactions.tp1');
   const q = useClientPageQuery({ page: 'dPage', size: 'dSize' });
   const [query, setQuery] = useState('');
   // Months open in calendar order (January first), which is the order the reporter's own sketch shows.
   const [sortKey, setSortKey] = useState<SortKey>('month');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  useResetPageOnFilterChange(JSON.stringify([query, sortKey, sortDir]), { page: 'dPage', size: 'dSize' });
 
   const statusLabel = (s: Tp1DeclarationListRow['status']) => t(`history.status_${s}`);
   /** Approved is the only status that feeds payroll, so it is the only one that reads as success. */
@@ -132,6 +133,7 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
   }, [rows, query, sortKey, sortDir]);
 
   const { rows: pageRows, state } = paginateRows(sorted, q);
+  useClampPagePastEnd(state, { page: 'dPage', size: 'dSize' });
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -166,7 +168,7 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         <span className="text-xs text-muted-foreground">{t('history.nShown', { count: sorted.length })}</span>
       </div>
 
-      <div className="overflow-x-auto border-t border-border">
+      <div className={`overflow-x-auto border-t border-border ${compactOnMobile?'hidden md:block':''}`}>
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -233,6 +235,14 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         </table>
       </div>
 
+      {compactOnMobile&&<div className="divide-y divide-border border-t border-border md:hidden">
+        {pageRows.map(row=><article key={row.id} className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{row.assessmentYear} · {row.monthLabel}</h3><Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge></div>
+          <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">{t('history.colAmount')}</dt><dd className="tabular-nums">{rm(row.amount)}</dd></div><div><dt className="text-xs text-muted-foreground">{t('history.colLastSaved')}</dt><dd>{row.lastSaved}</dd></div></dl>
+          <Link href={row.href} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline">{t(row.readOnly?'history.view':'history.viewEdit')}</Link>
+        </article>)}
+        {pageRows.length===0&&<p className="p-6 text-center text-sm text-muted-foreground">{t(rows.length===0?'history.empty':'history.noMatches')}</p>}
+      </div>}
       <ClientPager state={state} paramNames={{ page: 'dPage', size: 'dSize' }} />
     </div>
   );

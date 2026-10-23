@@ -458,7 +458,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
      * and the ones it does not (it explains two reversals), which is the same reason
      * test/attendance-my-records-split.test.ts strips comments before every source assertion.
      */
-    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-records/page.tsx'), 'utf8');
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-roster/record-list.tsx'), 'utf8');
     const page = pageSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
     expect(page, 'the employee screen resolves the caller’s own employment').toMatch(/myEmployment\(\s*s\s*\)/);
     expect(page, 'and the attendance read is keyed on that employment, not on a company scope').toMatch(
@@ -466,8 +466,11 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     );
     expect(page, 'and it resolves no company scope at all').not.toContain('scopeIds');
     expect(page, 'and carries no admin page guard').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
-    // …and it is still an authenticated page, which is what keeps the route registered and reachable.
-    expect(page, 'the session is still resolved').toContain('await scopedSession()');
+    // Calendar/List now share one authenticated shell. The renderer consumes that same session.
+    const shell=fs.readFileSync(path.resolve(__dirname,'../app/attendance/my-roster/page.tsx'),'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g,' ').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
+    expect(shell, 'the session is resolved at the shared route boundary').toContain('await scopedSession()');
+    expect(shell, 'the list receives that authenticated session').toMatch(/<AttendanceRecordList\s+s=\{s\}/);
   });
 
   it('keeps Import (/attendance/import) last in the merged node, still manager-gated', () => {

@@ -1,13 +1,12 @@
 import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
-import { AttendanceRequestHistory } from '@/components/attendance-request-history';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { requestOwnAttendanceDayAction } from './actions';
-import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, breakMinutesOf, otByRate, flagOf, statusOf, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
+import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, breakMinutesOf, otByRate, flagOf, personalAttendanceStatus, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
 import { myEmployment } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
@@ -21,6 +20,8 @@ const CORRECTION_MESSAGES: readonly string[] = [
   'correctionReasonRequired',
   'correctionNothingToChange',
   'correctionRejected',
+  'clockDataPayrollClosed',
+  'myDayWorkflowUnavailable',
   'myDayPending',
   'myDayFuture',
   'myDayBadTimes',
@@ -31,7 +32,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -39,6 +40,7 @@ export default async function MyAttendanceDayPage({
   const { s } = await scopedSession();
   const { date } = await params;
   const sp = await searchParams;
+  const correctionError = sp.correctionError ?? sp.error;
   const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
   const workflowText = await getTranslations('attendanceWorkflow');
 
@@ -85,7 +87,6 @@ export default async function MyAttendanceDayPage({
           ← {t('myDayBack')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
-        <AttendanceRequestHistory rows={requestHistory} />
       </div>
     );
   }
@@ -101,12 +102,12 @@ export default async function MyAttendanceDayPage({
   };
   const flagText: Record<Exclude<AttendanceFlag, null>, string> = {
     late: t('flagLate'),
-    under: t('flagUnder'),
-    odd: t('flagOdd'),
+    under: t('myCalendar.shortHours'),
+    odd: t('myCalendar.incompleteEntry'),
   };
 
   const ot = otByRate(row);
-  const status = statusOf(row);
+  const status = personalAttendanceStatus(row, todayInKualaLumpur());
   const flag = flagOf(row);
 
   // The shift's SPAN less its NET scheduled minutes is the unpaid break — the engine's own arithmetic, not
@@ -129,16 +130,15 @@ export default async function MyAttendanceDayPage({
         ← {t('myDayBack')}
       </Link>
 
-      {sp.error && CORRECTION_MESSAGES.includes(sp.error) && <ErrorBanner message={t(sp.error)} />}
+      {correctionError && CORRECTION_MESSAGES.includes(correctionError) && <ErrorBanner message={t(correctionError)} />}
       {workflowProblem && <ErrorBanner message={`${workflowProblem.levelIndex == null ? '' : `${workflowText('stageNumber', { number: workflowProblem.levelIndex + 1 })}: `}${workflowText(`v3.${attendanceLevelProblemMessageKey(workflowProblem)}`)}`}/>}
-      {sp.corrected === '1' && !sp.error && (
+      {sp.corrected === '1' && !correctionError && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('myDaySubmitted')}
         </div>
       )}
 
       {/* 1 · SHIFT DETAILS */}
-      <AttendanceRequestHistory rows={requestHistory} />
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecShift')} />
         <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
@@ -166,7 +166,7 @@ export default async function MyAttendanceDayPage({
           <Field label={t('colCheckIn')} value={row.checkInAt?.slice(0, 5) ?? DASH} />
           <Field label={t('colCheckOut')} value={row.checkOutAt?.slice(0, 5) ?? DASH} />
           <Field label={t('colActualHours')} value={fmtMin(row.workedMinutes)} />
-          <Field label={t('colStatus')} value={statusText[status]} />
+          <Field label={t('colStatus')} value={status ? statusText[status] : DASH} />
         </div>
         {punches.length > 0 && (
           <div className="border-t border-border px-4 py-3">
@@ -233,7 +233,7 @@ export default async function MyAttendanceDayPage({
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecIrregular')} />
         <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-          <Field label={t('colStatus')} value={statusText[status]} />
+          <Field label={t('colStatus')} value={status ? statusText[status] : DASH} />
           <Field label={t('colFlag')} value={flag ? flagText[flag] : DASH} />
           <Field label={t('colLateness')} value={fmtMin(row.lateMinutes)} />
           <Field label={t('colEarlyOut')} value={fmtMin(row.earlyOutMinutes)} />

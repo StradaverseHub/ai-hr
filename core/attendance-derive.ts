@@ -192,3 +192,11 @@ export function breakMinutesOf(row: { shiftStart: string | null; shiftEnd: strin
   const span = (minutes(row.shiftEnd) - minutes(row.shiftStart) + 1440) % 1440 || 1440;
   return Math.max(0, span - row.scheduledMinutes);
 }
+
+/** Personal views suppress an unrecorded future absence; HR's canonical derivation is unchanged. */
+export function personalAttendanceStatus(
+  row: Parameters<typeof statusOf>[0] & { date: string }, today: string,
+): AttendanceStatus | null {
+  const status = statusOf(row);
+  return row.date > today && !row.attendanceId && status === 'absent' ? null : status;
+}

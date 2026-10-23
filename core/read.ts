@@ -24,6 +24,7 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { assertModuleGate } from './module-gate';
 import { companyDeleteBlockSqlText } from './company-refs';
 import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import {
@@ -150,6 +151,7 @@ import {
   leaveSharedGroup,
   leaveSharedGroupMember,
   payrollBatch,
+  payrollCycle,
   payrollPolicy,
   payslip,
   person,
@@ -2304,10 +2306,10 @@ export function recentHires(
 export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }) {
   return withTenant(ctx, (tx) =>
     tx
-      .select({ name: holiday.name, date: holiday.holidayDate })
+      .select({ id: holiday.id, name: holiday.name, date: holiday.holidayDate })
       .from(holiday)
       .where(gte(holiday.holidayDate, opts.from))
-      .orderBy(holiday.holidayDate)
+      .orderBy(holiday.holidayDate, holiday.id)
       .limit(opts.limit ?? 5),
   );
 }
@@ -6053,6 +6055,7 @@ export function myEmployment(ctx: SessionContext) {
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
+        companyId: employment.companyId,
         company: company.legalName,
         department: department.name,
         position: position.title,
@@ -6292,7 +6295,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 }
 
 /** The current principal's payslips (RLS already restricts to own employment). */
-export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
+export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false) {
   return withTenant(ctx, async (tx) => {
     if (employmentIds.length === 0) return [];
     const rows = await tx
@@ -6315,8 +6318,9 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(inArray(payslip.employmentId, employmentIds))
-      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+      .innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .where(and(inArray(payslip.employmentId, employmentIds),ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq, payslip.id);
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.
@@ -6325,6 +6329,28 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       ...r,
       released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
     }));
+  });
+}
+
+/** Explicit Mine fence for document/YTD consumers, including payroll administrators in Mine. */
+export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
+  assertModuleGate(ctx,'payroll');
+  return myPayslips(ctx,employmentIds,true);
+}
+
+/** Own current/historical released run index. No caller-provided employment population. */
+export function myReleasedPayslipRuns(ctx:SessionContext) {
+  assertModuleGate(ctx,'payroll');
+  return withTenant(ctx,async tx=>{
+    if(!ctx.personId)return [];
+    return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
+      companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
+      cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq})
+      .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
+      .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
+      .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
   });
 }
 

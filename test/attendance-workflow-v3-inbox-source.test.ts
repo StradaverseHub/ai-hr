@@ -9,7 +9,7 @@ function section(from: string, to: string) {
     expect(result.length).toBeGreaterThan(100);
     return result;
 }
-describe('ordinary v3 admission and exact assignment keep unrelated detail loaders separate', () => {
+describe('ordinary v3/v4 admission and exact assignment keep unrelated detail loaders separate', () => {
     it('discovers real assignments without a role promotion and preserves Attendance-only detail loading', () => {
         const admission=section('const [rewardReviews,assignedAttendance,assignedTasks]=',"const t = await getTranslations('approvals');");
         expect(admission).toContain('await Promise.all([');
@@ -22,13 +22,13 @@ describe('ordinary v3 admission and exact assignment keep unrelated detail loade
         expect(loaders).toContain("claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims");
         expect(page).toContain('const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects');
     });
-    it('proves exact assignment before any focus bypass and keeps the ordinary narrow v3 presentation', () => {
+    it('proves exact assignment before any focus bypass and keeps the ordinary narrow v3/v4 presentation', () => {
         const admission=page.indexOf('if(focus&&!await isCurrentAssignedApproval');
         const scoped=page.indexOf('const queueScope=focus?undefined:scopeIds;');
         expect(admission).toBeGreaterThanOrEqual(0);expect(scoped).toBeGreaterThan(admission);
         const projection=section('const corrections = attendanceOnly','// 1e9145d4 — the kind of day');
         expect(projection).toContain('attendanceOnly&&!focus');
-        expect(projection).toContain('row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId');
+        expect(projection).toContain('(row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId');
         expect(page).toContain('const decided = attendanceOnly||focus ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts');
         expect(page).toContain("(!attendanceOnly || section === 'corrections')");
         expect(page).toContain('if(!focusedRows.some(row=>row.id===focus.id))notFound();');

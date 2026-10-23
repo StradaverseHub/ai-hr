@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
@@ -12,8 +12,10 @@ import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
 import { AttendanceWorkflowError, attendanceScopesOverlap, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover } from '../lib/attendance-workflow';
-import { AttendanceLevelError, validateAnyAttendanceWorkflow, type AnyAttendanceWorkflowInput, type AttendanceLevelProblem, type AttendanceV3FrozenLevel } from '../lib/attendance-workflow-v3';
-export type { AnyAttendanceWorkflowInput } from '../lib/attendance-workflow-v3';
+import { AttendanceLevelError, type AttendanceLevelProblem, type AttendanceV3FrozenLevel } from '../lib/attendance-workflow-v3';
+import {validateAnyAttendanceWorkflow,attendanceWorkflowConfiguration,type AnyAttendanceWorkflowInput} from '../lib/attendance-workflow-config';
+import {AttendanceCcError,type AttendanceCcSource,type AttendanceCcRecipient} from '../lib/attendance-workflow-v4';
+export type { AnyAttendanceWorkflowInput } from '../lib/attendance-workflow-config';
 export { AttendanceWorkflowError } from '../lib/attendance-workflow';
 export type { AttendanceWorkflowInput, AttendanceApplicationType } from '../lib/attendance-workflow';
 async function adminFor(tx: Tx, companyId: string) {
@@ -25,12 +27,14 @@ async function adminFor(tx: Tx, companyId: string) {
 }
 const companyLock = (tx: Tx, tenantId: string, companyId: string, type: string) => tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':attendance-workflow:' + companyId + ':' + type},0))`);
 async function validateScope(tx: Tx, ctx: SessionContext, input: AnyAttendanceWorkflowInput) {
-    if (input.routingVersion === 3) {
+    if (input.routingVersion === 3 || input.routingVersion === 4) {
         const eligible = await tx.execute(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${input.companyId}::uuid]::uuid[])`) as unknown as { id: string }[];
         const allowed = new Set(eligible.map(row => row.id));
         for (const [levelIndex, stage] of input.stages.entries()) {
-            if (stage.source.kind !== 'specific_employee') continue;
-            for (const [participantIndex, employmentId] of stage.source.employmentIds.entries()) if (!allowed.has(employmentId)) throw new AttendanceLevelError({ code: 'employee_unavailable', levelIndex, participantIndex });
+            for (const source of 'sources' in stage ? stage.sources : [stage.source]) {
+            if (source.kind !== 'specific_employee') continue;
+            for (const [participantIndex, employmentId] of source.employmentIds.entries()) if (!allowed.has(employmentId)) throw new AttendanceLevelError({ code: 'employee_unavailable', levelIndex, participantIndex });
+            }
         }
     }
 
@@ -67,7 +71,14 @@ async function workflowTargets(tx: Tx, criteria: AnyAttendanceWorkflowInput['cri
     if (employmentIds?.length && employeeIds.length && !restricted?.length) return [];
     return resolveOrgCriteriaTargets(tx, { criteria: { ...orgCriteria, companyIds: [companyId] }, asOf: todayInKualaLumpur(), employmentIds: restricted });
 }
-async function resolveStages(tx: Tx, employmentId: string, configured: AnyAttendanceWorkflowInput['stages'], routingVersion: 1 | 2 | 3 = 1): Promise<AttendanceResolvedStage[]> {
+async function resolveV4(tx:Tx,employmentId:string,stages:AnyAttendanceWorkflowInput['stages'],cc:AttendanceCcSource[]) {
+ const [row]=await tx.execute(sql`select app.attendance_workflow_resolve_v4(${employmentId}::uuid,${JSON.stringify(stages)}::jsonb,${JSON.stringify(cc)}::jsonb) as result`) as unknown as {result:{ok:true;stages:AttendanceResolvedStage[];cc:AttendanceCcRecipient[]}|{ok:false;problem:AttendanceLevelProblem}}[];
+ if(!row?.result)throw new AttendanceLevelError({code:'employee_unavailable',levelIndex:null});
+ if(!row.result.ok){if(row.result.problem.code==='invalid_route'&&row.result.problem.levelIndex===null)throw new AttendanceCcError('unavailableCc');throw new AttendanceLevelError(row.result.problem);}
+ return row.result;
+}
+async function resolveStages(tx: Tx, employmentId: string, configured: AnyAttendanceWorkflowInput['stages'], routingVersion: 1 | 2 | 3 | 4 = 1, cc: AttendanceCcSource[] = []): Promise<AttendanceResolvedStage[]> {
+    if (routingVersion === 4) return (await resolveV4(tx,employmentId,configured,cc)).stages;
     if (routingVersion === 3) {
         try {
             const [result] = await tx.execute(sql`select app.attendance_workflow_resolve_v3(${employmentId}::uuid,${JSON.stringify(configured)}::jsonb) as result`) as unknown as { result: { ok: true; stages: AttendanceV3FrozenLevel[] } | { ok: false; problem: AttendanceLevelProblem } }[];
@@ -123,33 +134,61 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
         throw new AttendanceWorkflowError('overlap', 'An active workflow at this priority overlaps this assignment. Use a different priority or disjoint scope. Lower priority numbers apply first.');
     const targets = await workflowTargets(tx, input.criteria, input.companyId);
     for (const id of targets)
-        await resolveStages(tx, id, input.stages, input.routingVersion);
+        await resolveStages(tx, id, input.stages, input.routingVersion, input.routingVersion===4?input.cc:[]);
     // Zero targets is allowed as a future population. Submission re-resolves and refuses missing approvers.
 }
-export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string) {
+export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number) {
     const input = validateAnyAttendanceWorkflow(raw);
     return withTenant(ctx, async (tx) => {
         await adminFor(tx, input.companyId);
         await companyLock(tx, ctx.tenantId, input.companyId, input.applicationType);
-        const [old] = lineageId ? await tx.select().from(template).where(and(eq(template.lineageId, lineageId), isNull(template.supersededAt))).for('update') : [];
+        let [old] = lineageId ? await tx.select().from(template).where(and(eq(template.lineageId, lineageId), isNull(template.supersededAt))).for('update') : [];
+        if(old && restoreVersion!==undefined)throw new AttendanceWorkflowError('stale','This workflow already has a current version. Reload before restoring.');
+        if (!old && lineageId && restoreVersion!==undefined) {
+            [old]=await tx.select().from(template).where(and(eq(template.lineageId,lineageId),isNotNull(template.retiredAt))).orderBy(desc(template.version)).limit(1).for('update');
+            if(!old||old.version!==restoreVersion)throw new AttendanceWorkflowError('stale','The retained configuration changed. Reload before restoring.');
+        }
         if (lineageId && (!old || old.companyId !== input.companyId || old.applicationType !== input.applicationType))
             throw new AttendanceWorkflowError('scope', 'The workflow was changed or is outside this company.');
         await validateScope(tx, ctx, input);
         if (input.active)
             await validateActivation(tx, ctx, input, lineageId);
-        if (old)
+        if (old && !old.retiredAt)
             await tx.update(template).set({ supersededAt: new Date() }).where(eq(template.id, old.id));
         const lineage = lineageId ?? randomUUID();
         const [row] = await tx.insert(template).values({ tenantId: ctx.tenantId, ...input, lineageId: lineage, version: (old?.version ?? 0) + 1 }).returning();
-        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-workflow-template', aggregateId: lineage, eventType: old ? 'attendance-workflow-template.versioned' : 'attendance-workflow-template.created', actor: actorOf(ctx), payload: { companyId: input.companyId, templateId: row.id, version: row.version, before: old ?? null, after: input } });
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-workflow-template', aggregateId: lineage, eventType: old?.retiredAt?'attendance-workflow-template.restored':old ? 'attendance-workflow-template.versioned' : 'attendance-workflow-template.created', actor: actorOf(ctx), payload: { companyId: input.companyId, templateId: row.id, version: row.version, before: old ?? null, after: input } });
         return row;
     });
 }
 export function listAttendanceWorkflows(ctx: SessionContext, companyIds: string[]) {
     return withTenant(ctx, tx => companyIds.length ? tx.select().from(template).where(and(inArray(template.companyId, companyIds), isNull(template.supersededAt))).orderBy(asc(template.companyId), asc(template.applicationType), asc(template.priority), asc(template.code)) : Promise.resolve([]));
 }
-export function getAttendanceWorkflow(ctx: SessionContext, lineageId: string, companyIds: string[]) {
-    return withTenant(ctx, async (tx) => companyIds.length ? (await tx.select().from(template).where(and(eq(template.lineageId, lineageId), inArray(template.companyId, companyIds), isNull(template.supersededAt))).limit(1))[0] ?? null : null);
+export function getAttendanceWorkflow(ctx: SessionContext, lineageId: string, companyIds: string[],includeRetired=false) {
+    return withTenant(ctx, async (tx) => companyIds.length ? (await tx.select().from(template).where(and(eq(template.lineageId, lineageId), inArray(template.companyId, companyIds), includeRetired?undefined:isNull(template.supersededAt))).orderBy(desc(template.version)).limit(1))[0] ?? null : null);
+}
+export function listRetiredAttendanceWorkflows(ctx:SessionContext,companyIds:string[]) {
+ return withTenant(ctx,tx=>companyIds.length?tx.select().from(template).where(and(inArray(template.companyId,companyIds),isNotNull(template.retiredAt),sql`not exists(select 1 from public.attendance_workflow_template later where later.tenant_id=${template.tenantId} and later.lineage_id=${template.lineageId} and later.version>${template.version})`)).orderBy(asc(template.companyId),asc(template.code)):Promise.resolve([]));
+}
+export async function retireAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number) {
+ if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(lineageId)||!Number.isInteger(expectedVersion)||expectedVersion<1)throw new AttendanceWorkflowError('invalid','Reload the workflow before deleting.');
+ return withTenant(ctx,async tx=>{
+  const [old]=await tx.select().from(template).where(and(eq(template.lineageId,lineageId),isNull(template.supersededAt))).limit(1);
+  if(!old)throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');
+  await adminFor(tx,old.companyId);await companyLock(tx,ctx.tenantId,old.companyId,old.applicationType);
+  let result:{id:string}|undefined;
+  try{[result]=await tx.execute(sql`select app.attendance_workflow_retire(${lineageId}::uuid,${expectedVersion}) as id`) as unknown as {id:string}[];}
+  catch(error){const top=error as {code?:string;cause?:{code?:string}};const code=top.cause?.code??top.code;if(code==='P5101')throw new AttendanceWorkflowError('inUse','Pending applications still depend on this workflow.');if(code==='P5102')throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');throw error;}
+
+  if(!result?.id)throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-workflow-template',aggregateId:lineageId,eventType:'attendance-workflow-template.retired',actor:actorOf(ctx),payload:{companyId:old.companyId,templateId:result.id,version:expectedVersion,name:old.name}});
+  return {companyId:old.companyId,applicationType:old.applicationType};
+ });
+}
+export async function restoreAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number,companyIds:string[]) {
+ const retained=await getAttendanceWorkflow(ctx,lineageId,companyIds,true);
+ if(!retained?.retiredAt||retained.version!==expectedVersion)throw new AttendanceWorkflowError('stale','The retained workflow changed. Reload before restoring.');
+ return saveAttendanceWorkflow(ctx,attendanceWorkflowConfiguration(retained),lineageId,expectedVersion);
 }
 export function listAttendanceWorkflowSettings(ctx: SessionContext, companyIds: string[]) {
     return withTenant(ctx, tx => companyIds.length ? tx.select().from(setting).where(inArray(setting.companyId, companyIds)).orderBy(asc(setting.companyId), asc(setting.applicationType)) : Promise.resolve([]));
@@ -165,7 +204,7 @@ export async function setAttendanceWorkflowEnabled(ctx: SessionContext, companyI
             if (!active.length)
                 throw new AttendanceWorkflowError('invalid', 'Create and activate valid templates before enabling routing.');
             for (const row of active) {
-                const input = validateAnyAttendanceWorkflow({ ...row, description: row.description ?? '', active: true });
+                const input = attendanceWorkflowConfiguration({...row,active:true});
                 await validateScope(tx, ctx, input);
                 await validateActivation(tx, ctx, input, row.lineageId);
             }
@@ -193,15 +232,17 @@ export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, 
         throw new AttendanceWorkflowError('noMatch', 'Attendance workflow routing is enabled, but no active template matches this employee and application type. Ask HR to configure the assignment.');
     if (matches.filter(row => row.priority === matches[0].priority).length !== 1)
         throw new AttendanceWorkflowError('tie', 'More than one attendance workflow matches at the highest priority. Ask HR to resolve the conflicting assignments.');
-    const selected = matches[0], validated = validateAnyAttendanceWorkflow({ ...selected, description: selected.description ?? '' }), stages = await resolveStages(tx, employmentId, validated.stages, validated.routingVersion);
-    const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages }).returning();
+    const selected = matches[0], validated = attendanceWorkflowConfiguration(selected);
+    const resolved=validated.routingVersion===4?await resolveV4(tx,employmentId,validated.stages,validated.cc):{stages:await resolveStages(tx,employmentId,validated.stages,validated.routingVersion),cc:[]};
+    const {stages,cc}=resolved;
+    const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages, cc }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId, eventType: 'attendance-workflow.resolved', actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { workflowRequestId: snapshot.id, templateId: selected.id, templateVersion: selected.version, stages } });
     return snapshot;
 }
 /** A workflow assignment grants authority only for its request, never generic Personnel correction access. */
 export async function assertCanDecideAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string) {
     const [flow] = await tx.select({ routingVersion: request.routingVersion, employmentId: request.employmentId }).from(request).where(eq(request.correctionId, correctionId)).limit(1);
-    if (flow?.routingVersion === 3) {
+    if ((flow?.routingVersion === 3 || flow?.routingVersion === 4)) {
         if (flow.employmentId !== employmentId) throw new AttendanceWorkflowError('scope', 'The application subject does not match its frozen workflow.');
         const [allowed] = await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid) as slot`) as unknown as { slot: unknown }[];
         if (!allowed?.slot) throw new AttendanceWorkflowError('notApprover', 'Only the next distinct authorized participant may decide this frozen attendance request.');
@@ -218,7 +259,7 @@ export async function assertCanDecideAttendanceApplicationTx(tx: Tx, ctx: Sessio
 async function effectiveStageTx(tx: Tx, flow: typeof request.$inferSelect, index: number) {
     const stage = flow.stages[index];
     if (!stage) return stage;
-    if (flow.routingVersion === 3) {
+    if ((flow.routingVersion === 3 || flow.routingVersion === 4)) {
         const changes = await tx.select().from(participantReassignment).where(and(eq(participantReassignment.requestId, flow.id), eq(participantReassignment.stageIndex, index))).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id));
         return { ...stage, approvers: stage.approvers.map(actor => changes.filter(change => change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) };
     }
@@ -297,7 +338,7 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
     if (p.expectedStageIndex !== flow.currentStage)
         throw new AttendanceWorkflowError('stale', 'The pending approval stage changed. Reload the application before deciding it.');
     await assertCanDecideAttendanceApplicationTx(tx, ctx, p.correctionId, p.employmentId);
-    if (flow.routingVersion === 3) return decideAttendanceParticipantTx(tx, ctx, flow, p);
+    if ((flow.routingVersion === 3 || flow.routingVersion === 4)) return decideAttendanceParticipantTx(tx, ctx, flow, p);
     const stage = await effectiveStageTx(tx, flow, flow.currentStage);
     if (!stage)
         throw new AttendanceWorkflowError('stale', 'This workflow has already completed.');
@@ -373,7 +414,7 @@ export async function reassignAttendanceWorkflowStageToHr(ctx: SessionContext, p
     if (!p.reason?.trim() || p.reason.trim().length > 500) throw new AttendanceWorkflowError('invalid', 'Enter a reassignment reason of 1–500 characters.');
     return withTenant(ctx, async tx => {
         const [flow] = await tx.select().from(request).where(eq(request.correctionId, p.correctionId)).limit(1);
-        if (!flow || (flow.routingVersion !== 2 && flow.routingVersion !== 3)) throw new AttendanceWorkflowError('scope', 'Only a versioned pending application can be reassigned.');
+        if (!flow || (flow.routingVersion !== 2 && flow.routingVersion !== 3 && flow.routingVersion !== 4)) throw new AttendanceWorkflowError('scope', 'Only a versioned pending application can be reassigned.');
         await adminFor(tx, flow.companyId);
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + flow.employmentId},0))`);
         const correction = await tx.execute(sql`select c.status from public.attendance_correction c where c.id=${p.correctionId}::uuid and c.tenant_id=${ctx.tenantId}::uuid for update`) as unknown as { status: string }[];
@@ -381,7 +422,7 @@ export async function reassignAttendanceWorkflowStageToHr(ctx: SessionContext, p
         if (correction[0]?.status !== 'pending' || !locked || locked.currentStage !== p.expectedStageIndex || locked.currentStage >= locked.stages.length) throw new AttendanceWorkflowError('stale', 'The pending level changed. Reload before reassigning.');
         const current = await effectiveStageTx(tx, locked, locked.currentStage);
         if (!current) throw new AttendanceWorkflowError('stale', 'The pending level changed. Reload before reassigning.');
-        if (locked.routingVersion === 3) {
+        if ((locked.routingVersion === 3 || locked.routingVersion === 4)) {
             if (!ctx.personId || !p.expectedParticipantSlot) throw new AttendanceWorkflowError('invalid', 'Select the outstanding participant to reassign.');
             const previous = current.approvers.find(actor => actor.slot === p.expectedParticipantSlot);
             if (!previous) throw new AttendanceWorkflowError('stale', 'The outstanding participant changed. Reload before reassigning.');
@@ -405,10 +446,10 @@ export async function attendanceWorkflowForTx(tx: Tx, correctionId: string) {
     const decisions = await tx.select().from(decision).where(eq(decision.requestId, flow.id)).orderBy(asc(decision.stageIndex), asc(decision.id));
     const reassignments = await tx.select().from(reassignment).where(eq(reassignment.requestId, flow.id)).orderBy(asc(reassignment.occurredAt), asc(reassignment.id));
     const effectiveStages = flow.stages.map((stage, index) => { const latest = reassignments.filter(r => r.stageIndex === index).at(-1); return latest ? { ...stage, approvers: latest.approvers } : stage; });
-    const participantDecisions = flow.routingVersion === 3 ? await tx.select().from(participantDecision).where(eq(participantDecision.requestId, flow.id)).orderBy(asc(participantDecision.stageIndex), asc(participantDecision.decidedAt), asc(participantDecision.id)) : [];
-    const participantReassignments = flow.routingVersion === 3 ? await tx.select().from(participantReassignment).where(eq(participantReassignment.requestId, flow.id)).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
-    const currentParticipantSlot = flow.routingVersion === 3 ? (await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid)->>'slot' as slot`) as unknown as { slot: string | null }[])[0]?.slot ?? null : null;
-    const projected = flow.routingVersion === 3 ? flow.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantReassignments.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
+    const participantDecisions = (flow.routingVersion === 3 || flow.routingVersion === 4) ? await tx.select().from(participantDecision).where(eq(participantDecision.requestId, flow.id)).orderBy(asc(participantDecision.stageIndex), asc(participantDecision.decidedAt), asc(participantDecision.id)) : [];
+    const participantReassignments = (flow.routingVersion === 3 || flow.routingVersion === 4) ? await tx.select().from(participantReassignment).where(eq(participantReassignment.requestId, flow.id)).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
+    const currentParticipantSlot = (flow.routingVersion === 3 || flow.routingVersion === 4) ? (await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid)->>'slot' as slot`) as unknown as { slot: string | null }[])[0]?.slot ?? null : null;
+    const projected = (flow.routingVersion === 3 || flow.routingVersion === 4) ? flow.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantReassignments.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
     return { ...flow, decisions, effectiveStages: projected, reassignments, participantDecisions, participantReassignments, currentParticipantSlot };
 }
 /** Read-only preview uses the SAME shared org resolver and selection priority as submission. */
@@ -424,7 +465,7 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: unknown, lin
             name: string;
             selectedCode: string;
             problem: string | null;
-            routingVersion: 1 | 2 | 3;
+            routingVersion: 1 | 2 | 3 | 4;
             resolvedStages: AttendanceResolvedStage[];
             levelProblem: AttendanceLevelProblem | null;
         }[] = [];
@@ -432,12 +473,13 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: unknown, lin
             const [who] = await tx.execute(sql `select p.full_name from employment e join person p on p.id=e.person_id where e.id=${id}::uuid`) as unknown as {
                 full_name: string;
             }[];
-            const matches = [{ code: input.code, priority: input.priority, stages: input.stages, routingVersion: input.routingVersion ?? 1 }, ...await (async () => {
+            const matches = [{ code: input.code, priority: input.priority, stages: input.stages, routingVersion: input.routingVersion ?? 1,cc:input.routingVersion===4?input.cc:[] }, ...await (async () => {
                     const found: {
                         code: string;
                         priority: number;
                         stages: AnyAttendanceWorkflowInput['stages'];
-                        routingVersion: 1 | 2 | 3;
+                        cc: AttendanceCcSource[];
+                        routingVersion: 1 | 2 | 3 | 4;
                     }[] = [];
                     for (const t of other.filter(t => t.lineageId !== lineageId))
                         if ((await workflowTargets(tx, t.criteria, input.companyId, [id])).includes(id))
@@ -451,7 +493,7 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: unknown, lin
             // Preview the actual priority winner through the same resolver used by submission.
             if (!problem)
                 try {
-                    resolvedStages = await resolveStages(tx, id, matches[0].stages, matches[0].routingVersion);
+                    resolvedStages = await resolveStages(tx, id, matches[0].stages, matches[0].routingVersion,matches[0].cc);
                 }
                 catch (e) {
                     if (e instanceof AttendanceLevelError) levelProblem = e.problem;
@@ -468,7 +510,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
     const flows = await tx.select().from(request).where(inArray(request.correctionId, ids));
     const decisions = flows.length ? await tx.select().from(decision).where(inArray(decision.requestId, flows.map(f => f.id))).orderBy(asc(decision.stageIndex), asc(decision.id)) : [];
     const reassignments = flows.length ? await tx.select().from(reassignment).where(inArray(reassignment.requestId, flows.map(f => f.id))).orderBy(asc(reassignment.occurredAt), asc(reassignment.id)) : [];
-    const v3 = flows.filter(flow => flow.routingVersion === 3);
+    const v3 = flows.filter(flow => (flow.routingVersion === 3 || flow.routingVersion === 4));
     const participantDecisions = v3.length ? await tx.select().from(participantDecision).where(inArray(participantDecision.requestId, v3.map(flow => flow.id))).orderBy(asc(participantDecision.stageIndex), asc(participantDecision.decidedAt), asc(participantDecision.id)) : [];
     const participantReassignments = v3.length ? await tx.select().from(participantReassignment).where(inArray(participantReassignment.requestId, v3.map(flow => flow.id))).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
     const actorSlots = v3.length ? await tx.execute(sql`select w.id,app.attendance_workflow_v3_decision_slot(w.correction_id)->>'slot' as slot from public.attendance_workflow_request w where w.id in (${sql.join(v3.map(flow => sql`${flow.id}::uuid`), sql`,`)})`) as unknown as { id: string; slot: string | null }[] : [];
@@ -476,7 +518,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
         const overrides = reassignments.filter(r => r.requestId === f.id);
         const effectiveStages = f.stages.map((stage, index) => { const latest = overrides.filter(r => r.stageIndex === index).at(-1); return latest ? { ...stage, approvers: latest.approvers } : stage; });
         const participantChanges = participantReassignments.filter(change => change.requestId === f.id);
-        const projected = f.routingVersion === 3 ? f.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantChanges.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
+        const projected = (f.routingVersion === 3 || f.routingVersion === 4) ? f.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantChanges.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
         return [f.correctionId, { ...f, decisions: decisions.filter(d => d.requestId === f.id), effectiveStages: projected, reassignments: overrides,
             participantDecisions: participantDecisions.filter(d => d.requestId === f.id), participantReassignments: participantChanges, currentParticipantSlot: actorSlots.find(actor => actor.id === f.id)?.slot ?? null }];
     }));
@@ -485,7 +527,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
 /** Navigation uses an existing frozen request capability; this never grants a Manager role. */
 export function hasPendingAttendanceParticipantAssignment(ctx: SessionContext) {
     return withTenant(ctx, async tx => {
-        const [row] = await tx.execute(sql`select exists(select 1 from public.attendance_workflow_request w join public.attendance_correction c on c.id=w.correction_id and c.tenant_id=w.tenant_id where w.tenant_id=app.current_tenant_id() and w.routing_version=3 and c.status='pending' and app.attendance_workflow_v3_decision_slot(c.id) is not null) as ok`) as unknown as { ok: boolean }[];
+        const [row] = await tx.execute(sql`select exists(select 1 from public.attendance_workflow_request w join public.attendance_correction c on c.id=w.correction_id and c.tenant_id=w.tenant_id where w.tenant_id=app.current_tenant_id() and w.routing_version in (3,4) and c.status='pending' and app.attendance_workflow_v3_decision_slot(c.id) is not null) as ok`) as unknown as { ok: boolean }[];
         return row?.ok === true;
     });
 }

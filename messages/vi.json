@@ -450,13 +450,15 @@
     "systemConfiguration": "Cấu hình hệ thống",
     "inbox": "Hộp thư công việc",
     "myPayslips": "Phiếu lương của tôi",
-    "taxRelief": "Giảm trừ thuế",
+    "taxRelief": "Giảm trừ thuế (Mẫu TP1)",
     "reimbursementsDue": "Khoản hoàn trả cần thanh toán",
     "workLocations": "Địa điểm",
     "sharedNavigation": "Điều hướng chung",
     "profileChanges": "Thay đổi hồ sơ",
     "leaveSettings": "Cài đặt",
-    "attendanceCalendar": "Lịch chấm công"
+    "attendanceCalendar": "Lịch chấm công",
+    "myEa": "EA của tôi",
+    "myTp3": "Mẫu TP3 của tôi"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -3785,6 +3787,7 @@
     "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
     "correctionSaved": "Đã lưu và áp dụng điều chỉnh.",
     "myDayBack": "Quay lại Lịch chấm công",
+    "myDayWorkflowUnavailable": "Không có tuyến phê duyệt khả dụng. Hãy nhờ HR kiểm tra việc phân công quy trình.",
     "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
     "myDayFuture": "Không thể sửa ngày trong tương lai.",
     "myDayBadTimes": "Giờ ra phải sau giờ vào.",
@@ -3929,7 +3932,19 @@
     "myCalendar": {
       "title": "Lịch chấm công",
       "records": "Danh sách bản ghi chấm công",
-      "viewDate": "Xem chấm công ngày {date}"
+      "viewDate": "Xem chấm công ngày {date}",
+      "calendarView": "Xem lịch",
+      "listView": "Xem danh sách",
+      "viewNavigation": "Chế độ xem chấm công",
+      "shortHours": "Thiếu giờ làm",
+      "incompleteEntry": "Thiếu lượt chấm công",
+      "attendanceLegend": "Chấm công và cảnh báo",
+      "selectDay": "Chọn ngày để xem chi tiết chấm công.",
+      "invalidRange": "Nhập khoảng ngày hợp lệ.",
+      "contextHelp": "Cảnh báo được hiển thị riêng với trạng thái chấm công. Tên ngày lễ xuất hiện vào ngày tương ứng.",
+      "loading": "Đang tải lịch chấm công của bạn…",
+      "loadError": "Không thể tải lịch chấm công. Vui lòng thử lại.",
+      "retry": "Thử lại"
     }
   },
   "org": {
@@ -4303,7 +4318,7 @@
     "myTravelNone": "[retired r362 — the empty state of the 'My travel requests' list on the removed My Travel screen (item b833a077)]",
     "travelAuditNote": "[retired r362 — the footnote on the removed My Travel form saying an approved travel request is a record for approval and audit and does not mark you present on its own (item b833a077)]",
     "requestOvertime": "Gửi yêu cầu tăng ca",
-    "overtimeRequestHelp": "Gửi trước ngày (kế hoạch) hoặc sau ngày (thực tế). Cả hai đều tới cấp trên của bạn, và số giờ vào bảng lương là số giờ đã duyệt, đối chiếu với giờ bạn thực sự chấm công.",
+    "overtimeRequestHelp": "Gửi trước ngày (kế hoạch) hoặc sau ngày (thực tế). Yêu cầu được gửi tới người phê duyệt được chỉ định, và số giờ vào bảng lương là số giờ đã duyệt, đối chiếu với giờ bạn thực sự chấm công.",
     "otReasonPlaceholder": "Vì sao cần làm thêm giờ",
     "planOtTitle": "Tự đăng ký làm thêm giờ",
     "planOtDescription": "Giờ làm thêm bạn đã đề nghị, và tình trạng của từng đề nghị.",
@@ -4352,6 +4367,8 @@
     "otReasonOtherHelp": "Phần mô tả tự do vẫn bắt buộc với mọi nhóm lý do, đúng như hiện nay.",
     "otGoesToLabel": "Gửi tới",
     "otGoesToHelp": "Được điền từ tuyến báo cáo của bạn, để bạn biết cần nhắc ai. Không thể đổi ở đây.",
+    "otWorkflowGoesToHelp": "Quy trình phù hợp của công ty chỉ định người phê duyệt khi bạn gửi. Yêu cầu đã lưu hiển thị các cấp được chỉ định.",
+    "otWorkflowGoesTo": "Quy trình phê duyệt của công ty",
     "otGoesToUnknown": "Quản trị viên nhân sự của bạn",
     "otSubmitPlan": "Gửi kế hoạch",
     "otDateOpensTomorrow": "Mặc định là ngày mai. Ngày trong quá khứ vẫn được chấp nhận và hoạt động y như hiện nay, nên việc khai OT sau khi đã làm vẫn còn.",
@@ -4386,7 +4403,7 @@
     "otCalPlannedHours": "Dự kiến",
     "otCalApprovedHours": "Đã duyệt",
     "otCalClockedHours": "Thực tế đã chấm",
-    "otCalSummaryHelp": "Dự kiến tính các kế hoạch còn hiệu lực — đang chờ duyệt và đã duyệt. Đã duyệt là số giờ cấp trên đồng ý. Thực tế đã chấm là số giờ tăng ca trên bản ghi chấm công của tháng này.",
+    "otCalSummaryHelp": "Dự kiến tính các kế hoạch còn hiệu lực — đang chờ duyệt và đã duyệt. Đã duyệt là số giờ người phê duyệt đồng ý. Thực tế đã chấm là số giờ tăng ca trên bản ghi chấm công của tháng này.",
     "otCalCountPending": "{n} chờ duyệt",
     "otCalCountApproved": "{n} đã duyệt",
     "otCalCountRejected": "{n} không được duyệt",
@@ -4416,7 +4433,7 @@
     "otCalHoursValue": "{hours}",
     "otCalManageOnList": "Mở Tự đăng ký làm thêm giờ để rút lại hoặc xem lại",
     "otCalOvertimeHeading": "Làm thêm giờ",
-    "otStaysOnCalendarHelp": "Không có gì được lưu cho đến khi bạn gửi. Cấp trên được báo khi yêu cầu đến, và bạn được báo khi duyệt hoặc từ chối. Sau đó bạn vẫn ở lại lịch này.",
+    "otStaysOnCalendarHelp": "Không có gì được lưu cho đến khi bạn gửi. Người phê duyệt được chỉ định được báo khi yêu cầu đến, và bạn được báo khi duyệt hoặc từ chối. Sau đó bạn vẫn ở lại lịch này.",
     "otStartFromShiftEnd": "Điền sẵn từ giờ kết thúc ca của bạn",
     "otApprovedHoursColumn": "Số giờ đã duyệt",
     "otViewTable": "Bảng",
@@ -6527,7 +6544,7 @@
         "historyNote": "Các bản đính chính được lưu làm lịch sử. Các năm tính thuế trước chỉ xem.",
         "history": {
           "title": "Lịch sử giao dịch",
-          "subtitle": "Mỗi năm tính thuế một dòng — bản khai hiện tại của nhân viên cho năm đó.",
+          "subtitle": "Mỗi tháng khấu trừ có một dòng trong năm tính thuế đã chọn; các phiên bản trước vẫn được lưu trong lịch sử.",
           "empty": "Chưa khai miễn trừ TP1 nào.",
           "colYear": "Năm",
           "colAmount": "Tổng miễn trừ",
@@ -10050,7 +10067,11 @@
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
         "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
         "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
-        "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này."
+        "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này.",
+        "myPayslip": "Bạn chỉ có thể xem phiếu lương đã phát hành của mình, gồm các hồ sơ việc làm trước đây còn được lưu giữ.",
+        "myTp1": "Chỉ các tờ khai TP1 của bạn. Việc chấp thuận của chủ lao động vẫn thuộc quyền của bộ phận lương.",
+        "myEa": "Chỉ mẫu EA thuộc quan hệ lao động và đơn vị trả lương của bạn được cung cấp tại đây.",
+        "myTp3": "Chỉ hiển thị TP3 của bạn. Ngày gia nhập công ty giới hạn bản ghi mới; Payroll vẫn có thẩm quyền sửa."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -12366,7 +12387,6 @@
       "toggle": "Chuyển giao diện"
     },
     "uiTheme": {
-
       "label": "Giao diện",
       "monolith": "Monolith",
       "classic": "Cổ điển",
@@ -13810,8 +13830,8 @@
     "accountReporter": "Người báo cáo qua tài khoản"
   },
   "taxRelief": {
-    "title": "Giảm trừ thuế cá nhân (TP1)",
-    "intro": "Khai báo tổng các khoản giảm trừ thuế cá nhân tùy chọn của bạn (mẫu TP1 của LHDN) cho một năm tính thuế. Số tiền đã nộp gần nhất sẽ giảm khoản khấu trừ thuế hằng tháng của bạn (PCB/MTD).",
+    "title": "Giảm trừ thuế (Mẫu TP1)",
+    "intro": "Khai giảm trừ TP1 theo tháng và theo dõi phê duyệt. Chỉ khoản được duyệt mới được dùng trong bảng lương.",
     "backToWorkspace": "Quay lại Hồ sơ của tôi",
     "yearLabel": "Năm tính thuế",
     "viewYear": "Xem năm",
@@ -13822,7 +13842,7 @@
     "submit": "Gửi",
     "submitCorrection": "Gửi điều chỉnh",
     "correctedAmountLabel": "Giảm trừ TP1 hằng năm đã điều chỉnh (RM)",
-    "submittedNotice": "Năm này đã được gửi. Số tiền đã gửi gần nhất sẽ được dùng cho bảng lương của bạn. Để thay đổi, hãy gửi điều chỉnh.",
+    "submittedNotice": "Tờ khai đã gửi cần được chủ lao động phê duyệt trước khi ảnh hưởng đến lương. Bản sửa vẫn giữ lại hồ sơ trước.",
     "historicalSubmitted": "Đã gửi cho năm tính thuế này.",
     "historicalDraft": "Đã lưu dưới dạng bản nháp cho năm tính thuế này.",
     "historicalNone": "Không có khai báo nào cho năm tính thuế này.",
@@ -14135,7 +14155,15 @@
       "totalPlusExcess": "Cộng phần vượt mức miễn thuế chịu thuế (C2)",
       "totalExemptNote": "Trong tổng số RM {entered} đã nhập vào các ô C2, RM {exempt} nằm trong hạn mức miễn thuế theo luật định và không bị đánh thuế. C1 chỉ chứa thu nhập chịu thuế, nên khoản được miễn không bao giờ bị trừ khỏi C1 — chỉ phần RM {excess} vượt hạn mức mới được cộng vào.",
       "totalNoLimitNote": "Không có hạn mức miễn thuế hằng năm được công bố cho C2(iii) hoặc C2(v), nên không thể xác định phần nào của các ô đó là chịu thuế và không có khoản nào được cộng vào."
-    }
+    },
+    "monthlyIntro": "Khai giảm trừ TP1 theo tháng và theo dõi phê duyệt. Chỉ khoản được duyệt mới được dùng trong bảng lương.",
+    "notLinked": "Tài khoản này chưa liên kết với việc làm đang hoạt động. Bạn vẫn có thể xem các tờ khai đã có.",
+    "changed": "TP1 đã thay đổi khi bạn đang chỉnh sửa. Hãy tải lại tờ khai trước khi lưu.",
+    "pastReadOnly": "Các năm tính thuế trước chỉ được xem.",
+    "invalidIntent": "Chọn Lưu bản nháp hoặc Gửi.",
+    "savedDraft": "Đã lưu bản nháp.",
+    "savedSubmitted": "Đã gửi để chủ lao động phê duyệt.",
+    "recordHistory": "Lịch sử hồ sơ"
   },
   "payRule": {
     "sectionTitle": "Tính như thế nào?",
@@ -17844,7 +17872,22 @@
     "reportConsentHelp": "Tệp báo cáo cần sự đồng ý riêng cho từng hồ sơ việc làm. Khi đổi email hồ sơ, bạn cần đồng ý lại. Chỉ gửi những báo cáo bạn hiện có quyền truy cập.",
     "reportPolicyHelp": "Tệp báo cáo Hồ sơ nhân viên mặc định tắt và cần chính sách này cùng sự đồng ý rõ ràng của từng người nhận.",
     "recipientCode": "Mã nhân viên",
-    "deliveryReference": "Mã lần gửi"
+    "deliveryReference": "Mã lần gửi",
+    "attendanceCc": {
+      "reference": "Mã tham chiếu",
+      "applicant": "Người nộp",
+      "level": "Cấp",
+      "action": "Thao tác",
+      "actor": "Người quyết định",
+      "when": "Ngày/giờ",
+      "notice": "Chỉ để thông báo. Email này không cấp quyền duyệt hoặc xem đơn.",
+      "actions": {
+        "approved": "Đã duyệt",
+        "rejected": "Bị từ chối",
+        "cancelled": "Đã hủy",
+        "withdrawn": "Đã rút lại"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -19544,6 +19587,37 @@
       "chooseSlot": "Chọn người tham gia còn chờ…",
       "calculationHandoff": "Quyết định cuối này cần quyền tính toán HR đúng phạm vi. Nhờ HR ghi nhận phân công lại có lý do cho người tham gia còn chờ; các phê duyệt trước được giữ nguyên.",
       "identityUnavailable": "Một người phê duyệt bắt buộc không hoạt động, không có tài khoản hợp lệ duy nhất hoặc nằm ngoài phạm vi công ty được phép. Thay người được chọn hoặc nhờ HR sửa quyền truy cập."
+    },
+    "v4": {
+      "allRequired": "Mọi người đều phải duyệt",
+      "allRequiredHelp": "Mỗi người trong danh sách phải duyệt, không bắt buộc thứ tự.",
+      "levelHelp": "Thêm nguồn theo thứ tự hiển thị. Mỗi cấp quản lý đều tính từ người nộp.",
+      "sourceNumber": "Nguồn {number}",
+      "addSource": "Thêm nguồn người duyệt",
+      "searchEmployees": "Tìm mã hoặc tên nhân viên",
+      "noEligible": "Không có tài khoản liên kết đủ điều kiện trong công ty này hoặc công ty mẹ được phép. Nhờ HR kiểm tra ngày làm việc, trạng thái đăng nhập và vai trò công ty.",
+      "cc": "Người nhận CC",
+      "ccHelp": "Chỉ nhận thông báo. CC không cấp quyền duyệt hay xem đơn. Thư không chứa lý do, lương, thông tin y tế hoặc tệp đính kèm.",
+      "customEmail": "Địa chỉ email tùy chỉnh",
+      "emailHelp": "Mỗi dòng một địa chỉ. Tối đa 50 người nhận khác nhau, không kèm tên hiển thị hoặc tiêu đề thư.",
+      "addCc": "Thêm nguồn CC",
+      "conversionHelp": "Lưu cấu hình chỉ áp dụng cho đơn mới. Đơn đã nộp giữ nguyên luồng và quyết định đã lưu.",
+      "convert": "Cấu hình luồng nhiều nguồn",
+      "invalidCc": "Nhập địa chỉ email hợp lệ, không kèm tên hoặc tiêu đề thư.",
+      "unavailableCc": "Người nhận CC không khả dụng. Kiểm tra tài khoản, email và quan hệ quản lý trước khi lưu.",
+      "delete": "Xóa",
+      "deleteTitle": "Xóa {name}?",
+      "deleteImpact": "Loại luồng này khỏi cấu hình cho đơn mới tại {company}. Đơn và lịch sử được giữ lại. Định tuyến vẫn bật và từ chối đơn không có mẫu phù hợp.",
+      "deletePending": "Đơn đang chờ vẫn phụ thuộc vào luồng này. Hoàn tất hoặc hủy đơn trước khi xóa.",
+      "deleteChanged": "Luồng đã thay đổi. Tải lại trước khi xóa.",
+      "deleted": "Đã xóa luồng khỏi cấu hình cho đơn mới.",
+      "retained": "Luồng đã xóa",
+      "restore": "Khôi phục cấu hình",
+      "restoreHelp": "Khôi phục tạo phiên bản mới sau khi kiểm tra nhân viên và quan hệ báo cáo hiện tại.",
+      "restored": "Đã khôi phục luồng dưới dạng phiên bản mới.",
+      "noEmployees": "Không có hồ sơ làm việc trong công ty này hoặc công ty mẹ được phép.",
+      "noActiveEmployees": "Hiện không có nhân viên đáp ứng điều kiện ngày làm việc và trạng thái hoạt động.",
+      "noLinkedLogin": "Có nhân viên nhưng không ai có tài khoản liên kết đang hoạt động. HR cần kiểm tra liên kết tài khoản trước khi họ có thể duyệt."
     }
   },
   "attendanceHistory": {
@@ -19754,7 +19828,8 @@
     "backToOverview": "Về tổng quan",
     "notWaitingForYou": "Không có thao tác nào chờ bạn ở bước này.",
     "recordedOvertime": "Giờ tăng ca thực tế đã ghi nhận",
-    "previewOvertime": "Xem trước phê duyệt"
+    "previewOvertime": "Xem trước phê duyệt",
+    "modeAllRequired": "Mọi người đều phải duyệt"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
@@ -21064,14 +21139,12 @@
     "photoAlreadyPending": "Đã có ảnh đang chờ xem xét. Hãy đợi quyết định trước khi gửi ảnh khác.",
     "routingTypeMatched": "Cặp nhân viên/loại yêu cầu phù hợp",
     "routingTypeMissing": "Cặp nhân viên/loại yêu cầu thiếu quy tắc",
-
     "submitPhoto": "Gửi ảnh để phê duyệt",
     "pendingPhoto": "Ảnh đang chờ",
     "photoApprovalHelp": "Ảnh hiện tại được giữ đến khi HR phê duyệt. Xem quyết định trong Yêu cầu thay đổi của tôi.",
     "currentPhoto": "Ảnh hiện tại",
     "proposedPhoto": "Ảnh đề xuất",
     "photoProposed": "Đã gửi ảnh để HR phê duyệt",
-
     "approvalRules": "Quy tắc phê duyệt HR",
     "requestTypes": "Loại yêu cầu",
     "fieldRequests": "Trường hồ sơ",
@@ -21082,11 +21155,9 @@
     "unavailableSelection": "Lựa chọn không khả dụng — xóa hoặc thay thế",
     "noValidApprovers": "Không có người duyệt HR hợp lệ. Kiểm tra việc làm hiện tại, đăng nhập và quyền công ty.",
     "noMatches": "Không có lựa chọn phù hợp",
-
     "tabPermission": "Quyền truy cập thẻ",
     "sectionPermission": "Quyền truy cập phần",
     "groupPermissionHelp": "Giới hạn thẻ và phần được ưu tiên. Có thể sửa tuân theo từng trường; Chỉ xem ngăn thay đổi; Ẩn loại bỏ thông tin khỏi Hồ sơ của tôi.",
-
     "requestEdit": "Yêu cầu chỉnh sửa",
     "save": "Lưu thay đổi",
     "cancel": "Hủy",
@@ -22106,5 +22177,114 @@
       "denied": "Quyền của bạn đã thay đổi. Hãy mở lại hồ sơ để kiểm tra quyền truy cập.",
       "invalid": "Nhập mã nhân viên chưa được sử dụng bằng chữ cái, chữ số hoặc dấu gạch nối, tối đa 30 ký tự."
     }
+  },
+  "myPayslip": {
+    "title": "Phiếu lương của tôi",
+    "intro": "Các phiếu lương đã phát hành của bạn",
+    "cycle": "Chu kỳ lương (Loại kỳ chạy)",
+    "unavailableChoice": "Lựa chọn không khả dụng",
+    "releasedHelp": "Các lựa chọn lấy từ phiếu lương cuối cùng đã phát hành của chính bạn.",
+    "unavailable": "Không có phiếu lương đã phát hành cho lựa chọn này.",
+    "review": "Xem trước phiếu lương",
+    "download": "Tải PDF",
+    "back": "Quay lại phiếu lương của tôi",
+    "openInNewTab": "Mở trong thẻ mới",
+    "loadError": "Không thể tải phiếu lương của bạn",
+    "retry": "Thử lại",
+    "loading": "Đang tải phiếu lương…"
+  },
+  "myEa": {
+    "title": "EA của tôi",
+    "intro": "Xem mẫu EA hằng năm theo năm và đơn vị trả lương.",
+    "year": "Năm",
+    "employer": "Đơn vị trả lương",
+    "language": "Ngôn ngữ tài liệu",
+    "view": "Xem EA",
+    "unavailable": "EA chưa khả dụng",
+    "unavailableHelp": "Biểu mẫu đầy đủ sẽ khả dụng khi tất cả đợt lương liên quan đã đóng và công bố. Liên hệ HR nếu cần hỗ trợ.",
+    "download": "Tải PDF",
+    "back": "Trở lại EA của tôi",
+    "openInNewTab": "Mở PDF trong thẻ mới",
+    "loadError": "Không thể tải mẫu EA của bạn.",
+    "retry": "Thử lại",
+    "loading": "Đang tải mẫu EA của bạn…"
+  },
+  "allowanceV4": {
+    "available": "Có thể chọn",
+    "included": "Đã chọn",
+    "includeChecked": "Thêm mục đánh dấu ({count})",
+    "removeChecked": "Bỏ mục đánh dấu ({count})",
+    "includedCount": "Đã chọn {count} nhân viên",
+    "limit": "Một chính sách hỗ trợ tối đa 2.000 nhân viên. Hãy bỏ bớt trước khi thêm.",
+    "clearIncluded": "Bỏ chọn tất cả",
+    "selectionHelp": "Chỉ nhân viên trong danh sách Đã chọn mới đủ điều kiện. Dấu chọn được giữ qua tìm kiếm và phân trang. Chọn trang hiện tại chỉ áp dụng cho trang này.",
+    "searchSide": "Tìm trong {side}",
+    "search": "Tìm mã hoặc tên nhân viên",
+    "loadError": "Không thể tải các lựa chọn.",
+    "retry": "Thử lại",
+    "selectVisible": "Chọn trang hiện tại ({count})",
+    "loading": "Đang tải lựa chọn…",
+    "empty": "Không có lựa chọn phù hợp.",
+    "noCode": "Không có mã nhân viên",
+    "previous": "Trước",
+    "next": "Tiếp",
+    "page": "Trang {page}",
+    "unavailable": "Một số tham chiếu không khả dụng. Hãy bỏ hoặc nhờ HR sửa quyền truy cập trước khi lưu.",
+    "unavailableMore": "Còn {count} tham chiếu không khả dụng.",
+    "searchValues": "Tìm giá trị",
+    "removeValue": "Bỏ {value}",
+    "employeeGroup": "Điều kiện nhân viên",
+    "emptyGroup": "Thêm điều kiện vào nhóm này trước khi lưu.",
+    "branch": "Chi nhánh",
+    "division": "Khối",
+    "upgradeHelp": "Điều kiện nhân viên theo nhóm tạo phiên bản chính sách mới. Kết quả cũ và điều kiện chấm công giữ nguyên ý nghĩa.",
+    "upgrade": "Dùng điều kiện nhân viên theo nhóm",
+    "operators": {
+      "is": "Là",
+      "isNot": "Không là",
+      "in": "Thuộc",
+      "notIn": "Không thuộc"
+    },
+    "previewTitle": "Xem trước nhân viên phù hợp",
+    "previewAction": "Xem trước nhân viên",
+    "previewHelp": "Dùng ngày cuối thuộc quan hệ lao động trong từng kỳ. Phòng ban, đơn vị kinh doanh, chức danh và loại lao động dùng phân công có ngày hiệu lực; bậc, nhóm, chi nhánh và khối dùng hồ sơ Personnel hiện tại. Điều kiện chấm công vẫn phải đạt.",
+    "previewError": "Không thể xem trước. Kiểm tra lựa chọn và kỳ rồi thử lại.",
+    "previewCount": "{count} cặp nhân viên-kỳ phù hợp",
+    "asOf": "Dữ liệu tại {date}",
+    "previewTruncated": "Hiển thị 100 cặp nhân viên-kỳ đầu tiên."
+  },
+  "myTp3": {
+    "title": "Mẫu TP3 của tôi",
+    "intro": "Ghi thông tin đơn vị sử dụng lao động trước đây cho năm bạn gia nhập công ty này.",
+    "employment": "Quan hệ lao động",
+    "chooseEmployment": "Chọn quan hệ lao động",
+    "year": "Năm tính thuế",
+    "view": "Xem",
+    "joinDate": "Ngày gia nhập công ty",
+    "state": "Trạng thái bản ghi",
+    "fallback": "Chưa ghi ngày gia nhập công ty; đang dùng ngày gia nhập tập đoàn hiện có.",
+    "chooseHelp": "Chọn quan hệ lao động để xem ngày gia nhập và điều kiện nhập liệu.",
+    "ineligible": "Bản ghi mới yêu cầu quan hệ lao động đang hoạt động với ngày gia nhập công ty đã đến trong năm hiện tại. Bản ghi cũ vẫn xem được bên dưới.",
+    "correctionHelp": "Bản ghi chỉ đọc tại đây. Liên hệ Payroll để được sửa theo thẩm quyền.",
+    "held": "Đã ghi biểu mẫu nhưng số dư đầu kỳ lương vẫn thuộc năm {year}.",
+    "savedAt": "Lưu lần cuối {at}",
+    "draftSaved": "Đã lưu nháp. Dữ liệu đầu vào Payroll không thay đổi.",
+    "submitted": "Đã gửi",
+    "notLinked": "Tài khoản này chưa liên kết với hồ sơ nhân viên.",
+    "history": "Các năm trước",
+    "new": "Chưa có bản ghi",
+    "draft": "Bản nháp",
+    "declared": "Nhân viên đã khai báo",
+    "payrollSaved": "Payroll đã lưu",
+    "saveDraft": "Lưu nháp",
+    "submit": "Gửi tờ khai",
+    "saving": "Đang lưu…",
+    "draftHelp": "Bản nháp không ảnh hưởng Payroll. Gửi sẽ ghi tờ khai và áp dụng phép tính TP3 hiện có.",
+    "invalid": "Thao tác mẫu TP3 không hợp lệ.",
+    "invalidMoney": "Nhập số tiền không âm với tối đa hai chữ số thập phân.",
+    "changed": "Bản ghi hoặc điều kiện của bạn đã thay đổi. Tải lại và kiểm tra TP3 hiện tại trước khi lưu lại.",
+    "loadError": "Không thể tải mẫu TP3 của bạn.",
+    "retry": "Thử lại",
+    "loading": "Đang tải mẫu TP3 của bạn…"
   }
 }

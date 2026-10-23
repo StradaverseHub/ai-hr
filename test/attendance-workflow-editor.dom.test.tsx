@@ -108,22 +108,22 @@ describe('company workflow editor outcomes', () => {
 
 
 describe('797ba70b: auto levels and complete assignment controls', () => {
-  it('adds/removes/reorders independent levels without custom names and saves explicit routing v3', async () => {
+  it('adds/removes/reorders independent levels without custom names and saves explicit routing v4', async () => {
     form(null);
     fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'SEQUENTIAL' } });
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Sequential review' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add Approval Level' }));
-    const levels = () => screen.getAllByRole('listitem');
+    const levels = () => screen.getAllByRole('heading',{name:/^Level \d+$/}).map(heading=>heading.closest('li')!);
     expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2', 'Level 3']);
     fireEvent.change(within(levels()[0]).getByLabelText('Superior depth'), { target: { value: '5' } });
-    fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Move down' }));
+    fireEvent.click(within(levels()[0].firstElementChild as HTMLElement).getByRole('button', { name: 'Move down' }));
     expect(within(levels()[1]).getByLabelText('Superior depth')).toHaveValue('5');
-    fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(within(levels()[0]).getByRole('button', { name: 'Remove Level 1' }));
     expect(levels().map(li => within(li).getByRole('heading').textContent)).toEqual(['Level 1', 'Level 2']);
     expect(screen.queryByLabelText('Stage name')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
-    expect(save.mock.calls[0][1].routingVersion).toBe(3);
+    expect(save.mock.calls[0][1].routingVersion).toBe(4);
     expect(save.mock.calls[0][1].stages.map((s: { name: string }) => s.name)).toEqual(['Level 1', 'Level 2']);
   });
   it('keeps legacy behavior until explicit conversion and does not lose configured alternatives', async () => {

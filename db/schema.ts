@@ -6075,6 +6075,20 @@ export const employeeTp3 = pgTable(
   ],
 );
 
+/** Private TP3 staging; no Payroll consumer reads this table. Writes use own-only storage ports. */
+export const employeeTp3Draft=pgTable('employee_tp3_draft',{
+ id:id(),tenantId:tenantId(),personId:uuid('person_id').notNull().references(()=>person.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),assessmentYear:integer('assessment_year').notNull(),
+ baselineRevision:text('baseline_revision').notNull().default('absent'),revision:integer('revision').notNull().default(1),
+ deductionMonth:smallint('deduction_month'),previousEmployers:jsonb('previous_employers').notNull().$type<Tp3PreviousEmployer[]>(),
+ payload:jsonb('payload').notNull().$type<Tp3Payload>(),declarationAccepted:boolean('declaration_accepted').notNull().default(false),
+ // Historical reference intentionally survives an authorized HR deletion of the canonical master.
+ canonicalId:uuid('canonical_id'),submittedAt:timestamp('submitted_at',{withTimezone:true}),
+ commitXid:customType<{data:string}>({dataType:()=> 'xid8'})('commit_xid'),
+ projectionFinished:boolean('projection_finished').notNull().default(false),projectionOutcome:jsonb('projection_outcome').$type<{applied:boolean;reason?:string;heldBy?:number}|null>(),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('employee_tp3_draft_person_year_uq').on(t.tenantId,t.personId,t.assessmentYear)]);
+
 // ─────────────── Personnel — Family / Dependents (phase 1, migration 0137) ───────────────
 // A per-PERSON register of family members / dependents for BENEFITS / INSURANCE only. Person-keyed
 // (concurrent-employment-safe, like tp1_relief / employee_statutory_my) and gated with app.can_see_person
@@ -10313,9 +10327,11 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
     priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
-    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[] | import('../lib/attendance-workflow-v3').AttendanceV3Level[]>(),
+    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[] | import('../lib/attendance-workflow-v3').AttendanceV3Level[] | import('../lib/attendance-workflow-v4').AttendanceV4Level[]>(),
+    cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcSource[]>(),
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_current_code').on(t.tenantId, t.companyId, t.code).where(sql `superseded_at IS NULL`), uniqueIndex('attendance_workflow_lineage_version').on(t.lineageId, t.version)]);
@@ -10330,7 +10346,8 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
     templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
-    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
+    cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcRecipient[]>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {

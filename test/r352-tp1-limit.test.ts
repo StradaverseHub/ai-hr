@@ -382,19 +382,25 @@ describe('0df7dd44 · the TP1 annual-limit refusal', () => {
     const admin = read('app/payroll/transactions/deductions-actions.ts');
     const me = read('app/me/actions.ts');
 
-    const formAction = admin.slice(
-      admin.indexOf('export async function adminTp1FormAction'),
-      admin.indexOf('// ── Section F — employer consent'),
-    );
-    expect(formAction, 'the one editable-form action is gone').toBeTruthy();
+    const adminStart = admin.indexOf('export async function adminTp1FormAction');
+    const adminEnd = admin.indexOf('// ── Section F — employer consent', adminStart);
+    expect(adminStart).toBeGreaterThanOrEqual(0);
+    expect(adminEnd).toBeGreaterThan(adminStart);
+    const formAction = admin.slice(adminStart, adminEnd);
+    expect(formAction.length, 'the editable-form action must be a real source body').toBeGreaterThan(100);
     // Every catch in the editable path hands the message BACK. A `backToTp1(…error=` in here is the
     // reported defect returning.
     expect(formAction, 'a refusal redirects again instead of returning to the form').not.toContain('error=');
-    expect(formAction).toContain('return { error: await tp1RefusalMessage(e) };');
+    expect(formAction).toMatch(/return\s*\{\s*error:\s*await\s+tp1RefusalMessage\(e\)\s*\};/);
 
-    const myAction = me.slice(me.indexOf('export async function myTp1FormAction'));
-    expect(myAction.slice(0, 1400), 'the employee surface redirects on refusal again').not.toContain('error=');
-    expect(myAction).toContain('return { error: await tp1RefusalMessage(e) };');
+    const myStart = me.indexOf('export async function myTp1FormAction');
+    const myEnd = me.indexOf('// ── Resignation', myStart);
+    expect(myStart).toBeGreaterThanOrEqual(0);
+    expect(myEnd).toBeGreaterThan(myStart);
+    const myAction = me.slice(myStart, myEnd);
+    expect(myAction.length, 'the personal editable action must be a real source body').toBeGreaterThan(100);
+    expect(myAction, 'the employee surface redirects on refusal again').not.toContain('error=');
+    expect(myAction).toMatch(/return\s*\{\s*error:\s*await\s+tp1RefusalMessage\(e\)\s*\};/);
 
     // BOTH SURFACES, ONE TRANSLATOR. The same refusal worded two ways on two screens is how a reader
     // learns to trust neither — and /me renders the very same component through the very same reader.

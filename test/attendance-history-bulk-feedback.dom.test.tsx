@@ -31,3 +31,11 @@ it('returns focus and preserves selection when the confirmation is cancelled',as
  show();const trigger=open();fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:messages.attendanceHistory.cancel}));
  await waitFor(()=>expect(trigger).toHaveFocus());expect(trigger).toBeEnabled();expect(screen.getByRole('checkbox',{name:messages.attendanceHistory.selectPage})).toBeChecked();expect(bulk).not.toHaveBeenCalled();expect(screen.queryByRole('heading',{name:messages.attendanceHistory.results})).toBeNull();
 });
+
+it.each(['all_required', 'any_one', 'sequential'] as const)('renders the frozen %s approval requirement in the history row', mode => {
+ const progress = {state:'pending' as const,level:1,mode,next:[]};
+ render(<NextIntlClientProvider locale="en" messages={messages}><AttendanceHistoryTable rows={[{...row,progress}]} returnTo="/attendance/application-history"/></NextIntlClientProvider>);
+ const expected=mode==='all_required'?messages.attendanceHistory.modeAllRequired:mode==='sequential'?messages.attendanceHistory.modeSequential:messages.attendanceHistory.modeAnyOne;
+ expect(screen.getByRole('table')).toHaveTextContent(expected);
+ if(mode==='all_required')expect(screen.getByRole('table')).not.toHaveTextContent(messages.attendanceHistory.modeAnyOne);
+});

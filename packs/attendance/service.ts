@@ -65,3 +65,5 @@ export {shiftArrangementHistory} from '../../core/shift-arrangement';
 
 export { previewCardImport, commitCardImport, cardImportExisting, assertCardImportAccess } from '../../core/attendance-card-import';
 export { setEmploymentCardId } from '../../core/attendance-card';
+
+export * from '../../core/attendance-allowance-selection';

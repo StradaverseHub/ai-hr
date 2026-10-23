@@ -29,13 +29,17 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
     expect(source).not.toContain('leaveBalances('); expect(source).not.toContain('listEntitlementRecalcAudit(');
     expect(source).not.toContain('personnelLeaveBreakdowns'); expect(source).not.toContain('<EntitlementBreakdown');
     expect(source).not.toContain("t('tabs.others')"); expect(panel('others')).toBeUndefined();
-    expect(source).toContain('leaveRequestsFor(s, employmentId)');
-    expect(source).toContain('benefitSchemeView(s, employmentId, schemeAsOf)');
+    expect(source).not.toContain('leaveRequestsFor(s, employmentId)');
+    expect(source).not.toContain('benefitSchemeView(');
   });
-  it('keeps audit/privacy outside the Profile save scope, requests in Leave and reviews in Employment', () => {
+  it('keeps Grade in Leave, audit/privacy outside Profile save and reviews in Employment', () => {
     expect(panel('profile')).toContain('{profilePanel}{changeHistoryCard}{dataPrivacyCard}');
     expect(declaration('profilePanel')?.getText(ast)).not.toMatch(/changeHistoryCard|dataPrivacyCard/);
-    for (const name of ['gradeCard', 'benefitSchemeCard', 'leaveRequestsCard']) expect(panel('leave')).toContain(`{${name}}`);
+    expect(panel('leave')).toContain('{gradeCard}');
+    for (const name of ['benefitSchemeCard','leaveRequestsCard']) {
+      expect(declaration(name)).toBeUndefined();
+      expect(panel('leave')).not.toContain(name);
+    }
     expect(panel('job')).toContain('{reviewCard}');
     for (const name of ['changeHistoryCard', 'dataPrivacyCard']) expect(declaration(name)?.getText(ast)).toMatch(/admin\s*\?/);
     expect(declaration('reviewCard')?.getText(ast)).toMatch(/!emp\.terminatedOn && admin/);

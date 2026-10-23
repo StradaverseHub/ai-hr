@@ -12,6 +12,7 @@ import {
   otMonthToDateDuration,
   otPlanCalendarMonth,
   type OtPlanCalendarDay,
+  listAttendanceWorkflowSettings,
 } from '@/packs/attendance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '@/components/ot-plan-calendar';
@@ -97,7 +98,7 @@ export default async function ApplyOtPlanPage({
   const { from: monthFrom, to: monthTo } = monthRange(month);
   const isPast = date <= today;
 
-  const [calendar, cap, lines, monthPlans, actual] = await Promise.all([
+  const [calendar, cap, lines, monthPlans, actual, workflowSettings] = await Promise.all([
     otPlanCalendarMonth(s, me.employmentId, month),
     otMonthToDateDuration(s, me.employmentId, date),
     reportingLinesFor(s, me.employmentId),
@@ -108,8 +109,10 @@ export default async function ApplyOtPlanPage({
     // "What you actually clocked", for ONE date and only when that date has happened. The existing
     // Records read, asked for a one-day window; there is no new read behind this block.
     isPast ? attendanceForEmploymentRange(s, me.employmentId, date, date) : Promise.resolve([]),
+    listAttendanceWorkflowSettings(s, [me.companyId]),
   ]);
-  const approver = lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
+  const workflowEnabled = workflowSettings.some(setting => setting.applicationType === 'self_overtime' && setting.enabled);
+  const approver = workflowEnabled ? t('otWorkflowGoesTo') : lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
 
   const day: OtPlanCalendarDay | undefined = calendar.find((d) => d.date === date);
   const clocked = actual[0];
@@ -401,12 +404,11 @@ export default async function ApplyOtPlanPage({
               <p className="text-[11px] text-muted-foreground">{t('maAttachmentHelp')}</p>
 
               <Field label={t('otGoesToLabel')}>
-                {/* Read-only and deliberately NOT a form field: the approver is resolved from the reporting
-                    line at decide time (assertCanDecide), so anything posted from here would be ignored at
-                    best and misleading at worst. It is here so you know whom to chase. */}
+                {/* Informational only: submission freezes the matching company workflow, while legacy
+                    routing follows the reporting line. No caller-supplied approver is posted. */}
                 <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
               </Field>
-              <p className="text-[11px] text-muted-foreground">{t('otGoesToHelp')}</p>
+              <p className="text-[11px] text-muted-foreground">{t(workflowEnabled ? 'otWorkflowGoesToHelp' : 'otGoesToHelp')}</p>
 
               {/* On a phone Submit is pinned to the bottom of the screen with the date beside it, which is
                   what the approved picture draws; from `lg` up it is an ordinary footer row again.

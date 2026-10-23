@@ -67,3 +67,17 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
   }
   return {attempted,skipped,unavailable,cappedOut:due.length===50};
 }
+
+/** Same private relay and provider controls, with only a leased CC occurrence crossing IPC. */
+export async function deliverAttendanceCcEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc) {
+ if(!isAdmin(ctx))throw new Error('Notification dispatcher required');
+ const global=isModuleEnabled(ctx,'notifications')&&isModuleEnabled(ctx,'attendance');
+ const companyIds=global?null:[...new Set([...(ctx.entitlements?.scopedModules.notifications??[]),...(ctx.entitlements?.scopedModules.attendance??[])])].filter(id=>isModuleEnabled(ctx,'notifications',id)&&isModuleEnabled(ctx,'attendance',id));
+ if(companyIds?.length===0)return{attempted:0,unavailable:false};
+ const status=await readNotificationEmailTransport(transport);
+ if(!status?.ready||!status.attendanceCc)return{attempted:0,unavailable:true};
+ const leaseToken=randomUUID();
+ const jobs=await withTenant(ctx,tx=>tx.execute(sql`select app.attendance_workflow_cc_claim(${leaseToken}::uuid,${companyIds===null?sql`null::uuid[]`:sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`}) as id`)) as unknown as {id:string}[];
+ for(const job of jobs){try{await transport({op:'attendanceCcSend',deliveryId:job.id,leaseToken});}catch{/* Private durable state distinguishes unstarted retry from uncertain SMTP acknowledgement. */}}
+ return{attempted:jobs.length,unavailable:false,cappedOut:jobs.length===50};
+}

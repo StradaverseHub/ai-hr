@@ -10722,7 +10722,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
  *  still get their payslip, and an inner join here would make it disappear entirely.
  *
  *  THE RELEASE GATE BELOW IS UNCHANGED. Widening the select does not widen who may read the row. */
-export function payslipDetail(ctx: SessionContext, payslipId: string) {
+export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = false) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
@@ -10816,7 +10816,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(eq(payslip.id, payslipId))
+      .where(and(eq(payslip.id, payslipId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
       .limit(1);
     if (!row) return null;
     // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS
@@ -10847,6 +10847,11 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       identityIsPassport: !icNumber?.trim() && !!passportNumber?.trim(),
     };
   });
+}
+
+/** Mine requires explicit ownership even for a caller who also administers payroll. */
+export function myPayslipDetail(ctx:SessionContext,payslipId:string) {
+  return payslipDetail(ctx,payslipId,true);
 }
 
 /** Read-only population fence for a persisted run. Compensation is deliberately not part of it. */
