@@ -1336,7 +1336,10 @@ export async function accrueToil(
  */
 /** A real server context opts into recorded formula classification; legacy dates retain the schedule owner. */
 export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date: string,ctx?:SessionContext): Promise<ToilWorkedDayKind> {
-  if(ctx){const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return formula.recordedWorkedDayKind;}
+  if(ctx){const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+    const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId,date,mixedOnly:true});
+    if(dated)return dated.sourceDayKind;
+    const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return formula.recordedWorkedDayKind;}
   const { workedDayKindForTx } = await import('../packs/attendance/service');
   return workedDayKindForTx(tx, employmentId, date);
 }
@@ -1367,7 +1370,16 @@ export async function extendedHoursDayForEmploymentTx(
   measuredExtendedMinutes: number;
 }> {
   // Formula views use captured clocks and classification; absent historical names stay unknown.
-  if(ctx){const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return recordedToilDayFacts(formula);}
+  if(ctx){const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+    const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId,date,mixedOnly:true});
+    if(dated){
+      const [day]=await tx.select({checkIn:attendance.checkInAt,checkOut:attendance.checkOutAt}).from(attendance)
+        .where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,employmentId),eq(attendance.attendanceDate,date))).limit(1);
+      return {kind:dated.sourceDayKind,scheduleName:null,shiftCode:null,shiftName:null,attendanceRecordPresent:day!==undefined,
+        shiftStart:null,shiftEnd:null,actualClockIn:day?.checkIn??null,actualClockOut:day?.checkOut??null,
+        measuredExtendedMinutes:dated.parts.reduce((n,part)=>n+(part.afterShiftMinutes??0),0)};
+    }
+    const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return recordedToilDayFacts(formula);}
   const { extendedHoursDayForTx } = await import('../packs/attendance/service');
   return extendedHoursDayForTx(tx, employmentId, date);
 }
@@ -2301,7 +2313,7 @@ export async function previewLeaveCredit(
       extendedHoursEnabled: policy?.extendedHoursEnabled === true,
       extendedHoursMinutes: extended?.countedMinutes ?? null,
       extendedHoursDays: extended != null && extended.days > 0 ? extended.days : null,
-      overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      overtimeMinutes: dated?.minutes??(formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate)),
       // The same arithmetic bankToilCreditTx applies on save (approval instant → resolveExpiry), so the date
       // the form pre-fills is the date an untouched save freezes.
       defaultExpiresOn: policy?.enabled ? resolveExpiry(approvedOnDate, policy) : null,
@@ -2470,7 +2482,13 @@ export async function leaveCreditRosterKindsTx(
   ctx?:SessionContext,
 ): Promise<Map<string, ToilWorkedDayKind>> {
   const out = new Map<string, ToilWorkedDayKind>();
-  for (const d of new Set(dates)){const formula=ctx?await provenToilDurationTx(tx,ctx,employmentId,d):null;out.set(d,formula?.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, employmentId, d));}
+  for (const d of new Set(dates)){
+    if(ctx){const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+      const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId,date:d,mixedOnly:true});
+      if(dated){out.set(d,dated.sourceDayKind);continue;}}
+    const formula=ctx?await provenToilDurationTx(tx,ctx,employmentId,d):null;
+    out.set(d,formula?.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, employmentId, d));
+  }
   return out;
 }
 
@@ -2527,6 +2545,19 @@ export async function leaveCreditClaimReviewTx(tx:Tx,ctx:SessionContext,p:{emplo
   if(!visible)return {basis:'unavailable',reason:'unavailable'};
   try {
     const window=p.claimStart&&p.claimEnd?{start:p.claimStart,end:p.claimEnd}:undefined;
+    const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+    const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mixedOnly:true,claimWindow:window});
+    if(dated){
+      const base={basis:'formula' as const,datedClassScope:true as const,workedDayKind:dated.sourceDayKind,boundMinutes:dated.minutes,calculationId:dated.calculationId,sourceRevision:dated.sourceRevision};
+      if(!window)return {...base,status:'incomplete',reason:null,claimedMinutes:null,eligibleMinutes:null,creditDays:null};
+      const [policy]=await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId,dated.companyId)).limit(1);
+      if(!policy?.enabled)return {basis:'unavailable',reason:'unavailable'};
+      if(!policy.extendedHoursEnabled&&dated.parts.some(part=>part.dayClass==='normal'))return {...base,status:'refused',reason:'ordinaryDisabled',claimedMinutes:null,eligibleMinutes:null,creditDays:null};
+      const credit=calculateDatedToilCredit(dated.parts,policy,'claim');
+      return {...base,status:credit.days>0?'ready':'refused',reason:credit.days>0?null:'belowThreshold',
+        claimedMinutes:credit.parts.reduce((n,part)=>n+part.qualifyingMinutes,0),eligibleMinutes:credit.countedMinutes,
+        creditDays:credit.days>0?credit.days:null,datedParts:credit.parts};
+    }
     const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,window);
     if(formula.kind==='legacy')return {basis:'legacy'};
     const base={basis:'formula' as const,workedDayKind:formula.recordedWorkedDayKind,boundMinutes:formula.minutes,calculationId:formula.calculationId,sourceRevision:formula.sourceRevision};
@@ -2578,8 +2609,10 @@ export async function leaveCreditGrantDayFacts(
   if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
   return withTenant(ctx, async (tx) => {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
-    const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
-    const day = formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx,p.employmentId,p.workedDate);
+    const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+    const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mixedOnly:true});
+    const formula=dated?{kind:'legacy' as const}:await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+    const day = formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx,p.employmentId,p.workedDate,ctx);
     if(formula.kind==='formula'&&day.kind==='workday'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
     const [dupe] = await tx
       .select({ id: toilAccrual.id })
@@ -2596,7 +2629,7 @@ export async function leaveCreditGrantDayFacts(
       ...day,
       ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formulaAfterShiftMinutes(formula):formula.minutes}:{}),
       approvedOtPlan: await approvedOvertimeForDateTx(tx, p.employmentId, p.workedDate),
-      overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      overtimeMinutes: dated?.minutes??(formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate)),
       alreadyCredited: dupe != null,
     };
   });
@@ -2733,9 +2766,22 @@ export async function grantLeaveCreditRows(
     const tiers = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
 
     // ── THE DERIVATION — `leaveCreditWindowCredit`, shared with the employee paths. Nothing typed is a figure.
-    const derived: { row: LeaveCreditRowInput; kind: ToilWorkedDayKind; countedMinutes: number; days: number; companyId:string;country:string|null }[] = [];
+    const derived: { row: LeaveCreditRowInput; kind: ToilWorkedDayKind; countedMinutes: number; days: number; companyId:string;country:string|null;datedSourceMinutes?:number }[] = [];
     for (const r of p.rows) {
       const kind = kinds.get(r.workedDate)!;
+      const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+      const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:r.workedDate,mixedOnly:true,
+        claimWindow:{start:r.claimStart!,end:r.claimEnd!}});
+      if(dated){
+        if(kind!==dated.sourceDayKind)throw new ToilNotEligibleError('The source-date classification changed.');
+        const [policy]=await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId,dated.companyId)).limit(1);
+        const [entity]=await tx.select({country:company.country}).from(company).where(eq(company.id,dated.companyId)).limit(1);
+        if(!policy?.enabled||!entity)throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
+        const credit=calculateDatedToilCredit(dated.parts,policy,'claim');
+        if(credit.days<=0)throw new ToilExtendedHoursBelowThresholdError(r.workedDate,credit.countedMinutes,policy.extendedHalfDayMinutes);
+        derived.push({row:r,kind,countedMinutes:credit.countedMinutes,days:credit.days,companyId:dated.companyId,country:entity.country,datedSourceMinutes:dated.minutes});
+        continue;
+      }
       const workingDay = kind === 'workday';
       const formula=await provenToilDurationTx(tx,ctx,p.employmentId,r.workedDate,workingDay?{start:r.claimStart!,end:r.claimEnd!}:undefined);
       const datedTiers=formula.kind==='formula'?await extendedHoursPolicyForCompanyTx(tx,formula.companyId):tiers;
@@ -2773,6 +2819,8 @@ export async function grantLeaveCreditRows(
     const overtimeByDate = new Map<string, number>();
     const payrollBlocked: string[] = [];
     for (const r of p.rows) {
+      const datedRow=derived.find(row=>row.row.workedDate===r.workedDate&&row.datedSourceMinutes!==undefined);
+      if(datedRow){overtimeByDate.set(r.workedDate,datedRow.datedSourceMinutes!);continue;}
       const formula=await provenToilDurationTx(tx,ctx,p.employmentId,r.workedDate);
       const ot = formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, r.workedDate);
       overtimeByDate.set(r.workedDate, ot);
@@ -2795,15 +2843,15 @@ export async function grantLeaveCreditRows(
         country: d.country,
         // ⚠️ MONEY — NULL, as both employee paths: see the header.
         dayType: null,
-        workedDayKind: d.kind,
-        otMinutes: d.countedMinutes,
-        declaredDays: d.days,
+        workedDayKind: d.datedSourceMinutes!==undefined?null:d.kind,
+        otMinutes: d.datedSourceMinutes??d.countedMinutes,
+        ...(d.datedSourceMinutes!==undefined?{datedPolicyElection:'claim' as const}:{declaredDays:d.days}),
         approvedOn,
         // No employee request behind an HR credit; the worked day is the only date in evidence.
         requestedOn: d.row.workedDate,
         firstScheduleConsent: p.firstScheduleConsent === true,
         source: 'hr_manual_grant',
-        formulaClaimWindow:d.kind==='workday'?{start:d.row.claimStart!,end:d.row.claimEnd!}:undefined,
+        formulaClaimWindow:d.datedSourceMinutes!==undefined||d.kind==='workday'?{start:d.row.claimStart!,end:d.row.claimEnd!}:undefined,
         note: reason,
         auditDetail: {
           claimStart: d.row.claimStart!,

@@ -15616,6 +15616,9 @@
       "reviewed": "Reviewed duration: {minutes} minutes",
       "reference": "Calculation {id} · revision {revision}",
       "subjectToApproval": "Duration and tier review only. Approval and all Leave Credit checks still apply.",
+      "datedBreakdown": "Credit by date and day class",
+      "datedCredit": "{date} · {dayClass} · {minutes} minutes · {days} day(s)",
+      "datedClasses": {"normal": "Ordinary day", "off": "Off day", "rest": "Rest day", "publicHoliday": "Public holiday", "replacementHoliday": "Replacement holiday"},
       "creditUnavailable": "Credit unavailable",
       "requestedCredit": "Requested credit",
       "errors": {

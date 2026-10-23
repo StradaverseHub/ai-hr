@@ -15616,6 +15616,9 @@
       "reviewed": "Tempoh disemak: {minutes} minit",
       "reference": "Pengiraan {id} · semakan {revision}",
       "subjectToApproval": "Semakan tempoh dan peringkat sahaja. Kelulusan dan semua semakan Kredit Cuti masih terpakai.",
+      "datedBreakdown": "Kredit mengikut tarikh dan jenis hari",
+      "datedCredit": "{date} · {dayClass} · {minutes} minit · {days} hari",
+      "datedClasses": {"normal": "Hari biasa", "off": "Hari tidak bekerja", "rest": "Hari rehat", "publicHoliday": "Cuti umum", "replacementHoliday": "Cuti gantian"},
       "creditUnavailable": "Kredit tidak tersedia",
       "requestedCredit": "Kredit dimohon",
       "errors": {

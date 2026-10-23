@@ -15616,6 +15616,9 @@
       "reviewed": "ระยะเวลาที่ตรวจสอบ: {minutes} นาที",
       "reference": "การคำนวณ {id} · รุ่นแก้ไข {revision}",
       "subjectToApproval": "ตรวจสอบเฉพาะระยะเวลาและระดับเท่านั้น ยังต้องผ่านการอนุมัติและการตรวจสอบเครดิตวันลาทั้งหมด",
+      "datedBreakdown": "เครดิตตามวันที่และประเภทวัน",
+      "datedCredit": "{date} · {dayClass} · {minutes} นาที · {days} วัน",
+      "datedClasses": {"normal": "วันทำงานปกติ", "off": "วันหยุดไม่ใช่วันพัก", "rest": "วันพักประจำสัปดาห์", "publicHoliday": "วันหยุดนักขัตฤกษ์", "replacementHoliday": "วันหยุดชดเชย"},
       "creditUnavailable": "เครดิตไม่พร้อม",
       "requestedCredit": "เครดิตที่ขอ",
       "errors": {

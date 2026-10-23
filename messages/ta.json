@@ -15616,6 +15616,9 @@
       "reviewed": "மதிப்பாய்வு செய்த காலம்: {minutes} நிமிடங்கள்",
       "reference": "கணக்கீடு {id} · திருத்தம் {revision}",
       "subjectToApproval": "நேர அளவும் அடுக்கும் மட்டுமே மதிப்பாய்வு செய்யப்பட்டுள்ளன. ஒப்புதலும் அனைத்து விடுப்பு வரவுச் சரிபார்ப்புகளும் தொடர்ந்து பொருந்தும்.",
+      "datedBreakdown": "தேதி மற்றும் நாள் வகைப்படி வரவு",
+      "datedCredit": "{date} · {dayClass} · {minutes} நிமிடங்கள் · {days} நாட்கள்",
+      "datedClasses": {"normal": "சாதாரண வேலை நாள்", "off": "வேலை இல்லாத நாள்", "rest": "ஓய்வு நாள்", "publicHoliday": "பொது விடுமுறை", "replacementHoliday": "மாற்று விடுமுறை"},
       "creditUnavailable": "வரவு கிடைக்கவில்லை",
       "requestedCredit": "கோரிய வரவு",
       "errors": {

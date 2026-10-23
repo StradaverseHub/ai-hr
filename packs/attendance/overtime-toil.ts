@@ -203,5 +203,11 @@ export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:Se
   ||!isDeepStrictEqual(JSON.parse(JSON.stringify(independent)),JSON.parse(JSON.stringify(stored.independent))))unavailable('stale');
  const qualified=attendancePolicyDatedToilQualification(independent,p.claimWindow);
  if(qualified.state!=='prepared'||qualified.durationDigest!==contract.durationDigest||qualified.minutes!==contract.minutes)unavailable();
- return {...qualified,companyId:stored.source.companyId,calculationId:stored.calculation.id,sourceRevision:stored.source.revision};
+ const sourceCalendar=independent.policyExecutionContext?.state==='policy'?independent.policyExecutionContext.calendar.filter(row=>row.date===p.date):[];
+ if(sourceCalendar.length!==1||sourceCalendar[0].state!=='known')unavailable();
+ const sourceClass=sourceCalendar[0].dayClass;
+ // A form's day label describes its source date ONLY. It never selects the rule
+ // or valuation of the later dated classes in the immutable credit partition.
+ const sourceDayKind:ToilWorkedDayKind=sourceClass==='normal'?'workday':sourceClass==='off'?'off_day':sourceClass==='rest'?'rest_day':'holiday';
+ return {...qualified,companyId:stored.source.companyId,calculationId:stored.calculation.id,sourceRevision:stored.source.revision,sourceDayKind};
 }

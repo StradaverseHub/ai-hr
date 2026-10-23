@@ -15616,6 +15616,9 @@
       "reviewed": "Thời lượng đã kiểm tra: {minutes} phút",
       "reference": "Phép tính {id} · phiên bản {revision}",
       "subjectToApproval": "Chỉ kiểm tra thời lượng và bậc. Vẫn phải được phê duyệt và đáp ứng mọi kiểm tra tín dụng nghỉ.",
+      "datedBreakdown": "Tín dụng theo ngày và loại ngày",
+      "datedCredit": "{date} · {dayClass} · {minutes} phút · {days} ngày",
+      "datedClasses": {"normal": "Ngày làm việc thường", "off": "Ngày không làm việc", "rest": "Ngày nghỉ hằng tuần", "publicHoliday": "Ngày lễ", "replacementHoliday": "Ngày nghỉ bù"},
       "creditUnavailable": "Chưa xác định tín dụng",
       "requestedCredit": "Tín dụng được yêu cầu",
       "errors": {

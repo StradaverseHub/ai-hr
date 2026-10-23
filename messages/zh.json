@@ -15616,6 +15616,9 @@
       "reviewed": "已核查时长：{minutes} 分钟",
       "reference": "计算 {id} · 修订 {revision}",
       "subjectToApproval": "仅核查时长及额度档位。仍须审批并通过所有假期额度核查。",
+      "datedBreakdown": "按日期及日别列出的额度",
+      "datedCredit": "{date} · {dayClass} · {minutes} 分钟 · {days} 天",
+      "datedClasses": {"normal": "正常工作日", "off": "非工作日", "rest": "休息日", "publicHoliday": "公共假期", "replacementHoliday": "补假"},
       "creditUnavailable": "额度不可用",
       "requestedCredit": "申报额度",
       "errors": {

@@ -6,7 +6,7 @@ import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayr
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
-import {runToilExpiry,accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
+import {grantLeaveCreditRows,leaveCreditGrantClaimReview,runToilExpiry,accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
 import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
 import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
 import {recordedAttendancePolicyProposalPartsMatch,materializeAttendancePolicyProposalParts} from '../packs/attendance/policy-proposal-parts';
@@ -964,6 +964,28 @@ describe('immutable non-payable policy part storage',()=>{
   await generatePayslips(ctx,{batchId:batch.batchId});
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
   expect(slip.overtimePay).toBe(scope==='datedRates'?'8.00':'4.00');
+ });
+
+ it('reviews and directly banks HR mixed-class window rows through the same dated credit rules',async()=>{
+  await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,555,true,{mode:'none',step:null},120,'earliest',true);
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  const review=await leaveCreditGrantClaimReview(ctx,{employmentId:f.employmentId,workedDate:f.sourceDate,claimStart:'23:00',claimEnd:'01:00'});
+  expect(review).toMatchObject({basis:'formula',status:'ready',datedClassScope:true,workedDayKind:'workday',creditDays:1,eligibleMinutes:120,
+   datedParts:[{dayClass:'normal',days:0.5},{dayClass:'rest',days:0.5}]});
+  // Prospective fixture time is injected through the existing public test clock;
+  // this does not establish actual browser acceptance or a historical activation.
+  const grant=await grantLeaveCreditRows(ctx,{employmentId:f.employmentId,reason:'Fictional dated-class HR window credit',today:f.sourceDate,
+   rows:[{workedDate:f.sourceDate,dayType:'workday',claimStart:'23:00',claimEnd:'01:00'}]});
+  expect(grant).toMatchObject({totalDays:1,overtimeSuppressedMinutes:120,rows:[{daysCredited:1,eligibleMinutes:120}]});
+  const [stored]=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,grant.rows[0].accrualId));
+  expect(stored).toMatchObject({dayType:null,workedDayKind:null,daysCredited:'1.00',datedCredit:{path:'claim',claimWindow:{start:'23:00',end:'01:00'},
+   parts:[{dayClass:'normal',rule:'claimWindow',days:0.5},{dayClass:'rest',rule:'claimWindow',days:0.5}]}});
+  await reverseLeaveCredit(ctx,{accrualId:stored.id,reason:'Fictional dated HR window release'});
+  const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.toilAccrualId,stored.id));
+  expect(claim.releasedAt).not.toBeNull();
  });
 
  it('banks mixed normal/rest credits once and expires only the unused dated balance after real half-day leave',async()=>{
