@@ -630,7 +630,21 @@ BEGIN
    AND clock_capture_id=(clock->>'captureId')::uuid AND voided_at IS NULL) THEN
    RAISE EXCEPTION 'Current policy clock source changed' USING ERRCODE='23514';END IF;
  END LOOP;
- PERFORM app.attendance_policy_captured_coverage(header.id);
+ IF NEW.mode='toil' AND NOT EXISTS(SELECT 1 FROM public.toil_accrual credit
+  WHERE credit.id=NEW.toil_accrual_id AND credit.tenant_id=source.tenant_id
+   AND credit.employment_id=source.employment_id AND credit.worked_date=source.attendance_date
+   AND credit.status<>'reversed' AND credit.ot_minutes>0
+   AND credit.ot_minutes::numeric*header.payable_denominator::numeric<=header.payable_numerator::numeric
+   AND credit.worked_day_kind IS NOT NULL
+   AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
+    WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
+     AND credit.worked_day_kind::text IS DISTINCT FROM CASE part.day_class
+      WHEN 'normal' THEN 'workday' WHEN 'off' THEN 'off_day' WHEN 'rest' THEN 'rest_day'
+      WHEN 'publicHoliday' THEN 'holiday' WHEN 'replacementHoliday' THEN 'holiday' ELSE NULL END)) THEN
+  RAISE EXCEPTION 'TOIL credit must bind a reviewed subset of the current policy duration and class' USING ERRCODE='23514';END IF;
+ -- The mandatory SECURITY DEFINER ab coverage trigger independently validates the private
+ -- physical proof next. This invoker trigger must never grant app EXECUTE on that owner.
+
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.guard_attendance_policy_settlement_stage() FROM PUBLIC,ai_hr_app;
