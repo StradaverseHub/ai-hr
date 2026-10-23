@@ -117,9 +117,9 @@ describe('Payroll back navigation (source shape)', () => {
     ]) {
       expect(src, `row link missing the filter query: ${href}`).toContain(href);
     }
-    // Three call sites (period cell, Continue and the Ledger inspector), all passing it — a bare `resumeHref(b.id, b.status)` left anywhere on this screen
+    // Two resume call sites (period cell and Continue), both passing it; View uses the explicit batch href above — a bare `resumeHref(b.id, b.status)` left anywhere on this screen
     // is a link that silently drops the selection.
-    expect(src.match(/resumeHref\(b\.id, b\.status, fromQuery\)/g) ?? []).toHaveLength(3);
+    expect(src.match(/resumeHref\(b\.id, b\.status, fromQuery\)/g) ?? []).toHaveLength(2);
     expect(src, 'a resumeHref call is still dropping the filter query').not.toMatch(
       /resumeHref\(b\.id, b\.status\)/,
     );

@@ -14,9 +14,10 @@ import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
+import erasurePolicy from '../lib/pdpa-erasure-policy.json';
 
 /** LHDN income-tax / EPF / SOCSO records must be kept ~7 years; statutory PII stays locked until then. */
-export const RETENTION_YEARS = 7;
+export const RETENTION_YEARS = erasurePolicy.retentionYears;
 
 export type ErasureScope = 'contact' | 'financial' | 'identity' | 'statutory-ids' | 'all';
 
@@ -24,80 +25,16 @@ type PiiField = { key: string; table: 'person' | 'statutory'; statutoryLocked: b
 
 // Only NULLable cleartext fields. notNull identity (full_name, primary_email, ic_number) is never NULLed
 // here — it identifies the subject on retained statutory documents and would need a tombstone, not a NULL.
-const PII_FIELDS: PiiField[] = [
-  { key: 'phone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'address', table: 'person', statutoryLocked: false, scopes: ['contact'] }, // legacy single-line
-  // 23ad620e — emergencyContactName / Phone / Relationship / Phone2 / Address were listed here while they
-  // were person COLUMNS. Migration 0322 dropped them; the emergency contact is now a row in
-  // person_emergency_contact and is erased WHOLESALE further down (`emergencyContacts`) rather than NULLed
-  // field by field. Listing a dropped column here would build an UPDATE against a column that is gone.
-  // b4682879 — new contact & structured-address fields (all erasable immediately; not statutory-locked).
-  { key: 'personalEmail', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'addressLine1', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'addressLine2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'addressLine3', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'postcode', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'city', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'state', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'country', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  // 3a25f5ee — Permanent + Correspondence structured addresses (migration 0213); personal data, erasable
-  // immediately under the same contact scope as the legacy single address, never statutory-locked.
-  { key: 'permanentAddressLine1', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentAddressLine2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentAddressLine3', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentPostcode', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentCity', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentState', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'permanentCountry', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceAddressLine1', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceAddressLine2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceAddressLine3', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondencePostcode', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceCity', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceState', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceCountry', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  // bf953339 — Home + Correspondence phone pair (migration 0304); contact PII, erasable immediately like
-  // the existing `phone` (mobile) column, never statutory-locked.
-  { key: 'homePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceMobilePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'correspondenceHomePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  // b4682879 — name parts + PDPA s.40 sensitive demographics (identity scope; erasable immediately).
-  { key: 'firstName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'lastName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'preferredName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'religion', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'race', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'nationality', table: 'person', statutoryLocked: false, scopes: ['identity'] },
-  { key: 'dateOfBirth', table: 'person', statutoryLocked: true, scopes: ['identity'] }, // drives EPF age bands
-  { key: 'bankName', table: 'statutory', statutoryLocked: true, scopes: ['financial'] },
-  { key: 'bankAccountNo', table: 'statutory', statutoryLocked: true, scopes: ['financial'] },
-  { key: 'epfNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
-  { key: 'socsoNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
-  { key: 'taxNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
-  // ── d64d0df4 — ERASURE SCOPE FOR THE DISABILITY / CHILD-RELIEF CLAIMS. Decision recorded here because
-  // the approved plan required one BEFORE the columns landed, and because two of the three fields hold
-  // health data about people who are NOT the employee (a spouse, and children).
-  //
-  // DECIDED: they are erased with the rest of the subject's data once the LHDN retention period lifts —
-  // i.e. statutoryLocked, under the `identity` scope alongside the other PDPA s.40 sensitive
-  // demographics (religion / race), NOT under `statutory-ids`, which is about registration NUMBERS.
-  //
-  // ONLY child_relief_table is listed. The mechanism below NULLs a column, and the other two
-  // (disabled_individual, migration 0341; disabled_spouse, migration 0356) are NOT NULL booleans
-  // defaulting to false: NULLing them would violate the constraint, and this list has no "reset to
-  // default" form. They are therefore out of reach of erasure until the mechanism gains one — a gap
-  // deliberately recorded here rather than papered over, and the reason child_relief_table was made
-  // NULLable in the first place. The two booleans say only "a claim was made"; the grid is the field
-  // that says how many of this person's children are disabled, which is why it is the one that matters
-  // most and the one that is covered.
-  { key: 'childReliefTable', table: 'statutory', statutoryLocked: true, scopes: ['identity'] },
-];
+// One declaration is shared with the SQL privacy-intent owner. Nullable identity/contact fields
+// clear immediately; statutoryLocked fields retain the existing post-termination hold. Non-null
+// identity and disability booleans are deliberately absent, preserving their retained meaning.
+const PII_FIELDS = erasurePolicy.fields as PiiField[];
 
 const inScope = (f: PiiField, scope: ErasureScope) => scope === 'all' || f.scopes.includes(scope);
 
 function liftDate(terminatedOn: string): string {
   const d = new Date(terminatedOn);
-  d.setFullYear(d.getFullYear() + RETENTION_YEARS);
+  d.setUTCFullYear(d.getUTCFullYear() + RETENTION_YEARS);
   return d.toISOString().slice(0, 10);
 }
 /** Statutory hold lifts only RETENTION_YEARS after termination; while still employed it never lifts. */
@@ -117,6 +54,12 @@ export async function erasePersonPii(
   p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
 ): Promise<ErasureReport> {
   return withTenant(ctx, async (tx) => {
+    // Independent privacy authority prepares only exact nullable erasure effects. It cannot grant
+    // Workforce maintenance or lend its authority to an arbitrary value write.
+    const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.access_privacy_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
+    if(!admission?.at)throw new Error('Privacy erasure admission unavailable.');
+    const erasureAt=new Date(admission.at);
+    if(!Number.isFinite(erasureAt.getTime()))throw new Error('Privacy erasure admission unavailable.');
     const [emp] = await tx
       .select({ personId: employment.personId, terminatedOn: employment.terminatedOn })
       .from(employment)
@@ -125,7 +68,7 @@ export async function erasePersonPii(
     if (!emp) throw new Error(`No employment ${p.subjectEmploymentId} for PII erasure`);
 
     // (2) retention guard
-    const lifted = retentionLifted(emp.terminatedOn, new Date());
+    const lifted = retentionLifted(emp.terminatedOn, erasureAt);
     const erased: string[] = [];
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
@@ -188,8 +131,8 @@ export async function erasePersonPii(
     // the sensitive columns across ALL of the person's dependent rows (contact-scope: phone / address /
     // employer; identity-scope: IC / passport). Not-in-scope fields (name/DOB/relationship) are untouched
     // — they carry no statutory obligation but are minimal identifiers we retain like person.full_name.
-    const depContactCols = ['phone', 'residentialAddress', 'companyName', 'employerAddress'] as const;
-    const depIdentityCols = ['icOrPassport', 'passportNumber'] as const;
+    const depContactCols = erasurePolicy.dependentContact;
+    const depIdentityCols = erasurePolicy.dependentIdentity;
     const depSet: Record<string, null> = {};
     if (p.scope === 'contact' || p.scope === 'all') for (const c of depContactCols) depSet[c] = null;
     if (p.scope === 'identity' || p.scope === 'all') for (const c of depIdentityCols) depSet[c] = null;

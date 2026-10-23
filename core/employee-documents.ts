@@ -1,3 +1,5 @@
+import {assertWorkforceEmploymentTx} from './workforce-access';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 /**
  * General employee document store (f018ce8d — Personnel → Documents tab redesign).
  *
@@ -15,7 +17,7 @@
  * deliberate, PDPA-justified exception to the "reads emit nothing" rule, because expected_function §6
  * requires an audit trail for document downloads.
  */
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -147,6 +149,7 @@ export async function addEmployeeDocument(
   const title = cleanTitle(p.title);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx, ctx, p.employmentId, 'maintain');
     const [row] = await tx
       .insert(employeeDocument)
       .values({
@@ -185,12 +188,14 @@ export async function updateEmployeeDocumentMeta(
   assertAdmin(ctx);
   const title = cleanTitle(p.title);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
       .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
+    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
     await tx
       .update(employeeDocument)
       .set({
@@ -222,12 +227,14 @@ export async function replaceEmployeeDocumentContent(
   assertAdmin(ctx);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
       .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
+    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
     await tx
       .update(employeeDocument)
       .set({
@@ -256,12 +263,14 @@ export async function replaceEmployeeDocumentContent(
 export async function deleteEmployeeDocument(ctx: SessionContext, p: { documentId: string }): Promise<{ id: string }> {
   assertAdmin(ctx);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId, title: employeeDocument.title, fileName: employeeDocument.fileName })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
       .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
+    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
     await tx.delete(employeeDocument).where(eq(employeeDocument.id, p.documentId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -300,8 +309,9 @@ export function listEmployeeDocuments(ctx: SessionContext, employmentId: string)
   const uploaderUser = alias(appUser, 'uploader_user');
   const updater = alias(person, 'updater');
   const updaterUser = alias(appUser, 'updater_user');
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    return tx
       .select({
         id: employeeDocument.id,
         employmentId: employeeDocument.employmentId,
@@ -322,8 +332,8 @@ export function listEmployeeDocuments(ctx: SessionContext, employmentId: string)
       .leftJoin(updaterUser, eq(updaterUser.id, employeeDocument.updatedByUserId))
       .leftJoin(updater, eq(updater.id, updaterUser.personId))
       .where(eq(employeeDocument.employmentId, employmentId))
-      .orderBy(desc(employeeDocument.createdAt)),
-  ) as Promise<EmployeeDocumentMeta[]>;
+      .orderBy(desc(employeeDocument.createdAt));
+  }) as Promise<EmployeeDocumentMeta[]>;
 }
 
 /**
@@ -335,8 +345,10 @@ export function listEmployeeDocuments(ctx: SessionContext, employmentId: string)
 export function getEmployeeDocument(
   ctx: SessionContext,
   documentId: string,
+  expectedEmploymentId?: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string; employmentId: string } | null> {
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [row] = await tx
       .select({
         content: employeeDocument.content,
@@ -345,7 +357,7 @@ export function getEmployeeDocument(
         employmentId: employeeDocument.employmentId,
       })
       .from(employeeDocument)
-      .where(eq(employeeDocument.id, documentId))
+      .where(and(eq(employeeDocument.id, documentId), expectedEmploymentId ? eq(employeeDocument.employmentId, expectedEmploymentId) : undefined))
       .limit(1);
     if (!row) return null;
     // SUBSTRATE (documented exception): audit the download per expected_function §6.

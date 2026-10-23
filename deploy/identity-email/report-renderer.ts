@@ -37,7 +37,7 @@ async function main(){
     :sql`select app.employee_master_render_context(${request.occurrenceId}::uuid,${request.leaseToken}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER??''}) as context`) as unknown as {context:unknown}[];
    const parsed=masterRenderContext.safeParse(row?.context);if(!parsed.success||parsed.data.accessStamp!==request.expectedAccessStamp)throw Object.assign(new Error('Report is no longer eligible.'),{notEligible:true});return parsed.data;
   };
-  const {resolveEntitlementsTx}=await import('../../core/entitlements'),{allowedCompanies}=await import('../../core/read'),{getEmployeeMasterReport}=await import('../../core/employee-master-reports');
+  const {resolveEntitlementsTx}=await import('../../core/entitlements'),{allowedCompanies}=await import('../../core/read'),{getExecutableEmployeeMasterReport}=await import('../../core/employee-master-reports');
   const context=async(value:MasterRenderContext,owner:boolean)=>{
    const grants=owner?value.ownerGrants:value.recipientGrants,base:SessionContext={tenantId:value.tenantId,userId:owner?value.ownerUserId:value.recipientUserId,personId:owner?value.ownerPersonId:value.recipientPersonId,grants,roles:[...new Set(grants.map(grant=>grant.role))]};
    const ctx={...base,entitlements:await withTenant(base,tx=>resolveEntitlementsTx(tx,base.tenantId),{readOnlySnapshot:true})};
@@ -45,7 +45,7 @@ async function main(){
   };
   const check=async()=>{
    const value=await resolve(),owner=await context(value,true),recipient=await context(value,false);
-   const [ownerReport,recipientReport]=await Promise.all([getEmployeeMasterReport(owner.ctx,owner.scopeIds,value.reportId),getEmployeeMasterReport(recipient.ctx,recipient.scopeIds,value.reportId)]);
+   const [ownerReport,recipientReport]=await Promise.all([getExecutableEmployeeMasterReport(owner.ctx,owner.scopeIds,value.reportId),getExecutableEmployeeMasterReport(recipient.ctx,recipient.scopeIds,value.reportId)]);
    if(ownerReport.ownerUserId!==value.ownerUserId||ownerReport.version!==value.reportVersion||recipientReport.version!==value.reportVersion||JSON.stringify([...ownerReport.spec.companyIds].sort())!==JSON.stringify([...value.companyIds].sort()))throw Object.assign(new Error('Report access changed.'),{notEligible:true});
    return {value,recipient};
   };

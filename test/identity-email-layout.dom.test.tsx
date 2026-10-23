@@ -13,6 +13,10 @@ vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:(
 vi.mock('../lib/scope',()=>({getScopeIds:async()=>[]}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>'monolith'}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
+// New capability owners are independent of SMTP installation enrollment and the legacy rail.
+// This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
+vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
+vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>true}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
 vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:async()=>[],unreadNotificationCount:async()=>0}));

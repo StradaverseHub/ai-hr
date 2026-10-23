@@ -128,7 +128,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
 
   it('wires all eleven Personnel tabs while Leave mutations retain their existing destination',()=>{
     expect(EDITOR).toContain("['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others']");
-    expect(EDITOR).toContain('Object.fromEntries(keys.map((key,index)=>');expect(EDITOR).toContain('panels={panels}');expect(PAGE).toContain('<ProfileEditor');
+    expect(EDITOR).toContain('Object.fromEntries(activeKeys.map(key=>');expect(EDITOR).toContain('panels={panels}');expect(PAGE).toContain('<ProfileEditor');
     expect(PAGE).toContain('href="/leave"');expect(PAGE).not.toContain('action={myRequestLeave}');
     for(const dead of ["key: 'overview'","key: 'pay'","key: 'performance'"])expect(PAGE).not.toContain(dead);
   });

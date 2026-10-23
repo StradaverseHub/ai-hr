@@ -35,7 +35,7 @@ function formatSize(bytes: number): string {
 // (lib/date-display.ts formatDmyTime). Still deterministic — an explicit time zone, never the host's or the
 // browser's — so the server render and hydration cannot drift apart, which is what the UTC minute was for.
 
-export async function DocumentsSection({ s, employmentId }: { s: SessionContext; employmentId: string }) {
+export async function DocumentsSection({ s, employmentId, canMaintain }: { s: SessionContext; employmentId: string; canMaintain: boolean }) {
   const t = await getTranslations('people.detail.documents');
   const rows = await listEmployeeDocuments(s, employmentId);
   const docs: DocumentVM[] = rows.map((r) => ({
@@ -66,6 +66,7 @@ export async function DocumentsSection({ s, employmentId }: { s: SessionContext;
       <DocumentsManager
         employmentId={employmentId}
         docs={docs}
+        canMaintain={canMaintain}
         categories={categories}
         types={types}
       />

@@ -1,3 +1,4 @@
+import {lockProfileValueWritesTx} from './access-configuration-lock';
 /**
  * Personnel — Emergency contacts (feedback 23ad620e). A per-PERSON register of who to call in an emergency:
  * name, relationship, mobile phone, home phone, address, remark and a priority. Replaces the five flat
@@ -212,6 +213,7 @@ export async function addEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const validated=await validateEmergencyContactInputTx(tx,p.personId,p);
     const fullName=validated.fullName!;
     const priority=validated.priority as EmergencyContactPriority;
@@ -272,6 +274,7 @@ export async function updateEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -318,8 +321,10 @@ export async function updateEmergencyContact(
 export async function archiveEmergencyContact(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -338,7 +343,8 @@ export async function archiveEmergencyContact(
       payload: { priority: existing.priority },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**
@@ -356,6 +362,7 @@ export async function writeSingleEmergencyContactInTx(
   personId: string,
   p: Partial<PrimaryEmergencyContact>,
 ): Promise<{ id: string; created: boolean } | null> {
+  await lockProfileValueWritesTx(tx,ctx.tenantId);
   const touched = (Object.keys(p) as (keyof PrimaryEmergencyContact)[]).filter((k) => p[k] !== undefined);
   if (touched.length === 0) return null;
 

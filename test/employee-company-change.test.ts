@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * Personnel — Company change before any transaction (feedback 9464bd56).
  *
@@ -28,7 +29,6 @@ import type { SessionContext } from '../db/client';
 import {
   changeEmploymentCompany,
   CompanyLockedError,
-  DestinationCompanyNotAdministered,
   hireEmployee,
 } from '../core/org';
 import { employmentCompanyEditable, listDepartments } from '../core/read';
@@ -474,33 +474,26 @@ describe('gate blocks — one insert per operational module head', () => {
 });
 
 describe('authz — destination company must be administered', () => {
-  const oldOnlyCtx = (): SessionContext => ({
-    tenantId: b.tenantId,
-    userId: b.adminUserId,
-    grants: [{ role: 'hr_admin', companyId: b.companyId }],
-  });
-  const bothCtx = (): SessionContext => ({
-    tenantId: b.tenantId,
-    userId: b.adminUserId,
-    grants: [
-      { role: 'hr_admin', companyId: b.companyId },
-      { role: 'hr_admin', companyId: newCompanyId },
-    ],
-  });
+  async function scopedActor(companyIds:string[]):Promise<SessionContext>{
+    const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'company-scope-'+randomUUID()}).returning();
+    await owner.db.insert(schema.roleAssignment).values(companyIds.map(companyId=>({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin' as const,companyId})));
+    return {...adminCtx(b),userId:user.id,roles:['hr_admin'],grants:companyIds.map(companyId=>({role:'hr_admin' as const,companyId}))};
+  }
 
   it('(e) admin of only the current company is rejected; admin-of-both and group admin succeed', async () => {
+    const oldOnly=await scopedActor([b.companyId]),bothCompanies=await scopedActor([b.companyId,newCompanyId]);
     const rejected = await hireFresh();
     await expect(
-      changeEmploymentCompany(oldOnlyCtx(), {
+      changeEmploymentCompany(oldOnly, {
         employmentId: rejected.employmentId,
         newCompanyId,
         departmentId: newDeptId,
       }),
-    ).rejects.toBeInstanceOf(DestinationCompanyNotAdministered);
+    ).rejects.toBeInstanceOf(WorkforceAccessError);
     expect(await companyIdOf(rejected.employmentId)).toBe(b.companyId);
 
     const both = await hireFresh();
-    await changeEmploymentCompany(bothCtx(), {
+    await changeEmploymentCompany(bothCompanies, {
       employmentId: both.employmentId,
       newCompanyId,
       departmentId: newDeptId,

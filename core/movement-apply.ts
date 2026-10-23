@@ -25,10 +25,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { domainEvent } from '../db/schema';
+import { domainEvent, employment } from '../db/schema';
 import { applyDueMovementsTx } from './movement';
-// 9e2a89e9 — the pre-write grade read. core/ → core/, no pack boundary crossed.
-import { employmentGradeId } from './org';
+// Workforce authorizes the actual transaction principal; the dated intent remains a ledger fact.
+import {assertWorkforceEmploymentTx} from './workforce-access';
 // Through the pack facade, not `core/leave` directly: this file is NEW, and ADR-0080 D9's import
 // ratchet only ever shrinks its allowlist (test/leave-pack-drift.test.ts).
 import { reprojectEntitlementForEmployment } from '../packs/leave/service';
@@ -52,6 +52,7 @@ export type MovementSweepResult = {
 export async function sweepDueMovements(
   ctx: SessionContext,
   opts: { today?: string } = {},
+  runTransaction: typeof withTenant = withTenant,
 ): Promise<MovementSweepResult> {
   const today = opts.today ?? todayInKualaLumpur();
 
@@ -59,7 +60,7 @@ export async function sweepDueMovements(
   // which has no application recorded against it yet. Reversal and supersession are NOT filtered here —
   // they are decided per employment by the projection, so there is exactly ONE implementation of those
   // rules and the sweep can never disagree with what the Employment History screen shows.
-  const candidates = await withTenant(ctx, async (tx) =>
+  const candidates = await runTransaction(ctx, async (tx) =>
     tx
       .selectDistinct({ employmentId: domainEvent.subjectEmploymentId })
       .from(domainEvent)
@@ -93,9 +94,14 @@ export async function sweepDueMovements(
       // 9e2a89e9 — READ BEFORE THE WRITE, for the same reason the save path does: after the movement has
       // been applied, employment.grade_id is the NEW grade. One indexed read per employment that has a
       // movement due, which is a handful a morning.
-      const gradeBefore = { gradeId: await employmentGradeId(ctx, c.employmentId) };
-      // One transaction per employment: the legs and the applied event land together or not at all.
-      const r = await withTenant(ctx, (tx) => applyDueMovementsTx(tx, ctx, c.employmentId!, today));
+      // The trusted CLI supplies its actual owner connection. A browser or synthetic system context
+      // on ai_hr_app cannot turn an empty user ID into Workforce maintenance authority.
+      const {r,gradeBefore}=await runTransaction(ctx,async tx=>{
+        await assertWorkforceEmploymentTx(tx,ctx,c.employmentId!,'maintain');
+        const [before]=await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,c.employmentId!)).limit(1);
+        const r=await applyDueMovementsTx(tx,ctx,c.employmentId!,today);
+        return {r,gradeBefore:{gradeId:before?.gradeId??null}};
+      });
       applied += r.applied;
       noop += r.noop;
 
@@ -132,7 +138,7 @@ export async function sweepDueMovements(
 
   // One summary event per run that did work (the sweep convention — zero-work runs append nothing).
   if (applied > 0 || noop > 0 || failed > 0) {
-    await withTenant(ctx, (tx) =>
+    await runTransaction(ctx, (tx) =>
       appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'movement-apply-sweep',

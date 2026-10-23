@@ -27,9 +27,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { childReliefGridFromFamily, pricesChildReliefFromGrid } from '../core/dependents';
+import { childReliefGridFromFamily, derivedChildReliefGrid, pricesChildReliefFromGrid } from '../core/dependents';
 import { childReliefAmountFor } from '../localization/my/payroll';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
+import {familyReliefFunctionSource} from './helpers/family-relief-owner-source';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
@@ -106,7 +107,10 @@ describe('a5f21891 · (b) an incomplete family never prices from a partial grid'
 
   it('the sync therefore stores NULL when a category is missing, rather than a partial or stale grid', () => {
     const s = src('core/dependents.ts');
-    expect(s, 'completeness is what decides').toContain('built.categorised === built.eligible');
+    expect(s, 'completeness is the shared decision graph').toContain('familyGridComplete(built.eligible,built.categorised)');
+    expect(derivedChildReliefGrid([child('under_18'),child(null)],ASOF)).toBeNull();
+    expect(derivedChildReliefGrid([child('disabled_study')],ASOF)).toEqual({disabled_study:{full:1,half:0}});
+    expect(familyReliefFunctionSource('my_sync_family_child_relief')).toContain('IF NOT app.my_family_grid_complete(derived,categorised) THEN grid:=NULL;');
     expect(s, 'and an incomplete family clears the grid').toContain('? built.grid : null');
   });
 
@@ -147,7 +151,8 @@ describe('a5f21891 · (c) the payslip, the preview and the worksheet widened tog
   it('num_children is STILL the head count — Form E, CP8D and EA read it as one', () => {
     const s = src('core/dependents.ts');
     // The sync writes the head count, never the weighting, into that column.
-    expect(s).toContain('numChildren: state.derived');
+    const owner=familyReliefFunctionSource('my_sync_family_child_relief');
+    expect(owner).toContain('SET num_children=derived,child_relief_table=grid');
     // ⚠️ r351 — `eligibleChildReliefCount(rows)` became `eligibleChildReliefCount(rows, asOf)`. The sync used
     // to take its date through the parameter default, `new Date()`, which is real UTC now and therefore
     // YESTERDAY between 00:00 and 08:00 Kuala Lumpur — a day behind the Identification & Tax card and the
@@ -155,10 +160,8 @@ describe('a5f21891 · (c) the payslip, the preview and the worksheet widened tog
     // The DECISION this case pins is unchanged: the column is fed the PLAIN head count and never the
     // weighted figure, or Form E / CP8D / EA would declare one disabled child in higher education as eight.
     // Both halves are asserted, so a swap to the weighted function cannot pass on a looser literal.
-    expect(s, 'and `derived` is the plain count').toContain('derived: eligibleChildReliefCount(');
-    expect(s, 'never the weighted one — the three annual readers take that column as a head count').not.toContain(
-      'derived: eligibleChildReliefUnits(',
-    );
+    expect(owner, 'and derived is a plain eligible row count').toMatch(/SELECT count\(\*\)::integer,count\(\*\) FILTER[\s\S]*INTO derived,categorised/);
+    expect(owner, 'never the weighted one — annual readers take a head count').not.toMatch(/sum\(|relief_units|relief_amount/i);
   });
 });
 
@@ -166,16 +169,15 @@ describe('a5f21891 · (c) the payslip, the preview and the worksheet widened tog
 
 describe('a5f21891 · (d) a category change moves the figure even when the head count does not', () => {
   it('rail (b) compares the GRID as well as the count', () => {
-    const s = src('core/dependents.ts');
-    expect(s, 'the grid is part of "moved"').toContain('gridMoved');
-    expect(s, 'and the count alone no longer short-circuits').toContain(
-      'state.statutory.numChildren === state.derived && !gridMoved',
-    );
+    const owner=familyReliefFunctionSource('my_sync_family_child_relief');
+    expect(owner, 'both count and canonical grid decide no-op').toContain("IF stat.num_children=derived AND old_grid=COALESCE(grid,'{}'::jsonb) THEN RETURN");
   });
 
   it('the comparison is canonical, so JSONB key order cannot report a phantom move', () => {
     // A plain JSON.stringify compared unequal on identical grids read back from JSONB, and the sync then
     // fired on every family edit. Three existing guards caught it; this keeps it caught.
-    expect(src('core/dependents.ts')).toContain('canonicalGrid');
+    const owner=familyReliefFunctionSource('my_sync_family_child_relief');
+    expect(owner).toContain("jsonb_object_agg(key,jsonb_build_object('full',COALESCE(value->>'full','0')::numeric,'half',COALESCE(value->>'half','0')::numeric))");
+    expect(owner).toContain("WHERE COALESCE(value->>'full','0')::numeric<>0 OR COALESCE(value->>'half','0')::numeric<>0");
   });
 });

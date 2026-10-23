@@ -1,7 +1,8 @@
 /** Shared Personnel descriptors are the only field inventory. These are authority adapters, not SQL. */
+import {isProfilePhotoProposal,PROFILE_PHOTO_FIELD} from './profile-photo-proposal';
 import {resolveEssVisibleIds} from './personnel-ess-visibility';
 import {z} from 'zod';
-import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,isLegacyProfileEditPolicy} from './profile-edit-policy-value';
+import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,isLegacyProfileEditPolicy,effectiveProfileFieldPermission,profileGroupPermission} from './profile-edit-policy-value';
 import {PERSONNEL_FIELDS,personnelField} from './personnel-field-registry';
 import {PROFILE_REQUESTABLE_KEYS} from './profile-requestable-fields';
 import {personnelScalarIssue} from './personnel-import-contract';
@@ -11,7 +12,7 @@ export const essEditableFields=()=>essVisibleFields().filter(field=>field.ess.bi
 /** Legacy lists governed requests only; finite direct contacts remain compatible until a v2 save. */
 export function resolveEssEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields();
- if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>raw.fields[field.id]==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
+ if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
  if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.id)).map(field=>field.id));
  if(!isLegacyProfileEditPolicy(raw))return new Set();
  const requests=raw==='all'||raw==null?PROFILE_REQUESTABLE_KEYS:raw as readonly string[];
@@ -20,7 +21,7 @@ export function resolveEssEditableIds(raw:unknown):ReadonlySet<string>{
 /** Exactly the old primary-contact fields, never create/other rows. Complete v2 empty closes them. */
 export function resolveEssPrimaryEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields().filter(field=>field.ess.legacyPrimaryKey);
- if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>raw.fields[field.id]==='viewOnly'&&raw.primaryOnly.includes(field.id)&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
+ if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='viewOnly'&&profileGroupPermission(raw,field)==='editable'&&raw.primaryOnly.includes(field.id)&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
  if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.ess.legacyPrimaryKey!)).map(field=>field.id));
  return new Set(isLegacyProfileEditPolicy(raw)?fields.map(field=>field.id):[]);
 }
@@ -55,6 +56,7 @@ export function sameEssScalar(a:EssScalar|undefined,b:EssScalar|undefined){retur
 /** Stable field identities for legacy and v2 history/withdrawal; never proposed values. */
 export function profileProposalKeys(raw:unknown):string[]{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return [];
+ if(isProfilePhotoProposal(raw))return [PROFILE_PHOTO_FIELD];
  if('v' in raw&&raw.v===2){const value=parseEssProfileProposal(raw);return [...new Set([...value.fields,...value.registers.flatMap(row=>row.fields)].map(field=>field.fieldId))];}
  return Object.keys(raw).filter(key=>PROFILE_REQUESTABLE_KEYS.includes(key));
 }

@@ -5,12 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import {
-  addDependent,
-  updateDependent,
-  archiveDependent,
   DependentValidationError,
   type ChildReliefSyncResult,
 } from '@/core/dependents';
+import {addDependent, updateDependent, archiveDependent} from '@/core/workforce-registers';
 
 // Family / Dependents (phase 1) — per-person benefits/insurance register, managed from the employee detail
 // page. Each action is admin-only (requireAdmin → RLS WITH CHECK is_admin()), routes through the

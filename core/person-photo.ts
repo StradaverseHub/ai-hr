@@ -1,5 +1,7 @@
+import {assertWorkforcePersonTx} from './workforce-access';
+import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
 import {getSetting} from './entitlements';
 import {EssProfileError} from '../lib/personnel-ess-model';
 import type {Tx} from '../db/client';
@@ -15,13 +17,14 @@ import type {Tx} from '../db/client';
  * Substrate: every write appends a DomainEvent (aggregateType 'person') with ONLY derived, non-PII payload
  * fields — never the bytes and never the raw user-supplied fileName (PDPA / ADR-0030 posture).
  */
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employment, personPhoto } from '../db/schema';
+import { employment, personPhoto, profileChangeRequest, profilePhotoProposal } from '../db/schema';
 
-export const PHOTO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB, same cap the company logo uses
+import {PHOTO_MAX_BYTES} from '../lib/profile-photo-limits';
+export {PHOTO_MAX_BYTES} from '../lib/profile-photo-limits';
 export const ALLOWED_PHOTO_MIME = ['image/png', 'image/jpeg'] as const;
 
 /** Fail-closed photo validation (empty / oversized / disallowed MIME). */
@@ -42,6 +45,7 @@ export async function setPersonPhoto(
   assertValidPhoto(p.mimeType, p.content);
   if(p.sizeBytes!==p.content.byteLength)throw new EssProfileError('invalid');
   return withTenant(ctx, async (tx) => {
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
     return setPersonPhotoTx(tx,ctx,p);
   });
 }
@@ -53,6 +57,8 @@ export function profilePhotoMime(content:Buffer):'image/png'|'image/jpeg'|null{
  return null;
 }
 async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
+    await lockProfileEditPolicyTx(tx,ctx.tenantId);
+    await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx
       .insert(personPhoto)
       .values({
@@ -86,16 +92,64 @@ async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;cont
     });
     return { personId: p.personId };
 }
-/** Own photo is independent of ordinary field editing; no deletion or delegated course is granted. */
+import {isProfilePhotoProposal,PROFILE_PHOTO_FIELD} from '../lib/profile-photo-proposal';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
+import {isProfileVisibilityPolicyValue,profileGroupPermission} from '../lib/profile-edit-policy-value';
+import {personnelField} from '../lib/personnel-field-registry';
+import {resolveProfileRouteTx,assertProfileRouteDecisionTx} from './profile-routing';
+async function lockPersonPhotoTx(tx:Tx,ctx:SessionContext,personId:string){await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'person-photo:'+ctx.tenantId+':'+personId},0))`);}
+export function ownPhotoSubmissionAllowed(policy:Awaited<ReturnType<typeof freshProfileEditPolicyTx>>){
+ const raw=getSetting(policy.ctx,'ess.profile_change_fields'),field=personnelField(PROFILE_PHOTO_FIELD)!;
+ return getSetting(policy.ctx,'ess.profile_photo_edit')===true&&policy.visible.has(PROFILE_PHOTO_FIELD)&&(!isProfileVisibilityPolicyValue(raw)||profileGroupPermission(raw,field)==='editable');
+}
+async function photoBaselineTx(tx:Tx,personId:string){
+ const [row]=await tx.select({content:personPhoto.content,mimeType:personPhoto.mimeType}).from(personPhoto).where(eq(personPhoto.personId,personId)).limit(1);
+ return createHash('sha256').update(row?row.mimeType+':':'absent:').update(row?.content??Buffer.alloc(0)).digest('hex');
+}
+/** Own upload submits one proposal. The current master stays unchanged until a valid HR decision. */
 export function setOwnPersonPhoto(ctx:SessionContext,p:{employmentId:string;content:Buffer;fileName:string}){
  const mimeType=profilePhotoMime(p.content);if(!mimeType)throw new EssProfileError('invalid');assertValidPhoto(mimeType,p.content);
  return withTenant(ctx,async tx=>{
   const policy=await freshProfileEditPolicyTx(tx,ctx);
-  if(!ctx.userId||getSetting(policy.ctx,'ess.profile_photo_edit')!==true||!policy.visible.has('profile.personal_details.photo'))throw new EssProfileError('permission');
+  if(!ctx.userId||!ownPhotoSubmissionAllowed(policy))throw new EssProfileError('permission');
   const {ownProfileSubjectTx}=await import('./profile-edit');
   const {subject}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId);
-  await tx.execute(sql`select set_config('app.profile_own_photo_write','on',true)`);
-  return setPersonPhotoTx(tx,policy.ctx,{personId:subject.personId,content:p.content,fileName:p.fileName.slice(0,255),mimeType,sizeBytes:p.content.byteLength});
+  const route=await resolveProfileRouteTx(tx,policy.ctx,p.employmentId,'photo');
+  if(!route)throw new EssProfileError('unavailable');
+  await lockPersonPhotoTx(tx,ctx,subject.personId);
+  const proposed={v:3,kind:'photo',fieldId:PROFILE_PHOTO_FIELD,baselineHash:await photoBaselineTx(tx,subject.personId)};
+  const pending=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,content:profilePhotoProposal.content}).from(profileChangeRequest).innerJoin(profilePhotoProposal,eq(profilePhotoProposal.requestId,profileChangeRequest.id)).where(and(eq(profileChangeRequest.personId,subject.personId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}->>'kind'='photo'`)).orderBy(profileChangeRequest.id).limit(2);
+  if(pending.length){if(pending.length===1&&pending[0].employmentId===p.employmentId&&pending[0].content.equals(p.content))return {requestId:pending[0].id};throw new EssProfileError('stale');}
+  const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:subject.personId,proposed,...route}).returning({id:profileChangeRequest.id});
+  await tx.insert(profilePhotoProposal).values({tenantId:ctx.tenantId,requestId:row.id,content:p.content,mimeType,sizeBytes:p.content.byteLength});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{fields:[PROFILE_PHOTO_FIELD],routeId:route.routeId,routeRevision:route.routeRevision,approverEmploymentId:route.routeApproverEmploymentId}});
+  return {requestId:row.id};
+ });
+}
+/** Called only after the canonical decision owner rechecks route, state, reviewer and self refusal. */
+export async function applyProfilePhotoProposalTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
+ if(!isProfilePhotoProposal(request.proposed))throw new EssProfileError('invalid');
+ const policy=await freshProfileEditPolicyTx(tx,ctx);if(!ownPhotoSubmissionAllowed(policy))throw new EssProfileError('fieldClosed',[PROFILE_PHOTO_FIELD]);
+ // The subject must still be active and have a live login; the reviewer is not the subject context.
+ const [active]=await tx.execute(sql`select exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where e.id=${request.employmentId}::uuid and e.person_id=${request.personId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and e.blacklisted_at is null and e.hired_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date and (least(e.resignation_date,e.last_working_date,e.terminated_on) is null or least(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() at time zone 'Asia/Kuala_Lumpur')::date) and u.archived_at is null and not app.login_blocked(u.id)) allowed`);
+ if(active?.allowed!==true)throw new EssProfileError('unavailable');
+ await lockPersonPhotoTx(tx,ctx,request.personId);
+ if(await photoBaselineTx(tx,request.personId)!==request.proposed.baselineHash)throw new EssProfileError('stale');
+ const [photo]=await tx.select().from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,request.id)).limit(1);
+ if(!photo)throw new EssProfileError('unavailable');assertValidPhoto(photo.mimeType,photo.content);
+ return setPersonPhotoTx(tx,ctx,{personId:request.personId,content:photo.content,mimeType:photo.mimeType,sizeBytes:photo.content.byteLength,fileName:'profile-photo'+(photo.mimeType==='image/png'?'.png':'.jpg')});
+}
+/** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. */
+export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
+ return withTenant(ctx,async tx=>{
+  const policy=await freshProfileEditPolicyTx(tx,ctx);
+  const [request]=await tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId)).limit(1);
+  if(!request||request.status!=='pending'||!isProfilePhotoProposal(request.proposed))return null;
+  const own=request.personId===ctx.personId&&await isOwnPersonTx(tx,policy.ctx);
+  if(own&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
+  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
+  const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(and(eq(profilePhotoProposal.requestId,requestId),own?ownPersonPredicate(policy.ctx):undefined)).limit(1);
+  return row??null;
  });
 }
 
@@ -103,6 +157,9 @@ export function setOwnPersonPhoto(ctx:SessionContext,p:{employmentId:string;cont
 export async function removePersonPhoto(ctx: SessionContext, p: { personId: string }) {
   if(!isAdmin(ctx))throw new EssProfileError('permission');
   return withTenant(ctx, async (tx) => {
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+    await lockProfileEditPolicyTx(tx,ctx.tenantId);
+    await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx.delete(personPhoto).where(eq(personPhoto.personId, p.personId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -117,17 +174,29 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
   });
 }
 
-/** Read a person's photo bytes for the serve route (RLS scopes visibility to can_see_person). */
+/** Shared avatars retain their independent directory/self visibility. The actual login proves
+ * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
+async function photoReadPredicateTx(tx:Tx,ctx:SessionContext){
+  const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
+  if(principal?.current!==true)return sql`false`;
+  if(!isAdmin(ctx)){
+    const policy=await freshProfileEditPolicyTx(tx,ctx);
+    if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
+  }
+  return sql`true`;
+}
+
+/** Read shared photo bytes. RLS repeats the current-principal proof before the route checks ETags. */
 export async function getPersonPhoto(
   ctx: SessionContext,
   personId: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
   return withTenant(ctx, async (tx) => {
-    if(personId===ctx.personId&&!isAdmin(ctx)){const policy=await freshProfileEditPolicyTx(tx,ctx);if(!policy.visible.has('profile.personal_details.photo'))return null;}
+    const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ content: personPhoto.content, fileName: personPhoto.fileName, mimeType: personPhoto.mimeType })
       .from(personPhoto)
-      .where(eq(personPhoto.personId, personId))
+      .where(and(eq(personPhoto.personId, personId),visible))
       .limit(1);
     return row ? { content: row.content, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
@@ -137,10 +206,11 @@ export async function getPersonPhoto(
  *  photo the caller may see (RLS-scoped). */
 export async function hasPersonPhoto(ctx: SessionContext, personId: string): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
+    const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ id: personPhoto.id })
       .from(personPhoto)
-      .where(eq(personPhoto.personId, personId))
+      .where(and(eq(personPhoto.personId, personId),visible))
       .limit(1);
     return row != null;
   });
@@ -184,11 +254,12 @@ export async function employmentPhotoIds(
   const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
   if (ids.length === 0) return new Map();
   return withTenant(ctx, async (tx) => {
+    const visible=await photoReadPredicateTx(tx,ctx);
     const rows = await tx
       .select({ employmentId: employment.id, personId: personPhoto.personId })
       .from(employment)
       .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
-      .where(inArray(employment.id, ids));
+      .where(and(inArray(employment.id, ids),visible));
     return new Map(rows.map((r) => [r.employmentId, r.personId]));
   });
 }

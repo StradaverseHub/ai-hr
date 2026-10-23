@@ -18,6 +18,7 @@
  */
 
 import { completedYearsAt } from './completed-years';
+import {evaluateFamilyChildRelief} from './family-child-relief-rule';
 
 /**
  * The BUILT-IN relationship values. A tenant may add custom types through the `dependentRelationship`
@@ -129,9 +130,9 @@ export type ChildReliefRow = {
 };
 
 /**
- * Behaviour is r351's, unchanged:
+ * The retained r355 eligibility decision:
  *   - relationship must be 'child'; deceased and archived rows are excluded;
- *   - an EXPLICIT per-child decision (childTaxRelief non-null) wins over inference, BOTH directions;
+ *   - an explicit refusal wins; consent still needs age, study or an eligible category under r355;
  *   - a full-time student is eligible regardless of age (the 18+ in-education case);
  *   - otherwise eligible only when under 18; no/invalid DOB ⇒ cannot confirm age ⇒ not auto-counted.
  */
@@ -147,7 +148,6 @@ export type ChildReliefRow = {
  * cannot justify an over-18 claim. That is the whole of the set, and why `study_preu` is in it despite
  * pricing at one unit like `under_18` — the price is not the rule.
  */
-const QUALIFIES_OVER_18: ReadonlySet<string> = new Set(['study_preu', 'study_tertiary', 'disabled', 'disabled_study']);
 
 /**
  * ⚠️ 77e882f5 (r355) — THE TICK NO LONGER OVERRIDES THE AGE TEST. THIS IS AN OWNER DECISION AND IT
@@ -177,19 +177,7 @@ const QUALIFIES_OVER_18: ReadonlySet<string> = new Set(['study_preu', 'study_ter
  * UNticked one does not, because without consent there is no claim to validate.
  */
 export function childReliefEligible(r: ChildReliefRow, asOf: Date = new Date()): boolean {
-  if (r.relationship !== 'child') return false;
-  if (r.isDeceased) return false;
-  if (r.archivedAt) return false;
-  // An explicit refusal is final, at any age.
-  if (r.childTaxRelief === false) return false;
-  const age = childAgeYears(r.dateOfBirth, asOf);
-  const underEighteen = age != null && age < 18;
-  // Never decided: the pre-77e882f5 inference, untouched. See the header.
-  if (r.childTaxRelief == null) return r.isStudent === true || underEighteen;
-  // Consent given — now the record has to justify it.
-  if (r.isStudent) return true;
-  if (underEighteen) return true;
-  return QUALIFIES_OVER_18.has(r.childReliefCategory ?? '');
+  return evaluateFamilyChildRelief(r,asOf,childAgeYears);
 }
 
 /**

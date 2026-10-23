@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import establishedPersonnelFieldIds from './fixtures/personnel-field-identities.json';
 import { PERSONNEL_FIELDS, type PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
-import { defaultMasterColumn, runEmployeeMasterProjection, validateEmployeeMasterSpec, type EmployeeMasterSpec, type MasterSubject, type MasterOwnerRecord } from '../lib/employee-master-report';
+import { defaultMasterColumn, runEmployeeMasterProjection, validateEmployeeMasterDefinition, validateEmployeeMasterSpec, type EmployeeMasterSpec, type MasterSubject, type MasterOwnerRecord } from '../lib/employee-master-report';
 
 const today='2026-10-15',company='11111111-1111-4111-8111-111111111111';
 const f=(id:string,owner:string,over:Partial<PersonnelFieldDescriptor>={}):PersonnelFieldDescriptor=>({id,labelKey:'',label:id,tab:'Test',section:'Test',type:'text',owner,ownerField:id,grain:owner==='person'?'single':'many',history:'dated',sensitivity:'personnel',scope:'both',ess:{visibility:'protected',edit:'viewOnly',reason:'Synthetic report-only test field; no employee profile access.'},report:{enabled:true,filter:true,sort:true,group:true,sum:false},import:{requiredCreate:false,requiredUpdate:false,order:0},...over});
@@ -44,6 +44,18 @@ describe('Employee Master report contract',()=>{
     expect(()=>validate(definition({asAt:'2025-01-01',expression:{id:'r',type:'group',logic:'and',children:[{id:'c',type:'condition',field:'current',operator:'eq',value:'Current name'}]}}))).toThrow('current-only');
     const result=runEmployeeMasterProjection(validate(definition({asAt:'2025-01-01',columns:[defaultMasterColumn(fields[4])]})),fields,[subject('one')],today);
     expect(result.sections[0].rows[0].cells[0]).toMatchObject({value:null,unavailable:'historical-unavailable'});
+  });
+  it('opens unchanged expired definitions for repair while retaining execution, field and operand checks',()=>{
+    const stored=definition({asAt:'2025-01-01',expression:{id:'root',type:'group',logic:'and',children:[{id:'c',type:'condition',field:'current',operator:'eq',value:'Current name'}]}});
+    expect(validateEmployeeMasterDefinition(stored,fields)).toEqual(stored);
+    expect(()=>validate(stored)).toThrow('current-only');
+    const future={...stored,asAt:'2027-01-01'};
+    expect(validateEmployeeMasterDefinition(future,fields)).toEqual(future);
+    expect(()=>validate(future)).toThrow('on or before today');
+    expect(()=>validateEmployeeMasterDefinition(stored,fields.filter(field=>field.id!=='current'))).toThrow('unavailable or not permitted');
+    const malformed=definition({expression:{id:'root',type:'group',logic:'and',children:[{id:'c',type:'condition',field:'number',operator:'eq',value:'1'}]}});
+    expect(()=>validateEmployeeMasterDefinition(malformed,fields)).toThrow('complete number');
+    expect(()=>validateEmployeeMasterDefinition({...stored,asAt:'2026-02-31'},fields)).toThrow();
   });
   it('keeps Unknown distinct from blank and applies nested All/Any truth consistently',()=>{
     const value=subject('one');value.owners.person[0].values.name={value:null,unavailable:'not-recorded'};

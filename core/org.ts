@@ -1,3 +1,6 @@
+import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
+import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
 import {personnelScalarIssue} from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -192,6 +195,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   const run = async (tx:Tx) => {
+    // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
+    // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
     // The same Criteria-before-row lock order as the canonical reference writers.
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
@@ -520,6 +527,7 @@ export async function transferEmployee(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -683,6 +691,14 @@ export async function terminateEmploymentTx(
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
   const derivedType = terminationTypeForReason(p.terminationReasonCode);
+  const terminationPatch={terminated_on:p.terminationDate,termination_type:derivedType??p.terminationType??null,
+    termination_reason:p.terminationReason?.trim()||null,
+    ...(p.terminationReasonCode!==undefined?{termination_reason_code:p.terminationReasonCode||null}:{}),
+    ...(p.terminationNoticeDays!==undefined?{termination_notice_days:p.terminationNoticeDays}:{})};
+  // Canonical direct callers need maintenance. An independent accepted resignation can compose only
+  // its actual fixed request consequence, completed by status and immutable events before commit.
+  await tx.execute(sql`select app.access_assert_termination(${p.employmentId}::uuid,${JSON.stringify(terminationPatch)}::jsonb)`);
+
   await tx
     .update(employment)
     .set({
@@ -764,7 +780,12 @@ export async function terminateEmploymentTx(
 }
 
 export async function terminateEmployment(ctx: SessionContext, p: TerminateEmploymentInput) {
-  return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
+  // Direct lifecycle maintenance is distinct from an independently authorized accepted resignation.
+  // The in-transaction termination owner remains shared with that decision; no caller flag bypasses it.
+  return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    return terminateEmploymentTx(tx, ctx, p);
+  });
 }
 
 /** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`.
@@ -1112,6 +1133,8 @@ export async function setReportingLine(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    // Delegation retains its independent relationship/decision owner. Structural edges do not.
+    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
     // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
     // line type but is the load-bearing guard for a delegation window.
@@ -1216,6 +1239,8 @@ export async function endReportingLine(
   p: { reportingLineId: string; endDate: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    const [line]=await tx.select({subject:reportingLine.subordinateEmploymentId,type:reportingLine.lineType}).from(reportingLine).where(eq(reportingLine.id,p.reportingLineId)).limit(1);
+    if(line&&line.type!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,line.subject,'maintain');
     const [ended] = await tx
       .update(reportingLine)
       .set({ validTo: p.endDate })
@@ -1408,6 +1433,7 @@ async function writePersonProfile(
   outerTx?: Tx,
 ) {
   const run = async (tx:Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({
         fullName: person.fullName,
@@ -1500,7 +1526,8 @@ async function writePersonProfile(
 
 /** Existing full form contract, including its established omitted-phone clear semantics. */
 export function updatePerson(ctx:SessionContext,p:{personId:string;fullName:string;primaryEmail:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
- return writePersonProfile(ctx,{...p,phone:p.phone??null},outerTx);
+ const run=async(tx:Tx)=>{await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 /** Canonical partial profile adapter. Omitted trio values retain exact stored nullable data.
  * Required-name/email validation applies when supplied, rather than forcing an unrelated legacy repair. */
@@ -1551,37 +1578,8 @@ function isEmployeeCodeUniqueViolation(e: unknown): boolean {
  * the race net. No-ops when the value is unchanged so a Save that didn't touch the ID emits no event.
  * Substrate discipline: appends `employment.employee-code.set` with a before/after payload.
  */
-export async function setEmployeeCode(
-  ctx: SessionContext,
-  p: { employmentId: string; employeeCode: string },
-) {
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select({ employeeCode: employment.employeeCode })
-      .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    if (!before) throw new Error('Employment not found');
-    const code = requireEmployeeCode(p.employeeCode);
-    if (before.employeeCode === code) return { id: p.employmentId, changed: false };
-    await assertEmployeeCodeUnique(tx, ctx.tenantId, code, p.employmentId);
-    try {
-      await tx.update(employment).set({ employeeCode: code }).where(eq(employment.id, p.employmentId));
-    } catch (e) {
-      if (isEmployeeCodeUniqueViolation(e)) throw new Error(`Employee ID "${code}" is already in use`);
-      throw e;
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employment',
-      aggregateId: p.employmentId,
-      eventType: 'employment.employee-code.set',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: { before: { employeeCode: before.employeeCode }, after: { employeeCode: code } },
-    });
-    return { id: p.employmentId, changed: true };
-  });
+export function setEmployeeCode(ctx:SessionContext,p:{employmentId:string;employeeCode:string;expectedCode?:string|null}){
+ return setWorkforceEmployeeCode(ctx,p);
 }
 
 /** ADR-0038 2C — set the state an employment works in (drives which state public holidays apply). Pass
@@ -1806,6 +1804,8 @@ export async function setEmploymentAssignment(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -2067,6 +2067,8 @@ export async function changeEmploymentCompany(
   },
 ) {
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
     await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [emp] = await tx
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
@@ -2275,6 +2277,8 @@ export async function transferEmploymentCompanyTx(
     movement: MovementTag;
   },
 ) {
+  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+  await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
     .select({ companyId: employment.companyId })
@@ -2831,6 +2835,7 @@ export async function setEmploymentInfo(
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
@@ -3117,6 +3122,7 @@ export async function setEmploymentBlacklist(
   const today = todayInKualaLumpur();
   const reason = p.reason == null ? null : String(p.reason).trim() || null;
   const run=async(tx:Tx)=>{
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({ blacklistedAt: employment.blacklistedAt, blacklistReason: employment.blacklistReason })
       .from(employment)

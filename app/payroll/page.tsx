@@ -1,6 +1,4 @@
 import Link from 'next/link';
-import { Children, isValidElement, type ReactNode } from 'react';
-import { CurrentLedger } from '@/components/current-ledger';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
@@ -519,18 +517,6 @@ export default async function PayrollPage({
         <SectionHeader title={t('batches')} count={rows.length} />
         {/* Full-width table; horizontal scroll lives on this wrapper so a narrow viewport scrolls the
             GRID rather than the page, and no column has to wrap to fit. */}
-        <CurrentLedger label={t('batches')} records={batchPage.map((b, i) => {
-          const cells = Children.toArray(batchTableRows[i].props.children)
-            .filter(isValidElement<{ children: ReactNode }>);
-          const labels = ['colPeriod', 'colCycle', 'colCompany', 'colPaymentDate', 'colEmployees', 'colNetPay', 'colStatus', 'colProcessedDate'];
-          return {
-            key: b.id, title: b.payPeriod, subtitle: `${b.company} · ${t(`runType.${b.runType}`)}`,
-            reference: String(pgState.offset + i + 1), status: t(`status.${needsReprocess(b) ? 'reprocessRequired' : b.status}`),
-            href: resumeHref(b.id, b.status, fromQuery),
-            fields: labels.map((key, ci) => ({ label: t(key), value: cells[ci]?.props.children })),
-            actions: cells[8]?.props.children,
-          };
-        })}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[64rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -560,7 +546,7 @@ export default async function PayrollPage({
             </tbody>
           </table>
         </div>
-        </CurrentLedger>
+
         {/* Paging must carry the whole filter state, so page 2 of a four-month selection is still that
             selection. hrefFor (rather than `params`) because the address holds REPEATED params. */}
         <Pager

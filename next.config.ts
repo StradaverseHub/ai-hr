@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { PHOTO_ACTION_BODY_LIMIT } from './lib/profile-photo-limits';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
@@ -36,7 +37,12 @@ const nextConfig: NextConfig = {
    * data already calls revalidatePath, which clears it. `dynamic` stays at its default of 0: a page reached
    * WITHOUT a prefetch is always rendered fresh.
    */
-  experimental: { staleTimes: { static: 30 } },
+  experimental: {
+    staleTimes: { static: 30 },
+    // The photo owner accepts 2MB; Next's default 1 MB would reject a valid file before that owner runs.
+    // This cap includes bounded multipart overhead; file content still has its exact 2 MB guard.
+    serverActions: { bodySizeLimit: PHOTO_ACTION_BODY_LIMIT },
+  },
 
   /**
    * Security (assessment 2026-09, findings M5/H3). Global response headers. Applied to every route so a

@@ -1,14 +1,13 @@
+import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
-import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
-import { requireAdmin } from '@/lib/authz';
-import { scopedSession } from '@/lib/scope';
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
   countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listEmployees,
+  listWorkforcePickOptions,
   listEmployeesPage,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
@@ -50,7 +49,6 @@ import {
 import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
-
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
  *  export route's header row, so a column cannot be called two different things on two surfaces. */
@@ -101,7 +99,7 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
+  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess();
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
@@ -112,9 +110,11 @@ export default async function PeoplePage({
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
-  const { s: session, scopeIds, allowedCount } = await scopedSession();
+  const workforceIds=new Set(companyIds);
+  const maintainIds=new Set(await workforceCompanies(session,'maintain'));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+  const canCreate=isAdmin&&maintainIds.size>0;
   const sp = await searchParams;
   const { error } = sp;
   const pq = parsePageQuery(sp);
@@ -139,14 +139,14 @@ export default async function PeoplePage({
       ...query.filters,
       limit: pq.limit,
       offset: pq.offset,
-    }),
+    },'workforce'),
     // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
     // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
     // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
     // make the other four read zero.
-    countEmployeesByStatus(session, { companyIds: scopeIds, ...headcountFilters(query) }),
-    listCompanies(session),
-    listDepartments(session),
+    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
+    listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
+    scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
@@ -155,7 +155,7 @@ export default async function PeoplePage({
     // profile route already uses for its own pickers, narrowed here by the active company context
     // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
     // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listEmployees(session, scopeIds),
+    listWorkforcePickOptions(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -164,7 +164,7 @@ export default async function PeoplePage({
     // the Employee ID Auto Running Number Setup that applies to each of them. Resolved ONCE from a single
     // read here, exactly as app/admin/personnel/new/page.tsx does it, rather than a query per company as
     // the select is used. Admin-only, because the prompt itself is.
-    isAdmin ? listConfigs(session, scopeIds) : Promise.resolve([]),
+    canCreate ? listConfigs(session, scopeIds) : Promise.resolve([]),
   ]);
 
   const columns = savedColumns.selected;
@@ -399,7 +399,7 @@ export default async function PeoplePage({
           <div className="flex flex-wrap items-center justify-end gap-3">
             {/* 579255c3 — the bare "40 employees" count that stood here is GONE. It said one number with
                 no context; the five cards below say all five, and the pager still prints "1–25 of 30". */}
-            {isAdmin && (
+            {canCreate && (
               <Link
                 href="/admin/personnel/import"
                 data-tour="people-import"
@@ -503,10 +503,10 @@ export default async function PeoplePage({
                 the full screen. The markup, the `data-tour` anchor and the confirmation step live in
                 ./create-employee-dialog.tsx; the trigger's LABEL is resolved here so that file keeps to a
                 single message namespace. */}
-            {isAdmin && (
+            {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
-                companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+                companies={companies.filter(c=>maintainIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
                 employeeIdRules={employeeIdRules}
               />
             )}
@@ -559,23 +559,6 @@ export default async function PeoplePage({
         </div>
       )}
 
-
-
-      <CurrentLedger footer={pager} tour="people-table" label={t('title')} records={[
-        ...drafts.map((d) => ({
-          key: d.id, title: d.label || t('draftUntitled'),
-          subtitle: d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady'),
-          reference: d.reservedEmployeeCode ?? '—', status: t('statusDraft'),
-          href: draftRowHref(d.id), actions: null,
-          fields: [{ label: t('colCompany'), value: d.companyName ?? t('draftNoCompany') }],
-        })),
-        ...employees.map((e) => ({
-          key: e.employmentId, title: e.name, subtitle: e.email ?? '',
-          reference: e.employeeCode ?? '—', status: tStatus(deriveEmploymentStatus(e, today)),
-          href: employeeRowHref(e.employmentId), actions: null,
-          fields: columns.map((key) => ({ label: t(COLUMN_LABEL_KEY[key]), value: textCell(e, key) })),
-        })),
-      ]}>
       <Card className="overflow-hidden" data-tour="people-table">
         {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
             pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
@@ -657,7 +640,6 @@ export default async function PeoplePage({
         </div>
         {pager}
       </Card>
-      </CurrentLedger>
 
     </div>
   );

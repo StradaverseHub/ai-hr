@@ -150,7 +150,7 @@ describe('topbar — search box and company switcher keep to their own lanes', (
    * and correct while the name rendered at zero pixels.
    */
   it('account menu flex item can compress below its name/ID width', () => {
-    expect(USER_MENU).toContain('<div className="relative min-w-0">');
+    expect(USER_MENU).toMatch(/<div\b[^>]*className="relative min-w-0"[^>]*>/);
     expect(USER_MENU).toContain('flex min-w-0 max-w-full items-center');
     // Both labels: the name and the Employee ID each truncate to a CEILING (tighter below md, where
     // there is less of everything) rather than setting a width floor.

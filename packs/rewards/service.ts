@@ -12,7 +12,10 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { calculateRewards } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
-import { factsFromOnehr } from './model';
+import { factsFromOnehr, isSeniorPlanMember } from './model';
+import {rewardPolicyForReviewTx} from './policy-groups';
+export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
+export type {RewardSharedChoice} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
@@ -20,6 +23,9 @@ export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';
 export class RewardError extends Error { constructor(message: string) { super(message); this.name = 'RewardError'; } }
 const idSchema = z.uuid();
+// Match the canonical catalogue display used by setup and shared policy targets. Legacy name is
+// retained data, not an alternative label for the same unit once a review has been created.
+const businessUnitDisplayName = sql<string>`coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`;
 const moneyToCents = (v: string) => Math.round(Number(v) * 100);
 const digest = (unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[]) => createHash('sha256').update(JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })).digest('hex');
 
@@ -65,7 +71,7 @@ async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
 }
 
-/** The only roster read crossing the service boundary. Never return internal entries or EC aggregates. */
+/** The full pay-bearing review projection. Never return hidden internal entries or EC aggregates. */
 export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId);
@@ -76,7 +82,7 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
     const hiddenBlocks = calculated.flags.filter(f => f.entryId && !visibleIds.has(f.entryId) && f.severity === 'block').length;
     if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
-    const [bu] = await tx.select({ name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await tx.select({ id: rewardDecision.id, action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, actorId: rewardDecision.actorId, reason: rewardDecision.reason, createdAt: rewardDecision.createdAt, revision: rewardDecision.revision }).from(rewardDecision).where(eq(rewardDecision.unitId, unitId)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id));
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
@@ -95,17 +101,17 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnit.name, status: rewardUnit.status, revision: rewardUnit.revision })
+    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
-      .where(inArray(rewardUnit.companyId, companyIds)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnit.name));
+      .where(inArray(rewardUnit.companyId, companyIds)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
   });
 }
 
-export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[]) {
+export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[],options:{includeArchived?:boolean;sharedPolicy?:boolean}={}) {
   return withRewardsTenant(ctx, async tx => {
-    const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds), sql`app.reward_admin(${company.id})`)).orderBy(asc(company.legalName)) : [];
+    const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds),sql`app.reward_admin(${company.id})`,options.sharedPolicy?eq(company.currency,'MYR'):undefined)).orderBy(asc(company.legalName)) : [];
     if (!companies.length) return { companies: [], units: [], users: [], cycles: [] };
-    const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name: businessUnit.name, global: businessUnit.isGlobal }).from(businessUnit).where(and(isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.name));
+    const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:businessUnitDisplayName, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id));
     const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).where(and(isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
     const cycles = await tx.select({ id: rewardCycle.id, name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).orderBy(desc(rewardCycle.year), asc(rewardCycle.name));
     return { companies, units, users, cycles };
@@ -122,9 +128,10 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
     if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
     const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
-    const [bu] = await tx.select({ name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     const members = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
-    return { unit, cycle, name: bu?.name ?? 'Business unit', members,
+    const [originRow]=await tx.execute<{origin:{versionId:string;revision:number;name:string;changed:boolean}|null}>(sql`select app.reward_policy_unit_origin(${unitId}::uuid) as origin`);
+    return { unit, cycle, name: bu?.name ?? 'Business unit', members,policyOrigin:originRow?.origin??null,
       canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       canManageMembers: !!admin?.ok && unit.status === 'draft',
     };
@@ -163,18 +170,20 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
   return seen;
 }
 
-export async function createRewardUnit(ctx: SessionContext, raw: { name: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string }) {
-  const p = z.object({ name: z.string().trim().min(1).max(160), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema }).parse(raw);
+export async function createRewardUnit(ctx: SessionContext, raw: { name: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
+  const p = z.object({ name: z.string().trim().min(1).max(160), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
   if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
   return withRewardsTenant(ctx, async tx => {
     await requireAdmin(tx, p.companyId);
+    const shared=await rewardPolicyForReviewTx(tx,p.sharedPolicyVersionId,p.companyId,p.businessUnitId,p.year);
+    if(shared&&shared.policy.year!==p.year)throw new RewardError('The shared configuration belongs to a different reward year.');
     let cycleId = p.cycleId;
     if (cycleId) { const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, cycleId)); if (!cycle || cycle.year !== p.year) throw new RewardError('Select a cycle in the same reward year.'); }
     else { const [cycle] = await tx.insert(rewardCycle).values({ tenantId: ctx.tenantId, name: p.name, year: p.year, createdBy: ctx.userId! }).returning(); cycleId = cycle.id; }
-    const [unit] = await tx.insert(rewardUnit).values({ tenantId: ctx.tenantId, createdBy: ctx.userId!, cycleId, companyId: p.companyId, businessUnitId: p.businessUnitId, policy: defaultPolicy(p.year), snapshotDate: p.snapshotDate }).returning();
+    const [unit] = await tx.insert(rewardUnit).values({ tenantId: ctx.tenantId, createdBy: ctx.userId!, cycleId, companyId: p.companyId, businessUnitId: p.businessUnitId, policy: shared?.policy??defaultPolicy(p.year),policyGroupVersionId:shared?.versionId??null, snapshotDate: p.snapshotDate }).returning();
     await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: unit.id, userId: ctx.userId!, role: 'gr' });
     const employees = await snapshotEmployees(tx, ctx, unit);
-    await stamp(tx, ctx, unit.id, 'created', { cycleId, employeeCount: employees.size });
+    await stamp(tx, ctx, unit.id, 'created', { cycleId, employeeCount: employees.size,...(shared?{sharedPolicyGroupId:shared.groupId,sharedPolicyVersionId:shared.versionId,sharedPolicyRevision:shared.revision}:{}) });
     return unit.id;
   });
 }
@@ -186,8 +195,96 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
     if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
     if (policy.year !== unit.policy.year) throw new RewardError('The reward year cannot change after the roster is created.');
+    if (policy.seniorMembershipMode !== unit.policy.seniorMembershipMode ||
+        policy.seniorMembershipMode !== 'named-members' && !isDeepStrictEqual(policy.seniorGrades, unit.policy.seniorGrades)) {
+      throw new RewardError('Preview and confirm named Senior Plan membership before changing the legacy eligibility rule.');
+    }
     await tx.update(rewardUnit).set({ policy }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);
     await stamp(tx, ctx, unitId, 'policy-updated', { revision: unit.revision + 1 });
+  });
+}
+
+const seniorSelectionSchema = z.object({
+  employmentIds: z.array(idSchema).max(5000),
+  adoptLegacy: z.boolean(),
+}).strict();
+export type SeniorPlanSelection = z.infer<typeof seniorSelectionSchema>;
+type SeniorRosterEntry = RewardEntry & { employmentId: string };
+
+function seniorMembershipProjection(unit: typeof rewardUnit.$inferSelect, entries: SeniorRosterEntry[], roles: RewardRole[], ctx: SessionContext) {
+  return {
+    mode: unit.policy.seniorMembershipMode ?? ('legacy-grades' as const),
+    rows: entries.filter(entry => visibleEntry(entry, roles, ctx.personId)).map(entry => ({
+      employmentId: entry.employmentId, name: entry.source.name, employeeCode: entry.source.employeeCode,
+      member: isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade),
+    })),
+  };
+}
+function assertSeniorSelectionAuthority(unit: typeof rewardUnit.$inferSelect, revision: number, roles: RewardRole[]) {
+  assertRevision(unit, revision); assertUnlocked(unit);
+  if (unit.kind !== 'annual' || !roles.includes('gr')) throw new RewardError('Only Group Rewards may configure Senior Plan membership in a draft annual review.');
+}
+
+/** A separate, intentionally pay-free projection; administrative role management never loads this roster. */
+export async function getRewardSeniorMembership(ctx: SessionContext, unitId: string) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId);
+    if (!roles.includes('gr')) throw new RewardError('Group Rewards membership access is required.');
+    return { unitId, revision: unit.revision, canEdit: unit.kind === 'annual' && unit.status === 'draft', ...seniorMembershipProjection(unit, entries, roles, ctx) };
+  });
+}
+
+function prepareSeniorSelection(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: SeniorRosterEntry[], roles: RewardRole[], raw: unknown) {
+  const input = seniorSelectionSchema.parse(raw);
+  const selected = new Set(input.employmentIds);
+  if (selected.size !== input.employmentIds.length) throw new RewardError('Select each employee only once.');
+  const visible = new Set(entries.filter(entry => visibleEntry(entry, roles, ctx.personId)).map(entry => entry.employmentId));
+  if (input.employmentIds.some(id => !visible.has(id))) throw new RewardError('A selected employee is not in your visible review roster. Reload the review.');
+  const legacy = unit.policy.seniorMembershipMode !== 'named-members';
+  if (legacy && !input.adoptLegacy) throw new RewardError('Confirm conversion from the saved grade rule to named membership.');
+  const updated = entries.map(entry => {
+    const before = isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade);
+    // Preserve effective membership of own-person/otherwise hidden entries during conversion.
+    const after = visible.has(entry.employmentId) ? selected.has(entry.employmentId) : before;
+    return { ...entry, facts: { ...entry.facts, seniorPlan: after, reviewed: before === after ? entry.facts.reviewed : false } };
+  });
+  const token = createHash('sha256').update(JSON.stringify({
+    actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision,
+    snapshot: digest(unit, entries), rosterIds: entries.map(entry => [entry.id, entry.employmentId]), selected: [...selected].sort(), adoptLegacy: input.adoptLegacy,
+  })).digest('hex');
+  const projection = seniorMembershipProjection(unit, entries, roles, ctx);
+  return { token, updated, projection, selected, legacy };
+}
+
+export async function previewRewardSeniorMembership(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId);
+    assertSeniorSelectionAuthority(unit, revision, roles);
+    const prepared = prepareSeniorSelection(ctx, unit, entries, roles, raw);
+    return { unitId, revision, digest: prepared.token, convertingLegacy: prepared.legacy,
+      rows: prepared.projection.rows.map(row => ({ ...row, nextMember: prepared.selected.has(row.employmentId) })),
+    };
+  });
+}
+
+export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: string, revision: number, raw: unknown, previewDigest: string) {
+  z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true);
+    assertSeniorSelectionAuthority(unit, revision, roles);
+    const prepared = prepareSeniorSelection(ctx, unit, entries, roles, raw);
+    if (prepared.token !== previewDigest) throw new RewardError('Membership or the review changed. Preview it again before saving.');
+    const changedIds: string[] = [];
+    const previous = new Map(entries.map(entry => [entry.id, entry]));
+    for (const entry of prepared.updated) {
+      const old = previous.get(entry.id)!;
+      if (isDeepStrictEqual(old.facts, entry.facts)) continue;
+      await tx.update(rewardEntry).set({ facts: entry.facts, updatedAt: new Date() }).where(eq(rewardEntry.id, entry.id));
+      changedIds.push(entry.employmentId);
+    }
+    await tx.update(rewardUnit).set({ policy: { ...unit.policy, seniorMembershipMode: 'named-members' } }).where(eq(rewardUnit.id, unitId));
+    await touch(tx, unitId);
+    await stamp(tx, ctx, unitId, 'senior-membership-updated', { revision: unit.revision + 1, convertedLegacy: prepared.legacy, changedEmploymentIds: changedIds });
   });
 }
 
@@ -391,7 +488,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
 export async function pendingRewardReviews(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, status: rewardUnit.status, name: businessUnit.name, cycle: rewardCycle.name })
+    return tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, status: rewardUnit.status, name: businessUnitDisplayName, cycle: rewardCycle.name })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(inArray(rewardUnit.companyId, companyIds), sql`${rewardUnit.status} in ('bg','gr','ctro','ec')`, sql`${rewardUnit.status} in (select app.reward_roles(${rewardUnit.id}))`))
       .orderBy(asc(rewardUnit.createdAt), asc(rewardUnit.id));

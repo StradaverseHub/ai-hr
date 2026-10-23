@@ -1,3 +1,4 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Claims module (ADR-0021) — claim-type catalog + effective-dated budget policy. Admin-managed (RLS
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
@@ -33,7 +34,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -3085,7 +3086,7 @@ export async function listClaimsForEmployment(ctx: SessionContext, employmentId:
 }
 
 /** Pending claims the caller may decide (RLS scopes: manager → reports, admin → all) — the approvals inbox. */
-export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]> {
+export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:string}={}): Promise<ClaimRow[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select(rowSelect())
@@ -3095,7 +3096,7 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
       .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(claimRequest.status, 'pending'))
+      .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined))
       .orderBy(desc(claimRequest.createdAt));
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
     const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
@@ -3340,4 +3341,41 @@ export async function markReimbursementsPaid(
     }
     return { paid: paid.length };
   });
+}
+
+
+export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:claimRequest.createdAt}).from(claimRequest)
+   .innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
+  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+ });
+ const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
+
+export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
+ return withTenant(ctx,async tx=>{
+  if(!requestIds.length)return [];
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const result:string[]=[],ids=[...new Set(requestIds)];
+  // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
+  // a valid large queue into an exception in the shared application header.
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
+    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
+   for(const row of rows){
+    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
+    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+   }
+  }
+  return result.sort();
+ });
 }

@@ -1,3 +1,4 @@
+import {workforceEmploymentAccess} from '@/core/workforce-access';
 import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
@@ -7,9 +8,10 @@ import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-// c002b3c3 — `scopedAdmin` is `requireAdmin` PLUS the active company context. Same admin gate as before
-// (it redirects non-admins identically); the scope ids are what the Search Employee box is narrowed to.
-import { scopedAdmin } from '@/lib/scope';
+// Workforce scope is purpose-bound. New view-only grants enter the bounded read composition;
+// legacy HR detail and specialized private owners retain their existing role/scope floors.
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
+import {WorkforceScopedRecord} from './workforce-record';
 import {
   adminCompanies,
   assignmentHistory,
@@ -19,7 +21,7 @@ import {
   employeeDetail,
   employmentCompanyEditable,
   listDepartments,
-  listEmployees,
+  listWorkforcePickOptions,
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
@@ -216,9 +218,16 @@ export default async function EmployeePage({
     // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
     companyChange?: string;
     incentiveError?: string;
+    workforceCode?:string;
+    workforceEdit?:string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
+  const {s,scopeIds}=await requireWorkforceAccess();
+  const { employmentId } = await params;
+  // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(employmentId)) notFound();
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -250,7 +259,6 @@ export default async function EmployeePage({
    * TP3 and the zakat summary read the country statutory profile, and leave encashment is Leave's.
    */
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
-  const { employmentId } = await params;
   // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
@@ -299,11 +307,10 @@ export default async function EmployeePage({
   // and it is what refuses a well-formed id belonging to a company outside the session's scope. This
   // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(employmentId)) notFound();
-
-  const emp = await employeeDetail(s, employmentId);
-  if (!emp) notFound();
+  const emp = await employeeDetail(s,employmentId,'workforce');
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
+  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -338,7 +345,7 @@ export default async function EmployeePage({
     // the Organisation Assignment department select and the MovementNewEvent departments prop.
     listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
-    listEmployees(s),
+    listWorkforcePickOptions(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
   ]);
@@ -504,11 +511,11 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
-  // c002b3c3 — Search Employee. NO NEW READ: this is the `listEmployees(s)` set already loaded above for
+  // c002b3c3 — Search Employee. NO NEW READ: this is the `listWorkforcePickOptions(s)` set already loaded above for
   // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
   // (1) The search cannot be broader than what this page may already see, because it is literally the
   // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
-  // the next request re-runs `employeeDetail(s, employmentId)` at the top of this file, which returns
+  // the next request re-runs `employeeDetail(s,employmentId,'workforce')` at the top of this file, which returns
   // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
   // and an id typed straight into the address bar is refused exactly as it was before this box existed.
   // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
@@ -864,9 +871,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
             {emergencyDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {emergencyContacts.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('emergency.none')}</p>
@@ -906,7 +913,8 @@ export default async function EmployeePage({
                         >
                           {emergencyViewBody(c)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('emergency.edit')}
                           triggerVariant="outline"
                           title={t('emergency.editTitle')}
@@ -928,6 +936,7 @@ export default async function EmployeePage({
                             {t('emergency.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -999,7 +1008,7 @@ export default async function EmployeePage({
           alone. The action stays because it is still where each writer is wired to its card and because a
           <form> with no action would POST to the current URL. What each card loses is its own Save button,
           and it gains data-save-section so the scope can pack it. */}
-      <TabSaveScope
+      <fieldset disabled={!canMaintainWorkforce} className="min-w-0"><TabSaveScope
         tabKey="profile"
         identity={{ employmentId: emp.employmentId }}
         saveAction={saveProfileTabAction}
@@ -1207,7 +1216,7 @@ export default async function EmployeePage({
           </div>
         </form>
       </Card>
-      </TabSaveScope>
+      </TabSaveScope></fieldset>
 
       {/* Bucket (b): adding, editing or deleting an emergency contact is a record in a register — choosing a
           new Primary demotes the previous holder — so it keeps its own buttons and its own confirmations,
@@ -1956,9 +1965,9 @@ export default async function EmployeePage({
   const familyMembersSection = (
     <section className="border-t border-border">
       <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-        <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+        {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
           {dialogForm(null)}
-        </FamilyFormDialog>
+        </FamilyFormDialog> : null}
       </div>
       {familyMembers.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.none')}</p>
@@ -2014,7 +2023,8 @@ export default async function EmployeePage({
                       >
                         {viewDialogBody(d)}
                       </FamilyFormDialog>
-                      <FamilyFormDialog
+                      {canMaintainWorkforce ? <>
+<FamilyFormDialog
                         triggerLabel={t('family.edit')}
                         triggerVariant="outline"
                         title={t('family.editFamilyTitle')}
@@ -2037,6 +2047,7 @@ export default async function EmployeePage({
                           {t('family.delete')}
                         </ConfirmSubmit>
                       </form>
+</> : null}
                     </div>
                   </td>
                 </tr>
@@ -2156,9 +2167,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('qualification.title')} count={qualifications.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
             {qualificationDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {qualifications.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
@@ -2194,7 +2205,8 @@ export default async function EmployeePage({
                         >
                           {qualificationViewBody(q)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('qualification.edit')}
                           triggerVariant="outline"
                           title={t('qualification.editTitle')}
@@ -2216,6 +2228,7 @@ export default async function EmployeePage({
                             {t('qualification.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -3021,7 +3034,7 @@ export default async function EmployeePage({
   // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
   // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
   // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
-  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} /> : null;
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
   // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
@@ -3044,7 +3057,7 @@ export default async function EmployeePage({
 
   // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
   // itself stays viewable. Rehire is a future, separate piece.
-  const canCreateMovement = admin && !emp.terminatedOn;
+  const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -4449,7 +4462,7 @@ export default async function EmployeePage({
      island) reuse the same audited services and DomainEvents; only the entry point changed. */
 
   // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
-  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} /> : null;
+  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
   // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
@@ -4457,7 +4470,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: <>{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -4476,6 +4489,8 @@ export default async function EmployeePage({
     job: (
       <>
         {admin && (
+          <fieldset disabled={!canMaintainWorkforce} className="min-w-0">
+          {!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
           <TabSaveScope
             tabKey="job"
             identity={{ employmentId: emp.employmentId }}
@@ -4483,10 +4498,9 @@ export default async function EmployeePage({
             covers={tabSaveCovers.job}
           >
             {employmentInfoCard}
-          </TabSaveScope>
+          </TabSaveScope></fieldset>
         )}
-        {dataClassificationCard}
-        {directSuperiorCard}
+        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{dataClassificationCard}{directSuperiorCard}</fieldset>
         {delegationsCard}
         {reviewCard}
       </>
@@ -4690,7 +4704,7 @@ export default async function EmployeePage({
                 alt={emp.name}
               />
             )}
-            {admin && (
+            {admin && canMaintainWorkforce && (
               // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a
               // 'use client' island). The page still BUILDS both forms here (server actions bound as
               // before) and passes them in as children; the island only toggles their visibility, so the

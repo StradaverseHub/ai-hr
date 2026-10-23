@@ -1,4 +1,7 @@
 import {dependentFieldApplies} from '../lib/dependent-vocabulary';
+import {familyGridComplete} from '../lib/family-child-relief-rule';
+import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {assertWorkforcePersonTx} from './workforce-access';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
@@ -34,11 +37,11 @@ export { dependentNaturalKey } from '../lib/dependent-identity';
  * aggregate row). subjectEmploymentId is resolved via subjectEmploymentForPerson (null when the person has
  * no employment → the event is admin-only-readable, which is acceptable).
  */
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
-import { packFor, requirePackFor } from '../localization/registry';
+import { employeeDependent, employeeStatutoryMy, profileOption } from '../db/schema';
+import { packFor } from '../localization/registry';
 // r351 — the sync's own "today". It used `new Date()`, which is real UTC now: between 00:00 and 08:00
 // Kuala Lumpur that names YESTERDAY, so the stored figure aged a child a day later than the two screens
 // that already resolve `todayInKualaLumpur()`. CLAUDE.md §8: a date from an instant goes through this.
@@ -247,7 +250,7 @@ import {
  * exactly ONE eligibility rule shared by the payroll-facing count and the Family tab's "Counts toward tax
  * relief" column (they can never diverge). Behaviour is identical to the original inline filter:
  *   - relationship must be 'child'; deceased and archived rows are excluded;
- *   - an EXPLICIT per-child decision (childTaxRelief non-null) wins over inference, both directions;
+ *   - an explicit refusal wins; consent still needs age, study or an eligible category under r355;
  *   - a full-time student is eligible regardless of exact age (the 18+ in-education case);
  *   - otherwise eligible only when under 18; no/invalid DOB ⇒ cannot confirm age ⇒ not auto-counted.
  * (childAgeYears floors to whole years; for the under-18 test `floor(age) < 18 ⇔ age < 18`, so the floor
@@ -408,7 +411,7 @@ export function derivedChildReliefGrid(
   asOf: Date,
 ): ChildReliefGrid | null {
   const built = childReliefGridFromFamily(rows, asOf);
-  return built.categorised === built.eligible && built.eligible > 0 ? built.grid : null;
+  return familyGridComplete(built.eligible,built.categorised) ? built.grid : null;
 }
 
 /**
@@ -504,15 +507,12 @@ const NO_SYNC = (skipped: ChildReliefSyncResult['skipped']): ChildReliefSyncResu
  * addDependent / updateDependent / archiveDependent, so the tax figure cannot drift just because a record
  * was created through a different door.
  *
- * WHY IT RUNS AFTER THE DEPENDENT TRANSACTION COMMITS, not inside it: setTaxProfileMY opens its own
- * withTenant transaction, and nesting withTenant takes a SECOND pooled connection — a self-deadlock. Running
- * afterwards is also the behaviour we want for rail-safety: this function NEVER throws. A failure to sync
- * must not roll back or fail the family-record save the user actually asked for. The cost is that the two
- * writes are not atomic; that is acceptable because the sync is derived data that any later dependent write
- * (or a manual save) re-derives and self-heals.
- *
- * Rails (a) and (b) are enforced here; (c) is enforced by passing provenance to setTaxProfileMY; (d) is the
- * payrollAlert this returns.
+ * Ordinary standalone callers retain the after-commit, nonthrowing refresh result: a failed derived
+ * refresh does not undo their already-committed Family save and can be retried. An enclosing activation
+ * or approval supplies its existing transaction; that path propagates failure so all effects roll back.
+ * Neither path nests a second pooled connection inside the caller's transaction. The fixed country
+ * owner derives only the current count/grid and records automatic provenance and any open-payroll alert;
+ * it never receives a caller-supplied tax patch or copied private tax values.
  */
 export async function syncChildReliefFromFamily(
   ctx: SessionContext,
@@ -520,176 +520,16 @@ export async function syncChildReliefFromFamily(
   outerTx?:Tx,
 ): Promise<ChildReliefSyncResult> {
   try {
-    const readState=async(tx:Tx)=>{
-      const [statutory] = await tx
-        .select({
-          numChildren: employeeStatutoryMy.numChildren,
-          childReliefMode: employeeStatutoryMy.childReliefMode,
-          taxNumber: employeeStatutoryMy.taxNumber,
-          taxCategory: employeeStatutoryMy.taxCategory,
-          taxResidency: employeeStatutoryMy.taxResidency,
-          employerBearsTax: employeeStatutoryMy.employerBearsTax,
-          // ⚠️ CARRY-FORWARD LIST — item d64d0df4 regression fix. setTaxProfileMY OVERWRITES the whole
-          // tax column set and defaults every omitted field to its "nothing claimed" value, so ANY tax
-          // column missing from this select is silently RESET on every automatic family-driven sync.
-          // Between migration 0341 and this fix, adding or editing a family record on an employee in
-          // 'auto' mode quietly cleared disabled_individual and RAISED their PCB, with nothing on
-          // screen saying so. Any tax column added to employee_statutory_my in future MUST be added
-          // here and to the setTax call below in the same change.
-          disabledIndividual: employeeStatutoryMy.disabledIndividual,
-          disabledSpouse: employeeStatutoryMy.disabledSpouse,
-          childReliefTable: employeeStatutoryMy.childReliefTable,
-        })
-        .from(employeeStatutoryMy)
-        .where(eq(employeeStatutoryMy.personId, personId))
-        .limit(1);
-      // No statutory row yet (the IC on the Profile tab seeds it). setTaxProfileMY would throw NoIcYetError
-      // here — an entirely normal state for a person whose IC has not been keyed. Treat it as "nothing to
-      // sync", never as an error that could surface on a family-record save.
-      if (!statutory) return null;
-      const rows = await tx
-        .select({
-          relationship: employeeDependent.relationship,
-          dateOfBirth: employeeDependent.dateOfBirth,
-          isStudent: employeeDependent.isStudent,
-          isDeceased: employeeDependent.isDeceased,
-          archivedAt: employeeDependent.archivedAt,
-          childTaxRelief: employeeDependent.childTaxRelief,
-          // a5f21891 — the two columns the WEIGHTED grid needs. The head count below ignores them, which
-          // is why they were not read before; `childReliefGridFromFamily` cannot work without them.
-          childReliefCategory: employeeDependent.childReliefCategory,
-          childReliefPercentage: employeeDependent.childReliefPercentage,
-        })
-        .from(employeeDependent)
-        .where(eq(employeeDependent.personId, personId));
-      // ONE READ, TWO ANSWERS, AND THEY ANSWER DIFFERENT QUESTIONS (a5f21891). `derived` is the HEAD
-      // COUNT and stays `num_children`, because Form E, CP8D and EA all read that column as a head count.
-      // `grid` is the s.48 WEIGHTING — 1 / 4 / 8 per category, halved for a 50% share — and it is what
-      // the PCB calculation prices. Deriving both from the same rows is what stops them disagreeing.
-      // ⚠️ THE GRID IS ONLY USABLE WHEN EVERY ELIGIBLE CHILD CARRIES A CATEGORY, AND THIS GATE IS THE
-      // WHOLE SAFETY OF THE ITEM. `childReliefGridFromFamily` SKIPS a child with no
-      // `child_relief_category` — it cannot price what it cannot classify — but that same child DOES
-      // count towards the head count. Pricing an incomplete grid would therefore relieve FEWER children
-      // than the employee has: production has one 'auto' employee with 2 eligible children and only 1
-      // categorised, who would have gone from RM4,000 of relief to RM2,000 the moment this shipped.
-      //
-      // So: complete ⇒ the derived grid, and the weighting reaches the payslip. Incomplete ⇒ NULL, which
-      // clears any stale grid and drops the kernel back to `num_children × perChild` — exactly today's
-      // behaviour, so nobody loses relief while a category is missing. Never carry a stale grid forward:
-      // a grid that no longer describes the family is the one thing worse than no grid.
-      //
-      // r351 — ONE INSTANT, AND IT IS THE TENANT'S CALENDAR DAY, NOT THE HOST'S. Both derivations used to
-      // take their own `new Date()` (the count through the parameter default), which is real UTC now:
-      // between 00:00 and 08:00 Kuala Lumpur that names YESTERDAY. So a sync run in that window aged a
-      // child a day behind the Identification & Tax card and the Family tab, which both resolve
-      // `todayInKualaLumpur()` — and the one day the eligibility rule turns on is a birthday.
-      // The completeness gate itself now lives in `derivedChildReliefGrid`, shared with the screen's own
-      // derivation, so the stored grid and the screen's grid cannot be built by two different rules.
-      const asOf = new Date(`${todayInKualaLumpur()}T00:00:00Z`);
-      const grid = derivedChildReliefGrid(rows, asOf);
-      return { statutory, derived: eligibleChildReliefCount(rows, asOf), grid, gridComplete: grid != null };
+    const run=async(tx:Tx)=>{
+      const [row]=await tx.execute<{result:ChildReliefSyncResult}>(sql`select app.access_family_relief_sync(${personId}::uuid) as result`);
+      if(!row?.result||typeof row.result.changed!=='boolean')throw new Error('Family automatic relief result unavailable');
+      return row.result;
     };
-    const state=outerTx?await readState(outerTx):await withTenant(ctx,readState);
-
-    if (!state) return NO_SYNC('no_statutory_row');
-    // Rail (a) — opt-in. A person on 'manual' keeps full human control of their tax figure.
-    if (state.statutory.childReliefMode !== 'auto') return NO_SYNC('manual_mode');
-    // Rail (b) — no-op when nothing moved. Prevents a spurious tax event on every unrelated family edit.
-    //
-    // ⚠️ THE GRID IS PART OF "MOVED" SINCE a5f21891, AND LEAVING IT OUT WOULD HAVE BEEN A SILENT BUG.
-    // Changing a child from `under_18` to `disabled_study` moves the s.48 weighting from 1 unit to 8 —
-    // RM2,000 of relief to RM16,000 — WITHOUT moving the head count. Comparing only the count would have
-    // short-circuited here and left the stored grid, and therefore the payslip, on the old category for
-    // as long as nobody added or removed a child.
-    // ⚠️ COMPARED CANONICALLY, NOT BY JSON.stringify. The stored grid comes back from JSONB with no key
-    // order guarantee, so a plain stringify compares unequal to a freshly-derived grid that is identical
-    // in every value — and the sync then fires on EVERY family edit, reporting `changed` where nothing
-    // moved. Three existing guards caught that: a spouse add, a custom-relationship add, and an
-    // unchanged re-sync all began reporting a move. Sort the keys and normalise the two counts.
-    const canonicalGrid = (g: ChildReliefGrid | null | undefined): string =>
-      JSON.stringify(
-        Object.keys(g ?? {})
-          .filter((k) => (g![k]?.full ?? 0) !== 0 || (g![k]?.half ?? 0) !== 0)
-          .sort()
-          .map((k) => [k, Number(g![k]?.full ?? 0), Number(g![k]?.half ?? 0)]),
-      );
-    const gridMoved =
-      canonicalGrid(state.statutory.childReliefTable as ChildReliefGrid | null) !== canonicalGrid(state.grid);
-    if (state.statutory.numChildren === state.derived && !gridMoved) return NO_SYNC('unchanged');
-
-    // Rail (d) — is a payroll run for the current period still open? Detect BEFORE writing so the alert
-    // describes the same moment as the write. We alert rather than block (approved): blocking would leave
-    // HR unable to correct a family record for as long as payroll stays open.
-    // Rung 5a (ADR-0080 D1/D6): the same employment read also resolves the person's jurisdiction
-    // (employment → company.country) so the tax write below goes through the person's country pack.
-    const readPayroll=async(tx:Tx)=>{
-      const employments = await tx
-        .select({ companyId: employment.companyId, country: company.country })
-        .from(employment)
-        .innerJoin(company, eq(company.id, employment.companyId))
-        .where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.personId, personId)));
-      const companyIds = Array.from(new Set(employments.map((e) => e.companyId)));
-      const country = employments[0]?.country ?? null;
-      if (companyIds.length === 0) return { payrollAlert: null, country };
-      const period = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-      const open = await tx
-        .select({ id: payrollBatch.id })
-        .from(payrollBatch)
-        .where(
-          and(
-            eq(payrollBatch.tenantId, ctx.tenantId),
-            inArray(payrollBatch.companyId, companyIds),
-            eq(payrollBatch.payPeriod, period),
-            // draft + processed are the exposed window. 'closed' is immutable at the DB level (mig 0011
-            // triggers) and its payslips are frozen snapshots, so a closed batch cannot be disturbed.
-            ne(payrollBatch.status, 'closed'),
-          ),
-        );
-      return { payrollAlert: open.length > 0 ? { period, batches: open.length } : null, country };
-    };
-    const {payrollAlert,country}=outerTx?await readPayroll(outerTx):await withTenant(ctx,readPayroll);
-
-    // Rail (c) — reuse the single audited tax writer (via the person's country pack — ADR-0080 D1;
-    // requirePackFor FAILS LOUDLY for an unknown country / a person with no employment, which the outer
-    // catch degrades to NO_SYNC('error'), the rail-safe outcome), stamped with provenance so the resulting
-    // `employee.tax.updated` event is identifiable as machine-driven. Every other tax column is carried
-    // forward unchanged: the setter overwrites the whole tax column set, so omitting them would
-    // silently reset residency / category / employer-bears-tax — and, until item d64d0df4 fixed it here,
-    // the disability relief claims below. Only num_children may differ from what was read.
-    await requirePackFor(country).statutory.setTax(ctx, {
-      personId,
-      taxNumber: state.statutory.taxNumber,
-      taxCategory: state.statutory.taxCategory ?? undefined,
-      taxResidency: state.statutory.taxResidency,
-      childReliefMode: 'auto',
-      employerBearsTax: state.statutory.employerBearsTax ?? false,
-      numChildren: state.derived,
-      // d64d0df4 — see the CARRY-FORWARD LIST comment on the select above. These are relief CLAIMS about
-      // the employee and their family; a family-record edit must never silently withdraw one.
-      disabledIndividual: state.statutory.disabledIndividual ?? false,
-      disabledSpouse: state.statutory.disabledSpouse ?? false,
-      // a5f21891 — DERIVED, not carried forward. On 'auto' the Family register is the source of truth,
-      // so the grid it implies is what gets stored and priced. Before this the sync wrote the head count
-      // and left the grid untouched, so `childReliefAmountFor` never saw the weighting and an 'auto'
-      // employee was relieved heads x perChild — RM2,000 for a disabled child in higher education that
-      // the rules price at RM16,000.
-      childReliefTable: state.grid,  // null when a category is missing — see the gate above
-      provenance: 'auto_child_relief',
-    },outerTx);
-
-    return {
-      changed: true,
-      before: state.statutory.numChildren,
-      after: state.derived,
-      payrollAlert,
-      skipped: null,
-    };
-  } catch(error) {
-    // An explicit activation transaction must roll back on a derived-tax refusal too.
+    return outerTx?await run(outerTx):await withTenant(ctx,run);
+  }catch(error){
+    // An enclosing Family activation/approval rolls back every effect on failure. Existing ordinary
+    // callers have already committed their Family write and retain their established self-healing result.
     if(outerTx)throw error;
-    // Deliberate swallow. The family-record write has ALREADY committed and is what the user asked for;
-    // failing it now because a derived tax figure could not be refreshed would be strictly worse. The next
-    // dependent write (or a manual Identity & Tax save) re-derives and self-heals.
     return NO_SYNC('error');
   }
 }
@@ -845,25 +685,16 @@ export async function addDependentTx(
   personId: string,
   p: DependentInput,
 ): Promise<{ id: string }> {
-  const fullName = (p.fullName ?? '').trim();
-  if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
-  // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
-  await validateDependentInputTx(tx,p);
-  const gender = normGender(p.gender);
+  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  const normalized=await normaliseDependentPatchTx(tx,p);
   const [row] = await tx
     .insert(employeeDependent)
     .values({
       tenantId: ctx.tenantId,
       personId,
-      fullName,
-      relationship: p.relationship,
-      dateOfBirth: trimOrNull(p.dateOfBirth),
-      gender,
-      icOrPassport: trimOrNull(p.icOrPassport),
-      isBeneficiary: p.isBeneficiary ?? false,
-      phone: trimOrNull(p.phone),
-      remarks: trimOrNull(p.remarks),
-      ...extraColumnsForAdd(p.relationship, p),
+      ...normalized,
+      fullName:normalized.fullName!,
+      relationship:normalized.relationship!,
     })
     .returning({ id: employeeDependent.id });
   await appendEvent(tx, {
@@ -890,7 +721,7 @@ export async function addDependent(
   outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const res = outerTx ? await addDependentTx(outerTx,ctx,p.personId,p) : await withTenant(ctx, (tx) => addDependentTx(tx, ctx, p.personId, p));
-  // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
+  // Standalone refresh follows commit; an enclosing transaction keeps the consequence atomic.
   const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId,outerTx);
   return { ...res, childReliefSync };
 }
@@ -978,6 +809,7 @@ export async function materialiseDependents(
 ): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
   if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await tx
       .select({
         fullName: employeeDependent.fullName,
@@ -1031,26 +863,14 @@ async function loadDependent(tx: Tx, id: string) {
  * add. Appends `dependent.updated` with `{ diff }` (field NAMES only — no PII values, no relationship value
  * unless it changed, in which case only its name is listed in diff).
  */
-export async function updateDependent(
-  ctx: SessionContext,
-  p: {
-    id: string;
-    fullName?: string;
-    relationship?: string;
-    dateOfBirth?: string | null;
-    gender?: string | null;
-    icOrPassport?: string | null;
-    isBeneficiary?: boolean;
-    phone?: string | null;
-    remarks?: string | null;
-  } & DependentExtraInput,
-  outerTx?:Tx,
-): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const run=async(tx:Tx)=>{
-    const existing = await loadDependent(tx, p.id);
-    if (!existing || existing.archivedAt != null) {
-      throw new DependentValidationError('Dependent record not found.');
-    }
+/** One canonical add/update normalizer for HR, imports, ESS and scoped Workforce commands. */
+export async function normaliseDependentPatchTx(tx:Tx,p:Partial<DependentInput>,existing?:{fullName:string;relationship:string}):Promise<Partial<DependentInput>>{
+ if(!existing){
+  await validateDependentInputTx(tx,p);
+  return {fullName:p.fullName!.trim(),relationship:p.relationship!,dateOfBirth:trimOrNull(p.dateOfBirth),gender:normGender(p.gender),
+   icOrPassport:trimOrNull(p.icOrPassport),isBeneficiary:p.isBeneficiary??false,phone:trimOrNull(p.phone),remarks:trimOrNull(p.remarks),
+   ...extraColumnsForAdd(p.relationship!,p)};
+ }
     await validateDependentInputTx(tx,p,existing);
     const patch: Record<string, unknown> = {};
     if (p.fullName !== undefined) {
@@ -1124,6 +944,31 @@ export async function updateDependent(
       patch.childReliefPercentage = null;
     }
 
+ return patch as Partial<DependentInput>;
+}
+
+export async function updateDependent(
+  ctx: SessionContext,
+  p: {
+    id: string;
+    fullName?: string;
+    relationship?: string;
+    dateOfBirth?: string | null;
+    gender?: string | null;
+    icOrPassport?: string | null;
+    isBeneficiary?: boolean;
+    phone?: string | null;
+    remarks?: string | null;
+  } & DependentExtraInput,
+  outerTx?:Tx,
+): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
+  const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    const existing = await loadDependent(tx, p.id);
+    if (!existing || existing.archivedAt != null) {
+      throw new DependentValidationError('Dependent record not found.');
+    }
+    const patch:Record<string,unknown>={...await normaliseDependentPatchTx(tx,p,existing)};
     if (Object.keys(patch).length > 0) {
       patch.updatedAt = new Date();
       await tx.update(employeeDependent).set(patch).where(eq(employeeDependent.id, p.id));
@@ -1154,12 +999,15 @@ export async function updateDependent(
 export async function archiveDependent(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
     }
+    await assertWorkforcePersonTx(tx,ctx,existing.personId,'maintain');
     await tx
       .update(employeeDependent)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -1174,10 +1022,11 @@ export async function archiveDependent(
       payload: { relationship: existing.relationship },
     });
     return { id: p.id, personId: existing.personId };
-  });
+  };
+  const res = await (outerTx ? run(outerTx) : withTenant(ctx, run));
   // R46 47146ea3 — archiving a child removes it from the eligible count (eligibleChildReliefCount excludes
   // archivedAt rows), so the tax figure must come down with it.
-  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId);
+  const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId, outerTx);
   return { id: res.id, childReliefSync };
 }
 

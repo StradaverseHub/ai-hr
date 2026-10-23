@@ -5611,8 +5611,18 @@ export const profileChangeRequest = pgTable(
     decisionReason: text('decision_reason'),
     createdAt: createdAt(),
   },
-  (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status),uniqueIndex('profile_change_request_pending_photo_person_uq').on(t.tenantId,t.personId).where(sql`${t.status}='pending' AND ${t.proposed}->>'kind'='photo'`)],
 );
+
+/** Bytes are retained only while the canonical profile request is pending. */
+export const profilePhotoProposal=pgTable('profile_photo_proposal',{
+ requestId:uuid('request_id').primaryKey().references(()=>profileChangeRequest.id),
+ tenantId:tenantId(),
+ content:bytea('content').notNull(),
+ mimeType:text('mime_type').notNull(),
+ sizeBytes:integer('size_bytes').notNull(),
+ createdAt:createdAt(),
+});
 
 // ADR-0042 (#29): employee-initiated resignation. The employee submits one; HR accepts it, which triggers
 // terminateEmployment (a 'voluntary' termination). Same request→approve rails as profile_change_request.
@@ -10125,6 +10135,20 @@ export const rewardCycle = pgTable('reward_cycle', {
   id: id(), tenantId: tenantId(), name: text('name').notNull(), year: integer('year').notNull(),
   createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
 });
+// Immutable reusable configuration. Unit approvals, salary rosters and budgets retain their owner.
+export const rewardPolicyGroup = pgTable('reward_policy_group', {
+ id:id(),tenantId:tenantId(),name:text('name').notNull(),revision:integer('revision').notNull(),
+ currentVersionId:uuid('current_version_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const rewardPolicyGroupVersion = pgTable('reward_policy_group_version', {
+ id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull().references(()=>rewardPolicyGroup.id),
+ revision:integer('revision').notNull(),name:text('name').notNull(),policy:jsonb('policy').$type<import('../packs/rewards/model').RewardPolicy>().notNull(),
+ policyDigest:text('policy_digest').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
+ tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>rewardPolicyGroupVersion.id),
+ companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
+},t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
@@ -10135,6 +10159,7 @@ export const rewardUnit = pgTable('reward_unit', {
   companyId: uuid('company_id').notNull().references(() => company.id),
   businessUnitId: uuid('business_unit_id').notNull().references(() => businessUnit.id),
   policy: jsonb('policy').$type<import('../packs/rewards/model').RewardPolicy>().notNull(),
+  policyGroupVersionId:uuid('policy_group_version_id').references(()=>rewardPolicyGroupVersion.id),
   status: text('status').$type<import('../packs/rewards/model').RewardStage>().notNull().default('draft'),
   revision: integer('revision').notNull().default(1), snapshotDate: date('snapshot_date').notNull(),
   approvedDigest: text('approved_digest'), postedBatchId: uuid('posted_batch_id').references(() => payrollBatch.id),
@@ -10621,3 +10646,54 @@ export const payrollLeaveException = pgTable('payroll_leave_exception', {
   explanation: text('explanation'), resolvedBy: uuid('resolved_by').references(() => appUser.id),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
 }, t => [index('payroll_leave_exception_batch').on(t.tenantId, t.batchId, t.status, t.createdAt)]);
+
+/** Installation-owned capability catalogue. Customer configuration cannot register a new authority. */
+export const accessCapability = pgTable('access_capability', {
+  id: text('id').primaryKey(), scope: text('scope').notNull().$type<'tenant'|'company'>(),
+  supported: boolean('supported').notNull().default(false),
+  bindings: jsonb('bindings').notNull().default(sql`'[]'::jsonb`).$type<{owner:string;operation:string}[]>(),
+});
+export const accessConfiguration = pgTable('access_configuration', {
+  tenantId: uuid('tenant_id').primaryKey().references(()=>tenant.id),
+  revision: uuid('revision').notNull().defaultRandom(), initialized: boolean('initialized').notNull().default(false),
+  updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const accessGroup = pgTable('access_group', {
+  id:id(),tenantId:tenantId(),name:text('name').notNull(),legacyKey:text('legacy_key'),
+  systemAdministrator:boolean('system_administrator').notNull().default(false),
+  retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  uniqueIndex('access_group_tenant_id_uq').on(t.tenantId,t.id),
+  uniqueIndex('access_group_name_uq').on(t.tenantId,sql`lower(${t.name})`),
+  uniqueIndex('access_group_protected_uq').on(t.tenantId).where(sql`${t.systemAdministrator}`),
+  uniqueIndex('access_group_legacy_uq').on(t.tenantId,t.legacyKey).where(sql`${t.legacyKey} IS NOT NULL`),
+]);
+/** Historical grants close instead of disappearing. Only active rows contribute authority. */
+export const accessGroupGrant = pgTable('access_group_grant', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull(),
+  capabilityId:text('capability_id').notNull().references(()=>accessCapability.id),companyId:uuid('company_id').references(()=>company.id),
+  retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  foreignKey({columns:[t.tenantId,t.groupId],foreignColumns:[accessGroup.tenantId,accessGroup.id]}),
+  uniqueIndex('access_group_grant_global_uq').on(t.tenantId,t.groupId,t.capabilityId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_group_grant_company_uq').on(t.tenantId,t.groupId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+]);
+/** Role-derived default memberships are a SQL view over role_assignment, never copied here. */
+export const accessMembership = pgTable('access_membership', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+  companyId:uuid('company_id').references(()=>company.id),retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  foreignKey({columns:[t.tenantId,t.groupId],foreignColumns:[accessGroup.tenantId,accessGroup.id]}),
+  uniqueIndex('access_membership_global_uq').on(t.tenantId,t.groupId,t.userId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_membership_company_uq').on(t.tenantId,t.groupId,t.userId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+  index('access_membership_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
+]);
+export const accessUserOverride = pgTable('access_user_override', {
+  id:id(),tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+  capabilityId:text('capability_id').notNull().references(()=>accessCapability.id),companyId:uuid('company_id').references(()=>company.id),
+  effect:text('effect').notNull().$type<'allow'|'deny'>(),retiredAt:timestamp('retired_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[
+  uniqueIndex('access_user_override_global_uq').on(t.tenantId,t.userId,t.capabilityId).where(sql`${t.companyId} IS NULL AND ${t.retiredAt} IS NULL`),
+  uniqueIndex('access_user_override_company_uq').on(t.tenantId,t.userId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+  index('access_user_override_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
+]);

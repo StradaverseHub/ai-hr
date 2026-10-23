@@ -42,10 +42,11 @@
  * if that is ever wanted it is a different ticket with a different answer for what a partial approval of
  * a multi-date request would even mean.
  */
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
 import {
   company,
   compensation,
@@ -1065,11 +1066,12 @@ export async function cancelOwnReplacementLeaveRequest(
   const personId = ctx.personId;
   if (!personId || !/^[0-9a-f-]{36}$/i.test(p.requestId)) throw notFound();
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw notFound();
     const [req] = await tx
       .select({ id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId })
       .from(replacementLeaveRequest)
       .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
-      .where(and(eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
+      .where(and(ownPersonPredicate(ctx),eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
       .limit(1);
     if (!req) throw notFound();
     if (req.status !== 'pending') {
@@ -1080,6 +1082,7 @@ export async function cancelOwnReplacementLeaveRequest(
       .set({ status: 'cancelled', updatedAt: new Date() })
       .where(
         and(
+          ownPersonPredicate(ctx),
           eq(replacementLeaveRequest.id, req.id),
           eq(replacementLeaveRequest.employmentId, req.employmentId),
           eq(replacementLeaveRequest.status, 'pending'),
@@ -1194,12 +1197,9 @@ export type ReplacementClaimLineView = {
   eligibleMinutes: number | null;
 };
 
-export async function listPendingReplacementLeaveRequests(
-  ctx: SessionContext,
-  opts: { companyIds?: string[] } = {},
-): Promise<PendingReplacementRequestRow[]> {
-  const pending=await withTenant(ctx, async (tx) => {
-    const heads = await tx
+// The full review page loads priced detail; assigned-work metadata has its own bounded projection.
+function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId?:string }) {
+  return tx
       .select({
         id: replacementLeaveRequest.id,
         employmentId: replacementLeaveRequest.employmentId,
@@ -1219,11 +1219,41 @@ export async function listPendingReplacementLeaveRequests(
       .where(
         and(
           eq(replacementLeaveRequest.status, 'pending'),
-          opts.companyIds && opts.companyIds.length ? inArray(employment.companyId, opts.companyIds) : undefined,
+          opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
+          opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds),
         ),
       )
       .orderBy(desc(replacementLeaveRequest.createdAt))
       .limit(200);
+}
+
+export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const candidates=await tx.select({id:replacementLeaveRequest.id,employmentId:replacementLeaveRequest.employmentId,
+   personId:employment.personId,employee:person.fullName,createdAt:replacementLeaveRequest.createdAt})
+   .from(replacementLeaveRequest).innerJoin(employment,and(eq(employment.id,replacementLeaveRequest.employmentId),eq(employment.tenantId,replacementLeaveRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(replacementLeaveRequest.status,'pending'),eq(replacementLeaveRequest.tenantId,ctx.tenantId),
+    sql`NOT app.is_self_person(${employment.personId})`,
+    opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds)))
+   .orderBy(desc(replacementLeaveRequest.createdAt),replacementLeaveRequest.id);
+  const result=[];
+  for(const row of candidates){
+   try{await assertCanDecide(tx,ctx,row.employmentId,'replacement leave request');}
+   catch(error){if(isApprovalDecisionRefusal(error,'replacement leave request'))continue;throw error;}
+   result.push({id:row.id,personId:row.personId,employee:row.employee,createdAt:row.createdAt});
+  }
+  return result;
+ });
+}
+
+export async function listPendingReplacementLeaveRequests(
+  ctx: SessionContext,
+  opts: { companyIds?: string[];requestId?:string } = {},
+): Promise<PendingReplacementRequestRow[]> {
+  const pending=await withTenant(ctx, async (tx) => {
+    const heads = await pendingReplacementHeads(tx, opts);
     if (heads.length === 0) return [];
     const lines = await tx
       .select()

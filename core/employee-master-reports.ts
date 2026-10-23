@@ -9,7 +9,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { customReport, customReportSchedule, companyLogo, roleAssignment, type CustomReportSpec } from '../db/schema';
 import { legacyEmployeeMasterSpec } from '../lib/employee-master-legacy';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterSpec, MASTER_PREVIEW_ROWS, type EmployeeMasterSpec, type EmployeeMasterResult } from '../lib/employee-master-report';
+import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterDefinition, validateEmployeeMasterSpec, EmployeeMasterSpecError, MASTER_PREVIEW_ROWS, type EmployeeMasterSpec, type EmployeeMasterResult } from '../lib/employee-master-report';
 import { masterReportFieldsTx, MasterReportAccessError } from './employee-master-access';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 
@@ -19,12 +19,18 @@ const assertScope=(companies:string[],scope:readonly string[])=>{if(!companies.l
 const templateSpec=(spec:EmployeeMasterSpec):CustomReportSpec=>({datasetId:'master',columns:spec.columns.map(column=>column.field),employeeMaster:spec});
 async function visibleTx(tx:Tx,id:string){const [row]=await tx.select().from(customReport).where(and(eq(customReport.id,id),eq(customReport.datasetId,'master'))).limit(1);if(!row)throw new MasterReportAccessError();return row;}
 async function editableTx(tx:Tx,ctx:SessionContext,row:{createdByUserId:string|null}){const [access]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];if(row.createdByUserId!==ctx.userId&&!access?.admin)throw new MasterReportAccessError();}
-async function checkedTx(tx:Tx,ctx:SessionContext,raw:unknown,scopeIds:readonly string[]){
+async function checkedTx(tx:Tx,ctx:SessionContext,raw:unknown,scopeIds:readonly string[],purpose:'definition'|'execution'='execution'){
   // Company UUIDs are schema-validated before they reach SQL. Full validation uses the scoped catalogue.
   const input=raw as Partial<EmployeeMasterSpec>;if(!z.array(z.uuid()).min(1).max(100).safeParse(input?.companyIds).success)throw new MasterReportAccessError();
   assertScope(input.companyIds!,scopeIds);
   const catalogue=await masterReportFieldsTx(tx,ctx,input.companyIds!);
-  const spec=validateEmployeeMasterSpec(raw,catalogue,todayInKualaLumpur());
+  let spec:EmployeeMasterSpec;
+  try{spec=purpose==='definition'?validateEmployeeMasterDefinition(raw,catalogue):validateEmployeeMasterSpec(raw,catalogue,todayInKualaLumpur());}
+  catch(error){
+    // Invalid/revoked definitions are unavailable to this reader. Infrastructure failures still escape.
+    if(purpose==='definition'&&(error instanceof EmployeeMasterSpecError||error instanceof z.ZodError))throw new MasterReportAccessError();
+    throw error;
+  }
   return {spec,catalogue,fields:catalogue.filter(field=>masterSpecFields(spec).includes(field.id))};
 }
 export async function masterReportRoles(ctx:SessionContext){return withTenant(ctx,async tx=>(await tx.selectDistinct({id:roleAssignment.role}).from(roleAssignment).orderBy(asc(roleAssignment.role))).map(row=>row.id));}
@@ -47,13 +53,17 @@ export async function saveEmployeeMasterReport(ctx:SessionContext,scopeIds:reado
     return row;
   });
 }
-export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,async tx=>{
-  const row=await visibleTx(tx,id);const {spec}=await checkedTx(tx,ctx,legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()),scopeIds);
+async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'):Promise<MasterTemplate>{
+  const row=await visibleTx(tx,id);const {spec}=await checkedTx(tx,ctx,legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()),scopeIds,purpose);
   const [admin]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];
   const names=await tx.execute(sql`select p.full_name as name from app_user u left join person p on p.id=u.person_id where u.id=${row.createdByUserId}::uuid`) as unknown as {name:string|null}[];
   const [schedule]=await tx.select({enabled:customReportSchedule.enabled}).from(customReportSchedule).where(eq(customReportSchedule.reportId,row.id)).limit(1);
   return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
-});}
+}
+/** Read the unchanged authorised definition so an expired condition can be repaired in the builder. */
+export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'definition'));}
+/** Scheduling and delivery consumers retain the same strict validation as an actual run. */
+export async function getExecutableEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'execution'));}
 export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string}={}):Promise<MasterTemplate[]>{
   const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));
   const reports:MasterTemplate[]=[];for(const id of ids){try{reports.push(await getEmployeeMasterReport(ctx,scopeIds,id));}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}if(!input.all&&reports.length===5)break;}return reports;

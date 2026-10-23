@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /**
  * Redesign Employment Joining Date Structure (feedback 24c4d02e), as amended by 89ea527b.
  *
@@ -304,7 +305,7 @@ describe('89ea527b — the movement path keeps every guard and leaves a history 
     for (const kind of ['joinDateChange', 'groupJoinDateCorrection'] as const) {
       await expect(
         createMovementEvent(nonAdmin, { employmentId: e.id, kind, effectiveDate: '2025-01-01' }),
-      ).rejects.toThrow(/admin/i);
+      ).rejects.toBeInstanceOf(WorkforceAccessError);
     }
   });
 });

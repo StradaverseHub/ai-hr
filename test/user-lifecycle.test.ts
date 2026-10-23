@@ -154,6 +154,8 @@ describe('0279 — login archive + live leaver block', () => {
       .set({ role: 'super_admin' })
       .where(eq(schema.roleAssignment.appUserId, second));
     // From the second admin's session, archiving the seeded admin is allowed (two exist).
+    // Prepare the unrelated caller while the hiring administrator is still active.
+    const { appUserId: victim } = await hireWithLogin('Victim', 'wos_victim_1');
     const secondCtx: SessionContext = { tenantId: base.tenantId, userId: second, roles: ['super_admin'] };
     await setAppUserArchived(secondCtx, { appUserId: base.adminUserId, archived: true });
     // Now `second` is the only unblocked group-wide admin left — the seeded admin cannot archive it,
@@ -163,7 +165,6 @@ describe('0279 — login archive + live leaver block', () => {
     );
 
     // Non-group-admin caller is refused before touching anything.
-    const { appUserId: victim } = await hireWithLogin('Victim', 'wos_victim_1');
     const employeeCtx: SessionContext = { tenantId: base.tenantId, userId: victim, roles: ['employee'] };
     await expect(setAppUserArchived(employeeCtx, { appUserId: base.adminUserId, archived: false })).rejects.toThrow(
       /group administrator/i,

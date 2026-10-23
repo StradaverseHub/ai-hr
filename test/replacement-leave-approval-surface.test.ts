@@ -50,7 +50,7 @@ describe('the approval surface exists and is wired to the decide action', () => 
   it('the /approvals page LOADS pending replacement-leave requests', () => {
     // Through the pack facade, never the pack implementation (the house rule for cross-module reads).
     expect(page).toMatch(/import \{[^}]*listPendingReplacementLeaveRequests[^}]*\} from '@\/packs\/leave\/service'/);
-    expect(page).toContain('listPendingReplacementLeaveRequests(s, { companyIds: scopeIds })');
+    expect(page).toContain("listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') })");
   });
 
   it('it MOUNTS a replacement-leave section, gated by the shared category resolver', () => {
@@ -273,7 +273,7 @@ describe('listPendingReplacementLeaveRequests (5ff7daff)', () => {
     expect(pending[0].totalHours).toBe(13);
 
     // A company the viewer does not carry sees nothing (the same scope every other queue takes).
-    expect(await listPendingReplacementLeaveRequests(ctx, { companyIds: [] })).toHaveLength(1); // empty = unscoped
+    expect(await listPendingReplacementLeaveRequests(ctx, { companyIds: [] })).toHaveLength(0); // explicit empty scope never becomes unscoped
     // Once decided it leaves the queue — a decided request in a PENDING inbox is how a manager double-books.
     await decideReplacementLeaveRequest(ctx, { requestId, decision: 'rejected', decidedAt: DECIDED_AT });
     expect(await listPendingReplacementLeaveRequests(ctx, { companyIds: [b.companyId] })).toHaveLength(0);

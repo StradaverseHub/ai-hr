@@ -1,3 +1,4 @@
+import {WorkforceAccessError} from '../core/workforce-access';
 /** Movement imports must compose the actual New Event dispatcher, never separately committed legs. */
 import {randomUUID} from 'node:crypto';
 import {asc,eq} from 'drizzle-orm';
@@ -54,7 +55,7 @@ describe('canonical Movement dispatcher caller transaction',()=>{
  });
  it('retains the administrator gate before any dispatcher write',async()=>{
   const e=await employee(),ctx={...adminCtx(base),roles:['employee']},before=await rows(e.employmentId);
-  await expect(withTenant(ctx,tx=>createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:'blacklist',effectiveDate:todayInKualaLumpur()}))).rejects.toThrow('Only an admin can record a movement.');
+  await expect(withTenant(ctx,tx=>createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:'blacklist',effectiveDate:todayInKualaLumpur()}))).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await rows(e.employmentId)).toEqual(before);
  });
  it('resolves a custom promotion for the entitlement trigger and rolls its real leave adjustment/audit back with a later failure',async()=>{

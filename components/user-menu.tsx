@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, UserRound } from 'lucide-react';
@@ -81,22 +81,44 @@ export function UserMenu({
   name,
   employeeCode,
   employed,
+  canConfigureAccess=false,
+  canViewWorkforce=false,
 }: {
   name: string | null;
   employeeCode: string | null;
   employed: boolean;
+  canConfigureAccess?:boolean;
+  canViewWorkforce?:boolean;
 }) {
   const t = useTranslations('topbar');
+  const accessT=useTranslations('accessConfiguration');
+  const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
 
-  // Escape closes, as it does for every other popover chrome in the header.
+  // Observe the actual document rather than a fixed backdrop inside the header's stacking context.
+  // Outside interaction still reaches its destination; only Escape returns focus to our trigger.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+    const outside = (e: Event) => {
+      if (e.target instanceof Node && !root.current?.contains(e.target)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('focusin', outside);
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('focusin', outside);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   const named = name != null && name.trim() !== '';
@@ -105,12 +127,14 @@ export function UserMenu({
   const code = employed && employeeCode != null && employeeCode.trim() !== '' ? employeeCode.trim() : null;
 
   return (
-    <div className="relative min-w-0">
+    <div ref={root} className="relative min-w-0">
       <button
+        ref={trigger}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-controls={open ? menuId : undefined}
         aria-label={t('accountMenu')}
         data-tour="account"
         className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-left transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
@@ -153,8 +177,8 @@ export function UserMenu({
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
+            id={menuId}
             role="menu"
             aria-label={t('accountMenu')}
             className="absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
@@ -186,6 +210,10 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
+            {canViewWorkforce&&<Link href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
+              className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{navT('personnelAdmin')}</Link>}
+            {canConfigureAccess&&<Link href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
+              className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{accessT('title')}</Link>}
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
             {/* r396 — the UI theme (Monolith | Classic). Here, not in the header: the right cluster is a

@@ -1,6 +1,7 @@
 /** Server projection policy. Hiding a fact also hides its repeated representations. */
+import {PROFILE_PHOTO_FIELD,isProfilePhotoProposal} from './profile-photo-proposal';
 import {PERSONNEL_FIELDS,personnelField} from './personnel-field-registry';
-import {isLegacyProfileEditPolicy,isProfileEditPolicyValue,isProfileVisibilityPolicyValue} from './profile-edit-policy-value';
+import {isLegacyProfileEditPolicy,isProfileEditPolicyValue,isProfileVisibilityPolicyValue,effectiveProfileFieldPermission} from './profile-edit-policy-value';
 const explicitAliases:readonly (readonly string[])[]=[
  ['person.fullName','person.firstName','person.lastName'],
  // Birth date is written by the compliance owner; age is a derived Person projection.
@@ -23,7 +24,7 @@ export function resolveEssVisibleIds(raw:unknown):ReadonlySet<string>{
  const fields=PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible');
  if(isLegacyProfileEditPolicy(raw)||isProfileEditPolicyValue(raw))return new Set(fields.map(field=>field.id));
  if(!isProfileVisibilityPolicyValue(raw))return new Set();
- const hidden=new Set(fields.filter(field=>raw.fields[field.id]==='hide'||!Object.hasOwn(raw.fields,field.id)).map(identity));
+ const hidden=new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='hide').map(identity));
  // Transitive closure is deliberate: a derived alias cannot restore its source through a third view.
  let changed=true;while(changed){changed=false;for(const group of explicitAliases){if(!group.some(key=>hidden.has(key)))continue;for(const key of group)if(!hidden.has(key)){hidden.add(key);changed=true;}}}
  return new Set(fields.filter(field=>!hidden.has(identity(field))).map(field=>field.id));
@@ -35,6 +36,7 @@ export function projectEssVisible<T>(values:Readonly<Record<string,T>>,visible:R
 export function projectOwnProfileProposal(raw:unknown,visible:ReadonlySet<string>):unknown{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return {};
  const value=raw as Record<string,unknown>;
+ if(isProfilePhotoProposal(raw))return visible.has(PROFILE_PHOTO_FIELD)?{v:3,kind:'photo',fieldId:PROFILE_PHOTO_FIELD}:{};
  if(value.v===2){
   const filter=(fields:unknown)=>Array.isArray(fields)?fields.filter(item=>item&&typeof item==='object'&&!Array.isArray(item)&&typeof item.fieldId==='string'&&visible.has(item.fieldId)):[];
   return {v:2,fields:filter(value.fields),registers:Array.isArray(value.registers)?value.registers.flatMap(row=>{
@@ -53,6 +55,7 @@ export function essFieldVisible(visible:ReadonlySet<string>,id:string){return Bo
 /** Text reasons can repeat any original line; only an entirely visible request may disclose them. */
 export function ownProfileProposalIsIntact(raw:unknown,visible:ReadonlySet<string>):boolean{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return false;
+ if(isProfilePhotoProposal(raw))return visible.has(PROFILE_PHOTO_FIELD);
  const value=raw as Record<string,unknown>;
  if(value.v===2){
   if(!Array.isArray(value.fields)||!Array.isArray(value.registers))return false;

@@ -52,12 +52,13 @@ describe('Movement Direct Superior uses the canonical dated edge',()=>{
  it('serializes the empty-edge race on the canonical subordinate lock and rechecks the committed owner state',async()=>{
   const employee=await hire('NOP041'),manager=await hire('NOP042'),ctx=adminCtx(b);
   let created!:()=>void,release!:()=>void;const createdSignal=new Promise<void>(resolve=>created=resolve),releaseSignal=new Promise<void>(resolve=>release=resolve);
-  const writer=withTenant(ctx,async tx=>{await setReportingLine(ctx,{subordinateEmploymentId:employee.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:dateOffset(-10)},tx);created();await releaseSignal;});
+  let writerPid:number|undefined;
+  const writer=withTenant(ctx,async tx=>{const [backend]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];writerPid=backend.pid;await setReportingLine(ctx,{subordinateEmploymentId:employee.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:dateOffset(-10)},tx);created();await releaseSignal;});
   void writer.catch(()=>created());let checking:ReturnType<typeof preview>|undefined;
   try{
    await createdSignal;checking=preview(file('NOP041','NOP042'));void checking.catch(()=>undefined);
    let blocked=false;const deadline=Date.now()+900;
-   while(Date.now()<deadline){const rows=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and query ilike '%employment%' and query ilike '%for update%') as blocked`) as unknown as {blocked:boolean}[];if(rows[0]?.blocked){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
+   while(Date.now()<deadline){const rows=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and ${writerPid}::int=ANY(pg_blocking_pids(pid))) as blocked`) as unknown as {blocked:boolean}[];if(rows[0]?.blocked){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
    expect(blocked).toBe(true);release();await writer;const before=await lines(employee.employmentId),audit=await events(employee.employmentId);expect(before).toHaveLength(1);
    expect((await checking).valid).toBe(0);expect(await lines(employee.employmentId)).toEqual(before);expect(await events(employee.employmentId)).toEqual(audit);
   }finally{release();await Promise.allSettled([writer,...(checking?[checking]:[])]);}

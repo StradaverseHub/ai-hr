@@ -1,3 +1,4 @@
+import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -40,14 +41,14 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true};
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
-   expect.objectContaining({id:f.id,kind:'attendance',linkPath:'/approvals'})
+   expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
   expect(await listPendingTasks(f.worker.ctx,[base.companyId],modules)).toEqual([]);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],{...modules,attendance:false})).toEqual([]);
   await decide(f,f.second,'0:1');
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([]);
   expect(await listPendingTasks(f.first.ctx,[base.companyId],modules)).toEqual([
-   expect.objectContaining({id:f.id,kind:'attendance',linkPath:'/approvals'})
+   expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
  });
 

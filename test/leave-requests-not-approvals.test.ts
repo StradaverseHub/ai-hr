@@ -106,12 +106,11 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
   it('SAME ROLES: /approvals admits everyone the removed action could have served', () => {
     // decideLeaveAction ran under the caller's own session with the service asserting authority. /approvals
     // admits admin OR manager and lets the SERVICES decide — so no role lost a route to a decision.
-    expect(approvalsPage).toContain('const admin = isAdmin(s);');
-    expect(approvalsPage).toContain("const manager = (s.roles ?? []).includes('manager');");
+    expect(approvalsPage).toContain("const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');");
     // Rewards unit membership can assign an employee a review without a global manager role.
     // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward.
-    expect(approvalsPage).toContain("if (!admin && !manager && !rewardReviews.length && !assignedAttendance) redirect('/');");
-    expect(approvalsPage).toContain("isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : []");
+    expect(approvalsPage).toContain("if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');");
+    expect(approvalsPage).toContain("isModuleEnabledOrFalse(s,'rewards')");
   });
 });
 
@@ -138,7 +137,7 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     expect(leavePage).not.toContain("t('requestsTitle')");
     // The point this test has always made still stands and is why the loss is worth recording:
     // /approvals is NOT a substitute — pending rows only, capped at 200, no filters, no export.
-    expect(approvalsPage).toContain("listLeaveRequests(s, scopeIds, 200, { status: 'pending' })");
+    expect(approvalsPage).toContain("listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') })");
     expect(approvalsPage).not.toMatch(/listLeaveRequestsPage/);
   });
 
