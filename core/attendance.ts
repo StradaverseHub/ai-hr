@@ -4492,6 +4492,8 @@ export function listAttendanceCorrections(
         adminAmendment: attendanceCorrection.adminAmendment,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        plannedStartTime: attendanceCorrection.plannedStartTime,
+        plannedEndTime: attendanceCorrection.plannedEndTime,
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otApprovalMethod: attendanceCorrection.otApprovalMethod,

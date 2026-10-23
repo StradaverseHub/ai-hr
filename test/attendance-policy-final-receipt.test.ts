@@ -80,6 +80,8 @@ describe('owner-issued final workflow receipt',()=>{
    }
   },withPlan);
   const [preview]=await listAttendanceCorrections(f.first.ctx,{requestId:f.id,status:'pending'});
+  expect(preview.plannedStartTime?.slice(0,5)??null).toBe(withPlan?'18:00':null);
+  expect(preview.plannedEndTime?.slice(0,5)??null).toBe(withPlan?'19:00':null);
   expect(preview).toMatchObject({otApprovalCalculation:'requested',systemOtMinutes:60});
   await decideAttendanceCorrection(f.first.ctx,{correctionId:f.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,f.id))).toEqual([]);
