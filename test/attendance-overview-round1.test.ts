@@ -143,12 +143,12 @@ describe('67268d83 — resolveMyAttendanceRange', () => {
     expect(r).toMatchObject({ days: 5, refusal: null });
   });
 
-  it('a malformed date falls back to its own default and leaves the other end alone', () => {
+  it('an invalid entered date refuses the read; an empty end retains its default', () => {
     expect(resolveMyAttendanceRange({ from: 'last tuesday', to: '2026-09-20' }, '2026-09-30', MAX)).toEqual({
-      from: '2026-09-01',
+      from: 'last tuesday',
       to: '2026-09-20',
-      days: 20,
-      refusal: null,
+      days: 0,
+      refusal: 'invalid',
     });
     expect(resolveMyAttendanceRange({ from: '2026-09-02', to: '' }, '2026-09-30', MAX)).toMatchObject({
       from: '2026-09-02',

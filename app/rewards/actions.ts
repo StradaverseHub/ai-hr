@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
-import { importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import {rewardPolicyFromForm} from './policy-input';
+import { RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
 import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -23,8 +24,8 @@ async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSessio
 
 export async function createRewardAction(f: FormData) {
   const s = await getSession(); let unitId: string;
-  try { unitId = await createRewardUnit(s, { name: str(f, 'name'), year: number(f, 'year'), companyId: str(f, 'companyId'), businessUnitId: str(f, 'businessUnitId'), cycleId: str(f, 'cycleId') || undefined, snapshotDate: str(f, 'snapshotDate') }); }
-  catch (e) { redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`); }
+  try { unitId = await createRewardUnit(s, { name: str(f, 'name'), year: number(f, 'year'), companyId: str(f, 'companyId'), businessUnitId: str(f, 'businessUnitId'), cycleId: str(f, 'cycleId') || undefined, snapshotDate: str(f, 'snapshotDate'),sharedPolicyVersionId:str(f,'sharedPolicyVersionId')||undefined }); }
+  catch (e) {if(e instanceof RewardPolicyGroupError)redirect(`/admin/rewards?sharedError=${e.code}`);redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`);}
   revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
 }
 export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
@@ -56,37 +57,11 @@ export async function entryAction(f: FormData) {
   });
 }
 
-function lines(text: string, columns: number): string[][] {
-  if (!text.trim()) return [];
-  return text.split(/\r?\n/).filter(x => x.trim()).map(line => {
-    const cells = line.split(',').map(x => x.trim());
-    if (cells.length !== columns || !cells[0]) throw new Error(`Each row needs ${columns} comma-separated values.`);
-    return cells;
-  });
-}
-function matrix(text: string, columns: number, scale: number) {
-  const result: Record<string, number[]> = {};
-  for (const [key, ...values] of lines(text, columns)) {
-    if (Object.hasOwn(result, key) || ['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('Grade or segment names must be unique.');
-    result[key] = values.map(x => { const n = Number(x); if (!x || !Number.isFinite(n)) throw new Error('Enter a number in every matrix cell.'); return Math.round(n * scale); });
-  }
-  return result;
-}
 export async function policyAction(f: FormData) {
-  return change(f, async (s, id, rev) => {
-    const view = await getRewardUnit(s, id); const p = view.unit.policy;
-    const meritMatrix = Object.fromEntries(talents.map(t => [t, [0, 1, 2].map(pos => Math.round(number(f, `merit.${t}.${pos}`) * 100))]));
-    const branchRatings = Object.fromEntries(lines(str(f, 'branchRatings'), 2));
-    const policy = { ...p, effectiveFrom: str(f, 'effectiveFrom'), joinedBefore: str(f, 'joinedBefore'), confirmedBy: str(f, 'confirmedBy'), blockedFrom: str(f, 'blockedFrom'), blockedTo: str(f, 'blockedTo'),
-      patActual: scaled(f, 'patActual'), patTarget: scaled(f, 'patTarget'), targetMonthsBp: scaled(f, 'targetMonths', 10000), multiplierBp: scaled(f, 'multiplier', 10000),
-      standardPools: [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)), hPools: [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)),
-      meritMatrix, ranges: matrix(str(f, 'ranges'), 4, 100), bonusMatrix: matrix(str(f, 'bonusMatrix'), 6, 10000), bonusStructure: str(f, 'bonusStructure'),
-      branchFactors: matrix(str(f, 'branchFactors'), 6, 10000), branchRatings,
-      seniorGrades: str(f, 'seniorGrades').split(',').map(x => x.trim()).filter(Boolean),
-      lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: str(f, 'exemptReason'),
-    };
-    await saveRewardPolicy(s, id, rev, policy as RewardPolicy);
-  }, true);
+  return change(f, async (s,id,rev)=>{
+    const view=await getRewardUnit(s,id);
+    await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy));
+  },true);
 }
 
 export async function importFactsAction(f: FormData) {
@@ -115,3 +90,15 @@ export async function offcycleAction(f: FormData) {
 }
 
 export async function importOnehrAction(f:FormData) { return change(f,(s,id,rev)=>importOnehrRewardResults(s,id,rev)); }
+
+export async function previewSeniorMembershipAction(unitId: string, revision: number, input: unknown) {
+  try { return { ok: true as const, preview: await previewRewardSeniorMembership(await getSession(), unitId, revision, input) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveSeniorMembershipAction(unitId: string, revision: number, input: unknown, previewDigest: string) {
+  try {
+    await saveRewardSeniorMembership(await getSession(), unitId, revision, input, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
+}

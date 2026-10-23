@@ -28,6 +28,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeQualification, profileOption } from '../db/schema';
 import { isCalendarDate } from '../lib/calendar-date';
+import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {assertWorkforceEmploymentTx} from './workforce-access';
 
 /**
  * The profile_option category backing the Qualification dropdown (System Settings > System Labels >
@@ -243,6 +245,7 @@ export async function addQualification(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const validated=await validateQualificationInputTx(tx,p);
     const qualification=validated.qualification!;
     const fromYm=validated.fromYm??null, toYm=validated.toYm??null, graduationDate=validated.graduationDate??null;
@@ -323,6 +326,7 @@ export async function updateQualification(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
@@ -365,12 +369,15 @@ export async function updateQualification(
 export async function archiveQualification(
   ctx: SessionContext,
   p: { id: string },
+  outerTx?: Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
     }
+    await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
     await tx
       .update(employeeQualification)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -385,5 +392,6 @@ export async function archiveQualification(
       payload: { qualification: existing.qualification, wasHighest: existing.isHighest },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }

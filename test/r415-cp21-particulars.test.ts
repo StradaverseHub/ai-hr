@@ -338,7 +338,7 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
    * pins the legacy CP22A/EA output instead of freezing the entire kernel. reports.ts is held by its
    * own SLICE, found and long; projection leaves by whole file. lib/ea-pdf.ts changed in one comment.
    */
-  it('the EA projection owners are byte-identical to the base commit (eaStatement by slice; PDF code unchanged)', () => {
+  it('the EA financial body and PDF remain byte-identical; Mine only adds its guarded read snapshot', () => {
     const show = (f: string) => execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
     for (const f of ['localization/my/ea-routing.ts', 'localization/my/ea-noncash.ts', 'localization/my/ea-reporting.ts', 'core/payslip-earning-lines.ts']) {
       const now = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -356,7 +356,21 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
     expect(code(reports)).toContain("import { storedComponentLines } from '../../core/payslip-earning-lines';");
     const now = slice(reports);
     expect(now.length).toBeGreaterThan(3000);
-    expect(now).toBe(slice(show('localization/my/reports.ts')));
+    // Board2 adds an own-only availability precondition and repeatable-read snapshot, without
+    // changing a single financial projection byte. Strip ONLY these exact verified additions.
+    const option = `    /** Mine withholds the entire form while any canonical contributing source is unavailable. */
+    selfService?: boolean;
+`;
+    const precondition = `    if(p.selfService) {
+      if(!p.companyId || !ctx.personId)return null;
+      const [available]=await tx.execute(sql\`select app.my_ea_source_available(\${p.employmentId}::uuid,\${p.companyId}::uuid,\${p.year}) as ok\`) as unknown as {ok:boolean}[];
+      if(available?.ok!==true)return null;
+    }
+`;
+    const snapshot = '},p.selfService?{readOnlySnapshot:true}:undefined);';
+    for (const addition of [option, precondition, snapshot]) expect(now.split(addition), addition).toHaveLength(2);
+    const withoutMineBoundary = now.replace(option, '').replace(precondition, '').replace(snapshot, '});');
+    expect(withoutMineBoundary).toBe(slice(show('localization/my/reports.ts')));
     const ea = fs.readFileSync(path.join(ROOT, 'lib/ea-pdf.ts'), 'utf8');
     expect(code(ea).length).toBeGreaterThan(2000);
     expect(code(ea)).toBe(code(show('lib/ea-pdf.ts')));

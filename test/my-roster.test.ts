@@ -257,10 +257,17 @@ describe('6948727a — nobody opens somebody else’s roster by editing the addr
     expect(src, 'the URL cannot name an employment').not.toMatch(/sp\.employmentId|searchParams\.get\(['"]employmentId['"]\)/);
     expect(src, 'nor an employee code').not.toMatch(/sp\.employeeCode|searchParams\.get\(['"]employeeCode['"]\)/);
     expect(src, 'nor a person').not.toMatch(/sp\.personId|searchParams\.get\(['"]personId['"]\)/);
-    // The three parameters it DOES read, named so that a fourth cannot arrive unnoticed.
-    expect(src, 'the query string carries the window and nothing else').toContain(
-      'resolveMyRosterWindow({ view: sp.view, month: sp.month, date: sp.date, today })',
-    );
+    // Board2 adds typed independent Calendar/List coordinates. The shared parser accepts no subject.
+    expect(src).toContain('resolveAttendanceCalendarState(sp, today)');
+    const links = code(read('app/attendance/my-roster/attendance-links.ts'));
+    const from = links.indexOf('export function resolveAttendanceCalendarState(');
+    const end = links.indexOf('export function attendanceCalendarQuery(', from);
+    expect(from).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(from);
+    const parser = links.slice(from, end);
+    expect(parser.length).toBeGreaterThan(500);
+    expect(parser).toContain('resolveMyRosterWindow({');
+    expect(parser).not.toMatch(/input\.(?:employmentId|employeeCode|personId|companyId)/);
+    expect(parser).toContain('parsePageQuery(input)');
     // The read itself takes the SESSION and a pair of dates. No id passes through this call.
     expect(src, 'the session decides whose roster this is').toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to })');
   });

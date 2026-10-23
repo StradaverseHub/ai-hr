@@ -612,7 +612,7 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
     }
   });
 
-  it('the screens render the new states — the picker, the badge and the card’s third state', () => {
+  it('the canonical picker and badge remain while Personnel omits the duplicate summary', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain("t('defaultTableTitle')");
     expect(block).toContain('setLeaveTypeDefaultTemplateAction');
@@ -622,10 +622,11 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
     expect(block).toContain('{scoped && scopedType ? (');
 
     const profile = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(profile).toContain("tScheme('notCovered')");
-    expect(profile).toContain("tScheme('notCoveredHint')");
-    expect(profile).toContain("tScheme('derivedNoteDefault')");
-    expect(profile).toContain("tScheme('viaDefault', { table: r.templateName })");
+    // 39306a9e removes the redundant Personnel Leave summary; the authoritative table picker above
+    // and canonical default/coverage projections tested in this file remain.
+    expect(profile).not.toContain('leaveBalancesCard');
+    expect(profile).not.toContain('schemeUnmatchedNotice');
+    expect(read('app/leave/employee-balances/page.tsx')).toContain('EntitlementRecalcHistory');
 
     // The write reprojects AFTER the transaction has committed — the ordering `setLeaveTypeRules` obeys.
     const actions = read('app/admin/leave/entitlements/templates/actions.ts');

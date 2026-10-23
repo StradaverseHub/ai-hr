@@ -1005,52 +1005,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   };
 
   // ─── the rows this payslip prints ───
-  const earnRows = earningsRowsOf(d, t, rate);
-  // THE FOUR STATUTORY LINES PRINT AT 0.00 AND THAT IS NOT AN OVERSIGHT. The reporter asked for empty
-  // lines to go; they wrote the exception themselves ("unless a particular statutory or payslip
-  // requirement specifically requires a zero-value item to be displayed") and approved its use here in
-  // writing. CLAUDE.md §8: an absent box asserts nothing, `0.00` asserts the money does not exist. "PCB
-  // 0.00" tells the employee no tax was taken this month; a payslip that simply does not mention tax
-  // tells them nothing, and that is the line they read when they file their own return. Do not "tidy"
-  // these four to match the earnings rule — the difference between the two boxes is the point.
-  const dedRows: Row[] = [
-    { label: t.epf, amount: d.epfEmployee },
-    { label: t.socso, amount: d.socsoEmployee },
-    // a96d320c rev 2 — SKBBK IS AN ELECTION, SO TEST THE ELECTION. `> 0` was being asked to mean "this
-    // employee has no SKBBK", which it cannot: it conflated that with "has SKBBK, contributed 0.00 this
-    // run", and on the second of those the zero is the assertion — exactly what the three lines around it
-    // are kept for. The predicate is `core/payslip-skbbk-line.ts`, shared with the three payslip screens
-    // that carried the same defect, and its docblock carries the whole argument (including why the amount
-    // clause can never be dropped: every payslip issued before the stamp answers `null`).
-    ...(payslipSkbbkLineShown(d.socsoSkbbkSubject ?? null, d.socsoSkbbk)
-      ? [{ label: t.skbbk, amount: d.socsoSkbbk }]
-      : []),
-    { label: t.eis, amount: d.eisEmployee },
-    { label: t.pcb, amount: d.pcb },
-    // 970e4143 — the APPLIED instalment, already taken OUT of `d.absence.residual` below so the box adds
-    // up, and 0 (no row) on a slip whose CP38 could not be carved out of its own column. See the field.
-    ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
-    // 3a092cf0 — the zakat line, so the box adds up to the TOTAL DEDUCTIONS it prints. It sits after the
-    // tax lines because that is where it sits on both screens and because that is the order it is
-    // applied in: the §E.5 offset reduces the PCB above it first, and what is charged here is what
-    // survived that. Absent when there is no election, which is every payslip issued before this item.
-    // 3a092cf0 — ONLY on a slip whose stored total actually counts it. `d.zakatCountedInTotal` comes
-    // from the payslip's own stamp (core/payslip-zakat-line.ts). A pre-3a092cf0 document keeps the
-    // shape it has always had: no counted row, and the informational note below still explains the
-    // offset — otherwise the drawn rows would sum ABOVE the TOTAL DEDUCTIONS printed underneath them,
-    // which is the very defect this item exists to remove, inflicted on history.
-    ...(d.zakat > 0 && d.zakatCountedInTotal ? [{ label: t.zakat, amount: d.zakat }] : []),
-    // e2632276 — the unpaid-leave and absence halves, each named and carrying its day count in the row's
-    // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
-    // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
-    ...(d.absence.unpaidLeave
-      ? [{ label: t.unpaidLeaveLine, quantity: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
-      : []),
-    ...(d.absence.absent
-      ? [{ label: t.absentLine, quantity: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
-      : []),
-    ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
-  ];
+  const {earnings:earnRows,deductions:dedRows}=payslipPresentationRows(d,t,rate);
 
   // a96d320c — THE PAY CODE COMES OFF THE EMPLOYEE'S DOCUMENT (site 1 of 2; the other is in
   // `earningsRowsOf`). `sub` carried `l.code`, so every line printed "Petrol card · A0031". The code is
@@ -1463,6 +1418,58 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
  * its OWN total, so bonus itemising while overtime does not (an attendance-derived OT figure has no
  * component line to explain it) is a normal outcome, not a special case.
  */
+/** Canonical presentation rows shared by the PDF and the personal document screen. */
+export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate:(value:number)=>string) {
+  const earnRows = earningsRowsOf(d, t, rate);
+  // THE FOUR STATUTORY LINES PRINT AT 0.00 AND THAT IS NOT AN OVERSIGHT. The reporter asked for empty
+  // lines to go; they wrote the exception themselves ("unless a particular statutory or payslip
+  // requirement specifically requires a zero-value item to be displayed") and approved its use here in
+  // writing. CLAUDE.md §8: an absent box asserts nothing, `0.00` asserts the money does not exist. "PCB
+  // 0.00" tells the employee no tax was taken this month; a payslip that simply does not mention tax
+  // tells them nothing, and that is the line they read when they file their own return. Do not "tidy"
+  // these four to match the earnings rule — the difference between the two boxes is the point.
+  const dedRows: Row[] = [
+    { label: t.epf, amount: d.epfEmployee },
+    { label: t.socso, amount: d.socsoEmployee },
+    // a96d320c rev 2 — SKBBK IS AN ELECTION, SO TEST THE ELECTION. `> 0` was being asked to mean "this
+    // employee has no SKBBK", which it cannot: it conflated that with "has SKBBK, contributed 0.00 this
+    // run", and on the second of those the zero is the assertion — exactly what the three lines around it
+    // are kept for. The predicate is `core/payslip-skbbk-line.ts`, shared with the three payslip screens
+    // that carried the same defect, and its docblock carries the whole argument (including why the amount
+    // clause can never be dropped: every payslip issued before the stamp answers `null`).
+    ...(payslipSkbbkLineShown(d.socsoSkbbkSubject ?? null, d.socsoSkbbk)
+      ? [{ label: t.skbbk, amount: d.socsoSkbbk }]
+      : []),
+    { label: t.eis, amount: d.eisEmployee },
+    { label: t.pcb, amount: d.pcb },
+    // 970e4143 — the APPLIED instalment, already taken OUT of `d.absence.residual` below so the box adds
+    // up, and 0 (no row) on a slip whose CP38 could not be carved out of its own column. See the field.
+    ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
+    // 3a092cf0 — the zakat line, so the box adds up to the TOTAL DEDUCTIONS it prints. It sits after the
+    // tax lines because that is where it sits on both screens and because that is the order it is
+    // applied in: the §E.5 offset reduces the PCB above it first, and what is charged here is what
+    // survived that. Absent when there is no election, which is every payslip issued before this item.
+    // 3a092cf0 — ONLY on a slip whose stored total actually counts it. `d.zakatCountedInTotal` comes
+    // from the payslip's own stamp (core/payslip-zakat-line.ts). A pre-3a092cf0 document keeps the
+    // shape it has always had: no counted row, and the informational note below still explains the
+    // offset — otherwise the drawn rows would sum ABOVE the TOTAL DEDUCTIONS printed underneath them,
+    // which is the very defect this item exists to remove, inflicted on history.
+    ...(d.zakat > 0 && d.zakatCountedInTotal ? [{ label: t.zakat, amount: d.zakat }] : []),
+    // e2632276 — the unpaid-leave and absence halves, each named and carrying its day count in the row's
+    // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
+    // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
+    ...(d.absence.unpaidLeave
+      ? [{ label: t.unpaidLeaveLine, quantity: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
+      : []),
+    ...(d.absence.absent
+      ? [{ label: t.absentLine, quantity: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
+      : []),
+    ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
+  ];
+
+  return {earnings:earnRows,deductions:dedRows};
+}
+
 function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number) => string): Row[] {
   const rows: Row[] = d.basic !== 0 ? [{ label: t.basicSalary, amount: d.basic }] : [];
   /**

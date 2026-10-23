@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 // THROUGH THE PACK FACADE, not `core/tax-relief` directly (ADR-0080 D9/D11), exactly as
 // lib/tp1-form-input.ts does. test/payroll-pack-drift.test.ts fails the build for a new direct import —
 // the allowlist only ever shrinks — and it caught this file on its first run.
-import { Tp1LimitError } from '@/packs/payroll/service';
+import { Tp1LimitError, Tp1ChangedError } from '@/packs/payroll/service';
 
 /**
  * ══ A TP1 LIMIT REFUSAL, SAID IN THE READER'S LANGUAGE (r352, item 0df7dd44) ════════════════════════
@@ -39,6 +39,7 @@ const rm = (n: number) =>
  * "something went wrong". A silent failure on a statutory form is worse than an untranslated true one.
  */
 export async function tp1RefusalMessage(e: unknown): Promise<string> {
+  if(e instanceof Tp1ChangedError)return (await getTranslations('taxRelief'))('changed');
   if (!(e instanceof Tp1LimitError)) return (e as Error).message;
   const t = await getTranslations('taxRelief.limit');
   const b = e.breach;

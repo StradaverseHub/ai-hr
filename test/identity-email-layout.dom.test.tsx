@@ -16,6 +16,10 @@ vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:as
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
+// New capability owners are independent of SMTP installation enrollment and the legacy rail.
+// This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
+vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
+vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
 vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:async()=>[],unreadNotificationCount:async()=>0}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>false,isModuleEnabledOrFalse:()=>false}));

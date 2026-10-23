@@ -38,7 +38,7 @@ vi.mock('next/headers', () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [], has: () => false }),
   headers: async () => new Headers(),
 }));
-vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => session) }));
+vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => session), getScopeIds: vi.fn(async () => session.scopeIds) }));
 vi.mock('@/lib/session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/session')>()),
   getSession: vi.fn(async () => session.s),

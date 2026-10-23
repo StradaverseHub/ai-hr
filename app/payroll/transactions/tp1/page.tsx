@@ -206,11 +206,11 @@ export default async function Tp1DeclarationPage({
     amount: d.tp1Amount.toFixed(2),
     status: d.status,
     versions: d.versions,
-    // "Last saved": a submitted row is stamped at submit; a draft has only its created_at, because
-    // tp1_relief has no updated_at and a draft is UPDATEd in place (core/tax-relief.ts records this).
+    // Submitted rows retain their submission stamp. Draft saves derive their date from the canonical
+    // saved event, with creation time only for older records without that evidence.
     // Formatted HERE, in the tenant timezone — a client-side format would be a day out for anyone whose
     // device clock sits the other side of MYT midnight.
-    lastSaved: myt(d.submittedAt ?? d.createdAt),
+    lastSaved: myt(d.submittedAt ?? d.lastSavedAt ?? d.createdAt),
     // A month-less legacy declaration opens on the month page for January so it stays reachable and
     // printable; its own stored month stays NULL, because opening a record is not editing it.
     href: monthHref(d.assessmentYear, d.deductionMonth ?? 1),

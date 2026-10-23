@@ -4,14 +4,16 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { AttendanceAllowanceEditor } from '../components/attendance-allowance-editor';
-import { emptyAllowanceRules,emptyAllowanceRulesV3 } from '../lib/attendance-allowance-rules';
+import { emptyAllowanceRules,emptyAllowanceRulesV4 } from '../lib/attendance-allowance-rules';
+import type {AllowanceEmployeePageInput} from '../core/attendance-allowance-selection';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
-const { router } = vitest.hoisted(() => ({router: {push: vitest.fn(), refresh: vitest.fn()}}));
+const { router, search } = vitest.hoisted(() => ({router: {push: vitest.fn(), refresh: vitest.fn()},search:vitest.fn()}));
+vitest.mock('../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:search}));
 vitest.mock('next/navigation', () => ({useRouter: () => router, usePathname: () => '/admin/attendance-allowance/create'}));
 const catalogs = {en,ms,ta,th,vi,zh};
 const companyId = '11111111-1111-4111-8111-111111111111';
@@ -24,6 +26,10 @@ const options = {
   businessUnits:[],positions:[],grades:[],categories:[],shifts:[],leaveTypes:[],
   employees:[{id:employeeId,label:'Example employee',companyId,category:null}],
 };
+search.mockImplementation(async({side,included}:AllowanceEmployeePageInput)=>{
+  const visible=side==='included'?included.includes(employeeId):!included.includes(employeeId);
+  return {rows:visible?[{id:employeeId,code:'EX001',name:'Example employee',department:'Finance',businessUnit:null}]:[],total:visible?1:0,unavailable:[]};
+});
 const components = [{id:earningId,code:'ATTENDANCE',name:'Attendance earning',kind:'allowance'},{id:deductionId,code:'ATT_DEDUCT',name:'Attendance deduction',kind:'deduction'}];
 const submit = vitest.fn(async () => ({error:'Synthetic validation refusal'}));
 function mount(locale:keyof typeof catalogs='en',policy?:Parameters<typeof AttendanceAllowanceEditor>[0]['policy'],setup:Parameters<typeof AttendanceAllowanceEditor>[0]['options']=options) {
@@ -108,11 +114,13 @@ describe('four-section allowance editor', () => {
     fireEvent.change(screen.getByLabelText(t.effectiveFrom),{target:{value:'2025-01-01'}});
     await user.selectOptions(screen.getByLabelText(t.earningCode),earningId);
     await user.selectOptions(screen.getByLabelText(t.selection),'selected');
-    await user.selectOptions(screen.getByLabelText(t.employees),employeeId);
+    const available=within(screen.getByRole('region',{name:en.allowanceV4.available}));
+    await user.click(await available.findByRole('checkbox',{name:/Example employee/}));
+    await user.click(screen.getByRole('button',{name:'Include checked (1)'}));
     await user.click(screen.getByRole('button',{name:t.addAttendanceCriterion}));
     await user.selectOptions(screen.getByLabelText(t.operator),'between');
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'9'}});
-    expect(submittedRules()).toMatchObject({v:3,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{expression:{type:'group',children:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}}});
+    expect(submittedRules()).toMatchObject({v:4,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{expression:{type:'group',children:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}}});
     const review=screen.getByRole('checkbox',{name:t.reviewConfirm}),save=screen.getByRole('button',{name:en.allowanceV3.savePreview});
     await user.click(review);expect(save).toBeEnabled();
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'10'}});
@@ -152,7 +160,7 @@ describe('four-section allowance editor', () => {
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(1);
     expect(screen.getByLabelText(t.legacyCriteria.maxAbsentDays)).toHaveValue(0);
     await user.click(screen.getByRole('checkbox',{name:t.convertLegacy}));
-    expect(submittedRules()).toEqual(emptyAllowanceRulesV3());
+    expect(submittedRules()).toEqual(emptyAllowanceRulesV4());
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(3);
     await user.selectOptions(screen.getByLabelText(t.policyType),'deduction');
     const code=screen.getByLabelText(t.deductionCode);

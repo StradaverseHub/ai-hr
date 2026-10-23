@@ -11,9 +11,9 @@ describe('My Profile shared Personnel inventory and actual consumers',()=>{
  it('retains the exact eleven-tab order, canonical labels and a panel for every tab',()=>{
   expect([...ME_TABS]).toEqual(['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others']);
   expect(ESS_PROFILE_TABS).toEqual(['Profile','Family','Employment','Employment History','Attendance','Bank & Statutory','Payroll','Leave','Documents','Qualification','Others']);
-  expect(page).toMatch(/others:\s*<Card\b[^>]*>\s*<Link\s+href="\/me\/performance"/);
+  expect(page).toMatch(/others:tabVisible\('Others'\)\?<Card\b[^>]*>\s*<Link\s+href="\/me\/performance"/);
   for(const key of ME_TABS)expect(ME_TAB_LABEL_KEY[key]).toBe(`tabs.${key}`);
-  expect(page).toContain('<ProfileEditor');expect(editor).toContain('Object.fromEntries(keys.map((key,index)=>');expect(editor).toContain('panels={panels}');expect(editor).toContain('personnelFieldLabel(field,translate)');expect(editor).toContain('personnelFieldChoices(field)');
+  expect(page).toContain('<ProfileEditor');expect(editor).toContain('Object.fromEntries(activeKeys.map(key=>');expect(editor).toContain('panels={panels}');expect(editor).toContain('personnelFieldLabel(field,translate)');expect(editor).toContain('personnelFieldChoices(field)');
  });
  it('accounts for every stable actual Personnel descriptor, including protected/specialist fields, in the written inventory',()=>{
   expect(PERSONNEL_FIELDS.length).toBeGreaterThan(300);expect(new Set(PERSONNEL_FIELDS.map(field=>field.id)).size).toBe(PERSONNEL_FIELDS.length);

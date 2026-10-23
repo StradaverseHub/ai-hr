@@ -268,6 +268,16 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
     expect(MESSAGES.en.me.otStaysOnCalendarHelp).toContain('when it arrives');
     expect(MESSAGES.en.me.otStaysOnCalendarHelp).toContain('You stay on this calendar afterwards.');
   });
+  it('does not name a reporting-line superior as the configured workflow approver', () => {
+    expect(APPLY).toContain('listAttendanceWorkflowSettings(s, [me.companyId])');
+    expect(APPLY).toContain("workflowEnabled ? t('otWorkflowGoesTo')");
+    expect(LIST).toContain('p.assignedApproverNames');
+    expect(MESSAGES.en.me.overtimeRequestHelp).not.toContain('goes to your superior');
+    for (const messages of Object.values(MESSAGES)) {
+      expect(messages.me.otWorkflowGoesTo.trim().length).toBeGreaterThan(0);
+      expect(messages.me.otWorkflowGoesToHelp.trim().length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────

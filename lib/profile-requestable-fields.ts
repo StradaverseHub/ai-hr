@@ -1,5 +1,6 @@
+import {resolveEssVisibleIds} from './personnel-ess-visibility';
 import {PERSONNEL_FIELDS} from './personnel-field-registry';
-import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue} from './profile-edit-policy-value';
+import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,effectiveProfileFieldPermission} from './profile-edit-policy-value';
 /**
  * THE FIELDS AN EMPLOYEE MAY ASK TO CHANGE — ONE DECLARATION, AND EVERY SURFACE READS IT.
  *
@@ -338,7 +339,7 @@ export function resolveAllowedRequestKeys(raw: unknown): ReadonlySet<string> {
   if(Array.isArray(raw))return new Set(raw.filter((key):key is string=>typeof key==='string'&&BY_KEY.has(key)));
   if(!isProfileEditPolicyValue(raw)&&!isProfileVisibilityPolicyValue(raw))return new Set();
   const out=new Set<string>();
-  const ids=isProfileVisibilityPolicyValue(raw)?Object.entries(raw.fields).filter(([,permission])=>permission==='editable').map(([id])=>id):raw.fields;
+  const ids=isProfileVisibilityPolicyValue(raw)?PERSONNEL_FIELDS.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id):raw.fields;
   for(const value of ids){
     const field=PERSONNEL_FIELDS.find(field=>field.id===value&&field.ess.visibility==='visible'&&field.ess.binding&&field.ess.edit==='approval');
     if(field){out.add(field.id);if(field.ess.binding?.legacyKey)out.add(field.ess.binding.legacyKey);}

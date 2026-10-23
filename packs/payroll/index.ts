@@ -137,7 +137,7 @@
  *   `core/payroll` (and `core/read.ts` `payslipReleaseAt` from `core/payroll-policy-config`).
  * - **Cross-module spine readers** (reporting / ESS / offboarding / admin — stay kernel per open
  *   decision 6, consume pack contracts/descriptors later): `core/report-registry.ts`
- *   (`listProcessedPayslipsAcross` from payroll-view), `app/me/actions.ts` (TP1),
+ *   (`listProcessedPayslipsAcross` from payroll-view); the personal TP1 action now consumes the facade,
  *   `app/me/page.tsx` (loans), `app/admin/actions.ts`, `app/admin/organization/page.tsx`.
  * - **Personnel-admin profile surfaces** (payroll config/statutory read on the employment profile):
  *   `app/admin/personnel/{page.tsx,actions.ts}`, `app/admin/personnel/[employmentId]/{page.tsx,actions.ts,cp38-actions.ts}`.

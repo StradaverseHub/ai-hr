@@ -1,3 +1,5 @@
+import {workforceViewScope} from '@/core/workforce-access';
+import {getSession} from '@/lib/session';
 /**
  * Personnel employee-listing export (feedback 579255c3, points 9 & 10) — the currently filtered list as
  * an Excel workbook.
@@ -11,13 +13,13 @@
  *     the shared employeeColumnText the table renders from. Two switch statements is how a file comes to
  *     print a different Position from the screen it was exported off.
  *
- * Admin-gated and READ-ONLY: downloading a report mutates nothing, so no DomainEvent (the
+ * Effective Workforce-view gated and READ-ONLY: downloading a report mutates nothing, so no DomainEvent (the
  * app/leave/employee-records/export/route.ts precedent). Not registered in lib/permissions.ts — the
  * reverse-completeness scan reads page.tsx files only and a route handler has no screen column to
  * describe (the /admin/leave/entitlements/ledger-archive/export precedent).
  */
 import { getTranslations } from 'next-intl/server';
-import { scopedSession } from '@/lib/scope';
+import {getScopeIds} from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listEmployeesPage } from '@/core/read';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
@@ -60,8 +62,10 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
-  const { s: session, scopeIds, allowedCount } = await scopedSession();
-  if (!isAdmin(session)) return new Response('Forbidden', { status: 403 });
+  const session=await getSession();
+  const allowed=await workforceViewScope(session);
+  if(!allowed.canOpen||allowed.companyIds.length===0)return new Response('Forbidden',{status:403});
+  const scopeIds=await getScopeIds(allowed.companyIds),allowedCount=allowed.companyIds.length;
 
   const url = new URL(req.url);
   const sp = url.searchParams;
@@ -96,10 +100,10 @@ export async function GET(req: Request) {
         ...query.filters,
         limit: ROW_CAP,
         offset: 0,
-      });
+      },'workforce');
   // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
   // screen uses. Without it a file exported while viewing one company carried every company's drafts.
-  const drafts = query.draftOnly
+  const drafts = query.draftOnly && isAdmin(session)
     ? (await listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount))).filter((d) =>
         draftMatchesQuery(d, query),
       )

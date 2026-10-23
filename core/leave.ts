@@ -1,3 +1,4 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Leave services. Balance is the signed sum of the append-only leave_ledger
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
@@ -9,8 +10,7 @@ import { randomUUID } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide,assertAssignedWorkPrincipalTx } from './approvals';
-import type {AssignedApprovalMetadata} from '../lib/assigned-work';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -11670,67 +11670,6 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
   });
 }
 
-// ═════════════════════ Festive / one-off leave grant (ADR-0066, Model 3) ═════════════════════
-// A festive grant credits N extra days to EVERY active employee in a chosen (company, leave_type) on a chosen
-// date, with a human reason (e.g. "CNY 2026"). No new table: each grant is one `leaveLedger` `adjustment`
-// (+days) per targeted employment + ONE summary DomainEvent. Festive leave types are expected to live OUTSIDE
-// STANDING_LEAVE_CODES (and, since r299, outside Annual Leave, the only type the earned sweep covers) so the
-// accrual / openLeaveYear / expiry engines never touch them (deliberate — see
-// ADR-0066: this is why festive days escape annual carry-cap/forfeit). Expiry clawback is DEFERRED; `expiresOn`
-// is accepted and stored only as a payload/reason note (no sweep this pass).
-
-
-
-
-
-/** Uncapped assigned-work headers. Step identities and the writer gate establish authority;
- * no application reason, leave amount, type, date span or decision comment is loaded for Home.
- */
-export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- return withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:leaveRequest.createdAt}).from(leaveRequest)
-   .innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
-   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
-  const result:AssignedApprovalMetadata[]=[];
-  for(let offset=0;offset<candidates.length;offset+=1000){
-   const batch=candidates.slice(offset,offset+1000);
-   const steps=await tx.select({requestId:leaveApprovalStep.leaveRequestId,status:leaveApprovalStep.status,
-    kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
-    .from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,batch.map(row=>row.id))).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
-   const chains=new Map<string,typeof steps>();for(const step of steps){const chain=chains.get(step.requestId)??[];chain.push(step);chains.set(step.requestId,chain);}
-   for(const row of batch){
-    const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
-    try{
-     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
-     else await assertCanDecide(tx,ctx,row.employmentId,'leave request',scopeOf('leave.application'));
-    }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
-    result.push(row);
-   }
-  }
-  return result;
- });
-}
-
-export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
-   .innerJoin(employment,and(eq(employment.id,leaveCancellationRequest.employmentId),eq(employment.tenantId,leaveCancellationRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
-   .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
- });
- const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
- return candidates.filter(row=>allowed.has(row.id));
-}
-
 /** Pending decisions the actual current-step writer allows, for an already authorized team subset. */
 export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,requestIds}:{employmentIds:string[];requestIds?:readonly string[]}){
   if(requestIds&&requestIds.length>1000)throw Error('Too many leave decision candidates');
@@ -11761,37 +11700,6 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,reques
     }
     return result;
   });
-}
-
-/** Cancellation inbox eligibility follows the retained current step, including its independent
- * cancellation delegation scope. Viewing a pending cancellation is not authority to decide it. */
-export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:readonly string[]){
- return withTenant(ctx,async tx=>{
-  if(!requestIds.length)return [];
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  const result:string[]=[],ids=[...new Set(requestIds)];
-  for(let offset=0;offset<ids.length;offset+=1000){
-   const requests=await tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId})
-    .from(leaveCancellationRequest).where(and(inArray(leaveCancellationRequest.id,ids.slice(offset,offset+1000)),eq(leaveCancellationRequest.status,'pending')))
-    .orderBy(leaveCancellationRequest.id);
-   if(!requests.length)continue;
-   const steps=await tx.select({id:leaveCancellationStep.id,cancellationRequestId:leaveCancellationStep.cancellationRequestId,stepIndex:leaveCancellationStep.stepIndex,status:leaveCancellationStep.status,approverKind:leaveCancellationStep.approverKind,approverEmploymentId:leaveCancellationStep.approverEmploymentId,approverAlternates:leaveCancellationStep.approverAlternates}).from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
-    .orderBy(asc(leaveCancellationStep.stepIndex),asc(leaveCancellationStep.id));
-   for(const row of requests){
-    const chain=steps.filter(step=>step.cancellationRequestId===row.id),current=chain.find(step=>step.status==='pending');
-    if(chain.length&&!current)continue;
-    try{
-     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.approverKind,'leave cancellation',current.approverEmploymentId,current.approverAlternates,'leave.cancellation');
-     else await assertCanDecide(tx,ctx,row.employmentId,'leave cancellation',scopeOf('leave.cancellation'));
-     result.push(row.id);
-    }catch(error){
-     const normalized=error instanceof Error&&error.constructor===Error?new Error(error.message.replaceAll('leave cancellation','leave request')):error;
-     if(!isLeaveDecisionRefusal(normalized))throw error;
-    }
-   }
-  }
-  return result.sort();
- });
 }
 
 
@@ -11882,4 +11790,81 @@ export async function allowanceLeaveTypesTx(tx:Tx,companyId:string,includeArchiv
  const [co]=await tx.select({country:company.country}).from(company).where(eq(company.id,companyId)).limit(1);
  if(!co)return [];
  return tx.select({id:leaveType.id,label:leaveType.name,archivedAt:leaveType.archivedAt,country:leaveType.country}).from(leaveType).where(and(eq(leaveType.country,co.country),includeArchived?undefined:isNull(leaveType.archivedAt))).orderBy(asc(leaveType.name),asc(leaveType.id));
+}
+
+
+export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:leaveRequest.createdAt}).from(leaveRequest)
+   .innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
+  const result:AssignedApprovalMetadata[]=[];
+  for(let offset=0;offset<candidates.length;offset+=1000){
+   const batch=candidates.slice(offset,offset+1000);
+   const steps=await tx.select({requestId:leaveApprovalStep.leaveRequestId,status:leaveApprovalStep.status,
+    kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
+    .from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,batch.map(row=>row.id))).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
+   const chains=new Map<string,typeof steps>();for(const step of steps){const chain=chains.get(step.requestId)??[];chain.push(step);chains.set(step.requestId,chain);}
+   for(const row of batch){
+    const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
+    try{
+     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
+     else await assertCanDecide(tx,ctx,row.employmentId,'leave request',scopeOf('leave.application'));
+    }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
+    result.push(row);
+   }
+  }
+  return result;
+ });
+}
+
+
+export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:employment.personId,
+   employee:person.fullName,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
+   .innerJoin(employment,and(eq(employment.id,leaveCancellationRequest.employmentId),eq(employment.tenantId,leaveCancellationRequest.tenantId)))
+   .leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
+ });
+ const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
+
+export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:readonly string[]){
+ return withTenant(ctx,async tx=>{
+  if(!requestIds.length)return [];
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const result:string[]=[],ids=[...new Set(requestIds)];
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const requests=await tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId})
+    .from(leaveCancellationRequest).where(and(inArray(leaveCancellationRequest.id,ids.slice(offset,offset+1000)),eq(leaveCancellationRequest.status,'pending')))
+    .orderBy(leaveCancellationRequest.id);
+   if(!requests.length)continue;
+   const steps=await tx.select({id:leaveCancellationStep.id,cancellationRequestId:leaveCancellationStep.cancellationRequestId,stepIndex:leaveCancellationStep.stepIndex,status:leaveCancellationStep.status,approverKind:leaveCancellationStep.approverKind,approverEmploymentId:leaveCancellationStep.approverEmploymentId,approverAlternates:leaveCancellationStep.approverAlternates}).from(leaveCancellationStep).where(inArray(leaveCancellationStep.cancellationRequestId,requests.map(row=>row.id)))
+    .orderBy(asc(leaveCancellationStep.stepIndex),asc(leaveCancellationStep.id));
+   for(const row of requests){
+    const chain=steps.filter(step=>step.cancellationRequestId===row.id),current=chain.find(step=>step.status==='pending');
+    if(chain.length&&!current)continue;
+    try{
+     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.approverKind,'leave cancellation',current.approverEmploymentId,current.approverAlternates,'leave.cancellation');
+     else await assertCanDecide(tx,ctx,row.employmentId,'leave cancellation',scopeOf('leave.cancellation'));
+     result.push(row.id);
+    }catch(error){
+     const normalized=error instanceof Error&&error.constructor===Error?new Error(error.message.replaceAll('leave cancellation','leave request')):error;
+     if(!isLeaveDecisionRefusal(normalized))throw error;
+    }
+   }
+  }
+  return result.sort();
+ });
 }

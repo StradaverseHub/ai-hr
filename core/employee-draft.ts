@@ -1,3 +1,6 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertWorkforceCompanyTx} from './workforce-access';
+import {hireEmployee,setEmploymentInfo} from './workforce-commands';
 /**
  * Create New Employee — drafts (item 6d671f44, reshaped by 06f0cb8f).
  *
@@ -50,10 +53,8 @@ import { appendEvent, actorOf } from '../db/events';
 // r393 (685d2380 step 2) — Payment Method lands through the writer the Personnel record's own select saves
 // through (`setEmploymentPaymentMethod`), and Bank Transfer is refused with the same typed error it throws.
 import {
-  hireEmployee,
   MissingBankForTransferError,
   PersonProfileCatalogError,
-  setEmploymentInfo,
   setEmploymentPaymentMethod,
   updatePerson,
 } from './org';
@@ -67,7 +68,7 @@ import { customHolderGaps, IncompleteCustomHolderError } from '../lib/custom-hol
 // drift ratchet, test/payroll-pack-drift.test.ts): never the policy implementation module directly.
 import { assignPolicy, getPolicy } from '../packs/payroll/service';
 import { issueLegacyEmployeeCode, setCompensation } from './comp';
-import { setPersonComplianceFields } from './profile';
+import { setPersonComplianceFields } from './workforce-commands';
 import { listLeaveTypes } from './read';
 import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employee-id-config';
 // 06f0cb8f — "is this Employee ID free?" spans employment AND employee_draft now. One definition, in its
@@ -393,6 +394,7 @@ export async function saveEmployeeDraft(
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
     const data =
@@ -537,6 +539,8 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     let code: string;
     let configId: string | null = null;
     let number: number | null = null;
@@ -756,6 +760,7 @@ export async function completeEmployeeDraft(
 }
 
 async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promise<{employmentId:string}> {
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
   if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
   const data=activationData(draft.data);

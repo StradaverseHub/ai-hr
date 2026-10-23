@@ -1,3 +1,4 @@
+import {assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {personnelOperationalValues,PERSONNEL_OPERATIONAL_FIELDS,type PersonnelOperationalPatch} from '../lib/personnel-operational-import';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
 import {assertCardIdFree} from './attendance-card';
@@ -11,7 +12,7 @@ import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
-import { setPersonComplianceFields } from './profile';
+import { setPersonComplianceFields } from './workforce-commands';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *
@@ -933,6 +934,8 @@ export async function commitSectionImport(
     let step: WriteStep = 'person';
     try {
       const wrote=await withTenant(ctx,async tx=>{
+      await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
+      await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
       step = 'person';
       // Lock shared records before carrying forward absent cells. Preview snapshots never supply
       // values for blank columns at apply time; a concurrent unrelated edit must survive.

@@ -37,7 +37,7 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 /** Unknown destinations remain explicit so source/coverage checks can refuse incomplete placement. */
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
-  if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief')return modulePlacement('payroll','mine');
+  if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
   if(shared.has(path))return {area:'shared'};
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path))return modulePlacement('people','config');

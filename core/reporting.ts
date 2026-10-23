@@ -68,6 +68,7 @@ import type { Cp21PayLine, Cp21PdfData } from '../lib/cp21-pdf';
 // from the screen they already configure every other high-risk payroll authority from.
 import { daysInMonth, resolvePayrollPermission } from './payroll';
 
+import { assertModuleGate } from './module-gate';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 async function companyCountry(ctx: SessionContext, companyId: string): Promise<string | null> {
@@ -806,6 +807,30 @@ export async function employeeEaStatement(
   const pack = packFor(country);
   if (!pack) return null;
   return pack.eaStatement(ctx, p);
+}
+
+export type MyEaSource = {
+  employmentId:string;employeeCode:string|null;companyId:string;company:string;country:string|null;
+  year:string;available:boolean;isCurrent:boolean;
+};
+/** Eligibility metadata is own-only even for administrators; unreleased amounts never leave SQL. */
+export function myEaSources(ctx:SessionContext):Promise<MyEaSource[]> {
+  assertModuleGate(ctx,'payroll');
+  if(!ctx.personId)return Promise.resolve([]);
+  return withTenant(ctx,async tx=>await tx.execute(sql`select employment_id as "employmentId",employee_code as "employeeCode",company_id as "companyId",company,country,year,available,is_current as "isCurrent" from app.my_ea_source_options() where app.is_self_person(${ctx.personId}::uuid) order by year desc,company,employment_id,company_id`) as unknown as MyEaSource[]);
+}
+/** A distinct Mine seam never falls through to payroll-staff-or-self authorization. */
+export async function myEaStatement(ctx:SessionContext,p:{employmentId:string;year:string;companyId?:string}):Promise<EaStatement|null> {
+  assertModuleGate(ctx,'payroll');
+  const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+  if(!ctx.personId||!uuid.test(p.employmentId)||!/^\d{4}$/.test(p.year)||p.companyId&&!uuid.test(p.companyId))return null;
+  const own=(await myEaSources(ctx)).filter(row=>row.employmentId===p.employmentId&&row.year===p.year&&(!p.companyId||row.companyId===p.companyId));
+  const selected=own.find(row=>row.isCurrent)??own[0];
+  if(!selected?.available)return null;
+  const pack=packFor(selected.country);
+  if(!pack?.selfServiceEaStatement)return null;
+  // The jurisdiction implementation rechecks eligibility within its canonical repeatable-read model.
+  return pack.selfServiceEaStatement(ctx,{employmentId:selected.employmentId,companyId:selected.companyId,year:p.year});
 }
 
 /**

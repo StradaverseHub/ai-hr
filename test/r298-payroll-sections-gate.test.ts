@@ -51,7 +51,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useSearchParams: () => new URLSearchParams(),
 }));
-vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => session) }));
+vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => session), getScopeIds: vi.fn(async () => session.scopeIds) }));
 vi.mock('@/lib/session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/session')>()),
   getSession: vi.fn(async () => session.s),

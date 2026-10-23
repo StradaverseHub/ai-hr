@@ -12,6 +12,7 @@ import { listPendingInvitations } from '@/core/auth';
 import { adminCompanies, listCompanies, listEmployees } from '@/core/read';
 import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { FunctionAccessGrid } from '@/components/function-access-grid';
+import Link from 'next/link';
 import { type Role, type ScreenEntry } from '@/lib/permissions';
 import { archiveUserAction, assignRoleAction, inviteUserAction, revokeInvitationAction, revokeRoleAction, setAssistantGrantAction } from '../actions';
 
@@ -59,6 +60,7 @@ export default async function UsersPage({
   searchParams: Promise<{ error?: string; archived?: string; manualError?:string; manualSuccess?:string; activate?:string }>;
 }) {
   const t = await getTranslations('admin.users');
+  const accessT=await getTranslations('accessConfiguration');
   // Registry column labels use complete keys across nav, admin and installed modules.
   const tAll = await getTranslations();
   const s = await requireAdmin();
@@ -166,6 +168,7 @@ export default async function UsersPage({
         />
       </div>
       <ErrorBanner message={error} />
+      <Link href="/admin/users/access" className={btnGhost}>{accessT('title')}</Link>
       <ErrorBanner message={setupError?t(`manual.errors.${setupError}`):undefined}/>
       {['created','cancelled'].includes(manualSuccess??'')&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{t(`manual.success.${manualSuccess as 'created'|'cancelled'}`)}</p>}
 

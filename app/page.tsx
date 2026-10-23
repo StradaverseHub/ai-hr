@@ -397,7 +397,7 @@ export default async function DashboardPage({
       ) : (
         <ul className="mt-4 space-y-3">
           {events.map((e) => (
-            <li key={e.date} className="flex items-center gap-3">
+            <li key={e.id} className="flex items-center gap-3">
               <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl border border-border bg-muted/50 leading-none">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {monthAbbr(e.date)}

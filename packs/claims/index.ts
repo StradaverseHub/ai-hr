@@ -40,10 +40,12 @@
  * cross-module consumer that becomes a narrow KERNEL CONTRACT at a later rung. They are
  * allowlisted in the ratchet until that contract exists; the list only shrinks.
  *
- * - `app/approvals/{page,actions}.ts` — the approvals inbox lists
+ * - `app/approvals/{page,actions}.ts` — the full approvals workspace lists
  *   (`listPendingClaims`) and decides (`decideClaim`) claims. Cross-module approvals substrate is
  *   KERNEL (ADR-0080 open decision 6); needs an approvals contract, not the pack facade. Same
  *   disposition as the identical attendance-corrections entries at rung 2.
+ *   The shared shell inbox now reads only assigned-work metadata through this pack's service facade;
+ *   its canonical decision owner stays in the Claims pack, and that direct-import debt entry is removed.
  * - `core/report-registry.ts` — the report builder reads the claim-type catalog
  *   (`listClaimTypes`). Cross-module readers stay kernel (open decision 6); they should consume
  *   pack report descriptors/contracts, defined when the reporting seam is cut.

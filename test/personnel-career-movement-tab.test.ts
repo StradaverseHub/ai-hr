@@ -86,7 +86,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('exposes the New Event entry point (hidden once terminated) and the key columns', () => {
     expect(PAGE.includes("t('movement.newEvent')")).toBe(true);
-    expect(PAGE.includes('const canCreateMovement = admin && !emp.terminatedOn;')).toBe(true);
+    expect(PAGE.includes('const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;')).toBe(true);
     for (const col of ['eventType', 'effectiveDate', 'endDate', 'remarks', 'action']) {
       expect(PAGE.includes(`t('movement.columns.${col}')`), `missing column ${col}`).toBe(true);
     }

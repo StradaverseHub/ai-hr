@@ -473,7 +473,9 @@ export default async function SelfOvertimePage({
                             {p.remark && <span className="block text-[11px] italic text-muted-foreground">{p.remark}</span>}
                           </td>
                           {/* ⚠️ ONLY WHILE IT IS STILL TRUE — see the header. */}
-                          <td className="px-3 py-2 text-muted-foreground">{p.status === 'pending' ? approver : '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{p.status === 'pending'
+                            ? p.assignedApproverNames == null ? approver : p.assignedApproverNames.join(' / ') || t('otWorkflowGoesTo')
+                            : '—'}</td>
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {todayInKualaLumpur(p.createdAt)}
                           </td>

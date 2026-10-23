@@ -89,7 +89,8 @@ describe('V3.1 onboarding database and authorization', () => {
         await owner.db.update(schema.employeeDraft).set({data,updatedAt:new Date(Date.now()+1000)}).where(eq(schema.employeeDraft.id,saved.id));
         const [baseline] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Draft predating setup',data:{profile:{fullName:'Draft predating setup'},employment:{companyId:b.companyId}},currentStep:1}).returning();
         const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
-        await refreshOnboardingPersonnel(system);
+        await expect(refreshOnboardingPersonnel(system)).rejects.toThrow('Scheduled Personnel synchronisation requires the storage owner.');
+        await refreshOnboardingPersonnel(system,owner.withTenant);
         const all = await onboardingList(admin);
         const row = all.find(row => row.case.sourceDraftId === saved.id)!;
         expect(row.case.source.fullName).toBe(data.profile.fullName);
@@ -106,7 +107,7 @@ describe('V3.1 onboarding database and authorization', () => {
         const [stored] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Existing baseline draft',data:{profile:{fullName:'Existing baseline draft'},employment:{companyId:b.companyId}},currentStep:1}).returning();
         const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
         const attempts = await Promise.allSettled([
-            refreshOnboardingPersonnel(system),
+            refreshOnboardingPersonnel(system,owner.withTenant),
             saveEmployeeDraft(admin,{id:stored!.id,data:{profile:{fullName:'Latest concurrent Personnel name'},employment:{companyId:b.companyId}},currentStep:1})
         ]);
         expect(attempts.map(result => result.status)).toEqual(['fulfilled','fulfilled']);
@@ -131,18 +132,21 @@ describe('V3.1 onboarding database and authorization', () => {
             await onboardingSyncDraftTx(admin, tx, stored!.id, 'save');
         });
         await Promise.race([holding, save]);
-        const backfill = refreshOnboardingPersonnel(system);
+        const backfill = refreshOnboardingPersonnel(system,owner.withTenant);
         // Wait until the backfill is actually blocked on an advisory lock, so the save resumes into the
         // contested window every time rather than on a lucky schedule.
-        const deadline = Date.now() + 10_000;
-        for (;;) {
-            const [{ n }] = await owner.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())`) as unknown as { n: number }[];
-            if (n > 0) break;
-            if (Date.now() > deadline) throw new Error('the backfill never queued on an advisory lock; the interleaving was not reached');
-            await new Promise(resolve => setTimeout(resolve, 25));
-        }
-        proceed();
+        let observationError:unknown;
+        try {
+            const deadline = Date.now() + 10_000;
+            for (;;) {
+                const [{ n }] = await owner.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())`) as unknown as { n: number }[];
+                if (n > 0) break;
+                if (Date.now() > deadline) throw new Error('the backfill never queued on an advisory lock; the interleaving was not reached');
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+        } catch(error){observationError=error;} finally {proceed();}
         const attempts = await Promise.allSettled([save, backfill]);
+        if(observationError)throw observationError;
         expect(attempts.map(result => result.status === 'rejected' ? String((result.reason as Error)?.cause ?? result.reason) : 'fulfilled')).toEqual(['fulfilled','fulfilled']);
         expect((await onboardingList(admin)).filter(row => row.case.sourceDraftId === stored!.id)).toHaveLength(1);
     });

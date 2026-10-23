@@ -45,6 +45,7 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
 import {
@@ -1083,11 +1084,12 @@ export async function cancelOwnReplacementLeaveRequest(
   const personId = ctx.personId;
   if (!personId || !/^[0-9a-f-]{36}$/i.test(p.requestId)) throw notFound();
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw notFound();
     const [req] = await tx
       .select({ id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId })
       .from(replacementLeaveRequest)
       .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
-      .where(and(eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
+      .where(and(ownPersonPredicate(ctx),eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
       .limit(1);
     if (!req) throw notFound();
     if (req.status !== 'pending') {
@@ -1098,6 +1100,7 @@ export async function cancelOwnReplacementLeaveRequest(
       .set({ status: 'cancelled', updatedAt: new Date() })
       .where(
         and(
+          ownPersonPredicate(ctx),
           eq(replacementLeaveRequest.id, req.id),
           eq(replacementLeaveRequest.employmentId, req.employmentId),
           eq(replacementLeaveRequest.status, 'pending'),
@@ -1212,10 +1215,36 @@ export type ReplacementClaimLineView = {
   eligibleMinutes: number | null;
 };
 
-/** Exact assigned-work metadata. Preserve the existing public task DTO while reading no request
- * reason/unit/amount/date lines and applying the same decision gate as the canonical writer.
- * Rejection remains possible after module lapse; displaying a task never grants a credit.
- */
+// The full review page loads priced detail; assigned-work metadata has its own bounded projection.
+function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId?:string }) {
+  return tx
+      .select({
+        id: replacementLeaveRequest.id,
+        employmentId: replacementLeaveRequest.employmentId,
+        personId: employment.personId,
+        employee: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
+        unit: replacementLeaveRequest.unit,
+        totalDays: replacementLeaveRequest.totalDays,
+        totalHours: replacementLeaveRequest.totalHours,
+        submittedOn: replacementLeaveRequest.submittedOn,
+        createdAt: replacementLeaveRequest.createdAt,
+        reason: replacementLeaveRequest.reason,
+      })
+      .from(replacementLeaveRequest)
+      .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(replacementLeaveRequest.status, 'pending'),
+          opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
+          opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds),
+        ),
+      )
+      .orderBy(desc(replacementLeaveRequest.createdAt))
+      .limit(200);
+}
+
 export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
@@ -1242,32 +1271,7 @@ export async function listPendingReplacementLeaveRequests(
   opts: { companyIds?: string[];requestId?:string } = {},
 ): Promise<PendingReplacementRequestRow[]> {
   const pending=await withTenant(ctx, async (tx) => {
-    const heads = await tx
-      .select({
-        id: replacementLeaveRequest.id,
-        employmentId: replacementLeaveRequest.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
-        unit: replacementLeaveRequest.unit,
-        totalDays: replacementLeaveRequest.totalDays,
-        totalHours: replacementLeaveRequest.totalHours,
-        submittedOn: replacementLeaveRequest.submittedOn,
-        createdAt: replacementLeaveRequest.createdAt,
-        reason: replacementLeaveRequest.reason,
-      })
-      .from(replacementLeaveRequest)
-      .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          eq(replacementLeaveRequest.status, 'pending'),
-          opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
-          opts.companyIds && opts.companyIds.length ? inArray(employment.companyId, opts.companyIds) : undefined,
-        ),
-      )
-      .orderBy(desc(replacementLeaveRequest.createdAt))
-      .limit(200);
+    const heads = await pendingReplacementHeads(tx, opts);
     if (heads.length === 0) return [];
     const lines = await tx
       .select()

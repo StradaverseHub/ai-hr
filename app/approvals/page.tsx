@@ -170,30 +170,24 @@ export default async function ApprovalsPage({
   searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[] }>;
 }) {
   const { s, scopeIds } = await scopedSession();
-  const admin = isAdmin(s);
-  const manager = (s.roles ?? []).includes('manager');
-  const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
-  const claimsOn = isModuleEnabledOrFalse(s, 'claims');
+  const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
+  const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
   const {error,sort:sortParam,category:categoryParam,task,requestId}=await searchParams;
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
   if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
   const include=(kind:AssignedApprovalKind)=>focus===null||focus.kind===kind;
   const focusedId=(kind:AssignedApprovalKind)=>focus?.kind===kind?focus.id:undefined;
-  // A proven account assignment may be outside the active company UX filter. The single-record
-  // reader keeps RLS and its original owner guards; the selector never grants company/Personnel access.
+  // Exact current assignment may sit outside the selected company UX filter. RLS and the
+  // existing full reader remain authoritative; a URL cannot supply an assignment.
   const queueScope=focus?undefined:scopeIds;
-  // Entry follows real current assignments. This never manufactures a Manager role or widens a queue;
-  // all reads and decisions below retain their own authority. Attendance-only participants keep their
-  // existing narrow presentation when they have no other kind of assigned action.
-  const [rewardReviews, assignedAttendance, assignedTasks] = await Promise.all([
-    !focus&&isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
-    focus?Promise.resolve(focus.kind==='attendance'):attendanceOn ? hasPendingAttendanceParticipantAssignment(s) : Promise.resolve(false),
-    !focus&&!admin && !manager ? listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}) : Promise.resolve([]),
+  const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
+    !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
+    focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}):Promise.resolve([]),
   ]);
-  if (!focus&&!admin && !manager && !rewardReviews.length && !assignedAttendance && !assignedTasks.length) redirect('/');
-  const attendanceOnly = !admin && !manager && !rewardReviews.length && assignedAttendance && assignedTasks.every(task=>task.kind==='attendance');
-
+  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
@@ -237,6 +231,7 @@ export default async function ApprovalsPage({
     name_desc: t('sortNameDesc'),
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
+
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
@@ -259,7 +254,7 @@ export default async function ApprovalsPage({
     claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims(s,{requestId:focusedId('claim')}) : Promise.resolve([]),
     admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
   ]);
-  const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== s.personId) : loadedCorrections;
+  const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
@@ -272,7 +267,7 @@ export default async function ApprovalsPage({
         s,
         corrections
           .filter(isOvertimeCorrection)
-          .filter(c => c.workflow?.routingVersion !== 3 || admin || manager)
+          .filter(c => (c.workflow?.routingVersion !== 3 && c.workflow?.routingVersion !== 4) || admin || manager)
           .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
       )
     : new Map<string, PlanOtDayType>();
@@ -283,10 +278,10 @@ export default async function ApprovalsPage({
   // Employment-review queues (0110): the manager stage (assigned to the caller's own employment, even
   // without the `manager` platform role) + the HR stage (admin-only).
   const tReview = await getTranslations('review');
-  const own = !focus&&!attendanceOnly && s.personId ? await myOwnEmploymentSubjects(s,{profileEdit:true}) : [];
-  const [managerReviews, hrReviews] = await Promise.all([
+  const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects(s,{profileEdit:true}):[];
+  const [managerReviews,hrReviews]=await Promise.all([
     focus?.kind==='managerReview'?listReviews(s,{status:'pending_manager',requestId:focus.id}):Promise.all(own.map(subject=>pendingManagerReviewsFor(s,subject.employmentId))).then(rows=>[...new Map(rows.flat().map(row=>[row.id,row])).values()]),
-    admin&&include('hrReview') ? listReviews(s, { status: 'pending_hr',requestId:focusedId('hrReview') }) : Promise.resolve([]),
+    admin&&include('hrReview')?listReviews(s,{status:'pending_hr',requestId:focusedId('hrReview')}):Promise.resolve([]),
   ]);
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
@@ -1076,7 +1071,7 @@ export default async function ApprovalsPage({
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
                       disabled={mine(c.personId) || c.canDecide === false}
-                      remarksLabel={(c.workflow?.routingVersion === 2 || c.workflow?.routingVersion === 3) ? tHistory('remarks') : undefined}
+                      remarksLabel={(c.workflow?.routingVersion === 2 || (c.workflow?.routingVersion === 3 || c.workflow?.routingVersion === 4)) ? tHistory('remarks') : undefined}
                       labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />

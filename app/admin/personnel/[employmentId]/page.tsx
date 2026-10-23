@@ -1,3 +1,4 @@
+import {workforceEmploymentAccess} from '@/core/workforce-access';
 import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
@@ -7,9 +8,10 @@ import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-// c002b3c3 — `scopedAdmin` is `requireAdmin` PLUS the active company context. Same admin gate as before
-// (it redirects non-admins identically); the scope ids are what the Search Employee box is narrowed to.
-import { scopedAdmin } from '@/lib/scope';
+// Workforce scope is purpose-bound. New view-only grants enter the bounded read composition;
+// legacy HR detail and specialized private owners retain their existing role/scope floors.
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
+import {WorkforceScopedRecord} from './workforce-record';
 import {
   adminCompanies,
   assignmentHistory,
@@ -18,9 +20,8 @@ import {
   employeeAudit,
   employeeDetail,
   employmentCompanyEditable,
-  leaveRequestsFor,
   listDepartments,
-  listEmployees,
+  listWorkforcePickOptions,
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
@@ -30,12 +31,6 @@ import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHea
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { PhotoLightbox } from './photo-lightbox';
-// 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
-// already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
-import { benefitSchemeView } from '@/core/entitlement-scheme-view';
-// 6aee1d91 fix pass (m3) — the card's two links to the Leave types screen resolve through the module's one
-// list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
-import { leaveConfigScreenHref } from '@/components/leave-config-map';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
@@ -187,23 +182,6 @@ import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-a
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
-const LEAVE_STATUS: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  rejected: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  cancelled: 'bg-muted text-muted-foreground',
-  // R17 600be8ac ask #4: derived "Partially approved" display (approved request with some dates rejected).
-  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-};
-
-function LeaveStatus({ status, label }: { status: string; label: string }) {
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LEAVE_STATUS[status] ?? ''}`}>
-      {label}
-    </span>
-  );
-}
-
 export default async function EmployeePage({
   params,
   searchParams,
@@ -240,9 +218,16 @@ export default async function EmployeePage({
     // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
     companyChange?: string;
     incentiveError?: string;
+    workforceCode?:string;
+    workforceEdit?:string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
+  const {s,scopeIds}=await requireWorkforceAccess();
+  const { employmentId } = await params;
+  // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(employmentId)) notFound();
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -274,7 +259,6 @@ export default async function EmployeePage({
    * TP3 and the zakat summary read the country statutory profile, and leave encashment is Leave's.
    */
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
-  const { employmentId } = await params;
   // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
@@ -290,7 +274,6 @@ export default async function EmployeePage({
     error,
     from,
     cp38Error,
-    asOf: spAsOf,
     encashmentError,
     tab,
     movement: spMovement,
@@ -324,11 +307,10 @@ export default async function EmployeePage({
   // and it is what refuses a well-formed id belonging to a company outside the session's scope. This
   // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(employmentId)) notFound();
-
-  const emp = await employeeDetail(s, employmentId);
-  if (!emp) notFound();
+  const emp = await employeeDetail(s,employmentId,'workforce');
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
+  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const tAccess=await getTranslations('accessConfiguration');
   const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -356,21 +338,17 @@ export default async function EmployeePage({
   // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
-  const [history, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
+  const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
-    leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
     // the Organisation Assignment department select and the MovementNewEvent departments prop.
     listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
-    listEmployees(s),
+    listWorkforcePickOptions(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
   ]);
-  // The retained Benefit Scheme readout keeps its dated source; balances are read in Leave Inquiry.
-  const schemeAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
-  const scheme = admin ? await benefitSchemeView(s, employmentId, schemeAsOf) : null;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -533,11 +511,11 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
-  // c002b3c3 — Search Employee. NO NEW READ: this is the `listEmployees(s)` set already loaded above for
+  // c002b3c3 — Search Employee. NO NEW READ: this is the `listWorkforcePickOptions(s)` set already loaded above for
   // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
   // (1) The search cannot be broader than what this page may already see, because it is literally the
   // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
-  // the next request re-runs `employeeDetail(s, employmentId)` at the top of this file, which returns
+  // the next request re-runs `employeeDetail(s,employmentId,'workforce')` at the top of this file, which returns
   // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
   // and an id typed straight into the address bar is refused exactly as it was before this box existed.
   // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
@@ -893,9 +871,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
             {emergencyDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {emergencyContacts.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('emergency.none')}</p>
@@ -935,7 +913,8 @@ export default async function EmployeePage({
                         >
                           {emergencyViewBody(c)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('emergency.edit')}
                           triggerVariant="outline"
                           title={t('emergency.editTitle')}
@@ -957,6 +936,7 @@ export default async function EmployeePage({
                             {t('emergency.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -1028,7 +1008,7 @@ export default async function EmployeePage({
           alone. The action stays because it is still where each writer is wired to its card and because a
           <form> with no action would POST to the current URL. What each card loses is its own Save button,
           and it gains data-save-section so the scope can pack it. */}
-      <TabSaveScope
+      <fieldset disabled={!canMaintainWorkforce} className="min-w-0"><TabSaveScope
         tabKey="profile"
         identity={{ employmentId: emp.employmentId }}
         saveAction={saveProfileTabAction}
@@ -1236,7 +1216,7 @@ export default async function EmployeePage({
           </div>
         </form>
       </Card>
-      </TabSaveScope>
+      </TabSaveScope></fieldset>
 
       {/* Bucket (b): adding, editing or deleting an emergency contact is a record in a register — choosing a
           new Primary demotes the previous holder — so it keeps its own buttons and its own confirmations,
@@ -1985,9 +1965,9 @@ export default async function EmployeePage({
   const familyMembersSection = (
     <section className="border-t border-border">
       <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-        <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+        {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
           {dialogForm(null)}
-        </FamilyFormDialog>
+        </FamilyFormDialog> : null}
       </div>
       {familyMembers.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.none')}</p>
@@ -2043,7 +2023,8 @@ export default async function EmployeePage({
                       >
                         {viewDialogBody(d)}
                       </FamilyFormDialog>
-                      <FamilyFormDialog
+                      {canMaintainWorkforce ? <>
+<FamilyFormDialog
                         triggerLabel={t('family.edit')}
                         triggerVariant="outline"
                         title={t('family.editFamilyTitle')}
@@ -2066,6 +2047,7 @@ export default async function EmployeePage({
                           {t('family.delete')}
                         </ConfirmSubmit>
                       </form>
+</> : null}
                     </div>
                   </td>
                 </tr>
@@ -2185,9 +2167,9 @@ export default async function EmployeePage({
       <SectionHeader title={t('qualification.title')} count={qualifications.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
             {qualificationDialogForm(null)}
-          </FamilyFormDialog>
+          </FamilyFormDialog> : null}
         </div>
         {qualifications.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
@@ -2223,7 +2205,8 @@ export default async function EmployeePage({
                         >
                           {qualificationViewBody(q)}
                         </FamilyFormDialog>
-                        <FamilyFormDialog
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
                           triggerLabel={t('qualification.edit')}
                           triggerVariant="outline"
                           title={t('qualification.editTitle')}
@@ -2245,6 +2228,7 @@ export default async function EmployeePage({
                             {t('qualification.delete')}
                           </ConfirmSubmit>
                         </form>
+</> : null}
                       </div>
                     </td>
                   </tr>
@@ -2449,170 +2433,6 @@ export default async function EmployeePage({
             </Link>
           </p>
         </div>
-      </div>
-    </Card>
-  ) : null;
-
-  // 4da751c6 — BENEFIT SCHEME + EFFECTIVE FROM, above the balances so the name reads before the numbers
-  // it explains. Everything here is DERIVED at read time (core/entitlement-scheme-view.ts): the scheme is
-  // the winning eligibility rule the entitlement engine itself chose, not a stored field, because a stored
-  // name can silently disagree with the rules that compute the days.
-  //
-  // ⚠️ THE AMBIGUOUS STATE IS NOT AN EDGE CASE TO TIDY AWAY — IT IS PROMISED TO THE REPORTER. Eligibility
-  // is per leave type, and grade groups are an APPLICATOR over gradeIds rather than a stored link, so an
-  // employee can legitimately be picked up by different rules for different types. The approved plan says
-  // in that case we "say so plainly and list what applies per leave type, rather than inventing a name".
-  // Do not replace this with a best guess.
-  const tScheme = await getTranslations('admin.personnel.benefitScheme');
-  /**
-   * 9e2a89e9 — WHEN A GRADE CHANGE LANDS ON NOBODY'S TABLE, SAY SO.
-   *
-   * The engine already refuses to invent a figure nobody configured — it skips the leave type rather than
-   * clawing it to 0 ("NO OPINION IS NOT ZERO", core/leave.ts). What was missing is anybody being told.
-   * Rendered in BOTH states of the card below, because the state it matters most in is the one where some
-   * leave types resolved and others silently did not.
-   */
-  const schemeUnmatchedNotice =
-    scheme && scheme.unmatched.length > 0 ? (
-      <p
-        role="note"
-        data-testid="benefit-scheme-unmatched"
-        className="mt-3 rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-      >
-        {tScheme('unmatchedWarning', { types: scheme.unmatched.map((u) => u.leaveTypeName).join(', ') })}
-        {/* The commonest cause by far, and one no configuration change fixes: 47 of 74 active employments
-            on production have no job grade recorded at all. Said only when it is true of this person. */}
-        {scheme.noJobGrade ? <span className="mt-1 block">{tScheme('unmatchedNoGrade')}</span> : null}
-      </p>
-    ) : null;
-
-  const benefitSchemeCard = scheme ? (
-    <Card id="section-benefit-scheme">
-      <SectionHeader title={tScheme('title')} />
-      <div className="p-4">
-        {scheme.perType.length === 0 ? (
-          <>
-            <p className="text-sm text-muted-foreground">{tScheme('empty')}</p>
-            {/* 6aee1d91 — SAY THAT THERE IS NOTHING TO SET HERE. The reporter read this read-only card as a
-                setting they had already configured; the note names where the scheme comes from and what
-                to change instead. Two states, two sentences (see the approved picture). */}
-            <p
-              role="note"
-              data-testid="benefit-scheme-derived-note"
-              className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
-            >
-              {tScheme('derivedNoteEmpty')}
-            </p>
-            {schemeUnmatchedNotice}
-            <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs">
-              <Link
-                href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
-                className="text-primary hover:underline"
-              >
-                {tScheme('changeGrade')}
-              </Link>
-              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
-                {tScheme('setUpSchemes')}
-              </Link>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <div className="text-xs text-muted-foreground">{tScheme('title')}</div>
-                {/* 76ffdcf2 — THREE STATES, NOT TWO. `none` means the winning schemes DISAGREE across
-                    leave types, which is a real conflict. "No scheme names this employee" is a different
-                    and ordinary state now that a leave type can carry a default table: they are covered,
-                    by a table HR chose, and the rows below say which and how many days. Printing the
-                    disagreement wording there would invent a conflict that does not exist. */}
-                <div className={`text-base font-semibold ${scheme.schemeName ? '' : 'font-medium text-muted-foreground'}`}>
-                  {scheme.schemeName ?? (scheme.coveredByDefaultOnly ? tScheme('notCovered') : tScheme('none'))}
-                </div>
-                {scheme.coveredByDefaultOnly ? (
-                  <div className="text-xs text-muted-foreground" data-testid="benefit-scheme-default-hint">
-                    {tScheme('notCoveredHint')}
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">{tScheme('effectiveFrom')}</div>
-                {/* An em dash, never a guessed date: the record shows no applied movement that could have
-                    moved this employee between schemes. AGENTS 28 — an absent value asserts nothing, a
-                    wrong one asserts something false. */}
-                <div className="text-base font-semibold tabular-nums">{formatDmy(scheme.effectiveFrom)}</div>
-                {scheme.serviceYears != null && (
-                  <div className="text-xs text-muted-foreground">
-                    {tScheme('serviceYears', { years: scheme.serviceYears })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {scheme.ambiguous && (
-              <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">{tScheme('noneHint')}</p>
-            )}
-
-            {/* 6aee1d91 — the same note as the empty state, in the covered-state wording: how to move this
-                employee to another scheme without a field that could disagree with the rules. */}
-            <p
-              role="note"
-              data-testid="benefit-scheme-derived-note"
-              className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
-            >
-              {scheme.coveredByDefaultOnly ? tScheme('derivedNoteDefault') : tScheme('derivedNote')}
-            </p>
-            {schemeUnmatchedNotice}
-
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2 text-left font-medium">{tScheme('colLeaveType')}</th>
-                    <th className="py-2 text-left font-medium">{tScheme('colPickedUpBy')}</th>
-                    <th className="py-2 text-right font-medium">
-                      {tScheme('colDays', { years: scheme.serviceYears ?? 0 })}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scheme.perType.map((r) => (
-                    <tr key={r.leaveTypeId} className="border-b border-border last:border-0">
-                      <td className="py-2">{r.leaveTypeName}</td>
-                      {/* 76ffdcf2 — a default-table row names the TABLE and says it is the default. It
-                          must never print a scheme name: no scheme was consulted, and the whole of this
-                          item is that the screens stopped claiming otherwise. */}
-                      <td className="py-2 text-muted-foreground">
-                        {r.viaDefaultTemplate
-                          ? tScheme('viaDefault', { table: r.templateName })
-                          : r.viaSoleTemplate
-                            ? tScheme('noRule')
-                            : (r.ruleName ?? r.templateName)}
-                      </td>
-                      {/* Em dash rather than 0.00 — "no band resolves" and "zero days" are different facts. */}
-                      <td className="py-2 text-right tabular-nums">{r.daysAtService ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs">
-              <Link
-                href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
-                className="text-primary hover:underline"
-              >
-                {tScheme('changeGrade')}
-              </Link>
-              {/* a6fe37fc ROUND 5 (cutover) — the leave TYPE screen is /admin/leave-config/types now.
-                  The old address still answers (redirect stub), but a link whose job is "go and change
-                  the rules" should name where the rules are. */}
-              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
-                {tScheme('changeRules')}
-              </Link>
-            </div>
-          </>
-        )}
       </div>
     </Card>
   ) : null;
@@ -3214,7 +3034,7 @@ export default async function EmployeePage({
   // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
   // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
   // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
-  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} /> : null;
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
   // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
@@ -3237,7 +3057,7 @@ export default async function EmployeePage({
 
   // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
   // itself stays viewable. Rehire is a future, separate piece.
-  const canCreateMovement = admin && !emp.terminatedOn;
+  const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -4641,39 +4461,8 @@ export default async function EmployeePage({
      AND business unit all carry) and "Termination" (via terminateEmployment, confirmation-gated in the
      island) reuse the same audited services and DomainEvents; only the entry point changed. */
 
-  const leaveRequestsCard = (
-    <Card id="section-leave-requests" className="overflow-hidden">
-      <SectionHeader title={t('leaveRequests')} count={requests.length} />
-      <table className="w-full text-sm">
-        <tbody className="divide-y divide-border">
-          {requests.map((r) => (
-            <tr key={r.id}>
-              <td className="px-4 py-2.5 text-foreground">{r.leaveType}</td>
-              <td className="px-4 py-2.5 text-muted-foreground">
-                {formatDmy(r.startDate)} → {formatDmy(r.endDate)}
-              </td>
-              <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
-              <td className="px-4 py-2.5">
-                {r.status === 'approved' && r.hasRejectedDates ? (
-                  <LeaveStatus status="partial" label={t('leaveStatus.partiallyApproved')} />
-                ) : (
-                  <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
-                )}
-              </td>
-            </tr>
-          ))}
-          {requests.length === 0 && (
-            <tr>
-              <td className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveRequests')}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </Card>
-  );
-
   // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
-  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} /> : null;
+  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
   // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
@@ -4681,7 +4470,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: <>{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -4700,6 +4489,8 @@ export default async function EmployeePage({
     job: (
       <>
         {admin && (
+          <fieldset disabled={!canMaintainWorkforce} className="min-w-0">
+          {!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
           <TabSaveScope
             tabKey="job"
             identity={{ employmentId: emp.employmentId }}
@@ -4707,10 +4498,9 @@ export default async function EmployeePage({
             covers={tabSaveCovers.job}
           >
             {employmentInfoCard}
-          </TabSaveScope>
+          </TabSaveScope></fieldset>
         )}
-        {dataClassificationCard}
-        {directSuperiorCard}
+        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{dataClassificationCard}{directSuperiorCard}</fieldset>
         {delegationsCard}
         {reviewCard}
       </>
@@ -4840,13 +4630,9 @@ export default async function EmployeePage({
         {zakatSummaryCard}
       </>
     ),
-    // 39306a9e: retain grade, scheme and requests. Balance and recalculation review live in Leave.
     leave: (
       <>
-        {/* Grade and Benefit Scheme keep their existing owners and actions. */}
         {gradeCard}
-        {benefitSchemeCard}
-        {leaveRequestsCard}
       </>
     ),
     documents: documentsPanel,
@@ -4918,7 +4704,7 @@ export default async function EmployeePage({
                 alt={emp.name}
               />
             )}
-            {admin && (
+            {admin && canMaintainWorkforce && (
               // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a
               // 'use client' island). The page still BUILDS both forms here (server actions bound as
               // before) and passes them in as children; the island only toggles their visibility, so the

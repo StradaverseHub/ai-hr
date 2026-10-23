@@ -1,0 +1,22 @@
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {expect,it,vi} from 'vitest';
+import {AllowanceEmployeePreview} from '../components/allowance-employee-preview';
+import {emptyAllowanceRulesV4} from '../lib/attendance-allowance-rules';
+const {preview}=vi.hoisted(()=>({preview:vi.fn()}));
+vi.mock('next-intl',()=>({useTranslations:()=>((key:string,values?:Record<string,unknown>)=>key==='previewCount'?`matches ${values?.count}`:key)}));
+vi.mock('../app/admin/attendance-allowance/actions',()=>({previewAllowanceEmployeeSelection:preview}));
+it('discards an old in-flight employee preview after criteria change',async()=>{
+ let resolve!:(value:{rows:[];total:number;truncated:boolean})=>void;
+ preview.mockReturnValueOnce(new Promise(done=>{resolve=done;}));
+ const first=emptyAllowanceRulesV4();
+ const {rerender}=render(<AllowanceEmployeePreview companyId="company" method="monthly" rules={first}/>);
+ fireEvent.click(screen.getByRole('button',{name:'previewAction'}));
+ await waitFor(()=>expect(preview).toHaveBeenCalledTimes(1));
+ rerender(<AllowanceEmployeePreview companyId="company" method="weekly" rules={first}/>);
+ await act(async()=>resolve({rows:[],total:99,truncated:false}));
+ expect(screen.queryByText('matches 99')).not.toBeInTheDocument();
+ preview.mockResolvedValueOnce({rows:[],total:3,truncated:false});
+ fireEvent.click(screen.getByRole('button',{name:'previewAction'}));
+ expect(await screen.findByText('matches 3')).toBeInTheDocument();
+ expect(preview.mock.calls[1][0].method).toBe('weekly');
+});

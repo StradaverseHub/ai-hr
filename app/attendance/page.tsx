@@ -50,7 +50,6 @@ export default async function AttendancePage({
   }>;
 }) {
   const t = await getTranslations('attendance');
-  const tHistory = await getTranslations('attendanceHistory');
   // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
   // an explanation instead of the service error. NOT the control: the reads below refuse on their
   // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
@@ -99,11 +98,6 @@ export default async function AttendancePage({
       </div>
       <AttendanceTabs active="overview" />
       <ErrorBanner message={sp.error} />
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/attendance/application-history/visible" className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium text-primary hover:bg-accent">{tHistory('visibleTitle')}</Link>
-        {isAdmin && <Link href="/attendance/application-history" className="inline-flex min-h-11 items-center px-3 text-sm text-primary underline">{tHistory('title')}</Link>}
-      </div>
-
       {/* `id` is the anchor /reports links "Overtime report" at — the OT export control lives in this
           card's header, and landing on the page top left the customer hunting for it. */}
       <Card id="ot-report" className="overflow-hidden" data-tour="attendance-summary">

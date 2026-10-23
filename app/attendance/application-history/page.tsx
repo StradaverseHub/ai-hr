@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { AttendanceHistoryFilters } from '@/components/attendance-history-filters';
+import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
 import { AttendanceHistoryTable } from '@/components/attendance-history-table';
 import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { publicErrorMessage } from '@/lib/public-error';
@@ -47,7 +48,19 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     <label className={fieldClass}>{t('status')}<select name="status" defaultValue={status} className={controlClass}><option value="all">{t('all')}</option>{['pending', 'approved', 'rejected', 'cancelled', 'withdrawn'].map(value => <option key={value} value={value}>{t(`statuses.${value}`)}</option>)}<option value="cancelled_withdrawn">{t('cancelledWithdrawn')}</option></select></label>
     <label className={fieldClass}>{t('pageSize')}<select name="pageSize" className={controlClass} defaultValue={sp.pageSize ?? '25'}>{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
   </div><p className="text-xs text-muted-foreground">{t('organisationHelp')}</p></Card>;
-  const selection = <label className={`${fieldClass} max-w-2xl`}>{t('selectEmployeeLabel')}<select name="employmentId" defaultValue={sp.employmentId ?? ''} className={controlClass}><option value="">{t('allEmployees')}</option>{options.employees.map(e => <option key={e.id} value={e.id}>{e.employeeCode ? `${e.employeeCode} · ` : ''}{e.name}</option>)}</select></label>;
+  const selected = options.employees.find(e => e.id === sp.employmentId);
+  const panelEmployees: ScopeEmployee[] = options.employees.map(e => ({
+    employmentId:e.id, name:e.name, employeeCode:e.employeeCode, companyId:e.companyId, company:e.company,
+    departmentId:e.departmentId, department:e.department, businessUnitId:e.businessUnitId, businessUnit:e.businessUnit,
+    status:e.terminatedOn == null ? 'active' : 'ended',
+  }));
+  const preservedFilters = Object.fromEntries(Object.entries(sp).filter(([key,value]) => value && key !== 'page' && key !== 'employmentId')) as Record<string,string>;
+  const selection = sp.employmentId ? <input type="hidden" name="employmentId" value={sp.employmentId} /> : undefined;
+  const employeePanel = <Card className="space-y-3 bg-white! p-4 text-slate-900!">
+    <h2 className="text-sm font-semibold">{t('selectEmployeeLabel')}</h2>
+    <EmployeeScopePanel employees={panelEmployees} selectedId={selected?.id ?? null}
+      basePath="/attendance/application-history" preserve={preservedFilters} allowAll />
+  </Card>;
   const tabs = [
     ['pending', t('statuses.pending'), data.counts.pending], ['approved', t('statuses.approved'), data.counts.approved],
     ['rejected', t('statuses.rejected'), data.counts.rejected], ['cancelled_withdrawn', t('cancelledWithdrawn'), data.counts.cancelledWithdrawn],
@@ -56,6 +69,10 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
   const returnTo = attendanceHistoryReturn(url(data.page));
   return <div className={pageWideCls}>
     <PageHeader title={t('title')} description={t('subtitle')} /><ErrorBanner message={error ?? undefined} />
+    <CollapsibleEmployeePanel panel={employeePanel} keepPanelMounted
+      defaultOpen={(await cookies()).get('attendance-history-employees')?.value !== '0'}
+      cookieKey="attendance-history-employees" title={t('allEmployees')}
+      detailHeader={selected ? <p className="min-w-0 flex-1 text-sm font-semibold">{selected.employeeCode ? `${selected.employeeCode} · ` : ''}{selected.name}</p> : undefined}>
     <AttendanceHistoryFilters selection={selection} panel={panel} defaultOpen={(await cookies()).get('attendance-history-panel')?.value === '1'}>
       <div className="space-y-4">
         <nav aria-label={t('statusNavigation')} className="flex flex-wrap gap-x-5 border-b border-border">
@@ -68,5 +85,6 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
         <div className="flex flex-wrap justify-between gap-4 text-sm"><p>{t('total', { count: data.total })}</p><nav aria-label={t('pagination')} className="flex items-center gap-4">{data.page > 1 && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page - 1)}>{t('previous')}</Link>}<span>{t('page', { number: data.page })}</span>{data.page * data.pageSize < data.total && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page + 1)}>{t('next')}</Link>}</nav></div>
       </div>
     </AttendanceHistoryFilters>
+    </CollapsibleEmployeePanel>
   </div>;
 }

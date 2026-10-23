@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { payslipDetail } from '@/core/payroll';
+import { myPayslipDetail } from '@/packs/payroll/service';
 // 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
 // disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
@@ -121,7 +121,7 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   const { payslipId } = await params;
   if (!UUID.test(payslipId)) notFound(); // malformed id → 404, not a DB-error 500
   const s = await getSession();
-  const p = await payslipDetail(s, payslipId);
+  const p = await myPayslipDetail(s, payslipId);
   if (!p) notFound();
   const st = (p.statutory ?? {}) as Stat;
   // 3c473773 — the earnings boxes as THIS payslip recorded them. Absent on every payslip issued before the

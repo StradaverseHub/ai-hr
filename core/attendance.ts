@@ -4411,32 +4411,6 @@ export async function decideAttendanceCorrection(
   return existingTx?decide(existingTx):withTenant(ctx,decide);
 }
 
-/** Uncapped assigned-work headers. Frozen workflow participants retain request-only visibility;
- * no clock proposal, reason, attachment or employee-code projection is needed for a task. */
-export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
-  return withTenant(ctx,async tx=>{
-    await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
-      personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
-      .from(attendanceCorrection)
-      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`,sql`true`)
-      .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.status,'pending'),
-        sql`NOT app.is_self_person(subject.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
-          sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`))
-      .orderBy(desc(attendanceCorrection.createdAt),attendanceCorrection.id);
-    const result:AssignedApprovalMetadata[]=[];
-    for(const row of rows){
-      try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);result.push(row);}
-      catch(error){
-        if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
-        if(isApprovalDecisionRefusal(error,'attendance application'))continue;
-        throw error;
-      }
-    }
-    return result;
-  });
-}
-
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager
  *  their reports, employee their own). Recent first. */
 export function listAttendanceCorrections(
@@ -4536,7 +4510,7 @@ export function listAttendanceCorrections(
       }
       row.systemOtMinutes = await comparisonFor(row);
     }
-    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 3 ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: (workflows.get(r.id)?.routingVersion === 3 || workflows.get(r.id)?.routingVersion === 4) ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }
 
@@ -4573,6 +4547,8 @@ export type PlanOtDayType = 'workday' | 'rest_day' | 'holiday';
 /** One row of the Plan OT list. */
 export type OvertimePlanRow = {
   id: string;
+  /** Saved current-level names; null/absent identifies a legacy reporting-line request. */
+  assignedApproverNames?: string[] | null;
   attendanceDate: string;
   plannedStartTime: string | null;
   plannedEndTime: string | null;
@@ -5283,8 +5259,8 @@ export function myOvertimePlans(
       : opts.sort === 'submitted'
         ? [dirFn(attendanceCorrection.createdAt), desc(attendanceCorrection.attendanceDate)]
         : [dirFn(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt)];
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: attendanceCorrection.id,
         attendanceDate: attendanceCorrection.attendanceDate,
@@ -5307,8 +5283,15 @@ export function myOvertimePlans(
       .where(and(...window))
       .orderBy(...orderBy)
       .limit(limit)
-      .offset(offset),
-  );
+      .offset(offset);
+    const workflows = await attendanceWorkflowsForTx(tx, rows.map(row => row.id));
+    return rows.map(row => {
+      const workflow = workflows.get(row.id);
+      return {...row, assignedApproverNames: workflow
+        ? (workflow.effectiveStages[workflow.currentStage]?.approvers.map(actor => actor.name) ?? [])
+        : null};
+    });
+  });
 }
 
 /**
@@ -6909,4 +6892,29 @@ export async function rawScheduleDayFactsTx(tx:Tx,employmentId:string,from:strin
 }
 export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to:string){
  return new Map([...(await rawScheduleDayFactsTx(tx,employmentId,from,to))].map(([date,fact])=>[date,fact.kind]));
+}
+
+
+export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
+      personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
+      .from(attendanceCorrection)
+      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`,sql`true`)
+      .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.status,'pending'),
+        sql`NOT app.is_self_person(subject.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
+          sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`))
+      .orderBy(desc(attendanceCorrection.createdAt),attendanceCorrection.id);
+    const result:AssignedApprovalMetadata[]=[];
+    for(const row of rows){
+      try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);result.push(row);}
+      catch(error){
+        if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
+        if(isApprovalDecisionRefusal(error,'attendance application'))continue;
+        throw error;
+      }
+    }
+    return result;
+  });
 }

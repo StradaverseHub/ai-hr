@@ -190,9 +190,15 @@ except ConnectionResetError:b=b''
 assert b==b''
 """ % SOCKET,'aihr-report-files')
     # Artifact fixture uses only fresh UUID-derived owned path; sender group mirrors its actual unit.
+    # The probe's private operator umask is not the renderer's service umask. Match the verified
+    # installed credentials/mask explicitly; otherwise an inherited0077 creates a0600 fixture that
+    # the actual sender correctly refuses, without exercising the intended0640 group-read contract.
+    fixture_unit='aihr-report-renderer@aihr-isolation-probe.service'
+    assert command(['systemctl','show',fixture_unit,'--property=Group','--value'])==files.gr_name
+    assert command(['systemctl','show',fixture_unit,'--property=UMask','--value'])=='0027'
     occurrence,lease=str(uuid.uuid4()),str(uuid.uuid4());path=DIRECTORY+'/'+occurrence+'-'+lease+'.xlsx'
     try:
-        as_user('aihr-report-renderer',"import os;f=os.open(%r,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o640);os.write(f,b'fictional');os.close(f)" % path)
+        as_user('aihr-report-renderer',"import os;os.umask(0o027);f=os.open(%r,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o640);os.write(f,b'fictional');os.close(f)" % path,files.gr_name)
         assert as_user('aihr-identity-email',"print(open(%r,'rb').read().decode())" % path,'aihr-report-files')=='fictional'
         as_user('aihr-identity-email',"""import os
 for action in [lambda:open(%r,'wb'),lambda:os.unlink(%r)]:

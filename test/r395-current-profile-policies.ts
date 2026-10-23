@@ -1,13 +1,22 @@
-/** Independent exact current Profile scope (0560 insert/delete, 0571 routed read/update), held
+/** Independent exact current Profile scope (0560 insert/delete, 0571 routed read/update and
+ * the additive 0579 restrictive review gates), held
  * constant on both sides of historical 0515 comparisons; named routing is not legacy equivalence. */
 import {expect} from 'vitest';
 import {owner} from './harness';
 type Row=Record<string,unknown>;
 type PolicyConnection=Pick<typeof owner.client,'unsafe'>;
-type CurrentProfilePolicy={policy:string;cmd:'SELECT'|'INSERT'|'UPDATE'|'DELETE';qual:string|null;withCheck:string|null};
+type CurrentProfilePolicy={policy:string;cmd:'SELECT'|'INSERT'|'UPDATE'|'DELETE';qual:string|null;withCheck:string|null;roles?:string[];permissive?:'RESTRICTIVE'};
 export const profileHistoricalPolicyKey='profile_change_request.profile_change_request_rls';
 // Independent expected clauses, never loaded from the migration being checked.
 const currentProfilePolicies:CurrentProfilePolicy[]=[
+  {
+    policy:'access_profile_review_read',cmd:'SELECT',roles:['ai_hr_app'],permissive:'RESTRICTIVE',
+    qual:'app.access_profile_request_own(person_id) OR app.access_profile_review_permitted(employment_id)',withCheck:null,
+  },
+  {
+    policy:'access_profile_review_update',cmd:'UPDATE',roles:['ai_hr_app'],permissive:'RESTRICTIVE',
+    qual:'app.access_profile_review_permitted(employment_id)',withCheck:'app.access_profile_review_permitted(employment_id)',
+  },
   {
     "policy": "profile_change_request_read",
     "cmd": "SELECT",
@@ -48,8 +57,8 @@ export async function assertCurrentProfilePolicyGraph(){
         const actual=snapshot.find(r=>r.policyname===p.policy);
         expect(actual,`${p.policy} exists`).toBeTruthy();
         expect(actual!.cmd,`${p.policy} command`).toBe(p.cmd);
-        expect(actual!.roles,`${p.policy} roles`).toEqual(['public']);
-        expect(actual!.permissive,`${p.policy} permissive mode`).toBe('PERMISSIVE');
+        expect(actual!.roles,`${p.policy} roles`).toEqual(p.roles??['public']);
+        expect(actual!.permissive,`${p.policy} permissive mode`).toBe(p.permissive??'PERMISSIVE');
         const clauses=[p.qual===null?'':`USING (${p.qual})`,p.withCheck===null?'':`WITH CHECK (${p.withCheck})`].filter(Boolean).join(' ');
         expect(clauses.length,`${p.policy} independent expected expression is nonempty`).toBeGreaterThan(20);
         await tx.unsafe(`alter policy "${p.policy}" on public.profile_change_request ${clauses}`);

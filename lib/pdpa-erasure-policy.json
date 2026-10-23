@@ -1,0 +1,335 @@
+{
+  "retentionYears": 7,
+  "fields": [
+    {
+      "key": "phone",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "address",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "personalEmail",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "addressLine1",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "addressLine2",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "addressLine3",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "postcode",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "city",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "state",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "country",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentAddressLine1",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentAddressLine2",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentAddressLine3",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentPostcode",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentCity",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentState",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "permanentCountry",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceAddressLine1",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceAddressLine2",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceAddressLine3",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondencePostcode",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceCity",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceState",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceCountry",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "homePhone",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceMobilePhone",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "correspondenceHomePhone",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "contact"
+      ]
+    },
+    {
+      "key": "firstName",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "lastName",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "preferredName",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "religion",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "race",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "nationality",
+      "table": "person",
+      "statutoryLocked": false,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "dateOfBirth",
+      "table": "person",
+      "statutoryLocked": true,
+      "scopes": [
+        "identity"
+      ]
+    },
+    {
+      "key": "bankName",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "financial"
+      ]
+    },
+    {
+      "key": "bankAccountNo",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "financial"
+      ]
+    },
+    {
+      "key": "epfNumber",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "statutory-ids"
+      ]
+    },
+    {
+      "key": "socsoNumber",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "statutory-ids"
+      ]
+    },
+    {
+      "key": "taxNumber",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "statutory-ids"
+      ]
+    },
+    {
+      "key": "childReliefTable",
+      "table": "statutory",
+      "statutoryLocked": true,
+      "scopes": [
+        "identity"
+      ]
+    }
+  ],
+  "dependentContact": [
+    "phone",
+    "residentialAddress",
+    "companyName",
+    "employerAddress"
+  ],
+  "dependentIdentity": [
+    "icOrPassport",
+    "passportNumber"
+  ]
+}

@@ -14,6 +14,15 @@ it('uses the authenticated approval inbox and strips every uncontracted field', 
   expect(await r.json()).toEqual({ total: 1, items: [{ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: 'Scoped colleague' }] });
   expect(r.headers.get('cache-control')).toBe('no-store');
 });
+it('preserves the published v1 vocabulary when the web inbox gains replacement-leave tasks', async () => {
+  ports.tasks.mockResolvedValue([
+    { id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subjectName: 'Scoped colleague' },
+    { id: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb', kind: 'replacementLeave', subjectName: 'Replacement colleague' },
+  ]);
+  const r = await GET(new Request('https://hr.test/api/mobile/v1/tasks'));
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ total: 1, items: [{ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: 'Scoped colleague' }] });
+});
 it('never invokes the inbox without a verified bearer session', async () => {
   ports.session.mockRejectedValue(new AuthRequiredError());
   expect((await GET(new Request('https://hr.test/api/mobile/v1/tasks'))).status).toBe(401); expect(ports.tasks).not.toHaveBeenCalled();

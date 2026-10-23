@@ -68,3 +68,7 @@ export * from '../../core/payroll-overtime-pattern';
 // Own-profile read surfaces; no administrative mutations are re-exported here.
 export {listEmploymentPayComponents} from '../../core/pay-components';
 export {listCp38} from '../../core/cp38';
+
+// Shared personal/admin document vocabulary; these owners derive only saved snapshots.
+export { selectPayslipInformation, payslipInformationData } from '../../core/payslip-information';
+export { payslipSegmentOf } from '../../core/payslip-segment';

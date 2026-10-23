@@ -34,6 +34,8 @@ import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin } from '@/l
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
+import {canConfigureAccess} from '@/core/access-configuration-editor';
+import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
@@ -140,7 +142,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const viewer = await viewerIdentity(session);
+  const [viewer,accessConfigurationAvailable,workforceAvailable]=await Promise.all([
+    viewerIdentity(session),canConfigureAccess(session),
+    isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
+  ]);
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -167,7 +172,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
   });
-  // Reuse actual non-self task assignments; they never promote the viewer to manager navigation.
+  // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
+  // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
@@ -388,7 +394,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       extra click, and together they are what buys the corner room to say who you are on
                       a 1280px laptop. The tour launcher was also the control the cluster was already
                       squeezing: measured at 20px wide instead of 36, its icon clipped. */}
-                  <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} />
+                  <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} canConfigureAccess={accessConfigurationAvailable} canViewWorkforce={workforceAvailable}/>
                 </div>
               </header>
               <IntentBar />

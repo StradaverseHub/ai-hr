@@ -1,3 +1,6 @@
+import {workforceEmploymentPredicate} from './workforce-access';
+import {ownPersonPredicate} from './own-person';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 import {payrollPublicationState} from '../lib/payroll-publication';
@@ -18,9 +21,11 @@ import {
   or,
   sql,
   type AnyColumn,
+  type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { assertModuleGate } from './module-gate';
 import { companyDeleteBlockSqlText } from './company-refs';
 import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import {
@@ -132,7 +137,6 @@ import {
   domainEvent,
   employeeStatutoryMy,
   employment,
-  employmentTypeEnum,
   holiday,
   holidayGroup,
   jobGrade,
@@ -148,6 +152,7 @@ import {
   leaveSharedGroup,
   leaveSharedGroupMember,
   payrollBatch,
+  payrollCycle,
   payrollPolicy,
   payslip,
   person,
@@ -170,17 +175,17 @@ import { resolveEssView, type ResolvedEssView } from './ess-view';
 import { resolveLeaveFormulaForCode, type LeaveFormulaEntry } from './leave-formula';
 import { resolvePlacement, resolveSharedGroupPlacement, type EssPlacement } from '../lib/leave-groups';
 import type { EmploymentStatus } from './employment-status';
-import { employmentStatusSql } from './employment-status-sql';
+import { employmentStatusSql, type EmploymentStatusColumns } from './employment-status-sql';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
-export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, tx => listEmployeesTx(tx, companyIds));
+export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce') {
+  return withTenant(ctx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
 }
-export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
+export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
       .select({
         employmentId: employment.id,
@@ -244,7 +249,7 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
-      .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
+      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
       .orderBy(person.fullName);
 }
 
@@ -360,30 +365,70 @@ const currentAssignmentJoin = () =>
 
 /** ONE WHERE for the employee listing: the rows, the pager count and the headcount cards all build it
  *  from here, so no two of them can be answering slightly different questions. */
-function employeeListWhere(p: EmployeeListFilters) {
+type EmployeeListColumns = {
+  companyId: SQL<string>; departmentId: SQL<string | null>; employmentType: SQL<string | null>;
+  terminatedOn: SQL<string | null>; name: SQL<string>; email: SQL<string>; employeeCode: SQL<string | null>;
+  status: SQL<EmploymentStatus>;
+};
+const employeeListColumns = (): EmployeeListColumns => ({
+  companyId: sql`${employment.companyId}`, departmentId: sql`${assignment.departmentId}`,
+  employmentType: sql`${assignment.employmentType}`, terminatedOn: sql`${employment.terminatedOn}`,
+  name: sql`${person.fullName}`, email: sql`${person.primaryEmail}`, employeeCode: sql`${employment.employeeCode}`,
+  status: employmentStatusSql(),
+});
+function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = employeeListColumns()) {
   const q = p.q?.trim();
   return and(
-    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
-    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-    p.filterCompanyIds && p.filterCompanyIds.length
-      ? inArray(employment.companyId, p.filterCompanyIds)
-      : undefined,
-    p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
-    p.departmentIds && p.departmentIds.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
-    p.employmentStatuses && p.employmentStatuses.length
-      ? inArray(employmentStatusSql(), p.employmentStatuses)
-      : undefined,
-    p.status === 'terminated'
-      ? isNotNull(employment.terminatedOn)
-      : p.status === 'active'
-        ? isNull(employment.terminatedOn)
-        : undefined,
-    p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
-    q
-      ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
-      : undefined,
+    p.companyIds && p.companyIds.length ? inArray(c.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(c.companyId, p.companyId) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
+    p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
+    p.departmentIds && p.departmentIds.length ? inArray(c.departmentId, p.departmentIds) : undefined,
+    p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
+    p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
+    p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
+    q ? sql`(${c.name} ilike ${'%' + q + '%'} or ${c.email} ilike ${'%' + q + '%'} or ${c.employeeCode} ilike ${'%' + q + '%'})` : undefined,
   );
 }
+
+/** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
+ * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
+const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
+const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
+const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
+const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
+function workforceListColumns(): EmployeeListColumns {
+  const status: EmploymentStatusColumns = {
+    finalConfirmationDate: workforceListDate('finalConfirmationDate'), confirmationDate: workforceListDate('confirmationDate'),
+    probationEndDate: workforceListDate('probationEndDate'), provisionalEndOn: workforceListDate('provisionalEndOn'),
+    resignationDate: workforceListDate('resignationDate'), lastWorkingDate: workforceListDate('lastWorkingDate'),
+    terminatedOn: workforceListDate('terminatedOn'), blacklistedAt: workforceListDate('blacklistedAt'),
+  };
+  return {
+    companyId: workforceListUuid('companyId'), departmentId: workforceListUuid('departmentId'),
+    employmentType: workforceListValue('employmentType'), terminatedOn: workforceListDate('terminatedOn'),
+    name: workforceListValue('name'), email: workforceListValue('email'), employeeCode: workforceListValue('employeeCode'),
+    status: employmentStatusSql(todayInKualaLumpur(), status),
+  };
+}
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns) =>
+  and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns));
+
+/** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
+ * picker or transfer its person/card identifiers into a new grant's screen props. */
+export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    return tx.select({
+      employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+      employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+      company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+      terminatedOn: workforceListValue<string | null>('terminatedOn'),
+    }).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
+      .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
+  });
+}
+
 
 /**
  * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
@@ -402,8 +447,19 @@ function employeeListWhere(p: EmployeeListFilters) {
 export function countEmployeesByStatus(
   ctx: SessionContext,
   p: EmployeeListFilters,
+  purpose?:'workforce',
 ): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
   return withTenant(ctx, async (tx) => {
+    if (purpose) {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      const columns = workforceListColumns();
+      const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
+        .from(workforceListSource).where(workforceListWhere(p, columns)).groupBy(sql`1`);
+      const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+      let total = 0;
+      for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
+      return { total, byStatus };
+    }
     const rows = (await tx
       .select({
         status: employmentStatusSql(),
@@ -444,8 +500,21 @@ export function listEmployeesPage(
     limit: number;
     offset: number;
   },
+  purpose?:'workforce',
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
+    if (purpose) {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      const columns = workforceListColumns();
+      const where = workforceListWhere(p, columns);
+      const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
+        .from(workforceListSource).where(where)
+        .orderBy(...(p.sort === 'company' ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`] : [columns.name]))
+        .limit(p.limit).offset(p.offset);
+      const [count] = await tx.select({ count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
+        .from(workforceListSource).where(where);
+      return { rows: rows.map(({ row }) => row), total: Number(count.count) };
+    }
     const currentAssignment = currentAssignmentJoin();
     const where = employeeListWhere(p);
     const rows = (await tx
@@ -2238,10 +2307,10 @@ export function recentHires(
 export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }) {
   return withTenant(ctx, (tx) =>
     tx
-      .select({ name: holiday.name, date: holiday.holidayDate })
+      .select({ id: holiday.id, name: holiday.name, date: holiday.holidayDate })
       .from(holiday)
       .where(gte(holiday.holidayDate, opts.from))
-      .orderBy(holiday.holidayDate)
+      .orderBy(holiday.holidayDate, holiday.id)
       .limit(opts.limit ?? 5),
   );
 }
@@ -2363,8 +2432,9 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
   });
 }
 
-export function employeeDetail(ctx: SessionContext, employmentId: string) {
+export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce') {
   return withTenant(ctx, async (tx) => {
+    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -2525,7 +2595,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         ),
       )
       .leftJoin(location, eq(location.id, assignment.locationId))
-      .where(eq(employment.id, employmentId))
+      .where(and(eq(employment.id,employmentId),purpose?workforceEmploymentPredicate(sql`${employment.id}`):undefined))
       .limit(1);
     return row ?? null;
   });
@@ -5973,12 +6043,13 @@ export function employeeAudit(ctx: SessionContext, employmentId: string, limit =
 }
 
 // ─────────────────────────── Self-service portal (own data) ───────────────────────────
-// All scoped by RLS to the calling principal: an employee sees only themselves.
+// Own-person proof is independent of RLS: an HR login also has wider general visibility.
 
 /** The current principal's active employment + profile (resolved from their linked person). */
-export function myEmployment(ctx: SessionContext) {
+export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}) {
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId) return null;
+    if(selected&&(!ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.employmentId)))return null;
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -5986,6 +6057,7 @@ export function myEmployment(ctx: SessionContext) {
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
+        companyId: employment.companyId,
         company: company.legalName,
         department: department.name,
         position: position.title,
@@ -6003,7 +6075,7 @@ export function myEmployment(ctx: SessionContext) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), selected?and(eq(employment.id,selected.employmentId),profileEditEmploymentPredicate(ctx)):isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn)
       .limit(1);
     return row ?? null;
@@ -6040,7 +6112,7 @@ export async function myPersonName(ctx: SessionContext) {
     const [row] = await tx
       .select({ name: person.fullName })
       .from(person)
-      .where(eq(person.id, personId))
+      .where(and(ownPersonPredicate(ctx),eq(person.id, personId)))
       .limit(1);
     return row?.name ?? null;
   });
@@ -6128,7 +6200,7 @@ export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit
           isNull(compensation.supersededAt),
         ),
       )
-      .where(and(eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn,employment.id);
 }
 
@@ -6141,7 +6213,7 @@ export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{p
   currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
   resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
   .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .where(and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
   .orderBy(employment.hiredOn,employment.id);
  const {provenCompanyDatesTx}=await import('./employment-company');
  const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
@@ -6166,7 +6238,7 @@ export function myEmploymentIdsAll(ctx: SessionContext) {
       .select({ employmentId: employment.id, company: company.legalName })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(employment.personId, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId)))
       .orderBy(employment.hiredOn);
   });
 }
@@ -6225,7 +6297,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 }
 
 /** The current principal's payslips (RLS already restricts to own employment). */
-export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
+export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false) {
   return withTenant(ctx, async (tx) => {
     if (employmentIds.length === 0) return [];
     const rows = await tx
@@ -6248,8 +6320,9 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(inArray(payslip.employmentId, employmentIds))
-      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+      .innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .where(and(inArray(payslip.employmentId, employmentIds),ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq, payslip.id);
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.
@@ -6258,6 +6331,28 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       ...r,
       released: payrollPublicationState(r,now)==='published',
     }));
+  });
+}
+
+/** Explicit Mine fence for document/YTD consumers, including payroll administrators in Mine. */
+export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
+  assertModuleGate(ctx,'payroll');
+  return myPayslips(ctx,employmentIds,true);
+}
+
+/** Own current/historical released run index. No caller-provided employment population. */
+export function myReleasedPayslipRuns(ctx:SessionContext) {
+  assertModuleGate(ctx,'payroll');
+  return withTenant(ctx,async tx=>{
+    if(!ctx.personId)return [];
+    return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
+      companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
+      cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq})
+      .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
+      .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
+      .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
   });
 }
 

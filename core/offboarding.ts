@@ -1,3 +1,4 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Offboarding — employee-initiated resignation (ADR-0042, #29). The employee submits a resignation; HR
  * accepts it, which (atomically, in the same transaction) triggers the termination via
@@ -10,12 +11,12 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, person, resignationRequest, resignationRequestAttachment } from '../db/schema';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
-import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 
 // #42cff598: the file types the resignation ticket specifies (PDF / JPG / PNG) and a fixed 10 MB ceiling.
 // Resignation has no per-type config table like leave, so the allowed set + ceiling are constants here.
@@ -43,6 +44,9 @@ export async function submitResignation(
   if (lastWorkingDay < today) throw new ResignationError('The last working day cannot be in the past.');
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
+    if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
+    const [subject]=await tx.select({id:employment.id}).from(employment).where(and(ownPersonPredicate(ctx),eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1).for('update');
+    if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
       .select({ id: resignationRequest.id })
       .from(resignationRequest)
@@ -77,13 +81,17 @@ export async function submitResignation(
 /** The employee withdraws their own pending resignation. */
 export async function withdrawResignation(ctx: SessionContext, p: { requestId: string }) {
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
+    if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('Only the employee can withdraw their own resignation.');
+    const [req] = await tx.select().from(resignationRequest).where(and(ownPersonPredicate(ctx),eq(resignationRequest.id, p.requestId))).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     if (!ctx.personId || req.personId !== ctx.personId) {
       throw new ResignationError('Only the employee can withdraw their own resignation.');
     }
-    await tx.update(resignationRequest).set({ status: 'withdrawn' }).where(eq(resignationRequest.id, req.id));
+    const changed=await tx.update(resignationRequest).set({status:'withdrawn'})
+      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.id,req.id),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.status,'pending')))
+      .returning({id:resignationRequest.id});
+    if(changed.length!==1)throw new ResignationError('Only a pending resignation can be withdrawn.');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'resignation',
@@ -95,14 +103,6 @@ export async function withdrawResignation(ctx: SessionContext, p: { requestId: s
     });
     return { status: 'withdrawn' as const };
   });
-}
-
-async function assertResignationDecisionAuthorityTx(tx:Tx,ctx:SessionContext,employmentId:string){
-  await assertCanDecide(tx,ctx,employmentId,'resignation');
-  const roles=ctx.roles??[];
-  if(!(roles.includes('super_admin')||roles.includes('hr_admin'))){
-    throw new ResignationError('Only an admin can decide a resignation.');
-  }
 }
 
 /** HR decides a resignation. Admin-only, never self. Accepting terminates the employment (voluntary,
@@ -118,6 +118,9 @@ export async function decideResignation(
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {
+      // Prepare only the actual pending request's fixed consequence under fresh decision authority.
+      // SQL requires acceptance and both immutable events in this same transaction before commit.
+      await tx.execute(sql`select app.access_prepare_resignation_termination(${req.id}::uuid)`);
       // A resignation is a voluntary termination — reuse the single termination path, same tx.
       await terminateEmploymentTx(tx, ctx, {
         employmentId: req.employmentId,
@@ -155,31 +158,6 @@ export async function decideResignation(
       payload: { decision: p.decision, lastWorkingDay: req.lastWorkingDay, deciderEmploymentId: p.deciderEmploymentId ?? null },
     });
     return { status: p.decision };
-  });
-}
-
-/** Assigned-work metadata shares the writer's authority and never reads resignation evidence. */
-export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
-  return withTenant(ctx,async tx=>{
-    await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
-      personId:resignationRequest.personId,employee:person.fullName,createdAt:resignationRequest.createdAt})
-      .from(resignationRequest)
-      .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
-      .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
-      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
-        sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
-      .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
-    const result:AssignedApprovalMetadata[]=[];
-    for(const row of rows){
-      try{await assertResignationDecisionAuthorityTx(tx,ctx,row.employmentId);result.push(row);}
-      catch(error){
-        if(isApprovalDecisionRefusal(error,'resignation'))continue;
-        if(error instanceof ResignationError&&error.message==='Only an admin can decide a resignation.')continue;
-        throw error;
-      }
-    }
-    return result;
   });
 }
 
@@ -236,6 +214,7 @@ export function listResignationRequests(
 /** The caller's own most-recent resignation (the /me status + withdraw control). */
 export function myResignation(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
+    if(!ctx.personId)return null;
     const [row] = await tx
       .select({
         id: resignationRequest.id,
@@ -245,7 +224,7 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
-      .where(eq(resignationRequest.employmentId, employmentId))
+      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;
@@ -344,4 +323,38 @@ export async function getResignationAttachmentById(
       .limit(1);
     return row ? { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
+}
+
+
+export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
+      personId:resignationRequest.personId,employee:person.fullName,createdAt:resignationRequest.createdAt})
+      .from(resignationRequest)
+      .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
+      .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
+      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
+        sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+      .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
+    const result:AssignedApprovalMetadata[]=[];
+    for(const row of rows){
+      try{await assertResignationDecisionAuthorityTx(tx,ctx,row.employmentId);result.push(row);}
+      catch(error){
+        if(isApprovalDecisionRefusal(error,'resignation'))continue;
+        if(error instanceof ResignationError&&error.message==='Only an admin can decide a resignation.')continue;
+        throw error;
+      }
+    }
+    return result;
+  });
+}
+
+
+async function assertResignationDecisionAuthorityTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  await assertCanDecide(tx,ctx,employmentId,'resignation');
+  const roles=ctx.roles??[];
+  if(!(roles.includes('super_admin')||roles.includes('hr_admin'))){
+    throw new ResignationError('Only an admin can decide a resignation.');
+  }
 }

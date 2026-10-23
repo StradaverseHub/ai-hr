@@ -17,6 +17,8 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 const ALL_TABLES = [
   // Person-wide disclosure choices survive cosmetic resets, but never a test-fixture reset.
   'employee_home_person_privacy_revision',
+  // ESS pending photo bytes must not survive a fixture reset.
+  'profile_photo_proposal',
   'lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_notice','lc_onboarding_config','lc_onboarding_config_history','lc_onboarding_case','lc_onboarding_private','lc_onboarding_note','lc_onboarding_seen',
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
@@ -30,7 +32,7 @@ const ALL_TABLES = [
   'performance_assessment_summary',
   'performance_assessment_catalogue','performance_assessment_reminder_run','performance_assessment_reminder_recipient','performance_assessment_reminder_epoch',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
-  'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
+  'attendance_workflow_cc_delivery', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
@@ -90,7 +92,7 @@ const ALL_TABLES = [
   // leaked template would trip the (tenant, leave_type, lower(name)) partial-unique index in a later test
   // file, and a leaked archive row would be counted by the listing/CSV assertions.
   'entitlement_template', 'entitlement_eligibility_rule', 'entitlement_reset_archive',
-  'tp1_relief',
+  'tp1_relief', 'employee_tp3_draft',
   'employee_dependent',
   // 23ad620e — emergency-contact register: a leaked live 'primary' row would trip the partial unique
   // index (person_emergency_contact_one_primary_uq) in a later test file. CASCADE from `person` would

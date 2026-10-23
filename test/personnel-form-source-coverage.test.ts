@@ -4,8 +4,25 @@ import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {personnelFormSources,personnelImportSourceReader,PERSONNEL_FORM_ROOTS} from './helpers/personnel-form-files';
 import {auditPersonnelFormSource,type PersonnelSourceExemption} from './helpers/personnel-form-source';
+import {workforceMaintenanceFields,workforceMaintenanceControl,workforceMaintenanceInput} from '../lib/workforce-maintenance-fields';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const exemptions=JSON.parse(readFileSync(new URL('./fixtures/personnel-form-exemptions.json',import.meta.url),'utf8')) as Record<string,PersonnelSourceExemption[]>;
+const workforceForm='app/admin/personnel/[employmentId]/workforce-value-form.tsx';
+const relationshipForm='app/admin/personnel/[employmentId]/workforce-relationship-fields.tsx';
+/** Resolve the finite declaration actually used by these two generic renderers. No field-ID list
+ * is copied into a test, and an unknown renderer/import/descriptor remains a refusal. */
+function workforceBindings(file:string,source:string):Record<string,readonly string[]>|undefined{
+  if(file===workforceForm){
+    expect(source).toMatch(/import \{[^}]*workforceMaintenanceControl[^}]*workforceMaintenanceInput[^}]*\} from '@\/lib\/workforce-maintenance-fields'/);
+    expect(source).toContain('workforceMaintenanceFields(kind,section).map(({key,field})=>');
+    return {'field.id':(['person','qualification','emergency','dependent'] as const).flatMap(kind=>workforceMaintenanceFields(kind).map(({field})=>field.id))};
+  }
+  if(file===relationshipForm){
+    expect(source).toContain('fields.map(field=>');
+    expect(readFileSync(new URL('../'+workforceForm,import.meta.url),'utf8')).toContain('fieldId:field.id');
+    return {'field.fieldId':workforceMaintenanceFields('dependent').map(({field})=>field.id)};
+  }
+}
 describe('actual mounted Personnel form inventory',()=>{
   it('binds the classification fact and exempts only its one dedicated-command subject pointer',()=>{
     const file='app/admin/personnel/[employmentId]/page.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
@@ -25,14 +42,32 @@ describe('actual mounted Personnel form inventory',()=>{
     for(const entry of PERSONNEL_FORM_ROOTS)expect(files.has(entry),entry).toBe(true);
     for(const file of Object.keys(exemptions))expect(files.has(file),'Stale exemption module: '+file).toBe(true);
     let controlCount=0;
+    const issues:{file:string;line:number;message:string}[]=[];
     for(const [file,source] of files){
-      const result=auditPersonnelFormSource(file,source,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)});
+      const result=auditPersonnelFormSource(file,source,PERSONNEL_FIELDS,{exemptions:exemptions[file],dynamicBindings:workforceBindings(file,source),resolveImportSource:personnelImportSourceReader(root)});
       if(!result.controls){expect(exemptions[file]??[],file).toEqual([]);continue;} // Layout-only modules are discovered, but declare no inputs.
       controlCount+=result.controls;
-      expect(result.issues,file).toEqual([]);
+      issues.push(...result.issues.map(issue=>({file,...issue})));
     }
+    expect(issues,'complete mounted-form inventory').toEqual([]);
     expect(controlCount).toBeGreaterThan(100);
     expect(boundaries.get('components/profile-option-select.tsx')).toContain('owning Personnel widget');
+  });
+  it('keeps Workforce transport exemptions finite and refuses invented or cross-register bindings',()=>{
+    for(const kind of ['person','qualification','emergency','dependent'] as const)for(const {key,field}of workforceMaintenanceFields(kind)){
+      const control=workforceMaintenanceControl(field.id,kind,key,false,'value');
+      expect(control).toMatchObject({'data-personnel-field':field.id,name:key});
+      expect(workforceMaintenanceInput(field.id,kind,key,false,'value').type).toBe(field.form?.widget==='month'?'month':field.type==='date'?'date':'text');
+      expect(()=>workforceMaintenanceControl('unregistered.fact',kind,key,false,'')).toThrow('binding unavailable');
+      expect(()=>workforceMaintenanceControl(field.id,kind,'inventedKey',false,'')).toThrow('binding unavailable');
+    }
+    const source=readFileSync(new URL('../'+workforceForm,import.meta.url),'utf8');
+    const audit=(text:string)=>auditPersonnelFormSource(workforceForm,text,PERSONNEL_FIELDS,{exemptions:exemptions[workforceForm],dynamicBindings:workforceBindings(workforceForm,text),resolveImportSource:personnelImportSourceReader(root)});
+    expect(audit(source).issues).toEqual([]);
+    expect(audit(source.replace('workforceMaintenanceInput(field.id,','unregisteredInput(field.id,')).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+    expect(audit(source.replace('workforceMaintenanceInput(field.id,',"workforceMaintenanceInput('unregistered.fact',")).issues.some(issue=>issue.message.includes('Unknown Personnel form field'))).toBe(true);
+    expect(()=>workforceBindings(workforceForm,source.replace("from '@/lib/workforce-maintenance-fields'","from '@/lib/unregistered-fields'"))).toThrow();
+    expect(exemptions[workforceForm].map(item=>item.name).sort()).toEqual(['employmentId','expectedVersion','kind','operation','rowId','section'].sort());
   });
   it('refuses new controls and caption/type/required overrides in the real mounted draft source',()=>{
     const file='app/admin/personnel/new/wizard.tsx';

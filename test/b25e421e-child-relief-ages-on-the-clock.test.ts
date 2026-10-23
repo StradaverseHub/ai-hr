@@ -35,21 +35,32 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
 import { setStatutoryProfileMY, setTaxProfileMY } from '../localization/my/statutory';
 import {
   addDependent,
   childAgeYears,
   isChildReliefEligible,
   qualifyingChildReliefFor,
-  syncChildReliefFromFamily,
+  type ChildReliefSyncResult,
 } from '../core/dependents';
 import { employeeDependent } from '../db/schema';
 import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase,owner, type Base } from './harness';
 
 let base: Base;
+
+/** The calendar owner is now PostgreSQL. A JS fake clock cannot change its now(). Exercise the
+ * private deterministic country owner with REAL owner credentials at each fixture instant.
+ * Runtime cannot EXECUTE this owner or select its clock; public/Workforce calls always use DB now(). */
+function syncAtFixtureClock(personId:string){
+ return owner.db.transaction(async tx=>{
+  await tx.execute(sql`select set_config('app.tenant_id',${base.tenantId},true),set_config('app.user_id',${base.adminUserId},true),set_config('app.audit_hash_chain','on',true)`);
+  const [row]=await tx.execute<{result:ChildReliefSyncResult}>(sql`select app.my_sync_family_child_relief(${personId}::uuid,${new Date().toISOString()}::timestamptz) as result`);
+  return row.result;
+ });
+}
 
 /**
  * ⚠️ ONLY `Date` IS FAKED. `vi.useFakeTimers()` with its defaults also replaces setTimeout and
@@ -185,14 +196,14 @@ describe('b25e421e · the stored tax figure ages on the clock, with no family ed
     });
 
     // Baseline: the day before the birthday, the register supports one child and the column holds one.
-    await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    await syncAtFixtureClock(E.personId);
     expect(await storedCount(E.personId, '2026-06-14'), 'a 17-year-old is an eligible child').toBe(1);
 
     const before = await dependentStamps(E.personId);
 
     // ─── The only thing that happens between the two runs is TIME. No add, no update, no archive. ───
     vi.setSystemTime(BIRTHDAY_NOON);
-    const res = await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    const res = await syncAtFixtureClock(E.personId);
 
     expect(res.changed, 'the passage of time alone must move the projection').toBe(true);
     expect(res.before).toBe(1);
@@ -216,12 +227,12 @@ describe('b25e421e · the stored tax figure ages on the clock, with no family ed
       childReliefCategory: 'under_18',
       childReliefPercentage: 100,
     });
-    await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    await syncAtFixtureClock(E.personId);
     expect(await storedCount(E.personId, '2026-06-14')).toBe(1);
 
     // Re-run on the same day. Rail (b) must short-circuit, or a nightly job writes a tax event for every
     // employee every night and the audit trail becomes noise.
-    const res = await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    const res = await syncAtFixtureClock(E.personId);
     expect(res.changed, 'nothing moved, so nothing may be written').toBe(false);
     expect(res.skipped).toBe('unchanged');
     expect(await storedCount(E.personId, '2026-06-14')).toBe(1);
@@ -240,7 +251,7 @@ describe('b25e421e · the stored tax figure ages on the clock, with no family ed
       childReliefCategory: 'under_18',
       childReliefPercentage: 100,
     });
-    await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    await syncAtFixtureClock(E.personId);
     expect(await storedCount(E.personId, '2026-06-14')).toBe(1);
 
     // 17:00 UTC on the 14th IS 01:00 on the 15th in Kuala Lumpur. A sync that read the host's UTC date
@@ -252,7 +263,7 @@ describe('b25e421e · the stored tax figure ages on the clock, with no family ed
       'the fixture is only meaningful while UTC and KL disagree here',
     ).toBe('2026-06-14');
 
-    const res = await syncChildReliefFromFamily(adminCtx(base), E.personId);
+    const res = await syncAtFixtureClock(E.personId);
     expect(res.changed, 'the tenant calendar, not the host clock, decides').toBe(true);
     expect(res.after).toBe(0);
   });

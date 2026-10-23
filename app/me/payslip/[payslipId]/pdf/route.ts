@@ -1,93 +1,16 @@
-import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
-import { payslipInformationLabels } from '@/lib/payslip-information-labels';
-// ADR-0036 (#22) — stream a payslip as a downloadable PDF. ABAC is inherited from payslipDetail,
-// which is RLS-gated to own-or-admin AND carries the ESS release gate, so an employee can only fetch
-// their own payslip and only once it has been released to them.
-//
-// 5c198931 — the employee now gets THE SAME DOCUMENT the reviewer approved. This route used to render a
-// half-page A5 with four lumped earnings rows and nothing else; the admin review route had already grown
-// past it. Both now share `payslipPdfStrings` + `buildPayslipPdfData` + `renderPayslipPdf`, so the only
-// difference between the two files is which fenced read produced the row.
 import { getSession } from '@/lib/session';
-import { payslipDetail } from '@/core/payroll';
-import { sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
-import { myPayslips } from '@/core/read';
-import { getCompanyLogo } from '@/core/admin';
-import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
-import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
-// 3c88d593 — the entity segment this slip covers. The EMPLOYEE's own copy needs it most: after a
-// mid-month transfer they hold two documents for one month, from two different employers.
-import { payslipSegmentOf } from '@/core/payslip-segment';
+import { renderPayslipPdf } from '@/lib/payslip-pdf';
+import { myPayslipDocument } from '../../document';
 
-export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
+export const runtime = 'nodejs';
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export async function GET(_req: Request, { params }: { params: Promise<{ payslipId: string }> }) {
-  const { payslipId } = await params;
-  if (!UUID.test(payslipId)) return new Response('Not found', { status: 404 });
-  const s = await getSession();
-  const p = await payslipDetail(s, payslipId); // RLS-gated: own payslip or admin, and released-only
-  if (!p) return new Response('Not found', { status: 404 });
-
-  const year = p.payPeriod.slice(0, 4);
-  // Year-to-date from the employee's OWN payslips, and only the RELEASED ones. The admin review copy sums
-  // every processed payslip in the year because a reviewer is entitled to see a run before release; an
-  // employee is not, so their column must not contain a month they cannot yet open. By the time this route
-  // can serve a payslip at all, that payslip is released and therefore in both totals.
-  const [mine, logo] = await Promise.all([
-    myPayslips(s, [p.employmentId]),
-    getCompanyLogo(s, p.companyId),
-  ]);
-  const ytdRows = mine.filter((r) => r.released && r.payPeriod.startsWith(`${year}-`));
-
-  const strings = await payslipPdfStrings({
-    payPeriod: p.payPeriod,
-    payDate: p.payDate,
-    ytdYear: year,
-    runType: p.runType,
-    // r360 — the configured Pay Cycle's name, fed here TOO and not only to the admin review route. The two
-    // routes print ONE document (same builder, same renderer, same strings module); handing the cycle name
-    // to one of them would print "Monthly" on the reviewer's copy and "Regular" on the employee's copy of
-    // the very same payslip, which is the drift this module was created to prevent.
-    cycleName: p.cycleName,
-    employmentType: p.employmentType,
-    paymentMethod: p.paymentMethod,
-    // 1b0943d5 — derived from the slip's COVERAGE window (see the admin PDF route for the full note).
-    segment: payslipSegmentOf(p, p.payPeriod),
-  });
-
-  // 3c473773 — the data is assembled by the shared builder so this PDF, the on-screen payslip and the
-  // admin review copy cannot disagree about which box an amount is in or whether the employer funded a
-  // deduction. It reads THIS payslip's stored snapshot, never today's settings.
-  const data = buildPayslipPdfData(p, strings.borneLabels, {
-    // r392 (23bd49d9) — the payment facts are setting fields now: the translated method (never the raw
-    // enum), the FULL account number and the cycle label, exactly as the review screen feeds them.
-    informationRows: selectPayslipInformation(payslipInformationData(p, { employee: p.employee, employmentType: strings.employmentType,
-      paymentMethod: strings.paymentMethod, bankAccount: p.bankAccountFull, payrollCycle: strings.cycleLabel }), p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
-    currency: p.currency,
-    payDate: p.payDate,
-    cycleLabel: strings.cycleLabel,
-    identityNumber: p.identityNumber,
-    identityIsPassport: p.identityIsPassport,
-    department: p.department,
-    position: p.position,
-    jobGrade: p.jobGrade,
-    employmentType: strings.employmentType,
-    epfNumber: p.epfNumber,
-    socsoNumber: p.socsoNumber,
-    taxNumber: p.taxNumber,
-    paymentMethod: strings.paymentMethod,
-    bankName: p.bankName,
-    // f35f758a — the PDF takes the FULL account number, as the review screen does (b19042d0). Both forms
-    // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
-    bankAccount: p.bankAccountFull,
-    ytd: sumPayslipYtd(ytdRows),
-    employerPeriodTotals: sumPayslipEmployerPeriodTotals(ytdRows, p.payPeriod),
-    ytdYear: year,
-    logo: logo ? { bytes: new Uint8Array(logo.content), mimeType: logo.mimeType } : null,
-  });
-
+export async function GET(req:Request,{params}:{params:Promise<{payslipId:string}>}) {
+  const {payslipId}=await params;
+  if(!UUID.test(payslipId))return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
+  const document=await myPayslipDocument(await getSession(),payslipId);
+  if(!document)return new Response('Not found',{status:404,headers:{'Cache-Control':'private, no-store'}});
+  const {p,data,strings}=document;
   const bytes = await renderPayslipPdf(data, strings.labels);
 
   // Disambiguate the filename so two cycles in one month don't collide (and silently overwrite on
@@ -104,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fname}.pdf"`,
+      'Content-Disposition': `${new URL(req.url).searchParams.get('disposition') === 'inline' ? 'inline' : 'attachment'}; filename="${fname}.pdf"`,
       'Cache-Control': 'private, no-store',
     },
   });

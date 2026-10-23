@@ -35,6 +35,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { ROLES } from '../core/auth';
+import {pgSqlState} from '../lib/db-error';
 import * as schema from '../db/schema';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -132,6 +133,38 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
   afterAll(async () => {
     await closeAll();
   });
+
+  /**
+   * The 0579 ceiling deliberately runs before the older policy/lifecycle/consume layers. Those
+   * independent defenses must still be tested on their OWN failure, not a generic ceiling error.
+   * This owner-only test window disables exactly that one new trigger, verifies its actual identity
+   * and enabled state, then restores and compares it in finally. No production migration is changed.
+   * Other triggers, locks, constraints and RLS remain installed. Normal-posture controls below keep
+   * exercising the new ceiling and legitimate grants/consumption with every layer present.
+   */
+  async function invitationCeilingTrigger() {
+    return await owner.db.execute<{enabled:string;definition:string;functionName:string;functionSchema:string}>(sql`
+      SELECT t.tgenabled AS enabled,pg_get_triggerdef(t.oid) AS definition,
+       p.proname AS "functionName",n.nspname AS "functionSchema"
+      FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='public.app_invitation'::regclass AND t.tgname='access_invitation_configuration_guard'`);
+  }
+  async function withoutInvitationCeiling<T>(fn:()=>Promise<T>):Promise<T> {
+    const before=await invitationCeilingTrigger();
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({enabled:'O',functionName:'access_guard_legacy_configuration',functionSchema:'app'});
+    let disabled=false;
+    try {
+      await owner.db.execute(sql`ALTER TABLE public.app_invitation DISABLE TRIGGER access_invitation_configuration_guard`);
+      disabled=true;
+      expect((await invitationCeilingTrigger())[0].enabled).toBe('D');
+      return await fn();
+    } finally {
+      if(disabled)await owner.db.execute(sql`ALTER TABLE public.app_invitation ENABLE TRIGGER access_invitation_configuration_guard`);
+      expect(await invitationCeilingTrigger(),'restore exact posture before any next test').toEqual(before);
+    }
+  }
+  const itLegacyLayer=(name:string,fn:()=>Promise<void>)=>it(name,()=>withoutInvitationCeiling(fn));
 
   // ── Fixtures ───────────────────────────────────────────────────────────────────────────────────
 
@@ -286,6 +319,31 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
 
   // ── Layer 2 is the MIGRATION's, at production posture ──────────────────────────────────────────
 
+  it('the new ceiling independently refuses escalation, payload rewriting and a forged consume with all triggers enabled',async()=>{
+    expect((await invitationCeilingTrigger())[0].enabled).toBe('O');
+    const escalation=await withTenant(companyAdmin,tx=>tx.insert(schema.appInvitation).values(
+      invitationValues({role:'super_admin',companyId:null,createdBy:companyAdmin.userId}),
+    )).catch(error=>error);
+    expect(pgSqlState(escalation)).toBe('42501');
+    expect(pgText(escalation)).toMatch(/access ceiling/);
+    const raw=`tok_${crypto.randomUUID()}`;
+    await forgeInvitation('hr_admin',base.companyId,raw);
+    const before=await statusOf('hr_admin@forged.test');
+    const rewrite=await withTenant(companyAdmin,tx=>tx.update(schema.appInvitation)
+      .set({tokenHash:'chosen-by-caller'}).where(eq(schema.appInvitation.email,'hr_admin@forged.test'))).catch(error=>error);
+    expect(pgSqlState(rewrite)).toBe('42501');expect(pgText(rewrite)).toMatch(/access ceiling/);
+    expect(await statusOf('hr_admin@forged.test')).toEqual(before);
+    const forged=`tok_${crypto.randomUUID()}`;
+    await withLegacyInvitation('operator',null,forged,async()=>{
+      const error=await consume(forged).catch(error=>error);
+      expect(pgSqlState(error)).toBe('42501');expect(pgText(error)).toMatch(/access ceiling/);
+      expect((await statusOf('operator@forged.test')).status).toBe('pending');
+    });
+    expect(await owner.db.select().from(schema.roleAssignment).where(and(
+      eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.role,'operator'),
+    ))).toEqual([]);
+  });
+
   it("layer 2's constraints come from migration 0312, are VALIDATED, and match core/auth.ts ROLES", async () => {
     // Declared first and asserted against the catalog on purpose. Every other layer-2 assertion in this
     // file runs inside withoutRoleChecks, which drops and re-adds these objects; this test is what pins
@@ -314,7 +372,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
 
   // ── The RLS half: the invitation row itself must obey 0295's matrix ────────────────────────────
 
-  it('a COMPANY-SCOPED hr_admin cannot invite a super_admin at ANY scope — refused by the POLICY', async () => {
+  itLegacyLayer('a COMPANY-SCOPED hr_admin cannot invite a super_admin at ANY scope — refused by the POLICY', async () => {
     // Today's WITH CHECK asks only is_admin_for(company_id) — which PASSES for this admin's own
     // company — so without the role conjunct this insert succeeds and the escalation is one
     // consume away.
@@ -351,7 +409,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(rows.map((r) => r.role)).not.toContain('super_admin');
   });
 
-  it('a COMPANY-SCOPED hr_admin cannot invite an operator — refused by the POLICY, not just the constraint', async () => {
+  itLegacyLayer('a COMPANY-SCOPED hr_admin cannot invite an operator — refused by the POLICY, not just the constraint', async () => {
     // Asserted with layer 2 dropped, so only the RLS `role <> 'operator'` conjunct can reject. A bare
     // `.rejects.toThrow()` with the constraint in place could not tell the two layers apart, and 0312's
     // own comment calls the conjunct "redundant against layer 2" — exactly the wording that invites a
@@ -367,7 +425,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(pgText(err)).toMatch(/row-level security policy/i);
   });
 
-  it('a GROUP admin cannot invite an operator either — refused by the POLICY, not just the constraint', async () => {
+  itLegacyLayer('a GROUP admin cannot invite an operator either — refused by the POLICY, not just the constraint', async () => {
     // The sharper half of the same point: for a GROUP admin the rest of the matrix would permit the
     // row, so `role <> 'operator'` is the only conjunct standing between a customer's top admin and
     // the installation tier. With layer 2 dropped, nothing else can be doing the work.
@@ -387,7 +445,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(pgText(err)).toMatch(/row-level security policy/i);
   });
 
-  it('a GROUP admin cannot invite a COMPANY-SCOPED super_admin — refused by the POLICY', async () => {
+  itLegacyLayer('a GROUP admin cannot invite a COMPANY-SCOPED super_admin — refused by the POLICY', async () => {
     // 0020's role_assignment_super_admin_group_wide already forbids the resulting GRANT, so before this
     // slice the row was writable and simply un-consumable: the invitee's click died on a 23514 raised
     // inside a definer function and the invitation sat pending forever. The admin UI reaches this
@@ -466,7 +524,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
 
   // ── The person_id half: an invitation is also an IDENTITY payload ──────────────────────────────
 
-  it('a COMPANY-SCOPED hr_admin cannot aim an invitation at a person outside its subtree', async () => {
+  itLegacyLayer('a COMPANY-SCOPED hr_admin cannot aim an invitation at a person outside its subtree', async () => {
     // `person_id` is the second payload. The role here is entirely legal for this admin (hr_admin, own
     // company) — what is not legal is naming someone it does not administer, because consume's REBIND
     // branch would hand the accepter that person's login. app.can_see_person is NOT the predicate that
@@ -502,7 +560,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(pgText(err)).toMatch(/row-level security policy/i);
   });
 
-  it('a temp-table SHADOW cannot make app.can_admin_person say yes — pg_temp is pinned last', async () => {
+  itLegacyLayer('a temp-table SHADOW cannot make app.can_admin_person say yes — pg_temp is pinned last', async () => {
     // Postgres searches the session's TEMPORARY schema FIRST whenever `pg_temp` is not named in a
     // function's search_path, so the house-standard `SET search_path = public` does NOT protect a
     // SECURITY DEFINER helper: `CREATE TEMP TABLE employment(...)` in an ai_hr_app session would make
@@ -952,7 +1010,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     return row;
   };
 
-  it('an issued invitation cannot have its token, expiry or payload rewritten', async () => {
+  itLegacyLayer('an issued invitation cannot have its token, expiry or payload rewritten', async () => {
     // ai_hr_app holds column-level UPDATE on all twelve columns (0151:44) and the policy's USING is
     // tenant-wide, so before the lifecycle trigger any admin could take ANY invitation in the tenant and
     // install a token_hash it had chosen — minting a working invitation out of a row it never created.
@@ -976,7 +1034,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(rows).toHaveLength(0);
   });
 
-  it('an UPDATE cannot walk an invitation up to a role its writer could not have created', async () => {
+  itLegacyLayer('an UPDATE cannot walk an invitation up to a role its writer could not have created', async () => {
     // The role conjunct is in WITH CHECK, which re-evaluates on UPDATE — but the trigger's immutability
     // rule fires first (BEFORE ROW triggers run ahead of the RLS check), so the payload is pinned twice.
     // Either refusal is correct; what must never happen is the row changing.
@@ -1000,7 +1058,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(row.companyId).toBe(base.companyId);
   });
 
-  it('a REVOKED invitation cannot be re-armed — the lifecycle is one-way', async () => {
+  itLegacyLayer('a REVOKED invitation cannot be re-armed — the lifecycle is one-way', async () => {
     // revokeInvitation (core/auth.ts:280-286) is only as strong as the terminal state it writes. Without
     // the trigger, `SET status='pending', accepted_at=NULL` restored a revoked invitation and its token
     // worked again.
@@ -1107,7 +1165,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(rows).toHaveLength(1);
   });
 
-  it('a DELEGATED company admin cannot revoke — the trigger mirrors revokeInvitation’s assertGroupAdmin', async () => {
+  itLegacyLayer('a DELEGATED company admin cannot revoke — the trigger mirrors revokeInvitation’s assertGroupAdmin', async () => {
     // core/auth.ts revokeInvitation gates on assertGroupAdmin and writes an `app-user.invitation.revoked`
     // domain event; the raw statement did neither, and the scope-only USING let a company-scoped admin
     // pick up an in-scope row it had not created. Availability + audit rather than privilege, but the
@@ -1165,7 +1223,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
 
   // ── The consume half: rows that predate the tightening must still be refused ───────────────────
 
-  it('a PRE-EXISTING forged operator invitation cannot be consumed', async () => {
+  itLegacyLayer('a PRE-EXISTING forged operator invitation cannot be consumed', async () => {
     // A row written before slice 0 reached this deployment. The definer is the last line of defence.
     const raw = `tok_${crypto.randomUUID()}`;
     const err = await withLegacyInvitation('operator', null, raw, () => consume(raw).catch((e) => e));
@@ -1199,7 +1257,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     });
   });
 
-  it('a forged invitation carrying a role outside the enum cannot be consumed', async () => {
+  itLegacyLayer('a forged invitation carrying a role outside the enum cannot be consumed', async () => {
     // Pre-0312 `role` was free TEXT, so 'root' was storable and reached `v_inv.role::role` as a
     // runtime cast error rather than a policy decision. Now it is refused by name.
     const raw = `tok_${crypto.randomUUID()}`;
@@ -1208,7 +1266,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
     expect(pgText(err)).toMatch(/not a valid customer role/i);
   });
 
-  it('a forged COMPANY-SCOPED super_admin invitation is refused by name, not by 0020 forty lines later', async () => {
+  itLegacyLayer('a forged COMPANY-SCOPED super_admin invitation is refused by name, not by 0020 forty lines later', async () => {
     // Before this slice the row died at the final role_assignment INSERT on 0020's constraint — an
     // opaque 23514 from inside a definer function, forty lines away from the actual problem. The guard
     // now names it, and does so BEFORE any app_user is created or rebound.

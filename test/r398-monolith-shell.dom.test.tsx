@@ -45,7 +45,7 @@ import { CommandBar } from '../components/command-bar';
 import { NotificationCenter } from '../components/notification-center';
 import { ShellRoutePath, ShellStatusLine } from '../components/shell-top-line';
 
-const setTheme = (theme: 'monolith' | 'classic' | 'current' | null) => {
+const setTheme = (theme: 'monolith' | 'classic' | 'atelier' | null) => {
   if (theme === null) document.documentElement.removeAttribute('data-ui-theme');
   else document.documentElement.setAttribute('data-ui-theme', theme);
 };
@@ -289,39 +289,5 @@ describe('the top line and the status line', () => {
     const button = screen.getByRole('button', { name: /4/ });
     expect(button.querySelector('svg')).not.toBeNull();
     expect(button.textContent).toBe('4');
-  });
-});
-
-
-describe('Current workspace navigation', () => {
-  it('replaces the rail with shared links and Ops/Strata selection, and locates the active module', () => {
-    setTheme('current'); pathname = '/personnel'; adminRail();
-    expect(document.querySelector('aside')).toBeNull();
-    expect(screen.getByRole('button', { name: messages.nav.workspaceOps })).toHaveAttribute('aria-pressed', 'true');
-    const people=screen.getByRole('button', { name: messages.nav.modulePeople });
-    expect(people).toHaveAttribute('data-active','true');fireEvent.click(people);
-    expect(within(screen.getByRole('navigation',{name:messages.nav.modulePeople})).getByRole('link', { name: messages.nav.people })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: messages.nav.dashboard })).toHaveAttribute('href', '/');
-    fireEvent.click(screen.getByRole('button', { name: messages.nav.workspaceStrata }));
-    expect(screen.getByRole('button', { name: messages.nav.workspaceStrata })).toHaveAttribute('aria-pressed','true');
-    expect(screen.getByRole('link', { name: messages.nav.dashboard })).toHaveAttribute('href', '/');
-  });
-  it('uses the same role filtering and direct-links a module with one authorized destination', () => {
-    setTheme('current');
-    wrap(<Sidebar isAdmin={false} canApprove={false} canAccessTeam={false} enabledModules={[]} defaultCollapsed={false} />);
-    expect(screen.queryByRole('button', { name: messages.nav.systemConfiguration })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: messages.nav.inbox }));
-    expect(screen.queryByRole('link', { name: /Approval Items/ })).toBeNull();
-    expect(screen.getByRole('link', { name: messages.nav.modulePeople })).toHaveAttribute('href', '/personnel');
-  });
-  it('opens system links inline, closes them with Escape and returns focus', () => {
-    setTheme('current'); pathname = '/'; adminRail();
-    const trigger = screen.getByRole('button', { name: messages.nav.systemConfiguration });
-    fireEvent.click(trigger);
-    const links = screen.getByRole('navigation', { name: messages.nav.systemConfiguration });
-    expect(within(links).getByRole('link', { name: messages.nav.holidays })).toHaveAttribute('href', '/admin/holidays');
-    fireEvent.keyDown(links, { key: 'Escape' });
-    expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    expect(trigger).toHaveFocus();
   });
 });

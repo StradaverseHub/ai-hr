@@ -67,9 +67,9 @@ beforeEach(() => {
 });
 
 describe('A. resolveUiTheme — the cookie decides, the default is Monolith', () => {
-  it('the vocabulary is exactly monolith | classic | current | atelier, cookie `ui_theme`, default monolith', () => {
+  it('the vocabulary is exactly monolith | classic | atelier, cookie `ui_theme`, default monolith', () => {
     expect(UI_THEME_COOKIE).toBe('ui_theme');
-    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'current', 'atelier']);
+    expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'atelier']);
     expect(DEFAULT_UI_THEME).toBe('monolith');
   });
   it('cookie absent → monolith', () => {
@@ -78,12 +78,12 @@ describe('A. resolveUiTheme — the cookie decides, the default is Monolith', ()
   });
   it('cookie classic → classic; cookie monolith → monolith', () => {
     expect(resolveUiTheme('classic')).toBe('classic');
-    expect(resolveUiTheme('current')).toBe('current');
+    expect(resolveUiTheme('current')).toBe('monolith');
     expect(resolveUiTheme('atelier')).toBe('atelier');
     expect(resolveUiTheme('monolith')).toBe('monolith');
   });
   it('invalid value → monolith (never a third state)', () => {
-    for (const bad of ['', 'Classic', 'CLASSIC', ' classic', 'Atelier', 'atelier ', 'dark', 'light', 'indigo', 'monolith;classic']) {
+    for (const bad of ['current', '', 'Classic', 'CLASSIC', ' classic', 'Atelier', 'atelier ', 'dark', 'light', 'indigo', 'monolith;classic']) {
       expect(resolveUiTheme(bad), bad).toBe('monolith');
       expect(isUiTheme(bad), bad).toBe(false);
     }
@@ -91,7 +91,7 @@ describe('A. resolveUiTheme — the cookie decides, the default is Monolith', ()
 });
 
 describe('B. setUiTheme — the server action', () => {
-  it.each(['classic', 'monolith', 'current', 'atelier'])('accepts %s and sets ui_theme for 1 year, SameSite=Lax, path=/', async (theme) => {
+  it.each(['classic', 'monolith', 'atelier'])('accepts %s and sets ui_theme for 1 year, SameSite=Lax, path=/', async (theme) => {
     await expect(setUiTheme(theme)).resolves.toEqual({ ok: true });
     expect(cookieSet).toHaveBeenCalledTimes(1);
     expect(cookieSet).toHaveBeenCalledWith('ui_theme', theme, {
@@ -103,7 +103,7 @@ describe('B. setUiTheme — the server action', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
   });
   it('refuses anything else: no cookie written, nothing revalidated', async () => {
-    for (const bad of ['', 'Classic', 'dark', 'x'.repeat(5000), undefined, null, 1, {}, ['classic']]) {
+    for (const bad of ['current', '', 'Classic', 'dark', 'x'.repeat(5000), undefined, null, 1, {}, ['classic']]) {
       await expect(setUiTheme(bad)).resolves.toEqual({ ok: false });
     }
     expect(cookieSet).not.toHaveBeenCalled();
@@ -127,9 +127,9 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     jar.set('ui_theme', 'classic');
     expect((await renderLayout()).props['data-ui-theme']).toBe('classic');
   });
-  it('cookie current → data-ui-theme="current"', async () => {
+  it('retired cookie current → data-ui-theme="monolith"', async () => {
     jar.set('ui_theme', 'current');
-    expect((await renderLayout()).props['data-ui-theme']).toBe('current');
+    expect((await renderLayout()).props['data-ui-theme']).toBe('monolith');
   });
   it('cookie invalid → data-ui-theme="monolith"', async () => {
     jar.set('ui_theme', 'neon');

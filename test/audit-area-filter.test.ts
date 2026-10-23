@@ -40,6 +40,8 @@ let b: Base;
 
 /** Aggregate types with NO mapping — they must chip `other` AND be found by the Other area. */
 const UNMAPPED = ['feedback-item', 'notice', 'made-up-aggregate'] as const;
+// Default access installation creates one genuine audit event before the filter fixtures.
+const INITIAL = 'access-configuration';
 
 /** One event per aggregate type, so every type in the map is represented exactly once. */
 const SEEDED = [...MAPPED_AGGREGATE_TYPES, ...UNMAPPED];
@@ -68,6 +70,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  const initial = await auditEvents(adminCtx(b), {limit:500});
+  expect(initial).toEqual([expect.objectContaining({aggregateType:INITIAL,eventType:'access-configuration.initialized'})]);
 });
 
 describe('f1b994e3 — Audit Trail Area filter', () => {
@@ -99,7 +103,7 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
 
     // 2. Every seeded row is reachable from exactly one area — no row is orphaned by the filter.
     const total = [...found.values()].reduce((n, list) => n + list.length, 0);
-    expect(total).toBe(SEEDED.length);
+    expect(total).toBe(SEEDED.length + 1);
   });
 
   it('leave reaches the six aggregate types the retired page could never show', async () => {
@@ -133,11 +137,11 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
     const ctx = adminCtx(b);
     await seedOneEventPerAggregateType(ctx);
     const rows = await auditEvents(ctx, { module: 'other', limit: 500 });
-    expect(rows.map((r) => r.aggregateType).sort()).toEqual([...UNMAPPED].sort());
+    expect(rows.map((r) => r.aggregateType).sort()).toEqual([...UNMAPPED, INITIAL].sort());
     // aggregateTypesForModule('other') is honestly empty — the complement, not an IN-list, is what makes
     // the area work. If auditWhere ever "simplified" to inArray([]) this count would collapse to 0.
     expect(aggregateTypesForModule('other')).toEqual([]);
-    expect(await auditEventsCount(ctx, { module: 'other' })).toBe(UNMAPPED.length);
+    expect(await auditEventsCount(ctx, { module: 'other' })).toBe(UNMAPPED.length + 1);
   });
 
   it('an out-of-set ?module= is IGNORED, not narrowed to nothing', async () => {
@@ -150,7 +154,7 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
     const chosen = isModuleKey('leaves') ? ('leaves' as ModuleKey) : undefined;
     const rows = await auditEvents(ctx, { module: chosen, limit: 500 });
     // The whole log, not an empty page — the leave page's treatment of an out-of-set ?type=.
-    expect(rows.length).toBe(SEEDED.length);
+    expect(rows.length).toBe(SEEDED.length + 1);
     expect(isModuleKey('leave')).toBe(true);
   });
 

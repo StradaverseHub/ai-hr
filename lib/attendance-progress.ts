@@ -8,7 +8,7 @@ export type AttendanceProgressWorkflow = {
   participantDecisions?: { stageIndex: number; participantSlot: string; decision: string; actualPersonId?: string | null }[];
 };
 export type AttendanceNextApprover = { name: string; employeeCode: string | null; kind: AttendanceResolvedApprover['kind']; slot?: string; eligible: boolean; actingMode?: 'assigned' | 'administrator' };
-export type AttendanceProgress = { state: 'final' | 'legacy' | 'pending' | 'unresolved'; level: number | null; mode: 'any_one' | 'sequential'; next: AttendanceNextApprover[] };
+export type AttendanceProgress = { state: 'final' | 'legacy' | 'pending' | 'unresolved'; level: number | null; mode: 'any_one' | 'all_required' | 'sequential'; next: AttendanceNextApprover[] };
 export function recordedAttendanceProgress(flow: AttendanceProgressWorkflow | null, status: string,
   identities: ReadonlyMap<string, { employeeCode: string | null; eligible: boolean }> = new Map()): AttendanceProgress {
   const base: AttendanceProgress = { state: 'unresolved', level: null, mode: 'any_one', next: [] };
@@ -16,7 +16,7 @@ export function recordedAttendanceProgress(flow: AttendanceProgressWorkflow | nu
   if (!flow) return { ...base, state: 'legacy' };
   const stage = flow.effectiveStages?.[flow.currentStage] ?? flow.stages[flow.currentStage];
   if (!stage || flow.decisions.some(d => d.stageIndex === flow.currentStage)) return base;
-  const mode = stage.mode === 'sequential' ? 'sequential' : 'any_one';
+  const mode = stage.mode === 'sequential' ? 'sequential' : flow.routingVersion===4&&stage.mode==='all_required'?'all_required':'any_one';
   const completed = flow.participantDecisions?.filter(d => d.stageIndex === flow.currentStage) ?? [];
   if (completed.some(d => d.decision === 'rejected' || d.participantSlot === `${flow.currentStage}:hr`) || mode === 'any_one' && completed.length) return base;
   let remaining = stage.approvers.filter(a => !completed.some(d => d.participantSlot === a.slot));

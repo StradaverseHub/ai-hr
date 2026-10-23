@@ -29,6 +29,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { pricesChildReliefFromGrid, childReliefGridFromFamily } from '../core/dependents';
+import {familyGridComplete} from '../lib/family-child-relief-rule';
 import { childReliefAmountFor } from '../localization/my/payroll';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 
@@ -183,19 +184,17 @@ describe('04b88724 · (c) the notes under the table branch on what happened, not
 
 describe('04b88724 · (d) the head count is not replaced by the weighted count', () => {
   it('num_children remains the head count — Form E, CP8D and the EA read it as one', () => {
-    const s = src('core/dependents.ts');
-    expect(s).toContain('numChildren: state.derived');
-    // ⚠️ r351 — THE ARGUMENT LIST GREW AND THE DECISION DID NOT. The sync now passes its own KL `asOf` into
-    // the count (it used to take `new Date()` through the parameter default, which is real UTC now and
-    // therefore YESTERDAY between 00:00 and 08:00 Kuala Lumpur — a day behind the two screens that already
-    // resolve `todayInKualaLumpur()`, on the one day the eligibility rule turns on). Pinning the literal
-    // `eligibleChildReliefCount(rows)` would have made that correction look like a regression. What this
-    // case is actually for is that the value written to `num_children` is the plain HEAD COUNT and never the
-    // weighted one, so that is what is asserted — with the weighted function named, so a swap cannot pass.
-    expect(s, 'the head-count function is what feeds the column').toContain('derived: eligibleChildReliefCount(');
-    expect(s, 'and the WEIGHTED figure never does — Form E / CP8D / EA would print 8 children for one').not.toContain(
-      'derived: eligibleChildReliefUnits(',
-    );
+    const owner = src('db/migrations/0579_configurable_access.sql');
+    const start = owner.indexOf('CREATE FUNCTION app.my_sync_family_child_relief(');
+    const end = owner.indexOf('$$;', start);
+    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+1000);
+    const body = owner.slice(start,end);
+    expect(src('core/dependents.ts')).toContain('select app.access_family_relief_sync(');
+    expect(body).toContain('SELECT count(*)::integer,count(*) FILTER');
+    expect(body).toContain('INTO derived,categorised FROM public.employee_dependent d');
+    expect(body).toContain('app.my_family_child_relief_eligible(d,as_of)');
+    expect(body).toContain('SET num_children=derived,child_relief_table=grid');
+    expect(body).not.toMatch(/num_children\s*=\s*(?:units|amount|weighted)/i);
   });
 
   it('one physical disabled child is 1 physical and 4 qualifying — the reporter’s stated requirement', () => {
@@ -210,7 +209,8 @@ describe('04b88724 · (d) the head count is not replaced by the weighted count',
 
 describe('04b88724 · (e) an incomplete record still falls back, in all four places', () => {
   it('the grid is still stored only when every eligible child carries a category', () => {
-    expect(src('core/dependents.ts')).toContain('built.categorised === built.eligible');
+    expect(src('core/dependents.ts')).toContain('familyGridComplete(built.eligible,built.categorised)');
+    for(const [eligible,categorised,complete] of [[0,0,false],[2,1,false],[2,2,true],[1,2,false]] as const)expect(familyGridComplete(eligible,categorised)).toBe(complete);
     expect(src('core/dependents.ts')).toContain('? built.grid : null');
   });
 

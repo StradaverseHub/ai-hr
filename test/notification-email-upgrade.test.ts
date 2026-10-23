@@ -1,6 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
+import { attendanceCcUpgradeReady } from '../deploy/identity-email/workflow-capability';
 describe('root workflow-email upgrade boundaries',()=>{
+ it.each([null,{},[],{version:1},{version:1,attendanceCc:false},{version:1,attendanceCc:'true'},{version:'1',attendanceCc:true},{version:2,attendanceCc:true}])('refuses a legacy or malformed capability response %#',value=>{
+  expect(attendanceCcUpgradeReady(200,value)).toBe(false);
+ });
+ it('requires successful HTTP status without treating delivery readiness as installation capability',()=>{
+  const installed={version:1,attendanceCc:true,ready:false};
+  expect(attendanceCcUpgradeReady(200,installed)).toBe(true);
+  expect(attendanceCcUpgradeReady(503,installed)).toBe(false);
+  expect(attendanceCcUpgradeReady(undefined,installed)).toBe(false);
+  const upgrade=readFileSync('deploy/identity-email/upgrade-workflow.ts','utf8');
+  expect(upgrade).toContain('attendanceCcUpgradeReady(res.statusCode,JSON.parse(body))');
+ });
  it('uses a single embedded checked service bundle and preserves the root-owned runtime boundary',()=>{
   const upgrade=readFileSync('deploy/identity-email/upgrade-workflow.ts','utf8'),builder=readFileSync('scripts/build-workflow-email-upgrade.ts','utf8');
   expect(builder).toContain('WORKFLOW_EMAIL_AGENT_BASE64');expect(builder).toContain('WORKFLOW_EMAIL_AGENT_SHA256');

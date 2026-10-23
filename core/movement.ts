@@ -1,3 +1,4 @@
+import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * Employment History — Movement tab redesign (78853b97).
  *
@@ -2671,6 +2672,7 @@ export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovemen
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
 export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+  await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
   return dispatchMovementEventTx(tx,ctx,rawInput);
 }
 
@@ -2907,6 +2909,7 @@ export async function applyDueMovementsTx(
   employmentId: string,
   today: string,
 ): Promise<ApplyDueResult> {
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');
   const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId, today);
   const due = rows
     .filter((r) => r.scheduled && r.effectiveDate <= today && statusOf(r) === 'pending')
@@ -3424,6 +3427,7 @@ export async function reverseMovementEvent(
     throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
   }
   return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
     return { employmentId: p.employmentId };
   });
@@ -3471,6 +3475,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
   const endDate = p.endDate?.trim() || null;
 
   const result=await withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
     const row = rows.find((r) => r.id === p.movementId);
     if (!row) throw new Error('Movement event not found.');

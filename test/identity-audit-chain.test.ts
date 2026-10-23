@@ -30,7 +30,9 @@ describe('persisted audit policy at the database insert boundary', () => {
   it('chains raw app-role authentication calls without tenant context or wrapper arming', async () => {
     await setting(base.tenantId, true);
     await Promise.all([rawAuth(), rawAuth(), rawAuth()]);
-    const events = await rows(base.tenantId);
+    const all = await rows(base.tenantId);
+    expect(all.filter(e => e.chainSeq === null)).toEqual([expect.objectContaining({eventType:'access-configuration.initialized'})]);
+    const events = all.filter(e => e.chainSeq !== null);
     expect(events.map(e => e.chainSeq)).toEqual([1, 2, 3]);
     expect(events[0].prevHash).toBe('GENESIS');
     expect(events[1].prevHash).toBe(events[0].hash);

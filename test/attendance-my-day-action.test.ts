@@ -11,9 +11,11 @@ vi.mock('../packs/attendance/service', () => ({
   requestAttendanceCorrection: state.request,
   AttendanceCorrectionFutureDateError: class extends Error {},
   AttendanceCorrectionPendingError: class extends Error {},
+  AttendancePayrollClosedError: class extends Error {},
+  AttendanceWorkflowError: class extends Error { constructor(public code:string){super(code);} },
 }));
 import { requestOwnAttendanceDayAction } from '../app/attendance/my-records/[date]/actions';
-import { AttendanceCorrectionFutureDateError, AttendanceCorrectionPendingError } from '../packs/attendance/service';
+import { AttendanceCorrectionFutureDateError, AttendanceCorrectionPendingError, AttendancePayrollClosedError, AttendanceWorkflowError } from '../packs/attendance/service';
 const form = () => {
   const data = new FormData();
   Object.entries({ date: '2025-06-04', checkIn: '09:00', checkOut: '18:00', reason: 'Forgot to punch', from: '2025-06-01', to: '2025-06-30' })
@@ -27,10 +29,15 @@ beforeEach(() => {
   state.request.mockResolvedValue({ correctionId: 'request' });
 });
 describe('employee attendance day action', () => {
+  it.each(['noMatch','tie','unresolved'] as const)('keeps the %s refusal as a page-owned localized message',async code=>{
+    state.request.mockRejectedValue(new AttendanceWorkflowError(code,'Fictional routing refusal'));
+    await expect(requestOwnAttendanceDayAction(form())).rejects.toThrow('correctionError=myDayWorkflowUnavailable');
+    expect(state.revalidate).not.toHaveBeenCalled();
+  });
   it('retains safe calendar coordinates through submission and refreshes the calendar', async () => {
     const data = form();
     for (const [key, value] of Object.entries({ calendar: '1', calendarView: 'week', calendarMonth: '2025-06', calendarDate: '2025-06-02', returnTo: 'https://untrusted.invalid' })) data.set(key,value);
-    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('calendar=1&calendarView=week&calendarMonth=2025-06&calendarDate=2025-06-02&corrected=1');
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('calendar=1&calendarView=week&calendarMonth=2025-06&calendarDate=2025-06-02&calendarPage=0&calendarSize=25&corrected=1');
     expect(state.revalidate).toHaveBeenCalledWith('/attendance/my-roster');
     expect(state.request).toHaveBeenCalledWith(state.session, expect.objectContaining({ employmentId: 'manager-own-employment' }));
   });
@@ -63,15 +70,16 @@ describe('employee attendance day action', () => {
     ['checkIn', '25:00', 'myDayBadTimes'],
   ])('refuses invalid %s before creating a request', async (key, value, message) => {
     const data = form(); data.set(key, value);
-    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow(`error=${message}`);
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow(`correctionError=${message}`);
     expect(state.request).not.toHaveBeenCalled();
   });
   it.each([
     [AttendanceCorrectionPendingError, 'myDayPending'],
     [AttendanceCorrectionFutureDateError, 'myDayFuture'],
+    [AttendancePayrollClosedError, 'clockDataPayrollClosed'],
   ])('translates the typed kernel refusal while retaining the list range', async (ErrorType, message) => {
     state.request.mockRejectedValue(new ErrorType());
-    await expect(requestOwnAttendanceDayAction(form())).rejects.toThrow(`from=2025-06-01&to=2025-06-30&error=${message}`);
+    await expect(requestOwnAttendanceDayAction(form())).rejects.toThrow(`from=2025-06-01&to=2025-06-30&correctionError=${message}`);
     expect(state.revalidate).not.toHaveBeenCalled();
   });
 });

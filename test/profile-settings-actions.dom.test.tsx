@@ -1,5 +1,5 @@
 /** Page composition regression: mocks all persistence; no database/app server required.
- * Authored during the paused gate. UNRUN until the parent copies this into test/ and runs under lease.
+ * Tests action composition; domain authority and byte persistence have separate real database checks.
  */
 import {Children,isValidElement,type ReactElement,type ReactNode} from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -35,7 +35,7 @@ async function pageTree(){return Page({searchParams:Promise.resolve({})});}
 beforeEach(()=>{
  vi.clearAllMocks();
  actions.photo.mockResolvedValue(undefined);actions.save.mockResolvedValue(undefined);
- actions.preview.mockResolvedValue({ok:true,matched:7,missing:2,overlapping:0,ineligible:0});
+ actions.preview.mockResolvedValue({ok:true,matched:7,missing:2,overlapping:0,ineligible:0,fingerprint:'a'.repeat(64)});
 });
 afterEach(cleanup);
 
@@ -45,6 +45,7 @@ describe('Employee Change Requests actual page action composition',()=>{
   const tree=await pageTree(),nodes=descendants(tree);
   const photoForms=nodes.filter(node=>node.type==='form'&&node.props.action===actions.photo);
   expect(photoForms).toHaveLength(1);
+  expect(nodes.filter(node=>node.type==='form'&&node.props.action===actions.legacy)).toHaveLength(0);
   const routing=nodes.find(node=>node.type===ProfileRoutingForm);
   expect(routing).toBeDefined();expect(routing!.props.action).toBe(actions.save);
   expect(routing!.props.previewAction).toBe(actions.preview);
@@ -68,16 +69,16 @@ describe('Employee Change Requests actual page action composition',()=>{
   render(tree);
   fireEvent.click(screen.getByRole('button',{name:'routingPreview'}));
   await waitFor(()=>expect(actions.preview).toHaveBeenCalledTimes(1));
-  expect(await screen.findByRole('status')).toHaveTextContent('routingMatched: 7');
+  expect(await screen.findByRole('status')).toHaveTextContent('routingTypeMatched: 7');
   expect(actions.save).not.toHaveBeenCalled();expect(actions.photo).not.toHaveBeenCalled();
   const previewData=actions.preview.mock.calls[0][0] as FormData;
-  expect(JSON.parse(String(previewData.get('policy')))).toEqual({enabled:false,rules:[]});
+  expect(JSON.parse(String(previewData.get('policy')))).toEqual({version:2,enabled:true,rules:[]});
 
   const saveButton=screen.getByRole('button',{name:'routingSave'}),form=saveButton.closest('form');
   expect(form).not.toBeNull();
   await (routing.props.action as (data:FormData)=>Promise<void>)(new FormData(form!));
   expect(actions.save).toHaveBeenCalledTimes(1);
-  expect(JSON.parse(String((actions.save.mock.calls[0][0] as FormData).get('policy')))).toEqual({expectedRevision:'fictional-revision',enabled:false,rules:[]});
+  expect(JSON.parse(String((actions.save.mock.calls[0][0] as FormData).get('policy')))).toEqual({version:2,expectedRevision:'fictional-revision',enabled:true,rules:[],previewFingerprint:'a'.repeat(64)});
   expect(actions.preview).toHaveBeenCalledTimes(1);expect(actions.photo).not.toHaveBeenCalled();
  });
 });

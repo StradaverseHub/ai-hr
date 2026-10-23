@@ -61,11 +61,13 @@ export function DocumentsManager({
   docs,
   categories,
   types,
+  canMaintain,
 }: {
   employmentId: string;
   docs: DocumentVM[];
   categories: string[];
   types: string[];
+  canMaintain: boolean;
 }) {
   const t = useTranslations('people.detail.documents');
   const [q, setQ] = useState('');
@@ -177,11 +179,11 @@ export function DocumentsManager({
         ))}
       </datalist>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+      {canMaintain ? <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
         <FamilyFormDialog triggerLabel={t('addDocument')} title={t('addTitle')}>
           {documentDialogForm(null)}
         </FamilyFormDialog>
-      </div>
+      </div> : null}
 
       {/* Search + filters (unchanged behaviour — the reporter asked for these to stay). */}
       {docs.length > 0 && (
@@ -273,6 +275,7 @@ export function DocumentsManager({
                       <Button asChild variant="outline" size="sm">
                         <a href={`/admin/personnel/${employmentId}/document/${d.id}`}>{t('actionDownload')}</a>
                       </Button>
+                      {canMaintain ? <>
                       <FamilyFormDialog
                         triggerLabel={t('actionEdit')}
                         triggerVariant="outline"
@@ -304,6 +307,7 @@ export function DocumentsManager({
                           {t('actionDelete')}
                         </ConfirmSubmit>
                       </form>
+                      </> : null}
                     </div>
                   </td>
                 </tr>

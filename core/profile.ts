@@ -1,3 +1,8 @@
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
+import {pgSqlState} from '../lib/db-error';
+import {isOwnPersonTx,ownPersonPredicate} from './own-person';
+import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
@@ -34,10 +39,9 @@ import { isCalendarDate } from '../lib/calendar-date';
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
-import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
-import { assertCanDecide,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import { employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
 import {
@@ -260,7 +264,7 @@ export class ProfileChangeFieldClosedError extends Error {
  *  pay-affecting statutory fields (the employee sees their own). */
 export function myProfile(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
-    if (!ctx.personId) return null;
+    if (!ctx.personId||!await isOwnPersonTx(tx,ctx)) return null;
     const [p] = await tx
       .select({
         fullName: person.fullName,
@@ -288,7 +292,7 @@ export function myProfile(ctx: SessionContext) {
         emergencyContactAddress: primaryEmergencyContactSql('address'),
       })
       .from(person)
-      .where(eq(person.id, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(person.id, ctx.personId)))
       .limit(1);
     const [stat] = await tx
       .select({
@@ -298,7 +302,7 @@ export function myProfile(ctx: SessionContext) {
         numChildren: employeeStatutoryMy.numChildren,
       })
       .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, ctx.personId))
+      .where(and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, ctx.personId)))
       .limit(1);
     return { person: p ?? null, statutory: stat ?? null };
   });
@@ -332,12 +336,14 @@ export async function updateOwnContact(
  if(!ctx.personId)throw new EssProfileError('permission');
  const run=async(tx:Tx)=>{
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
+  if(!await isOwnPersonTx(tx,ctx))throw new EssProfileError('permission');
   if(Object.keys(p).some(key=>!['phone','personalEmail'].includes(key)&&p[key as keyof typeof p]!==undefined))throw new EssProfileError('addressReview');
   const patch:{phone?:string|null;personalEmail?:string|null}={};
   if(p.phone!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.phone'))throw new EssProfileError('fieldClosed');patch.phone=clean(p.phone);}
   if(p.personalEmail!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.personalemail'))throw new EssProfileError('fieldClosed');patch.personalEmail=clean(p.personalEmail);}
   if(!Object.keys(patch).length)return;
-  await tx.update(person).set(patch).where(eq(person.id,ctx.personId!));
+  const changed=await tx.update(person).set(patch).where(and(ownPersonPredicate(ctx),eq(person.id,ctx.personId!))).returning({id:person.id});
+  if(changed.length!==1)throw new EssProfileError('permission');
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'person',aggregateId:ctx.personId!,eventType:'person.self-updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,ctx.personId!),payload:{fields:Object.keys(patch)}});
  };
  return outerTx?run(outerTx):withTenant(ctx,run);
@@ -375,31 +381,6 @@ export async function requestProfileChange(
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
-/**
- * Decide a profile change. Admin-only (bank/tax data is not a manager's call) and never self —
- * approval applies the proposed patch, rejection applies NOTHING.
- *
- * ── THE SAFETY PROPERTY OF THE WHOLE OF STAGE TWO ───────────────────────────────────────────────────
- * A pending request must never reach the master record without a decision, and a rejected one must never
- * be applied at all. Structurally: the write set is built inside `if (p.decision === 'approved')` and
- * there is no other writer in this function — the only thing a rejection touches is the request row's
- * own status, decider, timestamp and reason. `test/me-profile-change-requests.test.ts` pins it by
- * reading the master columns byte-for-byte either side of a rejection.
- *
- * ── AND A REJECTION MUST SAY WHY ────────────────────────────────────────────────────────────────────
- * `reason` is REQUIRED when rejecting (ProfileChangeReasonRequiredError, thrown before the transaction
- * opens) and optional when approving. It is stored on the request and shown to the EMPLOYEE on their own
- * screen — which is the point of it, and the one thing in stage two the schema did not already have.
- */
-async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected'){
- await assertProfileRouteDecisionTx(tx,ctx,req);
- if(req.personId===ctx.personId&&decision==='approved')throw new EssProfileError('permission');
- await assertCanDecide(tx,ctx,req.employmentId,'profile change');
- const roles=ctx.roles??[];
- if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new Error('Only an admin can approve a profile change');
- if(profileChangeApprover(ctx)==='group_admin'&&!isGroupAdmin(ctx))throw new Error('Only a group administrator can approve a profile change');
-}
-
 export async function decideProfileChange(
   ctx: SessionContext,
   p: {
@@ -413,6 +394,8 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    // Serialize the decision with configuration revocation before loading any proposal or master data.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()
@@ -448,7 +431,10 @@ export async function decideProfileChange(
      */
     await assertProfileChangeDecisionAuthorityTx(tx,ctx,req,p.decision);
 
-    if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
+    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed))await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);
+    if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
+      const {applyProfilePhotoProposalTx}=await import('./person-photo');await applyProfilePhotoProposalTx(tx,ctx,req);
+    }else if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
       const {applyProfileProposalTx}=await import('./profile-edit');
       await applyProfileProposalTx(tx,ctx,req.employmentId,req.proposed);
     }else if (p.decision === 'approved') {
@@ -510,6 +496,13 @@ export async function decideProfileChange(
       payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null },
     });
     return { status: p.decision };
+  }).catch(error=>{
+    // Deferred SQL refusal is still a finite permission/stale result at the public decision owner.
+    // Unknown storage/audit faults remain system failures and retain their original diagnostics.
+    const state=pgSqlState(error);
+    if(state!=='42501'&&state!=='40001')throw error;
+    const refusal=new EssProfileError(state==='40001'?'stale':'permission');
+    Object.defineProperty(refusal,'cause',{value:error});throw refusal;
   });
 }
 
@@ -568,6 +561,7 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
     // Resolve the person from the employment (RLS confines this select to admin scope).
     const [emp] = await tx
       .select({ personId: employment.personId })
@@ -628,6 +622,7 @@ export function listProfileChangeRequests(
         employee: person.fullName,
         employeeCode: employment.employeeCode,
         proposed: profileChangeRequest.proposed,
+        currentPhotoPresent:sql<boolean>`exists(select 1 from ${personPhoto} where ${personPhoto.personId}=${profileChangeRequest.personId})`,
         status: profileChangeRequest.status,
         decisionReason: profileChangeRequest.decisionReason,
         decidedAt: profileChangeRequest.decidedAt,
@@ -651,48 +646,6 @@ export function listProfileChangeRequests(
     const {currentProfileRequestValuesTx}=await import('./profile-edit');
     return Promise.all(rows.map(async row=>({...row,review:await currentProfileRequestValuesTx(tx,ctx,row)})));
   });
-}
-
-/** Uncapped proposal-free headers for the canonical assigned-work inbox. */
-export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
-  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
-   employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
-   .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
-   .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
-   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
-    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
-   .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
- });
- const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
- return candidates.filter(row=>allowed.has(row.id));
-}
-
-/** Metadata-only task eligibility, sharing the actual writer's routing, self, role and setting gates.
- * A changed retained route is not a current approval assignment; invalid policy/database faults stay loud. */
-export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
- return withTenant(ctx,async tx=>{
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
-  for(let offset=0;offset<ids.length;offset+=1000){
-   const rows=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
-    routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,
-    routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext}).from(profileChangeRequest)
-    .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
-   for(const row of rows){
-    if(row.personId===current.personId)continue;
-    try{await assertProfileChangeDecisionAuthorityTx(tx,current,row,'rejected');result.push(row.id);}
-    catch(error){
-     if(isApprovalDecisionRefusal(error,'profile change'))continue;
-     if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;
-     if(error instanceof Error&&error.constructor===Error&&['Only an admin can approve a profile change','Only a group administrator can approve a profile change'].includes(error.message))continue;
-     throw error;
-    }
-   }
-  }
-  return result.sort();
- });
 }
 
 /**
@@ -727,7 +680,7 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presenta
         createdAt: profileChangeRequest.createdAt,
       })
       .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.personId, personId))
+      .where(and(ownPersonPredicate(ctx),eq(profileChangeRequest.personId, personId)))
       .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
       .limit(limit);
     return rows.map(row=>{
@@ -782,13 +735,14 @@ export async function pendingProfileChangeCountsByKey(ctx:SessionContext):Promis
  const rows=await withTenant(ctx,tx=>tx.execute(sql`
   SELECT keys.key,count(DISTINCT r.id)::int n FROM ${profileChangeRequest} r,
   LATERAL (
-   SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2' THEN '{}'::jsonb WHEN jsonb_typeof(r.proposed)='object' THEN r.proposed ELSE '{}'::jsonb END) key
+   SELECT r.proposed->>'fieldId' AS key WHERE r.proposed->>'kind'='photo'
+   UNION SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v' IN ('2','3') THEN '{}'::jsonb WHEN jsonb_typeof(r.proposed)='object' THEN r.proposed ELSE '{}'::jsonb END) key
    UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'fields')='array' THEN r.proposed->'fields' ELSE '[]'::jsonb END) f
    UNION SELECT f->>'fieldId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.proposed->'registers')='array' THEN r.proposed->'registers' ELSE '[]'::jsonb END) x,
     LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f
   ) keys WHERE r.status='pending' GROUP BY keys.key`));
  const out=new Map<string,number>();
- for(const row of rows as unknown as {key:string;n:number|string}[])if(requestableField(row.key)||personnelField(row.key)?.ess.binding)out.set(row.key,Number(row.n));
+ for(const row of rows as unknown as {key:string;n:number|string}[])if(requestableField(row.key)||personnelField(row.key)?.ess.binding||row.key==='profile.personal_details.photo')out.set(row.key,Number(row.n));
  return out;
 }
 
@@ -814,7 +768,7 @@ export async function withdrawProfileChangesForLockedFields(
   outerTx?:Tx,
 ): Promise<{ withdrawn: number }> {
   if (!isGroupAdmin(ctx)) throw new Error('Only a group administrator can change profile-request settings.');
-  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null||personnelField(k)?.ess.binding));
+  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null||personnelField(k)?.ess.binding||k==='profile.personal_details.photo'));
   const reason = clean(p.reason);
   if (locked.size === 0 || reason === null) return { withdrawn: 0 };
 
@@ -826,64 +780,64 @@ export async function withdrawProfileChangesForLockedFields(
   const lockedKeys = [...locked];
 
   const run=async (tx:Tx) => {
-    await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
-    /**
-     * ⚠️ ONE STATEMENT, FILTERED IN SQL, WITH NO CAP — the fix a review forced (r261 fix pass).
-     *
-     * This used to read `SELECT … WHERE status = 'pending' LIMIT 1000` and sift the rows in TypeScript.
-     * Two things were wrong with that and the second is the serious one:
-     *   · the cap was on ALL pending rows rather than on the matching ones, so in a tenant with a
-     *     thousand unrelated requests waiting the matching row was simply never returned — proven on a
-     *     live cluster, where the request naming the bank account stayed `pending`, the toast said
-     *     "Fields saved" and an HR admin then approved it and moved the master account number;
-     *   · saving twice did not help, because nothing about the second save made the missed row any more
-     *     likely to be inside an unordered thousand.
-     * `?|` ("does this jsonb object have ANY of these keys?") does the matching in the database, so the
-     * statement touches exactly the rows it must refuse and converges by construction rather than by
-     * luck. RETURNING gives back the rows it actually changed, which is also what makes the count honest.
-     *
-     * status + reason + timestamp ONLY. No master table is touched anywhere in this function, which is
-     * the property test/me-profile-request-settings.test.ts reads the columns to prove.
-     */
-    const refused = await tx
-      .update(profileChangeRequest)
-      .set({ status: 'rejected', decidedByEmploymentId: null, decidedAt: sql`now()`, decisionReason: reason })
-      .where(
-        and(
-          eq(profileChangeRequest.status, 'pending'),
-          // ARRAY[$n, $n…], built with `sql.join` rather than by handing drizzle the JS array: a bare
-          // array parameter expands to a RECORD `($5, $6)`, which Postgres refuses to cast to text[]
-          // ("cannot cast type record to text[]"). Every key is still a bound parameter, never inlined.
-          sql`(${profileChangeRequest.proposed} ?| ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'fields')='array' THEN ${profileChangeRequest.proposed}->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[]))
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${profileChangeRequest.proposed}->'registers')='array' THEN ${profileChangeRequest.proposed}->'registers' ELSE '[]'::jsonb END) x,LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(x->'fields')='array' THEN x->'fields' ELSE '[]'::jsonb END) f WHERE f->>'fieldId'=ANY(ARRAY[${sql.join(lockedKeys.map((k)=>sql`${k}`),sql`, `)}]::text[])))`,
-        ),
-      )
-      .returning({
-        id: profileChangeRequest.id,
-        employmentId: profileChangeRequest.employmentId,
-        proposed: profileChangeRequest.proposed,
-      });
-
-    let withdrawn = 0;
-    for (const req of refused) {
-      const {profileProposalKeys}=await import('../lib/personnel-ess-contract');
-      const keys = profileProposalKeys(req.proposed);
-      const hit = keys.filter((k) => locked.has(k));
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'profile-change',
-        aggregateId: req.id,
-        eventType: 'profile-change.rejected',
-        actor: actorOf(ctx),
-        subjectEmploymentId: req.employmentId,
-        // Field NAMES and a provenance marker, never values and never the reason sentence — the same
-        // rule decideProfileChange follows, and single-line so the event-payload PII guard can scan it.
-        payload: { decision: 'rejected', via: 'field-locked', fields: hit, reasonGiven: true },
-      });
-      withdrawn += 1;
-    }
-    return { withdrawn };
+    // A write-only configuration consequence, independent of merit-review permission. The SQL
+    // owner refreshes actual group administration and configuration denial, updates only pending
+    // matching requests, purges decided photo bytes via the retention trigger and audits atomically.
+    // It returns a count, never a proposal/route/reason, so a denied reviewer gains no row read.
+    const [row]=await tx.execute<{withdrawn:number}>(sql`select app.access_withdraw_profile_requests(${JSON.stringify(lockedKeys)}::jsonb,${reason}) as withdrawn`);
+    return {withdrawn:Number(row?.withdrawn??0)};
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+
+export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
+  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+   employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
+   .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
+   .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+   .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
+ });
+ const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
+ return candidates.filter(row=>allowed.has(row.id));
+}
+
+
+export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
+  for(let offset=0;offset<ids.length;offset+=1000){
+   const rows=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+    routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,
+    routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,requestType:sql<'fields'|'photo'|null>`app.profile_task_request_type(${profileChangeRequest.id})`}).from(profileChangeRequest)
+    .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
+   for(const row of rows){
+    if(row.personId===current.personId||row.requestType===null)continue;
+    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected');result.push(row.id);}
+    catch(error){
+     if(isApprovalDecisionRefusal(error,'profile change'))continue;
+     if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;
+     if(error instanceof Error&&error.constructor===Error&&['Only an admin can approve a profile change','Only a group administrator can approve a profile change'].includes(error.message))continue;
+     throw error;
+    }
+   }
+  }
+  return result.sort();
+ });
+}
+
+
+async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected'){
+ await assertProfileRouteDecisionTx(tx,ctx,req);
+ if(req.personId===ctx.personId&&decision==='approved')throw new EssProfileError('permission');
+ await assertCanDecide(tx,ctx,req.employmentId,'profile change');
+ const roles=ctx.roles??[];
+ if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new Error('Only an admin can approve a profile change');
+ if(profileChangeApprover(ctx)==='group_admin'&&!isGroupAdmin(ctx))throw new Error('Only a group administrator can approve a profile change');
 }

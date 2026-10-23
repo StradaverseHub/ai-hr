@@ -17,9 +17,10 @@ export const notificationEmailRequest = z.discriminatedUnion('op', [
   z.object({ op: z.literal('status') }).strict(),
   // No caller-controlled address, content, SMTP configuration or origin crosses this boundary.
   z.object({ op: z.literal('send'), deliveryId: z.uuid(), leaseToken: z.uuid() }).strict(),
+  z.object({op:z.literal('attendanceCcSend'),deliveryId:z.uuid(),leaseToken:z.uuid()}).strict(),
 ]);
 export type NotificationEmailRequest = z.infer<typeof notificationEmailRequest>;
-export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean };
+export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean;attendanceCc?:boolean };
 export type NotificationEmailOutcome = 'sent' | 'retry' | 'failed' | 'skipped' | 'uncertain';
 export const notificationEmailErrors = [
   'relayUnavailable', 'recipientUnavailable', 'recipientChanged', 'notEligible',

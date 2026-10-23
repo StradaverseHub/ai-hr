@@ -15,8 +15,8 @@ import { saveReviewLetterAction, setReviewEndDateAction, startReviewAction, uplo
 
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
-export async function ReviewSection({ s, employmentId }: { s: SessionContext; employmentId: string }) {
-  const t = await getTranslations('review');
+export async function ReviewSection({ s, employmentId,canMaintain }: { s: SessionContext; employmentId: string;canMaintain:boolean }) {
+  const [t,access] = await Promise.all([getTranslations('review'),getTranslations('accessConfiguration')]);
   const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>t.has(key.slice(7))?t(key.slice(7)):fallback);
   const profile = await reviewProfile(s, employmentId);
   if (!profile) return null;
@@ -61,7 +61,7 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
           </div>
         ) : profile.reviewType && !profile.endDate ? (
           // §1.8 — set the end date (the smallest surface that makes the feature non-inert on day one).
-          <form action={setReviewEndDateAction} className="flex flex-wrap items-end gap-2">
+          canMaintain ? <form action={setReviewEndDateAction} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="employmentId" value={employmentId} />
             <label className="text-xs text-muted-foreground">
               {label('others.probation_contract_internship_review.type')}
@@ -75,7 +75,7 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
             </label>
             <DateField {...personnelControl('others.probation_contract_internship_review.enddate','record')} className={inputCls} label={label('others.probation_contract_internship_review.enddate')} />
             <button className={btnPrimary}>{t('setEndDate')}</button>
-          </form>
+          </form> : <p role="status" className="text-sm text-muted-foreground">{access('workforceReadOnly')}</p>
         ) : profile.reviewType ? (
           <form action={startReviewAction}>
             <input type="hidden" name="employmentId" value={employmentId} />

@@ -26,7 +26,8 @@ export type AttendanceResolvedApprover = {
 export type AttendanceResolvedStage = {
     name: string;
     approvers: AttendanceResolvedApprover[];
-    mode?: import('./attendance-workflow-v3').AttendanceLevelMode;
+    mode?: import('./attendance-workflow-v4').AttendanceV4Mode;
+    sources?: import('./attendance-workflow-v3').AttendanceV3Source[];
     source?: import('./attendance-workflow-v3').AttendanceV3Source;
     hrAlternative?: boolean;
 };
@@ -112,6 +113,7 @@ export type AttendanceWorkflowOptions = {
     positions?: { id: string; name: string }[];
     employees?: { id: string; name: string; employeeCode?: string | null }[];
     approverEmployees?: { id: string; name: string; employeeCode?: string | null }[];
+    approverAvailability?:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible';
     profileFields?: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>>;
 };
 /** One presentation descriptor for form, company list and View/Edit; values remain Personnel-owned. */

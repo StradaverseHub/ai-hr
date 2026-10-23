@@ -1,3 +1,4 @@
+import {assertWorkforceEmploymentTx,workforceEmploymentPredicate} from './workforce-access';
 /** Personnel owns this deliberate classification; it changes no employment/financial eligibility. */
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -9,15 +10,16 @@ function assertHr(ctx:SessionContext){if(!isAdmin(ctx)||!ctx.userId)throw new Er
 export async function employmentTestRecord(ctx:SessionContext,employmentId:string){
  assertHr(ctx);
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.select({isTestRecord:employment.isTestRecord}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId),sql`app.is_admin_for(${employment.companyId})`)).limit(1);
+  const [row]=await tx.select({isTestRecord:employment.isTestRecord}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId),sql`app.is_admin_for(${employment.companyId})`,workforceEmploymentPredicate(sql`${employment.id}`))).limit(1);
   return row??null;
- },{readOnlySnapshot:true});
+ });
 }
 /** Deliberately owns its transaction: no late acquisition from a caller holding statutory/data locks. */
 export async function setEmploymentTestRecord(ctx:SessionContext,p:{employmentId:string;isTestRecord:boolean}){
  assertHr(ctx);if(typeof p.isTestRecord!=='boolean'||!/^[0-9a-f-]{36}$/i.test(p.employmentId))throw new Error('classification_not_available');
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('lock_timeout','1000ms',true),set_config('statement_timeout','5000ms',true)`);
+  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);
   const [row]=await tx.select({id:employment.id,companyId:employment.companyId,isTestRecord:employment.isTestRecord}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId))).limit(1).for('no key update');
   if(!row)throw new Error('classification_not_available');

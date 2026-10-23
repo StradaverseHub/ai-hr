@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {familyReliefFunctionSource} from './helpers/family-relief-owner-source';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(`${root}${p}`, 'utf8');
@@ -155,7 +156,7 @@ describe('r351 · the figure is taken from the register, at one date, through on
     // The r343 decision. This round makes the column a projection; it does not change what it means, and
     // the warning block that explains why must survive with it.
     const s = src(DEPS);
-    expect(s).toContain('numChildren: state.derived');
+    expect(familyReliefFunctionSource('my_sync_family_child_relief')).toContain('SET num_children=derived,child_relief_table=grid');
     expect(s, 'the warning naming the three readers is still on eligibleChildReliefCount').toMatch(
       /THIS STAYS A HEAD COUNT ON PURPOSE/,
     );
@@ -167,19 +168,23 @@ describe('r351 · the figure is taken from the register, at one date, through on
     expect(s, 'the gate is a function now, not an expression copied into the sync').toContain(
       'export function derivedChildReliefGrid(',
     );
-    expect(s, 'and it is what the sync stores').toContain('const grid = derivedChildReliefGrid(rows, asOf)');
+    expect(s, 'the kernel calls the private sync owner').toContain('select app.access_family_relief_sync(');
+    expect(familyReliefFunctionSource('access_family_relief_sync')).toContain('RETURN app.my_sync_family_child_relief(p_person);');
     // Unchanged from r344, and not loosened by this round: a partial grid relieves fewer children than the
     // employee has, so an unclassifiable register falls back to the head count rather than pricing badly.
-    expect(s).toContain('built.categorised === built.eligible');
+    expect(s).toContain('familyGridComplete(built.eligible,built.categorised)');
+    expect(familyReliefFunctionSource('my_family_grid_complete')).toContain('p_eligible IS NOT DISTINCT FROM p_categorised');
+    expect(familyReliefFunctionSource('my_family_grid_complete')).toContain('p_eligible>0');
+    expect(familyReliefFunctionSource('my_sync_family_child_relief')).toContain('IF NOT app.my_family_grid_complete(derived,categorised) THEN grid:=NULL;');
     expect(s).toContain('? built.grid : null');
   });
 
   it('every date is the tenant’s calendar day — the sync included, which it was not', () => {
     const s = src(DEPS);
-    expect(s, 'the sync takes its own KL date instead of the new Date() default').toContain(
-      'const asOf = new Date(`${todayInKualaLumpur()}T00:00:00Z`)',
-    );
-    expect(s, 'and both derivations are taken against it').toContain('eligibleChildReliefCount(rows, asOf)');
+    const owner=familyReliefFunctionSource('my_sync_family_child_relief');
+    expect(owner, 'one actual database instant supplies the KL eligibility day').toContain("as_of date:=(p_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date");
+    expect(owner, 'head count and grid both use that same day').toMatch(/INTO derived,categorised[\s\S]*app.my_family_child_relief_eligible\(d,as_of\)[\s\S]*INTO grid[\s\S]*app.my_family_child_relief_eligible\(d,as_of\)/);
+    expect(s, 'ordinary callers cannot select a replay clock').toContain('app.access_family_relief_sync(${personId}::uuid)');
     // The Family tab was the other half of the same defect: its Age and relief columns took real UTC now
     // while the card beside them took KL today, so the two tabs disagreed for eight hours a day.
     const page = src(PAGE);

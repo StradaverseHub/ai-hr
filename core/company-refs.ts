@@ -78,6 +78,7 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'reward_policy_group_target',column:'company_id',disposition:'other',existsFunction:'app.reward_policy_group_company_in_use',note:'Immutable shared reward configuration versions retain each explicit company/unit pair; expose only the authorised company retention boolean.'},
   { table: 'lc_onboarding_case', column: 'company_id', disposition: 'employees', note: 'Onboarding source identity, tasks, approvals and handover history must survive company changes.' },
   { table: 'lc_onboarding_case_revision', column:'company_id', disposition:'employees', note:'Immutable onboarding case history survives company changes.' },
   { table: 'lc_onboarding_private_revision', column:'company_id', disposition:'employees', note:'Sensitive onboarding history retains HR-only access.' },
@@ -129,6 +130,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
   { table: 'role_assignment', column: 'company_id', disposition: 'other', note: 'A user given a role scoped to this company. Access is removed deliberately, never as a side effect.' },
+  { table: 'access_group_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.access_group_grant_company_in_use', note: 'Current and retired group grants retain the company scope of access history.' },
+  { table: 'access_membership', column: 'company_id', disposition: 'other', existsFunction: 'app.access_membership_company_in_use', note: 'Current and retired custom memberships retain the company scope of access history.' },
+  { table: 'access_user_override', column: 'company_id', disposition: 'other', existsFunction: 'app.access_user_override_company_in_use', note: 'Current and retired individual allow/deny decisions retain their original company scope.' },
   { table: 'app_invitation', column: 'company_id', disposition: 'other', note: 'An invitation to join with a role at this company — an access grant waiting to happen.' },
   { table: 'app_manual_identity_enrollment', column: 'company_id', disposition: 'other', existsFunction: 'app.manual_identity_company_in_use', note: 'Manual account enrollment is retained access history, including cancelled attempts. Never delete its company scope implicitly.' },
   { table: 'reporting_line', column: 'scope_company_id', disposition: 'other', note: 'A reporting line scoped to this company. It belongs to employments, possibly of another company.' },
@@ -213,6 +217,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'reward_policy_group_target',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.reward_policy_group_source_company_in_use',note:'Historic shared configuration versions retain their source business unit even when a global unit is used in another company.'},
   { table: 'replacement_holiday', column: 'source_holiday_id', references: 'holiday', effect: 'blocks', existsFunction: 'app.replacement_holiday_source_company_in_use', note: 'A retained employee allocation may reference another company’s original holiday. Preserve that source without exposing the employee allocation outside current visibility.' },
   { table: 'attendance_rule_shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Explicit Schedule Group membership may serve shared shifts; remove it through its owner before deleting company setup.' },
   { table: 'attendance_rule_shift', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A Schedule Group explicitly retains this shift; company deletion must not silently change its allowed pool.' },

@@ -1,4 +1,5 @@
 /** Versioned proposals are rendered by field identity, never raw JSON or an inferred column name. */
+import {PROFILE_PHOTO_FIELD} from './profile-photo-proposal';
 import {parseEssProfileProposal} from './personnel-ess-contract';
 import {personnelField,PERSONNEL_FIELDS} from './personnel-field-registry';
 import {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
@@ -8,6 +9,7 @@ import {formatDmy} from './date-display';
 export type ProfileProposalLine={key:string;fieldId:string|null;label:string;value:string;recordKind:'dependent'|'qualification'|'emergency'|null;newRecord:boolean};
 export function profileProposalLines(raw:unknown,resolve:PersonnelLabelResolver,opts:{mask:boolean}):ProfileProposalLine[]{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return [];
+ if('v' in raw&&raw.v===3&&'kind' in raw&&raw.kind==='photo'&&'fieldId' in raw&&raw.fieldId===PROFILE_PHOTO_FIELD)return [{key:PROFILE_PHOTO_FIELD,fieldId:PROFILE_PHOTO_FIELD,label:resolve('essProfile.photoRequests','Profile photo'),value:resolve('essProfile.photoProposed','Photo submitted for HR approval'),recordKind:null,newRecord:false}];
  if('v' in raw&&raw.v===2){
   let proposal;try{proposal=parseEssProfileProposal(raw);}catch{return [];}
   const render=(change:typeof proposal.fields[number],key:string,recordKind:ProfileProposalLine['recordKind'],newRecord:boolean)=>{

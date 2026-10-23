@@ -1,0 +1,37 @@
+/** Closed Workforce profile projection. Labels/meaning remain in the canonical Personnel registry.
+ * No arbitrary field selector, payroll/statutory/bank data, paymaster link or master byte payload. */
+export const WORKFORCE_PROFILE_FIELDS = [
+  {key: 'salutation', fieldId: 'profile.personal_details.salutation'},
+  {key: 'fullName', fieldId: 'profile.personal_details.fullname'},
+  {key: 'firstName', fieldId: 'profile.personal_details.firstname'},
+  {key: 'lastName', fieldId: 'profile.personal_details.lastname'},
+  {key: 'preferredName', fieldId: 'profile.personal_details.preferredname'},
+  {key: 'nationality', fieldId: 'profile.personal_details.nationality'},
+  {key: 'religion', fieldId: 'profile.personal_details.religion'},
+  {key: 'race', fieldId: 'profile.personal_details.race'},
+  {key: 'dateOfBirth', fieldId: 'profile.personal_details.dateofbirth'},
+  {key: 'gender', fieldId: 'profile.personal_details.gender'},
+  {key: 'maritalStatus', fieldId: 'profile.personal_details.maritalstatus'},
+  {key: 'primaryEmail', fieldId: 'profile.contact_and_permanent_address.primaryemail'},
+  {key: 'phone', fieldId: 'profile.contact_and_permanent_address.phone'},
+  {key: 'homePhone', fieldId: 'profile.contact_and_permanent_address.homephone'},
+  {key: 'personalEmail', fieldId: 'profile.contact_and_permanent_address.personalemail'},
+  {key: 'permanentAddressLine1', fieldId: 'profile.contact_and_permanent_address.permanentaddressline1'},
+  {key: 'permanentAddressLine2', fieldId: 'profile.contact_and_permanent_address.permanentaddressline2'},
+  {key: 'permanentAddressLine3', fieldId: 'profile.contact_and_permanent_address.permanentaddressline3'},
+  {key: 'permanentPostcode', fieldId: 'profile.contact_and_permanent_address.permanentpostcode'},
+  {key: 'permanentCity', fieldId: 'profile.contact_and_permanent_address.permanentcity'},
+  {key: 'permanentState', fieldId: 'profile.contact_and_permanent_address.permanentstate'},
+  {key: 'permanentCountry', fieldId: 'profile.contact_and_permanent_address.permanentcountry'},
+  {key: 'correspondenceAddressLine1', fieldId: 'profile.correspondence_address.correspondenceaddressline1'},
+  {key: 'correspondenceAddressLine2', fieldId: 'profile.correspondence_address.correspondenceaddressline2'},
+  {key: 'correspondenceAddressLine3', fieldId: 'profile.correspondence_address.correspondenceaddressline3'},
+  {key: 'correspondencePostcode', fieldId: 'profile.correspondence_address.correspondencepostcode'},
+  {key: 'correspondenceCity', fieldId: 'profile.correspondence_address.correspondencecity'},
+  {key: 'correspondenceState', fieldId: 'profile.correspondence_address.correspondencestate'},
+  {key: 'correspondenceCountry', fieldId: 'profile.correspondence_address.correspondencecountry'},
+  {key: 'correspondenceMobilePhone', fieldId: 'profile.correspondence_address.correspondencemobilephone'},
+  {key: 'correspondenceHomePhone', fieldId: 'profile.correspondence_address.correspondencehomephone'},
+] as const;
+export type WorkforceProfileKey = (typeof WORKFORCE_PROFILE_FIELDS)[number]['key'];
+export type WorkforceProfile = Record<WorkforceProfileKey, string | null>;

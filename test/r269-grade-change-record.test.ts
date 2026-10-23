@@ -349,7 +349,13 @@ describe('§B · the history carries the date the change took effect; the ledger
 
     // The sweep: the movement's own effective date, never the morning the cron ran.
     const sweep = read('core/movement-apply.ts');
-    expect(sweep).toContain('await employmentGradeId(ctx, c.employmentId)');
+    const start=sweep.indexOf('const {r,gradeBefore}=await runTransaction(ctx,async tx=>{');
+    const applied=sweep.indexOf('const r=await applyDueMovementsTx(tx,ctx,c.employmentId!,today);',start);
+    expect(start).toBeGreaterThan(-1);expect(applied).toBeGreaterThan(start+100);
+    const before=sweep.slice(start,applied);
+    expect(before).toContain("await assertWorkforceEmploymentTx(tx,ctx,c.employmentId!,'maintain')");
+    expect(before).toContain('tx.select({gradeId:employment.gradeId})');
+    expect(before).toContain('where(eq(employment.id,c.employmentId!))');
     expect(sweep).toContain('changeEffectiveOn: r.appliedEffectiveDate');
     expect(sweep).not.toContain('changeEffectiveOn: today');
 
@@ -559,18 +565,19 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     expect(block).not.toMatch(/Object\.entries\(x\.criteria as Record<string, unknown>\)/);
   });
 
-  it('the employee’s warning and the administrator’s list are both wired to the screens', () => {
+  it('Leave inquiry retains dated grade history and configuration retains uncovered employees', () => {
     const profile = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(profile).toContain("tScheme('unmatchedWarning'");
-    expect(profile).toContain("tScheme('unmatchedNoGrade')");
+    // Approved Personnel cleanup removes its duplicate Leave warning/card. Coverage remains in
+    // Leave configuration, and dated grade effects remain visible in the canonical inquiry history.
+    expect(profile).not.toContain('schemeUnmatchedNotice');
     const history = read('components/leave/entitlement-recalc-history.tsx');
     expect(history).toContain("t('recalcColGrade')");
     // 39306a9e retains this history under Leave inquiry after removing the Personnel duplicate.
     expect(history).toContain('{formatDmy(r.tookEffectOn)}');
     expect(read('app/leave/employee-balances/page.tsx')).toContain('<EntitlementRecalcHistory rows={recalcAudit} />');
     expect(profile).not.toContain('recalcHistoryCard');
-    // Rendered in BOTH states of the card: the one that matters most is "some types resolved, some did not".
-    expect((profile.match(/\{schemeUnmatchedNotice\}/g) ?? []).length).toBe(2);
+    // The redundant Personnel Leave summary remains absent after the approved cleanup.
+    expect(profile).not.toContain('leaveBalancesCard');
 
     const page = read('app/admin/leave-config/entitlement-tables/page.tsx');
     expect(page).toContain('<UncoveredEmployeesCard s={s} asOf={data.today} />');

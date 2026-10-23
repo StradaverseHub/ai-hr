@@ -444,7 +444,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
     expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
-    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx) === 'group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');
+    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx)==='group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');
   });
 
   it('offers NO inert control — the request card contains no disabled attribute at all', () => {
@@ -488,10 +488,10 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     const sweep = CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function pendingProfileChangeCountsByKey'));
     expect(sweep, 'the pending queue must not be read behind a blind row cap').not.toContain('.limit(1000)');
     expect(CORE_PROFILE, 'the locked keys are matched IN the database, not sifted in TypeScript').toContain(
-      'sql`(${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
+      'select app.access_withdraw_profile_requests(${JSON.stringify(lockedKeys)}::jsonb,${reason})',
     );
     expect(CORE_PROFILE, 'the counts are aggregated in SQL over every pending row').toContain(
-      "SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v'='2'",
+      "SELECT jsonb_object_keys(CASE WHEN r.proposed->>'v' IN ('2','3')",
     );
     // The HR-DIRECT setter is deliberately NOT narrowed by the employee's permission: switching a field
     // off must not stop HR correcting it, which is the very act an employee is being told to ask for.
@@ -506,7 +506,7 @@ describe('r261 — the settings screen speaks the declaration\'s own vocabulary'
   });
 
   it('writes a complete bounded v3 policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
-    expect(SETTINGS_ACTIONS).toContain('for(const field of essVisibleFields())');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0]))");expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileVisibilityPolicy(s,{policy:{version:3,fields,primaryOnly}');
+    expect(SETTINGS_ACTIONS).toContain('for(const field of essVisibleFields())');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0]))");expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileVisibilityPolicy(s,{policy:{version:4,fields,groups,primaryOnly}');
     expect(POLICY_OWNER).toContain('if(!isProfileVisibilityPolicyValue(p.policy))');expect(POLICY_OWNER).toContain('Object.keys(policy.fields).length!==ids.size');expect(POLICY_OWNER).toContain("setTenantSetting(before.ctx,{key:'ess.profile_change_fields',value:policy},tx)");expect(POLICY_OWNER).toContain('withdrawProfileChangesForLockedFields(before.ctx,{lockedKeys:locked,reason:p.withdrawnReason},tx)');
   });
 
@@ -516,9 +516,16 @@ describe('r261 — the settings screen speaks the declaration\'s own vocabulary'
     for (const writer of ['.update(employeeStatutoryMy)', '.update(person)', '.delete(']) {
       expect(body.includes(writer), `${writer} must not appear in the withdrawal path`).toBe(false);
     }
-    expect(body).toContain(".set({ status: 'rejected'");
+    expect(body).toContain('select app.access_withdraw_profile_requests(');
+    const source=read('db/migrations/0579_configurable_access.sql');
+    const start=source.indexOf('CREATE FUNCTION app.access_withdraw_profile_requests('),end=source.indexOf('$$;',start);
+    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+1000);
+    const sqlOwner=source.slice(start,end);
+    expect(sqlOwner).toContain("UPDATE public.profile_change_request q SET status='rejected',decided_by_employment_id=NULL");
+    expect(sqlOwner).toContain("q.status='pending'");expect(sqlOwner).toContain('q.proposed ?| keys');
+    expect(sqlOwner).not.toMatch(/(?:UPDATE|DELETE FROM) public\.(?:person|employee_statutory_my)\b/i);
     // Nobody judged it, so nobody is recorded as having judged it.
-    expect(body).toContain('decidedByEmploymentId: null');
+    expect(body).toContain('return outerTx?run(outerTx):withTenant(ctx,run)');
   });
 });
 

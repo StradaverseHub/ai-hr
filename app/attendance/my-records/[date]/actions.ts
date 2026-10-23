@@ -10,6 +10,8 @@ import {
   requestAttendanceCorrection,
   AttendanceCorrectionFutureDateError,
   AttendanceCorrectionPendingError,
+  AttendancePayrollClosedError,
+  AttendanceWorkflowError,
 } from '@/packs/attendance/service';
 
 export async function requestOwnAttendanceDayAction(formData: FormData) {
@@ -27,7 +29,8 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
   if(typeof selector==='string')query.set('employmentId',selector);
   if(formData.get('home')==='1')query.set('home','1');
   const back = `/attendance/my-records/${encodeURIComponent(date)}?${query.toString()}`;
-  const fail = (key: string): never => redirect(`${back}&error=${key}`);
+  // Page-owned message keys must survive the global literal-message toast consumer.
+  const fail = (key: string): never => redirect(`${back}&correctionError=${key}`);
   const me=await ownAttendanceRecordSubject(s,selector);
   if (!me) fail('correctionForbidden');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('correctionBadDate');
@@ -50,6 +53,8 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
     if (error instanceof AttendanceLevelError) redirect(`${back}&workflowProblem=${encodeURIComponent(attendanceLevelProblemToken(error.problem))}`);
     if (error instanceof AttendanceCorrectionPendingError) fail('myDayPending');
     if (error instanceof AttendanceCorrectionFutureDateError) fail('myDayFuture');
+    if (error instanceof AttendancePayrollClosedError) fail('clockDataPayrollClosed');
+    if (error instanceof AttendanceWorkflowError && ['noMatch', 'tie', 'unresolved'].includes(error.code)) fail('myDayWorkflowUnavailable');
     fail('correctionRejected');
   }
   revalidatePath('/attendance/my-records');

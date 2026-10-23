@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import {NOTICE_UPLOAD_PROXY_MAX_BYTES} from './lib/notice-upload-policy';
+import { PHOTO_ACTION_BODY_LIMIT } from './lib/profile-photo-limits';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
@@ -39,6 +40,7 @@ const nextConfig: NextConfig = {
    */
   experimental: {
     staleTimes: { static: 30 },
+    serverActions: { bodySizeLimit: PHOTO_ACTION_BODY_LIMIT },
     // The Notice route still caps a file at10MiB and the whole multipart body at10MiB+64KiB.
     // Clone one extra byte so its bounded reader can refuse excess rather than parse truncated data.
     proxyClientMaxBodySize:NOTICE_UPLOAD_PROXY_MAX_BYTES,

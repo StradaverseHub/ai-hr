@@ -2,34 +2,35 @@
  * Pending-approvals inbox for the topbar notification bell. Originally a bare COUNT (consultant
  * feedback #11); feedback 1514d366 (3-tab bell) turned it into a LIST API — `listPendingTasks`
  * returns the individual items awaiting THIS user's decision (pending leave from others + leave
- * cancellations + attendance corrections + profile changes + claims + resignations +
+ * cancellations + replacement-leave claims + attendance corrections + profile changes + claims + resignations +
  * manager and HR employment reviews), each with a deep-link to the page where the user acts on it.
  * b833a077 (r362) — TRAVEL LEFT THIS LIST. My Travel was removed completely, so no travel request can be
  * created and none can be decided; the `travel` PendingTaskKind, its queue, its self-exclusion and its
  * bell label went with it. The travel_request rows are kept for audit and are reachable from no screen.
- * `pendingApprovalsCount` retains the approval-only subset for the legacy workbench. Web assigned-work
- * surfaces additionally include live required Notice acknowledgements. Own pending applications are excluded —
+ * `pendingApprovalsCount` stays as the length of that list, so the dashboard card and every
+ * existing caller keep their exact semantics. The viewer's own pending requests are excluded —
  * a task means "things needing your action", not "your own requests in flight".
  *
- * A platform role does not establish assignment: organizational managers, named approvers and workflow
- * participants may hold Employee. Queue visibility and the canonical current-decision gates determine
- * tasks; a visible request awaiting a different level is not the viewer's task.
+ * Current assignment comes from each canonical decision owner, including named Attendance participants,
+ * actual reporting assignments without a manager platform role and stored manager reviews across employments.
+ * Broad row visibility and a role label alone do not create a task; private workspace rows are not selected.
  */
-import { isAdmin } from '../lib/authz-model';
-import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
-import type { SessionContext } from '../db/client';
-import { pendingAttendanceTaskMetadata } from '../packs/attendance/service';
-import {pendingProfileTaskMetadata} from './profile';
-import { pendingResignationTaskMetadata } from './offboarding';
-import { pendingReviewTaskMetadata } from './employment-review';
-import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
+import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
+import type {SessionContext} from '../db/client';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {pendingClaimTaskMetadata} from '../packs/claims/service';
+import {pendingAttendanceTaskMetadata} from './attendance';
+import {pendingProfileTaskMetadata} from './profile';
+import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
+import {pendingReviewTaskMetadata} from './employment-review';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
   | 'leave'
   | 'leaveCancellation'
+  | 'replacementLeave'
   | 'attendance'
   | 'profile'
   | 'claim'
@@ -43,18 +44,16 @@ export type PendingTaskItem = {
   id: string;
   kind: PendingTaskKind;
   subjectName: string | null;
-  /** ISO source timestamp for sorting. Notice acknowledgement work uses the Notice's last update. */
+  /** ISO timestamp of when the request was filed (sorts the Task tab, newest first). */
   createdAt: string;
   /** Where the user acts on it — the matching /approvals section where one exists. */
   linkPath: string;
-  /** Only a deadline actually recorded by its workflow owner. Missing means unknown. */
-  dueDate?: string;
 };
 
 /**
  * Which OPTIONAL-module queues the caller may include (r292).
  *
- * THE CALLER DECIDES, AND THAT IS THE POINT. `listAttendanceCorrections` and `listPendingClaims` are
+ * THE CALLER DECIDES, AND THAT IS THE POINT. The Attendance and Claims metadata owners are
  * service-gated now (core/module-gate.ts) and throw `ModuleNotEnabledError` for a tenant that declined
  * the pack — so this read model has to know, and the two honest ways to find out have OPPOSITE failure
  * behaviour. `isModuleEnabled` is loud on an infrastructure fault, which is right for a service; the
@@ -84,99 +83,31 @@ export async function listPendingTasks(
   modules: InboxModules,
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
-  const admin = isAdmin(ctx);
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, managerReviews,hrReviews,noticeAcknowledgements] = await Promise.all([
-    pendingLeaveTaskMetadata(ctx,scopeIds),
-    // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
-    // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
-    pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
-    // r292 — THE PENDING-TASK COUNT IS A CORE SURFACE (the dashboard tile and the header badge), so it
-    // must survive a tenant that declined the optional packs. `listAttendanceCorrections` and
-    // `listPendingClaims` are service-gated now (core/module-gate.ts) and would throw
-    // ModuleNotEnabledError here. Skipping the queue is also the honest answer: a customer without
-    // Attendance has no corrections awaiting anyone. The `...OrFalse` form is used for the reason its
-    // header gives — a resolver outage must cost one queue, not the whole inbox.
-    modules.attendance ? pendingAttendanceTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
-    admin ? pendingProfileTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
-    modules.claims ? pendingClaimTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
-    // Resignations are HR-decided (the service requires admin), so only admins carry them in the inbox.
-    admin ? pendingResignationTaskMetadata(ctx,scopeIds) : Promise.resolve([]),
-    pendingReviewTaskMetadata(ctx,'manager',scopeIds),
-    // HR stage of reviews — admin-only decision.
-    admin ? pendingReviewTaskMetadata(ctx,'hr',scopeIds) : Promise.resolve([]),
+  // Each owner proves actual current assignment without selecting its private decision workspace.
+  // A platform role or broad read permission alone is not an actionable task assignment.
+  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements]=await Promise.all([
+    pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
+    modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
+    pendingProfileTaskMetadata(ctx,scopeIds),
+    modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
+    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
   ]);
-
-  // The source owners have already applied current decision authority and actual self exclusion.
-  // Do not fetch full application records again to adjudicate this metadata projection.
-  const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
-  const items: PendingTaskItem[] = [
-    ...noticeAcknowledgements.map(row=>({
-      id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,
-      kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),
-      linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`,
-    })),
-    ...leave.map((r) => ({
-      id: r.id,
-      kind: 'leave' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: `/approvals#${APPROVAL_SECTION_ID.leave}`,
-    })),
-    ...leaveCancellations.map((r) => ({
-      id: r.id,
-      kind: 'leaveCancellation' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: `/approvals#${APPROVAL_SECTION_ID.leaveCancellation}`,
-    })),
-    ...corrections.map((r) => ({
-      id: r.id,
-      kind: 'attendance' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-    })),
-    ...profileChanges.map((r) => ({
-      id: r.id,
-      kind: 'profile' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: `/admin/personnel/profile-changes#request-${r.id}`,
-    })),
-    ...claims.map((r) => ({
-      id: r.id,
-      kind: 'claim' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-    })),
-    ...resignations.map((r) => ({
-      id: r.id,
-      kind: 'resignation' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-    })),
-    ...managerReviews.map((r) => ({
-      id: r.id,
-      kind: 'managerReview' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-      dueDate:r.dueDate,
-    })),
-    ...hrReviews.map((r) => ({
-      id: r.id,
-      kind: 'hrReview' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-      dueDate:r.dueDate,
-    })),
+  const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
+  const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
+    rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
+  const items:PendingTaskItem[]=[
+    ...noticeAcknowledgements.map(row=>({id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`})),
+    ...project(leave,'leave'),
+    ...project(cancellations,'leaveCancellation'),
+    ...project(replacement,'replacementLeave'),
+    ...project(attendance,'attendance'),
+    ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
+    ...project(claims,'claim'),...project(resignations,'resignation'),
+    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
   ];
-  // Newest first — the Task tab shows the most recent request at the top.
-  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id)));
+  return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
 }
 
 export async function pendingApprovalsCount(

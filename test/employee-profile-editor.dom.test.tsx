@@ -91,3 +91,10 @@ describe('My Profile single cross-tab editor',()=>{
  });
 
 });
+
+it('omits explicitly hidden tabs and their supplied panels rather than keeping private markup mounted',()=>{
+ const view=workspace();view.visible=[];view.editable=[];view.legacyPrimaryEditable=[];
+ render(<NextIntlClientProvider locale="en" messages={en}><ProfileEditor workspace={view} facts={facts} hiddenTabs={['Profile','Payroll']} defaultTab="profile" extraPanels={{profile:<p>PRIVATE PROFILE PANEL</p>,payroll:<p>PRIVATE PAY PANEL</p>}} history={[]}/></NextIntlClientProvider>);
+ expect(screen.queryByRole('tab',{name:en.people.detail.tabs.profile})).toBeNull();expect(screen.queryByRole('tab',{name:en.people.detail.tabs.payroll})).toBeNull();
+ expect(document.body.textContent).not.toContain('PRIVATE PROFILE PANEL');expect(document.body.textContent).not.toContain('PRIVATE PAY PANEL');expect(screen.getByRole('tab',{name:en.people.detail.tabs.family})).toHaveAttribute('aria-selected','true');
+});
