@@ -103,10 +103,13 @@ whose trace could not commit has no receipt here, and an older successful receip
 guarantee. The scheduled job's existing execution history remains a separate owner of job outcomes.
 
 A recorded failure wins over a contradictory success flag. Missing, invalid or legacy partial
-metadata does not establish completion. A normally returned step may have been switched off or had
-no work; the screen must explain that execution status does not prove an HR outcome. The existing
-source-observation queue remains authoritative for verified closures. This is observability of the
-current deterministic harness, not the held action registry or durable acting-agent runtime.
+metadata does not establish completion. Completion requires the explicitly supported current harness
+version; a well-formed older or future version label alone does not establish a compatible receipt
+contract. Bounded unfamiliar version labels remain visible for diagnosis. A normally returned step
+may have been switched off or had no work; the screen must explain that execution status does not
+prove an HR outcome. The existing source-observation queue remains authoritative for verified
+closures. This is observability of the current deterministic harness, not the held action registry
+or durable acting-agent runtime.
 
 ## Harness engineering
 

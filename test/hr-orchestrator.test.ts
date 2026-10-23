@@ -131,18 +131,23 @@ describe('central HR orchestrator', () => {
     expect((await orchestrationQueue(adminCtx(other))).lastRun).toBeNull();
   });
 
-  it('uses the latest tied receipt and safely projects malformed metadata without source text', async () => {
+  it.each([
+    { name: 'malformed metadata',
+      payload: { harnessVersion: 'private source text', failed: 'private exception', steps: { claims: 'private instruction' }, prompt: 'private prompt' },
+      expected: { harnessVersion: null, failed: null, steps: { observe: 'unknown', readiness: 'unknown', claims: 'unknown', verify: 'unknown' } } },
+    { name: 'unsupported future contract',
+      payload: { harnessVersion: 'readiness-v999', failed: false, steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' }, prompt: 'private prompt' },
+      expected: { harnessVersion: 'readiness-v999', failed: null, steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } } },
+  ])('uses the latest tied receipt without inventing success or exposing private text: $name', async ({ payload, expected }) => {
     const at = new Date();
     const event = { tenantId: base.tenantId, aggregateType: 'hr_orchestrator', aggregateId: base.tenantId,
       eventType: 'orchestrator.pass-finished', actorType: 'agent' as const, occurredAt: at };
     const scopeDigest = digestOf(['all-employments']);
     await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, harnessVersion: 'readiness-v2', failed: false,
       steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } } });
-    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, harnessVersion: 'private source text',
-      failed: 'private exception', steps: { claims: 'private instruction' }, prompt: 'private prompt' } });
+    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, ...payload } });
     const view = await orchestrationQueue(adminCtx(base));
-    expect(view.lastRun).toEqual({ at, harnessVersion: null, failed: null,
-      steps: { observe: 'unknown', readiness: 'unknown', claims: 'unknown', verify: 'unknown' } });
+    expect(view.lastRun).toEqual({ at, ...expected });
     expect(JSON.stringify(view.lastRun)).not.toContain('private');
   });
 

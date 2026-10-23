@@ -33,6 +33,17 @@ describe('recorded orchestration pass summary', () => {
     expect(summarizeOrchestrationPass({ failed: false, steps: complete }).failed).toBeNull();
     expect(summarizeOrchestrationPass({ failed: true, steps: complete }).failed).toBe(true);
   });
+  it.each([undefined, null, 0, 'false', {}, []])('never coerces a malformed success marker: %j', failed => {
+    expect(summarizeOrchestrationPass({ harnessVersion: HR_HARNESS_VERSION, failed, steps: complete }).failed).toBeNull();
+  });
+  it.each(['readiness-v1', 'readiness-v3', 'readiness-v9999'])(
+    'does not confirm completion for an unsupported receipt contract: %s', harnessVersion => {
+      expect(summarizeOrchestrationPass({ harnessVersion, failed: false, steps: complete }))
+        .toEqual({ harnessVersion, failed: null, steps: complete });
+      expect(summarizeOrchestrationPass({ harnessVersion, failed: true, steps: complete }).failed).toBe(true);
+      expect(summarizeOrchestrationPass({ harnessVersion, failed: false, steps: { ...complete, verify: 'failed' } }).failed).toBe(true);
+    },
+  );
   it('discards unrecognized versions, step text and extra private payloads', () => {
     const result = summarizeOrchestrationPass({ harnessVersion: 'private employee payload', failed: 'private exception',
       steps: { observe: 'private instruction', claims: 'failed' }, response: 'private response' });

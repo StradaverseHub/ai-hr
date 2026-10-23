@@ -56,9 +56,9 @@ export function summarizeOrchestrationPass(payload: unknown): OrchestrationPassS
   const harnessVersion = typeof data.harnessVersion === 'string' && /^readiness-v[1-9]\d{0,3}$/.test(data.harnessVersion)
     ? data.harnessVersion : null;
   // A contradictory success flag cannot hide a recorded step failure. A legacy false flag alone
-  // cannot establish completion when the step receipts are missing.
+  // cannot establish completion, nor can a syntactically valid version whose contract we do not read.
   const failed = data.failed === true || states.includes('failed') ? true
-    : data.failed === false && harnessVersion !== null && states.every(state => state === 'succeeded') ? false : null;
+    : data.failed === false && harnessVersion === HR_HARNESS_VERSION && states.every(state => state === 'succeeded') ? false : null;
   return { harnessVersion, failed, steps };
 }
 

@@ -93,11 +93,17 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.receiptNote)).toBeTruthy();
     expect(screen.getByRole('button', { name: en.controlTower.orchestrator.refresh })).toBeTruthy();
   });
-  it('does not label a legacy incomplete receipt as completed', async () => {
-    show(await OrchestrationWorkQueue({ view: { ...empty, lastRun: { at: new Date(), ...summarizeOrchestrationPass({ failed: false }) } } }));
+  it.each([
+    { name: 'legacy incomplete', payload: { failed: false } },
+    { name: 'unsupported future', payload: { harnessVersion: 'readiness-v999', failed: false, steps: successfulSteps } },
+    { name: 'private malformed', payload: { harnessVersion: 'private employee data', failed: false,
+      steps: { observe: { status: 'succeeded', value: 'private source data' }, claims: 'private instruction' }, error: 'private provider error' } },
+  ])('does not label a $name receipt as completed', async ({ payload }) => {
+    show(await OrchestrationWorkQueue({ view: { ...empty, lastRun: { at: new Date(), ...summarizeOrchestrationPass(payload) } } }));
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.outcomes.unknown)).toBeTruthy();
     expect(screen.queryByText(en.controlTower.orchestrator.runDetails.outcomes.succeeded)).toBeNull();
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.incomplete)).toBeTruthy();
+    expect(screen.getByText(en.controlTower.orchestrator.runDetails.title).closest('details')!.textContent).not.toContain('private');
   });
   it('keeps unresolved source work visible after a completed run and respects the supplied review permission', async () => {
     show(await OrchestrationWorkQueue({ view: populatedQueue() }));
