@@ -64,7 +64,7 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
     ||row.policyBinding.revisionId!==policy.id||row.policyBinding.calendarDate!==part.calendarDate
     ||row.policyBinding.dayClass!==part.dayClass||!isDeepStrictEqual(row.source,input.source)
     ||!isDeepStrictEqual(row.currency,cash.currency))return unavailable('partitionMismatch');
-   if(!moneyScopeMatches(pricing,row))return unavailable('partitionMismatch');
+   if(!moneyScopeMatches(pricing,row,snapshot.policyMoneyScope))return unavailable('partitionMismatch');
    let partAmount=BigInt('0');
    for(const line of row.lines){
     if(keys.has(line.id)||line.id.length>2048||!/^\d{1,78}$/.test(line.amountMinorUnits)
@@ -83,13 +83,13 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
    amountMinorUnits:cash.amountMinorUnits,cash,coverage,parts,lines};
  }catch{return unavailable('sourceUnavailable');}
 }
-function moneyScopeMatches(pricing:PreparedPricing,row:PreparedPricing['parts'][number]['pricing']):boolean{
+function moneyScopeMatches(pricing:PreparedPricing,row:PreparedPricing['parts'][number]['pricing'],scope:CanonicalOvertimeSnapshot['policyMoneyScope']):boolean{
  if(pricing.parts.length===1)return row.moneyScope.kind==='singleAllocation';
  if(row.moneyScope.kind!=='parent'||row.moneyScope.amountMinorUnits!==pricing.amountMinorUnits
   ||!isDeepStrictEqual(row.moneyScope.partBindings,pricing.parts.map(p=>p.pricing.policyBinding)))return false;
  const versions=pricing.parts.map(part=>part.pricing.patternVersionId);
- return new Set(versions).size>1?isDeepStrictEqual(row.moneyScope.formulaScope,{kind:'identicalDefinitions',partVersionIds:versions})
-  :row.moneyScope.formulaScope===undefined;
+ return new Set(versions).size>1?scope!==undefined&&isDeepStrictEqual(row.moneyScope.formulaScope,{kind:scope,partVersionIds:versions})
+  :scope===undefined&&row.moneyScope.formulaScope===undefined;
 }
 
 /** Current consumers must obtain their snapshot through canonical, scoped reads under their

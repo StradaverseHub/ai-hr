@@ -15,7 +15,7 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   const replay=attendancePolicyDurationReplay(snapshot),proposal=snapshot.policyExecutionProposal,formulas=snapshot.policyFormulaInput;
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
   if(formulas?.state!=='known')return refuse('formulaUnavailable');
-  if(snapshot.policyMoneyScope!==undefined&&snapshot.policyMoneyScope!=='identicalDefinitions')return refuse('pricingScopeUnavailable');
+  if(snapshot.policyMoneyScope!==undefined&&!['identicalDefinitions','datedRateExpressions'].includes(snapshot.policyMoneyScope))return refuse('pricingScopeUnavailable');
   const counts=attendancePolicyCountAttribution(proposal.duration);if(counts.state!=='known')return refuse('sourcePlacementUnavailable');
   if(snapshot.input.layer!=='raw'||snapshot.input.sessionGranularity!=='recorded')return refuse('sourcePlacementUnavailable');
   const base=Date.parse(snapshot.input.source.date+'T00:00:00+08:00')/1000,parts:Extract<PolicyPricingProposal,{state:'proposed'}>['parts']=[];
@@ -74,14 +74,15 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   }else if(dated.length>1){
    // Every dated allocation is independently checked. The SAME central money engine owns
    // parent counters, charges, resource consumption, cap and rounding once, with rate facts
-   // scoped to each actual dated segment. Distinct formula scopes remain explicit refusal.
+   // scoped to each actual dated segment. Distinct formulas require an explicit central comparison of shared money rules.
    const first=dated[0],count=dated.reduce((n,row)=>n+(row.input.approval.minutes.state==='known'?Number(row.input.approval.minutes.value):0),0);
    // Version digests also bind immutable names/company metadata. A new explicit scope may
    // retain distinct version digests only when the SAME central owner proves byte-identical
-   // validated computational definitions; every dated version/digest remains in the proof.
+   // validated computational definitions, or separately bind dated hourly expressions under identical shared money rules; every dated version/digest remains in the proof.
    const multipleVersions=new Set(dated.map(row=>row.input.patternVersionId)).size>1;
+   if(snapshot.policyMoneyScope==='datedRateExpressions'&&new Set(dated.map(row=>JSON.stringify(row.pattern))).size<2)return refuse('pricingScopeUnavailable');
    if(dated.some(row=>row.definitionDigest!==first.definitionDigest)
-    &&!(snapshot.policyMoneyScope==='identicalDefinitions'&&multipleVersions))return refuse('pricingScopeUnavailable');
+    &&!((snapshot.policyMoneyScope==='identicalDefinitions'||snapshot.policyMoneyScope==='datedRateExpressions')&&multipleVersions))return refuse('pricingScopeUnavailable');
    const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,layer:'raw',sessionGranularity:'recorded',facts:snapshot.input.facts,
     segments:dated.flatMap(row=>row.input.layer==='raw'?row.input.segments:[]),resources:snapshot.input.resources,
     approval:{...first.input.approval,minutes:{state:'known',value:String(count),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}}};

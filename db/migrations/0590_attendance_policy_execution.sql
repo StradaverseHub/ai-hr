@@ -1308,11 +1308,27 @@ CREATE TRIGGER ab_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public
 -- Complete stored financial parent/dated-line integrity. This does not perform pricing in SQL
 -- or establish current source authority. Financial consumers independently replay the one engine;
 -- the earlier aa current mode-specific settlement admission owner remains mandatory.
+-- Private structural comparison only: no duration, schedule, rate or money evaluation.
+-- Hourly expressions may differ only with the same explicit shared money-rule identity.
+CREATE FUNCTION app.attendance_policy_dated_rate_shape(arg_definition jsonb) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_set(arg_definition,'{rates}',(
+  SELECT coalesce(jsonb_agg(jsonb_set(rate,'{tiers}',(
+   SELECT coalesce(jsonb_agg(CASE WHEN tier#>>'{payment,method}'='hourly'
+    THEN jsonb_set(tier,'{payment}',(tier->'payment')||jsonb_build_object('rate',NULL,'multiplier',NULL))
+    ELSE tier END ORDER BY tier_ordinal),'[]'::jsonb)
+   FROM jsonb_array_elements(rate->'tiers') WITH ORDINALITY AS tiers(tier,tier_ordinal)
+  )) ORDER BY rate_ordinal),'[]'::jsonb)
+  FROM jsonb_array_elements(arg_definition->'rates') WITH ORDINALITY AS rates(rate,rate_ordinal)
+ ))
+$$;
+REVOKE ALL ON FUNCTION app.attendance_policy_dated_rate_shape(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.guard_attendance_policy_financial_evidence() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE parent_id uuid;header public.attendance_overtime_calculation;source public.attendance_overtime_source;
  evidence public.attendance_overtime_calculation_evidence;duration jsonb;cash jsonb;identity jsonb;
- part_json jsonb;line_json jsonb;actual_count integer;version_count integer;definition_count integer;part_versions jsonb;total numeric;item jsonb;priced jsonb;previous_sequence integer:=-1;
+ part_json jsonb;line_json jsonb;actual_count integer;version_count integer;definition_count integer;shape_count integer;money_scope text;part_versions jsonb;total numeric;item jsonb;priced jsonb;previous_sequence integer:=-1;
 BEGIN
  IF TG_TABLE_NAME='attendance_overtime_calculation' THEN parent_id:=NEW.id;ELSE parent_id:=NEW.calculation_id;END IF;
  SELECT * INTO header FROM public.attendance_overtime_calculation WHERE id=parent_id;
@@ -1375,20 +1391,23 @@ BEGIN
    OR cash->'lines' IS DISTINCT FROM line_json OR NOT header.transferable OR header.duration_outcome<>'ready' THEN
    RAISE EXCEPTION 'Financial policy cash/header/dated lines mismatch' USING ERRCODE='23514';END IF;
   -- Distinct immutable versions share one money scope only through an explicit new
-  -- retained contract and identical computational definitions. Names/company metadata remain
+  -- retained contract and identical definitions or an exact shared hourly-expression shape. Names/company metadata remain
   -- bound by EACH original version digest; SQL compares identity, never recomputes money.
-  SELECT count(DISTINCT part.version_id),count(DISTINCT version.definition),jsonb_agg(part.version_id ORDER BY part.sequence)
-   INTO version_count,definition_count,part_versions FROM public.attendance_overtime_policy_part part
+  SELECT count(DISTINCT part.version_id),count(DISTINCT version.definition),count(DISTINCT app.attendance_policy_dated_rate_shape(version.definition)),jsonb_agg(part.version_id ORDER BY part.sequence)
+   INTO version_count,definition_count,shape_count,part_versions FROM public.attendance_overtime_policy_part part
    JOIN public.overtime_pattern_version version ON version.id=part.version_id AND version.tenant_id=header.tenant_id
    WHERE part.calculation_id=header.id AND part.tenant_id=header.tenant_id AND part.allocated_payable_minutes>0;
   IF version_count>1 THEN
-   IF definition_count<>1 OR evidence.evidence->>'policyMoneyScope' IS DISTINCT FROM 'identicalDefinitions'
+   money_scope:=evidence.evidence->>'policyMoneyScope';
+   IF money_scope IS NULL OR money_scope NOT IN('identicalDefinitions','datedRateExpressions')
+    OR(money_scope='identicalDefinitions' AND definition_count<>1)
+    OR(money_scope='datedRateExpressions' AND(definition_count<2 OR shape_count<>1))
     OR evidence.evidence#>>'{policyPricingProposal,state}' IS DISTINCT FROM 'proposed'
     OR jsonb_typeof(evidence.evidence#>'{policyPricingProposal,parts}') IS DISTINCT FROM 'array'
     OR jsonb_array_length(evidence.evidence#>'{policyPricingProposal,parts}')<>jsonb_array_length(part_versions) THEN
     RAISE EXCEPTION 'Distinct policy versions require one exact compatible definition scope' USING ERRCODE='23514';END IF;
    FOR priced IN SELECT value FROM jsonb_array_elements(evidence.evidence#>'{policyPricingProposal,parts}') LOOP
-    IF priced#>'{pricing,moneyScope,formulaScope}' IS DISTINCT FROM jsonb_build_object('kind','identicalDefinitions','partVersionIds',part_versions)
+    IF priced#>'{pricing,moneyScope,formulaScope}' IS DISTINCT FROM jsonb_build_object('kind',money_scope,'partVersionIds',part_versions)
      OR NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part JOIN public.overtime_pattern_version version
       ON version.id=part.version_id AND version.tenant_id=header.tenant_id WHERE part.calculation_id=header.id
       AND part.sequence::text=priced->>'sequence' AND part.calendar_date::text=priced->>'date'

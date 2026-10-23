@@ -41,7 +41,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false,sourceDateOverride?:string,unclocked=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible:boolean|'datedRates'=false,sourceDateOverride?:string,unclocked=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -79,8 +79,14 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
  let compatibleVersionId=draft.versionId;
  if(mixedCompatible){
+  const compatibleDefinition=structuredClone(definition);
+  if(mixedCompatible==='datedRates'){
+   const payment=compatibleDefinition.rates[0].tiers[0].payment;
+   if(payment.method!=='hourly'||payment.rate.type!=='literal')throw Error('Retain the actual fixed hourly fixture');
+   payment.rate.value='24';
+  }
   const compatible=await saveOvertimePatternDraft(ctx,{draft:{code:'COMPATIBLE_'+randomUUID().slice(0,8),name:'Fictional separate compatible immutable formula',
-   creationCompanyId:b.companyId,companyIds:[b.companyId],definition:structuredClone(definition)}});
+   creationCompanyId:b.companyId,companyIds:[b.companyId],definition:compatibleDefinition}});
   const validated=await validateOvertimePatternActivation(ctx,{versionId:compatible.versionId,expectedRevision:compatible.revision});
   expect(validated.issues).toEqual([]);
   await activateOvertimePattern(ctx,{versionId:compatible.versionId,expectedRevision:compatible.revision,validationDigest:validated.validationDigest!,effectiveFrom:day(1)});
@@ -924,16 +930,24 @@ describe('immutable non-payable policy part storage',()=>{
    .toMatchObject({status:'transferred'});
  });
 
- it('records and pays one capped parent across actual dated classes using distinct identical immutable definitions',async()=>{
+ it.each(['identical','datedRates'] as const)('records and pays one capped parent across actual dated classes using $0 immutable definitions',async scope=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
-  const f=await fixture('auto','12','actual',false,'cap',0,true,{mode:'none',step:null},120,'earliest',true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const f=await fixture('auto','12','actual',false,'cap',0,true,{mode:'none',step:null},120,'earliest',scope==='datedRates'?'datedRates':true),p={employmentId:f.employmentId,date:f.sourceDate};
   await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
-  expect(snapshot.policyMoneyScope).toBe('identicalDefinitions');
+  expect(snapshot.policyMoneyScope).toBe(scope==='datedRates'?'datedRateExpressions':'identicalDefinitions');
   expect(attendancePolicyPricingProposal(snapshot)).toMatchObject({state:'proposed',amountMinorUnits:'400'});
   const old=structuredClone(snapshot);delete old.policyMoneyScope;
   expect(attendancePolicyPricingProposal(old)).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
+  if(scope==='datedRates'){
+   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_policy_dated_rate_shape(jsonb)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
+   const narrowed=structuredClone(snapshot);narrowed.policyMoneyScope='identicalDefinitions';
+   expect(attendancePolicyPricingProposal(narrowed)).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
+   const priced=attendancePolicyPricingProposal(snapshot);if(priced.state!=='proposed')throw Error('Expected actual dated hourly expressions');
+   expect(priced.parts.flatMap(part=>part.pricing.lines.map(line=>line.gross))).toEqual([
+    {unit:'money',numerator:'18',denominator:'1'},{unit:'money',numerator:'36',denominator:'1'}]);
+  }
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!read?.calculation||!read.policyParts)throw Error('Expected complete actual compatible-version parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'120'});
