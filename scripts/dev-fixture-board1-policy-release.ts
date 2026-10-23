@@ -25,7 +25,10 @@ for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const u=new URL(raw??'');if(!['postgres:','postgresql:'].includes(u.protocol)||!['localhost','127.0.0.1'].includes(u.hostname)||u.port!=='5433'||u.pathname!=='/'+target.homeDatabase||u.search||u.hash)throw Error('Named disposable release database only.');
 }
 process.env.TEST_DATABASE_URL=process.env.DATABASE_URL;process.env.TEST_MIGRATION_DATABASE_URL=process.env.MIGRATION_DATABASE_URL;
-const destination=target.directory+'/policy-fixture.json';
+const profile=process.env.BOARD1_POLICY_FIXTURE_PROFILE??'initial';
+if(profile!=='initial'&&profile!=='positioned')throw Error('Choose the original or separate positioned fixture profile.');
+const prefix=profile==='positioned'?'REL23P':'REL23';
+const destination=target.directory+(profile==='positioned'?'/policy-positioned-fixture.json':'/policy-fixture.json');
 const add=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:[1,2,3,4,5],halfPattern:[],offPattern:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[]});
 async function main(){
@@ -37,19 +40,22 @@ async function main(){
  for(const code of ['attendance','payroll','typed_pay_components','toil'])await setModule(f.tenantId,code,'active');
  const hr=f.people.scopedHr;
  const ctx={...await entitledCtx(f),userId:hr.userId,personId:hr.personId,roles:['hr_admin'],grants:[{role:'hr_admin' as const,companyId:f.companyId}]};
- const today=todayInKualaLumpur(),effectiveFrom=add(today,1),sourceDate=add(today,2),nextDate=add(sourceDate,1);
+ const today=todayInKualaLumpur(),effectiveFrom=add(today,1);
+ let sourceDate=profile==='positioned'?new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),1)).toISOString().slice(0,10):add(today,2);
+ while([0,6].includes(new Date(sourceDate+'T12:00:00Z').getUTCDay()))sourceDate=add(sourceDate,1);
+ const nextDate=add(sourceDate,1);
  const groups=[];
- for(const [name,label] of [['Fictional release rounded actual','REL-ACTUAL'],['Fictional release approved plan','REL-PLAN']])groups.push(await createAttendanceRule(ctx,ruleInput(name,label)));
+ for(const [name,label] of [['rounded actual','ACTUAL'],['approved plan','PLAN']])groups.push(await createAttendanceRule(ctx,ruleInput('Fictional '+prefix+' '+name,prefix+'-'+label)));
  const shifts=[];
- for(let index=1;index<=32;index++)shifts.push(await createShift(ctx,{companyId:f.companyId,code:'REL23-'+String(index).padStart(2,'0'),name:'Fictional release shift '+String(index).padStart(2,'0'),startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7],ruleId:groups[0].id}));
+ for(let index=1;index<=32;index++)shifts.push(await createShift(ctx,{companyId:f.companyId,code:prefix+'-'+String(index).padStart(2,'0'),name:'Fictional '+prefix+' shift '+String(index).padStart(2,'0'),startTime:'09:00',endTime:'18:00',breakMinutes:60,breakPeriods:[{start:'12:00',end:'13:00'}],weeklyPattern:[1,2,3,4,5,6,7],ruleId:groups[0].id}));
  for(const group of groups)await setRuleShifts(ctx,{ruleId:group.id,shiftIds:shifts.map(row=>row.id)});
  const seed=requirePackFor('MY').payComponents.defaults.find(row=>row.code===requirePackFor('MY').payComponents.backfillCodes.overtime)!;
- const earning=await createPayComponent(ctx,{...seed,code:'REL23_OT',name:'Fictional release policy overtime',label:'Release OT'});
+ const earning=await createPayComponent(ctx,{...seed,code:prefix+'_OT',name:'Fictional '+prefix+' policy overtime',label:prefix+' OT'});
  const definition=prepareOvertimeStarter('ot15','day','earliest');definition.currency={code:'MYR',minorScale:2};definition.eligibility={id:'release_eligible',type:'constant',value:true};definition.rates[0].when={id:'release_rate_eligible',type:'constant',value:true};
  const tier=definition.rates[0].tiers[0];tier.mapping={earningItemId:earning.id,currency:'MYR'};
  if(tier.payment.method!=='hourly')throw Error('Retain hourly starter');
  tier.payment.rate={id:'release_hourly',unit:'moneyPerHour',type:'literal',value:'12',currency:'MYR'};
- const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'REL23_OT',name:'Fictional release 12 x 1.5',creationCompanyId:f.companyId,companyIds:[f.companyId],definition}});
+ const draft=await saveOvertimePatternDraft(ctx,{draft:{code:prefix+'_OT',name:'Fictional '+prefix+' 12 x 1.5',creationCompanyId:f.companyId,companyIds:[f.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  if(validation.issues.length||!validation.validationDigest)throw Error('Prospective formula validation failed');
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest,effectiveFrom});
@@ -60,8 +66,9 @@ async function main(){
  }
  const people=[];
  for(const [index,key] of ['roundedCash','plannedCash','plannedToil'].entries()){
-  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional release '+key,primaryEmail:'release23-'+key+'@example.test'},companyId:f.companyId,departmentId:f.deptA,employmentType:'full_time',employeeCode:'REL23-'+(index+1),hiredOn:add(today,-10)});
+  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional '+prefix+' '+key,primaryEmail:prefix.toLowerCase()+'-'+key+'@example.test'},companyId:f.companyId,departmentId:f.deptA,employmentType:'full_time',employeeCode:prefix+'-EMP'+(index+1),hiredOn:add(today,-10)});
   await setCompensation(ctx,{employmentId:hired.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:add(today,-10)});
+  await requirePackFor('MY').statutory.set(ctx,{personId:hired.personId,icNumber:'90010101124'+(index+1)});
   await assignDefaultShift(ctx,{employmentId:hired.employmentId,shiftId:shifts[0].id});
   await setEmploymentScheduleGroup(ctx,{employmentId:hired.employmentId,attendanceRuleId:groups[index===0?0:1].id});
   const userId=await createAppUser(f.tenantId,hired.personId,'employee');await owner.db.update(s.appUser).set({onboardedAt:new Date()}).where(eq(s.appUser.id,userId));
@@ -72,7 +79,7 @@ async function main(){
   people.push({key,...hired,userId});
  }
  await setToilPolicy(ctx,{companyId:f.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
- await saveAttendanceWorkflow(ctx,{companyId:f.companyId,routingVersion:4,code:'REL23_PLAN',name:'Fictional release plan review',applicationType:'self_overtime',priority:100,criteria:{employeeIds:people.map(row=>row.employmentId)},active:true,cc:[],stages:[{name:'Final HR plan review',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[hr.employmentId]}],hrAlternative:false}]});
+ await saveAttendanceWorkflow(ctx,{companyId:f.companyId,routingVersion:4,code:prefix+'_PLAN',name:'Fictional '+prefix+' plan review',applicationType:'self_overtime',priority:100,criteria:{employeeIds:people.map(row=>row.employmentId)},active:true,cc:[],stages:[{name:'Final HR plan review',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[hr.employmentId]}],hrAlternative:false}]});
  await setAttendanceWorkflowEnabled(ctx,f.companyId,'self_overtime',true);
  const batch=await createBatch(ctx,{companyId:f.companyId,payPeriod:sourceDate.slice(0,7),scope:{employmentIds:people.map(row=>row.employmentId)}});
  await writeFile(destination,JSON.stringify({tenantId:f.tenantId,companyId:f.companyId,today,effectiveFrom,sourceDate,nextDate,groups,shifts,versionId:draft.versionId,revisions,earningId:earning.id,people,batch,scope:'Fictional prospective fixture only; no browser approval, banking, transfer or release yet; no policy backdating or trigger disable.'},null,2)+'\n',{flag:'wx',mode:0o600});
