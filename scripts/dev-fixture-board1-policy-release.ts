@@ -28,7 +28,7 @@ process.env.TEST_DATABASE_URL=process.env.DATABASE_URL;process.env.TEST_MIGRATIO
 const profile=process.env.BOARD1_POLICY_FIXTURE_PROFILE??'initial';
 if(!['initial','positioned','historicalCurrent'].includes(profile))throw Error('Choose an explicit fictional fixture profile.');
 const historicalCurrent=profile==='historicalCurrent';
-const prefix=historicalCurrent?'REL24H':profile==='positioned'?'REL23P':'REL23';
+const prefix=historicalCurrent?'REL24C':profile==='positioned'?'REL23P':'REL23';
 const destination=target.directory+(historicalCurrent?'/policy-historical-current-fixture.json':profile==='positioned'?'/policy-positioned-fixture.json':'/policy-fixture.json');
 const add=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:historicalCurrent?[1,2,3,4,5,6,7]:[1,2,3,4,5],halfPattern:[],offPattern:historicalCurrent?[]:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[]});
@@ -87,7 +87,7 @@ async function main(){
  for(const [index,key] of ['roundedCash','plannedCash','plannedToil'].entries()){
   const hired=await hireEmployee(ctx,{person:{fullName:'Fictional '+prefix+' '+key,primaryEmail:prefix.toLowerCase()+'-'+key+'@example.test'},companyId:f.companyId,departmentId:f.deptA,employmentType:'full_time',employeeCode:prefix+'-EMP'+(index+1),hiredOn:add(today,-10)});
   await setCompensation(ctx,{employmentId:hired.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:add(today,-10)});
-  await requirePackFor('MY').statutory.set(ctx,{personId:hired.personId,icNumber:'90010101124'+(index+1)});
+  await requirePackFor('MY').statutory.set(ctx,{personId:hired.personId,icNumber:(historicalCurrent?'90010101126':'90010101124')+(index+1)});
   await assignDefaultShift(ctx,{employmentId:hired.employmentId,shiftId:shifts[0].id});
   await setEmploymentScheduleGroup(ctx,{employmentId:hired.employmentId,attendanceRuleId:groups[index===0?0:1].id});
   const userId=await createAppUser(f.tenantId,hired.personId,'employee');await owner.db.update(s.appUser).set({onboardedAt:new Date()}).where(eq(s.appUser.id,userId));
