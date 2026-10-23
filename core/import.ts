@@ -1,5 +1,7 @@
 import { getPeopleGeneral, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
+import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
+import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
@@ -1150,7 +1152,7 @@ function analyzeDependents(
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords },
 ): Promise<ImportPreview> {
   const { preview, resolved } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
   await withTenant(ctx,async tx=>{
@@ -1161,6 +1163,10 @@ export async function validateEmployeeImport(
       await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     }
   });
+  if(p.allocationRecords?.length){
+    preview.allocations=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[])));
+    for(const group of preview.allocations.groups)if(group.errors.length)preview.fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
+  }
   return preview;
 }
 
@@ -1169,7 +1175,7 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; fileName?: string },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string },
 ): Promise<ImportResult> {
   const { preview, resolved, dependents,registers } = await analyze(
     ctx,
@@ -1178,6 +1184,13 @@ export async function commitEmployeeImport(
     p.dependentRecords ?? [],
     p.registerRecords,
   );
+  const allocationEmployees=resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]);
+  let allocationPreview:AllocationImportPreview|undefined;
+  if(p.allocationRecords?.length){
+    allocationPreview=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,allocationEmployees));
+    if(!p.allocationToken||p.allocationToken!==allocationPreview.token)preview.fileErrors.push('Cost Center Allocations changed. Preview the complete workbook again.');
+    for(const group of allocationPreview.groups)if(group.errors.length)preview.fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
+  }
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   const superiorFailed: ImportResult['superiorFailed'] = [];
@@ -1222,6 +1235,10 @@ export async function commitEmployeeImport(
   try {
     await withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
+  if(p.allocationRecords?.length){
+    allocationPreview=await previewCostAllocationImportTx(tx,ctx,p.allocationRecords,allocationEmployees);
+    if(allocationPreview.token!==p.allocationToken||allocationPreview.groups.some(g=>g.errors.length))throw new Error('Cost Center Allocations changed. Preview the complete workbook again.');
+  }
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
@@ -1230,6 +1247,7 @@ export async function commitEmployeeImport(
     try {
       const saved = await (async()=>{
       const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
+      if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
       let familyCount=0;
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
       if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);

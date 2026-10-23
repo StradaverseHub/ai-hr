@@ -2653,6 +2653,8 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
     await lockLabelCriteriaTx(tx,ctx.tenantId);
+    const [allocated]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_label_in_use(${p.id}::uuid) as used`);
+    if(allocated?.used)throw new InUseError('cost center allocation; archive the label to retain its history');
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.costCenterId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
     await tx.delete(costCenter).where(eq(costCenter.id, p.id));

@@ -1,4 +1,5 @@
 import { hasExitDateAuthorityTx } from './exit-date-authority';
+import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
@@ -2070,6 +2071,7 @@ export async function changeEmploymentCompany(
   return withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [emp] = await tx
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
@@ -2080,6 +2082,7 @@ export async function changeEmploymentCompany(
     if (!emp) throw new Error('Employment not found');
     // No-op guard: moving to the same company is not a change.
     if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    await assertCostAllocationTransferTx(tx,p.employmentId,emp.hiredOn);
     // Destination must be a live (non-archived) company in this tenant.
     const [dest] = await tx
       .select({ id: company.id, country: company.country })
@@ -2280,6 +2283,7 @@ export async function transferEmploymentCompanyTx(
 ) {
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
     .select({ companyId: employment.companyId })
@@ -2289,6 +2293,7 @@ export async function transferEmploymentCompanyTx(
     .for('no key update');
   if (!emp) throw new Error('Employment not found');
   if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    await assertCostAllocationTransferTx(tx,p.employmentId,p.effectiveDate);
 
   // Destination must be a live (non-archived) company in this tenant.
   const [dest] = await tx

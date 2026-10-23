@@ -10698,3 +10698,17 @@ export const accessUserOverride = pgTable('access_user_override', {
   uniqueIndex('access_user_override_company_uq').on(t.tenantId,t.userId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
   index('access_user_override_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
 ]);
+
+// Effective-dated employment cost distribution. Independent from assignment and payroll allocation.
+export const employmentCostAllocationHead=pgTable('employment_cost_allocation_head',{
+ employmentId:uuid('employment_id').primaryKey().references(()=>employment.id),tenantId:tenantId(),revision:integer('revision').notNull().default(0),
+});
+export const employmentCostAllocationSet=pgTable('employment_cost_allocation_set',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ revision:integer('revision').notNull(),validFrom:date('valid_from').notNull(),validTo:date('valid_to'),supersededAt:timestamp('superseded_at',{withTimezone:true}),
+ operation:text('operation').$type<'replace'|'clear'>().notNull(),source:text('source').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const employmentCostAllocationRow=pgTable('employment_cost_allocation_row',{
+ setId:uuid('set_id').notNull().references(()=>employmentCostAllocationSet.id),tenantId:tenantId(),costCenterId:uuid('cost_center_id').notNull().references(()=>costCenter.id),
+ hundredths:integer('hundredths').notNull(),codeSnapshot:text('code_snapshot').notNull(),labelSnapshot:text('label_snapshot').notNull(),
+},t=>[primaryKey({columns:[t.setId,t.costCenterId]})]);

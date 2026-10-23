@@ -1,5 +1,8 @@
 'use client';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
+import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
+import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
+import {allocationImportReferencesAction} from './cost-allocation-actions';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
@@ -78,6 +81,7 @@ export function EmployeeImport({
   const nricMessage = useNricPolicyMessage();
   const nricTexts = useTranslations('peopleGeneral');
   const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
+  const ta=useTranslations('costAllocations');
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
   const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>[key==='ic_number'?nricGuidance:'',personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')})].filter(Boolean).join(' · ');
@@ -89,6 +93,7 @@ export function EmployeeImport({
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
   const [dependentsCsv, setDependentsCsv] = useState('');
+  const [allocationsCsv,setAllocationsCsv]=useState('');
   const [registerTexts,setRegisterTexts]=useState<PersonnelRegisterTexts>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -122,14 +127,14 @@ export function EmployeeImport({
 
   // Validate an explicit string rather than the `csv` state: after a file read the state update
   // has not flushed yet, so passing the text through avoids validating the previous contents.
-  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts) => {
+  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts,allocations=allocationsCsv) => {
     if (commitPending.current) return;
     reset();
     const revision = inputRevision.current;
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateImportAction(text, companyId, family,registers);
+        const p = await validateImportAction(text, companyId, family,registers,allocations);
         if (revision !== inputRevision.current) return;
         setPreview(p);
         setResult(null);
@@ -157,24 +162,25 @@ export function EmployeeImport({
       // Item 2983802f — ask the reader for the Family sheet too. A file without one decodes exactly as
       // it always did; `dependentsText` simply comes back empty.
       const { name, text, dependentsText,extraTexts } = await readImportFile(file, {
-        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],
-        allowedSheets:[EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
+        extraSheets: [ALLOCATION_SHEET,EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],
+        allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       if (revision !== inputRevision.current) return;
       setCsv(text);
       setDependentsCsv(dependentsText);
+      const allocations=extraTexts?.[ALLOCATION_SHEET]??'';setAllocationsCsv(allocations);
       const registers=Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,extraTexts?.[PERSONNEL_REGISTER_SHEETS[kind]]??'']));
       setRegisterTexts(registers);
       setFileName(name);
       setResult(null);
-      runValidate(text, dependentsText,registers);
+      runValidate(text, dependentsText,registers,allocations);
     } catch (e) {
       if (revision !== inputRevision.current) return;
       // Drop the file label and any earlier preview so a rejected pick can never leave a stale
       // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
       // alone — the user must press Validate again to get a preview back.
       setFileName(null);
-      setDependentsCsv('');setRegisterTexts({});
+      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -206,6 +212,7 @@ export function EmployeeImport({
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
+      const allocationReferences=(await Promise.all(companies.map(c=>allocationImportReferencesAction(c.id)))).flat();
       const enumList = (key: keyof typeof EMPLOYEE_ENUM_VALUES) => ({
         label: employeeColumnLabel(key),
         values: [...EMPLOYEE_ENUM_VALUES[key]],
@@ -221,6 +228,7 @@ export function EmployeeImport({
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
           validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];})],
           extraSheets: [
+            ...allocationWorkbookSheets(allocationReferences,ta('instructions')),
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
             {
@@ -329,7 +337,7 @@ export function EmployeeImport({
       try {
         // cf43c909 — the file's NAME rides along as the history row's label. The file itself never leaves
         // the browser: `csv` is still the only thing sent, so the write path is unchanged.
-        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts);
+        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts,allocationsCsv,preview.allocations?.token);
         setResult(r);
         setPhase('done');
         router.refresh();
@@ -370,6 +378,8 @@ export function EmployeeImport({
 
   return (
     <div className="space-y-6">
+      {allocationsCsv.trim()&&<p className="rounded-md border p-3 text-sm">{ta('companion',{count:preview?.allocations?.groups.length??0})}</p>}
+      {preview?.allocations&&<section className="space-y-3 rounded-md border p-4" aria-label={ta('confirmTitle')}>{preview.allocations.groups.map(group=><div key={group.key} className="border-b pb-3 text-sm last:border-0"><p className="font-medium">{group.employeeCode} · {group.effectiveDate}</p><p className="text-xs text-muted-foreground">{group.companyId} · {ta('sourceRows')}: {group.rowNums.join(', ')}</p><ul>{group.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul>{group.operation==='clear'&&<p>{ta('clearHelp')}</p>}{group.errors.map((message,i)=><p key={i} className="text-destructive">{message}</p>)}</div>)}</section>}
       <StepRail current={currentStep} />
       <Card className="space-y-4 p-5">
         <fieldset disabled={committing} className="min-w-0 space-y-4">
@@ -509,7 +519,7 @@ export function EmployeeImport({
             onClick={() => {
               if (commitPending.current) return;
               setCsv(SAMPLE);
-              setDependentsCsv('');setRegisterTexts({});
+              setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
             }}
@@ -631,7 +641,7 @@ export function EmployeeImport({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setCsv('');
-                setDependentsCsv('');setRegisterTexts({});
+                setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();
               }}
@@ -664,7 +674,6 @@ export function EmployeeImport({
  */
 function StepRail({ current }: { current: number }) {
   const t = useTranslations('people.import');
-  const nricMessage = useNricPolicyMessage();
   const labels = [t('step1'), t('step2'), t('step3'), t('step4'), t('step5'), t('step6')];
   return (
     <ol className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs" aria-label={t('stepsAria')}>
@@ -702,7 +711,6 @@ function StepRail({ current }: { current: number }) {
 /** The same numbering, repeated over the control that performs that step. */
 function StepHeading({ num, label }: { num: number; label: string }) {
   const t = useTranslations('people.import');
-  const nricMessage = useNricPolicyMessage();
   return (
     <div className="flex items-baseline gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
