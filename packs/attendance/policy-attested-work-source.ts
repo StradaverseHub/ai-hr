@@ -6,6 +6,7 @@ import {attendance,attendanceCorrection,attendancePolicyRequestContract,attendan
 import {attendancePolicyExecutionContextTx} from '../../core/attendance';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyAttestedWorkInput,type PolicyAttestedWorkSource} from './policy-attested-work-input';
+import {attendancePolicyAttestedRawTrace} from '../../lib/attendance-policy-attested-trace';
 export async function recordedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  const context=await attendancePolicyExecutionContextTx(tx,ctx,p);
  if(context.state!=='policy')return null;
@@ -33,7 +34,7 @@ export async function recordedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{e
   receipts.filter(row=>otRows.some(request=>request.id===row.correctionId)));
  // The independent calculation marker is written AFTER the work decision. It cannot change
  // immutable work identity or its replay digest, and cannot hide any other raw trace key.
- const rawTrace=anchor.calcTrace,rawAnchor={...anchor,calcTrace:rawTrace&&Object.keys(rawTrace).every(key=>key==='overtimePattern')?null:rawTrace};
+ const rawAnchor={...anchor,calcTrace:attendancePolicyAttestedRawTrace(anchor.calcTrace)};
  const source:PolicyAttestedWorkSource={authority:'attestedSourceOnly',anchor:rawAnchor,punchCount:punches.length,ownerEffect:effect.evidence};
  const replay=attendancePolicyAttestedWorkInput(context,approvals,ctx.tenantId,source);
  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];

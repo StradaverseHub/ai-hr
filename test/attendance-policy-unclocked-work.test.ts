@@ -1,8 +1,18 @@
 import {describe,expect,it} from 'vitest';
+import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {attendancePolicyLocalWorkInstant,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 const midnight=Date.parse('2026-09-20T00:00:00+08:00');
 const fixture=():AttendancePolicyUnclockedWork=>({version:1,completeWorkedDay:true,sourceDate:'2026-09-20',reason:'HR confirms the actual worked interval from a supervisor report.',
  intervals:[{fromEpochMillisecond:midnight+23*3600000+555,toEpochMillisecond:midnight+25*3600000+555}]});
+describe('HR source raw trace normalization',()=>{
+ it('removes only the separate calculation marker',()=>{
+  expect(attendancePolicyAttestedRawTrace({overtimePattern:{calculationId:'retained-marker'}})).toBeNull();
+  expect(attendancePolicyAttestedRawTrace(null)).toBeNull();
+ });
+ it.each([[],['overtimePattern'],{},'overtimePattern',0,{v:1},{overtimePattern:{},inAbs:0}].map(trace=>({trace})))('preserves other raw evidence %# for independent validation',({trace})=>{
+  expect(attendancePolicyAttestedRawTrace(trace)).toBe(trace);
+ });
+});
 describe('explicit unclocked actual-work submission',()=>{
  it('retains actual overnight milliseconds and the stated reason without inventing a punch or rounding a count',()=>{
   const work=fixture(),result=validateAttendancePolicyUnclockedWork(work,midnight+3*86400000);
