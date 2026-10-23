@@ -1994,6 +1994,8 @@
       "instructionIdentityText": "Lajur IC, telefon, akaun bank, KWSP, PERKESO dan nombor cukai diformat sebagai teks supaya sifar di hadapan dikekalkan. Jangan tukar formatnya kepada General.",
       "instructionCompany": "Biarkan lajur Syarikat kosong untuk menggunakan syarikat yang dipilih pada skrin import, atau namakan syarikat untuk mengimport pekerja bagi beberapa syarikat dalam satu fail.",
       "instructionReference": "Senarai organisasi pada helaian Rujukan ialah panduan untuk syarikat Sasaran yang dipilih. Anda boleh menaip label atau kod; Semak dan pratonton mengesahkan ketersediaan bagi syarikat setiap baris. Gred Jawatan menggunakan senarai gred organisasi.",
+      "instructionImportCodes": "Pilih kod sistem tepat daripada Reference. Label di sebelah kod ialah penerangan. Label unik dalam fail lama masih disokong; kod tepat diberi keutamaan.",
+      "instructionLargeLists": "Senarai dengan lebih 1,000 kod dipaparkan sepenuhnya pada Reference. Salin kod tepat ke dalam sel; tiada senarai juntai yang dipendekkan.",
       "instructionSamples": "Padamkan dua baris contoh sebelum memuat naik.",
       "historyTitle": "Sejarah import",
       "historyHint": "Setiap import yang telah dijalankan, dan baris yang tidak dapat dimuatkan. Fail yang dimuat naik tidak disimpan.",
@@ -2328,7 +2330,7 @@
           "choiceError": "Gunakan nilai semasa daripada senarai.",
           "probationEndDate": "Tarikh tamat percubaan",
           "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu.",
-          "referenceGuide": "Senarai juntai bawah mencadangkan nilai perniagaan semasa. Anda boleh menaip kod yang disokong atau label yang unik; Semak dan pratonton mengesahkan setiap entri sebelum disimpan.",
+          "referenceGuide": "Senarai juntai menggunakan kod sistem tepat daripada Reference. Label menerangkan setiap kod. Label unik daripada fail lama masih disokong; pratonton menyemak syarikat baris.",
           "baselineGuide": "Apabila gaji semasa kosong, pengiraan gaji hijau kekal kosong. Semak dan pratonton menyediakan asas gaji yang berautoriti, termasuk bagi baris pekerja kosong atau berulang. Nilai sifar yang direkodkan tetap menjadi asas gaji."
         }
       }

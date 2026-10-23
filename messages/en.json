@@ -1994,6 +1994,8 @@
       "instructionIdentityText": "The IC, phone, bank account, EPF, SOCSO and tax number columns are formatted as text so leading zeros are kept. Do not change their format to General.",
       "instructionCompany": "Leave the Company column blank to use the company selected on the import screen, or name a company to import employees for several companies in one file.",
       "instructionReference": "Organisation lists on the Reference sheet guide the selected Target company. You can type a label or code; Check and preview confirms availability for each row's company. Job Grade uses the organisation's grade list.",
+      "instructionImportCodes": "Choose the exact system code from Reference. Labels beside codes are explanations. A unique label in an older file remains supported; an exact code takes priority.",
+      "instructionLargeLists": "Lists with more than 1,000 codes are shown in full on Reference. Copy the exact code into the cell; no shortened dropdown is offered.",
       "instructionSamples": "Delete the two sample rows before uploading.",
       "historyTitle": "Import history",
       "historyHint": "Every import that has been run, and the rows that could not be loaded. The uploaded file itself is not kept.",
@@ -2328,7 +2330,7 @@
           "choiceError": "Use a current value from the list.",
           "probationEndDate": "Probation End Date",
           "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill.",
-          "referenceGuide": "Dropdowns suggest current business values. You may type a supported code or unique label; Check and preview validates every entry before saving.",
+          "referenceGuide": "Dropdowns use exact system codes from Reference. Labels explain each code. A distinct label from an older file remains supported; preview checks the row company.",
           "baselineGuide": "When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline."
         }
       }

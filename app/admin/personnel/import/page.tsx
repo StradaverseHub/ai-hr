@@ -1,3 +1,4 @@
+import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
 import { getPeopleGeneral } from '@/core/people-general';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -43,10 +44,17 @@ export default async function ImportPage() {
   // Company-specific guidance uses the same visibility owners as full-import validation.
   // The Company cell can override Target company; preview is authoritative in that case.
   const grades=await listJobGrades(s);
-  const organisationByCompany=Object.fromEntries(await Promise.all(companies.map(async co=>{
+  const organisationOptionsByCompany=Object.fromEntries(await Promise.all(companies.map(async co=>{
     const [ds,ps,cs,bs]=await Promise.all([listDepartments(s,{companyIds:[co.id]}),listPositions(s,{companyIds:[co.id]}),listCostCenters(s,{companyIds:[co.id]}),listBusinessUnits(s,{companyIds:[co.id]})]);
-    return [co.id,{department:uniqSorted(ds.map(d=>d.label?.trim()||d.code||'')),position:uniqSorted(ps.map(p=>p.label?.trim()||p.code||'')),cost_center:uniqSorted(cs.map(c=>c.label?.trim()||c.code)),business_unit:uniqSorted(bs.map(b=>b.label?.trim()||b.code)),job_grade:uniqSorted(grades.map(g=>g.name?.trim()||g.code))}] as const;
+    return [co.id,{
+      department:personnelReferenceOptions(ds.map(d=>({value:d.code,label:d.label?.trim()||d.description||d.code}))),
+      position:personnelReferenceOptions(ps.map(p=>({value:p.code,label:p.label?.trim()||p.description||p.code}))),
+      cost_center:personnelReferenceOptions(cs.map(c=>({value:c.code,label:c.label?.trim()||c.name||c.code}))),
+      business_unit:personnelReferenceOptions(bs.map(b=>({value:b.code,label:b.label?.trim()||b.name||b.code}))),
+      job_grade:personnelReferenceOptions(grades.map(g=>({value:g.code,label:g.name}))),
+    }] as const;
   })));
+  const organisationByCompany=Object.fromEntries(Object.entries(organisationOptionsByCompany).map(([id,fields])=>[id,Object.fromEntries(Object.entries(fields).map(([column,options])=>[column,uniqSorted(options.map(option=>option.value))]))]));
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most
   // departments — i.e. the operating entity people are actually hired into, not a holding shell.
@@ -82,6 +90,8 @@ export default async function ImportPage() {
             defaultCompanyId={defaultCompanyId}
             reference={{
               organisationByCompany,
+              organisationOptionsByCompany,
+              catalogOptions:Object.fromEntries(Object.entries(allProfileOptions).map(([category,options])=>[category,personnelReferenceOptions(options)])),
               allowDuplicatedNric:nricPolicy.allowDuplicatedNric,
               // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
               // would otherwise appear once per company in the reference list.
@@ -89,7 +99,7 @@ export default async function ImportPage() {
               positions: uniqSorted(positions.map((p) => p.title)),
               costCenters: uniqSorted(costCenters.map((c) => c.code ?? c.name ?? '')),
               // Catalog order (sortOrder, then value) is kept rather than re-sorted: it is the order the
-              // dropdowns on the Personnel screens show, and the sheet is a copy of those dropdowns.
+              // catalogues use. Workbook cells select saved codes; readable labels stay beside them on Reference.
               states: personnelCatalogReferenceValues(allProfileOptions.state),
               countries: personnelCatalogReferenceValues(allProfileOptions.country),
               nationalities: personnelCatalogReferenceValues(allProfileOptions.nationality),

@@ -1,4 +1,5 @@
 'use client';
+import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
 import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
@@ -20,7 +21,7 @@ import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
-import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField } from '@/lib/personnel-import-contract';
 import {
   buildPersonnelInstructionRows,
   personnelTemplateColumnWidths,
@@ -28,10 +29,8 @@ import {
   buildReferenceRows,
   dependentTextColumnIndexes,
   employeeTextColumnIndexes,
-  DEPENDENT_ENUM_VALUES,
   DEPENDENT_SAMPLE_ROWS,
   DEPENDENT_XLSX_COLUMNS,
-  EMPLOYEE_ENUM_VALUES,
   EMPLOYEE_XLSX_FILENAME,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
@@ -47,6 +46,8 @@ type Phase = 'idle' | 'previewed' | 'done';
 export type ImportReference = {
   allowDuplicatedNric?:boolean;
   organisationByCompany?:Record<string,Record<string,string[]>>;
+  organisationOptionsByCompany?:Record<string,Record<string,PersonnelReferenceOption[]>>;
+  catalogOptions?:Record<string,PersonnelReferenceOption[]>;
   departments: string[];
   positions: string[];
   costCenters: string[];
@@ -85,7 +86,9 @@ export function EmployeeImport({
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
   const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>[key==='ic_number'?nricGuidance:'',personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')})].filter(Boolean).join(' · ');
-  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
+  const resolveReferenceLabel=(key:string,fallback:string)=>personnelLabels.has(key)?personnelLabels(key):fallback;
+  const employeeChoices=personnelTemplateReferenceLists('employee',employeeTemplate.columns.map(column=>column.key),reference,employeeColumnLabel,resolveReferenceLabel);
+  const familyChoices=personnelTemplateReferenceLists('family',DEPENDENT_XLSX_COLUMNS,reference,key=>descriptorColumnLabel(key,'family',resolveReferenceLabel),resolveReferenceLabel);
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
@@ -203,7 +206,7 @@ export function EmployeeImport({
   };
   const registerLabel=(kind:PersonnelRegisterKind)=>kind==='qualification'?t('sectionQualification'):t('sectionEmergency');
   const registerColumnLabel=(kind:PersonnelRegisterKind,key:string)=>descriptorColumnLabel(key,kind,(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
-  const registerChoices=(kind:PersonnelRegisterKind)=>personnelImportFields(kind).filter(field=>field.import.catalog||personnelFieldChoices(field).length).map(field=>({label:registerColumnLabel(kind,field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(choice=>personnelLabels.has(choice.labelKey)?personnelLabels(choice.labelKey):choice.value)}));
+  const registerChoices=(kind:PersonnelRegisterKind)=>personnelTemplateReferenceLists(kind,personnelRegisterColumns(kind),reference,key=>registerColumnLabel(kind,key),resolveReferenceLabel);
   const downloadRegisterCsv=(kind:PersonnelRegisterKind)=>{
     const url=URL.createObjectURL(new Blob([buildPersonnelCsv(kind,[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))])],{type:'text/csv;charset=utf-8;'}));
     const a=document.createElement('a');a.href=url;a.download=`${kind}-update-template.csv`;a.click();URL.revokeObjectURL(url);
@@ -215,10 +218,6 @@ export function EmployeeImport({
       const allocationReferenceResult=await allocationWorkbookReferencesAction(companies.map(c=>c.id),companyId);
       if(!allocationReferenceResult.ok){setError(ta(`errors.${allocationReferenceResult.error}`));return;}
       const allocationReferences=allocationReferenceResult.rows;
-      const enumList = (key: keyof typeof EMPLOYEE_ENUM_VALUES) => ({
-        label: employeeColumnLabel(key),
-        values: [...EMPLOYEE_ENUM_VALUES[key]],
-      });
       const bytes = await buildXlsx(
         employeeTemplate.columns.map(column=>employeeColumnLabel(column.key)),
         employeeTemplate.sampleRows.map(row=>employeeTemplate.columns.map((_,i)=>row[i]??'')),
@@ -228,9 +227,10 @@ export function EmployeeImport({
           columnWidths:personnelTemplateColumnWidths(employeeTemplate.columns.map(column=>employeeColumnLabel(column.key))),
           wrapText:true,
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
-          validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];})],
+          validationListFallbackNote:t('instructionLargeLists'),
+          validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...employeeChoices.map(list=>({column:employeeTemplate.columns.findIndex(column=>column.key===list.column),values:list.values})),{column:employeeTemplate.columns.findIndex(column=>column.key==='company'),values:companies.map(company=>company.name)}].filter(list=>list.column>=0),
           extraSheets: [
-            ...allocationWorkbookSheets(allocationReferences,ta('instructions')),
+            ...allocationWorkbookSheets(allocationReferences,ta('instructions')).map(sheet=>({...sheet,validationListFallbackNote:t('instructionLargeLists')})),
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
             {
@@ -240,7 +240,8 @@ export function EmployeeImport({
               columnWidths:personnelTemplateColumnWidths(DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback))),
               wrapText:true,
               headerNotes: DEPENDENT_XLSX_COLUMNS.map(key=>guidance(key,'family','create')),
-              validationLists:personnelImportFields('family').flatMap(field=>{const column=DEPENDENT_XLSX_COLUMNS.indexOf(field.import.column!);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
+              validationListFallbackNote:t('instructionLargeLists'),
+              validationLists:familyChoices.map(list=>({column:DEPENDENT_XLSX_COLUMNS.indexOf(list.column),values:list.values})),
             },
             ...PERSONNEL_REGISTER_KINDS.map(kind=>({name:PERSONNEL_REGISTER_SHEETS[kind],
               rows:[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))],
@@ -248,26 +249,19 @@ export function EmployeeImport({
               columnWidths:personnelTemplateColumnWidths(personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))),
               wrapText:true,
               headerNotes:personnelRegisterColumns(kind).map(key=>guidance(key,kind,'create')),
-              validationLists:registerChoices(kind).map(list=>({column:personnelRegisterColumns(kind).findIndex(key=>registerColumnLabel(kind,key)===list.label),values:list.values})),
+              validationListFallbackNote:t('instructionLargeLists'),
+              validationLists:registerChoices(kind).map(list=>({column:personnelRegisterColumns(kind).indexOf(list.column),values:list.values})),
             })),
             {
               name: EMPLOYEE_XLSX_SHEETS.reference,
-              columnWidths:[80],wrapText:true,
+              columnWidths:[38,80],wrapText:true,
               rows: buildReferenceRows(t('referenceHeading'), [
-                { label: employeeColumnLabel('company'), values: companies.map((c) => c.name) },
-                ...Object.entries(organisationGuidance).map(([column,values])=>({label:`${employeeColumnLabel(column)} — ${companies.find(company=>company.id===companyId)?.name??''}`,values})),
-                ...personnelImportFields('employee').filter(field=>field.import.catalog || personnelFieldChoices(field).length).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)})),
-                {label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities},
+                { label: employeeColumnLabel('company'), values: companies.map((c) => c.name), entries:companies.map(company=>({value:company.name,label:company.name})) },
+                ...Object.entries(organisationGuidance).map(([column,values])=>({label:`${employeeColumnLabel(column)} — ${companies.find(company=>company.id===companyId)?.name??''}`,values,entries:reference.organisationOptionsByCompany?.[companyId]?.[column]})),
+                ...employeeChoices,
                 ...familyChoices,
                 ...PERSONNEL_REGISTER_KINDS.flatMap(registerChoices),
-                {label:t('familyRelationshipLabel'),values:reference.familyRelationships},
-                enumList('employment_type'),
-                enumList('pay_mode'),
-                enumList('payment_term'),
-                enumList('epf_citizenship'),
-                enumList('tax_category'),
-                enumList('eis_eligible'),
-              ]),
+              ],{code:personnelLabels('admin.systemLabels.col.code'),label:personnelLabels('admin.systemLabels.col.label')}),
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.instructions,
@@ -279,6 +273,8 @@ export function EmployeeImport({
                 nricGuidance,
                 t('instructionCompany'),
                 t('instructionReference'),
+                t('instructionImportCodes'),
+                t('instructionLargeLists'),
                 t('instructionPassport'),
                 t('instructionAddress'),
                 t('instructionProbation'),

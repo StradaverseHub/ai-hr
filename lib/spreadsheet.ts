@@ -167,6 +167,7 @@ export async function buildXlsx(
   for(const [index,note] of (opts?.headerNotes??[]).entries()) {
     const cell=ws[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
   }
+  applyListIdentifierLayout(XLSX,ws,opts,rows.length,opts?.textRowFloor ?? TEXT_ROW_FLOOR);
   XLSX.utils.book_append_sheet(wb, ws, opts?.sheetName ?? 'Leave Import');
   for (const extra of opts?.extraSheets ?? []) {
     const sheet = XLSX.utils.aoa_to_sheet(extra.rows);
@@ -180,6 +181,7 @@ export async function buildXlsx(
     for(const [index,note] of (extra.headerNotes??[]).entries()) {
       const cell=sheet[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
     }
+    applyListIdentifierLayout(XLSX,sheet,extra,Math.max(extra.rows.length-1,0),opts?.textRowFloor ?? TEXT_ROW_FLOOR);
     XLSX.utils.book_append_sheet(wb, sheet, extra.name);
   }
   const validationLists:{sheetIndex:number;column:number;name:string;lastRow:number}[]=[];
@@ -187,8 +189,8 @@ export async function buildXlsx(
   const optionColumns:string[][]=[];
   for(const [sheetIndex,source] of sources.entries())for(const list of source?.validationLists??[]) {
     const values=[...new Set(list.values.filter(value=>value.trim()!==''))];
-    // Larger catalogs remain on the visible reference sheet; never produce an unbounded dropdown.
-    if(!values.length || values.length>1000)continue;
+    // Larger catalogues remain complete on Reference. Personnel headers explain the manual-code fallback.
+    if(!values.length || values.length>MAX_TEMPLATE_LIST_VALUES)continue;
     if(!Number.isSafeInteger(list.column)||list.column<0||list.column>255 || optionColumns.length>=256)throw new Error('Too many template choice columns.');
     const column=optionColumns.length;optionColumns.push(values);
     const name=`AIHR_Personnel_${sheetIndex}_${list.column}`;
@@ -224,12 +226,27 @@ export type BuildXlsxOptions = {
   /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
    *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
    *  own so its Employee ID and identity columns survive Excel. */
-  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];columnWidths?:number[];wrapText?:boolean;headerNotes?:string[];validationLists?:{column:number;values:readonly string[]}[] }[];
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];columnWidths?:number[];wrapText?:boolean;headerNotes?:string[];validationListFallbackNote?:string;validationLists?:{column:number;values:readonly string[]}[] }[];
   headerNotes?:string[];
+  /** Explain the complete Reference fallback when a bounded list is too large for a dropdown. */
+  validationListFallbackNote?:string;
   validationLists?:{column:number;values:readonly string[]}[];
   /** How many rows below the samples get the text format pre-applied. */
   textRowFloor?: number;
 };
+
+/** Retain the existing bounded list behavior; never offer only a prefix of a catalogue. */
+export const MAX_TEMPLATE_LIST_VALUES=1000;
+function applyListIdentifierLayout(XLSX:typeof import('xlsx'),sheet:import('xlsx').WorkSheet,source:Pick<BuildXlsxOptions,'validationLists'|'validationListFallbackNote'>|undefined,rowCount:number,rowFloor:number){
+  if(!source?.validationLists?.length)return;
+  for(const list of source.validationLists)if(!Number.isSafeInteger(list.column)||list.column<0||list.column>255)throw new Error('Invalid template choice column.');
+  applyTextColumns(XLSX,sheet,source.validationLists.map(list=>list.column),rowCount,rowFloor);
+  for(const list of source.validationLists){
+    if(new Set(list.values.filter(value=>value.trim()!=='')).size<=MAX_TEMPLATE_LIST_VALUES || !source.validationListFallbackNote)continue;
+    const cell=sheet[XLSX.utils.encode_cell({r:0,c:list.column})];
+    if(cell)cell.c=[...(cell.c??[]),{a:'Personnel field guidance',t:source.validationListFallbackNote}];
+  }
+}
 
 /** Rows of blank, text-formatted cells written under the samples so a value typed into an EMPTY row
  *  of an identity column is still treated as text by Excel. 500 covers a large day-one load without

@@ -1,3 +1,4 @@
+vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,rows:[]})}));
 /**
  * The Import Employees screen, PROVED BY RENDERING (item 2983802f).
  *
@@ -176,7 +177,8 @@ describe('2983802f · the rail reports only the steps the screen has evidence fo
       .map((r) => (r[0] ?? '').toString());
     const at = reference.indexOf('Issuing country');
     expect(at, 'the Reference sheet must carry this column').toBeGreaterThan(-1);
-    expect(reference[at + 1], 'the nationality catalog this screen was handed').toBe('Malaysian');
+    expect(reference[at + 1], 'Reference distinguishes code from its readable label').toBe('Code');
+    expect(reference[at + 2], 'the nationality catalog this screen was handed').toBe('Malaysian');
     // …and not the country catalog, whose value the importer refuses for this column.
     expect(reference.slice(at + 1, at + 3)).not.toContain('Malaysia');
   });

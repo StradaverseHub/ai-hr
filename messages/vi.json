@@ -1994,6 +1994,8 @@
       "instructionIdentityText": "Các cột CMND/CCCD, điện thoại, tài khoản ngân hàng, EPF, SOCSO và mã số thuế được định dạng văn bản để giữ số 0 ở đầu. Đừng đổi định dạng sang General.",
       "instructionCompany": "Để trống cột Công ty để dùng công ty đã chọn trên màn hình nhập, hoặc ghi tên công ty để nhập nhân viên của nhiều công ty trong một tệp.",
       "instructionReference": "Danh sách tổ chức trên trang Tham khảo hướng dẫn cho công ty Đích đã chọn. Bạn có thể nhập nhãn hoặc mã; Kiểm tra và xem trước xác nhận lựa chọn được phép cho công ty của từng dòng. Cấp bậc công việc dùng danh sách cấp bậc của tổ chức.",
+      "instructionImportCodes": "Chọn đúng mã hệ thống từ Reference. Nhãn bên cạnh mã chỉ dùng để giải thích. Nhãn duy nhất trong tệp cũ vẫn được hỗ trợ; mã chính xác được ưu tiên.",
+      "instructionLargeLists": "Danh sách có hơn 1.000 mã được hiển thị đầy đủ trên Reference. Sao chép đúng mã vào ô; không cung cấp danh sách thả xuống bị rút ngắn.",
       "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên.",
       "historyTitle": "Lịch sử nhập",
       "historyHint": "Mọi lần nhập đã chạy và những hàng không tải được. Tệp đã tải lên không được lưu giữ.",
@@ -2328,7 +2330,7 @@
           "choiceError": "Dùng giá trị hiện tại trong danh sách.",
           "probationEndDate": "Ngày kết thúc thử việc",
           "employedScope": "Vẫn bao gồm nhân viên đang thử việc hoặc đang trong thời gian báo trước nghỉ việc. Hồ sơ việc làm đã kết thúc hoặc bị đưa vào danh sách đen không được điền sẵn.",
-          "referenceGuide": "Danh sách thả xuống gợi ý các giá trị nghiệp vụ hiện tại. Bạn có thể nhập mã được hỗ trợ hoặc tên duy nhất; bước Kiểm tra và xem trước xác thực từng mục trước khi lưu.",
+          "referenceGuide": "Danh sách thả xuống dùng đúng mã hệ thống từ Reference. Nhãn giải thích từng mã. Nhãn riêng biệt trong tệp cũ vẫn được hỗ trợ; xem trước kiểm tra công ty của dòng.",
           "baselineGuide": "Khi lương hiện tại để trống, các phép tính lương màu xanh vẫn để trống. Bước Kiểm tra và xem trước cung cấp mức lương cơ sở từ dữ liệu chính thức, kể cả cho dòng nhân viên trống hoặc lặp lại. Giá trị 0 đã ghi nhận vẫn là mức lương cơ sở."
         }
       }
