@@ -1,4 +1,5 @@
 'use client';
+import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 
 import { Fragment, useCallback, useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -109,8 +110,10 @@ export type TxnEmployee = {
   name: string;
   employeeCode: string | null;
   department: string | null;
+  departmentCode?: string | null;
   departmentId: string | null;
   businessUnit: string | null;
+  businessUnitCode?: string | null;
   businessUnitId: string | null;
   position: string | null;
   company: string;
@@ -508,15 +511,11 @@ export function TxnWorkspace({
     [employees, companyId],
   );
   const businessUnitOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const e of inCompany) if (e.businessUnitId && e.businessUnit) seen.set(e.businessUnitId, e.businessUnit);
-    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return organisationFilterChoices(inCompany.map(e=>({id:e.businessUnitId,name:e.businessUnit,code:e.businessUnitCode})));
   }, [inCompany]);
   const departmentOptions = useMemo(() => {
     const src = businessUnitFilter ? inCompany.filter((e) => e.businessUnitId === businessUnitFilter) : inCompany;
-    const seen = new Map<string, string>();
-    for (const e of src) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
-    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return organisationFilterChoices(src.map(e=>({id:e.departmentId,name:e.department,code:e.departmentCode})));
   }, [inCompany, businessUnitFilter]);
 
   const filteredEmployees = useMemo(() => {

@@ -1344,6 +1344,7 @@ export function listPositions(
         title: position.title,
         code: position.title,
         label: position.label,
+        description: position.description,
         jobFamily: position.jobFamily,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE

@@ -4,6 +4,7 @@ export type OrganisationChoice = {
   value?: string;
   code?: string | null;
   label?: string | null;
+  description?: string | null;
   name?: string | null;
   title?: string | null;
 };
@@ -11,7 +12,7 @@ export type OrganisationChoice = {
 const text = (value: string | null | undefined) => value?.trim() || '';
 
 export function organisationChoiceLabel(row: OrganisationChoice): string {
-  return text(row.label) || text(row.name) || text(row.title) || text(row.code) || text(row.value);
+  return text(row.label) || text(row.description) || text(row.name) || text(row.title) || text(row.code) || text(row.value);
 }
 
 /** Qualify only collisions in the supplied scope, preserving input order and every original value. */
@@ -40,4 +41,11 @@ export function organisationChoiceLabels<T extends OrganisationChoice>(rows: rea
     const stillAmbiguous = (qualifiedCounts.get(label.toLocaleLowerCase()) ?? 0) > 1;
     return { ...row, displayLabel: stillAmbiguous && id && id !== identifiers[index] ? `${label} · ${id}` : label };
   });
+}
+
+/** A filter offers only organisation identities present in its already-authorized employee set. */
+export function organisationFilterChoices(rows: readonly {id: string | null; name: string | null; code?: string | null}[]): {id:string;name:string}[] {
+  const unique = new Map<string,{id:string;name:string;code?:string|null}>();
+  for (const row of rows) if (row.id && row.name?.trim()) unique.set(row.id,{...row,id:row.id,name:row.name});
+  return organisationChoiceLabels([...unique.values()]).map(row=>({id:row.id,name:row.displayLabel})).sort((a,b)=>a.name.localeCompare(b.name));
 }

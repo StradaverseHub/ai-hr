@@ -199,6 +199,8 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         // not an employment, so it needs this id. Additive; existing callers ignore it.
         personId: employment.personId,
         department: department.name,
+        departmentLabel: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name})`,
+        departmentCode: department.name,
         // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
         // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
         // bulk service re-checks scope membership authoritatively). Nullable, like department.
@@ -206,9 +208,12 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
         // employee card (Employee ID / Name / Department / Position). Nullable, like department.
         position: position.title,
+        positionLabel: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), nullif(trim(${position.description}), ''), ${position.title})`,
         // Current-assignment Business Unit — the Fixed / Individual Transaction screens filter Step-1 by it
         // (a UX narrowing over the already access-fenced list). Nullable, like department.
         businessUnit: businessUnit.name,
+        businessUnitLabel: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code})`,
+        businessUnitCode: businessUnit.code,
         businessUnitId: assignment.businessUnitId,
         company: company.legalName,
         companyId: employment.companyId,
@@ -764,6 +769,7 @@ export function listDepartments(
         name: department.name,
         code: department.name,
         label: department.label,
+        description: department.description,
         companyId: department.companyId,
         // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
         // BU dropdown. Null = unassigned (visible under every BU on the hire form).

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { organisationChoiceLabel, organisationChoiceLabels } from '../lib/organisation-choice-label';
+import { organisationChoiceLabel, organisationChoiceLabels, organisationFilterChoices } from '../lib/organisation-choice-label';
 
 describe('organisation labels without identifier changes', () => {
   it('uses a configured label, with meaningful fallback for older or blank labels', () => {
     expect(organisationChoiceLabel({ code: 'BU-A', name: 'Existing description', label: ' Building Materials ' })).toBe('Building Materials');
     expect(organisationChoiceLabel({ code: 'BU-A', name: 'Existing description', label: '  ' })).toBe('Existing description');
     expect(organisationChoiceLabel({ code: 'DEPT-A' })).toBe('DEPT-A');
+    expect(organisationChoiceLabel({ name: 'DEPT-A', code: 'DEPT-A', description: 'Human-readable department', label: ' ' })).toBe('Human-readable department');
     expect(organisationChoiceLabel({ value: 'legacy' })).toBe('legacy');
   });
 
@@ -58,4 +59,10 @@ it('shows configured organisation labels in actual criteria options while postin
     ['businessUnitIds', 'bu', 'Building Materials'], ['costCenterIds', 'cc', 'Central Services'],
     ['gradeIds', 'grade', 'Professional'],
   ]) expect(fields.find(field => field.name === name)?.options).toEqual([{ value, label }]);
+});
+
+it('limits employee-derived organisation filters to present identities and qualifies their shared labels with codes',()=>{
+ const rows=[{id:'dept-a',name:'Operations',code:'OPS-A'},{id:'dept-a',name:'Operations',code:'OPS-A'},{id:'dept-b',name:'Operations',code:'OPS-B'},{id:null,name:'Unassigned',code:null}];
+ expect(organisationFilterChoices(rows)).toEqual([{id:'dept-a',name:'Operations (OPS-A)'},{id:'dept-b',name:'Operations (OPS-B)'}]);
+ expect(rows).toHaveLength(4);
 });
