@@ -49,7 +49,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     {state.error&&<p role="alert" className="text-sm text-destructive">{state.error}</p>}
     {state.saved&&<p role="status" className="text-sm">{t('saved')}</p>}
     <p className="text-sm text-muted-foreground">{editing?t('futureHint'):t('viewHint')}</p>
-    <fieldset disabled={!editing||pending} className="space-y-3">
+    <fieldset disabled={!editing||pending} className="min-w-0 space-y-3">
       <legend className="text-sm font-medium">{t('pool')}</legend>
       <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
       <ScheduleShiftPicker shifts={shifts} selected={pool} editing={editing} disabled={pending}
