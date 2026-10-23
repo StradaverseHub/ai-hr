@@ -3787,6 +3787,7 @@
     "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
     "correctionSaved": "Pembetulan disimpan dan digunakan.",
     "myDayBack": "Kembali ke Kalendar Kehadiran",
+    "myDayWorkflowUnavailable": "Tiada laluan kelulusan yang boleh digunakan. Minta HR menyemak penetapan aliran kerja.",
     "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
     "myDayFuture": "Tarikh akan datang tidak boleh dibetulkan.",
     "myDayBadTimes": "Waktu keluar mestilah selepas waktu masuk.",

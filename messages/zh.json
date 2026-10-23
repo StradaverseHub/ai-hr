@@ -3787,6 +3787,7 @@
     "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
     "correctionSaved": "更正已保存并生效。",
     "myDayBack": "返回考勤日历",
+    "myDayWorkflowUnavailable": "没有可用的审批流程。请联系人力资源部门检查流程分配。",
     "myDayPending": "待审批 — 此日期无法再次提交更正。",
     "myDayFuture": "无法更正未来日期。",
     "myDayBadTimes": "签退时间必须晚于签到时间。",

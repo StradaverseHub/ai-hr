@@ -39,6 +39,13 @@ const render = async (extra = {}) => {
   return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), children: resolved }));
 };
 describe('employee day render', () => {
+  it.each(['en','ms','zh','ta','th','vi'])('retains translated workflow refusal in %s after the global toast query consumer',async locale=>{
+    state.locale=locale;const html=await render({correctionError:'myDayWorkflowUnavailable'});
+    const catalogue=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')).attendance;
+    expect(html).toContain(catalogue.myDayWorkflowUnavailable);
+    expect(html).not.toContain('correctionError=myDayWorkflowUnavailable');
+    expect(html).not.toContain(catalogue.myDaySubmitted);
+  });
   it('a manager sees their own day even when the URL asks for their report', async () => {
     const html = await render({ emp: 'report-employment' });
     expect(state.rows).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04', '2025-06-04');

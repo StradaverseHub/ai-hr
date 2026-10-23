@@ -3787,6 +3787,7 @@
     "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
     "correctionSaved": "Đã lưu và áp dụng điều chỉnh.",
     "myDayBack": "Quay lại Lịch chấm công",
+    "myDayWorkflowUnavailable": "Không có tuyến phê duyệt khả dụng. Hãy nhờ HR kiểm tra việc phân công quy trình.",
     "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
     "myDayFuture": "Không thể sửa ngày trong tương lai.",
     "myDayBadTimes": "Giờ ra phải sau giờ vào.",

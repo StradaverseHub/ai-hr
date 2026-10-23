@@ -20,6 +20,8 @@ const CORRECTION_MESSAGES: readonly string[] = [
   'correctionReasonRequired',
   'correctionNothingToChange',
   'correctionRejected',
+  'clockDataPayrollClosed',
+  'myDayWorkflowUnavailable',
   'myDayPending',
   'myDayFuture',
   'myDayBadTimes',
@@ -30,7 +32,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; corrected?: string } & AttendanceCalendarReturn>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -38,6 +40,7 @@ export default async function MyAttendanceDayPage({
   const { s } = await scopedSession();
   const { date } = await params;
   const sp = await searchParams;
+  const correctionError = sp.correctionError ?? sp.error;
   const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
   const workflowText = await getTranslations('attendanceWorkflow');
 
@@ -127,9 +130,9 @@ export default async function MyAttendanceDayPage({
         ← {t('myDayBack')}
       </Link>
 
-      {sp.error && CORRECTION_MESSAGES.includes(sp.error) && <ErrorBanner message={t(sp.error)} />}
+      {correctionError && CORRECTION_MESSAGES.includes(correctionError) && <ErrorBanner message={t(correctionError)} />}
       {workflowProblem && <ErrorBanner message={`${workflowProblem.levelIndex == null ? '' : `${workflowText('stageNumber', { number: workflowProblem.levelIndex + 1 })}: `}${workflowText(`v3.${attendanceLevelProblemMessageKey(workflowProblem)}`)}`}/>}
-      {sp.corrected === '1' && !sp.error && (
+      {sp.corrected === '1' && !correctionError && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('myDaySubmitted')}
         </div>

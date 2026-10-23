@@ -2306,10 +2306,10 @@ export function recentHires(
 export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }) {
   return withTenant(ctx, (tx) =>
     tx
-      .select({ name: holiday.name, date: holiday.holidayDate })
+      .select({ id: holiday.id, name: holiday.name, date: holiday.holidayDate })
       .from(holiday)
       .where(gte(holiday.holidayDate, opts.from))
-      .orderBy(holiday.holidayDate)
+      .orderBy(holiday.holidayDate, holiday.id)
       .limit(opts.limit ?? 5),
   );
 }

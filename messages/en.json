@@ -3787,6 +3787,7 @@
     "correctionPendingAnotherApprover": "Saved, but it needs another approver: you cannot approve a correction to your own attendance.",
     "correctionSaved": "Correction saved and applied.",
     "myDayBack": "Back to Attendance Calendar",
+    "myDayWorkflowUnavailable": "No usable approval route is available. Ask HR to check the workflow assignment.",
     "myDayPending": "Pending approval — another correction cannot be submitted for this date.",
     "myDayFuture": "Future dates cannot be corrected.",
     "myDayBadTimes": "Check-out must be later than check-in.",
