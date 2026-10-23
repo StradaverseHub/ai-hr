@@ -1110,18 +1110,25 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
  });
 
- it.each((['cash','toil'] as const).flatMap(mode=>(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method}))))('carries real HR-attested unclocked work through $mode with frozen $method',async({mode,method})=>{
+ it.each((['cash','toil'] as const).flatMap(mode=>[
+  ...(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method,roundMode:'none' as const,physical:120,requested:60})),
+  ...(['up','nearest'] as const).flatMap(roundMode=>(['requested','system_calculated'] as const).map(method=>({mode,method,roundMode,
+   physical:roundMode==='up'?125:135,requested:roundMode==='up'?65:75}))),
+ ]))('carries real HR-attested unclocked work through $mode with frozen $method and $roundMode rounding',async({mode,method,roundMode,physical,requested})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
    halfDayBefore:'00:01',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
   // Same declared private historical GROUP baseline restoration as the four Manual probes.
   // Formula activation is genuine and current-day. This is not a historical activation command.
-  const f=await fixture('manual','12','actual',true,undefined,0,true,{mode:'none',step:null},120,'earliest',false,undefined,true),
+  const rounding:AttendanceGroupPolicy['overtime']['rounding']=roundMode==='none'?{mode:'none',step:null}:{mode:roundMode,step:30};
+  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,undefined,true),
    p={employmentId:f.employmentId,date:f.sourceDate},midnight=Date.parse(p.date+'T00:00:00+08:00');
-  const actual={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight+60000+555,toEpochMillisecond:midnight+121*60000}],
-   requestedIntervals:[{fromEpochMillisecond:midnight+61*60000+777,toEpochMillisecond:midnight+121*60000}]};
-  const requestedWinner=method==='requested'||method==='smaller_of',expectedMinutes=requestedWinner?60:120;
+  const actual={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight+60000+555,toEpochMillisecond:midnight+(1+physical)*60000}],
+   requestedIntervals:[{fromEpochMillisecond:midnight+(1+physical-requested)*60000+777,toEpochMillisecond:midnight+(1+physical)*60000}]};
+  const requestedWinner=method==='requested'||method==='smaller_of',physicalMinutes=requestedWinner?requested:physical,
+   expectedMinutes=roundMode==='none'?physicalMinutes:requestedWinner?90:150,
+   expectedMoney=roundMode==='none'?(requestedWinner?'18.00':'36.00'):(requestedWinner?'27.00':'45.00');
   expect(actual.intervals[0].toEpochMillisecond).toBeLessThan(Date.now());
   const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional financial actual-work reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
    companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
@@ -1131,7 +1138,7 @@ describe('immutable non-payable policy part storage',()=>{
    applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
    stages:[{name:'Review complete actual work',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
-  const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:60,reason:'Fictional complete actual-work day with original millisecond endpoints',unclockedWork:actual});
+  const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional complete actual-work day with original millisecond endpoints',unclockedWork:actual});
   expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p))).toBeNull();
   await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical attested financial parent');
@@ -1143,6 +1150,8 @@ describe('immutable non-payable policy part storage',()=>{
   if(coverage.state!=='prepared'||coverage.countBasis!=='attestedBoundaryFloor')throw Error('Expected DISTINCT attested source geometry');
   expect(coverage).toMatchObject({authority:'attestedCountCoverageProposalOnly',minutes:expectedMinutes,correctionId:request.correctionId});
   expect(coverage.intervals).toEqual(requestedWinner?actual.requestedIntervals:actual.intervals);
+  if(roundMode!=='none')expect(coverage.countAttribution).toMatchObject({state:'known',physicalMinutes,roundedMinutes:expectedMinutes-physicalMinutes,minutes:expectedMinutes});
+  expect(coverage.intervals.reduce((sum,row)=>sum+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(physicalMinutes*60000-(requestedWinner?777:555));
   if(requestedWinner)expect(coverage.allocations[0]).toMatchObject({requestedIntervalIndex:0,requestedFromEpochMillisecond:actual.requestedIntervals[0].fromEpochMillisecond});
   expect(snapshot.policyRawEffectSource?.attested?.anchor.calcTrace).toBeNull();
   expect(coverage.allocations.every(row=>!('inCaptureId' in row)&&!('inPunchId' in row))).toBe(true);
@@ -1150,7 +1159,7 @@ describe('immutable non-payable policy part storage',()=>{
   await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
    allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
    extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
-  if(mode==='cash'&&method==='requested')for(const kind of ['owner','interval','requested','footprint'] as const){
+  if(mode==='cash'&&method==='requested'&&roundMode==='none')for(const kind of ['owner','interval','requested','footprint'] as const){
    let attempted='',failure:unknown;
    try{await withTenant(ctx,async tx=>{
     const {saved}=await header(tx,f,read.policyParts!.length,{inputDigest:read.calculation!.inputDigest,
@@ -1182,7 +1191,7 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});
    await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
    await generatePayslips(ctx,{batchId:batch.batchId});
-   expect((await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId))))[0].overtimePay).toBe(requestedWinner?'18.00':'36.00');
+   expect((await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId))))[0].overtimePay).toBe(expectedMoney);
    await closeBatch(ctx,{batchId:batch.batchId});await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
   }else{
    await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,f.earningId));
