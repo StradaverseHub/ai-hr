@@ -19,6 +19,10 @@ export type {RewardSharedChoice} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
+import {changeRewardMember} from './maintenance';
+export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
+export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
+
 export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';
 export class RewardError extends Error { constructor(message: string) { super(message); this.name = 'RewardError'; } }
@@ -52,7 +56,7 @@ async function load(tx: Tx, unitId: string, lock = false) {
   idSchema.parse(unitId);
   const query = tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
   const [unit] = await (lock ? query.for('update') : query);
-  if (!unit) throw new RewardError('Reward unit not found or access has been removed.');
+  if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
   const roles = await rolesFor(tx, unitId);
   if (!roles.length) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
   const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
@@ -101,9 +105,9 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision })
+    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
-      .where(inArray(rewardUnit.companyId, companyIds)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
+      .where(and(inArray(rewardUnit.companyId, companyIds),isNull(rewardUnit.deletedAt))).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
   });
 }
 
@@ -123,7 +127,7 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
   idSchema.parse(unitId);
   return withRewardsTenant(ctx, async tx => {
     const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
-    if (!unit) throw new RewardError('Reward unit not found or access has been removed.');
+    if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
     const roles = await rolesFor(tx, unitId);
     const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
     if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
@@ -289,22 +293,7 @@ export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: st
 }
 
 export async function setRewardMember(ctx: SessionContext, unitId: string, revision: number, userId: string, role: RewardRole, remove = false) {
-  idSchema.parse(unitId); idSchema.parse(userId); z.enum(rewardRoles).parse(role);
-  return withRewardsTenant(ctx, async tx => {
-    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
-    if (!unit) throw new RewardError('Reward unit not found.');
-    await requireAdmin(tx, unit.companyId); assertRevision(unit, revision); assertUnlocked(unit);
-    const predicate = and(eq(rewardMember.unitId, unitId), eq(rewardMember.userId, userId), eq(rewardMember.role, role));
-    if (remove && role === 'gr') {
-      const group = await tx.select().from(rewardMember).where(and(eq(rewardMember.unitId, unitId), eq(rewardMember.role, 'gr')));
-      if (group.filter(m => m.userId !== userId).length === 0) throw new RewardError('Keep at least one Group Rewards reviewer assigned.');
-    }
-    if (remove) await tx.delete(rewardMember).where(predicate);
-    else if (!(await tx.select({ id: rewardMember.id }).from(rewardMember).where(predicate)).length) await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId, userId, role });
-    // Role changes invalidate open forms just like recommendation changes.
-    await touch(tx, unitId);
-    await stamp(tx, ctx, unitId, remove ? 'member-removed' : 'member-assigned', { userId, role });
-  });
+  return changeRewardMember(ctx,unitId,revision,userId,role,remove);
 }
 
 export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
@@ -457,7 +446,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
   if (new Set(p.entryIds).size !== p.entryIds.length) throw new RewardError('Select each employee only once.');
   if (p.exceptionReason && (p.kind !== 'adhoc' || p.exceptionReason.length < 30)) throw new RewardError('A budget exception is available only for an ad-hoc request and needs a reason of at least 30 characters.');
   return withRewardsTenant(ctx, async tx => {
-    const { unit: parent, roles, entries } = await load(tx, parentId);
+    const { unit: parent, roles, entries } = await load(tx, parentId, true);
     if (parent.kind !== 'annual' || parent.status !== 'posted') throw new RewardError('Use a posted annual review as the funding source.');
     if (!roles.some(r => ['bu', 'bg', 'gr'].includes(r))) throw new RewardError('BU, BG or Group Rewards access is required.');
     if (p.effectiveFrom <= parent.policy.effectiveFrom) throw new RewardError('The off-cycle effective date must follow the annual award.');

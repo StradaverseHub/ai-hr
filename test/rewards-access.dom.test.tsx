@@ -1,0 +1,57 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
+import { RewardAccessEditor } from '../app/admin/rewards/access/access-editor';
+import type { RewardAccessAdministration } from '../packs/rewards/service';
+const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: ports.refresh }) }));
+vi.mock('../app/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
+const review = { id: 'review', companyId: 'company', company: 'Example Company', businessUnitId: 'unit', unit: 'Operations', cycleId: 'cycle', cycle: 'Annual cycle', year: 2026, kind: 'annual' as const, status: 'draft' as const, revision: 4 };
+const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved' }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test' }, { id: 'user', name: 'New Reviewer', email: 'new@example.test' }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true }] };
+const show = () => render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value}/></NextIntlClientProvider>);
+beforeEach(() => { vi.clearAllMocks(); Element.prototype.scrollIntoView = vi.fn(); ports.preview.mockImplementation(async (input) => ({ ok: true, preview: { ...input, digest: 'a'.repeat(64) } })); ports.save.mockResolvedValue({ ok: true }); });
+afterEach(cleanup);
+describe('Central Rewards access journey', () => {
+    it('lists bounded assignments, account and review states, searchable company/unit/cycle context, and locks', () => {
+        show();
+        expect(screen.getAllByText('New Reviewer').length).toBeGreaterThan(0);
+        expect(screen.getByText('Disabled or suspended login')).toBeTruthy();
+        expect(screen.getByText('Locked review')).toBeTruthy();
+        const locked = screen.getByText('Example Company / Finance').closest('tr')!;
+        expect(within(locked).getByRole('button', { name: /Edit/ }).hasAttribute('disabled')).toBe(true);
+        const gr = screen.getByText('Rewards Lead').closest('tr')!;
+        expect(within(gr).getByRole('button', { name: /Remove/ }).hasAttribute('disabled')).toBe(true);
+        expect(within(gr).getByRole('button', { name: /Edit/ }).hasAttribute('disabled')).toBe(false);
+        fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'lead' } });
+        expect(screen.queryByText('Example Company / Finance')).toBeNull();
+    });
+    it('previews one exact assignment and saves only the previewed before/after with its digest', async () => {
+        show();
+        fireEvent.click(screen.getByRole('button', { name: 'Add access' }));
+        fireEvent.change(screen.getByLabelText('Existing login account'), { target: { value: 'user' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
+        await screen.findByRole('heading', { name: 'Review changes before saving' });
+        expect(ports.preview).toHaveBeenCalledWith({ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } });
+        expect(ports.save).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+        await screen.findByText(en.rewardsAccess.saved);
+        await waitFor(() => expect(ports.save).toHaveBeenCalledWith({ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } }, 'a'.repeat(64)));
+        expect(ports.refresh).toHaveBeenCalledOnce();
+    });
+    it('invalidates a preview after edits and displays a stale-preview refusal without claiming success', async () => {
+        show();
+        fireEvent.click(screen.getByRole('button', { name: 'Add access' }));
+        fireEvent.change(screen.getByLabelText('Existing login account'), { target: { value: 'user' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
+        await screen.findByRole('button', { name: 'Confirm and save' });
+        fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'pbp' } });
+        expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
+        await screen.findByRole('button', { name: 'Confirm and save' });
+        ports.save.mockResolvedValueOnce({ ok: false, error: 'changed' });
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+        expect(await screen.findByRole('alert')).toHaveProperty('textContent', en.rewardsAccess.errors.changed);
+        expect(ports.refresh).not.toHaveBeenCalled();
+    });
+});

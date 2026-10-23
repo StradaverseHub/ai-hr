@@ -10150,6 +10150,7 @@ export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
  companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
 },t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), deletedBy: uuid('deleted_by').references(() => appUser.id),
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
   offcycle: jsonb('offcycle').$type<import('../packs/rewards/offcycle').OffcycleDetails>(),
