@@ -25,7 +25,7 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,
+import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,calculateOvertimePatternDay,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
@@ -99,7 +99,7 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  await capturedClock(worker.employmentId,day(sourceOffset),'in',financial?'23:00:00':'23:50:00',day(sourceOffset),captureMillisecond);
  await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?'01:00:00':'00:10:00',day(sourceOffset+1),captureMillisecond);
- return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset)};
+ return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset),earningId:earning.id};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 async function header(tx:Tx,f:Fixture,count:number,patch:Partial<typeof s.attendanceOvertimeCalculation.$inferInsert>={}){
@@ -771,10 +771,13 @@ describe('immutable non-payable policy part storage',()=>{
  });
 
  it('transfers an actual split policy parent into Payroll once and generates the canonical payslip',async()=>{
-  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
   await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!read?.calculation)throw Error('Expected complete policy parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'120'});
@@ -783,6 +786,7 @@ describe('immutable non-payable policy part storage',()=>{
    batchId:batch.batchId,reason:'Fictional full current policy Payroll flow'};
   const first=await transferOvertimePatternToPayroll(ctx,transfer),retry=await transferOvertimePatternToPayroll(ctx,transfer);
   expect(first.status).toBe('transferred');expect(retry).toMatchObject({status:'unchanged',settlementId:first.settlementId});
+  await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
   const cash=await withTenant(ctx,tx=>readPayrollOvertimePatternCashTx(tx,ctx,{batchId:batch.batchId}));
   expect(cash.lines.map(row=>({date:row.date,amount:row.amountMinorUnits}))).toEqual([
    {date:p.date,amount:'1800'},{date:new Date(Date.parse(p.date+'T00:00:00Z')+86400000).toISOString().slice(0,10),amount:'1800'}]);
@@ -860,6 +864,59 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
    expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
    .toMatchObject({status:'transferred'});
+ });
+
+ it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!before?.calculation)throw Error('Expected original cash-ready source');
+  expect(before.calculation.outcome).toBe('ready');
+  await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,f.earningId));
+  await calculateOvertimePatternDay(ctx,{...p,expectedCurrentRevision:before.source.revision,reason:'Fictional independent duration review after earning archival'});
+  const after=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  expect(after?.calculation).toMatchObject({outcome:'refused',durationOutcome:'ready',transferable:false,payableNumerator:'120'});
+  expect(after?.lines).toEqual([]);
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  await accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date});
+  const [credit]=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId));
+  expect(credit).toMatchObject({status:'active',workedDayKind:'workday',otMinutes:120,daysCredited:'1.00'});
+  const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.toilAccrualId,credit.id));
+  expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical',coverageCalculationId:after!.calculation!.id});
+ });
+
+ it('refuses equal-money changed references until explicit current financial recalculation',async()=>{
+  await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const original=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!original?.calculation)throw Error('Expected actual financial parent');
+  const before=await withTenant(ctx,tx=>canonicalOvertimePayrollInputTx(tx,ctx,p));
+  expect(attendancePolicyCashReplay(before)).toMatchObject({state:'known',amountMinorUnits:'3600'});
+  await owner.db.update(s.payComponent).set({name:'Fictional renamed earning reference'}).where(eq(s.payComponent.id,f.earningId));
+  const current=await withTenant(ctx,tx=>canonicalOvertimePayrollInputTx(tx,ctx,p));
+  expect(attendancePolicyCashReplay(current)).toMatchObject({state:'known',amountMinorUnits:'3600'});
+  expect(current.referenceDigest).not.toBe(before.referenceDigest);
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+  const transfer={...p,expectedCalculationId:original.calculation.id,expectedSourceRevision:original.source.revision,
+   batchId:batch.batchId,reason:'Fictional same-money stale reference must refuse'};
+  await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toMatchObject({code:'stale'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,original.source.id))).toEqual([]);
+  expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{...p,revisionId:original.calculation!.id}))).toEqual(original);
+  await calculateOvertimePatternDay(ctx,{...p,expectedCurrentRevision:original.source.revision,reason:'Fictional explicit changed-reference review'});
+  const updated=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!updated?.calculation)throw Error('Expected reviewed current parent');
+  expect(updated.source.revision).toBe(original.source.revision+1);
+  await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toMatchObject({code:'stale'});
+  expect(await transferOvertimePatternToPayroll(ctx,{...transfer,expectedCalculationId:updated.calculation.id,
+   expectedSourceRevision:updated.source.revision})).toMatchObject({status:'transferred'});
+ });
+ it('requires real financial scope for a ready policy source even when its employee can see Attendance',async()=>{
+  await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const userId=await createAppUser(b.tenantId,f.personId,'employee');
+  const self:SessionContext={...ctx,userId,personId:f.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  await expect(withTenant(self,tx=>canonicalOvertimePayrollInputTx(tx,self,p))).rejects.toMatchObject({code:'permission'});
+  await expect(withTenant(self,tx=>readOvertimeCalculationTx(tx,self,p))).rejects.toMatchObject({code:'permission'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.tenantId,b.tenantId))).toEqual([]);
  });
 
 });
