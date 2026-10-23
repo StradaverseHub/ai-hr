@@ -1184,7 +1184,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
  });
 
- it.each(['cash','toil'] as const)('settles disjoint approved-plan quantity through the actual %s owner while reserving original work',async mode=>{
+ it.each((['cash','toil'] as const).flatMap(mode=>([3,4] as const).map(routingVersion=>({mode,routingVersion}))))('settles disjoint approved-plan quantity through the actual $mode owner with v$routingVersion while reserving original work',async({mode,routingVersion})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   // Same explicitly declared private historical group baseline as the existing current
@@ -1194,8 +1194,11 @@ describe('immutable non-payable policy part storage',()=>{
    companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
   const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
    roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
-  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'PLAN_FIN_'+randomUUID().slice(0,8),name:'Fictional positioned-plan review',
-   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+  const workflow={companyId:b.companyId,code:'PLAN_FIN_'+randomUUID().slice(0,8),name:'Fictional positioned-plan review',
+   applicationType:'self_overtime' as const,priority:100,criteria:{employeeIds:[f.employmentId]},active:true};
+  if(routingVersion===4)await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:4,cc:[],
+   stages:[{name:'Review approved positions',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[reviewer.employmentId]}],hrAlternative:false}]});
+  else await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:3,
    stages:[{name:'Review approved positions',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
   const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:90,plannedStartTime:'20:00',plannedEndTime:'21:30',reason:'Fictional approved plan disjoint from original 23:00 work'});
@@ -1234,11 +1237,14 @@ describe('immutable non-payable policy part storage',()=>{
   }
  });
 
- it.each((['cash','toil'] as const).flatMap(mode=>[
+ it.each([...( ['cash','toil'] as const).flatMap(mode=>[
   ...(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method,roundMode:'none' as const,physical:120,requested:60})),
   ...(['up','nearest'] as const).flatMap(roundMode=>(['requested','system_calculated'] as const).map(method=>({mode,method,roundMode,
    physical:roundMode==='up'?125:135,requested:roundMode==='up'?65:75}))),
- ]))('carries real HR-attested unclocked work through $mode with frozen $method and $roundMode rounding',async({mode,method,roundMode,physical,requested})=>{
+ ]).map(row=>({...row,routingVersion:3 as const})),
+  {mode:'cash' as const,method:'requested' as const,roundMode:'none' as const,physical:120,requested:60,routingVersion:4 as const},
+  {mode:'toil' as const,method:'system_calculated' as const,roundMode:'up' as const,physical:125,requested:65,routingVersion:4 as const},
+ ])('carries real HR-attested unclocked work through $mode with frozen $method and $roundMode rounding and v$routingVersion',async({mode,method,roundMode,physical,requested,routingVersion})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
@@ -1258,8 +1264,11 @@ describe('immutable non-payable policy part storage',()=>{
    companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
   const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
    roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
-  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'UNCLOCKED_FIN_'+randomUUID().slice(0,8),name:'Fictional actual-work financial review',
-   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+  const workflow={companyId:b.companyId,code:'UNCLOCKED_FIN_'+randomUUID().slice(0,8),name:'Fictional actual-work financial review',
+   applicationType:'self_overtime' as const,priority:100,criteria:{employeeIds:[f.employmentId]},active:true};
+  if(routingVersion===4)await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:4,cc:[],
+   stages:[{name:'Review complete actual work',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[reviewer.employmentId]}],hrAlternative:false}]});
+  else await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:3,
    stages:[{name:'Review complete actual work',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
   const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional complete actual-work day with original millisecond endpoints',unclockedWork:actual});

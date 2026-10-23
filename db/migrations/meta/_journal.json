@@ -3335,38 +3335,94 @@
       "breakpoints": true
     },
     {
-      "idx": 581,
+      "idx": 578,
       "version": "7",
-      "when": 1791900000061,
+      "when": 1791900000058,
+      "tag": "0578_ess_photo_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 579,
+      "version": "7",
+      "when": 1791900000059,
+      "tag": "0579_configurable_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 580,
+      "version": "7",
+      "when": 1791900000060,
+      "tag": "0580_reward_policy_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 591,
+      "version": "7",
+      "when": 1791900000071,
+      "tag": "0591_my_tp3_private_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 592,
+      "version": "7",
+      "when": 1791900000072,
+      "tag": "0592_attendance_workflow_v4",
+      "breakpoints": true
+    },
+    {
+      "idx": 593,
+      "version": "7",
+      "when": 1791900000073,
+      "tag": "0593_my_ea_source_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 594,
+      "version": "7",
+      "when": 1791900000074,
       "tag": "0581_attendance_group_policy",
       "breakpoints": true
     },
     {
-      "idx": 582,
+      "idx": 595,
       "version": "7",
-      "when": 1791900000062,
+      "when": 1791900000075,
       "tag": "0582_employee_home_notice_integrity",
       "breakpoints": true
     },
     {
-      "idx": 583,
+      "idx": 596,
       "version": "7",
-      "when": 1791900000063,
+      "when": 1791900000076,
       "tag": "0583_employee_home_person_privacy",
       "breakpoints": true
     },
     {
-      "idx": 584,
+      "idx": 597,
       "version": "7",
-      "when": 1791900000064,
+      "when": 1791900000077,
       "tag": "0584_employee_home_sharing",
       "breakpoints": true
     },
     {
-      "idx": 585,
+      "idx": 598,
       "version": "7",
-      "when": 1791900000065,
+      "when": 1791900000078,
       "tag": "0585_home_team_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1791900000079,
+      "tag": "0586_employee_home_greetings",
+      "breakpoints": true
+    },
+    {
+      "idx": 600,
+      "version": "7",
+      "when": 1791900000080,
+      "tag": "0590_attendance_policy_execution",
       "breakpoints": true
     }
   ]

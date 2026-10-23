@@ -1,3 +1,5 @@
+import {attendancePolicyIndependentSource} from '../packs/attendance/policy-duration-replay';
+import {attendancePolicyFinancialDurationContract,attendancePolicyFinancialContract} from '../packs/attendance/policy-financial-contract';
 import {randomUUID} from 'node:crypto';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -315,8 +317,18 @@ describe('dated-policy raw writer routing',()=>{
   expect(calculations.map(calculation=>calculation.ordinal)).toEqual([1,2]);
   expect(current?.source.revision).toBe(2);expect(current?.source.currentCalculationId).toBe(current?.calculation?.id);
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
-  for(const reader of [canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx])
-   await expect(withTenant(ctx,tx=>reader(tx,ctx,{employmentId:f.employmentId,date:day(1)}))).rejects.toMatchObject({code:'unavailable'});
+  // These readers retain unknown source facts for review. Financial admission belongs to
+  // the explicit contract owner, which must refuse even when the raw snapshot is readable.
+  for(const reader of [canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx]){
+   const financial=await withTenant(ctx,tx=>reader(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+   expect(financial.policyWorkInput).toMatchObject({state:'unavailable'});
+   const identity={tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,sourceId:current!.source.id,
+    calculationId:current!.calculation!.id,date:day(1)};
+   expect(attendancePolicyFinancialContract(identity,financial).state).toBe('unavailable');
+   const independent=attendancePolicyIndependentSource(financial);expect(independent).not.toBeNull();
+   if(!independent)throw Error('Expected independently refused duration source');
+   expect(attendancePolicyFinancialDurationContract(identity,independent).state).toBe('unavailable');
+  }
   expect(await owner.db.select().from(s.attendanceOvertimeLine)).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
  });
