@@ -90,3 +90,5 @@ export {attendancePolicyFinancialContract,type PolicyFinancialContract,type Poli
 export {lockOvertimePayrollBatchContextTx} from './overtime-patterns';
 
 export {attendancePolicyStoredPartCount} from './policy-count-attribution';
+
+export {attendancePolicyUnclockedWorkComparison} from './policy-work-input';

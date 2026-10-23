@@ -9,7 +9,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { lockOvertimeDayForAttendanceWriteTx, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -3908,6 +3908,7 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
     let policyRawDecision = false;
+    let policyAttestedDecision = false;
     let finalizedV2 = false;
     let approvedCredit: {dayType: DayType; requestedOn: string} | null = null;
 
@@ -3956,6 +3957,27 @@ export async function decideAttendanceCorrection(
       // (overtime claimed for a day with no recorded work) and holding that line is the regression contract.
       const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
+      let unclockedSystemMinutes:number|undefined;
+      if(cor.originalClockSnapshot?.unclockedWork){
+        if(deferred||hasClockCorrection||cor.adminAmendment||!workflowStage.versionedFinalEffect)
+          throw Error('Unclocked actual work requires its submitted versioned final workflow.');
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+cor.employmentId},0))`);
+        await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        const [submission]=await tx.select().from(attendancePolicyRequestContract).where(and(
+          eq(attendancePolicyRequestContract.correctionId,cor.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId))).limit(1);
+        const binding=attendancePolicyTraceBinding(context);
+        if(!binding||!submission?.attestedWork||!isDeepStrictEqual(submission.policyBinding,binding)
+          ||!isDeepStrictEqual(submission.attestedWork.work,cor.originalClockSnapshot.unclockedWork))
+          throw Error('The submitted unclocked-work policy or actual intervals changed. Withdraw and resubmit.');
+        const comparison=attendancePolicyUnclockedWorkComparison(context,cor.originalClockSnapshot.unclockedWork);
+        const eligible=comparison.state==='known'?attendancePolicySystemEligibleMinutes(context,comparison.work):null;
+        if(eligible?.state!=='known')throw Error('The attested work cannot be positioned under the current dated Schedule Group policy.');
+        if((await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).some(row=>!row.voidedAt))
+          throw Error('Clock evidence was added after this unclocked-work submission. Withdraw and use the clock workflow.');
+        unclockedSystemMinutes=eligible.minutes;
+      }
       const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
@@ -3971,7 +3993,9 @@ export async function decideAttendanceCorrection(
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
         // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
         // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).
-        if (deferred) {
+        if(unclockedSystemMinutes!==undefined){
+          systemOtForComparison=unclockedSystemMinutes;
+        } else if (deferred) {
           // Nothing has been clocked, so there is NO comparison figure and resolving one now would be
           // fiction: under `system_calculated` or `smaller_of` a null system figure reads as zero, and the
           // plan would be stamped "approved: 0 hours" the moment the manager clicked approve. What is
@@ -4041,6 +4065,13 @@ export async function decideAttendanceCorrection(
           dayType,
           deferredToDate: cor.attendanceDate,
         };
+      } else if(unclockedSystemMinutes!==undefined){
+        // The actual-work testimony has a separate immutable scoped final effect. Its
+        // scalar decision never lands in raw Attendance or manufactures a captured trace.
+        // SQL still requires the owner-issued attested effect before status can finalize.
+        policyRawDecision=true;policyAttestedDecision=true;
+        eventPayload={correctionId:cor.id,date:cor.attendanceDate,dayType,otMinutes:null,
+          attestedActualWorkDecisionOnly:true};
       } else if (cor.clockChanges) {
         const [day] = lockedDay ? [lockedDay] : await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,dayType,status:'present'}).returning({id:attendance.id});
         amendedId = day.id;
@@ -4290,7 +4321,7 @@ export async function decideAttendanceCorrection(
       await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
       finalizedV2 = true;
     }
-    if (approvedCredit||policyRawDecision) {
+    if (approvedCredit||policyRawDecision&&!policyAttestedDecision) {
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,reason:'Approved attendance decision'});
       if(approvedCredit)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
     }
