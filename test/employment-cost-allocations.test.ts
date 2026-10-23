@@ -31,6 +31,19 @@ describe('Effective-dated employment cost allocation owner',()=>{
   const v=await read();expect(v.rows[0].displayLabel).toBe('Renamed allocation');expect(v.rows[0].codeSnapshot).toBe('ALLOC-A');expect(v.history.some(h=>h.rows.some(r=>r.costCenterId===cc1&&r.labelSnapshot!=='Renamed allocation'))).toBe(true);
   expect(await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,employmentId)).orderBy(asc(s.assignment.id))).toEqual(primary);expect(await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,employmentId)).orderBy(asc(s.compensation.id))).toEqual(compensation);
  });
+ it('chooses only proven company-history dates for omitted future/ended views and refuses explicit invalid dates',async()=>{
+  const futureDate=`${year+1}-06-01`;
+  const futureHire=await hireEmployee(a,{person:{fullName:'Future allocation subject'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:futureDate,employeeCode:'FUTALLOC'});
+  const futureView=await getEmploymentCostAllocations(a,futureHire.employmentId);expect(futureView.effectiveDate).toBe(futureDate);expect(futureView.canEdit).toBe(true);
+  await expect(getEmploymentCostAllocations(a,futureHire.employmentId,today)).rejects.toThrow(/history/);
+  const endDate=dayBefore(today);await owner.db.update(s.employment).set({terminatedOn:endDate}).where(eq(s.employment.id,employmentId));
+  const endedView=await getEmploymentCostAllocations(a,employmentId);expect(endedView.effectiveDate).toBe(endDate);expect(endedView.companyId).toBe(b.companyId);
+  await expect(getEmploymentCostAllocations(a,employmentId,today)).rejects.toThrow(/history/);
+  // If the company spine is unproven, an omitted date must not manufacture one from group hire date.
+  const[active]=await owner.db.select().from(s.assignment).where(and(eq(s.assignment.employmentId,futureHire.employmentId),isNull(s.assignment.supersededAt))).orderBy(asc(s.assignment.id));
+  await owner.db.update(s.assignment).set({companyId:null}).where(eq(s.assignment.id,active.id));
+  await expect(getEmploymentCostAllocations(a,futureHire.employmentId)).rejects.toThrow(/history/);
+ });
  it('serializes full-set CAS writes and rejects stale previews and changed Criteria',async()=>{
   const input={employmentId,effectiveDate:today,expectedRevision:0,operation:'replace',rows:[{costCenterId:cc1,percentage:'100'}]};const p=await previewEmploymentCostAllocations(a,input);
   const results=await Promise.allSettled([saveEmploymentCostAllocations(a,input,{digest:p.digest}),saveEmploymentCostAllocations(a,input,{digest:p.digest})]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect((await read()).revision).toBe(1);
