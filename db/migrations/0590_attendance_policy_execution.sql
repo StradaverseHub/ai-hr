@@ -504,7 +504,10 @@ GRANT EXECUTE ON FUNCTION app.lock_attendance_policy_import_context(jsonb) TO ai
 -- existing dynamically resolved effect_scope helper. No receipt/event can reopen that capability.
 -- An actual HR-work attestation has its own live final effect. It never writes clock labels,
 -- raw work/OT figures, or a schedule-only AttendanceTraceV1.
+ALTER TABLE public.attendance ADD COLUMN attested_work_correction_id uuid REFERENCES public.attendance_correction(id) ON DELETE RESTRICT,
+ ADD COLUMN attested_work_context jsonb;
 CREATE TABLE public.attendance_policy_attested_effect(
+ attendance_id uuid NOT NULL REFERENCES public.attendance(id) ON DELETE RESTRICT,
  correction_id uuid PRIMARY KEY REFERENCES public.attendance_correction(id) ON DELETE CASCADE,
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),company_id uuid NOT NULL REFERENCES public.company(id),
  employment_id uuid NOT NULL REFERENCES public.employment(id),attendance_date date NOT NULL,
@@ -512,7 +515,7 @@ CREATE TABLE public.attendance_policy_attested_effect(
  authority text NOT NULL DEFAULT 'attestedActualWorkOnly' CHECK(authority='attestedActualWorkOnly'),
  requested_minutes integer NOT NULL CHECK(requested_minutes>0),approved_minutes integer NOT NULL CHECK(approved_minutes>=0),
  manual_method text NOT NULL CHECK(manual_method IN('requested','system_calculated','smaller_of','greater_of')),
- attested_work jsonb NOT NULL,policy_binding jsonb NOT NULL,recorded_at timestamptz NOT NULL DEFAULT clock_timestamp());
+ attested_work jsonb NOT NULL,context_evidence jsonb NOT NULL,policy_binding jsonb NOT NULL,recorded_at timestamptz NOT NULL DEFAULT clock_timestamp());
 ALTER TABLE public.attendance_policy_attested_effect ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_policy_attested_effect FORCE ROW LEVEL SECURITY;
 CREATE POLICY attendance_policy_attested_effect_owner ON public.attendance_policy_attested_effect FOR ALL
@@ -536,7 +539,7 @@ CREATE TRIGGER attendance_policy_attested_effect_guard BEFORE INSERT OR UPDATE O
 CREATE FUNCTION app.capture_attendance_policy_attested_effect() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE contract public.attendance_policy_request_contract;w public.attendance_workflow_request;
- completion public.attendance_workflow_decision;
+ completion public.attendance_workflow_decision;anchor public.attendance;
 BEGIN
  SELECT * INTO contract FROM public.attendance_policy_request_contract WHERE correction_id=OLD.id AND tenant_id=OLD.tenant_id;
  IF NOT FOUND OR contract.attested_work IS NULL THEN RETURN NEW;END IF;
@@ -565,10 +568,26 @@ BEGIN
   AND d.stage_index=jsonb_array_length(w.stages)-1 AND d.decision='approved' AND d.resulting_status='approved'
   AND d.actual_user_id=app.current_user_id()::text AND app.attendance_workflow_active_write(d.xmin);
  IF NOT FOUND THEN RAISE EXCEPTION 'The completing unclocked-work decision must remain active' USING ERRCODE='42501';END IF;
- INSERT INTO public.attendance_policy_attested_effect(correction_id,tenant_id,company_id,employment_id,attendance_date,
-  workflow_request_id,actor_user_id,requested_minutes,approved_minutes,manual_method,attested_work,policy_binding)
- VALUES(OLD.id,OLD.tenant_id,contract.company_id,OLD.employment_id,OLD.attendance_date,w.id,app.current_user_id()::text,
-  OLD.requested_ot_minutes,NEW.approved_ot_minutes,contract.manual_approval_method,contract.attested_work,contract.policy_binding);
+ SELECT * INTO anchor FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id
+  AND a.attendance_date=OLD.attendance_date AND a.attested_work_correction_id=OLD.id AND app.attendance_workflow_active_write(a.xmin);
+ IF NOT FOUND OR anchor.attested_work_context->>'state' IS DISTINCT FROM 'policy'
+  OR anchor.attested_work_context->>'employmentId' IS DISTINCT FROM OLD.employment_id::text
+  OR anchor.attested_work_context->>'date' IS DISTINCT FROM OLD.attendance_date::text
+  OR anchor.attested_work_context->>'companyId' IS DISTINCT FROM contract.company_id::text
+  OR anchor.attested_work_context#>>'{selected,id}' IS DISTINCT FROM contract.policy_binding->>'revisionId'
+  OR NOT EXISTS(SELECT 1 FROM public.attendance_group_policy_revision r WHERE r.id=(contract.policy_binding->>'revisionId')::uuid
+   AND r.tenant_id=OLD.tenant_id AND r.company_id=contract.company_id
+   AND r.policy=anchor.attested_work_context#>'{selected,policy}' AND r.activation_epoch>0)
+  OR anchor.check_in_at IS NOT NULL OR anchor.check_out_at IS NOT NULL OR anchor.worked_minutes IS NOT NULL
+  OR anchor.ot_minutes IS NOT NULL OR anchor.calc_trace IS NOT NULL OR anchor.ot_flat_minutes IS NOT NULL
+  OR anchor.ot00_minutes IS NOT NULL OR anchor.ot10_minutes IS NOT NULL OR anchor.ot15_minutes IS NOT NULL
+  OR anchor.ot20_minutes IS NOT NULL OR anchor.ot30_minutes IS NOT NULL OR anchor.late_minutes IS NOT NULL
+  OR anchor.early_out_minutes IS NOT NULL OR anchor.under_minutes IS NOT NULL THEN
+  RAISE EXCEPTION 'The active unclocked-work identity must not contain invented raw clock figures' USING ERRCODE='23514';END IF;
+ INSERT INTO public.attendance_policy_attested_effect(attendance_id,correction_id,tenant_id,company_id,employment_id,attendance_date,
+  workflow_request_id,actor_user_id,requested_minutes,approved_minutes,manual_method,attested_work,context_evidence,policy_binding)
+ VALUES(anchor.id,OLD.id,OLD.tenant_id,contract.company_id,OLD.employment_id,OLD.attendance_date,w.id,app.current_user_id()::text,
+  OLD.requested_ot_minutes,NEW.approved_ot_minutes,contract.manual_approval_method,contract.attested_work,anchor.attested_work_context,contract.policy_binding);
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.capture_attendance_policy_attested_effect() FROM PUBLIC,ai_hr_app;
@@ -601,6 +620,10 @@ BEGIN
    AND attested.authority='attestedActualWorkOnly' AND attested.requested_minutes=c.requested_ot_minutes
    AND attested.approved_minutes=approved_minutes AND attested.manual_method=contract.manual_approval_method
    AND attested.attested_work=contract.attested_work AND attested.policy_binding=contract.policy_binding
+   AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.id=attested.attendance_id AND a.tenant_id=c.tenant_id
+    AND a.employment_id=c.employment_id AND a.attendance_date=c.attendance_date AND a.attested_work_correction_id=c.id
+    AND a.check_in_at IS NULL AND a.check_out_at IS NULL AND a.worked_minutes IS NULL AND a.ot_minutes IS NULL
+    AND a.calc_trace IS NULL AND a.attested_work_context=attested.context_evidence AND app.attendance_workflow_active_write(a.xmin))
    AND NOT EXISTS(SELECT 1 FROM public.attendance_punch p WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id
     AND p.attendance_date=c.attendance_date AND p.voided_at IS NULL);
  END IF;
@@ -704,7 +727,7 @@ BEGIN
    (SELECT p.id,p.punch_at,p.direction,p.clock_capture_id FROM public.attendance_punch p
     WHERE p.attendance_id=a.id AND p.tenant_id=a.tenant_id AND p.voided_at IS NULL ORDER BY p.id LIMIT 129)p)) INTO raw
   FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id
-   AND a.attendance_date=OLD.attendance_date AND app.attendance_workflow_active_write(a.xmin);
+   AND a.attendance_date=OLD.attendance_date AND contract.attested_work IS NULL AND app.attendance_workflow_active_write(a.xmin);
  IF contract.attested_work IS NOT NULL THEN
   SELECT to_jsonb(e) INTO attested_effect FROM public.attendance_policy_attested_effect e WHERE e.correction_id=OLD.id
    AND e.tenant_id=OLD.tenant_id AND e.workflow_request_id=w.id AND app.attendance_workflow_active_write(e.xmin);

@@ -1087,7 +1087,9 @@ describe('immutable non-payable policy part storage',()=>{
   expect(receipt.workflowEvidence).toMatchObject({unclockedEffect:{authority:'attestedActualWorkOnly',approved_minutes:expected},submittedAttestedWork:contract.attestedWork});
   expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,result.correctionId)))[0])
    .toMatchObject({status:'approved',approvedOtMinutes:expected,appliedAt:null});
-  expect(await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId))).toEqual([]);
+  const [anchor]=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId));
+  expect(anchor).toMatchObject({id:effect.attendanceId,attestedWorkCorrectionId:result.correctionId,checkInAt:null,checkOutAt:null,
+   workedMinutes:null,otMinutes:null,calcTrace:null,lateMinutes:null,earlyOutMinutes:null});
   await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyAttestedEffect).set({approvedMinutes:999})
    .where(eq(s.attendancePolicyAttestedEffect.correctionId,result.correctionId)))).rejects.toThrow();
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);

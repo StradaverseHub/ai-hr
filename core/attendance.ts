@@ -3958,6 +3958,7 @@ export async function decideAttendanceCorrection(
       const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
       let unclockedSystemMinutes:number|undefined;
+      let unclockedContext:AttendancePolicyExecutionContext|undefined;
       if(cor.originalClockSnapshot?.unclockedWork){
         if(deferred||hasClockCorrection||cor.adminAmendment||!workflowStage.versionedFinalEffect)
           throw Error('Unclocked actual work requires its submitted versioned final workflow.');
@@ -3976,7 +3977,7 @@ export async function decideAttendanceCorrection(
         if(eligible?.state!=='known')throw Error('The attested work cannot be positioned under the current dated Schedule Group policy.');
         if((await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).some(row=>!row.voidedAt))
           throw Error('Clock evidence was added after this unclocked-work submission. Withdraw and use the clock workflow.');
-        unclockedSystemMinutes=eligible.minutes;
+        unclockedSystemMinutes=eligible.minutes;unclockedContext=context;
       }
       const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
@@ -4069,6 +4070,17 @@ export async function decideAttendanceCorrection(
         // The actual-work testimony has a separate immutable scoped final effect. Its
         // scalar decision never lands in raw Attendance or manufactures a captured trace.
         // SQL still requires the owner-issued attested effect before status can finalize.
+        const [existingAnchor]=await tx.select().from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+          eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1);
+        if(existingAnchor&&[existingAnchor.checkInAt,existingAnchor.checkOutAt,existingAnchor.workedMinutes,
+          existingAnchor.otMinutes,existingAnchor.otFlatMinutes,existingAnchor.ot00Minutes,existingAnchor.ot10Minutes,
+          existingAnchor.ot15Minutes,existingAnchor.ot20Minutes,existingAnchor.ot30Minutes,existingAnchor.lateMinutes,
+          existingAnchor.earlyOutMinutes,existingAnchor.underMinutes,existingAnchor.calcTrace].some(value=>value!==null))
+          throw Error('Retain the existing Attendance evidence and correct it through its own workflow before attesting this day.');
+        if(existingAnchor)await tx.update(attendance).set({attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'})
+          .where(eq(attendance.id,existingAnchor.id));
+        else await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,
+          attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'});
         policyRawDecision=true;policyAttestedDecision=true;
         eventPayload={correctionId:cor.id,date:cor.attendanceDate,dayType,otMinutes:null,
           attestedActualWorkDecisionOnly:true};
