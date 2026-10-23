@@ -89,7 +89,7 @@ export async function listPendingTasks(
   if (!admin && !manager && managerReviews.length === 0) {
     if (!modules.attendance || !await hasPendingAttendanceParticipantAssignment(ctx)) return [];
     const corrections = await listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' });
-    return corrections.filter(row => row.workflow?.routingVersion === 3 && row.canDecide && row.personId !== ctx.personId).map(row => ({
+    return corrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== ctx.personId).map(row => ({
       id: row.id, kind: 'attendance' as const, subjectName: row.employee, createdAt: row.createdAt.toISOString(), linkPath: '/approvals',
     })).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id.localeCompare(b.id));
   }

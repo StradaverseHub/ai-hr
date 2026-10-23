@@ -1,3 +1,4 @@
+import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
@@ -35,6 +36,21 @@ const detail=async(f:Fixture)=>(await attendanceApplicationDetail(f.root,[base.c
 const decide=(f:Fixture,who:Fixture['first'],slot:string,decision:'approved'|'rejected'='approved')=>decideAttendanceCorrection(who.ctx,{correctionId:f.id,expectedStageIndex:0,expectedParticipantSlot:slot,decision,...(decision==='rejected'?{rejectReason:'Fictional rejection'}:{})});
 const day=async(f:Fixture)=>(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.worker.employmentId),eq(schema.attendance.attendanceDate,f.on))).orderBy(asc(schema.attendance.id)))[0];
 describe('v4 uses the immutable participant and final Attendance owners',()=>{
+ it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
+  const f=await fixture('all_required');
+  const modules={attendance:true,claims:true};
+  expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
+   expect.objectContaining({id:f.id,kind:'attendance',linkPath:'/approvals'})
+  ]);
+  expect(await listPendingTasks(f.worker.ctx,[base.companyId],modules)).toEqual([]);
+  expect(await listPendingTasks(f.second.ctx,[base.companyId],{...modules,attendance:false})).toEqual([]);
+  await decide(f,f.second,'0:1');
+  expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([]);
+  expect(await listPendingTasks(f.first.ctx,[base.companyId],modules)).toEqual([
+   expect.objectContaining({id:f.id,kind:'attendance',linkPath:'/approvals'})
+  ]);
+ });
+
  it.each(['irregularity','self_overtime'] as const)('accepts all-required decisions out of order for %s without a premature Attendance effect',async(type)=>{
   const f=await fixture('all_required',type),before=await detail(f),preview=await previewAttendanceWorkflow(f.root,f.input,f.template.lineageId);
   expect(preview.rows.find(row=>row.employmentId===f.worker.employmentId)?.resolvedStages).toEqual(before.workflow!.stages);
