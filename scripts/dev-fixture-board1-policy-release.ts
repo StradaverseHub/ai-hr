@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
-import {owner,entitledCtx,createAppUser,setModule,closeAll,type Base} from '../test/harness';
+import type {Base} from '../test/harness';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createShift,assignDefaultShift,setEmploymentScheduleGroup} from '../core/roster';
@@ -29,6 +29,7 @@ const destination=target.directory+'/policy-fixture.json';
 const add=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:[1,2,3,4,5],halfPattern:[],offPattern:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[]});
 async function main(){
+ const {owner,entitledCtx,createAppUser,setModule}=await import('../test/harness');
  if(await readFile(destination,'utf8').then(()=>true,()=>false))throw Error('Policy fixture already has identities; preserve them and their app edits.');
  const f=JSON.parse(await readFile(target.directory+'/home-fixture.json','utf8')) as Base&{people:{scopedHr:{userId:string;personId:string;employmentId:string}}};
  const [tenant]=await owner.db.select().from(s.tenant).where(eq(s.tenant.id,f.tenantId));
@@ -77,4 +78,4 @@ async function main(){
  await writeFile(destination,JSON.stringify({tenantId:f.tenantId,companyId:f.companyId,today,effectiveFrom,sourceDate,nextDate,groups,shifts,versionId:draft.versionId,revisions,earningId:earning.id,people,batch,scope:'Fictional prospective fixture only; no browser approval, banking, transfer or release yet; no policy backdating or trigger disable.'},null,2)+'\n',{flag:'wx',mode:0o600});
  console.log('Created 32 shared shifts, two prospective policy groups and three fictional financial sources; app decisions remain pending.');
 }
-main().then(async()=>{await closeAll();process.exit(0);},async error=>{console.error(error);await closeAll();process.exit(1);});
+main().then(async()=>{await (await import('../test/harness')).closeAll();process.exit(0);},async error=>{console.error(error);await (await import('../test/harness')).closeAll();process.exit(1);});
