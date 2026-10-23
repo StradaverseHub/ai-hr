@@ -3931,7 +3931,25 @@
       "records": "Senarai rekod kehadiran",
       "viewDate": "Lihat kehadiran untuk {date}"
     },
-    "myDayHomeBack": "Kembali ke Laman Utama"
+    "myDayHomeBack": "Kembali ke Laman Utama",
+    "unclockedWork": {
+      "title": "Rekod kerja tanpa catatan waktu",
+      "help": "Rekod kerja sebenar bagi keseluruhan tarikh kerja. Aliran kerja yang ditetapkan menyemak pernyataan ini sebelum kerja lebih masa boleh digunakan.",
+      "timeZone": "Semua tarikh dan masa menggunakan waktu Malaysia (UTC+08:00).",
+      "intervals": "Selang kerja sebenar",
+      "start": "Mula {number}",
+      "end": "Tamat {number}",
+      "remove": "Buang selang {number}",
+      "add": "Tambah selang",
+      "requestedMinutes": "Kerja lebih masa diminta (minit)",
+      "reason": "Sebab kerja tanpa catatan waktu",
+      "complete": "Selang ini merangkumi semua kerja yang dilakukan bagi tarikh kerja ini.",
+      "submit": "Hantar untuk kelulusan",
+      "submitting": "Sedang menghantar…",
+      "submitted": "Dihantar — lihat permohonan",
+      "evidence": "Kerja sebenar yang dihantar tanpa rekod waktu",
+      "unavailable": "Selang kerja sebenar yang dihantar tidak tersedia."
+    }
   },
   "org": {
     "title": "Carta organisasi",

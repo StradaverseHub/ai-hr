@@ -3931,7 +3931,25 @@
       "records": "Danh sách bản ghi chấm công",
       "viewDate": "Xem chấm công ngày {date}"
     },
-    "myDayHomeBack": "Về Trang chủ"
+    "myDayHomeBack": "Về Trang chủ",
+    "unclockedWork": {
+      "title": "Ghi nhận công việc không chấm công",
+      "help": "Ghi lại toàn bộ công việc thực tế của ngày làm việc. Quy trình đã cấu hình sẽ xét duyệt bản khai này trước khi sử dụng giờ làm thêm.",
+      "timeZone": "Tất cả ngày giờ theo giờ Malaysia (UTC+08:00).",
+      "intervals": "Các khoảng làm việc thực tế",
+      "start": "Bắt đầu {number}",
+      "end": "Kết thúc {number}",
+      "remove": "Xóa khoảng {number}",
+      "add": "Thêm khoảng",
+      "requestedMinutes": "Thời gian làm thêm đề nghị (phút)",
+      "reason": "Lý do làm việc không chấm công",
+      "complete": "Các khoảng này bao gồm toàn bộ công việc của ngày làm việc này.",
+      "submit": "Gửi phê duyệt",
+      "submitting": "Đang gửi…",
+      "submitted": "Đã gửi — xem đơn",
+      "evidence": "Công việc thực tế đã khai không có bản ghi chấm công",
+      "unavailable": "Không có các khoảng làm việc thực tế đã gửi."
+    }
   },
   "org": {
     "title": "Sơ đồ tổ chức",

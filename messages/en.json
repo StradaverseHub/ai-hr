@@ -3931,7 +3931,25 @@
       "records": "Attendance records list",
       "viewDate": "View attendance for {date}"
     },
-    "myDayHomeBack": "Back to Home"
+    "myDayHomeBack": "Back to Home",
+    "unclockedWork": {
+      "title": "Record unclocked work",
+      "help": "Record the actual work for the complete work date. The configured workflow reviews this statement before overtime can be used.",
+      "timeZone": "All dates and times use Malaysia time (UTC+08:00).",
+      "intervals": "Actual work intervals",
+      "start": "Start {number}",
+      "end": "End {number}",
+      "remove": "Remove interval {number}",
+      "add": "Add interval",
+      "requestedMinutes": "Requested overtime (minutes)",
+      "reason": "Reason for unclocked work",
+      "complete": "These intervals include all work performed for this work date.",
+      "submit": "Submit for approval",
+      "submitting": "Submitting…",
+      "submitted": "Submitted — view application",
+      "evidence": "Submitted actual work without clock records",
+      "unavailable": "The submitted actual-work intervals are unavailable."
+    }
   },
   "org": {
     "title": "Org chart",

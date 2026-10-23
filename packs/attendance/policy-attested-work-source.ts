@@ -29,8 +29,12 @@ export async function recordedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{e
   where e.tenant_id=${ctx.tenantId}::uuid and e.correction_id=${anchor.attestedWorkCorrectionId}::uuid
    and e.attendance_id=${anchor.id}::uuid`) as unknown as {evidence:Record<string,unknown>}[];
  if(!effect)return null;
- const approvals=attendancePolicyApprovalInput(context.selected,otRows,contracts,receipts);
- const source:PolicyAttestedWorkSource={authority:'attestedSourceOnly',anchor,punchCount:punches.length,ownerEffect:effect.evidence};
+ const approvals=attendancePolicyApprovalInput(context.selected,otRows,contracts.filter(row=>otRows.some(request=>request.id===row.correctionId)),
+  receipts.filter(row=>otRows.some(request=>request.id===row.correctionId)));
+ // The independent calculation marker is written AFTER the work decision. It cannot change
+ // immutable work identity or its replay digest, and cannot hide any other raw trace key.
+ const rawTrace=anchor.calcTrace,rawAnchor={...anchor,calcTrace:rawTrace&&Object.keys(rawTrace).every(key=>key==='overtimePattern')?null:rawTrace};
+ const source:PolicyAttestedWorkSource={authority:'attestedSourceOnly',anchor:rawAnchor,punchCount:punches.length,ownerEffect:effect.evidence};
  const replay=attendancePolicyAttestedWorkInput(context,approvals,ctx.tenantId,source);
  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
  return principal?.allowed&&replay.state==='known'?{context,source,replay,approvals}:null;

@@ -1,3 +1,4 @@
+import {attendancePolicyAttestedWorkInput} from './policy-attested-work-input';
 /** Original capture geometry and the separate existing boundary-floor count attribution.
  * This is proposal evidence only; ready headers, current consumers and settlement retain their owners. */
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
@@ -14,13 +15,56 @@ export type PolicyCapturedCoverageProposal=
     captureInEpochMillisecond:number;captureOutEpochMillisecond:number;
     fromEpochMillisecond:number;toEpochMillisecond:number}[];
    intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+export type PolicyAttestedCoveragePrepared={state:'prepared';authority:'attestedCountCoverageProposalOnly';identity:PolicyCoverageIdentity;
+ durationDigest:string;countBasis:'attestedBoundaryFloor';minutes:number;correctionId:string;workflowRequestId:string;
+ countAttribution?:Extract<PolicyCountAttribution,{state:'known'}>;
+ allocations:{sequence:number;calendarDate:string;fromMinute:number;toMinute:number;minutes:number;attestedIntervalIndex:number;
+  attestedFromEpochMillisecond:number;attestedToEpochMillisecond:number;fromEpochMillisecond:number;toEpochMillisecond:number}[];
+ intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+export type PolicySourceCoverageProposal=PolicyCapturedCoverageProposal|PolicyAttestedCoveragePrepared;
+function attestedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicySourceCoverageProposal{
+ const refuse=():PolicySourceCoverageProposal=>({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason:'sourceMismatch'});
+ const context=snapshot.policyExecutionContext,source=snapshot.policyRawEffectSource?.attested,proposal=snapshot.policyExecutionProposal;
+ const replay=attendancePolicyAttestedWorkInput(context,snapshot.policyApprovalInput,identity.tenantId,source),duration=attendancePolicyIndependentDurationReplay(snapshot);
+ if(!source||replay.state!=='known'||duration.state!=='known'||context?.state!=='policy'||context.companyId!==identity.companyId
+  ||snapshot.source.tenantId!==identity.tenantId||snapshot.source.employmentId!==identity.employmentId||snapshot.source.date!==identity.date
+  ||replay.attendanceId!==snapshot.source.attendanceId||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse();
+ const counts=attendancePolicyCountAttribution(proposal.duration);if(counts.state!=='known')return refuse();
+ const midnight=Date.parse(identity.date+'T00:00:00+08:00'),allocations:PolicyAttestedCoveragePrepared['allocations']=[];
+ for(const [sequence,part]of proposal.duration.parts.entries())for(const allocated of part.allocations){
+  let owned=0;
+  for(const [attestedIntervalIndex,span]of replay.actualWork.intervals.entries()){
+   const from=Math.max(allocated.from,Math.floor((span.fromEpochMillisecond-midnight)/60000)),
+    to=Math.min(allocated.to,Math.floor((span.toEpochMillisecond-midnight)/60000));
+   if(to<=from)continue;
+   const physicalFrom=Math.max(span.fromEpochMillisecond,midnight+from*60000),physicalTo=Math.min(span.toEpochMillisecond,midnight+to*60000);
+   if(physicalFrom>=physicalTo)return refuse();
+   owned+=to-from;allocations.push({sequence,calendarDate:part.date,fromMinute:from,toMinute:to,minutes:to-from,attestedIntervalIndex,
+    attestedFromEpochMillisecond:span.fromEpochMillisecond,attestedToEpochMillisecond:span.toEpochMillisecond,
+    fromEpochMillisecond:physicalFrom,toEpochMillisecond:physicalTo});
+  }
+  if(owned!==allocated.to-allocated.from)return refuse();
+ }
+ if(allocations.reduce((n,row)=>n+row.minutes,0)!==counts.physicalMinutes)return refuse();
+ allocations.sort((a,b)=>a.fromEpochMillisecond-b.fromEpochMillisecond||a.toEpochMillisecond-b.toEpochMillisecond);
+ const intervals:PolicyAttestedCoveragePrepared['intervals']=[];
+ for(const row of allocations){const last=intervals.at(-1);
+  if(last&&row.fromEpochMillisecond<last.toEpochMillisecond)return refuse();
+  if(last&&row.fromEpochMillisecond===last.toEpochMillisecond)last.toEpochMillisecond=row.toEpochMillisecond;
+  else intervals.push({fromEpochMillisecond:row.fromEpochMillisecond,toEpochMillisecond:row.toEpochMillisecond});
+ }
+ return {state:'prepared',authority:'attestedCountCoverageProposalOnly',identity:{...identity},durationDigest:duration.digest,
+  countBasis:'attestedBoundaryFloor',minutes:duration.minutes,correctionId:replay.correctionId,workflowRequestId:replay.workflowRequestId,
+  ...(counts.roundedMinutes>0?{countAttribution:counts}:{}),allocations,intervals};
+}
 /** A minute coordinate is count attribution, not a captured instant. Keep that existing count
  * owner unchanged and intersect its selected windows with the independently replayed original
  * millisecond geometry. Never lengthen a capture to justify a minute count or rounding remainder. */
-export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicyCapturedCoverageProposal{
+export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicySourceCoverageProposal{
  const refuse=(reason:Extract<PolicyCapturedCoverageProposal,{state:'unavailable'}>['reason']):PolicyCapturedCoverageProposal=>
   ({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason});
  try{
+  if(snapshot.policyRawEffectSource?.attested)return attestedCoverage(identity,snapshot);
   const source=snapshot.source,context=snapshot.policyExecutionContext,clocks=snapshot.policyClockSource,review=snapshot.policyClockReview,
    proposal=snapshot.policyExecutionProposal,replay=attendancePolicyIndependentDurationReplay(snapshot);
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
@@ -67,7 +111,7 @@ export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCover
  }catch{return refuse('sourceMismatch');}
 }
 
-export function attendancePolicyCapturedCoverageProposal(identity:PolicyCoverageIdentity,snapshot:CanonicalOvertimeSnapshot):PolicyCapturedCoverageProposal{
+export function attendancePolicyCapturedCoverageProposal(identity:PolicyCoverageIdentity,snapshot:CanonicalOvertimeSnapshot):PolicySourceCoverageProposal{
  const source=attendancePolicyIndependentSource(snapshot);
  return source?attendancePolicyIndependentCapturedCoverage(identity,source)
   :{state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason:'durationUnavailable'};

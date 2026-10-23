@@ -124,7 +124,13 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
  if(directions.size!==1)unavailable();
  const allocationPolicy=[...directions][0];
  const trace=day.calcTrace as {v?:unknown;schedule?:{startAbs?:unknown;endAbs?:unknown;dayType?:unknown}}|null;
- const schedule=trace?.v===1?trace.schedule:undefined;
+ // The independent contract above has replayed the distinct immutable HR source against
+ // current dated configuration. Its frozen schedule supplies qualification, never clock labels.
+ const attestedContext=independent.policyRawEffectSource?.attested?independent.policyExecutionContext:undefined;
+ const boundary=attestedContext?.state==='policy'?attestedContext.clockPlacement:undefined;
+ const schedule=attestedContext?.state==='policy'&&boundary?.state==='known'
+  ?{startAbs:boundary.scheduled.from,endAbs:boundary.scheduled.to,dayType:day.dayType}
+  :trace?.v===1?trace.schedule:undefined;
  const clockText=(value:unknown):string|null=>Number.isSafeInteger(value)&&Number(value)>=0&&Number(value)<=4320
   ?`${String(Math.floor(Number(value)/60)%24).padStart(2,'0')}:${String(Number(value)%60).padStart(2,'0')}`:null;
  const recordedDay={shiftStart:clockText(schedule?.startAbs),shiftEnd:clockText(schedule?.endAbs),

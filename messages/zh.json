@@ -3931,7 +3931,25 @@
       "records": "考勤记录列表",
       "viewDate": "查看 {date} 的考勤"
     },
-    "myDayHomeBack": "返回主页"
+    "myDayHomeBack": "返回主页",
+    "unclockedWork": {
+      "title": "登记无打卡工作",
+      "help": "登记该工作日期的全部实际工作时段。加班可使用前，须按已配置的流程审核此声明。",
+      "timeZone": "所有日期和时间均采用马来西亚时间（UTC+08:00）。",
+      "intervals": "实际工作时段",
+      "start": "开始 {number}",
+      "end": "结束 {number}",
+      "remove": "删除时段 {number}",
+      "add": "添加时段",
+      "requestedMinutes": "申请加班（分钟）",
+      "reason": "无打卡工作的原因",
+      "complete": "这些时段涵盖此工作日期的全部工作。",
+      "submit": "提交审批",
+      "submitting": "正在提交…",
+      "submitted": "已提交 — 查看申请",
+      "evidence": "已提交的无打卡实际工作",
+      "unavailable": "无法获取已提交的实际工作时段。"
+    }
   },
   "org": {
     "title": "组织架构图",

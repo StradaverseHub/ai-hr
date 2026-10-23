@@ -1,3 +1,4 @@
+import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
@@ -1029,6 +1030,7 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {(c.proposedCheckIn || c.clockChanges) && <p className="text-xs text-muted-foreground">{t('originalTimes')}: {c.originalClockSnapshot == null ? t('originalNotRecorded') : c.originalClockSnapshot.attendanceId == null ? t('originalNoRecord') : `${c.originalClockSnapshot.originalCheckIn ?? '—'} → ${c.originalClockSnapshot.originalCheckOut ?? '—'}`}</p>}
+                    <AttendanceUnclockedEvidence work={c.originalClockSnapshot?.unclockedWork}/>
                     {c.clockChanges && <div><p className="font-medium">{tClock('proposed')}</p>{c.clockChanges.entries.length ? <ul>{c.clockChanges.entries.map((entry,i)=><li key={i}>{entry.punchAt} · {tClock(entry.direction)}</li>)}</ul> : <p>{tClock('empty')}</p>}</div>}
                     {c.proposedCheckIn
                       ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`

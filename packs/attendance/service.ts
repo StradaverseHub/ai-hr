@@ -92,3 +92,5 @@ export {lockOvertimePayrollBatchContextTx} from './overtime-patterns';
 export {attendancePolicyStoredPartCount} from './policy-count-attribution';
 
 export {attendancePolicyUnclockedWorkComparison} from './policy-work-input';
+
+export {canSubmitUnclockedAttendanceWork} from './unclocked-work-setup';

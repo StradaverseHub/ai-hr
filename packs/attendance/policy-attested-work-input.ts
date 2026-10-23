@@ -70,3 +70,27 @@ export function attendancePolicyAttestedWorkInput(context:AttendancePolicyExecut
    work:comparison.work,measurements:comparison.measurements};
  }catch{return refuse();}
 }
+
+/** Pricing clock spans are explicit boundary-floor count coordinates. Original testimony
+ * remains in actualWork and is intersected independently by the physical coverage owner. */
+export function attestedPolicyCountSegments(replay:Extract<ReturnType<typeof attendancePolicyAttestedWorkInput>,{state:'known'}>,
+ source:PolicyAttestedWorkSource):import('../../lib/overtime-recorded-work').RecordedWorkResult{
+ const midnight=Date.parse(replay.actualWork.sourceDate+'T00:00:00+08:00'),segments:import('../../lib/overtime-recorded-work').RecordedWorkSegment[]=[];
+ const provenance={owner:'attendance' as const,reference:'attestedCount:'+replay.correctionId,asOf:replay.actualWork.sourceDate,basis:'recorded' as const};
+ let minutes=0;
+ for(const [index,original]of replay.actualWork.intervals.entries()){
+  const interval={from:Math.floor((original.fromEpochMillisecond-midnight)/60000),to:Math.floor((original.toEpochMillisecond-midnight)/60000)};
+  let from=interval.from,part=0;
+  while(from<interval.to){
+   const offset=Math.floor(from/1440),to=Math.min(interval.to,(offset+1)*1440),count=to-from;
+   const date=new Date(Date.parse(replay.actualWork.sourceDate+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+   const sessionId='attested:'+replay.correctionId+':'+index;
+   segments.push({id:sessionId+':'+part++,sessionId,dayType:source.anchor.dayType
+    ?{state:'known',value:source.anchor.dayType,provenance}:{state:'unknown',reason:'attestedDayClassUnavailable'},
+    rawMinutes:{state:'known',value:String(count),provenance},clock:{state:'known',value:{
+     startEpochSeconds:String(midnight/1000+from*60),localDate:date,localStartSecond:(from%1440)*60,elapsedSeconds:count*60},provenance}});
+   minutes+=count;from=to;
+  }
+ }
+ return {rawMinutes:{state:'known',value:String(minutes),provenance},segments,placement:'recordedIntervals'};
+}

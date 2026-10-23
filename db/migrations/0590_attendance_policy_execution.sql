@@ -781,6 +781,10 @@ BEGIN
   RAISE EXCEPTION 'Complete current policy cash contract required' USING ERRCODE='23514';END IF;
  -- Historical capture evidence alone survives voiding; a NEW reservation must also retain the
  -- entire current nonvoided source. Canonical consumers separately replay policy/approval/refs.
+ IF data#>>'{policyRawEffectSource,attested,authority}'='attestedSourceOnly' THEN
+  IF EXISTS(SELECT 1 FROM public.attendance_punch WHERE attendance_id=source.attendance_id AND tenant_id=source.tenant_id AND voided_at IS NULL) THEN
+   RAISE EXCEPTION 'Clock evidence was added to the attested work source' USING ERRCODE='23514';END IF;
+ ELSE
  IF jsonb_typeof(data#>'{policyClockSource,clocks}') IS DISTINCT FROM 'array'
   OR (SELECT count(*) FROM public.attendance_punch WHERE attendance_id=source.attendance_id AND tenant_id=source.tenant_id
    AND voided_at IS NULL)<>jsonb_array_length(data#>'{policyClockSource,clocks}') THEN
@@ -791,6 +795,7 @@ BEGIN
    AND clock_capture_id=(clock->>'captureId')::uuid AND voided_at IS NULL) THEN
    RAISE EXCEPTION 'Current policy clock source changed' USING ERRCODE='23514';END IF;
  END LOOP;
+ END IF;
  IF NEW.mode='toil' AND NOT EXISTS(SELECT 1 FROM public.toil_accrual credit
   WHERE credit.id=NEW.toil_accrual_id AND credit.tenant_id=source.tenant_id
    AND credit.employment_id=source.employment_id AND credit.worked_date=source.attendance_date
@@ -920,6 +925,7 @@ DECLARE header public.attendance_overtime_calculation;source public.attendance_o
  lo integer;hi integer;part_total integer;part_payable integer;payable_total integer:=0;count_parts jsonb:='[]'::jsonb;total integer:=0;part_count integer:=0;used integer:=0;
  ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
  count_ranges int8multirange;expected_ranges int8multirange;span int8range;last_ms bigint;
+ is_attested boolean:=false;attested public.attendance_policy_attested_effect;anchor public.attendance;testimony jsonb;testimony_span jsonb;
  pin public.attendance_punch;pout public.attendance_punch;cin public.attendance_clock_capture;cout public.attendance_clock_capture;
 BEGIN
  IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current captured coverage principal required' USING ERRCODE='42501';END IF;
@@ -934,8 +940,9 @@ BEGIN
   OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN RAISE EXCEPTION 'Captured coverage authority changed while waiting' USING ERRCODE='42501';END IF;
  SELECT e.inputs,e.evidence INTO inputs,data FROM public.attendance_overtime_calculation_evidence e WHERE e.calculation_id=header.id AND e.tenant_id=header.tenant_id AND e.company_id=header.company_id;
  proof:=data->'policyCapturedCoverage';clock_source:=data->'policyClockSource';
- IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM 'capturedCountCoverageProposalOnly'
-  OR proof->>'countBasis' IS DISTINCT FROM 'capturedBoundaryFloor' OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
+ is_attested:=proof->>'countBasis'='attestedBoundaryFloor';
+ IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM CASE WHEN is_attested THEN 'attestedCountCoverageProposalOnly' ELSE 'capturedCountCoverageProposalOnly' END
+  OR proof->>'countBasis' IS DISTINCT FROM CASE WHEN is_attested THEN 'attestedBoundaryFloor' ELSE 'capturedBoundaryFloor' END OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
   OR coalesce(proof->>'durationDigest','')!~'^[0-9a-f]{64}$' OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
   OR data#>>'{attendanceGroupPolicy,id}' IS DISTINCT FROM header.policy_revision_id::text
   OR data#>>'{policyExecutionProposal,state}' IS DISTINCT FROM 'proposed' OR data#>>'{policyExecutionProposal,policyRevisionId}' IS DISTINCT FROM header.policy_revision_id::text
@@ -946,16 +953,61 @@ BEGIN
   OR inputs#>>'{source,tenantId}' IS DISTINCT FROM source.tenant_id::text OR inputs#>>'{source,employmentId}' IS DISTINCT FROM source.employment_id::text
   OR inputs#>>'{source,attendanceId}' IS DISTINCT FROM source.attendance_id::text OR inputs#>>'{source,date}' IS DISTINCT FROM source.attendance_date::text
   OR inputs#>>'{source,inputDigest}' IS DISTINCT FROM header.input_digest OR inputs#>>'{source,approvalDigest}' IS DISTINCT FROM header.approval_digest
-  OR clock_source->>'state' IS DISTINCT FROM 'known' OR data#>>'{policyClockReview,state}' IS DISTINCT FROM 'known'
-  OR data#>>'{policyClockReview,evidence,complete}' IS DISTINCT FROM 'true' OR data#>>'{policyClockReview,evidence,requiresReview}' IS DISTINCT FROM 'false'
+  OR(NOT is_attested AND(clock_source->>'state' IS DISTINCT FROM 'known' OR data#>>'{policyClockReview,state}' IS DISTINCT FROM 'known'
+  OR data#>>'{policyClockReview,evidence,complete}' IS DISTINCT FROM 'true' OR data#>>'{policyClockReview,evidence,requiresReview}' IS DISTINCT FROM 'false'))
   OR jsonb_typeof(proof->'allocations') IS DISTINCT FROM 'array' OR jsonb_typeof(proof->'intervals') IS DISTINCT FROM 'array'
-  OR jsonb_typeof(clock_source->'clocks') IS DISTINCT FROM 'array' OR jsonb_typeof(data#>'{policyClockReview,evidence,intervals}') IS DISTINCT FROM 'array' THEN
+  OR(NOT is_attested AND(jsonb_typeof(clock_source->'clocks') IS DISTINCT FROM 'array' OR jsonb_typeof(data#>'{policyClockReview,evidence,intervals}') IS DISTINCT FROM 'array')) THEN
   RAISE EXCEPTION 'Complete bound captured coverage evidence required' USING ERRCODE='23514';END IF;
- IF jsonb_array_length(proof->'allocations')>4320 OR jsonb_array_length(proof->'intervals')>4320 OR jsonb_array_length(clock_source->'clocks')>128
+ IF jsonb_array_length(proof->'allocations')>4320 OR jsonb_array_length(proof->'intervals')>4320 OR(NOT is_attested AND(jsonb_array_length(clock_source->'clocks')>128
   OR(SELECT count(DISTINCT x->>'id') FROM jsonb_array_elements(clock_source->'clocks') x)<>jsonb_array_length(clock_source->'clocks')
-  OR(SELECT count(DISTINCT x->>'captureId') FROM jsonb_array_elements(clock_source->'clocks') x)<>jsonb_array_length(clock_source->'clocks') THEN
+  OR(SELECT count(DISTINCT x->>'captureId') FROM jsonb_array_elements(clock_source->'clocks') x)<>jsonb_array_length(clock_source->'clocks'))) THEN
   RAISE EXCEPTION 'Captured coverage exceeds source bounds' USING ERRCODE='23514';END IF;
  epoch_ms:=(extract(epoch FROM(source.attendance_date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur'))*1000)::bigint;
+ IF is_attested THEN
+  -- The existing private owner admits a DISTINCT HR-work basis, never fictitious punches.
+  SELECT * INTO attested FROM public.attendance_policy_attested_effect e WHERE e.tenant_id=source.tenant_id
+   AND e.correction_id=(proof->>'correctionId')::uuid AND e.attendance_id=source.attendance_id
+   AND e.company_id=source.company_id AND e.employment_id=source.employment_id AND e.attendance_date=source.attendance_date;
+  IF NOT FOUND OR proof->>'workflowRequestId' IS DISTINCT FROM attested.workflow_request_id::text
+   OR data#>>'{policyRawEffectSource,attested,authority}' IS DISTINCT FROM 'attestedSourceOnly'
+   OR data#>>'{policyRawEffectSource,attested,punchCount}' IS DISTINCT FROM '0'
+   OR(data#>'{policyRawEffectSource,attested,ownerEffect}'-'recorded_at') IS DISTINCT FROM(to_jsonb(attested)-'recorded_at')
+   OR(data#>>'{policyRawEffectSource,attested,ownerEffect,recorded_at}')::timestamptz IS DISTINCT FROM attested.recorded_at
+   OR attested.context_evidence IS DISTINCT FROM data->'policyExecutionContext'
+   OR attested.context_evidence#>>'{selected,id}' IS DISTINCT FROM header.policy_revision_id::text
+   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyApprovalInput,requests}') request
+    WHERE request->>'id'=attested.correction_id::text AND request#>'{submissionContract,policyBinding}'=attested.policy_binding) THEN
+   RAISE EXCEPTION 'Exact retained attested work owner required' USING ERRCODE='23514';END IF;
+  SELECT * INTO anchor FROM public.attendance a WHERE a.id=source.attendance_id AND a.tenant_id=source.tenant_id
+   AND a.employment_id=source.employment_id AND a.attendance_date=source.attendance_date
+   AND a.attested_work_correction_id=attested.correction_id;
+  IF NOT FOUND OR anchor.status<>'present' OR anchor.attested_work_context IS DISTINCT FROM attested.context_evidence
+   OR anchor.check_in_at IS NOT NULL OR anchor.check_out_at IS NOT NULL OR anchor.worked_minutes IS NOT NULL
+   OR anchor.ot_minutes IS NOT NULL OR anchor.late_minutes IS NOT NULL OR anchor.early_out_minutes IS NOT NULL
+   OR anchor.under_minutes IS NOT NULL OR anchor.late_deduct_minutes IS NOT NULL OR anchor.early_out_deduct_minutes IS NOT NULL
+   OR anchor.ot_flat_minutes IS NOT NULL OR anchor.ot00_minutes IS NOT NULL OR anchor.ot10_minutes IS NOT NULL
+   OR anchor.ot15_minutes IS NOT NULL OR anchor.ot20_minutes IS NOT NULL OR anchor.ot30_minutes IS NOT NULL
+   OR(anchor.calc_trace IS NOT NULL AND anchor.calc_trace-'overtimePattern'<>'{}'::jsonb)
+   OR EXISTS(SELECT 1 FROM public.attendance_punch p WHERE p.tenant_id=source.tenant_id AND p.attendance_id=anchor.id AND p.voided_at IS NULL)
+   OR(SELECT count(*) FROM public.attendance_correction c WHERE c.tenant_id=source.tenant_id AND c.employment_id=source.employment_id
+    AND c.attendance_date=source.attendance_date AND c.requested_ot_minutes IS NOT NULL AND c.cancelled_at IS NULL AND c.status<>'rejected')<>1
+   OR NOT EXISTS(SELECT 1 FROM public.attendance_correction c JOIN public.attendance_policy_request_contract contract ON contract.correction_id=c.id AND contract.tenant_id=c.tenant_id
+    JOIN public.attendance_policy_final_receipt receipt ON receipt.correction_id=c.id AND receipt.tenant_id=c.tenant_id
+    WHERE c.id=attested.correction_id AND c.tenant_id=source.tenant_id AND c.employment_id=source.employment_id
+     AND c.attendance_date=source.attendance_date AND c.status='approved' AND c.cancelled_at IS NULL AND c.applied_at IS NULL
+     AND c.requested_ot_minutes=attested.requested_minutes AND c.approved_ot_minutes=attested.approved_minutes
+     AND c.ot_approval_method::text=attested.manual_method AND contract.attested_work=attested.attested_work
+     AND contract.policy_binding=attested.policy_binding AND contract.company_id=source.company_id
+     AND receipt.raw_evidence IS NULL AND receipt.workflow_request_id=attested.workflow_request_id AND receipt.actor_user_id=attested.actor_user_id
+     AND receipt.workflow_evidence->'submittedAttestedWork'=attested.attested_work
+     AND(receipt.workflow_evidence->'unclockedEffect'-'recorded_at')=(to_jsonb(attested)-'recorded_at')
+     AND(receipt.workflow_evidence#>>'{unclockedEffect,recorded_at}')::timestamptz=attested.recorded_at) THEN
+   RAISE EXCEPTION 'Current uncancelled HR actual-work source changed' USING ERRCODE='23514';END IF;
+  testimony:=attested.attested_work->'work';
+  IF testimony->>'completeWorkedDay' IS DISTINCT FROM 'true' OR testimony->>'sourceDate' IS DISTINCT FROM source.attendance_date::text
+   OR jsonb_typeof(testimony->'intervals') IS DISTINCT FROM 'array' OR jsonb_array_length(testimony->'intervals') NOT BETWEEN 1 AND 16 THEN
+   RAISE EXCEPTION 'Complete actual attested day required' USING ERRCODE='23514';END IF;
+ ELSE
  FOR clock_row IN SELECT value FROM jsonb_array_elements(clock_source->'clocks') LOOP
   IF NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_clock_capture c ON c.id=p.clock_capture_id AND c.tenant_id=p.tenant_id
    WHERE p.id=(clock_row->>'id')::uuid AND c.id=(clock_row->>'captureId')::uuid AND p.tenant_id=source.tenant_id AND p.attendance_id=source.attendance_id
@@ -966,6 +1018,7 @@ BEGIN
     AND left(p.punch_at::text,8)=to_char(c.server_recorded_at AT TIME ZONE 'Asia/Kuala_Lumpur','HH24:MI:SS')) THEN
    RAISE EXCEPTION 'Captured coverage clock identity changed' USING ERRCODE='23514';END IF;
  END LOOP;
+ END IF;
  FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id AND tenant_id=header.tenant_id AND company_id=header.company_id ORDER BY sequence LOOP
   IF part.sequence<>part_count OR part.input_digest<>header.input_digest OR jsonb_typeof(part.duration_evidence->'allocatedIntervals') IS DISTINCT FROM 'array'
    OR jsonb_array_length(part.duration_evidence->'allocatedIntervals')>4320 THEN RAISE EXCEPTION 'Complete captured count parts required' USING ERRCODE='23514';END IF;
@@ -983,6 +1036,20 @@ BEGIN
     RAISE EXCEPTION 'Invalid dated captured count allocation' USING ERRCODE='23514';END IF;
    lo:=(item->>'fromMinute')::integer;hi:=(item->>'toMinute')::integer;
    IF lo>=hi OR hi>4320 OR item->>'minutes' IS DISTINCT FROM(hi-lo)::text THEN RAISE EXCEPTION 'Captured quantity changed' USING ERRCODE='23514';END IF;
+   IF is_attested THEN
+    IF coalesce(item->>'attestedIntervalIndex','')!~'^[0-9]{1,2}$' THEN
+     RAISE EXCEPTION 'Attested interval identity required' USING ERRCODE='23514';END IF;
+    testimony_span:=testimony->'intervals'->((item->>'attestedIntervalIndex')::integer);
+    IF testimony_span IS NULL OR coalesce(testimony_span->>'fromEpochMillisecond','')!~'^[0-9]{1,16}$'
+     OR coalesce(testimony_span->>'toEpochMillisecond','')!~'^[0-9]{1,16}$' THEN
+     RAISE EXCEPTION 'Original attested interval unavailable' USING ERRCODE='23514';END IF;
+    in_ms:=(testimony_span->>'fromEpochMillisecond')::bigint;out_ms:=(testimony_span->>'toEpochMillisecond')::bigint;
+    IF in_ms<epoch_ms OR out_ms<=in_ms OR out_ms>epoch_ms+259200000
+     OR lo<floor((in_ms-epoch_ms)::numeric/60000) OR hi>floor((out_ms-epoch_ms)::numeric/60000)
+     OR item->>'attestedFromEpochMillisecond' IS DISTINCT FROM in_ms::text
+     OR item->>'attestedToEpochMillisecond' IS DISTINCT FROM out_ms::text THEN
+     RAISE EXCEPTION 'Attested allocation changed original testimony' USING ERRCODE='23514';END IF;
+   ELSE
    SELECT * INTO pin FROM public.attendance_punch WHERE id=(item->>'inPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='in';
    SELECT * INTO pout FROM public.attendance_punch WHERE id=(item->>'outPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='out';
    SELECT * INTO cin FROM public.attendance_clock_capture WHERE id=pin.clock_capture_id AND id=(item->>'inCaptureId')::uuid AND tenant_id=source.tenant_id;
@@ -994,8 +1061,13 @@ BEGIN
     OR item->>'captureInEpochMillisecond' IS DISTINCT FROM in_ms::text OR item->>'captureOutEpochMillisecond' IS DISTINCT FROM out_ms::text
     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyClockReview,evidence,intervals}') x WHERE x->>'inMillisecond'=(in_ms-epoch_ms)::text AND x->>'outMillisecond'=(out_ms-epoch_ms)::text) THEN
     RAISE EXCEPTION 'Captured allocation changed original geometry' USING ERRCODE='23514';END IF;
+   END IF;
    from_ms:=greatest(in_ms,epoch_ms+lo::bigint*60000);to_ms:=least(out_ms,epoch_ms+hi::bigint*60000);
    IF from_ms>=to_ms OR item->>'fromEpochMillisecond' IS DISTINCT FROM from_ms::text OR item->>'toEpochMillisecond' IS DISTINCT FROM to_ms::text THEN RAISE EXCEPTION 'Captured footprint is not original source intersection' USING ERRCODE='23514';END IF;
+   IF is_attested AND item IS DISTINCT FROM jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,
+    'fromMinute',lo,'toMinute',hi,'minutes',hi-lo,'attestedIntervalIndex',(item->>'attestedIntervalIndex')::integer,
+    'attestedFromEpochMillisecond',in_ms,'attestedToEpochMillisecond',out_ms,'fromEpochMillisecond',from_ms,'toEpochMillisecond',to_ms) THEN
+    RAISE EXCEPTION 'Distinct complete attested allocation required' USING ERRCODE='23514';END IF;
    span:=int8range(lo,hi,'[)');IF count_ranges&&span THEN RAISE EXCEPTION 'Captured count claimed twice' USING ERRCODE='23514';END IF;count_ranges:=count_ranges+int8multirange(span);
    span:=int8range(from_ms,to_ms,'[)');IF ranges&&span THEN RAISE EXCEPTION 'Captured physical source claimed twice' USING ERRCODE='23514';END IF;ranges:=ranges+int8multirange(span);
    part_total:=part_total+hi-lo;used:=used+1;
@@ -1030,7 +1102,7 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR date
 END $$;
 REVOKE ALL ON FUNCTION app.attendance_policy_captured_coverage(uuid) FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE table_name text;BEGIN
- FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_punch','attendance_clock_capture'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_punch','attendance_clock_capture','attendance','attendance_correction','attendance_policy_request_contract','attendance_policy_final_receipt','attendance_policy_attested_effect'] LOOP
   EXECUTE format('CREATE POLICY overtime_capture_proof_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',table_name,'app.attendance_policy_captured_coverage(uuid)');
  END LOOP;
 END $$;

@@ -128,6 +128,9 @@ describe('central pricing of finalized group-policy allocations',()=>{
   const pattern=definition(),input=positionedPolicy();pattern.durationAllocation=direction;
   input.approval.minutes=fact('150','approval');
   const later=structuredClone(pattern.rates[0]);later.id='later_rate';later.priority=1;
+  later.when.id='later_eligible';later.tiers[0].id='later_tier';
+  if(later.tiers[0].payment.method!=='hourly')throw Error('Hourly fixture required');
+  later.tiers[0].payment.multiplier.id='later_multiplier';
   later.timeBand={fromMinute:60,toMinute:120,endDayOffset:0};
   if(later.tiers[0].payment.method!=='hourly')throw Error('Hourly fixture required');
   later.tiers[0].payment.rate={id:'later_hourly',type:'literal',unit:'moneyPerHour',currency:'MYR',value:'24'};

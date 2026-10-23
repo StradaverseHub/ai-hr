@@ -1,3 +1,4 @@
+import {attendancePolicyAttestedWorkInput,type PolicyAttestedWorkSource} from './policy-attested-work-input';
 /** Frozen scalar methods select counts; they are never aliases for interval intersection.
  * Only exact retained final effects and current captured work can supply a Manual proposal. */
 import {isDeepStrictEqual} from 'node:util';
@@ -12,7 +13,7 @@ import {selectAttendancePolicyCandidate} from './policy-duration';
 import {attendancePolicyIntervalMinutes as minutes,subtractAttendancePolicyIntervals as subtract,
  unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 
-export type PolicyRawEffectSource={clocks:RecordedPolicyClockSource|undefined;current:PolicyRawCurrent};
+export type PolicyRawEffectSource={clocks:RecordedPolicyClockSource|undefined;current:PolicyRawCurrent;attested?:PolicyAttestedWorkSource};
 export type PolicyManualDurationInput=
  |{state:'unavailable';authority:'manualCountProposalOnly';reason:'sourceUnavailable'|'approvalSetUnavailable'|'methodMismatch'|'countPlacementUnavailable'}
  |{state:'known';authority:'manualCountProposalOnly';correctionId:string;workflowRequestId:string;
@@ -61,12 +62,21 @@ export function attendancePolicyManualDurationInput(context:AttendancePolicyExec
   ||!Number.isSafeInteger(request.requestedMinutes)||request.requestedMinutes!<0
   ||request.approvedMinutes===null||!Number.isSafeInteger(request.approvedMinutes)||request.approvedMinutes<0)
   return refuse('methodMismatch');
- const agreement=attendancePolicyFinalRawAgreement(context,request,tenantId,raw.clocks,raw.current);
- if(agreement.state!=='known'||raw.clocks?.state!=='known')return refuse('sourceUnavailable');
  const submittedAt=Date.parse(submission.recordedAt),decidedAt=Date.parse(final.recordedAt),activatedAt=Date.parse(context.selected.activation.recordedAt);
  if(![submittedAt,decidedAt,activatedAt].every(Number.isFinite)||submittedAt<activatedAt||decidedAt<submittedAt)return refuse('sourceUnavailable');
- const clocks=attendancePolicyClockMillisecondEvidence(raw.clocks.clocks,context.resolvedClock,work.periodMinutes);
- if(!isDeepStrictEqual(attendancePolicyWorkInput(context,clocks),work))return refuse('sourceUnavailable');
+ if(raw.attested){
+  const replay=attendancePolicyAttestedWorkInput(context,approvals,tenantId,raw.attested);
+  if(replay.state!=='known'||replay.correctionId!==request.id||replay.attendanceId!==raw.current.attendanceId
+   ||!isDeepStrictEqual(replay.work,work)||raw.current.checkInAt!==null||raw.current.checkOutAt!==null
+   ||raw.current.workedMinutes!==null||raw.current.lateMinutes!==null||raw.current.earlyOutMinutes!==null
+   ||raw.current.underMinutes!==null||raw.current.trace!==null||raw.current.dayType!==raw.attested.anchor.dayType)
+   return refuse('sourceUnavailable');
+ }else{
+  const agreement=attendancePolicyFinalRawAgreement(context,request,tenantId,raw.clocks,raw.current);
+  if(agreement.state!=='known'||raw.clocks?.state!=='known')return refuse('sourceUnavailable');
+  const clocks=attendancePolicyClockMillisecondEvidence(raw.clocks.clocks,context.resolvedClock,work.periodMinutes);
+  if(!isDeepStrictEqual(attendancePolicyWorkInput(context,clocks),work))return refuse('sourceUnavailable');
+ }
  const selection=selectAttendancePolicyCandidate({eligibleIntervals:work.eligibleActualIntervals,unpaidIntervals:work.unpaidIntervals,
   lateOffsetIntervals:work.lateOffsetIntervals,offsetLateness:context.selected.policy.overtime.offsetLateness,periodMinutes:work.periodMinutes});
  if(selection.state!=='known')return refuse('sourceUnavailable');

@@ -7,14 +7,14 @@ import type {OvertimeLine} from '../../lib/overtime-pattern-model';
 import {attendancePolicyDurationReplay,attendancePolicyRecordedApprovalStatus,attendancePolicyIndependentDurationReplay,attendancePolicyIndependentRecordedApprovalStatus,attendancePolicyIndependentSource,type IndependentPolicyDurationSource} from './policy-duration-replay';
 import {attendancePolicyCashReplay,type PolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal,type PolicyPricingProposal} from './policy-pricing-proposal';
-import {attendancePolicyCapturedCoverageProposal,attendancePolicyIndependentCapturedCoverage,type PolicyCapturedCoverageProposal} from './policy-captured-coverage';
+import {attendancePolicyCapturedCoverageProposal,attendancePolicyIndependentCapturedCoverage,type PolicySourceCoverageProposal} from './policy-captured-coverage';
 import {materializeAttendancePolicyProposalParts,type PolicyProposalStoragePart} from './policy-proposal-parts';
 import type {PolicyCoverageIdentity} from './policy-coverage';
 import {attendancePolicyStoredPartCount} from './policy-count-attribution';
 
 type PreparedCash=Extract<PolicyCashReplay,{state:'known'}>;
 type PreparedPricing=Extract<PolicyPricingProposal,{state:'proposed'}>;
-type CapturedCoverage=Extract<PolicyCapturedCoverageProposal,{state:'prepared'}>;
+type SourceCoverage=Extract<PolicySourceCoverageProposal,{state:'prepared'}>;
 export type PolicyFinancialLine={sequence:number;partSequence:number;calendarDate:string;
  dayClass:PolicyProposalStoragePart['dayClass'];moneyDay:PolicyProposalStoragePart['moneyDay'];
  versionId:string;line:OvertimeLine};
@@ -25,7 +25,7 @@ export type PolicyFinancialContract=
   policyRevisionId:string;inputDigest:string;approvalDigest:string;referenceDigest:string;
   approvalStatus:'approved'|'notRequired';durationDigest:string;minutes:number;
   currency:{code:string;minorScale:number};amountMinorUnits:string;cash:PreparedCash;
-  coverage:CapturedCoverage;parts:PolicyProposalStoragePart[];lines:PolicyFinancialLine[]};
+  coverage:SourceCoverage;parts:PolicyProposalStoragePart[];lines:PolicyFinancialLine[]};
 
 /** Dated allocations and lines remain beneath one parent. This contract never invents an
  * assignment or a parent formula version, reruns duration rounding, or adds a money calculator. */
@@ -165,7 +165,7 @@ export type PolicyFinancialDurationContract=
  |{state:'unavailable';authority:'policyFinancialDurationContractOnly'}
  |{state:'prepared';authority:'policyFinancialDurationContractOnly';identity:PolicyCoverageIdentity;
   policyRevisionId:string;approvalStatus:'approved'|'notRequired';durationDigest:string;minutes:number;
-  coverage:CapturedCoverage;parts:PolicyProposalStoragePart[]};
+  coverage:SourceCoverage;parts:PolicyProposalStoragePart[]};
 /** Salary-free financial duration projection, consumed independently by TOIL. No cash input,
  * monetary formula, earning mapping, full retained cash JSON or salary digest is accepted. */
 export function attendancePolicyFinancialDurationContract(identity:PolicyCoverageIdentity,

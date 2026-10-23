@@ -1,3 +1,4 @@
+import {attendancePolicyAttestedWorkInput,attestedPolicyCountSegments} from './policy-attested-work-input';
 import {replayAttendancePolicyRawClocks} from './policy-clock-replay';
 import {attendancePolicyDurationExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyFormulaInputTx,attendancePolicyDurationFormulaInputTx} from './policy-formula-input';
@@ -138,6 +139,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policySelection=await recordedAttendanceGroupPolicyTx(tx,ctx,p);
   if(policySelection.state==='unavailable')unavailable();
   const selectedPolicy=policySelection.state==='policy'?policySelection.selected:undefined;
+  const attestedSelection=policySelection.state==='policy'?policySelection.attested:undefined;
   const [assignments, salaries, punches, decisions, context] = await Promise.all([
     tx.select().from(assignment).where(and(eq(assignment.tenantId, ctx.tenantId), eq(assignment.employmentId, p.employmentId), isNull(assignment.supersededAt), lte(assignment.validFrom, p.date), or(isNull(assignment.validTo), gt(assignment.validTo, p.date)))).orderBy(asc(assignment.validFrom), asc(assignment.id)).limit(2),
     // Dated group policies already own duration independently of salary. Legacy formulas keep
@@ -157,7 +159,8 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     const clockMinute=(clock:string|null)=>clock===null?null:Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
     // Live configuration is a source input, not proof that an older raw result used it. Refuse a
     // mismatched recorded schedule rather than grafting new windows onto a historical calculation.
-    if(resolved.state==='policy'&&trace&&resolved.selected.id===selectedPolicy.id&&resolved.companyId===selectedPolicy.companyId
+    if(attestedSelection&&resolved.state==='policy'&&fingerprint(resolved)===fingerprint(attestedSelection.context))policyExecutionContext=resolved;
+    else if(resolved.state==='policy'&&trace&&resolved.selected.id===selectedPolicy.id&&resolved.companyId===selectedPolicy.companyId
       &&resolved.schedule.ruleId===trace.schedule.ruleId&&resolved.schedule.source===trace.schedule.source
       &&resolved.schedule.shiftId===trace.schedule.shiftId&&resolved.schedule.crossesMidnight===trace.schedule.crossesMidnight
       &&resolved.schedule.dailyCutoffMinutes===trace.schedule.dailyCutoffMinutes
@@ -182,7 +185,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   facts.requiredWorkingMinutes = minute(trace ? trace.schedule.normalMinutesOverride ?? trace.schedule.scheduledMinutes : null, attendanceProvenance('requiredWorkingMinutes'));
   facts.lateMinutes = minute(day.lateMinutes, attendanceProvenance('lateMinutes'));
   Object.assign(facts,recordedSalaryFacts(salary,entity.currency,p.date));
-  const work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedIntervals(day, punches)});
+  let work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedIntervals(day, punches)});
   // Use the same latest approved OT-bearing decision the canonical landing owner reasserts. A pending
   // later request does not silently revoke a completed decision; its exact state is included in the digest.
   const otDecisions = decisions.filter(row => row.requestedOtMinutes != null);
@@ -210,8 +213,17 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   // Replay actual capture receipts and the stored raw projection independently. The selected
   // pairing may be closed pairs or First-In/Last-Out; neither permits a mismatched stored envelope.
   const policyClockReview=selectedPolicy?replayAttendancePolicyRawClocks(policyExecutionContext,policyClockSource,trace,day):undefined;
-  const policyClockMeasurements=selectedPolicy?attendancePolicyClockMeasurements(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
-  const policyWorkInput=selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
+  const attestedReplay=attestedSelection?attendancePolicyAttestedWorkInput(policyExecutionContext,policyApprovalInput,ctx.tenantId,attestedSelection.source):undefined;
+  if(attestedSelection&&attestedReplay?.state!=='known')unavailable();
+  if(attestedSelection&&attestedReplay?.state==='known'){
+    work=attestedPolicyCountSegments(attestedReplay,attestedSelection.source);
+    const c=attestedSelection.context;
+    facts.shiftId=known(c.schedule.shiftId,attendanceProvenance('attestedShift'));
+    facts.scheduleGroupId=known(c.schedule.ruleId,attendanceProvenance('attestedScheduleGroup'));
+    facts.requiredWorkingMinutes=minute(c.schedule.normalMinutes,attendanceProvenance('attestedRequiredMinutes'));
+  }
+  const policyClockMeasurements=attestedReplay?.state==='known'?attestedReplay.measurements:selectedPolicy?attendancePolicyClockMeasurements(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
+  const policyWorkInput=attestedReplay?.state==='known'?attestedReplay.work:selectedPolicy?attendancePolicyWorkInput(policyExecutionContext,policyClockReview?.state==='known'?policyClockReview.evidence:undefined):undefined;
   if(selectedPolicy){
     // New policy formula facts consume the exact captured/pair/break source. The old row's outer
     // envelope is not evidence that the new pairing or incomplete-clock policy actually ran.
@@ -231,7 +243,8 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   if(policyRawTrace)delete policyRawTrace.overtimePattern;
   const policyRawEffectSource=selectedPolicy?{clocks:policyClockSource,current:{attendanceId:day.id,checkInAt:day.checkInAt,
     checkOutAt:day.checkOutAt,workedMinutes:day.workedMinutes,lateMinutes:day.lateMinutes,earlyOutMinutes:day.earlyOutMinutes,
-    underMinutes:day.underMinutes,dayType:day.dayType,trace:policyRawTrace}}:undefined;
+    underMinutes:day.underMinutes,dayType:day.dayType,trace:policyRawTrace},
+    ...(attestedSelection?{attested:attestedSelection.source}:{})}:undefined;
   const policyExecutionProposal=selectedPolicy
     ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource):undefined;
   // An explicit new comparison mode is retained only when actual dated formula identities

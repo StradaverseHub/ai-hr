@@ -3908,7 +3908,6 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
     let policyRawDecision = false;
-    let policyAttestedDecision = false;
     let finalizedV2 = false;
     let approvedCredit: {dayType: DayType; requestedOn: string} | null = null;
 
@@ -4081,7 +4080,7 @@ export async function decideAttendanceCorrection(
           .where(eq(attendance.id,existingAnchor.id));
         else await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,
           attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'});
-        policyRawDecision=true;policyAttestedDecision=true;
+        policyRawDecision=true;
         eventPayload={correctionId:cor.id,date:cor.attendanceDate,dayType,otMinutes:null,
           attestedActualWorkDecisionOnly:true};
       } else if (cor.clockChanges) {
@@ -4333,7 +4332,7 @@ export async function decideAttendanceCorrection(
       await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
       finalizedV2 = true;
     }
-    if (approvedCredit||policyRawDecision&&!policyAttestedDecision) {
+    if (approvedCredit||policyRawDecision) {
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,reason:'Approved attendance decision'});
       if(approvedCredit)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
     }

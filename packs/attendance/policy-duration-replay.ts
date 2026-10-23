@@ -1,3 +1,4 @@
+import {attendancePolicyAttestedWorkInput} from './policy-attested-work-input';
 /** Price-independent replay of one canonical duration proposal. This is neither a ready
  * calculation nor approval/settlement authority; financial consumers must retain their guards. */
 import {createHash} from 'node:crypto';
@@ -36,13 +37,21 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   overtimeUuid(source.attendanceId,'attendanceId');overtimeDate(source.date,'date');
   if(!policy||context?.state!=='policy'||context.employmentId!==source.employmentId||context.date!==source.date
    ||context.companyId!==policy.companyId||!isDeepStrictEqual(context.selected,policy)
-   ||snapshot.policyClockSource?.state!=='known'||snapshot.policyClockReview?.state!=='known'
-   ||!snapshot.policyClockReview.evidence.complete||snapshot.policyClockReview.evidence.requiresReview
    ||snapshot.policyWorkInput?.state!=='known'||!snapshot.policyApprovalInput)return refuse('sourceUnavailable');
-  const captured=attendancePolicyClockMillisecondEvidence(snapshot.policyClockSource.clocks,context.resolvedClock,4320);
-  if(!isDeepStrictEqual(captured,snapshot.policyClockReview.evidence)
-   ||!isDeepStrictEqual(attendancePolicyWorkInput(context,captured),snapshot.policyWorkInput)
-   ||!isDeepStrictEqual(attendancePolicyClockMeasurements(context,captured),snapshot.policyClockMeasurements))return refuse('proposalMismatch');
+  const attested=snapshot.policyRawEffectSource?.attested;
+  if(attested){
+   const replay=attendancePolicyAttestedWorkInput(context,snapshot.policyApprovalInput,source.tenantId,attested);
+   if(replay.state!=='known'||replay.attendanceId!==source.attendanceId
+    ||!isDeepStrictEqual(replay.work,snapshot.policyWorkInput)||!isDeepStrictEqual(replay.measurements,snapshot.policyClockMeasurements))
+    return refuse('proposalMismatch');
+  }else{
+   if(snapshot.policyClockSource?.state!=='known'||snapshot.policyClockReview?.state!=='known'
+    ||!snapshot.policyClockReview.evidence.complete||snapshot.policyClockReview.evidence.requiresReview)return refuse('sourceUnavailable');
+   const captured=attendancePolicyClockMillisecondEvidence(snapshot.policyClockSource.clocks,context.resolvedClock,4320);
+   if(!isDeepStrictEqual(captured,snapshot.policyClockReview.evidence)
+    ||!isDeepStrictEqual(attendancePolicyWorkInput(context,captured),snapshot.policyWorkInput)
+    ||!isDeepStrictEqual(attendancePolicyClockMeasurements(context,captured),snapshot.policyClockMeasurements))return refuse('proposalMismatch');
+  }
   // An explicit duration refusal is authoritative; never bypass it through the money source.
   const formulas=snapshot.policyDurationFormulaInput;
   if(formulas?.state!=='known')return refuse('sourceUnavailable');
@@ -54,7 +63,8 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   // their original lengths; the same finalizer's remainder is a separate count contract.
   if(attendancePolicyCountAttribution(duration).state!=='known')return refuse('countPlacementUnavailable');
   const proof={version:1,source:{tenantId:source.tenantId,employmentId:source.employmentId,attendanceId:source.attendanceId,date:source.date},
-   policy,context,clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview,
+   policy,context,...(attested?{workSource:'hrAttestedActualWork',attested}:
+    {clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview}),
    ...(context.selected.policy.overtime.approval==='manual'?{rawEffect:snapshot.policyRawEffectSource}:{}),
    measurements:snapshot.policyClockMeasurements,work:snapshot.policyWorkInput,approvals:snapshot.policyApprovalInput,formulas,proposal};
   // PostgreSQL jsonb does not preserve object-key order. Retain array order (capture and
