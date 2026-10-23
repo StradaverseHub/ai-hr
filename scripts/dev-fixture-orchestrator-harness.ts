@@ -2,7 +2,9 @@
  * Fictional Control Tower walkthrough foundation; preparation is not acceptance evidence.
  * Run only after BOTH board handovers, under both test slots and the shared DB lock. Requires an
  * already migrated/seeded ai_hr_orchestrator_browser on localhost:5433 and namespace orchbrowser23.
- * Completed reruns only read the fixture: browser edits and later receipts are preserved.
+ * Default `prepare` reruns only read the fixture: browser edits and later receipts are preserved.
+ * Explicit legacy/unsupported/malformed/failed arguments append synthetic receipt metadata for A-hr
+ * only. `current` runs the actual switched-off coordinator again. None of these resets HR records.
  */
 import { demoSeedRefusal, DEMO_TENANT_ID, SYSTEM_TENANT_ID } from '../db/seed-guard';
 import { demoSwitcherEnabled } from '../lib/demo-mode';
@@ -22,24 +24,31 @@ const urls = [process.env.DATABASE_URL, process.env.MIGRATION_DATABASE_URL].map(
   }
   return url;
 });
-if (decodeURIComponent(urls[0].username) !== 'ai_hr_app' || urls[0].username === urls[1].username) {
+if (decodeURIComponent(urls[0].username) !== 'ai_hr_app' || decodeURIComponent(urls[0].username) === decodeURIComponent(urls[1].username)) {
   throw new Error('The fixture requires separate app and migration roles.');
 }
 
 type Actor = { key: string; userId: string; personId: string | null; companyId: string | null };
 type Fixture = { version: 1; tenantId: string; companies: Record<string, string>; actors: Actor[] };
 const eventType = 'dev.orchestrator-harness.fixture-prepared';
+const scenarios = ['prepare', 'legacy', 'unsupported', 'malformed', 'failed', 'current'] as const;
+const requested = process.argv[2] ?? 'prepare';
+if (process.argv.length > 3 || !scenarios.some(value => value === requested)) throw new Error('Unknown orchestrator fixture scenario.');
+const scenario = requested as typeof scenarios[number];
+const privateSentinel = 'ORCH23_PRIVATE_SENTINEL';
 
 async function main() {
   // Runtime/database imports follow the local-only guard, so a refused invocation opens no pool.
   const { and, asc, eq, isNull } = await import('drizzle-orm');
-  const { createDb, client } = await import('../db/client');
+  const { createDb, client, withTenant } = await import('../db/client');
   const s = await import('../db/schema');
   const { appendEvent, actorOf } = await import('../db/events');
   const { resolveEntitlementsTx, settingEnabled } = await import('../core/entitlements');
   const { createCompany, createDepartment, assignRole } = await import('../core/admin');
   const { hireEmployee } = await import('../core/org');
   const { runHrOrchestrator, orchestrationQueue } = await import('../core/hr-orchestrator');
+  const { HR_HARNESS_VERSION } = await import('../core/orchestrator-harness');
+  const { digestOf } = await import('../core/agent-proposal');
   const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
   const tenantId = DEMO_TENANT_ID;
   const lock = await owner.client.reserve();
@@ -68,13 +77,47 @@ async function main() {
       }
     }
     requireSpecialistsOff(root);
+    async function currentPass(ctx: SessionContext) {
+      requireSpecialistsOff(ctx);
+      const run = await runHrOrchestrator(ctx);
+      if (run.failed || run.nudge.status !== 'succeeded' || !run.nudge.value.disabled || run.triage.status !== 'succeeded' || !run.triage.value.disabled) {
+        throw new Error('Fixture pass did not complete with specialists off.');
+      }
+    }
+    async function applyScenario(fixture: Fixture) {
+      if (scenario === 'prepare') return;
+      const actor = fixture.actors.find(row => row.key === 'A-hr');
+      if (!actor || actor.companyId !== fixture.companies.A) throw new Error('Fixture company viewer changed.');
+      const [user] = await owner.db.select().from(s.appUser).where(and(eq(s.appUser.tenantId, tenantId),
+        eq(s.appUser.id, actor.userId), eq(s.appUser.workosUserId, 'orchestrator23-fixture:A-hr'), isNull(s.appUser.archivedAt)));
+      if (!user || user.personId !== actor.personId) throw new Error('Fixture viewer login changed.');
+      const ctx = await context(user);
+      if (ctx.grants?.length !== 1 || ctx.grants[0].role !== 'hr_admin' || ctx.grants[0].companyId !== fixture.companies.A) {
+        throw new Error('Receipt scenarios require the original single-company fixture grant.');
+      }
+      requireSpecialistsOff(ctx);
+      if (scenario === 'current') { await currentPass(ctx); return; }
+      const steps = { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' };
+      const payloads: Record<'legacy' | 'unsupported' | 'malformed' | 'failed', Record<string, unknown>> = {
+        legacy: { failed: false },
+        unsupported: { harnessVersion: 'readiness-v999', failed: false, steps },
+        malformed: { harnessVersion: privateSentinel, failed: 'false', steps: { observe: { status: 'succeeded', value: privateSentinel }, claims: privateSentinel } },
+        failed: { harnessVersion: HR_HARNESS_VERSION, failed: false, steps: { ...steps, claims: 'failed' } },
+      };
+      // This is a fixed, verified single-company grant, not an alternative scope/authorization policy.
+      // Append through the existing event owner; synthetic receipts never assert source HR outcomes.
+      await withTenant(ctx, tx => appendEvent(tx, { tenantId, aggregateType: 'hr_orchestrator', aggregateId: tenantId,
+        eventType: 'orchestrator.pass-finished', actor: actorOf(ctx),
+        payload: { ...payloads[scenario], scopeDigest: digestOf([fixture.companies.A]), fixtureOnly: true, scenario,
+          prompt: privateSentinel, exception: privateSentinel } }));
+    }
     async function manifest(fixture: Fixture, reused: boolean) {
       const views = [];
       for (const actor of fixture.actors.filter(row => row.key.endsWith('-hr') || row.key === 'group-admin')) {
         const view = await orchestrationQueue(await context({ id: actor.userId, personId: actor.personId }));
         views.push({ actor: actor.key, open: view.total, verified: view.verified, observedAt: view.observedAt, lastRun: view.lastRun });
       }
-      console.log(JSON.stringify({ preparationOnly: true, reused, ...fixture, views,
+      console.log(JSON.stringify({ preparationOnly: true, reused, scenario, privateSentinel, ...fixture, views,
         routes: ['/control-tower', '/control-tower/agents'], locales: ['en', 'ms', 'zh', 'vi', 'th', 'ta'] }, null, 2));
     }
     const [receipt] = await owner.db.select({ payload: s.domainEvent.payload }).from(s.domainEvent)
@@ -84,9 +127,11 @@ async function main() {
       const fixture = receipt.payload as unknown as Fixture;
       if (fixture.version !== 1 || fixture.tenantId !== tenantId || !fixture.companies || !Array.isArray(fixture.actors)
         || fixture.actors.length !== 6) throw new Error('Stored fixture is incompatible; preserving it.');
+      await applyScenario(fixture);
       await manifest(fixture, true);
       return;
     }
+    if (scenario !== 'prepare') throw new Error('Prepare the fixture before selecting a receipt scenario.');
     const fixture: Fixture = { version: 1, tenantId, companies: {},
       actors: [{ key: 'group-admin', userId: bootstrapUser.id, personId: bootstrapUser.personId, companyId: null }] };
     for (const key of ['A', 'B', 'Empty']) {
@@ -138,12 +183,7 @@ async function main() {
       }
     }
     for (const actor of fixture.actors.filter(row => row.key.endsWith('-hr') || row.key === 'group-admin')) {
-      const ctx = await context({ id: actor.userId, personId: actor.personId });
-      requireSpecialistsOff(ctx);
-      const run = await runHrOrchestrator(ctx);
-      if (run.failed || run.nudge.status !== 'succeeded' || !run.nudge.value.disabled || run.triage.status !== 'succeeded' || !run.triage.value.disabled) {
-        throw new Error('Fixture pass did not complete with specialists off. No completion marker saved.');
-      }
+      await currentPass(await context({ id: actor.userId, personId: actor.personId }));
     }
     await owner.withTenant(root, tx => appendEvent(tx, { tenantId, aggregateType: 'dev_fixture', aggregateId: tenantId,
       eventType, actor: actorOf(root), payload: fixture }));
