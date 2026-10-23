@@ -5244,6 +5244,7 @@ export const toilAccrual = pgTable(
     //  • reversedAt / reversalReason / reversalLedgerEntryId — a reversal: the offsetting leave_ledger debit.
     //  • settledLedgerEntryId — the debit the expiry sweep wrote when it expired or paid out this credit.
     workedDayKind: toilWorkedDayKindEnum('worked_day_kind'),
+    datedCredit: jsonb('dated_credit').$type<import('../lib/toil-dated-credit').DatedToilCreditEvidence>(),
     note: text('note'),
     remarks: text('remarks'),
     reversedAt: timestamp('reversed_at', { withTimezone: true }),

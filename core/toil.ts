@@ -1,4 +1,4 @@
-import {toilMeasuredCreditDays,TOIL_STANDARD_DAY_MINUTES} from '../lib/toil-dated-credit';
+import {remainingDatedToilCredit,calculateDatedToilCredit,toilMeasuredCreditDays,TOIL_STANDARD_DAY_MINUTES,type DatedToilCreditEvidence} from '../lib/toil-dated-credit';
 /**
  * Leave-in-lieu (TOIL) — ADR-0033. A contractual replacement-leave engine: elected+approved rest-day /
  * holiday / OT work becomes a REPLACEMENT-type leave credit, mutually exclusive with OT pay. Gated by
@@ -817,6 +817,15 @@ export async function accrueToilTx(
   },
 ): Promise<AccrueToilResult> {
   if (p.requireDecideAuth) await assertCanDecide(tx, ctx, p.employmentId, 'time off in lieu');
+  const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+  const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mixedOnly:true});
+  if(dated){
+    const [entity]=await tx.select({country:company.country}).from(company).where(eq(company.id,dated.companyId)).limit(1);
+    if(!entity)throw new ToilNotEligibleError('The proven source employer is unavailable.');
+    return bankToilCreditTx(tx,ctx,{employmentId:p.employmentId,workedDate:p.workedDate,companyId:dated.companyId,country:entity.country,
+      dayType:null,workedDayKind:null,otMinutes:dated.minutes,datedPolicyElection:'roster',approvedOn:p.approvedOn,requestedOn:p.requestedOn,
+      firstScheduleConsent:p.firstScheduleConsent,viaAutoApproval:p.viaAutoApproval,source:p.viaAutoApproval?'auto_approval':'roster'});
+  }
 
   const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
 
@@ -1040,6 +1049,7 @@ export async function bankToilCreditTx(
     source: ToilAccrualSource;
     /** Actual entered claim window; the canonical adapter proves its overlap, never a supplied proof. */
     formulaClaimWindow?:{start:string;end:string};
+    datedPolicyElection?:'roster'|'claim';
     /** 3fb1a611: HR's stated reason and optional remarks on a hand-added credit. */
     note?: string;
     remarks?: string;
@@ -1059,13 +1069,23 @@ export async function bankToilCreditTx(
 ): Promise<AccrueToilResult> {
   // Same lock order as Attendance calculation and Payroll source reservation, before any ledger write.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
-  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,p.formulaClaimWindow);
+  const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+  const dated=p.datedPolicyElection?await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate}):null;
+  if(p.datedPolicyElection&&!dated)throw new ToilNotEligibleError('Complete current dated policy credit is required.');
+  if(dated&&(p.companyId!==dated.companyId||p.otMinutes!==dated.minutes||p.dayType!==null||p.workedDayKind!=null||p.declaredDays!==undefined))
+    throw new ToilNotEligibleError('A dated credit election must use its complete proven source and independently calculated credit.');
+  if(dated){const [entity]=await tx.select({country:company.country}).from(company).where(eq(company.id,dated.companyId)).limit(1);
+    if(!entity||entity.country!==p.country)throw new ToilNotEligibleError('The dated source country changed.');}
+  const formula=dated?{kind:'legacy' as const}:await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,p.formulaClaimWindow);
   if(formula.kind==='formula'&&p.workedDayKind!==formula.recordedWorkedDayKind)throw new ToilNotEligibleError('Leave Credit day classification must match the recorded Attendance calculation.');
   if(formula.kind==='formula'&&(p.companyId!==formula.companyId||!Number.isSafeInteger(p.otMinutes)||p.otMinutes<0||p.otMinutes>formula.minutes))throw new ToilNotEligibleError('The Leave Credit must use the proven source company and a reviewed subset of its current formula duration.');
   if(formula.kind==='formula'&&p.workedDayKind==='workday'&&(formula.afterShiftMinutes===null||p.otMinutes>formula.afterShiftMinutes))throw new ToilNotEligibleError('Extended Leave Credit must be a reviewed subset of the recorded post-shift formula duration.');
   // Counted subsets already passed through the canonical break/grace/tier owner. Never expand them here.
   if(formula.kind==='formula'&&await payrollStartedForDatesTx(tx,[p.workedDate,
     ...(formula.audit.datedAllocations??[]).filter(part=>part.minutes>0).map(part=>part.date)]))
+    throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
+
+  if(dated&&await payrollStartedForDatesTx(tx,[p.workedDate,...dated.parts.map(part=>part.date)]))
     throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
 
   // 2 · the company policy must be enabled.
@@ -1120,9 +1140,14 @@ export async function bankToilCreditTx(
   // to derive it from — no attendance row was required to get here. The premium multiplier is not applied
   // to a declared figure: it keys off the day type, and a self-declared credit has none, so applying it
   // would mean picking a multiplier at random.
+  const assessed=dated?calculateDatedToilCredit(dated.parts,policy,p.datedPolicyElection!):null;
+  if(assessed&&assessed.days<=0)throw new ToilExtendedHoursBelowThresholdError(p.workedDate,assessed.countedMinutes,policy.extendedHalfDayMinutes);
+  const datedCredit:DatedToilCreditEvidence|null=dated&&assessed?{v:1,sourceDate:p.workedDate,calculationId:dated.calculationId,
+    sourceRevision:dated.sourceRevision,durationDigest:dated.durationDigest,path:p.datedPolicyElection!,consumptionOrder:'earliestDateFirst',sourceMinutes:dated.minutes,
+    countedMinutes:assessed.countedMinutes,days:assessed.days,parts:assessed.parts}:null;
   const dayType = p.dayType;
-  const otMinutes = p.otMinutes;
-  const daysCredited = p.declaredDays != null ? round2(p.declaredDays) : toilMeasuredCreditDays(otMinutes,dayType,policy.accrualBasis);
+  const otMinutes = assessed?.countedMinutes??p.otMinutes;
+  const daysCredited = assessed?.days??(p.declaredDays != null ? round2(p.declaredDays) : toilMeasuredCreditDays(otMinutes,dayType,policy.accrualBasis));
 
   // 00307068 · THE EXPIRY ANCHOR MOVES FROM THE WORKED DAY TO THE APPROVAL. This is a behaviour change, not
   // a display one, and it is the reason the item is Large. Reaching this line IS the approval: the manual
@@ -1187,6 +1212,7 @@ export async function bankToilCreditTx(
       workedDate: p.workedDate,
       dayType,
       workedDayKind: p.workedDayKind ?? null,
+      datedCredit,
       note,
       remarks,
       otMinutes,
@@ -1232,6 +1258,7 @@ export async function bankToilCreditTx(
       dayType,
       otMinutes,
       daysCredited,
+      ...(datedCredit?{datedCredit}:{}),
       ...(formula.kind==='formula'?{overtimePattern:{...formula.audit,qualificationBasis:p.workedDayKind==='workday'?'postShiftWindow':'workedDayDuration',qualifyingMinutes:p.workedDayKind==='workday'?formula.afterShiftMinutes:formula.minutes,consumedMinutes:otMinutes}}:{}),
       accrualBasis: policy.accrualBasis,
       eligible,
@@ -3105,6 +3132,7 @@ export async function listLeaveCreditMovements(
         workedDate: toilAccrual.workedDate,
         workedDayKind: toilAccrual.workedDayKind,
         dayType: toilAccrual.dayType,
+        datedCredit: toilAccrual.datedCredit,
         expiresOn: toilAccrual.expiresOn,
         status: toilAccrual.status,
         source: toilAccrual.source,
@@ -3411,6 +3439,7 @@ export type ToilExpiryResult = {
  *  Phase-B #14 adds the worked-day shape (`dayType`, `otMinutes`) so a First-Schedule convert-to-pay can
  *  reconcile to the EXACT s.60(3)/s.60D(3) cash for that day-type rather than a generic ORP × banked-days. */
 type SweepRow = {
+  datedCredit?:DatedToilCreditEvidence|null;
   id: string;
   employmentId: string;
   remaining: number;
@@ -3484,12 +3513,30 @@ async function expireAccrualsTx(
    * banking). Above the ceiling (no statutory floor), the generic ORP × banked-days basis is preserved.
    * Returns the amount + which basis was used (recorded on the event for auditability).
    */
-  const convertAmountFor = (a: SweepRow): { amount: number; basis: 'statutory_exact' | 'generic_orp' } => {
+  const convertAmountFor = (a: SweepRow): { amount: number; basis: 'statutory_exact' | 'generic_orp' | 'dated_classes'; datedValuation?:unknown } => {
     const wages = wagesBy.get(a.employmentId) ?? 0;
     const country = countryBy.get(a.employmentId) ?? null;
     const ot = otByCountry.get(country) ?? { wageCeiling: 4000 };
     const ceiling = ot.wageCeiling;
     const pack = packFor(country);
+    if(a.datedCredit){
+      const retained=remainingDatedToilCredit(a.datedCredit,a.remaining);
+      const datedValuation=retained.map(part=>{
+        let amount=0,basis:'statutory_exact'|'generic_orp'='generic_orp';
+        // Tier/claim credits keep their original ORP valuation. Measured rest/holiday
+        // credits retain that dated statutory shape, scaled only by their unused credit.
+        if(part.remainingDays>0&&part.days>0&&['measuredRestDay','measuredHoliday'].includes(part.rule)&&pack&&wages>0&&wages<=ceiling){
+          const entitlement=pack.payroll.overtimePay({monthlyWages:wages,
+            days:[{dayType:part.rule==='measuredRestDay'?'rest_day':'holiday',minutes:part.sourceMinutes}],wageCeiling:ceiling,
+            restDayExcessMultiplier:ot.restDayExcessMultiplier,holidayExcessMultiplier:ot.holidayExcessMultiplier});
+          if(!entitlement.eligible)throw new ToilNotEligibleError('The recorded dated statutory credit cannot be valued.');
+          amount=round2(entitlement.total*part.remainingDays/part.days);basis='statutory_exact';
+        }else amount=round2(part.remainingDays*(wages/ORP_DIVISOR));
+        return {sequence:part.sequence,date:part.date,dayClass:part.dayClass,rule:part.rule,originalDays:part.days,
+          remainingDays:part.remainingDays,amount,basis};
+      });
+      return {amount:round2(datedValuation.reduce((n,part)=>n+part.amount,0)),basis:'dated_classes',datedValuation};
+    }
     // 296fc027 · AN UNKNOWN DAY TYPE CANNOT BE VALUED STATUTORILY, so it is not pretended otherwise. A
     // self-declared credit (the employee-request path) has no attendance row behind it and therefore no
     // day type, and the exact s.60(3)/s.60D(3) cash is a FUNCTION of the day type — rest day and public
@@ -3564,9 +3611,12 @@ async function expireAccrualsTx(
               // Phase-B #14: 'statutory_exact' ⇒ reconciled to the exact EA s.60(3)/s.60D(3) cash for the
               // worked day-type (First Schedule); 'generic_orp' ⇒ contractual ORP × banked days (> ceiling).
               valuationBasis: owed.basis,
+              ...('datedValuation' in owed?{datedValuation:owed.datedValuation,creditConsumptionOrder:'earliestDateFirst'}:{}),
               dayType: a.dayType,
               valuationNote:
-                owed.basis === 'statutory_exact'
+                owed.basis === 'dated_classes'
+                  ? 'Each recorded dated class retains its credit and valuation rule; earlier dated credits were used first. Only each remaining dated balance is valued.'
+                  : owed.basis === 'statutory_exact'
                   ? 'Exact s.60(3)/s.60D(3) cash for the worked day-type, valued at close-run wages; reconcile to the correct pay period.'
                   : a.workedDayKind === 'off_day'
                     ? // 3fb1a611: an OFF day IS recorded, but this repo's verified statutory sources
@@ -3657,6 +3707,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
         workedDate: toilAccrual.workedDate,
         // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
         dayType: toilAccrual.dayType,
+        datedCredit: toilAccrual.datedCredit,
         otMinutes: toilAccrual.otMinutes,
         workedDayKind: toilAccrual.workedDayKind,
       })
@@ -3671,6 +3722,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
       dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
       otMinutes: d.otMinutes,
       workedDayKind: d.workedDayKind,
+      datedCredit: d.datedCredit,
     }));
     // THE RESIDUE, COUNTED (review r3). Identical predicate MINUS `SETTLEABLE_BY_CALLER`, so the
     // difference is exactly the accruals that were due and that this caller's company scope hid. Both
@@ -3776,6 +3828,7 @@ export async function closeReplacementLeaveYear(
         workedDate: toilAccrual.workedDate,
         // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
         dayType: toilAccrual.dayType,
+        datedCredit: toilAccrual.datedCredit,
         otMinutes: toilAccrual.otMinutes,
         workedDayKind: toilAccrual.workedDayKind,
         hiredOn: employment.hiredOn,
@@ -3824,6 +3877,7 @@ export async function closeReplacementLeaveYear(
         dayType: a.dayType as 'workday' | 'rest_day' | 'holiday',
         otMinutes: a.otMinutes,
         workedDayKind: a.workedDayKind,
+        datedCredit: a.datedCredit,
         boundary,
       });
     }

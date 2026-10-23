@@ -1,3 +1,4 @@
+import {requestLeave,decideLeave} from '../core/leave';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
 import {attendancePolicyAttestedWorkInput} from '../packs/attendance/policy-attested-work-input';
@@ -5,7 +6,7 @@ import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayr
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
-import {accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
+import {runToilExpiry,accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
 import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
 import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
 import {recordedAttendancePolicyProposalPartsMatch,materializeAttendancePolicyProposalParts} from '../packs/attendance/policy-proposal-parts';
@@ -963,6 +964,34 @@ describe('immutable non-payable policy part storage',()=>{
   await generatePayslips(ctx,{batchId:batch.batchId});
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
   expect(slip.overtimePay).toBe(scope==='datedRates'?'8.00':'4.00');
+ });
+
+ it('banks mixed normal/rest credits once and expires only the unused dated balance after real half-day leave',async()=>{
+  await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'leave','active');ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,555,true,{mode:'none',step:null},120,'earliest',true);
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  const credit=await accrueToil(ctx,{employmentId:f.employmentId,workedDate:f.sourceDate});
+  expect(credit.daysCredited).toBe(0.63);
+  const [stored]=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId));
+  expect(stored).toMatchObject({dayType:null,workedDayKind:null,otMinutes:120,daysCredited:'0.63'});
+  expect(stored.datedCredit).toMatchObject({consumptionOrder:'earliestDateFirst',sourceMinutes:120,
+   parts:[{dayClass:'normal',days:0.5},{dayClass:'rest',days:0.13}]});
+  await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:f.sourceDate})).rejects.toThrow();
+  await expect(withTenant(ctx,tx=>tx.update(s.toilAccrual).set({datedCredit:{...stored.datedCredit!,days:9}})
+   .where(eq(s.toilAccrual.id,credit.accrualId)))).rejects.toThrow('Dated TOIL credit provenance is immutable');
+  const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
+  const leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
+  const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
+  await decideLeave(ctx,{leaveRequestId:request.leaveRequestId,decision:'approved'});
+  expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].daysTaken).toBe('0.50');
+  const expired=await runToilExpiry(ctx,{today:credit.expiresOn});
+  expect(expired).toMatchObject({converted:1,convertedDays:0.13,convertedAmount:25});
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,credit.accrualId),eq(s.domainEvent.eventType,'toil.converted')));
+  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({valuationBasis:'dated_classes',creditConsumptionOrder:'earliestDateFirst',
+   datedValuation:[{dayClass:'normal',remainingDays:0,amount:0},{dayClass:'rest',remainingDays:0.13,amount:25}]});
+  expect((await runToilExpiry(ctx,{today:credit.expiresOn})).processed).toBe(0);
  });
 
  it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},

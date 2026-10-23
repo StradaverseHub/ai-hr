@@ -2,6 +2,9 @@
 -- Add immutable policy-part storage and explicit policy financial evidence below the existing OT
 -- parent. The settlement admission fence remains until actual current consumer replay is complete.
 -- Existing assignment calculations, source identity and the single cash/TOIL settlement are retained.
+ALTER TABLE public.toil_accrual ADD COLUMN dated_credit jsonb,
+ ADD CONSTRAINT toil_dated_credit_object_ck CHECK(dated_credit IS NULL OR jsonb_typeof(dated_credit)='object');
+--> statement-breakpoint
 ALTER TABLE public.attendance_overtime_calculation
  ADD COLUMN binding_kind text NOT NULL DEFAULT 'assignedPattern',
  ADD COLUMN policy_revision_id uuid REFERENCES public.attendance_group_policy_revision(id) ON DELETE RESTRICT,
@@ -821,12 +824,37 @@ BEGIN
    AND credit.employment_id=source.employment_id AND credit.worked_date=source.attendance_date
    AND credit.status<>'reversed' AND credit.ot_minutes>0
    AND credit.ot_minutes::numeric*header.payable_denominator::numeric<=header.payable_numerator::numeric
-   AND credit.worked_day_kind IS NOT NULL
-   AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
-    WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
-     AND credit.worked_day_kind::text IS DISTINCT FROM CASE part.day_class
-      WHEN 'normal' THEN 'workday' WHEN 'off' THEN 'off_day' WHEN 'rest' THEN 'rest_day'
-      WHEN 'publicHoliday' THEN 'holiday' WHEN 'replacementHoliday' THEN 'holiday' ELSE NULL END)) THEN
+   AND ((credit.dated_credit IS NULL AND credit.worked_day_kind IS NOT NULL
+    AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
+     WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
+      AND credit.worked_day_kind::text IS DISTINCT FROM CASE part.day_class
+       WHEN 'normal' THEN 'workday' WHEN 'off' THEN 'off_day' WHEN 'rest' THEN 'rest_day'
+       WHEN 'publicHoliday' THEN 'holiday' WHEN 'replacementHoliday' THEN 'holiday' ELSE NULL END))
+    OR(credit.dated_credit IS NOT NULL AND credit.worked_day_kind IS NULL AND credit.day_type IS NULL
+     AND credit.dated_credit->>'v'='1' AND credit.dated_credit->>'sourceDate'=source.attendance_date::text
+     AND credit.dated_credit->>'calculationId'=header.id::text AND credit.dated_credit->>'sourceRevision'=source.revision::text
+     AND credit.dated_credit->>'durationDigest'=header.duration_input_digest
+     AND credit.dated_credit->>'path' IN('roster','claim')
+     AND credit.dated_credit->>'consumptionOrder'='earliestDateFirst'
+     AND credit.dated_credit->>'sourceMinutes'=header.payable_numerator
+     AND credit.dated_credit->>'countedMinutes'=credit.ot_minutes::text
+     AND coalesce(credit.dated_credit->>'days','')~'^[0-9]{1,4}(\.[0-9]{1,2})?$'
+     AND (credit.dated_credit->>'days')::numeric=credit.days_credited
+     AND jsonb_typeof(credit.dated_credit->'parts')='array'
+     AND jsonb_array_length(credit.dated_credit->'parts')=(SELECT count(*) FROM public.attendance_overtime_policy_part part
+      WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0)
+     AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
+      WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
+       AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(credit.dated_credit->'parts') item
+        WHERE item->>'sequence'=part.sequence::text AND item->>'date'=part.calendar_date::text AND item->>'dayClass'=part.day_class
+         AND item->>'sourceMinutes'=coalesce(part.duration_evidence->>'attributedPayableMinutes',part.allocated_payable_minutes::text)
+         AND item->>'rule' IN('extendedHours','measuredRestDay','measuredHoliday','claimWindow')
+         AND coalesce(item->>'qualifyingMinutes','')~'^[0-9]{1,4}$' AND coalesce(item->>'countedMinutes','')~'^[0-9]{1,4}$'
+         AND coalesce(item->>'days','')~'^[0-9]{1,4}(\.[0-9]{1,2})?$'
+         AND (item->>'qualifyingMinutes')::integer<=(item->>'sourceMinutes')::integer
+         AND (item->>'countedMinutes')::integer<=(item->>'qualifyingMinutes')::integer))
+     AND (SELECT sum((item->>'countedMinutes')::integer) FROM jsonb_array_elements(credit.dated_credit->'parts') item)=credit.ot_minutes
+     AND (SELECT sum((item->>'days')::numeric) FROM jsonb_array_elements(credit.dated_credit->'parts') item)=credit.days_credited))) THEN
   RAISE EXCEPTION 'TOIL credit must bind a reviewed subset of the current policy duration and class' USING ERRCODE='23514';END IF;
  -- The mandatory SECURITY DEFINER ab coverage trigger independently validates the private
  -- physical proof next. This invoker trigger must never grant app EXECUTE on that owner.
@@ -1486,3 +1514,31 @@ DO $$ DECLARE table_name text;BEGIN
    table_name,'app.lock_overtime_payroll_batch_context(uuid)');
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+-- New dated credits cannot be manufactured by annotating an old accrual. The same
+-- one-source settlement must exist at commit; reversals retain that immutable link.
+CREATE FUNCTION app.guard_policy_dated_toil_credit() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='UPDATE' THEN
+  IF OLD.dated_credit IS NOT NULL OR NEW.dated_credit IS NOT NULL THEN
+   IF ROW(NEW.dated_credit,NEW.employment_id,NEW.worked_date,NEW.day_type,NEW.worked_day_kind,NEW.ot_minutes,NEW.days_credited,NEW.accrual_basis,NEW.policy_id,NEW.ledger_entry_id)
+    IS DISTINCT FROM ROW(OLD.dated_credit,OLD.employment_id,OLD.worked_date,OLD.day_type,OLD.worked_day_kind,OLD.ot_minutes,OLD.days_credited,OLD.accrual_basis,OLD.policy_id,OLD.ledger_entry_id) THEN
+    RAISE EXCEPTION 'Dated TOIL credit provenance is immutable' USING ERRCODE='23514';END IF;
+  END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.dated_credit IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.overtime_source_settlement claim
+  JOIN public.attendance_overtime_source source ON source.id=claim.source_id AND source.tenant_id=claim.tenant_id
+  WHERE claim.tenant_id=NEW.tenant_id AND claim.mode='toil' AND claim.toil_accrual_id=NEW.id
+   AND claim.calculation_id::text=NEW.dated_credit->>'calculationId'
+   AND source.employment_id=NEW.employment_id AND source.attendance_date=NEW.worked_date) THEN
+  RAISE EXCEPTION 'Dated TOIL credit requires its canonical policy settlement' USING ERRCODE='23514';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_policy_dated_toil_credit() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER policy_dated_toil_credit_immutable BEFORE UPDATE ON public.toil_accrual
+ FOR EACH ROW EXECUTE FUNCTION app.guard_policy_dated_toil_credit();
+CREATE CONSTRAINT TRIGGER policy_dated_toil_credit_settled AFTER INSERT ON public.toil_accrual
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_policy_dated_toil_credit();

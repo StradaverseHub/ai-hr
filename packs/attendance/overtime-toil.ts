@@ -183,7 +183,7 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
 /** Salary-free dated qualification for the credit owner. It deliberately has no
  * scalar worked-day kind: every dated class stays attached to its own quantity.
  * Existing uniform/legacy readers retain their original contract. */
-export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;mixedOnly?:boolean}){
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
  const [locked]=await tx.select().from(attendanceOvertimeSource).where(and(eq(attendanceOvertimeSource.tenantId,ctx.tenantId),
   eq(attendanceOvertimeSource.employmentId,p.employmentId),eq(attendanceOvertimeSource.attendanceDate,p.date))).limit(1).for('update');
@@ -191,6 +191,7 @@ export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:Se
  if(existing?.settlement?.mode==='cash')throw new OvertimeToilEligibilityError('This overtime day is already reserved for cash. Release its unfinalized Payroll contribution before electing Leave Credit.','cashConflict');
  const stored=await readOvertimePolicyDurationTx(tx,ctx,p);
  if(!stored)return null;
+ if(p.mixedOnly&&new Set(stored.contract.parts.filter(part=>(attendancePolicyStoredPartCount(part)??0)>0).map(part=>part.dayClass)).size<2)return null;
  if(!locked||locked.id!==stored.source.id||locked.currentCalculationId!==stored.calculation.id)unavailable('stale');
  const snapshot=await canonicalOvertimeToilInputTx(tx,ctx,p),independent=attendancePolicyIndependentSource(snapshot);
  if(!independent)unavailable();

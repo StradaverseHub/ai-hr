@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {calculateDatedToilCredit,toilMeasuredCreditDays,type DatedToilCreditInput} from '../lib/toil-dated-credit';
+import {calculateDatedToilCredit,toilMeasuredCreditDays,remainingDatedToilCredit,type DatedToilCreditEvidence,type DatedToilCreditInput} from '../lib/toil-dated-credit';
 const policy={extendedHoursEnabled:true,accrualBasis:'premium_equivalent',extendedHalfDayMinutes:240,
  extendedFullDayMinutes:480,extendedBreakMinutes:0,extendedGraceMinutes:0};
 const part=(sequence:number,date:string,dayClass:DatedToilCreditInput['dayClass'],minutes:number,afterShiftMinutes:number|null=null)=>
@@ -32,4 +32,17 @@ describe('dated TOIL credit rule owner',()=>{
   expect(toilMeasuredCreditDays(120,'rest_day','premium_equivalent')).toBe(0.5);
   expect(toilMeasuredCreditDays(120,'holiday','hours_worked')).toBe(0.25);
  });
+ it('uses the earliest dated credits before valuing a partially used mixed lot',()=>{
+  const credit=calculateDatedToilCredit([part(0,'2026-10-23','rest',240),part(1,'2026-10-24','replacementHoliday',240)],policy,'roster');
+  const evidence:DatedToilCreditEvidence={v:1,sourceDate:'2026-10-23',calculationId:'00000000-0000-4000-8000-000000000001',sourceRevision:1,
+   durationDigest:'a'.repeat(64),path:'roster',consumptionOrder:'earliestDateFirst',sourceMinutes:480,...credit};
+  const before=structuredClone(evidence);
+  expect(remainingDatedToilCredit(evidence,1.25).map(p=>[p.dayClass,p.remainingDays])).toEqual([['rest',0],['replacementHoliday',1.25]]);
+  expect(remainingDatedToilCredit(evidence,2).map(p=>p.remainingDays)).toEqual([0.5,1.5]);
+  expect(evidence).toEqual(before);
+  expect(()=>remainingDatedToilCredit(evidence,3)).toThrow();
+  const forged=structuredClone(evidence);forged.parts[1].days=2;
+  expect(()=>remainingDatedToilCredit(forged,1)).toThrow('totals changed');
+ });
+
 });
