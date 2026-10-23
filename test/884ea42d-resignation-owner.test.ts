@@ -4,7 +4,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
-import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementPendingEditInput,applyDueMovementsTx,resignationInformation} from '../core/movement';
+import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementPendingEditInput,applyDueMovementsTx,resignationInformation,movementRecordedResignationOf} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {movementFormFields} from '../lib/movement-form-contract';
@@ -35,6 +35,10 @@ async function closePayroll(id:string,period:string){
 }
 
 describe('884ea42d one resignation information owner',()=>{
+ it('historical missing date evidence stays unknown instead of being filled from current employment',()=>{
+  const record=movementRecordedResignationOf({id:'historical',eventType:'employment.info.updated',payload:{movement:{type:'resignation'},after:{tenderResignationDate:'2020-01-01'}}});
+  expect(record?.tenderResignationDate).toEqual({known:true,value:'2020-01-01'});expect(record?.resignationDate).toEqual({known:false,value:null});expect(record?.lastWorkingDate).toEqual({known:false,value:null});
+ });
  it('generic or forged-tag saves cannot edit exit dates; general notice and probation terms still save',async()=>{
   const {employmentId}=await hire();
   for(const movement of [undefined,{type:'resignation'},{type:'termination'}])await setEmploymentInfo(ctx,{employmentId,tenderResignationDate:day(-20),resignationDate:day(-10),lastWorkingDate:day(-5),probationValue:3,probationUnit:'month',noticeAfterConfirmationValue:30,noticeAfterConfirmationUnit:'day',movement});
@@ -72,7 +76,7 @@ describe('884ea42d one resignation information owner',()=>{
   const {employmentId}=await hire();const legacy={tenderResignationDate:day(-70),resignationDate:day(-60),lastWorkingDate:day(-50)};await owner.db.update(schema.employment).set(legacy).where(eq(schema.employment.id,employmentId));
   await createMovementEvent(ctx,input(employmentId));const original=await resignation(employmentId);
   await editMovementEvent(ctx,{...input(employmentId),movementId:original.id,resignationEffectiveDate:day(-9),reason:'Correct actual resignation date'});
-  const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));expect((await movementHistory(ctx,employmentId)).find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);
+  const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));const history=await movementHistory(ctx,employmentId);expect(history.find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);expect(history.find(r=>r.id===original.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-10)});expect(history.find(r=>r.id===corrected.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-9)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Restore prior historical record'});expect(dates(await row(employmentId))).toEqual(legacy);expect((await resignationInformation(ctx,employmentId)).resignationDate.source.kind).toBe('legacy');
  });
  it('blocks a closed-payroll create, correction and rollback while preserving issued financial values',async()=>{
