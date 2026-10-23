@@ -43,6 +43,25 @@ describe('shared dated-policy duration proposal',()=>{
   f.eligiblePlannedIntervals=[{from:1110,to:1170},{from:1120,to:1180}];
   const result=calculated(f);expect(result.payableMinutes).toBe(30);expect(result.parts[0].intervals).toEqual([{from:1110,to:1140}]);
  });
+ it.each(ATTENDANCE_POLICY_DAY_CLASSES.flatMap(dayClass=>
+  (['actual','preApproved','intersect'] as const).flatMap(method=>
+   (['overlapping','disjoint'] as const).map(geometry=>({dayClass,method,geometry})))))
+ ('keeps $method positions across midnight for $dayClass with $geometry plans',({dayClass,method,geometry})=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.method=method;f.policy.overtime.autoMethod=method;
+  f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=[{from:1420,to:1460}];
+  f.eligiblePlannedIntervals=geometry==='overlapping'?[{from:1430,to:1470}]:[{from:1460,to:1500}];
+  f.calendar=[calendar(sourceDate,dayClass),calendar(nextDate,dayClass)];
+  const before=structuredClone(f),result=calculated(f);
+  const expected=method==='actual'?[{from:1420,to:1440},{from:1440,to:1460}]
+   :method==='preApproved'?geometry==='overlapping'?[{from:1430,to:1440},{from:1440,to:1470}]:[{from:1460,to:1500}]
+   :geometry==='overlapping'?[{from:1430,to:1440},{from:1440,to:1460}]:[];
+  expect(result.parts.flatMap(part=>part.allocations)).toEqual(expected);
+  expect(result.payableMinutes).toBe(method==='intersect'?(geometry==='overlapping'?30:0):40);
+  expect(result.parts.every(part=>part.dayClass===dayClass)).toBe(true);
+  expect(result.parts.map(part=>part.calendarDate)).toEqual(expected.map(span=>span.from<1440?sourceDate:nextDate));
+  expect(result.intervalBasis).toBe(method==='preApproved'?'approvedPlan':'actual');
+  expect(f).toEqual(before);
+ });
  it('applies one actual lateness offset before intersecting the approved window',()=>{
   const f=fixture();f.policy.overtime.offsetLateness=true;f.method='intersect';f.policy.overtime.autoMethod='intersect';
   f.lateOffsetIntervals=[{from:500,to:515}];f.eligiblePlannedIntervals=[{from:1110,to:1170}];
