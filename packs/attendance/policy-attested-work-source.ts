@@ -6,6 +6,7 @@ import {attendance,attendanceCorrection,attendancePolicyRequestContract,attendan
 import {attendancePolicyExecutionContextTx,type AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyAttestedWorkInput,type PolicyAttestedWorkSource} from './policy-attested-work-input';
+import {attendancePolicyUnclockedWorkDates} from '../../lib/attendance-policy-unclocked-work';
 import {attendancePolicyAttestedRawTrace} from '../../lib/attendance-policy-attested-trace';
 export async function recordedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  const context=await attendancePolicyExecutionContextTx(tx,ctx,p);
@@ -18,7 +19,8 @@ export async function recordedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{e
 export async function retainedAttestedPolicyCancellationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  const retained=await retainedAttestedPolicyWorkTx(tx,ctx,p);
  return retained?{authority:'retainedAttestedCancellationOnly' as const,
-  attendanceId:retained.source.anchor.id,correctionId:retained.replay.correctionId}:null;
+  attendanceId:retained.source.anchor.id,correctionId:retained.replay.correctionId,
+  protectedDates:attendancePolicyUnclockedWorkDates(retained.replay.actualWork)}:null;
 }
 async function retainedAttestedPolicyWorkTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},currentContext?:AttendancePolicyExecutionContext){
  const [anchor]=await tx.select().from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),

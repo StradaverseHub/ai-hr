@@ -6615,12 +6615,15 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
             // Employee advisory is already held by lockAttendanceApplicationTx. Preserve
             // source/configuration/batch ordering and the original immutable HR evidence.
             await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            const retained=await retainedAttestedPolicyCancellationTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(!retained||retained.correctionId!==cor.id)throw Error('The original unclocked-work approval no longer owns this day. Review its later changes first.');
+            // Lock the complete physical statement before configuration and then ask the
+            // same Payroll protection owner once for every covered date, including later months.
+            for(const date of retained.protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
             await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
             const reserved=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
             if(reserved?.settlement)throw Error('Release the existing Payroll contribution or reverse its Leave Credit before cancelling this unclocked-work approval.');
-            const batches=await lockAttendancePayrollTx(tx,cor.employmentId,cor.attendanceDate);
-            const retained=await retainedAttestedPolicyCancellationTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
-            if(!retained||retained.correctionId!==cor.id)throw Error('The original unclocked-work approval no longer owns this day. Review its later changes first.');
+            const batches=await lockAttendancePayrollTx(tx,cor.employmentId,retained.protectedDates);
             const credits=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,cor.employmentId),
                 eq(toilAccrual.workedDate,cor.attendanceDate),sql`${toilAccrual.status}<>'reversed'`)).limit(1);
             if(credits.length)throw Error('Review and reverse the dependent Leave Credit before cancelling this application.');

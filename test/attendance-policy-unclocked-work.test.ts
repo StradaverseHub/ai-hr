@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
-import {attendancePolicyLocalWorkInstant,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
+import {attendancePolicyLocalWorkInstant,attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 const midnight=Date.parse('2026-09-20T00:00:00+08:00');
 const fixture=():AttendancePolicyUnclockedWork=>({version:1,completeWorkedDay:true,sourceDate:'2026-09-20',reason:'HR confirms the actual worked interval from a supervisor report.',
  intervals:[{fromEpochMillisecond:midnight+23*3600000+555,toEpochMillisecond:midnight+25*3600000+555}]});
@@ -70,5 +70,25 @@ describe('explicit requested positions within complete HR actual work',()=>{
   if(kind==='subminute')work.requestedIntervals[0]={...interval,toEpochMillisecond:interval.fromEpochMillisecond+1000};
   if(kind==='empty')work.requestedIntervals=[];
   expect(()=>validateAttendancePolicyUnclockedWork(work,midnight+3*86400000,kind==='count'?31:30)).toThrow();
+ });
+});
+
+describe('unclocked withdrawal physical calendar protection',()=>{
+ it('retains the source day and later physical dates across a month boundary',()=>{
+  const start=Date.parse('2026-09-30T00:00:00+08:00');
+  expect(attendancePolicyUnclockedWorkDates({...fixture(),sourceDate:'2026-09-30',intervals:[
+   {fromEpochMillisecond:start+23*3600000+777,toEpochMillisecond:start+25*3600000+555}]}))
+   .toEqual(['2026-09-30','2026-10-01']);
+ });
+ it('excludes an exclusive midnight end but includes a single actual millisecond after it',()=>{
+  const work={...fixture(),intervals:[{fromEpochMillisecond:midnight+23*3600000,toEpochMillisecond:midnight+86400000}]};
+  expect(attendancePolicyUnclockedWorkDates(work)).toEqual(['2026-09-20']);
+  work.intervals[0].toEpochMillisecond++;
+  expect(attendancePolicyUnclockedWorkDates(work)).toEqual(['2026-09-20','2026-09-21']);
+ });
+ it('keeps the source date without treating a gap as actual work',()=>{
+  expect(attendancePolicyUnclockedWorkDates({...fixture(),intervals:[
+   {fromEpochMillisecond:midnight+2*86400000,toEpochMillisecond:midnight+2*86400000+60000}]}))
+   .toEqual(['2026-09-20','2026-09-22']);
  });
 });

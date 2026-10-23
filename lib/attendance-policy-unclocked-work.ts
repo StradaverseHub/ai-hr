@@ -1,4 +1,5 @@
 import {isCalendarDate} from './calendar-date';
+import {todayInKualaLumpur} from './hr-date';
 
 /** Explicit HR testimony of actual work. These are entered instants, never clock captures,
  * approved-plan positions, computed payable counts or an approval capability. */
@@ -50,4 +51,17 @@ export function attendancePolicyLocalWorkInstant(value:string):number{
  const instant=Date.parse(value+'+08:00');
  if(!Number.isSafeInteger(instant))throw Error('Enter an exact actual work instant.');
  return instant;
+}
+
+/** Calendar coverage for withdrawal protection only; no payable count or financial authority.
+ * Retain the source day and every actual physical date, respecting exclusive interval ends. */
+export function attendancePolicyUnclockedWorkDates(value:AttendancePolicyUnclockedWork):string[]{
+ const work=validateAttendancePolicyUnclockedWork(value,Number.MAX_SAFE_INTEGER);
+ const midnight=Date.parse(work.sourceDate+'T00:00:00+08:00'),day=86400000,dates=new Set([work.sourceDate]);
+ for(const interval of work.intervals){
+  const first=Math.floor((interval.fromEpochMillisecond-midnight)/day);
+  const last=Math.floor((interval.toEpochMillisecond-1-midnight)/day);
+  for(let offset=first;offset<=last;offset++)dates.add(todayInKualaLumpur(new Date(midnight+offset*day)));
+ }
+ return [...dates].sort();
 }
