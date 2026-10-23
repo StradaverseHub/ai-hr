@@ -76,10 +76,10 @@ export async function LeaveCreditRulesTab({
     companyIds: visible.map((c) => ({ id: c.id, name: c.name })),
     employmentTypes: employmentTypeOptions,
     departmentIds: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
-    divisions: (profileOptions.division ?? []).map((o) => ({ id: o.value, name: o.label })),
+    divisions: organisationChoiceLabels(profileOptions.division ?? []).map((o) => ({ id: o.value, name: o.displayLabel })),
     positionIds: organisationChoiceLabels(positions).map((p) => ({ id: p.id, name: p.displayLabel })),
     gradeIds: grades.map((g) => ({ id: g.id, name: g.name || g.code })),
-    employmentCategories: (profileOptions.category ?? []).map((o) => ({ id: o.value, name: o.label })),
+    employmentCategories: organisationChoiceLabels(profileOptions.category ?? []).map((o) => ({ id: o.value, name: o.displayLabel })),
     employmentIds: employees.map((e) => ({ id: e.employmentId, name: e.name })),
   };
   const criteria = REPLACEMENT_ELIGIBILITY_CRITERIA.map((c) => ({ key: c.key, label: tr(c.labelKey) }));
