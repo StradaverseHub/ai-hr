@@ -50,6 +50,10 @@ export default defineConfig({
    * everything components/user-menu.tsx pulls in, plus the render harness itself.
    */
   optimizeDeps: {
+    // Browser tests mock server actions before dynamic UI imports. Static discovery still crawls
+    // those server graphs and triggers mid-suite re-optimization/reloads. Keep the existing explicit
+    // browser dependency list authoritative; no server module is shimmed into the client runtime.
+    noDiscovery: true,
     include: [
       'react',
       'react/jsx-dev-runtime',
