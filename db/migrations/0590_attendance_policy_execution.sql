@@ -90,6 +90,42 @@ BEGIN
   RAISE EXCEPTION 'Policy revision does not own the dated source' USING ERRCODE='23514';END IF;
  SELECT calc_trace#>>'{schedule,ruleId}' INTO recorded_group FROM public.attendance WHERE id=source.attendance_id;
  IF recorded_group IS DISTINCT FROM policy.rule_id::text THEN
+  -- An attested source deliberately has no punch-derived schedule trace. Read its
+  -- original owner-issued context and exact completed workflow instead; never mint
+  -- a trace or infer a schedule from the current employee configuration here.
+  SELECT e.context_evidence#>>'{schedule,ruleId}' INTO recorded_group
+   FROM public.attendance a JOIN public.attendance_policy_attested_effect e
+    ON e.attendance_id=a.id AND e.tenant_id=a.tenant_id AND e.correction_id=a.attested_work_correction_id
+   JOIN public.attendance_correction c ON c.id=e.correction_id AND c.tenant_id=e.tenant_id
+   JOIN public.attendance_policy_request_contract contract ON contract.correction_id=c.id AND contract.tenant_id=c.tenant_id
+   JOIN public.attendance_policy_final_receipt receipt ON receipt.correction_id=c.id AND receipt.tenant_id=c.tenant_id
+   WHERE a.id=source.attendance_id AND a.tenant_id=source.tenant_id AND a.employment_id=source.employment_id
+    AND a.attendance_date=source.attendance_date AND a.status='present'
+    AND e.company_id=source.company_id AND e.employment_id=source.employment_id AND e.attendance_date=source.attendance_date
+    AND e.context_evidence=a.attested_work_context AND e.context_evidence#>>'{selected,id}'=policy.id::text
+    AND e.context_evidence#>>'{schedule,ruleId}'=policy.rule_id::text
+    AND contract.company_id=source.company_id AND contract.employment_id=source.employment_id AND contract.attendance_date=source.attendance_date
+    AND contract.policy_binding=e.policy_binding AND contract.attested_work=e.attested_work
+    AND e.policy_binding->>'revisionId'=policy.id::text AND e.policy_binding->>'ruleId'=policy.rule_id::text
+    AND c.employment_id=source.employment_id AND c.attendance_date=source.attendance_date
+    AND c.status='approved' AND c.cancelled_at IS NULL AND c.applied_at IS NULL
+    AND c.requested_ot_minutes=e.requested_minutes AND c.approved_ot_minutes=e.approved_minutes AND c.ot_approval_method::text=e.manual_method
+    AND receipt.employment_id=source.employment_id AND receipt.attendance_date=source.attendance_date AND receipt.company_id=source.company_id
+    AND receipt.workflow_request_id=e.workflow_request_id AND receipt.actor_user_id=e.actor_user_id AND receipt.raw_evidence IS NULL
+    AND receipt.workflow_evidence->'submittedAttestedWork'=e.attested_work
+    AND(receipt.workflow_evidence->'unclockedEffect'-'recorded_at')=(to_jsonb(e)-'recorded_at')
+    AND(receipt.workflow_evidence#>>'{unclockedEffect,recorded_at}')::timestamptz=e.recorded_at
+    AND a.check_in_at IS NULL AND a.check_out_at IS NULL AND a.worked_minutes IS NULL AND a.ot_minutes IS NULL
+    AND a.late_minutes IS NULL AND a.early_out_minutes IS NULL AND a.under_minutes IS NULL
+    AND a.late_deduct_minutes IS NULL AND a.early_out_deduct_minutes IS NULL
+    AND a.ot_flat_minutes IS NULL AND a.ot00_minutes IS NULL AND a.ot10_minutes IS NULL
+    AND a.ot15_minutes IS NULL AND a.ot20_minutes IS NULL AND a.ot30_minutes IS NULL
+    AND(a.calc_trace IS NULL OR a.calc_trace-'overtimePattern'='{}'::jsonb)
+    AND NOT EXISTS(SELECT 1 FROM public.attendance_punch p WHERE p.tenant_id=a.tenant_id AND p.attendance_id=a.id AND p.voided_at IS NULL);
+ END IF;
+ -- Full ordered duration/cash/coverage evidence is still independently checked by
+ -- the existing deferred owners before this header can supply any settlement.
+ IF recorded_group IS DISTINCT FROM policy.rule_id::text THEN
   RAISE EXCEPTION 'Policy group must match the canonical recorded schedule' USING ERRCODE='23514';END IF;
  RETURN NEW;
 END $$;

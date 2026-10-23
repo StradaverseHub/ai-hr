@@ -1077,8 +1077,12 @@ describe('immutable non-payable policy part storage',()=>{
   expect(stored.datedCredit).toMatchObject({consumptionOrder:'earliestDateFirst',sourceMinutes:120,
    parts:[{dayClass:'normal',days:0.5},{dayClass:'rest',days:0.13}]});
   await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:f.sourceDate})).rejects.toThrow();
-  await expect(withTenant(ctx,tx=>tx.update(s.toilAccrual).set({datedCredit:{...stored.datedCredit!,days:9}})
-   .where(eq(s.toilAccrual.id,credit.accrualId)))).rejects.toThrow('Dated TOIL credit provenance is immutable');
+  let forgedCreditFailure:unknown;
+  try{await withTenant(ctx,tx=>tx.update(s.toilAccrual).set({datedCredit:{...stored.datedCredit!,days:9}})
+   .where(eq(s.toilAccrual.id,credit.accrualId)));}catch(error){forgedCreditFailure=error;}
+  const forgedCreditCause=((forgedCreditFailure as {cause?:unknown}|undefined)?.cause??forgedCreditFailure) as {code?:unknown;message?:unknown}|undefined;
+  expect(forgedCreditCause?.code).toBe('23514');expect(String(forgedCreditCause?.message)).toContain('Dated TOIL credit provenance is immutable');
+  expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].datedCredit).toEqual(stored.datedCredit);
   const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
   const leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
@@ -1314,7 +1318,7 @@ describe('immutable non-payable policy part storage',()=>{
    allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
    extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
   if(mode==='cash'){
-   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)}),transfer={...p,expectedCalculationId:read.calculation.id,
+   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7),scope:{employmentIds:[f.employmentId]}}),transfer={...p,expectedCalculationId:read.calculation.id,
     expectedSourceRevision:read.source.revision,batchId:batch.batchId,reason:'Fictional separate planned quantity cash election'};
    const paid=await transferOvertimePatternToPayroll(ctx,transfer);
    expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:paid.settlementId});
@@ -1449,7 +1453,7 @@ describe('immutable non-payable policy part storage',()=>{
   }
   if(mode==='cash'){
    await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
-   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)}),transfer={...p,
+   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7),scope:{employmentIds:[f.employmentId]}}),transfer={...p,
     expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,batchId:batch.batchId,reason:'Fictional attested Payroll transfer'};
    const first=await transferOvertimePatternToPayroll(ctx,transfer);
    expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});
