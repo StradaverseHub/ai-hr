@@ -3357,6 +3357,7 @@ export type EarnedLeaveCreditRow = {
   earned:number;used:number;available:number;expired:number;status:CreditRegisterStatus;reversible:boolean;
   reason:string|null;actorName:string|null;actorIsSystem:boolean;recordedAt:string;
   usage:CreditUsageDate[];unattributedUsed:number;settled:boolean;reversalReason:string|null;
+  datedCredits?:{sequence:number;date:string;dayClass:DatedToilCreditEvidence['parts'][number]['dayClass'];countedMinutes:number;earned:number;used:number;available:number;expired:number}[];
 };
 
 /** One row per actual earned lot; its ledger and allocation events remain the audit authority. */
@@ -3452,10 +3453,21 @@ async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterR
       const actor=grantActors.find(x=>x.event.aggregateId===lot.id&&x.event.subjectEmploymentId===lot.employmentId&&x.event.occurredAt.getTime()===(credit?.createdAt??lot.createdAt).getTime())??
         grantActors.find(x=>credit&&x.event.occurredAt.getTime()===credit.createdAt.getTime()&&x.event.subjectEmploymentId===lot.employmentId);
       const usage=usageByLot.get(lot.id)??[];
+      const datedCredits=lot.datedCredit?remainingDatedToilCredit(lot.datedCredit,round2(Math.max(0,facts.earned-facts.used))).map(part=>({
+        sequence:part.sequence,date:part.date,dayClass:part.dayClass,countedMinutes:part.countedMinutes,
+        earned:part.days,used:round2(part.days-part.remainingDays),
+        available:facts.status==='available'||facts.status==='partially_used'?part.remainingDays:0,
+        expired:facts.status==='expired'?part.remainingDays:0,
+      })):undefined;
+      if(datedCredits&&(round2(datedCredits.reduce((n,part)=>n+part.earned,0))!==facts.earned
+        ||round2(datedCredits.reduce((n,part)=>n+part.used,0))!==facts.used
+        ||round2(datedCredits.reduce((n,part)=>n+part.available,0))!==facts.available
+        ||round2(datedCredits.reduce((n,part)=>n+part.expired,0))!==facts.expired))
+        throw new ToilNotEligibleError('The recorded dated credit balance does not match its earned lot.');
       return {accrualId:lot.id,employmentId:lot.employmentId,employeeName:name,employeeCode:code,workedDate:lot.workedDate,
         workedDayKind:lot.workedDayKind??lot.dayType,expiresOn:lot.expiresOn,...facts,reason:lot.note??claims.find(x=>x.accrualId===lot.id)?.reason??null,
         actorName:actor?(audience==='own'?ownActorNames.get(actor.event.id)??null:actor.name):null,actorIsSystem:actor?.event.actorType==='system',recordedAt:(credit?.createdAt??lot.createdAt).toISOString(),
-        usage,unattributedUsed:round2(Math.max(0,facts.used-usage.reduce((sum,x)=>sum+x.days,0))),settled:lot.settledLedgerEntryId!=null,reversalReason:lot.reversalReason};
+        ...(datedCredits?{datedCredits}:{}),usage,unattributedUsed:round2(Math.max(0,facts.used-usage.reduce((sum,x)=>sum+x.days,0))),settled:lot.settledLedgerEntryId!=null,reversalReason:lot.reversalReason};
     });
     const filtered=all.filter(row=>(!p.status||row.status===p.status)&&(!p.from||row.workedDate>=p.from)&&(!p.to||row.workedDate<=p.to));
     filtered.sort((a,b)=>b.workedDate.localeCompare(a.workedDate)||b.recordedAt.localeCompare(a.recordedAt)||b.accrualId.localeCompare(a.accrualId));

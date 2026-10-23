@@ -6,7 +6,7 @@ import {createBatch,createPayComponent,transferOvertimePatternToPayroll,readPayr
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
-import {grantLeaveCreditRows,leaveCreditGrantClaimReview,runToilExpiry,accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
+import {listEarnedLeaveCredits,grantLeaveCreditRows,leaveCreditGrantClaimReview,runToilExpiry,accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
 import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
 import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
 import {recordedAttendancePolicyProposalPartsMatch,materializeAttendancePolicyProposalParts} from '../packs/attendance/policy-proposal-parts';
@@ -29,7 +29,7 @@ import {assignDefaultShift,createShift,setRestDay} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,calculateOvertimePatternDay,
+import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,readOvertimePatternCalculationTx,calculateOvertimePatternDay,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,canSubmitUnclockedAttendanceWork,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
@@ -1008,6 +1008,10 @@ describe('immutable non-payable policy part storage',()=>{
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
   await decideLeave(ctx,{leaveRequestId:request.leaveRequestId,decision:'approved'});
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].daysTaken).toBe('0.50');
+  const register=await listEarnedLeaveCredits(ctx,{employmentId:f.employmentId,today:leaveDate});
+  expect(register.rows.find(row=>row.accrualId===credit.accrualId)).toMatchObject({used:0.5,available:0.13,
+   datedCredits:[{dayClass:'normal',earned:0.5,used:0.5,available:0},{dayClass:'rest',earned:0.13,used:0,available:0.13}]});
+
   const expired=await runToilExpiry(ctx,{today:credit.expiresOn});
   expect(expired).toMatchObject({converted:1,convertedDays:0.13,convertedAmount:25});
   const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,credit.accrualId),eq(s.domainEvent.eventType,'toil.converted')));
@@ -1199,6 +1203,9 @@ describe('immutable non-payable policy part storage',()=>{
   if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical approved-plan settlement parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
   expect(read.policyParts.map(row=>[row.rawMinutes,row.allocatedPayableMinutes,row.sourceIntervals])).toEqual([[0,0,[]]]);
+  const review=await withTenant(ctx,tx=>readOvertimePatternCalculationTx(tx,ctx,p));
+  expect(review?.policyPayableParts).toEqual([{sequence:0,calendarDate:p.date,minutes:90}]);
+
   const proof=read.evidence.evidence.policyCapturedCoverage as {countBasis:string;minutes:number;intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
   const midnight=Date.parse(p.date+'T00:00:00+08:00');
   expect(proof).toMatchObject({countBasis:'approvedPlanWithIndependentWorkedDay',minutes:90});

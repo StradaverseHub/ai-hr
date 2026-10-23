@@ -1,3 +1,4 @@
+import {attendancePolicyStoredPartCount} from './policy-count-attribution';
 import type {PolicyFinancialContract,PolicyFinancialDurationContract} from './policy-financial-contract';
 /** Bind canonical input authority once. Public previews never mint actual recording handles. */
 import type {SessionContext, Tx} from '../../db/client';
@@ -83,7 +84,7 @@ export async function overtimeSourceRevisionTx(tx: Tx, ctx: SessionContext, p: {
   return row ?? null;
 }
 
-export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null;policyFinancial?:PolicyFinancialContract;policyDuration?:PolicyFinancialDurationContract};
+export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null;policyFinancial?:PolicyFinancialContract;policyDuration?:PolicyFinancialDurationContract;policyPayableParts?:{sequence:number;calendarDate:string;minutes:number}[]};
 /** Immutable evidence is validated structurally and bound to actual stored identities, never replayed
  * against a current definition merely to explain an old amount. */
 export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string; revisionId?: string}): Promise<OvertimePatternCalculationReview | null> {
@@ -96,11 +97,22 @@ export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionConte
   if(calculation.bindingKind==='attendanceGroupPolicy'){
     // readOvertimeCalculationTx already independently validated the entire historical policy
     // parent, duration/cash contracts, every dated part and every persisted line.
+    const policyDuration=wrapper?.policyFinancialDurationContract as PolicyFinancialDurationContract|undefined;
+    const policyPayableParts:{sequence:number;calendarDate:string;minutes:number}[]=[];
+    if(policyDuration?.state==='prepared'){
+      for(const part of policyDuration.parts){
+        const minutes=attendancePolicyStoredPartCount(part);
+        if(minutes===null)throw new OvertimeOwnerError('unavailable','The recorded dated payable count is unavailable.');
+        policyPayableParts.push({sequence:part.sequence,calendarDate:part.calendarDate,minutes});
+      }
+      if(policyPayableParts.reduce((sum,part)=>sum+part.minutes,0)!==policyDuration.minutes)
+        throw new OvertimeOwnerError('unavailable','The recorded dated payable count does not match its parent.');
+    }
     return {sourceId:source.id,sourceRevision:source.revision,calculationId:calculation.id,
       status:calculation.outcome,durationStatus:calculation.durationOutcome,approvalStatus:calculation.approvalStatus,
       evaluation:null,duration:null,recordedAt:calculation.createdAt.toISOString(),
       policyFinancial:wrapper?.policyFinancialContract as PolicyFinancialContract|undefined,
-      policyDuration:wrapper?.policyFinancialDurationContract as PolicyFinancialDurationContract|undefined};
+      policyDuration,...(policyDuration?.state==='prepared'?{policyPayableParts}:{})};
   }
   const evaluation = parseRecordedOvertimeEvaluation(wrapper?.evaluation);
   const duration = parseRecordedOvertimeDurationEvaluation(wrapper?.duration);
