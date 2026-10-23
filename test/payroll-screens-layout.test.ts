@@ -417,7 +417,10 @@ describe('152fea7f · D — full width was NOT bought by removing the employee l
     const shell = read('components/collapsible-employee-panel.tsx');
     expect(shell).toContain('lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]');
     expect(shell).toContain('lg:grid-cols-1');
-    expect(shell).toContain('{open && <div className="min-w-0">{panel}</div>}');
+    // Records workspaces may retain hidden picker state; default consumers still unmount the cell.
+    expect(shell).toContain('keepPanelMounted = false');
+    expect(shell).toContain('hidden={!open}');
+    expect(shell).toContain('{(open || keepPanelMounted) && <div id={panelId} hidden={!open} className="min-w-0">{panel}</div>}');
     // …and the shell itself carries no width of its own, which is WHY widening the page reaches it.
     expect(classNameLiterals(shell).filter(capsPage)).toEqual([]);
   });

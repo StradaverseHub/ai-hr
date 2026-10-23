@@ -43,7 +43,14 @@ describe('r394 · every page folder has a loading boundary', () => {
       if (EXEMPT.some((r) => r.test(d))) continue;
       const f = path.join(ROOT, d, 'loading.tsx');
       if (!fs.existsSync(f)) { missing.push(d); continue; }
-      if (!fs.readFileSync(f, 'utf8').includes("from '@/components/route-loading'")) wrong.push(d);
+      const source = fs.readFileSync(f, 'utf8');
+      const localized: Record<string,string> = {'app/attendance/my-roster':'attendance.myCalendar','app/me/ea':'myEa','app/me/payslip':'myPayslip','app/me/tp3':'myTp3'};
+      if (localized[d]) {
+        expect(source, d).toContain(`getTranslations('${localized[d]}')`);
+        expect(source, d).toContain('role="status"');
+        expect(source, d).toContain("t('loading')");
+        expect(source, d).not.toMatch(/animate-(?:pulse|spin)/);
+      } else if (!source.includes("from '@/components/route-loading'")) wrong.push(d);
     }
     expect(missing, 'add `export { default } from \'@/components/route-loading\';` as loading.tsx').toEqual([]);
     expect(wrong).toEqual([]);

@@ -317,7 +317,7 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     // It printed the employee's CURRENT administrative manager on every row including rejected and
     // withdrawn ones — a statement that the request is still with that person when it was decided weeks
     // ago, and possibly not even the right name. The sibling screen already took this decision.
-    expect(flat(LIST)).toContain("{p.status === 'pending' ? approver : '—'}");
+    expect(flat(LIST)).toContain("{p.status === 'pending' ? p.assignedApproverNames == null ? approver : p.assignedApproverNames.join(' / ') || t('otWorkflowGoesTo') : '—'}");
   });
 
   it('an ineligible row renders NOTHING where the dead greyed-out Withdraw used to be', () => {

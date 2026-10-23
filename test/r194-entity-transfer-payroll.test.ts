@@ -682,9 +682,11 @@ describe('the payslip segment reader and its message keys', () => {
       'app/me/payslip/[payslipId]/pdf/route.ts',
     ]) {
       const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
-      expect(src, f).toContain('payslipSegmentOf');
+      const assembly = f === 'app/me/payslip/[payslipId]/pdf/route.ts' ? fs.readFileSync(path.join(process.cwd(), 'app/me/payslip/document.ts'), 'utf8') : src;
+      if (f === 'app/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
+      expect(assembly, f).toContain('payslipSegmentOf');
       // …and nothing re-derives it from the raw stamp beside the shared reader.
-      expect(src.includes('payslipSegment('), `${f}: must not read the raw stamp directly`).toBe(false);
+      expect(assembly.includes('payslipSegment('), `${f}: must not read the raw stamp directly`).toBe(false);
     }
   });
 });

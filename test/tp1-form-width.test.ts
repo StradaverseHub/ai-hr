@@ -217,13 +217,13 @@ describe('7ad37961 · A — the Edit TP1 Relief page fills the width its sibling
     );
   });
 
-  it('the EMPLOYEE screen keeps the reading column that belongs to it', () => {
-    // The other consumer of the shared form, asserted here because it is the reason section B exists and
-    // NOT because this round touched it — it deliberately did not. /me/tax-relief is one person's own
-    // form on a self-service page with no employee list beside it, and it keeps its 42rem measure; what
-    // widens there is what the form itself does INSIDE that measure. If a later round does decide to
-    // widen it, this case is the one to update — with a reason — rather than the form's grids.
-    expect(classNameLiterals(read(ESS_PAGE)).some(capsPage), `${ESS_PAGE} lost its reading measure`).toBe(true);
+  it('the monthly employee history and declaration workspace use the approved full width', () => {
+    // Board2 monthly history/detail replaces the old single 42rem form. The shared form keeps its
+    // container-responsive grids (section B below), while history and detail use the same full width.
+    const own = read(ESS_PAGE);
+    expect(own).toContain('<div className={pageWideCls}>');
+    expect(classNameLiterals(own).filter(capsPage)).toEqual([]);
+    expect(own).toContain('<Tp1DeclarationsList');
   });
 });
 

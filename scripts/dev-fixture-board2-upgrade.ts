@@ -17,7 +17,7 @@ for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  if(!['postgres:','postgresql:'].includes(u.protocol)||!['localhost','127.0.0.1','[::1]'].includes(u.hostname)||u.port!=='5433'||u.pathname!=='/ai_hr_board2_upgrade'||u.search||u.hash)throw new Error('Only the named disposable Board 2 upgrade database is allowed.');
 }
 if(new URL(process.env.DATABASE_URL!).username!=='ai_hr_app'||new URL(process.env.MIGRATION_DATABASE_URL!).username==='ai_hr_app')throw new Error('Separate application and owner roles required.');
-const expected=process.env[phase==='prepare'?'BOARD2_BASELINE_REF':'BOARD2_CANDIDATE_REF'];
+const expected=phase==='prepare'?process.env.BOARD2_BASELINE_REF:process.env.BOARD2_CANDIDATE_REF;
 if(!expected)throw new Error('Supply the exact reviewed baseline/candidate ref.');
 const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 if(head!==execFileSync('git',['rev-parse',expected],{encoding:'utf8'}).trim())throw new Error('Checkout does not match the explicit baseline/candidate ref.');
