@@ -19,3 +19,10 @@ describe('linked JA / JD / JS contract', () => {
             expect(messages.statuses[status]).toBeTruthy();
     } });
 });
+it('projects a successor by stable ID and type while preserving the approved answer object',async()=>{
+ const {projectJobAnswers}=await import('../packs/job-descriptions/model');
+ const old=structuredClone(DEFAULT_FORM);old.sections[0].fields.push({id:'custom',label:'Custom',type:'number',required:false,custom:true},{id:'removed',label:'Removed',type:'text',required:false,custom:true});
+ const next=structuredClone(DEFAULT_FORM);next.version=2;next.sections[0].fields.push({id:'custom',label:'Custom',type:'text',required:true,custom:true},{id:'added',label:'Added',type:'date',required:false,custom:true});
+ const answers={analysisDetails:[{analyst:'Analyst',custom:42,removed:'Keep in original history'}]};
+ expect(projectJobAnswers(old,next,answers)).toEqual({analysisDetails:[{analyst:'Analyst'}]});expect(answers.analysisDetails[0].custom).toBe(42);expect(answers.analysisDetails[0].removed).toBe('Keep in original history');
+});

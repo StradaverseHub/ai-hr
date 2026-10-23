@@ -56,7 +56,7 @@ CREATE TABLE job_document_audit (
 CREATE INDEX job_document_company_idx ON job_document(tenant_id,company_id,updated_at);
 --> statement-breakpoint
 CREATE FUNCTION app.job_document_scope(p_tenant uuid,p_job uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path=public,pg_temp AS $$
- SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM job_document j WHERE j.tenant_id=p_tenant AND j.id=p_job AND app.is_admin_for(j.company_id))
+ SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM job_document j WHERE j.tenant_id=p_tenant AND j.id=p_job AND app.access_workforce_company(j.company_id,'workforce.view'))
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.job_revision_scope(p_tenant uuid,p_revision uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path=public,pg_temp AS $$
@@ -71,33 +71,45 @@ ALTER TABLE job_document ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE job_document FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY job_document_scope ON job_document FOR ALL USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
+CREATE POLICY job_document_read ON job_document FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.view'));
+--> statement-breakpoint
+CREATE POLICY job_document_insert ON job_document FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.maintain') AND created_by=app.current_user_id());
+--> statement-breakpoint
+CREATE POLICY job_document_update ON job_document FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.maintain')) WITH CHECK(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.maintain'));
+--> statement-breakpoint
+CREATE POLICY job_document_delete ON job_document FOR DELETE USING(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.maintain'));
 --> statement-breakpoint
 ALTER TABLE job_document_form ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE job_document_form FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY job_document_form_scope ON job_document_form FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
+CREATE POLICY job_document_form_scope ON job_document_form FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.view'));
 --> statement-breakpoint
-CREATE POLICY job_document_form_insert ON job_document_form FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND created_by=app.current_user_id());
+CREATE POLICY job_document_form_insert ON job_document_form FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.maintain') AND app.access_configuration_not_denied() AND created_by=app.current_user_id());
 --> statement-breakpoint
 ALTER TABLE job_document_revision ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE job_document_revision FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY job_document_revision_scope ON job_document_revision FOR ALL USING(app.job_document_scope(tenant_id,job_id)) WITH CHECK(app.job_document_scope(tenant_id,job_id));
+CREATE POLICY job_document_revision_read ON job_document_revision FOR SELECT USING(app.job_document_scope(tenant_id,job_id));
+--> statement-breakpoint
+CREATE POLICY job_document_revision_write ON job_document_revision FOR ALL USING(app.job_document_scope(tenant_id,job_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=job_id AND j.tenant_id=job_document_revision.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain'))) WITH CHECK(app.job_document_scope(tenant_id,job_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=job_id AND j.tenant_id=job_document_revision.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain')));
 --> statement-breakpoint
 ALTER TABLE job_document_review ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE job_document_review FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY job_document_review_scope ON job_document_review FOR ALL USING(app.job_revision_scope(tenant_id,revision_id)) WITH CHECK(app.job_revision_scope(tenant_id,revision_id));
+CREATE POLICY job_document_review_read ON job_document_review FOR SELECT USING(app.job_revision_scope(tenant_id,revision_id));
+--> statement-breakpoint
+CREATE POLICY job_document_review_write ON job_document_review FOR ALL USING(app.job_revision_scope(tenant_id,revision_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=(select job_id from job_document_revision where id=job_document_review.revision_id) AND j.tenant_id=job_document_review.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain'))) WITH CHECK(app.job_revision_scope(tenant_id,revision_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=(select job_id from job_document_revision where id=job_document_review.revision_id) AND j.tenant_id=job_document_review.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain')));
 --> statement-breakpoint
 ALTER TABLE job_document_attachment ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE job_document_attachment FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY job_document_attachment_scope ON job_document_attachment FOR ALL USING(app.job_revision_scope(tenant_id,revision_id)) WITH CHECK(app.job_revision_scope(tenant_id,revision_id));
+CREATE POLICY job_document_attachment_read ON job_document_attachment FOR SELECT USING(app.job_revision_scope(tenant_id,revision_id));
+--> statement-breakpoint
+CREATE POLICY job_document_attachment_write ON job_document_attachment FOR ALL USING(app.job_revision_scope(tenant_id,revision_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=(select job_id from job_document_revision where id=job_document_attachment.revision_id) AND j.tenant_id=job_document_attachment.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain'))) WITH CHECK(app.job_revision_scope(tenant_id,revision_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=(select job_id from job_document_revision where id=job_document_attachment.revision_id) AND j.tenant_id=job_document_attachment.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain')));
 --> statement-breakpoint
 ALTER TABLE job_document_audit ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -105,7 +117,7 @@ ALTER TABLE job_document_audit FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY job_document_audit_read ON job_document_audit FOR SELECT USING(app.job_document_scope(tenant_id,job_id));
 --> statement-breakpoint
-CREATE POLICY job_document_audit_insert ON job_document_audit FOR INSERT WITH CHECK(app.job_document_scope(tenant_id,job_id) AND actor_id=app.current_user_id());
+CREATE POLICY job_document_audit_insert ON job_document_audit FOR INSERT WITH CHECK(app.job_document_scope(tenant_id,job_id) AND actor_id=app.current_user_id() AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=job_id AND j.tenant_id=job_document_audit.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain')));
 --> statement-breakpoint
 CREATE FUNCTION app.guard_job_revision() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
 BEGIN
@@ -171,3 +183,22 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON job_document,job_document_revision,job_docu
 GRANT SELECT,INSERT ON job_document_form,job_document_audit TO ai_hr_app;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.guard_job_revision(),app.guard_job_children(),app.guard_job_master() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Narrow metadata seam: an HR document maintainer may check one named reviewer in that exact company.
+-- No document bytes or security configuration is returned; arbitrary-company callers fail closed.
+CREATE FUNCTION app.job_document_reviewer_eligible(p_company uuid,p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.current_user_id() IS NOT NULL AND app.principal_snapshot_current()
+  AND app.access_workforce_company(p_company,'workforce.maintain')
+  AND EXISTS(SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+   JOIN public.role_assignment ra ON ra.tenant_id=u.tenant_id AND ra.app_user_id=u.id
+   JOIN public.access_capability cap ON cap.id='workforce.maintain'
+   WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=p_user
+    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND ra.role::text IN ('hr_admin','super_admin') AND app.access_scope_covers(ra.company_id,co.id,co.tenant_id)
+    AND (NOT cap.supported OR app.access_allowed_for(u.id,cap.id,co.id)));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.job_document_reviewer_eligible(uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.job_document_reviewer_eligible(uuid,uuid) TO ai_hr_app;

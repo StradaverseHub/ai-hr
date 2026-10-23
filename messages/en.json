@@ -22592,7 +22592,61 @@
         "approval": "Approvals and effective date are complete",
         "history": "Version and revision history are recorded"
       }
-    }
+    },
+    "employmentTypes": {
+      "full_time": "Full-time",
+      "part_time": "Part-time",
+      "contract": "Contract",
+      "intern": "Intern"
+    },
+    "optionCaptions": {
+      "evidence": {
+        "method": {
+          "0": "Job-holder interview",
+          "1": "Manager interview",
+          "2": "Direct observation",
+          "3": "Questionnaire / survey",
+          "4": "SOPs / work instructions",
+          "5": "Organization chart",
+          "6": "Work samples / reports",
+          "7": "KPI / performance data",
+          "8": "Regulatory / safety documents",
+          "9": "Other"
+        }
+      },
+      "identification": {
+        "positionStatus": {
+          "0": "New position",
+          "1": "Replacement",
+          "2": "Revised role"
+        }
+      },
+      "skills": {
+        "category": {
+          "0": "Technical",
+          "1": "Functional knowledge",
+          "2": "Computer / software",
+          "3": "Language"
+        },
+        "priority": {
+          "0": "Essential",
+          "1": "Preferred"
+        }
+      },
+      "competencies": {
+        "category": {
+          "0": "Behavioural",
+          "1": "Leadership / management"
+        },
+        "priority": {
+          "0": "Essential",
+          "1": "Preferred"
+        }
+      }
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "pageNumber": "Page {page}"
   },
   "rewardsAccess": {
     "title": "Rewards access",

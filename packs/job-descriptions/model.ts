@@ -184,3 +184,16 @@ export function validateInput(x: JobInput, definition: FormDefinition, complete 
         throw new JobDocumentError('Set the owner, reviewers, approver, effective date and next review date');
     validateAnswers(definition, x.answers, complete);
 }
+/** A successor adopts the new schema deliberately. Never reinterpret an answer after a type/choice change. */
+export function projectJobAnswers(previous:FormDefinition,next:FormDefinition,answers:Answers):Answers{
+ const result:Answers={};
+ for(const section of next.sections){const old=previous.sections.find(s=>s.id===section.id);if(!old)continue;const rows=answers[section.id];if(!Array.isArray(rows))continue;
+  result[section.id]=rows.slice(0,section.repeated?100:1).map(row=>Object.fromEntries(section.fields.flatMap(field=>{const prior=old.fields.find(f=>f.id===field.id);const value=row[field.id];if(!prior||prior.type!==field.type||value===undefined||field.type==='choice'&&value!==''&&!field.options?.includes(String(value)))return[];return[[field.id,value]];})));
+ }
+ return result;
+}
+/** Choice values remain stable English identifiers; presentation follows locale for standard options. */
+export function standardJobChoiceKey(sectionId:string,fieldId:string,value:string):string|undefined{
+ const field=DEFAULT_FORM.sections.find(s=>s.id===sectionId)?.fields.find(f=>f.id===fieldId);
+ const index=field?.options?.indexOf(value)??-1;return index>=0?`optionCaptions.${sectionId}.${fieldId}.${index}`:undefined;
+}

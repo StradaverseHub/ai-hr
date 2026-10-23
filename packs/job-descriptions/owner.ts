@@ -1,9 +1,11 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '@/db/client';
 import { actorOf, appendEvent } from '@/db/events';
+import { organisationChoiceLabel as label, organisationChoiceLabels } from '@/lib/organisation-choice-label';
+import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
 import { businessUnit, company, department, jobGrade, location, position, profileOption } from '@/db/schema';
 import { labelCompanyIdsSql, labelUsableByCompany, lockLabelCriteriaTx, visibleLabelIdsCondition } from '@/core/system-labels';
-import { DEFAULT_FORM, JobDocumentError, normalizedJobCode, validateDefinition, validateInput, type FormDefinition, type JobInput, type OrgAssignment } from './model';
+import { DEFAULT_FORM, JobDocumentError, normalizedJobCode, projectJobAnswers, validateDefinition, validateInput, type FormDefinition, type JobInput, type OrgAssignment } from './model';
 export type MasterOption = {
     value: string;
     label: string;
@@ -89,27 +91,26 @@ function uuid(x: string): string { if (!UUID.test(x))
     throw new JobDocumentError('Choose a valid record'); return x; }
 function actor(ctx: SessionContext) { if (!ctx.userId || !UUID.test(ctx.userId) || !(ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? []).some(g => ['hr_admin', 'super_admin'].includes(g.role)))
     throw new JobDocumentError('Job documentation requires an authorized HR user'); return ctx.userId; }
+/** Access decisions are read under the same configuration lock used by revocation writers. */
+async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
+}
 async function rows<T>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> { return await tx.execute(q) as unknown as T[]; }
-async function scope(tx: Tx, ctx: SessionContext, companyId: string): Promise<void> { uuid(companyId); const [r] = await rows<{
+async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 'view'|'maintain'='maintain'): Promise<void> { uuid(companyId); const [r] = await rows<{
     ok: boolean;
-}>(tx, sql `select exists(select 1 from company where id=${companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id)) as ok`); if (!r?.ok)
+}>(tx, sql `select exists(select 1 from company where id=${companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.access_workforce_company(id,${'workforce.'+operation})) as ok`); if (!r?.ok)
     throw new JobDocumentError('Job record not available'); }
-function label(x: {
-    label?: string | null;
-    name?: string;
-    title?: string;
-    code?: string;
-}): string { const a = x.label?.trim() || x.name || x.title || x.code || ''; const b = x.code || x.title; return b && a !== b ? `${a} · ${b}` : a; }
 export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
     actor(ctx);
-    return withTenant(ctx, async (tx) => {
-        const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName), asc(company.id));
+    return jobTenant(ctx, async (tx) => {
+        const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
+        if(!companies.length)return{companies:[],businessUnit:[],department:[],position:[],grade:[],location:[],section:[],team:[],family:[],employmentType:[],people:[]};
         const ids = companies.map(v => v.value);
         const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
         const departments = await tx.select({ id: department.id, name: department.name, label: department.label, businessUnitId: department.businessUnitId, companyIds: labelCompanyIdsSql(department, 'department'), isGlobal: department.isGlobal }).from(department).where(and(eq(department.tenantId, ctx.tenantId), isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name), asc(department.id));
         const positions = await tx.select({ id: position.id, title: position.title, label: position.label, family: position.jobFamily, companyIds: labelCompanyIdsSql(position, 'position'), isGlobal: position.isGlobal }).from(position).where(and(eq(position.tenantId, ctx.tenantId), isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', ids))).orderBy(asc(position.title), asc(position.id));
         const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
-        const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.is_admin_for(${location.companyId})`)).orderBy(asc(location.name), asc(location.id));
+        const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.access_workforce_company(${location.companyId},'workforce.view')`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
         const people = await rows<{
             value: string;
@@ -117,20 +118,20 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
             companyIds: string[];
             isGlobal: boolean;
         }>(tx, sql `select u.id::text as value, coalesce(p.full_name,u.id::text) as label, array_agg(distinct ra.company_id::text) filter(where ra.company_id is not null) as "companyIds", bool_or(ra.company_id is null or ra.role='super_admin') as "isGlobal" from app_user u join role_assignment ra on ra.app_user_id=u.id and ra.tenant_id=u.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and ra.role in ('hr_admin','super_admin') and (ra.company_id is null or app.is_admin_for(ra.company_id)) group by u.id,p.full_name order by label,u.id`);
-        const map = (rs: typeof bus | typeof departments | typeof positions) => rs.map(v => ({ ...v, value: v.id, label: label(v) }));
-        return { companies, businessUnit: map(bus), department: map(departments), position: map(positions), grade: grades.map(v => ({ value: v.id, label: label(v) })), location: locations.map(v => ({ value: v.id, label: v.name, companyIds: [v.companyId] })), section: profiles.filter(v => v.category === 'section').map(v => ({ value: v.value, label: v.label })), team: profiles.filter(v => v.category === 'team').map(v => ({ value: v.value, label: v.label })), family: [...new Set(positions.map(v => v.family).filter((v): v is string => !!v))].sort().map(v => ({ value: v, label: v })), employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(v => ({ value: v, label: v.replaceAll('_', ' ') })), people: people.map(v => ({ ...v, companyIds: v.companyIds ?? [] })) };
+        const map = (rs: typeof bus | typeof departments | typeof positions) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
+        return { companies, businessUnit: map(bus), department: map(departments), position: map(positions), grade: organisationChoiceLabels(grades).map(v => ({ value: v.id, label: v.displayLabel })), location: locations.map(v => ({ value: v.id, label: v.name, companyIds: [v.companyId] })), section: profiles.filter(v => v.category === 'section').map(v => ({ value: v.value, label: v.label })), team: profiles.filter(v => v.category === 'team').map(v => ({ value: v.value, label: v.label })), family: [...new Set(positions.map(v => v.family).filter((v): v is string => !!v))].sort().map(v => ({ value: v, label: v })), employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(v => ({ value: v, label: v.replaceAll('_', ' ') })), people: people.map(v => ({ ...v, companyIds: v.companyIds ?? [] })) };
     });
 }
 async function definitionTx(tx: Tx, ctx: SessionContext, companyId: string): Promise<FormDefinition> { const [r] = await rows<{
     definition: FormDefinition;
 }>(tx, sql `select definition from job_document_form where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid order by version desc limit 1`); return r?.definition ?? structuredClone(DEFAULT_FORM); }
-export async function getJobForm(ctx: SessionContext, companyId: string) { actor(ctx); return withTenant(ctx, async (tx) => { await scope(tx, ctx, companyId); return definitionTx(tx, ctx, companyId); }); }
-export async function configureJobForm(ctx: SessionContext, companyId: string, expectedVersion: number, definition: FormDefinition) { const by = actor(ctx); const def = validateDefinition(definition); return withTenant(ctx, async (tx) => { await scope(tx, ctx, companyId); await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:job-form:${companyId}`},0))`); const current = await definitionTx(tx, ctx, companyId); if (current.version !== expectedVersion || def.version !== expectedVersion + 1)
+export async function getJobForm(ctx: SessionContext, companyId: string) { actor(ctx); return jobTenant(ctx, async (tx) => { await scope(tx, ctx, companyId,'view'); return definitionTx(tx, ctx, companyId); }); }
+export async function configureJobForm(ctx: SessionContext, companyId: string, expectedVersion: number, definition: FormDefinition) { const by = actor(ctx); const def = validateDefinition(definition); return jobTenant(ctx, async (tx) => { await scope(tx, ctx, companyId); const [config] = await rows<{ok:boolean}>(tx,sql`select app.access_configuration_not_denied() as ok`);if(!config?.ok)throw new JobDocumentError('Form configuration permission is unavailable'); await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:job-form:${companyId}`},0))`); const current = await definitionTx(tx, ctx, companyId); if (current.version !== expectedVersion || def.version !== expectedVersion + 1)
     throw new JobDocumentError('The form changed. Reopen configuration before saving'); await tx.execute(sql `insert into job_document_form(tenant_id,company_id,version,definition,created_by) values(${ctx.tenantId}::uuid,${companyId}::uuid,${def.version},${JSON.stringify(def)}::jsonb,${by}::uuid)`); await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'job-document-form', aggregateId: companyId, eventType: 'job-document.form.configured', actor: actorOf(ctx), payload: { companyId, fromVersion: expectedVersion, toVersion: def.version } }); return def; }); }
-async function assignedUser(tx: Tx, ctx: SessionContext, userId: string, companyId: string) { uuid(userId); const [r] = await rows<{
-    ok: boolean;
-}>(tx, sql `select exists(select 1 from app_user u join role_assignment ra on ra.app_user_id=u.id and ra.tenant_id=u.tenant_id where u.id=${userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (ra.role='super_admin' or (ra.role='hr_admin' and (ra.company_id is null or ra.company_id=${companyId}::uuid or exists(select 1 from app.company_subtree(ra.company_id) tree where tree.id=${companyId}::uuid))))) as ok`); if (!r?.ok)
-    throw new JobDocumentError('Choose a currently authorized reviewer / approver for this company'); }
+async function assignedUser(tx:Tx,ctx:SessionContext,userId:string,companyId:string){
+ uuid(userId);const [r]=await rows<{ok:boolean}>(tx,sql`select app.job_document_reviewer_eligible(${companyId}::uuid,${userId}::uuid) as ok`);
+ if(!r?.ok)throw new JobDocumentError('Choose a currently authorized reviewer / approver for this company');
+}
 async function orgLabels(tx: Tx, ctx: SessionContext, x: JobInput, previous?: JobRevision): Promise<Record<string, string>> {
     const [co] = await tx.select({ name: company.legalName }).from(company).where(eq(company.id, x.companyId));
     const labels: Record<string, string> = { company: previous?.org_labels.company ?? co?.name ?? '' };
@@ -218,7 +219,7 @@ export async function saveJobDraft(ctx: SessionContext, input: JobInput, existin
     lockVersion: number;
 }) {
     const by = actor(ctx);
-    return withTenant(ctx, async (tx) => {
+    return jobTenant(ctx, async (tx) => {
         await scope(tx, ctx, input.companyId);
         let old: JobRevision | undefined;
         let jobId = existing?.jobId;
@@ -254,20 +255,30 @@ export async function saveJobDraft(ctx: SessionContext, input: JobInput, existin
         return { jobId, revisionId: saved.id };
     });
 }
-export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return withTenant(ctx, async (tx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(p.full_name,u.id::text) as name from job_document_review r join app_user u on u.id=r.reviewer_id left join person p on p.id=u.person_id where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string }>(tx, sql`select u.id::text as id, coalesce(p.full_name,u.id::text) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
+export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return jobTenant(ctx, async (tx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(p.full_name,u.id::text) as name from job_document_review r join app_user u on u.id=r.reviewer_id left join person p on p.id=u.person_id where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string }>(tx, sql`select u.id::text as id, coalesce(p.full_name,u.id::text) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
         return { ...found, history, reviews, attachments, events, principals: Object.fromEntries(principals.map(p => [p.id,p.name])) }; }); }
-export type JobFilters = {
-    q?: string;
-    company?: string;
-    businessUnit?: string;
-    department?: string;
-    grade?: string;
-    family?: string;
-    status?: string;
-};
-export async function listJobDocuments(ctx: SessionContext, filters: JobFilters = {}) { actor(ctx); return withTenant(ctx, async (tx) => { const all = await rows<Job & {
-    revision: JobRevision;
-}>(tx, sql `select j.*,c.legal_name as company_name,to_jsonb(r) as revision from job_document j join company c on c.id=j.company_id and c.tenant_id=j.tenant_id join lateral(select * from job_document_revision where job_id=j.id order by version desc limit 1) r on true where j.tenant_id=${ctx.tenantId}::uuid order by j.updated_at desc,j.id`); return all.filter(j => { const status = j.inactive ? 'inactive' : j.revision.status; return (!filters.q || `${j.job_code} ${j.revision.title}`.toLocaleLowerCase().includes(filters.q.toLocaleLowerCase())) && (!filters.company || j.company_id === filters.company) && (!filters.status || status === filters.status) && (['businessUnit', 'department', 'grade', 'family'] as const).every(k => !filters[k] || j.revision.org[k] === filters[k]); }); }); }
+export type JobFilters={q?:string;company?:string;businessUnit?:string;department?:string;grade?:string;family?:string;status?:string;page?:string};
+export type JobSummary=Job&{revision:Pick<JobRevision,'id'|'title'|'version'|'status'|'org'|'org_labels'|'updated_at'>};
+function filtersSql(ctx:SessionContext,f:JobFilters){
+ const q=(f.q??'').trim().slice(0,200).replace(/[\\%_]/g,'\\$&');
+ return sql`j.tenant_id=${ctx.tenantId}::uuid
+ ${q?sql`and (j.job_code ilike ${'%'+q+'%'} or r.title ilike ${'%'+q+'%'})`:sql``}
+ ${f.company?sql`and j.company_id::text=${f.company}`:sql``}
+ ${f.status?sql`and (case when j.inactive then 'inactive' else r.status end)=${f.status}`:sql``}
+ ${sql.join((['businessUnit','department','grade','family'] as const).filter(k=>f[k]).map(k=>sql`and r.org->>${k}=${f[k]}`),sql` `)}`;
+}
+export async function getJobDocumentPage(ctx:SessionContext,filters:JobFilters={}){
+ actor(ctx);const page=Math.max(1,Math.min(20000,Number.parseInt(filters.page??'1',10)||1));const pageSize=50;
+ return jobTenant(ctx,async tx=>{
+ const match=filtersSql(ctx,filters);const from=sql`from job_document j join company c on c.id=j.company_id and c.tenant_id=j.tenant_id join lateral(select id,title,version,status,org,org_labels,updated_at from job_document_revision where job_id=j.id order by version desc limit 1) r on true where ${match}`;
+ const rowsFound=await rows<JobSummary>(tx,sql`select j.*,c.legal_name as company_name,to_jsonb(r) as revision ${from} order by j.updated_at desc,j.id limit ${pageSize} offset ${(page-1)*pageSize}`);
+ const [count]=await rows<{total:number}>(tx,sql`select count(*)::int as total ${from}`);
+ return{rows:rowsFound,total:count.total,page,pageSize};
+ });
+}
+/** Compatibility read returns one explicit page of bounded summary rows, never answers or bytes. */
+export async function listJobDocuments(ctx:SessionContext,filters:JobFilters={}){return(await getJobDocumentPage(ctx,filters)).rows;}
+
 function revisionInput(job: Job, r: JobRevision, reviews: Review[]): JobInput { return { companyId: job.company_id, jobCode: job.job_code, title: r.title, owner: r.document_owner, org: r.org, answers: r.answers, effectiveOn: r.effective_on ?? '', reviewOn: r.review_on ?? '', reason: r.reason, approverId: r.approver_id ?? '', reviewerIds: reviews.map(v => v.reviewer_id) }; }
 export async function transitionJob(ctx: SessionContext, p: {
     jobId: string;
@@ -277,7 +288,7 @@ export async function transitionJob(ctx: SessionContext, p: {
     comments?: string;
 }) {
     const by = actor(ctx);
-    return withTenant(ctx, async (tx) => {
+    return jobTenant(ctx, async (tx) => {
         const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true);
         if (r.lock_version !== p.lockVersion)
             throw new JobDocumentError('This document changed. Reopen it before continuing');
@@ -309,7 +320,7 @@ export async function transitionJob(ctx: SessionContext, p: {
             if (latest.version !== r.version)
                 throw new JobDocumentError('Revise the latest version');
             const def = await definitionTx(tx, ctx, job.company_id);
-            const [next] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,title,document_owner,org,org_labels,answers,definition,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${job.id}::uuid,${r.version + 1},${r.title},${r.document_owner},${JSON.stringify(r.org)}::jsonb,${JSON.stringify(r.org_labels)}::jsonb,${JSON.stringify(r.answers)}::jsonb,${JSON.stringify(def)}::jsonb,${p.comments},${r.approver_id}::uuid,${by}::uuid,${by}::uuid) returning *`);
+            const [next] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,title,document_owner,org,org_labels,answers,definition,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${job.id}::uuid,${r.version + 1},${r.title},${r.document_owner},${JSON.stringify(r.org)}::jsonb,${JSON.stringify(r.org_labels)}::jsonb,${JSON.stringify(projectJobAnswers(r.definition,def,r.answers))}::jsonb,${JSON.stringify(def)}::jsonb,${p.comments},${r.approver_id}::uuid,${by}::uuid,${by}::uuid) returning *`);
             for (const review of reviews)
                 await tx.execute(sql `insert into job_document_review(tenant_id,revision_id,reviewer_id) values(${ctx.tenantId}::uuid,${next.id}::uuid,${review.reviewer_id}::uuid)`);
             await tx.execute(sql `insert into job_document_attachment(tenant_id,revision_id,filename,mime_type,content,created_by) select tenant_id,${next.id}::uuid,filename,mime_type,content,${by}::uuid from job_document_attachment where revision_id=${r.id}::uuid`);
@@ -365,7 +376,7 @@ export async function attachJobDocument(ctx: SessionContext, p: {
     name: string;
     type: string;
     bytes: Uint8Array;
-}) { const by = actor(ctx); validateJobAttachment({ name: p.name, type: p.type, size: p.bytes.length }, p.bytes); return withTenant(ctx, async (tx) => { const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true); if (job.inactive || r.status !== 'draft' || r.lock_version !== p.lockVersion)
+}) { const by = actor(ctx); validateJobAttachment({ name: p.name, type: p.type, size: p.bytes.length }, p.bytes); return jobTenant(ctx, async (tx) => { const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true); if (job.inactive || r.status !== 'draft' || r.lock_version !== p.lockVersion)
     throw new JobDocumentError('Reopen the current draft before uploading'); const [count] = await rows<{
     n: number;
 }>(tx, sql `select count(*)::int as n from job_document_attachment where revision_id=${r.id}::uuid`); if (count.n >= 20)
@@ -377,13 +388,13 @@ export async function removeJobAttachment(ctx: SessionContext, p: {
     revisionId: string;
     lockVersion: number;
     attachmentId: string;
-}) { actor(ctx); uuid(p.attachmentId); return withTenant(ctx, async (tx) => { const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true); if (job.inactive || r.status !== 'draft' || r.lock_version !== p.lockVersion)
+}) { actor(ctx); uuid(p.attachmentId); return jobTenant(ctx, async (tx) => { const { job, revision: r } = await getTx(tx, ctx, p.jobId, p.revisionId, true); if (job.inactive || r.status !== 'draft' || r.lock_version !== p.lockVersion)
     throw new JobDocumentError('Reopen the current draft'); const [a] = await rows<{
     id: string;
     filename: string;
 }>(tx, sql `delete from job_document_attachment where id=${p.attachmentId}::uuid and revision_id=${r.id}::uuid returning id,filename`); if (!a)
     throw new JobDocumentError('Attachment not available'); await tx.execute(sql `update job_document_revision set lock_version=lock_version+1,last_edited_by=${ctx.userId}::uuid,updated_at=now() where id=${r.id}::uuid`); await audit(tx, ctx, job.id, r.id, 'attachment.removed', a, null); }); }
-export async function downloadJobAttachment(ctx: SessionContext, id: string) { actor(ctx); uuid(id); return withTenant(ctx, async (tx) => { const [a] = await rows<{
+export async function downloadJobAttachment(ctx: SessionContext, id: string) { actor(ctx); uuid(id); return jobTenant(ctx, async (tx) => { const [a] = await rows<{
     filename: string;
     mime_type: string;
     hex: string;
