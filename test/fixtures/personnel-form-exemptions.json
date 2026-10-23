@@ -2,14 +2,6 @@
   "app/admin/personnel/[employmentId]/page.tsx": [
     {
       "tag": "input",
-      "context": "dataClassificationCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Subject pointer for dedicated setTestRecordAction \u2192 setEmploymentTestRecord; the owner rechecks current company administration and employment scope. This hidden ID does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
       "context": "emergencyDialogForm",
       "hidden": true,
       "occurrences": 1,

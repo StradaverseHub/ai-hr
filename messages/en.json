@@ -1321,7 +1321,9 @@
         "joinDatesViewOnlyNote": "Both join dates are view-only. They are set together when the employee is created; afterwards a Join Date Change records a move to another company in the group, and a Group Join Date Correction records an authorised fix to the master service date.",
         "pendingMovementTitle": "Scheduled changes not yet in effect",
         "pendingMovementItem": "{kind} — takes effect {date}",
-        "pendingMovementNote": "The values below are today's. They will not change until each date arrives."
+        "pendingMovementNote": "The values below are today's. They will not change until each date arrives.",
+        "resignationMovementNote": "Resignation dates are maintained through Movement. Pending and future events do not replace the currently applicable information.",
+        "resignationMovementLink": "Record or correct resignation in Movement"
       },
       "documents": {
         "title": "Documents",
@@ -1918,7 +1920,8 @@
         "unmarked": "Unmarked",
         "marked": "Marked as test record",
         "save": "Save classification"
-      }
+      },
+      "employeeAuditLink": "Employee audit trail"
     },
     "import": {
       "title": "Import employees",
@@ -10179,7 +10182,8 @@
       "action_deleted": "Deleted",
       "action_archived": "Archived",
       "action_unarchived": "Restored",
-      "action_superseded": "Superseded"
+      "action_superseded": "Superseded",
+      "personnelSubjectScope": "Showing changes for the selected employee and their linked profile records."
     },
     "claims": {
       "title": "Claims configuration",

@@ -1321,7 +1321,9 @@
         "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk.",
         "pendingMovementTitle": "Perubahan berjadual yang belum berkuat kuasa",
         "pendingMovementItem": "{kind} — berkuat kuasa {date}",
-        "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba."
+        "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba.",
+        "resignationMovementNote": "Tarikh peletakan jawatan diurus melalui Pergerakan. Peristiwa tertunda dan akan datang tidak menggantikan maklumat yang sedang berkuat kuasa.",
+        "resignationMovementLink": "Rekod atau betulkan peletakan jawatan dalam Pergerakan"
       },
       "documents": {
         "title": "Dokumen",
@@ -1918,7 +1920,8 @@
         "unmarked": "Belum ditandakan",
         "marked": "Ditandakan sebagai rekod ujian",
         "save": "Simpan pengelasan"
-      }
+      },
+      "employeeAuditLink": "Jejak audit pekerja"
     },
     "import": {
       "title": "Import pekerja",
@@ -10179,7 +10182,8 @@
       "action_deleted": "Dipadam",
       "action_archived": "Diarkib",
       "action_unarchived": "Dipulihkan",
-      "action_superseded": "Digantikan"
+      "action_superseded": "Digantikan",
+      "personnelSubjectScope": "Memaparkan perubahan bagi pekerja yang dipilih dan rekod profil berkaitan."
     },
     "claims": {
       "title": "Konfigurasi tuntutan",

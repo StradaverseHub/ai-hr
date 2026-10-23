@@ -1321,7 +1321,9 @@
         "joinDatesViewOnlyNote": "Cả hai ngày gia nhập đều chỉ để xem. Chúng được đặt cùng nhau khi tạo nhân viên; sau đó, Thay đổi Ngày gia nhập ghi nhận việc chuyển sang công ty khác trong tập đoàn, còn Điều chỉnh Ngày gia nhập tập đoàn ghi nhận việc sửa có thẩm quyền đối với ngày thâm niên gốc.",
         "pendingMovementTitle": "Các thay đổi đã lên lịch nhưng chưa có hiệu lực",
         "pendingMovementItem": "{kind} — có hiệu lực ngày {date}",
-        "pendingMovementNote": "Các giá trị bên dưới là giá trị hiện tại. Chúng sẽ không thay đổi cho đến khi đến ngày tương ứng."
+        "pendingMovementNote": "Các giá trị bên dưới là giá trị hiện tại. Chúng sẽ không thay đổi cho đến khi đến ngày tương ứng.",
+        "resignationMovementNote": "Ngày nghỉ việc được quản lý qua Biến động nhân sự. Sự kiện đang chờ hoặc có hiệu lực trong tương lai không thay thế thông tin hiện hành.",
+        "resignationMovementLink": "Ghi nhận hoặc sửa thông tin nghỉ việc trong Biến động nhân sự"
       },
       "documents": {
         "title": "Tài liệu",
@@ -1918,7 +1920,8 @@
         "unmarked": "Chưa đánh dấu",
         "marked": "Đã đánh dấu là hồ sơ thử nghiệm",
         "save": "Lưu phân loại"
-      }
+      },
+      "employeeAuditLink": "Nhật ký kiểm toán nhân viên"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -10179,7 +10182,8 @@
       "action_deleted": "Đã xóa",
       "action_archived": "Đã lưu trữ",
       "action_unarchived": "Đã khôi phục",
-      "action_superseded": "Đã thay thế"
+      "action_superseded": "Đã thay thế",
+      "personnelSubjectScope": "Hiển thị thay đổi của nhân viên đã chọn và các hồ sơ liên quan."
     },
     "claims": {
       "title": "Cấu hình khoản chi",

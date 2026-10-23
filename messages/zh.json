@@ -1321,7 +1321,9 @@
         "joinDatesViewOnlyNote": "两个入职日期均仅供查看。它们在创建员工时一并设定；之后由「入职日期变更」记录调往集团内其他公司，由「集团入职日期更正」记录对主服务日期的授权更正。",
         "pendingMovementTitle": "尚未生效的已排程变更",
         "pendingMovementItem": "{kind} — 于 {date} 生效",
-        "pendingMovementNote": "以下数值为当前数值，在各自的生效日期到达前不会变更。"
+        "pendingMovementNote": "以下数值为当前数值，在各自的生效日期到达前不会变更。",
+        "resignationMovementNote": "离职日期通过人事异动维护。待处理或未来的异动不会替换当前生效的信息。",
+        "resignationMovementLink": "在人事异动中记录或更正离职信息"
       },
       "documents": {
         "title": "文档",
@@ -1918,7 +1920,8 @@
         "unmarked": "未标记",
         "marked": "已标记为测试记录",
         "save": "保存分类"
-      }
+      },
+      "employeeAuditLink": "员工审计记录"
     },
     "import": {
       "title": "导入员工",
@@ -10179,7 +10182,8 @@
       "action_deleted": "已删除",
       "action_archived": "已归档",
       "action_unarchived": "已还原",
-      "action_superseded": "已取代"
+      "action_superseded": "已取代",
+      "personnelSubjectScope": "显示所选员工及其关联档案记录的变更。"
     },
     "claims": {
       "title": "报销配置",

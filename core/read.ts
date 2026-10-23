@@ -5743,6 +5743,8 @@ export type AuditRow = {
 };
 
 export type AuditFilters = {
+  /** One authorized Personnel subject, including its canonical related aggregates and tagged events. */
+  employmentId?: string;
   aggregateType?: string;
   // f1b994e3 — `aggregateTypes?: string[]` STOOD HERE and is deliberately gone. It existed for ONE
   // caller, the retired Leave Audit page, which hand-listed the leave module's aggregate types — and
@@ -5781,6 +5783,18 @@ function auditWhere(f: AuditFilters) {
   return and(
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.employmentId ? sql`exists (
+      select 1 from employment audit_subject
+      where audit_subject.id=${f.employmentId}::uuid
+        and audit_subject.tenant_id=app.current_tenant_id()
+        and app.access_workforce_employment(audit_subject.id,'workforce.view')
+        and (
+          ${domainEvent.subjectEmploymentId}=audit_subject.id
+          or ${domainEvent.aggregateId} in (audit_subject.id,audit_subject.person_id)
+          or ${domainEvent.aggregateId} in (select id from employee_statutory_my where person_id=audit_subject.person_id and tenant_id=audit_subject.tenant_id)
+          or ${domainEvent.aggregateId} in (select id from compensation where employment_id=audit_subject.id and tenant_id=audit_subject.tenant_id)
+        )
+    )` : undefined,
     // f1b994e3 — Area (module). Derived from AGGREGATE_MODULE, so a row this clause returns chips the
     // area that found it. `other` is the RESIDUAL bucket — it owns no aggregate types of its own, so it
     // is expressed as the COMPLEMENT of the mapped set rather than as an empty IN-list (which would
@@ -6001,44 +6015,7 @@ export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilt
 /** Change history for one employee — every event touching their employment, person, statutory
  *  profile, and compensation rows (the aggregates that carry their record). RLS-scoped. */
 export function employeeAudit(ctx: SessionContext, employmentId: string, limit = 50): Promise<AuditRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const [emp] = await tx
-      .select({ personId: employment.personId })
-      .from(employment)
-      .where(eq(employment.id, employmentId))
-      .limit(1);
-    if (!emp) return [];
-    const ids = new Set<string>([employmentId, emp.personId]);
-    const [stat] = await tx
-      .select({ id: employeeStatutoryMy.id })
-      .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, emp.personId))
-      .limit(1);
-    if (stat) ids.add(stat.id);
-    const comps = await tx
-      .select({ id: compensation.id })
-      .from(compensation)
-      .where(eq(compensation.employmentId, employmentId));
-    comps.forEach((c) => ids.add(c.id));
-    return tx
-      .select({
-        id: domainEvent.id,
-        aggregateType: domainEvent.aggregateType,
-        aggregateId: domainEvent.aggregateId,
-        eventType: domainEvent.eventType,
-        actorType: domainEvent.actorType,
-        actorName: person.fullName,
-        payload: domainEvent.payload,
-        occurredAt: domainEvent.occurredAt,
-        sequence: domainEvent.sequence,
-      })
-      .from(domainEvent)
-      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
-      .leftJoin(person, eq(person.id, appUser.personId))
-      .where(inArray(domainEvent.aggregateId, [...ids]))
-      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
-      .limit(limit);
-  }) as Promise<AuditRow[]>;
+  return auditEvents(ctx, { employmentId, limit });
 }
 
 // ─────────────────────────── Self-service portal (own data) ───────────────────────────

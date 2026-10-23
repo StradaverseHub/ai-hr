@@ -1,6 +1,5 @@
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
-import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
 import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
@@ -18,7 +17,6 @@ import {
   assignmentHistory,
   delegationsFor,
   directSuperiorHistoryFor,
-  employeeAudit,
   employeeDetail,
   employmentCompanyEditable,
   listDepartments,
@@ -32,7 +30,6 @@ import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHea
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { PhotoLightbox } from './photo-lightbox';
-import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
@@ -64,7 +61,6 @@ import {
   endDelegationAction,
   setCompensationAction,
   setDirectSuperiorAction,
-  setTestRecordAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
@@ -163,7 +159,6 @@ import { listLocations } from '@/core/location';
 // refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
 import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setClockingControlAction } from './actions';
-import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 // 420ebab5 part two — the Profile tab's one Save/Discard, and the consolidated action behind it.
@@ -312,7 +307,6 @@ export default async function EmployeePage({
   if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
   const tAccess=await getTranslations('accessConfiguration');
-  const classification = admin ? await employmentTestRecord(s, employmentId) : null;
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
   // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
@@ -545,7 +539,6 @@ export default async function EmployeePage({
       label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
     });
   }
-  const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
@@ -3696,13 +3689,6 @@ export default async function EmployeePage({
         })()
       : null;
 
-  const changeHistoryCard = admin ? (
-    <Card id="section-change-history" className="overflow-hidden">
-      <SectionHeader title={t('changeHistory')} count={changeHistory.length} />
-      <AuditTable rows={changeHistory} nowMs={Date.now()} dmyDates />
-    </Card>
-  ) : null;
-
   const dataPrivacyCard = admin ? (
     <Card id="section-data-privacy" className="border-rose-200 dark:border-rose-500/30">
       <SectionHeader title={t('dataPrivacyTitle')} />
@@ -3733,8 +3719,7 @@ export default async function EmployeePage({
   //
   // 89ea527b removes the last two writers of the service dates from the card below it: Group Join Date and
   // Join Date are view-only too. What REMAINS editable on this tab is the rest of the Employment Dates group
-  // — probation, notice and resignation periods/dates — which are lifecycle facts about this employment, not
-  // organisation assignment, and have no movement kind that owns them.
+  // — probation and general notice terms. Actual resignation dates are view-only Movement projections.
   //
   // Employment Dates keeps its OWN sibling <form> (it shared the old organisation form). It is a separate
   // concern with a separate Save, and its action no longer touches the eight org columns.
@@ -4217,17 +4202,18 @@ export default async function EmployeePage({
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="edit">
-                <DateField {...personnelControl('employment.employment_dates_and_service.tenderresignationdate','edit')} defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.tenderresignationdate')} />
+              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="view">
+                {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", emp.tenderResignationDate ? formatDmy(emp.tenderResignationDate) : null)}
               </PersonnelField>
-              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="edit">
-                <DateField {...personnelControl('employment.employment_dates_and_service.resignationdate','edit')} defaultValue={emp.resignationDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.resignationdate')} />
+              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="view">
+                {readOnlyValue("employment.employment_dates_and_service.resignationdate", emp.resignationDate ? formatDmy(emp.resignationDate) : null)}
               </PersonnelField>
-              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="edit">
-                <DateField {...personnelControl('employment.employment_dates_and_service.lastworkingdate','edit')} defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} label={personnelLabel('employment.employment_dates_and_service.lastworkingdate')} />
+              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="view">
+                {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", emp.lastWorkingDate ? formatDmy(emp.lastWorkingDate) : null)}
               </PersonnelField>
             </div>
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.lifecycleDeferredNote')}</p>
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>
+            <Link href={newMovementHref} className="text-sm font-medium text-primary underline">{t('employmentInfo.resignationMovementLink')}</Link>
           </div>
         </fieldset>
 
@@ -4249,22 +4235,6 @@ export default async function EmployeePage({
      existing functional/project/dotted rows remain in the data (org chart still renders them — their
      retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
      the compact history disclosure below the field. */
-  const dataClassificationCard = admin && classification ? (
-    <Card id="section-data-classification">
-      <SectionHeader title={t('dataClassification.title')}/>
-      <form action={setTestRecordAction} className="space-y-3 p-4">
-        <input type="hidden" name="employmentId" value={emp.employmentId}/>
-        <p className="text-sm text-muted-foreground">{t('dataClassification.help')}</p>
-        <PersonnelField fieldId="employment.data_classification.istestrecord" mode="edit">
-          <select {...personnelControl('employment.data_classification.istestrecord','edit')} className={inputCls} defaultValue={String(classification.isTestRecord)}>
-            <option value="false">{t('dataClassification.unmarked')}</option><option value="true">{t('dataClassification.marked')}</option>
-          </select>
-        </PersonnelField>
-        <button type="submit" className={btnPrimary}>{t('dataClassification.save')}</button>
-      </form>
-    </Card>
-  ) : null;
-
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -4463,7 +4433,6 @@ export default async function EmployeePage({
      island) reuse the same audited services and DomainEvents; only the entry point changed. */
 
   // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
-  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
 
   // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
   // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
@@ -4471,7 +4440,7 @@ export default async function EmployeePage({
   const panels = {
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
-    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{changeHistoryCard}{dataPrivacyCard}</>,
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{dataPrivacyCard}</>,
     family: familyPanel,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
@@ -4501,9 +4470,8 @@ export default async function EmployeePage({
             {employmentInfoCard}
           </TabSaveScope></fieldset>
         )}
-        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{dataClassificationCard}{directSuperiorCard}</fieldset>
+        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{directSuperiorCard}</fieldset>
         {delegationsCard}
-        {reviewCard}
       </>
     ),
     // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
@@ -4669,6 +4637,7 @@ export default async function EmployeePage({
               currentEmploymentId={emp.employmentId}
               tab={tab ?? null}
             />
+            {admin && <Link href={`/admin/audit?employment=${emp.employmentId}`} className={btnGhost}>{t('employeeAuditLink')}</Link>}
             <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
           </>
         }
