@@ -60,6 +60,7 @@ async function main(){
    if(receipt){
     const fixture=receipt.payload as unknown as Fixture;
     if(fixture.version!==2||fixture.companyId!==company.id||fixture.tenantId!==tenantId||!Array.isArray(fixture.actors)||fixture.actors.length!==6)throw new Error('Stored fixture receipt is incompatible; preserving it.');
+    if(process.env.BOARD2_PREPARE_OPEN_DAY==='1')await prepareOpenDay(fixture);
     await manifest(fixture,true);return;
    }
   }
@@ -163,6 +164,23 @@ async function main(){
   await owner.withTenant(root,tx=>appendEvent(tx,{tenantId,aggregateType:'dev-board2-fixture',aggregateId:company!.id,eventType,actor:actorOf(root),payload:fixture}));
   await manifest(fixture,false);
 
+  async function prepareOpenDay(fixture:Fixture){
+   // Keep the closed-payroll refusal case intact; a different historical day supplies the positive course.
+   const applicant=fixture.actors.find(actor=>actor.key==='applicant'),hr=fixture.actors.find(actor=>actor.key==='company-hr');
+   if(!applicant||!hr)throw new Error('Canonical fixture actors missing.');
+   const batches=await owner.db.select({period:s.payrollBatch.payPeriod}).from(s.payrollBatch).where(inArray(s.payrollBatch.id,fixture.batchIds)).orderBy(asc(s.payrollBatch.payPeriod),asc(s.payrollBatch.id));
+   if(!batches.length)throw new Error('Recorded payroll periods missing.');
+   const date=addMonths(batches[0].period,-1)+'-15';
+   if(date<applicant.hiredOn||date>today)throw new Error('No eligible historical applicant day before the closed fixture periods; prepare a separate historical actor.');
+   const ctx=await context({id:hr.userId,personId:hr.personId});
+   const [existing]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,applicant.employmentId),eq(s.attendance.attendanceDate,date)));
+   if(!existing?.checkInAt)await attendance.checkIn(ctx,{employmentId:applicant.employmentId,date,time:'08:00',manual:true});
+   if(!existing?.checkOutAt)await attendance.checkOut(ctx,{employmentId:applicant.employmentId,date,time:'17:00',manual:true});
+   let [correction]=await owner.db.select().from(s.attendanceCorrection).where(and(eq(s.attendanceCorrection.employmentId,applicant.employmentId),eq(s.attendanceCorrection.attendanceDate,date))).orderBy(asc(s.attendanceCorrection.id));
+   if(!correction){const saved=await attendance.requestAttendanceCorrection(await context({id:applicant.userId,personId:applicant.personId}),{employmentId:applicant.employmentId,date,checkIn:'09:00',checkOut:'18:00',reason:'Fictional Board 2 nonclosed-day positive approval'});[correction]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,saved.correctionId));}
+   mkdirSync(output,{recursive:true,mode:0o700});
+   writeFileSync(new URL('open-day.json',output),JSON.stringify({date,correctionId:correction.id,originalClosedPayrollCorrectionId:fixture.correctionId,preparedOnly:true},null,2)+'\n',{mode:0o600});
+  }
   async function manifest(fixture:Fixture,reused:boolean){
    const users=await owner.db.select({id:s.appUser.id,personId:s.appUser.personId,archivedAt:s.appUser.archivedAt}).from(s.appUser).where(inArray(s.appUser.id,[...fixture.actors.map(row=>row.userId),fixture.unlinkedUserId]));
    if(users.length!==7||users.some(row=>row.archivedAt)||users.find(row=>row.id===fixture.unlinkedUserId)?.personId!==null||fixture.actors.some(actor=>users.find(row=>row.id===actor.userId)?.personId!==actor.personId))throw new Error('Stored fixture logins changed; preserving saved data.');
