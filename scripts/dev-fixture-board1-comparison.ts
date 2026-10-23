@@ -1,11 +1,13 @@
 /** Fictional local paid results for the remaining Board 1 app journeys. Never targets a shared DB. */
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
 
-const destination = '/private/tmp/aihr-board1-remaining4-20261021/payroll-fixture.json';
+const acceptance=board1LocalAcceptanceTarget();
+const destination = acceptance.directory+'/payroll-fixture.json';
 for (const raw of [process.env.DATABASE_URL, process.env.MIGRATION_DATABASE_URL]) {
   const url = new URL(raw || '');
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !['127.0.0.1', 'localhost'].includes(url.hostname)
-    || url.port !== '5433' || url.pathname !== '/ai_hr_board1_acceptance' || url.search || url.hash)
+    || url.port !== '5433' || url.pathname !== '/'+acceptance.payrollDatabase || url.search || url.hash)
     throw new Error('Only the named disposable local Board 1 database is allowed.');
 }
 if (process.env.NODE_ENV === 'production') throw new Error('Development fixture only.');
@@ -74,7 +76,7 @@ async function main() {
       spec: payrollComparisonSpec(), companyIds: [b.companyId] });
     const result = await runPayrollComparisonReport(ctx, [b.companyId], { id: report.id, filters: { currentPeriod, previousPeriod } });
     if (!result.result.available || result.result.rows.length !== 2) throw new Error('Fixture paid-result contract failed.');
-    await mkdir('/private/tmp/aihr-board1-remaining4-20261021', { recursive: true, mode: 0o700 });
+    await mkdir(acceptance.directory, { recursive: true, mode: 0o700 });
     await writeFile(destination, JSON.stringify({ ...b, date, currentPeriod, previousPeriod, reportId: report.id, people, previous, current,
       notice: 'Fictional disposable local records only; Payroll generated through its public service.' }, null, 2), { mode: 0o600, flag: 'wx' });
     console.log('Created fictional Board 1 paid results; local identifiers saved privately.');

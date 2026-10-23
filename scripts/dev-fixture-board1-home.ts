@@ -1,16 +1,19 @@
 /** Fictional Home review records. Every database import follows the exact local-target guard. */
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
+import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
 
+const acceptance=board1LocalAcceptanceTarget();
 const target=process.env.BOARD1_HOME_FIXTURE_TARGET??'home';
 const targets={
- home:{database:'ai_hr_board1_home_acceptance',receipt:'home-fixture.json',tenant:'Fictional Board 1 Home Acceptance'},
+ home:{database:acceptance.homeDatabase,receipt:'home-fixture.json',tenant:'Fictional Board 1 Home Acceptance'},
  notice:{database:'ai_hr_board1_notice_acceptance',receipt:'notice-fixture.json',tenant:'Fictional Board 1 Notice Acceptance'},
  personal:{database:'ai_hr_board1_personal_home_acceptance',receipt:'personal-home-fixture.json',tenant:'Fictional Board 1 Personal Home Acceptance'},
 } as const;
 if(!Object.hasOwn(targets,target))throw Error('Choose an explicit allowed fictional fixture target.');
 const selected=targets[target as keyof typeof targets],name=selected.database;
-const destination='/private/tmp/aihr-board1-remaining4-20261021/'+selected.receipt;
+if(process.env.BOARD1_ACCEPTANCE_TARGET==='release20261023'&&target!=='home')throw Error('The release target uses the fresh Home fixture only.');
+const destination=acceptance.directory+'/'+selected.receipt;
 const tenantName=selected.tenant;
 for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const url=new URL(raw??'');
@@ -23,6 +26,7 @@ process.env.TEST_DATABASE_URL=process.env.DATABASE_URL;
 process.env.TEST_MIGRATION_DATABASE_URL=process.env.MIGRATION_DATABASE_URL;
 
 async function main(){
+ await mkdir(acceptance.directory,{recursive:true,mode:0o700});
  const {default:postgres}=await import('postgres');
  const ownerUrl=process.env.MIGRATION_DATABASE_URL!;
  const adminUrl=new URL(ownerUrl);adminUrl.pathname='/postgres';

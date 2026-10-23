@@ -2,16 +2,18 @@
  * No production URL, SQL result fabrication, alternate principal or financial permission bypass.
  */
 import {readFile,writeFile} from 'node:fs/promises';
+import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
+const acceptance=board1LocalAcceptanceTarget();
 for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const url=new URL(raw??'');
  if(!['postgres:','postgresql:'].includes(url.protocol)||!['127.0.0.1','localhost'].includes(url.hostname)
-  ||url.port!=='5433'||url.pathname!=='/ai_hr_board1_acceptance'||url.search||url.hash)
+  ||url.port!=='5433'||url.pathname!=='/'+acceptance.payrollDatabase||url.search||url.hash)
   throw Error('Only the named disposable Board 1 local database is allowed.');
 }
 if(process.env.NODE_ENV==='production')throw Error('Development fixture only.');
 process.env.TEST_DATABASE_URL=process.env.DATABASE_URL;
 process.env.TEST_MIGRATION_DATABASE_URL=process.env.MIGRATION_DATABASE_URL;
-const directory='/private/tmp/aihr-board1-remaining4-20261021';
+const directory=acceptance.directory;
 const command=process.argv[2];
 if(!['prepare','revoke','restore','stale','reprocess'].includes(command))throw Error('Choose an explicit local journey command.');
 async function main(){

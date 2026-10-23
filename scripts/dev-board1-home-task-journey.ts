@@ -1,11 +1,13 @@
 /** Fictional, named-local-database task journey. No production/shared target is accepted. */
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-const root='/private/tmp/aihr-board1-remaining4-20261021',destination=root+'/home-task-fixture.json';
+import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
+const acceptance=board1LocalAcceptanceTarget();
+const root=acceptance.directory,destination=root+'/home-task-fixture.json';
 for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
  const url=new URL(raw??'');
  if(!['postgres:','postgresql:'].includes(url.protocol)||!['127.0.0.1','localhost'].includes(url.hostname)||url.port!=='5433'
-  ||url.pathname!=='/ai_hr_board1_home_acceptance'||url.search||url.hash)throw Error('Named disposable local Home database only.');
+  ||url.pathname!=='/'+acceptance.homeDatabase||url.search||url.hash)throw Error('Named disposable local Home database only.');
 }
 if(process.env.NODE_ENV==='production')throw Error('Development journey only.');
 const command=process.argv[2],expected=Number(process.argv[3]);
