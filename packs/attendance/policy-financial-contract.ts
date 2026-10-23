@@ -84,7 +84,7 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
  }catch{return unavailable('sourceUnavailable');}
 }
 function moneyScopeMatches(pricing:PreparedPricing,row:PreparedPricing['parts'][number]['pricing'],scope:CanonicalOvertimeSnapshot['policyMoneyScope']):boolean{
- if(pricing.parts.length===1)return row.moneyScope.kind==='singleAllocation';
+ if(pricing.parts.length===1)return scope===undefined&&row.moneyScope.kind==='singleAllocation';
  if(row.moneyScope.kind!=='parent'||row.moneyScope.amountMinorUnits!==pricing.amountMinorUnits
   ||!isDeepStrictEqual(row.moneyScope.partBindings,pricing.parts.map(p=>p.pricing.policyBinding)))return false;
  const versions=pricing.parts.map(part=>part.pricing.patternVersionId);

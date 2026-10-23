@@ -1158,6 +1158,9 @@ describe('immutable non-payable policy part storage',()=>{
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical attested financial parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true,payableNumerator:String(expectedMinutes),approvalStatus:'approved'});
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(snapshot.policyMoneyScope).toBeUndefined();
+  const substitutedScope=structuredClone(snapshot);substitutedScope.policyMoneyScope='identicalDefinitions';
+  expect(attendancePolicyPricingProposal(substitutedScope)).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
   expect(attendancePolicyDurationReplay(snapshot)).toMatchObject({state:'known',minutes:expectedMinutes});
   const coverage=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
    sourceId:read.source.id,calculationId:read.calculation.id,date:p.date},snapshot);

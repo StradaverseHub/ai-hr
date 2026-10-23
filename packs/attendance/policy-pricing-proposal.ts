@@ -67,6 +67,8 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
    }
    dated.push({sequence,date:part.date,definitionDigest:formula.definitionDigest,pattern:formula.definition,input,roundedCounts});
   }
+  // An explicit multi-version scope cannot be attached to a single dated/version owner.
+  if(snapshot.policyMoneyScope!==undefined&&(dated.length<2||new Set(dated.map(row=>row.input.patternVersionId)).size<2))return refuse('pricingScopeUnavailable');
   if(dated.length===1){
    const row=dated[0],pricing=evaluateOvertimePolicyAllocatedPrice(row.pattern,row.input,row.roundedCounts);
    if(pricing.state!=='proposed')return refuse('partPricingUnavailable');
