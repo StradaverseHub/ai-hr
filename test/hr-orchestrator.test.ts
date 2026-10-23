@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -17,15 +17,15 @@ describe('central HR orchestrator', () => {
   beforeEach(async () => { await resetDb(); base = await seedBase(); });
   afterAll(closeAll);
 
-  async function hire() {
+  async function hire(suffix = '') {
     const employee = await hireEmployee(adminCtx(base), {
-      person: { fullName: 'Orchestration fixture', primaryEmail: 'orchestrator@example.test' },
+      person: { fullName: `Orchestration fixture${suffix}`, primaryEmail: `orchestrator${suffix}@example.test` },
       companyId: base.companyId, departmentId: base.deptA,
       employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
     } as never);
     await owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: base.tenantId,
-      personId: employee.personId, passportNumber: 'ORCH-PASSPORT',
-      taxNumber: 'ORCH-TAX', epfNumber: 'ORCH-EPF', socsoNumber: 'ORCH-SOCSO' });
+      personId: employee.personId, passportNumber: `ORCH-PASSPORT${suffix}`,
+      taxNumber: `ORCH-TAX${suffix}`, epfNumber: `ORCH-EPF${suffix}`, socsoNumber: `ORCH-SOCSO${suffix}` });
     return employee;
   }
   const cases = () => owner.db.select().from(schema.hrOrchestrationCase).orderBy(schema.hrOrchestrationCase.id);
@@ -187,6 +187,33 @@ describe('central HR orchestrator', () => {
     expect(after.total).toBeLessThan(before.total);
     expect(after.verified).toBeGreaterThan(before.verified);
     expect(after.lastRun?.failed).toBe(true);
+  });
+
+  it('loads guidance only for displayed employees while retaining the full scoped case count', async () => {
+    const employees = [];
+    for (let index = 0; index < 10; index++) employees.push(await hire(`-${index}`));
+    await owner.db.delete(schema.employeeStatutoryMy).where(inArray(schema.employeeStatutoryMy.personId, employees.map(employee => employee.personId)));
+    await reconcileReadinessCases(adminCtx(base));
+    // Six source gaps per employee. Distinct observation times make the displayed set deterministic,
+    // independently of generated UUIDs: eight whole employees, two cases for the ninth, none for ten.
+    const now = Date.now();
+    for (const [index, employee] of employees.entries()) {
+      await owner.db.update(schema.hrOrchestrationCase).set({ openedAt: new Date(now - (10 - index) * 1000) })
+        .where(eq(schema.hrOrchestrationCase.employmentId, employee.employmentId));
+    }
+    const requested: string[][] = [];
+    const original = readinessActions.loadReadinessActions;
+    const read = vi.spyOn(readinessActions, 'loadReadinessActions').mockImplementation(async (...args: Parameters<typeof original>) => {
+      requested.push([...args[2]]);
+      return original(...args);
+    });
+    const view = await orchestrationQueue(adminCtx(base)).finally(() => { read.mockRestore(); });
+    expect(view.total).toBe(60);
+    expect(view.rows).toHaveLength(50);
+    expect(view.verified).toBe(0);
+    expect(view.inactive).toBe(0);
+    expect(requested).toEqual([employees.slice(0, 9).map(employee => employee.employmentId)]);
+    expect(new Set(view.rows.map(row => row.employmentId))).toEqual(new Set(requested[0]));
   });
 
   it('a failed specialist does not suppress verification and is recorded as failed', async () => {

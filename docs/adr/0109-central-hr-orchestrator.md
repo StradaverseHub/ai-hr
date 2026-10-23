@@ -96,6 +96,9 @@ ledger. The existing administrative scope digest and tenant RLS constrain the re
 use event sequence as the deterministic tiebreaker. Only normalized statuses and a bounded version
 label reach the screen, never arbitrary event payloads or exception text.
 
+Correction guidance is loaded only for employees in the displayed 50-case sample. Scoped open,
+verified and inactive totals still cover the entire case set; the display limit is not a work limit.
+
 Cases, check time, permitted next actions and pass receipt are read through the existing read-only
 repeatable-read snapshot option, so a concurrent pass cannot make one response combine different
 committed versions. The screen says "latest recorded" rather than "latest attempted": a later attempt

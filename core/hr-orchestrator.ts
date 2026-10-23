@@ -142,9 +142,11 @@ export async function orchestrationQueue(ctx: SessionContext) {
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
       .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
     const open = rows.filter(r => r.state === 'needs_input' || r.state === 'needs_review');
+    const displayed = open.slice(0, 50);
     let actions = new Map<string, ReadinessAction>();
     let actionsUnavailable = false;
-    try { actions = await loadReadinessActions(tx, ctx, [...new Set(open.map(row => row.employmentId))]); }
+    // Counts cover the full scope; guidance is only needed for rows actually displayed.
+    try { actions = await loadReadinessActions(tx, ctx, [...new Set(displayed.map(row => row.employmentId))]); }
     catch (error) {
       // Settings resolution happens before action queries; a display failure must not hide the queue.
       if (!(error instanceof EntitlementError)) throw error;
@@ -154,7 +156,7 @@ export async function orchestrationQueue(ctx: SessionContext) {
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
       .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
-    return { rows: open.slice(0, 50).map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
+    return { rows: displayed.map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
       actionsUnavailable,
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
