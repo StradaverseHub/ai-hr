@@ -45,7 +45,7 @@ const ALL_TABLES = [
   // convention above: a leaked pending step would put a phantom level in front of a later file's decision.
   'leave_cancellation_step',
   'app_user', 'role_assignment', 'domain_event', 'app_external_identity', 'app_identity_session', 'app_internal_auth_record', 'deployment_identity_operator', 'app_manual_identity_enrollment',
-  'compensation', 'employee_statutory_my', 'tenant_counter',
+  'compensation', 'employee_statutory_my', 'people_general_policy', 'people_nric_admission', 'tenant_counter',
   // ADR0128: explicitly reset both legacy and versioned System Testing records.
   'test_execution_attachment', 'test_catalogue_update', 'test_run', 'test_execution', 'test_assignment', 'test_case_version', 'test_case',
   'feedback_attachment', 'feedback_plan_revision', 'feedback_block', 'feedback_request',
