@@ -1,9 +1,9 @@
-/** Fresh named-local fixture: genuine prospective policy/workflow owners and fictional captures.
+/** Fresh named-local fixture: prospective owners, plus an explicitly separate historical replay profile.
  * Capture timestamps are fixture evidence, not a claim that browser clocking or historical
  * activation has been exercised. Approval and settlement are deliberately left for the app. */
 import {readFile,writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {board1LocalAcceptanceTarget} from './board1-local-acceptance-target';
 import type {Base} from '../test/harness';
@@ -26,11 +26,12 @@ for(const raw of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){
 }
 process.env.TEST_DATABASE_URL=process.env.DATABASE_URL;process.env.TEST_MIGRATION_DATABASE_URL=process.env.MIGRATION_DATABASE_URL;
 const profile=process.env.BOARD1_POLICY_FIXTURE_PROFILE??'initial';
-if(profile!=='initial'&&profile!=='positioned')throw Error('Choose the original or separate positioned fixture profile.');
-const prefix=profile==='positioned'?'REL23P':'REL23';
-const destination=target.directory+(profile==='positioned'?'/policy-positioned-fixture.json':'/policy-fixture.json');
+if(!['initial','positioned','historicalCurrent'].includes(profile))throw Error('Choose an explicit fictional fixture profile.');
+const historicalCurrent=profile==='historicalCurrent';
+const prefix=historicalCurrent?'REL24H':profile==='positioned'?'REL23P':'REL23';
+const destination=target.directory+(historicalCurrent?'/policy-historical-current-fixture.json':profile==='positioned'?'/policy-positioned-fixture.json':'/policy-fixture.json');
 const add=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
-const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:[1,2,3,4,5],halfPattern:[],offPattern:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[]});
+const ruleInput=(name:string,label:string):AttendanceRuleInput=>({name,label,weeklyPattern:historicalCurrent?[1,2,3,4,5,6,7]:[1,2,3,4,5],halfPattern:[],offPattern:historicalCurrent?[]:[6],lateGracePeriodMinutes:0,lateAfterMinutes:5,lateDeductMinutes:5,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:5,earlyDeductMinutes:5,includeGraceInEarlyOut:false,applyDeductions:true,applyToEarlyOt:false,otRows:[]});
 async function main(){
  const {owner,entitledCtx,createAppUser,setModule}=await import('../test/harness');
  if(await readFile(destination,'utf8').then(()=>true,()=>false))throw Error('Policy fixture already has identities; preserve them and their app edits.');
@@ -41,8 +42,8 @@ async function main(){
  const hr=f.people.scopedHr;
  const ctx={...await entitledCtx(f),userId:hr.userId,personId:hr.personId,roles:['hr_admin'],grants:[{role:'hr_admin' as const,companyId:f.companyId}]};
  const today=todayInKualaLumpur(),effectiveFrom=add(today,1);
- let sourceDate=profile==='positioned'?new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),1)).toISOString().slice(0,10):add(today,2);
- while([0,6].includes(new Date(sourceDate+'T12:00:00Z').getUTCDay()))sourceDate=add(sourceDate,1);
+ let sourceDate=historicalCurrent?today:profile==='positioned'?new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),1)).toISOString().slice(0,10):add(today,2);
+ while(!historicalCurrent&&[0,6].includes(new Date(sourceDate+'T12:00:00Z').getUTCDay()))sourceDate=add(sourceDate,1);
  const nextDate=add(sourceDate,1);
  const groups=[];
  for(const [name,label] of [['rounded actual','ACTUAL'],['approved plan','PLAN']])groups.push(await createAttendanceRule(ctx,ruleInput('Fictional '+prefix+' '+name,prefix+'-'+label)));
@@ -58,11 +59,29 @@ async function main(){
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:prefix+'_OT',name:'Fictional '+prefix+' 12 x 1.5',creationCompanyId:f.companyId,companyIds:[f.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  if(validation.issues.length||!validation.validationDigest)throw Error('Prospective formula validation failed');
- await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest,effectiveFrom});
+ await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest,effectiveFrom:historicalCurrent?today:effectiveFrom});
  const revisions=[];
  for(const [index,group] of groups.entries()){
   const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:true,splitAtMidnight:true,offsetLateness:false,approval:'auto',autoMethod:index===0?'actual':'preApproved',rounding:index===0?{mode:'up',step:30}:{mode:'none',step:null},days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
   revisions.push(await scheduleAttendanceGroupPolicy(ctx,{companyId:f.companyId,ruleId:group.id,expectedOrdinal:0,effectiveFrom,reason:'Fictional prospective current-release app review',policy}));
+ }
+ // The separate current-day replay profile restores a declared pre-existing group baseline
+ // BEFORE any clock/request/decision. It does not exercise a historical activation command.
+ // The prospective fixture above remains untouched; no runtime clock or future-date guard changes.
+ const historicalBaselines=[];
+ if(historicalCurrent){
+  for(const revision of revisions){
+   const [issued]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+   if(!issued||issued.activationEpoch<=0)throw Error('Require the genuine positive scheduling epoch');
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision DISABLE TRIGGER attendance_group_policy_revision_guard`);
+    await tx.update(s.attendanceGroupPolicyRevision).set({effectiveFrom:add(today,-1)}).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision ENABLE TRIGGER attendance_group_policy_revision_guard`);
+   });
+   historicalBaselines.push({revisionId:revision.id,issuedEffectiveFrom:issued.effectiveFrom,restoredEffectiveFrom:add(today,-1)});
+  }
+  const guards=await owner.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='attendance_group_policy_revision'::regclass and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
+  if(guards.length!==2||guards.some(row=>row.tgenabled!=='O'))throw Error('All policy guards must be enabled BEFORE business work');
  }
  const people=[];
  for(const [index,key] of ['roundedCash','plannedCash','plannedToil'].entries()){
@@ -82,7 +101,7 @@ async function main(){
  await saveAttendanceWorkflow(ctx,{companyId:f.companyId,routingVersion:4,code:prefix+'_PLAN',name:'Fictional '+prefix+' plan review',applicationType:'self_overtime',priority:100,criteria:{employeeIds:people.map(row=>row.employmentId)},active:true,cc:[],stages:[{name:'Final HR plan review',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[hr.employmentId]}],hrAlternative:false}]});
  await setAttendanceWorkflowEnabled(ctx,f.companyId,'self_overtime',true);
  const batch=await createBatch(ctx,{companyId:f.companyId,payPeriod:sourceDate.slice(0,7),scope:{employmentIds:people.map(row=>row.employmentId)}});
- await writeFile(destination,JSON.stringify({tenantId:f.tenantId,companyId:f.companyId,today,effectiveFrom,sourceDate,nextDate,groups,shifts,versionId:draft.versionId,revisions,earningId:earning.id,people,batch,scope:'Fictional prospective fixture only; no browser approval, banking, transfer or release yet; no policy backdating or trigger disable.'},null,2)+'\n',{flag:'wx',mode:0o600});
- console.log('Created 32 shared shifts, two prospective policy groups and three fictional financial sources; app decisions remain pending.');
+ await writeFile(destination,JSON.stringify({tenantId:f.tenantId,companyId:f.companyId,today,effectiveFrom:historicalCurrent?add(today,-1):effectiveFrom,formulaEffectiveFrom:historicalCurrent?today:effectiveFrom,sourceDate,nextDate,groups,shifts,versionId:draft.versionId,revisions,earningId:earning.id,people,batch,historicalBaselines,scope:historicalCurrent?'Fictional current-day replay of a privately restored pre-existing policy baseline; guards enabled before all business work. Not historical activation-command proof. Synthetic captures; no browser approval, banking, transfer or release yet.':'Fictional prospective fixture only; no browser approval, banking, transfer or release yet; no policy backdating or trigger disable.'},null,2)+'\n',{flag:'wx',mode:0o600});
+ console.log('Created separate '+profile+' fictional policy sources; app decisions remain pending.');
 }
 main().then(async()=>{await (await import('../test/harness')).closeAll();process.exit(0);},async error=>{console.error(error);await (await import('../test/harness')).closeAll();process.exit(1);});
