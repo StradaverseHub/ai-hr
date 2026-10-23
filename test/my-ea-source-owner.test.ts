@@ -4,7 +4,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,terminateEmployment} from '../core/org';
+import {myReleasedPayslipRuns} from '../core/read';
 import {myEaSources,myEaStatement} from '../core/reporting';
 import {myPayslipDetail} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -22,6 +23,29 @@ async function source(employee:Awaited<ReturnType<typeof own>>,period:string,sta
  const [slip]=await owner.db.insert(schema.payslip).values({tenantId:base.tenantId,batchId:batch.id,employmentId:employee.employmentId,basicSalary:'100.00',grossPay:'100.00',statutory:{},totalDeductions:'0.00',netPay:'100.00',employerCost:'100.00'}).returning();return{parent,batch,slip};
 }
 describe('Mine EA sees whole-year eligibility metadata beyond the canonical released-payslip read',()=>{
+ it('withholds every unreleased payslip state without concealing a separate released run',async()=>{
+  const e=await own();
+  const draft=await source(e,`${year()}-01`,'draft');
+  const processed=await source(e,`${year()}-02`,'processed');
+  const scheduled=await source(e,`${year()}-03`,'closed',new Date(Date.now()+86_400_000));
+  const legacy=await source(e,`${year()}-04`,'closed',null);
+  const released=await source(e,`${year()}-05`,'closed',new Date(Date.now()-60_000));
+  expect((await myReleasedPayslipRuns(e.ctx)).map(row=>row.payslipId)).toEqual([released.slip.id,legacy.slip.id]);
+  for(const hidden of [draft,processed,scheduled])expect(await myPayslipDetail(e.ctx,hidden.slip.id)).toBeNull();
+  expect(await myPayslipDetail(e.ctx,legacy.slip.id)).toMatchObject({id:legacy.slip.id,currency:'MYR'});
+  expect(await myPayslipDetail(e.ctx,released.slip.id)).toMatchObject({id:released.slip.id,currency:'MYR'});
+ });
+ it('keeps former and second own employments distinct, including their paying currencies',async()=>{
+  const e=await own(),first=await source(e,`${year()}-01`);
+  const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional second currency employer',country:'SG',currency:'SGD'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:base.tenantId,companyId:company.id,name:'Fictional second currency department'}).returning();
+  const second=await hireEmployee(adminCtx(base),{person:{id:e.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:`${Number(year())-1}-01-01`});
+  const other=await source({...second,ctx:e.ctx},`${year()}-02`,'closed',null,company.id);
+  await terminateEmployment(adminCtx(base),{employmentId:e.employmentId,terminationDate:todayInKualaLumpur(),terminationReason:'Fictional own-document history retention'});
+  expect((await myReleasedPayslipRuns(e.ctx)).map(row=>[row.employmentId,row.companyId,row.payslipId])).toEqual([[second.employmentId,company.id,other.slip.id],[e.employmentId,base.companyId,first.slip.id]]);
+  expect(await myPayslipDetail(e.ctx,first.slip.id)).toMatchObject({employmentId:e.employmentId,companyId:base.companyId,currency:'MYR'});
+  expect(await myPayslipDetail(e.ctx,other.slip.id)).toMatchObject({employmentId:second.employmentId,companyId:company.id,currency:'SGD'});
+ });
  it('requires actual evidence and retains historical years with legacy-null release compatibility',async()=>{const e=await own();expect(await myEaSources(e.ctx)).toEqual([]);await source(e,`${Number(year())-1}-01`);await source(e,`${year()}-01`,'closed',new Date(Date.now()-60_000));const rows=await myEaSources(e.ctx);expect(rows.map(row=>[row.year,row.available,row.employmentId,row.companyId])).toEqual([[year(),true,e.employmentId,base.companyId],[String(Number(year())-1),true,e.employmentId,base.companyId]]);});
  it.each(['draft','processed'] as const)('withholds the entire own year when a %s source is hidden from the canonical payslip read',async(status)=>{const e=await own();const released=await source(e,`${year()}-01`),hidden=await source(e,`${year()}-02`,status);expect(await myPayslipDetail(e.ctx,released.slip.id)).not.toBeNull();expect(await myPayslipDetail(e.ctx,hidden.slip.id)).toBeNull();expect(await myEaSources(e.ctx)).toEqual([expect.objectContaining({year:year(),available:false})]);expect(await myEaStatement(e.ctx,{employmentId:e.employmentId,companyId:base.companyId,year:year()})).toBeNull();});
  it('withholds future release and rechecks availability for the same selection after a late payroll source',async()=>{const e=await own();await source(e,`${year()}-01`);expect((await myEaSources(e.ctx))[0].available).toBe(true);await source(e,`${year()}-02`,'closed',new Date(Date.now()+86_400_000));expect((await myEaSources(e.ctx))[0].available).toBe(false);expect(await myEaStatement(e.ctx,{employmentId:e.employmentId,year:year(),companyId:base.companyId})).toBeNull();});
