@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
@@ -74,7 +75,7 @@ export default async function ClaimLimitsPage({
   const t = await getTranslations('admin.claims');
   const { error, gradeId: rawGradeId } = await searchParams;
   const [types, grades, allLimits] = await Promise.all([listClaimTypes(s), listJobGrades(s), listClaimLimits(s)]);
-  const activeGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
+  const activeGrades = organisationChoiceLabels(grades.filter((g) => !g.archivedAt)).map((g) => ({ id: g.id, name: g.displayLabel }));
 
   // THE SCOPE GUARD. Anything that is not one of THIS tenant's live grades resolves to null = company-wide.
   const selectedGradeId = activeGrades.some((g) => g.id === rawGradeId) ? (rawGradeId as string) : null;

@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
@@ -533,9 +534,9 @@ export default async function RosterPage({
                   {/* A chosen department wins over the employee multi-select (the action prefers it). */}
                   <select name="departmentId" defaultValue="" className={inputCls}>
                     <option value="">{t('scopeEmployees')}</option>
-                    {departments.map((d) => (
+                    {organisationChoiceLabels(departments).map((d) => (
                       <option key={d.id} value={d.id}>
-                        {t('scopeDepartment')}: {d.name}
+                        {t('scopeDepartment')}: {d.displayLabel}
                       </option>
                     ))}
                   </select>

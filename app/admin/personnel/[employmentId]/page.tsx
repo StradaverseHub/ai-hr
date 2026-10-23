@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
 import {employmentTestRecord} from '@/core/employment-test-record';
 import Link from 'next/link';
@@ -605,10 +606,10 @@ export default async function EmployeePage({
           listLocations(s, scope),
         ]);
         const byField: Record<HireCorrectionField, { id: string; name: string }[]> = {
-          departmentId: deps.map((d) => ({ id: d.id, name: d.name })),
-          positionId: poss.map((pos) => ({ id: pos.id, name: pos.title })),
-          businessUnitId: bus.map((bu) => ({ id: bu.id, name: bu.name })),
-          costCenterId: ccs.map((cc) => ({ id: cc.id, name: `${cc.code} — ${cc.name}` })),
+          departmentId: organisationChoiceLabels(deps).map((d) => ({ id: d.id, name: d.displayLabel })),
+          positionId: organisationChoiceLabels(poss).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+          businessUnitId: organisationChoiceLabels(bus).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
+          costCenterId: organisationChoiceLabels(ccs).map((cc) => ({ id: cc.id, name: cc.displayLabel })),
           locationId: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
           // Reporting lines may cross companies by design (hireEmployee allows a cross-company manager), so
           // the manager list is the same one the Direct Superior field offers.
@@ -665,9 +666,9 @@ export default async function EmployeePage({
         return [
           c.id,
           {
-            departments: deps.map((d) => ({ id: d.id, name: d.name })),
-            positions: poss.map((pos) => ({ id: pos.id, name: pos.title })),
-            businessUnits: bus.map((bu) => ({ id: bu.id, name: bu.name })),
+            departments: organisationChoiceLabels(deps).map((d) => ({ id: d.id, name: d.displayLabel })),
+            positions: organisationChoiceLabels(poss).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+            businessUnits: organisationChoiceLabels(bus).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
             locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
           },
         ] as const;
@@ -3507,10 +3508,10 @@ export default async function EmployeePage({
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.
         current: movementCurrent,
-        departments: departments.map((d) => ({ id: d.id, name: d.name })),
-        positions: positions.map((pos) => ({ id: pos.id, name: pos.title })),
-        businessUnits: businessUnits.map((bu) => ({ id: bu.id, name: bu.name })),
-        grades: grades.map((g) => ({ id: g.id, name: g.name })),
+        departments: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
+        positions: organisationChoiceLabels(positions).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+        businessUnits: organisationChoiceLabels(businessUnits).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
+        grades: organisationChoiceLabels(grades).map((g) => ({ id: g.id, name: g.displayLabel })),
         locations: locations.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
         // b7b22514 — `companyId` rides along so the grid can narrow the Direct Superior list to the
         // DESTINATION company on an Entity Transfer. No extra read: listEmployees already returns it.
@@ -3862,9 +3863,9 @@ export default async function EmployeePage({
             <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="record">
               <select {...personnelControl('employment.organisation_assignment.departmentname','record')} defaultValue=""  className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
-                {orgDepartments.map((d) => (
+                {organisationChoiceLabels(orgDepartments).map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name}
+                    {d.displayLabel}
                   </option>
                 ))}
               </select>
@@ -3872,9 +3873,9 @@ export default async function EmployeePage({
             <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
               <select {...personnelControl('employment.organisation_assignment.businessunitname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
-                {orgBusinessUnits.map((bu) => (
+                {organisationChoiceLabels(orgBusinessUnits).map((bu) => (
                   <option key={bu.id} value={bu.id}>
-                    {bu.name}
+                    {bu.displayLabel}
                   </option>
                 ))}
               </select>
@@ -3882,9 +3883,9 @@ export default async function EmployeePage({
             <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
               <select {...personnelControl('employment.organisation_assignment.positionname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
-                {orgPositions.map((pos) => (
+                {organisationChoiceLabels(orgPositions).map((pos) => (
                   <option key={pos.id} value={pos.id}>
-                    {pos.title}
+                    {pos.displayLabel}
                   </option>
                 ))}
               </select>

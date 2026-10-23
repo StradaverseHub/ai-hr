@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -138,11 +139,11 @@ export default async function PayrollProcessPage({
           // "all companies I'm scoped to", and the server re-resolves it against allowedCompanies as a
           // backstop so the run can never widen beyond the admin's grants.
           companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))}
-          departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds, businessUnitId: d.businessUnitId }))}
-          businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal, assignedCompanyIds: b.assignedCompanyIds }))}
-          positions={positions.map((p) => ({ id: p.id, name: p.title, companyId: p.companyId, isGlobal: p.isGlobal, assignedCompanyIds: p.assignedCompanyIds }))}
-          costCenters={costCenters.map((c) => ({ id: c.id, name: c.name, companyId: c.companyId, isGlobal: c.isGlobal, assignedCompanyIds: c.assignedCompanyIds }))}
-          jobGrades={jobGrades.map((g) => ({ id: g.id, name: g.name }))}
+          departments={organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel, companyId: d.companyId, isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds, businessUnitId: d.businessUnitId }))}
+          businessUnits={organisationChoiceLabels(businessUnits).map((b) => ({ id: b.id, name: b.displayLabel, companyId: b.companyId, isGlobal: b.isGlobal, assignedCompanyIds: b.assignedCompanyIds }))}
+          positions={organisationChoiceLabels(positions).map((p) => ({ id: p.id, name: p.displayLabel, companyId: p.companyId, isGlobal: p.isGlobal, assignedCompanyIds: p.assignedCompanyIds }))}
+          costCenters={organisationChoiceLabels(costCenters).map((c) => ({ id: c.id, name: c.displayLabel, companyId: c.companyId, isGlobal: c.isGlobal, assignedCompanyIds: c.assignedCompanyIds }))}
+          jobGrades={organisationChoiceLabels(jobGrades).map((g) => ({ id: g.id, name: g.displayLabel }))}
           payDayByCompany={payDayByCompany}
           existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company }))}
           cyclesByCompany={cyclesByCompany}
