@@ -47,8 +47,9 @@ function fixture() {
  const ReviewBoundary=(output.exports.WorkplaceReviewBoundary??React.Fragment) as React.ComponentType<React.PropsWithChildren>;
  function Provider({children}:React.PropsWithChildren){return <ConnectionProvider><DraftProvider><ReviewBoundary>{children}</ReviewBoundary></DraftProvider></ConnectionProvider>;}
  function DraftEditor(){const state=drafts.exports.useJourneyDrafts();return <input aria-label="Employee draft" value={state.clock?.message??''} onChange={e=>state.putClock({action:'in',phase:'review',message:e.target.value,photo:{uri:'cache/employee-photo.jpg',name:'photo.jpg',mimeType:'image/jpeg',size:5}})}/>;}
+ function LeaveDraftEditor(){const state=drafts.exports.useJourneyDrafts();return <input aria-label="Employee leave draft" value={state.leave?.command.employeeRemark??''} onChange={e=>state.putLeave({phase:'edit',command:{requestId:'00000000-0000-4000-8000-000000000001',leaveTypeId:'00000000-0000-4000-8000-000000000002',startDate:'1999-01-01',endDate:'1999-01-01',durationType:'full_day',employeeRemark:e.target.value},document:{uri:'cache/employee-document.pdf',name:'document.pdf',mimeType:'application/pdf',size:8}})}/>;}
  function PrivateView(){const p=output.exports.useCompanyConnection();return <><p>Signed-out connection: {p?.name}</p><Setup/></>;}
- return {Provider,PrivateView,DraftProvider,DraftEditor,files,deleted,clear,picker,linking,back,getInitialURL,applied:()=>applied};
+ return {Provider,PrivateView,DraftProvider,DraftEditor,LeaveDraftEditor,files,deleted,clear,picker,linking,back,getInitialURL,applied:()=>applied};
 }
 afterEach(cleanup);
 describe('shipped company setup screen',()=>{
@@ -71,16 +72,17 @@ describe('shipped company setup screen',()=>{
  });
  it('preserves actual employee drafts and attachments through link review/cancel, clearing only after confirmation',async()=>{
   const f=fixture(),user=userEvent.setup();f.files.set('doc/aihr-company-v1.json',JSON.stringify(setup('Current workplace','https://cloud.example.test','current')));
-  render(<f.Provider><f.PrivateView/><f.DraftEditor/></f.Provider>);
+  render(<f.Provider><f.PrivateView/><f.DraftEditor/><f.LeaveDraftEditor/></f.Provider>);
   await user.type(await screen.findByLabelText('Employee draft'),'Attendance review in progress');f.files.set('cache/employee-photo.jpg','photo');
+  await user.type(screen.getByLabelText('Employee leave draft'),'Keep this leave request');f.files.set('cache/employee-document.pdf','document');
   const incoming=workplaceSetupLinks(JSON.stringify(setup('New workplace','https://cloud.example.test','new'))).app;
   act(()=>f.linking.listener?.({url:incoming}));await screen.findByText('New workplace');
-  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(screen.queryByLabelText('Employee draft')).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button',{name:'Back'}));expect(await screen.findByLabelText('Employee draft')).toHaveValue('Attendance review in progress');
-  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(f.clear).not.toHaveBeenCalled();
+  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(f.files.has('cache/employee-document.pdf')).toBe(true);expect(screen.queryByLabelText('Employee draft')).not.toBeInTheDocument();expect(screen.queryByLabelText('Employee leave draft')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button',{name:'Back'}));expect(await screen.findByLabelText('Employee draft')).toHaveValue('Attendance review in progress');expect(screen.getByLabelText('Employee leave draft')).toHaveValue('Keep this leave request');
+  expect(f.files.has('cache/employee-photo.jpg')).toBe(true);expect(f.files.has('cache/employee-document.pdf')).toBe(true);expect(f.clear).not.toHaveBeenCalled();
   act(()=>f.linking.listener?.({url:incoming}));await screen.findByText('New workplace');await user.click(screen.getByRole('button',{name:'Use this company'}));
-  await screen.findByText('Signed-out connection: New workplace');expect(screen.getByLabelText('Employee draft')).toHaveValue('');
-  expect(f.files.has('cache/employee-photo.jpg')).toBe(false);expect(f.clear).toHaveBeenCalledOnce();
+  await screen.findByText('Signed-out connection: New workplace');expect(screen.getByLabelText('Employee draft')).toHaveValue('');expect(screen.getByLabelText('Employee leave draft')).toHaveValue('');
+  expect(f.files.has('cache/employee-photo.jpg')).toBe(false);expect(f.files.has('cache/employee-document.pdf')).toBe(false);expect(f.clear).toHaveBeenCalledOnce();
  });
  it('preserves the employee draft when Android back cancels an invalid incoming link',async()=>{
   const f=fixture(),user=userEvent.setup();const stored=JSON.stringify(setup('Current workplace','https://cloud.example.test','current'));f.files.set('doc/aihr-company-v1.json',stored);
