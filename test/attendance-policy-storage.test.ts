@@ -310,8 +310,8 @@ describe('immutable non-payable policy part storage',()=>{
   if(!original?.calculation||!original.evidence||!original.policyParts)throw Error('Expected actual staged captured source');
   const acl=await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_policy_captured_coverage(uuid)','EXECUTE') as allowed`);
   expect(acl[0].allowed).toBe(false);
-  let attempted='';
-  await expect(withTenant(ctx,async tx=>{
+  let attempted='',failure:unknown;
+  try{await withTenant(ctx,async tx=>{
    const {saved}=await header(tx,f,original.policyParts!.length,{inputDigest:original.calculation!.inputDigest,
     approvalDigest:original.calculation!.approvalDigest,referenceDigest:original.calculation!.referenceDigest});attempted=saved.id;
    const evidence=structuredClone(original.evidence!);
@@ -329,7 +329,12 @@ describe('immutable non-payable policy part storage',()=>{
    await tx.insert(s.attendanceOvertimeCalculationEvidence).values({calculationId:saved.id,tenantId:b.tenantId,companyId:b.companyId,
     inputs:evidence.inputs,evidence:evidence.evidence});
    await tx.insert(s.attendanceOvertimePolicyPart).values(original.policyParts!.map(({createdAt,...row})=>({...row,calculationId:saved.id})));
-  })).rejects.toThrow();
+  });}catch(error){failure=error;}
+  const outer=failure as {cause?:{code?:unknown;message?:unknown}}|undefined;
+  const cause=(outer?.cause??failure) as {code?:unknown;message?:unknown}|undefined;
+  expect(cause?.code).toBe('23514');
+  expect(String(cause?.message)).toContain(kind==='boundary'?'Captured footprint is not original source intersection'
+   :kind==='count'?'Captured quantity changed':'Captured allocation boundary identity missing');
   expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,original.source.id))).toEqual([]);
  });
