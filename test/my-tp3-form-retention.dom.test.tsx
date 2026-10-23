@@ -55,3 +55,13 @@ it('retains an explicit blank deduction month and unticked declaration after a r
  const submitted=action.mock.calls[0][1] as FormData;
  expect(submitted.get('deductionMonth')).toBe('');expect(submitted.getAll('declarationAccepted')).toEqual(['no']);
 });
+
+it('gives every canonical numeric TP3 field its unique section code and translated description',async()=>{
+ render(<MyTp3EditableForm>{await Tp3DeclarationFields({record:null,identity,selectedYear:Number(todayInKualaLumpur().slice(0,4)),mode:'personal'})}</MyTp3EditableForm>);
+ const fields=screen.getAllByRole('spinbutton');
+ expect(fields).toHaveLength(44);
+ const labels=fields.map(field=>field.getAttribute('aria-label'));
+ expect(labels.every(label=>!!label&&/^[CD]\d+(\([a-z]+\))? · .+/.test(label))).toBe(true);
+ expect(new Set(labels).size).toBe(fields.length);
+ expect(screen.getByRole('spinbutton',{name:'C1 · tp3.money.c1.label'})).toHaveAttribute('name',amountField('c','c1'));
+});

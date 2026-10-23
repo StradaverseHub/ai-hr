@@ -18,7 +18,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
  const Fig=({v}:{v:number|null})=><span className="w-28 pt-2 text-right text-sm tabular-nums text-muted-foreground">{v==null?'':money(v)}</span>;
  const Input=mode==='personal'?Tp3PersonalInput:'input';
  const Select=mode==='personal'?Tp3PersonalSelect:'select';
- const MoneyInput=({name,value}:{name:string;value:number|undefined})=><Input type="number" step="0.01" min="0" name={name} defaultValue={box(value)} className={`${inputCls} w-40 max-w-full text-right tabular-nums`}/>;
+ const MoneyInput=({name,value,label}:{name:string;value:number|undefined;label:string})=><Input aria-label={label} type="number" step="0.01" min="0" name={name} defaultValue={box(value)} className={`${inputCls} w-40 max-w-full text-right tabular-nums`}/>;
  return <>
               {/* ── The form's own DEDUCTION MONTH / DEDUCTION YEAR boxes ── */}
               <Card className="p-4">
@@ -170,7 +170,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                                   </>
                                 );
                               })()}
-                              <MoneyInput name={amountField('c', line.code)} value={stored?.amount} />
+                              <MoneyInput label={`C${n} · ${t(`tp3.money.${line.code}.label`)}`} name={amountField('c', line.code)} value={stored?.amount} />
                             </>
                           ) : null}
                         </div>
@@ -223,6 +223,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                                 );
                               })()}
                               <MoneyInput
+                                label={`C${n}(${sub.code}) · ${t(`tp3.money.${line.code}.sub.${sub.code}`)}`}
                                 name={subField('c', line.code, sub.code)}
                                 value={stored?.subItems?.[sub.code]}
                               />
@@ -334,7 +335,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                                 {item.limit == null ? t('noLimit') : money(item.limit)}
                               </span>
                               {item.subItems.length === 0 ? (
-                                <MoneyInput name={amountField('d', item.code)} value={stored?.amount} />
+                                <MoneyInput label={`D${n} · ${t(`items.${item.code}.label`)}`} name={amountField('d', item.code)} value={stored?.amount} />
                               ) : (
                                 <span className="w-40 pt-2 text-right text-sm tabular-nums">
                                   {stored?.amount ? money(stored.amount) : ''}
@@ -351,6 +352,7 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                               {sub.limit == null ? '' : money(sub.limit)}
                             </span>
                             <MoneyInput
+                              label={`D${n}(${sub.code}) · ${t(`items.${item.code}.sub.${sub.code}`)}`}
                               name={subField('d', item.code, sub.code)}
                               value={stored?.subItems?.[sub.code]}
                             />

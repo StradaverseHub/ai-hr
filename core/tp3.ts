@@ -1262,8 +1262,10 @@ export function myTp3History(ctx:SessionContext):Promise<{records:Tp3Record[];dr
   if(!personId)return Promise.resolve({records:[],drafts:[]});
   return withTenant(ctx,async tx=>{
     const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
-    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as MyTp3Draft[];
-    return {records:records.map(personalTp3),drafts};
+    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as (Omit<MyTp3Draft,'updatedAt'|'submittedAt'>&{updatedAt:string|Date;submittedAt:string|Date|null})[];
+    // Raw SQL has no Drizzle timestamp decoder; expose the Date contract used by the shared form.
+    const date=(value:string|Date)=>new Date(value instanceof Date?value.getTime():value);
+    return {records:records.map(personalTp3),drafts:drafts.map(row=>({...row,updatedAt:date(row.updatedAt),submittedAt:row.submittedAt==null?null:date(row.submittedAt)}))};
   });
 }
 export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
