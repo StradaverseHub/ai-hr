@@ -1,3 +1,4 @@
+import {attendancePolicyStoredPartCount} from '../packs/attendance/policy-count-attribution';
 import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {selectAttendancePolicyManualPositions} from '../packs/attendance/policy-manual-duration';
 import {attendancePolicyTraceBinding} from '../packs/attendance/policy-trace-binding';
@@ -244,6 +245,20 @@ describe('complete immutable proposal replay',()=>{
 
 
 describe('complete positioned-plan source and shared duration replay',()=>{
+ it('stores disjoint approved-plan quantities without putting them into physical work columns',()=>{
+  const f=fixture();f.context.selected.policy.overtime.autoMethod='preApproved';
+  const approvals=approvedPlans(f,[{from:1200,to:1260},{from:1230,to:1290}]);
+  const proposal=propose(f.context,f.work,f.formulas,approvals,id(8));
+  const rows=materialize({source:{employmentId:f.context.employmentId,date:f.context.date,tenantId:id(8)},policy:f.context.selected,
+   context:f.context,work:f.work,formulas:f.formulas,approvals,proposal,planQuantityScope:'approvedPlanWithIndependentWorkedDay'});
+  expect(rows).not.toBeNull();
+  expect(rows?.map(row=>[row.rawMinutes,row.allocatedPayableMinutes,row.sourceIntervals])).toEqual([[0,0,[]]]);
+  expect(rows?.map(attendancePolicyStoredPartCount)).toEqual([90]);
+  expect(rows?.[0].durationEvidence).toMatchObject({allocatedIntervals:[],planQuantity:{rawMinutes:90,selectedMinutes:90,payableMinutes:90,
+   sourceIntervals:[{from:1200,to:1290}],allocatedIntervals:[{from:1200,to:1290}]}});
+  const forged=structuredClone(rows![0]);(forged.durationEvidence as {planQuantity:{payableMinutes:number}}).planQuantity.payableMinutes++;
+  expect(attendancePolicyStoredPartCount(forged)).toBeNull();
+ });
  it('unions overlapping approved windows before counting and retains every distinct workflow reference',()=>{
   const f=fixture();f.context.selected.policy.overtime.autoMethod='preApproved';
   const approvals=approvedPlans(f,[{from:1410,to:1470},{from:1425,to:1485}]);

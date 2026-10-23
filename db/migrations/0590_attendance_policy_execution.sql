@@ -45,13 +45,16 @@ CREATE TABLE public.attendance_overtime_policy_part(
  money_day text NOT NULL CHECK(money_day IN('workday','rest_day','holiday')),
  version_id uuid NOT NULL REFERENCES public.overtime_pattern_version(id) ON DELETE RESTRICT,
  input_digest text NOT NULL CHECK(input_digest ~ '^[0-9a-f]{64}$'),
- raw_minutes integer NOT NULL CHECK(raw_minutes BETWEEN 1 AND 4320),
+ raw_minutes integer NOT NULL CHECK(raw_minutes BETWEEN 0 AND 4320),
  allocated_payable_minutes integer NOT NULL CHECK(allocated_payable_minutes BETWEEN 0 AND raw_minutes),
  source_intervals jsonb NOT NULL CHECK(jsonb_typeof(source_intervals)='array' AND octet_length(source_intervals::text)<=262144),
  calendar_references jsonb NOT NULL CHECK(jsonb_typeof(calendar_references)='array' AND octet_length(calendar_references::text)<=32768),
  duration_evidence jsonb NOT NULL CHECK(jsonb_typeof(duration_evidence)='object' AND octet_length(duration_evidence::text)<=262144
   AND (duration_evidence->>'authority') IS NOT DISTINCT FROM 'proposalOnly'),
  created_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT policy_part_physical_or_plan_ck CHECK(
+  (raw_minutes>0 AND NOT(duration_evidence?'planQuantity')) OR
+  (raw_minutes=0 AND allocated_payable_minutes=0 AND source_intervals='[]'::jsonb AND jsonb_typeof(duration_evidence->'planQuantity')='object')),
  PRIMARY KEY(calculation_id,sequence),
  UNIQUE(calculation_id,calendar_date),
  CONSTRAINT attendance_overtime_policy_money_day_ck CHECK(
@@ -99,7 +102,7 @@ CREATE FUNCTION app.guard_attendance_overtime_policy_part() RETURNS trigger
 DECLARE header public.attendance_overtime_calculation;source public.attendance_overtime_source;
  policy public.attendance_group_policy_revision;version public.overtime_pattern_version;state text;
  item jsonb;from_text text;to_text text;start_minute integer;end_minute integer;previous_end integer:=-1;
- total_minutes integer:=0;keys_count integer;
+ total_minutes integer:=0;keys_count integer;positioned jsonb;plan_quantity jsonb;expected_raw integer;
 BEGIN
  IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'Policy parts are immutable' USING ERRCODE='23514';END IF;
  IF NOT app.principal_snapshot_current() THEN
@@ -127,10 +130,21 @@ BEGIN
  SELECT s.state INTO state FROM public.overtime_pattern_version_state s WHERE s.version_id=version.id
   AND s.tenant_id=NEW.tenant_id AND s.effective_from<=NEW.calendar_date ORDER BY s.effective_from DESC,s.sequence DESC LIMIT 1;
  IF state IS DISTINCT FROM 'active' THEN RAISE EXCEPTION 'Policy formula is inactive on the part date' USING ERRCODE='23514';END IF;
- IF jsonb_array_length(NEW.source_intervals) NOT BETWEEN 1 AND 4320
+ plan_quantity:=NEW.duration_evidence->'planQuantity';positioned:=NEW.source_intervals;expected_raw:=NEW.raw_minutes;
+ IF plan_quantity IS NOT NULL THEN
+  IF jsonb_typeof(plan_quantity) IS DISTINCT FROM 'object' OR plan_quantity->>'v' IS DISTINCT FROM '1'
+   OR NEW.raw_minutes<>0 OR NEW.allocated_payable_minutes<>0 OR NEW.source_intervals<>'[]'::jsonb
+   OR NEW.duration_evidence->>'intervalBasis' IS DISTINCT FROM 'approvedPlan'
+   OR NEW.duration_evidence->'allocatedIntervals' IS DISTINCT FROM '[]'::jsonb
+   OR coalesce(plan_quantity->>'rawMinutes','')!~'^[0-9]{1,4}$'
+   OR jsonb_typeof(plan_quantity->'sourceIntervals') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'Approved-plan quantity cannot occupy physical work columns' USING ERRCODE='23514';END IF;
+  positioned:=plan_quantity->'sourceIntervals';expected_raw:=(plan_quantity->>'rawMinutes')::integer;
+ END IF;
+ IF jsonb_array_length(positioned) NOT BETWEEN 1 AND 4320
   OR jsonb_array_length(NEW.calendar_references) NOT BETWEEN 1 AND 32 THEN
   RAISE EXCEPTION 'Retain bounded positioned work and calendar provenance' USING ERRCODE='23514';END IF;
- FOR item IN SELECT value FROM jsonb_array_elements(NEW.source_intervals) LOOP
+ FOR item IN SELECT value FROM jsonb_array_elements(positioned) LOOP
   IF jsonb_typeof(item)<>'object' THEN RAISE EXCEPTION 'Invalid policy interval' USING ERRCODE='23514';END IF;
   SELECT count(*) INTO keys_count FROM jsonb_object_keys(item);
   from_text:=item->>'from';to_text:=item->>'to';
@@ -146,7 +160,7 @@ BEGIN
    RAISE EXCEPTION 'Split policy intervals must belong to their actual calendar date' USING ERRCODE='23514';END IF;
   previous_end:=end_minute;total_minutes:=total_minutes+end_minute-start_minute;
  END LOOP;
- IF total_minutes<>NEW.raw_minutes THEN RAISE EXCEPTION 'Policy raw count must equal its positioned intervals' USING ERRCODE='23514';END IF;
+ IF total_minutes<>expected_raw THEN RAISE EXCEPTION 'Policy raw count must equal its positioned intervals' USING ERRCODE='23514';END IF;
  FOR item IN SELECT value FROM jsonb_array_elements(NEW.calendar_references) LOOP
   IF jsonb_typeof(item)<>'string' OR length(btrim(item#>>'{}')) NOT BETWEEN 1 AND 500 THEN
    RAISE EXCEPTION 'Invalid policy calendar provenance' USING ERRCODE='23514';END IF;
@@ -826,7 +840,7 @@ BEGIN
    AND credit.ot_minutes::numeric*header.payable_denominator::numeric<=header.payable_numerator::numeric
    AND ((credit.dated_credit IS NULL AND credit.worked_day_kind IS NOT NULL
     AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
-     WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
+     WHERE part.calculation_id=header.id AND coalesce((part.duration_evidence#>>'{planQuantity,payableMinutes}')::integer,(part.duration_evidence->>'attributedPayableMinutes')::integer,part.allocated_payable_minutes)>0
       AND credit.worked_day_kind::text IS DISTINCT FROM CASE part.day_class
        WHEN 'normal' THEN 'workday' WHEN 'off' THEN 'off_day' WHEN 'rest' THEN 'rest_day'
        WHEN 'publicHoliday' THEN 'holiday' WHEN 'replacementHoliday' THEN 'holiday' ELSE NULL END))
@@ -842,13 +856,15 @@ BEGIN
      AND (credit.dated_credit->>'days')::numeric=credit.days_credited
      AND jsonb_typeof(credit.dated_credit->'parts')='array'
      AND jsonb_array_length(credit.dated_credit->'parts')=(SELECT count(*) FROM public.attendance_overtime_policy_part part
-      WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0)
+      WHERE part.calculation_id=header.id AND coalesce((part.duration_evidence#>>'{planQuantity,payableMinutes}')::integer,(part.duration_evidence->>'attributedPayableMinutes')::integer,part.allocated_payable_minutes)>0)
      AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part
-      WHERE part.calculation_id=header.id AND part.allocated_payable_minutes>0
+      WHERE part.calculation_id=header.id AND coalesce((part.duration_evidence#>>'{planQuantity,payableMinutes}')::integer,(part.duration_evidence->>'attributedPayableMinutes')::integer,part.allocated_payable_minutes)>0
        AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(credit.dated_credit->'parts') item
         WHERE item->>'sequence'=part.sequence::text AND item->>'date'=part.calendar_date::text AND item->>'dayClass'=part.day_class
-         AND item->>'sourceMinutes'=coalesce(part.duration_evidence->>'attributedPayableMinutes',part.allocated_payable_minutes::text)
-         AND item->>'rule' IN('extendedHours','measuredRestDay','measuredHoliday','claimWindow')
+         AND item->>'sourceMinutes'=coalesce(part.duration_evidence#>>'{planQuantity,payableMinutes}',part.duration_evidence->>'attributedPayableMinutes',part.allocated_payable_minutes::text)
+         AND item->>'rule'=CASE WHEN credit.dated_credit->>'path'='claim' THEN 'claimWindow'
+          WHEN part.day_class='normal' THEN 'extendedHours' WHEN part.day_class='rest' THEN 'measuredRestDay'
+          WHEN part.day_class IN('publicHoliday','replacementHoliday') THEN 'measuredHoliday' ELSE NULL END
          AND coalesce(item->>'qualifyingMinutes','')~'^[0-9]{1,4}$' AND coalesce(item->>'countedMinutes','')~'^[0-9]{1,4}$'
          AND coalesce(item->>'days','')~'^[0-9]{1,4}(\.[0-9]{1,2})?$'
          AND (item->>'qualifyingMinutes')::integer<=(item->>'sourceMinutes')::integer
@@ -894,9 +910,30 @@ ALTER TABLE public.overtime_source_settlement ADD CONSTRAINT overtime_policy_leg
 CREATE FUNCTION app.attendance_policy_part_payable_count(arg_part public.attendance_overtime_policy_part,arg_duration jsonb,arg_formulas jsonb)
  RETURNS integer LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE class_row jsonb;declared jsonb;attribution jsonb;anchor jsonb;anchor_part jsonb;
- class_count integer;physical integer;eligible integer;remainder integer;payable integer;chosen_sequence integer;direction text;
+ class_count integer;physical integer;eligible integer;remainder integer;payable integer;chosen_sequence integer;direction text;plan_quantity jsonb;
 BEGIN
  declared:=arg_duration->'parts'->arg_part.sequence;
+ plan_quantity:=arg_part.duration_evidence->'planQuantity';
+ IF plan_quantity IS NOT NULL THEN
+  IF arg_duration->>'intervalBasis' IS DISTINCT FROM 'approvedPlan' OR arg_part.raw_minutes<>0 OR arg_part.allocated_payable_minutes<>0
+   OR arg_part.source_intervals<>'[]'::jsonb OR arg_part.duration_evidence->'allocatedIntervals' IS DISTINCT FROM '[]'::jsonb
+   OR plan_quantity->>'v' IS DISTINCT FROM '1'
+   OR plan_quantity->'rawMinutes' IS DISTINCT FROM declared->'minutes'
+   OR plan_quantity->'selectedMinutes' IS DISTINCT FROM declared->'allocatedPayableMinutes'
+   OR plan_quantity->'sourceIntervals' IS DISTINCT FROM declared->'intervals'
+   OR plan_quantity->'allocatedIntervals' IS DISTINCT FROM declared->'allocations'
+   OR coalesce(plan_quantity->>'payableMinutes','')!~'^[0-9]{1,4}$'
+   OR jsonb_typeof(plan_quantity->'roundingCountAttributions') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(plan_quantity->'roundingCountAttributions')>1 THEN
+   RAISE EXCEPTION 'Approved-plan part requires its exact separate quantity coordinates' USING ERRCODE='23514';END IF;
+  arg_part.raw_minutes:=(declared->>'minutes')::integer;arg_part.allocated_payable_minutes:=(declared->>'allocatedPayableMinutes')::integer;
+  arg_part.source_intervals:=declared->'intervals';
+  arg_part.duration_evidence:=jsonb_build_object('allocatedIntervals',declared->'allocations')||
+   CASE WHEN jsonb_array_length(plan_quantity->'roundingCountAttributions')=1 THEN jsonb_build_object(
+    'roundingCountAttributions',plan_quantity->'roundingCountAttributions','attributedPayableMinutes',plan_quantity->'payableMinutes') ELSE '{}'::jsonb END;
+  IF (plan_quantity->>'payableMinutes')::integer<>arg_part.allocated_payable_minutes+coalesce((plan_quantity#>>'{roundingCountAttributions,0,minutes}')::integer,0) THEN
+   RAISE EXCEPTION 'Approved-plan payable count changed' USING ERRCODE='23514';END IF;
+ END IF;
  IF arg_duration->>'status' IS DISTINCT FROM 'calculated' OR jsonb_typeof(arg_duration->'parts') IS DISTINCT FROM 'array'
   OR jsonb_array_length(arg_duration->'parts')>3 OR jsonb_typeof(arg_duration->'classes') IS DISTINCT FROM 'array'
   OR jsonb_array_length(arg_duration->'classes')>5
@@ -973,6 +1010,7 @@ DECLARE header public.attendance_overtime_calculation;source public.attendance_o
  lo integer;hi integer;part_total integer;part_payable integer;payable_total integer:=0;count_parts jsonb:='[]'::jsonb;total integer:=0;part_count integer:=0;used integer:=0;
  ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
  count_ranges int8multirange;expected_ranges int8multirange;span int8range;last_ms bigint;
+ is_plan boolean:=false;plan_proof jsonb;plan_quantity jsonb;plan_ref jsonb;plan_window jsonb;plan_request public.attendance_correction;plan_contract public.attendance_policy_request_contract;plan_receipt public.attendance_policy_final_receipt;plan_ranges int8multirange:='{}'::int8multirange;plan_recorded int8multirange:='{}'::int8multirange;quantity jsonb;capture_count integer:=0;
  is_attested boolean:=false;attested public.attendance_policy_attested_effect;anchor public.attendance;testimony jsonb;testimony_span jsonb;
  requested_basis boolean:=false;requested_span jsonb;selected_from bigint;selected_to bigint;
  pin public.attendance_punch;pout public.attendance_punch;cin public.attendance_clock_capture;cout public.attendance_clock_capture;
@@ -989,7 +1027,33 @@ BEGIN
   OR app.can_admin_payroll_for(source.company_id)) IS NOT TRUE THEN RAISE EXCEPTION 'Captured coverage authority changed while waiting' USING ERRCODE='42501';END IF;
  SELECT e.inputs,e.evidence INTO inputs,data FROM public.attendance_overtime_calculation_evidence e WHERE e.calculation_id=header.id AND e.tenant_id=header.tenant_id AND e.company_id=header.company_id;
  proof:=data->'policyCapturedCoverage';clock_source:=data->'policyClockSource';
- is_attested:=proof->>'countBasis'='attestedBoundaryFloor';
+ is_plan:=coalesce(proof->>'countBasis'='approvedPlanWithIndependentWorkedDay',false);
+ IF is_plan THEN
+  plan_proof:=proof;plan_quantity:=proof->'planQuantity';
+  IF data->>'policyPlanQuantityScope' IS DISTINCT FROM 'approvedPlanWithIndependentWorkedDay'
+   OR proof->>'authority' IS DISTINCT FROM 'approvedPlanCoverageProposalOnly'
+   OR plan_quantity IS DISTINCT FROM data->'policyApprovedPlanQuantity'
+   OR plan_quantity->>'state' IS DISTINCT FROM 'prepared' OR plan_quantity->>'authority' IS DISTINCT FROM 'approvedPlanQuantityProposalOnly'
+   OR plan_quantity->>'basis' IS DISTINCT FROM 'approvedPlanWithIndependentWorkedDay'
+   OR plan_quantity->>'durationDigest' IS DISTINCT FROM proof->>'durationDigest'
+   OR plan_quantity->>'minutes' IS DISTINCT FROM proof->>'minutes'
+   OR plan_quantity#>>'{source,tenantId}' IS DISTINCT FROM source.tenant_id::text
+   OR plan_quantity#>>'{source,employmentId}' IS DISTINCT FROM source.employment_id::text
+   OR plan_quantity#>>'{source,attendanceId}' IS DISTINCT FROM source.attendance_id::text
+   OR plan_quantity#>>'{source,date}' IS DISTINCT FROM source.attendance_date::text
+   OR plan_quantity#>>'{workedDay,basis}' IS NULL OR plan_quantity#>>'{workedDay,basis}' NOT IN('captured','attested')
+   OR jsonb_typeof(plan_quantity#>'{workedDay,intervals}') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(plan_quantity#>'{workedDay,intervals}') NOT BETWEEN 1 AND 64
+   OR jsonb_typeof(plan_quantity->'quantities') IS DISTINCT FROM 'array'
+   OR data#>>'{policyExecutionProposal,duration,intervalBasis}' IS DISTINCT FROM 'approvedPlan' THEN
+   RAISE EXCEPTION 'Separate approved-plan quantity and original worked-day proof required' USING ERRCODE='23514';END IF;
+  -- Only adapt the local source-validation view. The persisted plan proof stays distinct.
+  is_attested:=plan_quantity#>>'{workedDay,basis}'='attested';
+  proof:=proof||jsonb_build_object('authority',CASE WHEN is_attested THEN 'attestedCountCoverageProposalOnly' ELSE 'capturedCountCoverageProposalOnly' END,
+   'countBasis',CASE WHEN is_attested THEN 'attestedBoundaryFloor' ELSE 'capturedBoundaryFloor' END)
+   ||CASE WHEN is_attested THEN jsonb_build_object('correctionId',plan_quantity#>>'{workedDay,correctionId}',
+    'workflowRequestId',plan_quantity#>>'{workedDay,workflowRequestId}') ELSE '{}'::jsonb END;
+ ELSE is_attested:=proof->>'countBasis'='attestedBoundaryFloor';END IF;
  IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM (CASE WHEN is_attested THEN 'attestedCountCoverageProposalOnly' ELSE 'capturedCountCoverageProposalOnly' END)
   OR proof->>'countBasis' IS DISTINCT FROM (CASE WHEN is_attested THEN 'attestedBoundaryFloor' ELSE 'capturedBoundaryFloor' END) OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
   OR coalesce(proof->>'durationDigest','')!~'^[0-9a-f]{64}$' OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
@@ -1076,6 +1140,134 @@ BEGIN
    RAISE EXCEPTION 'Captured coverage clock identity changed' USING ERRCODE='23514';END IF;
  END LOOP;
  END IF;
+
+ IF is_plan THEN
+  -- Re-read EVERY active approval from the same private receipt/contract owners. A JSON
+  -- plan, an audit label or a subset of the current approved set cannot supply authority.
+  IF plan_quantity#>>'{plan,state}' IS DISTINCT FROM 'known' OR plan_quantity#>>'{plan,authority}' IS DISTINCT FROM 'approvedPlanOnly'
+   OR plan_quantity#>>'{plan,sourceDate}' IS DISTINCT FROM source.attendance_date::text
+   OR plan_quantity#>>'{plan,companyId}' IS DISTINCT FROM source.company_id::text
+   OR plan_quantity#>>'{plan,policyRevisionId}' IS DISTINCT FROM header.policy_revision_id::text
+   OR plan_quantity#>>'{plan,periodMinutes}' IS DISTINCT FROM '4320'
+   OR jsonb_typeof(plan_quantity#>'{plan,references}') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(plan_quantity#>'{plan,references}') NOT BETWEEN 1 AND 500
+   OR (SELECT count(DISTINCT ref->>'correctionId') FROM jsonb_array_elements(plan_quantity#>'{plan,references}') ref)
+    <>jsonb_array_length(plan_quantity#>'{plan,references}')
+   OR (SELECT count(DISTINCT ref->>'workflowRequestId') FROM jsonb_array_elements(plan_quantity#>'{plan,references}') ref)
+    <>jsonb_array_length(plan_quantity#>'{plan,references}')
+   OR (SELECT count(*) FROM public.attendance_correction c WHERE c.tenant_id=source.tenant_id
+    AND c.employment_id=source.employment_id AND c.attendance_date=source.attendance_date
+    AND c.status='approved' AND c.cancelled_at IS NULL AND c.requested_ot_minutes IS NOT NULL)
+    <>jsonb_array_length(plan_quantity#>'{plan,references}') THEN
+   RAISE EXCEPTION 'Complete current positioned-plan set required' USING ERRCODE='23514';END IF;
+  FOR plan_ref IN SELECT value FROM jsonb_array_elements(plan_quantity#>'{plan,references}') LOOP
+   SELECT * INTO plan_request FROM public.attendance_correction c WHERE c.id=(plan_ref->>'correctionId')::uuid
+    AND c.tenant_id=source.tenant_id AND c.employment_id=source.employment_id AND c.attendance_date=source.attendance_date
+    AND c.status='approved' AND c.cancelled_at IS NULL AND c.requested_ot_minutes>0 AND c.approved_ot_minutes=c.requested_ot_minutes;
+   IF NOT FOUND THEN RAISE EXCEPTION 'Current complete approved plan unavailable' USING ERRCODE='23514';END IF;
+   SELECT * INTO plan_contract FROM public.attendance_policy_request_contract c WHERE c.correction_id=plan_request.id AND c.tenant_id=source.tenant_id;
+   SELECT * INTO plan_receipt FROM public.attendance_policy_final_receipt r WHERE r.correction_id=plan_request.id AND r.tenant_id=source.tenant_id;
+   plan_window:=plan_contract.planned_window;
+   IF plan_contract.correction_id IS NULL OR plan_receipt.correction_id IS NULL
+    OR plan_contract.kind<>'epoch' OR plan_contract.company_id IS DISTINCT FROM source.company_id
+    OR plan_contract.employment_id IS DISTINCT FROM source.employment_id OR plan_contract.attendance_date IS DISTINCT FROM source.attendance_date
+    OR plan_contract.visible_epoch<(data#>>'{policyExecutionContext,selected,activation,epoch}')::bigint
+    OR plan_contract.visible_epoch<1 OR plan_contract.recorded_at<(data#>>'{policyExecutionContext,selected,activation,recordedAt}')::timestamptz
+    OR plan_contract.policy_binding->>'revisionId' IS DISTINCT FROM header.policy_revision_id::text
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyApprovalInput,requests}') r
+     WHERE r->>'id'=plan_request.id::text AND r#>'{submissionContract,policyBinding}'=plan_contract.policy_binding)
+    OR plan_contract.manual_approval_method IS DISTINCT FROM plan_request.ot_approval_method::text
+    OR plan_receipt.company_id IS DISTINCT FROM source.company_id OR plan_receipt.employment_id IS DISTINCT FROM source.employment_id
+    OR plan_receipt.attendance_date IS DISTINCT FROM source.attendance_date OR plan_receipt.submission_epoch IS DISTINCT FROM plan_contract.visible_epoch
+    OR plan_receipt.recorded_at<plan_contract.recorded_at OR plan_receipt.workflow_request_id::text IS DISTINCT FROM plan_ref->>'workflowRequestId'
+    OR plan_receipt.recorded_at IS DISTINCT FROM (plan_ref->>'recordedAt')::timestamptz
+    OR plan_receipt.workflow_evidence->'submittedPolicy' IS DISTINCT FROM plan_contract.policy_binding
+    OR plan_receipt.workflow_evidence->>'submittedManualMethod' IS DISTINCT FROM plan_contract.manual_approval_method
+    OR plan_receipt.workflow_evidence->'submittedPlan' IS DISTINCT FROM plan_window
+    OR plan_receipt.request_evidence IS DISTINCT FROM jsonb_build_object('requestedMinutes',plan_request.requested_ot_minutes,
+     'approvedMinutes',plan_request.approved_ot_minutes,'method',plan_request.ot_approval_method,
+     'plannedStartLabel',plan_request.planned_start_time,'plannedEndLabel',plan_request.planned_end_time,
+     'checkIn',plan_request.proposed_check_in,'checkOut',plan_request.proposed_check_out,'clockChanges',plan_request.clock_changes)
+    OR plan_window->>'version' IS DISTINCT FROM '1' OR plan_window->>'basis' IS DISTINCT FROM 'startDateEarlierEndNextDay'
+    OR plan_window->>'sourceDate' IS DISTINCT FROM source.attendance_date::text
+    OR plan_window->>'startLabel' IS DISTINCT FROM plan_request.planned_start_time::text
+    OR plan_window->>'endLabel' IS DISTINCT FROM plan_request.planned_end_time::text
+    OR plan_window->>'requestedMinutes' IS DISTINCT FROM plan_request.approved_ot_minutes::text
+    OR coalesce(plan_window->>'from','')!~'^[0-9]{1,4}$' OR coalesce(plan_window->>'to','')!~'^[0-9]{1,4}$'
+    OR plan_ref->'intervals' IS DISTINCT FROM jsonb_build_array(jsonb_build_object('from',plan_window->'from','to',plan_window->'to')) THEN
+    RAISE EXCEPTION 'Exact current approved-plan submission and final receipt required' USING ERRCODE='23514';END IF;
+   lo:=(plan_window->>'from')::integer;hi:=(plan_window->>'to')::integer;
+   IF lo<0 OR lo>=1440 OR hi<=lo OR hi>2880 OR hi-lo<>plan_request.approved_ot_minutes
+    OR lo<>(extract(hour FROM plan_request.planned_start_time)::integer*60+extract(minute FROM plan_request.planned_start_time)::integer)
+    OR hi%1440<>(extract(hour FROM plan_request.planned_end_time)::integer*60+extract(minute FROM plan_request.planned_end_time)::integer)
+    OR extract(second FROM plan_request.planned_start_time)<>0 OR extract(second FROM plan_request.planned_end_time)<>0 THEN
+    RAISE EXCEPTION 'Approved plan changed its original minute endpoints' USING ERRCODE='23514';END IF;
+   plan_ranges:=plan_ranges+int8multirange(int8range(lo,hi,'[)'));
+  END LOOP;
+  FOR item IN SELECT value FROM jsonb_array_elements(plan_quantity#>'{plan,intervals}') LOOP
+   lo:=(item->>'from')::integer;hi:=(item->>'to')::integer;
+   IF lo<0 OR lo>=hi OR hi>4320 OR plan_recorded&&int8range(lo,hi,'[)') THEN
+    RAISE EXCEPTION 'Approved plan union is invalid' USING ERRCODE='23514';END IF;
+   plan_recorded:=plan_recorded+int8multirange(int8range(lo,hi,'[)'));
+  END LOOP;
+  IF plan_recorded IS DISTINCT FROM plan_ranges THEN RAISE EXCEPTION 'Complete approved-plan union changed' USING ERRCODE='23514';END IF;
+  -- Actual reservation is reconstructed independently from original testified intervals or
+  -- original live capture pairs. No plan minute is turned into a physical worked interval.
+  IF is_attested THEN
+   IF plan_quantity#>'{workedDay,intervals}' IS DISTINCT FROM testimony->'intervals' THEN
+    RAISE EXCEPTION 'Original testified worked footprint changed' USING ERRCODE='23514';END IF;
+   FOR item IN SELECT value FROM jsonb_array_elements(testimony->'intervals') LOOP
+    from_ms:=(item->>'fromEpochMillisecond')::bigint;to_ms:=(item->>'toEpochMillisecond')::bigint;
+    IF from_ms<epoch_ms OR from_ms>=to_ms OR to_ms>epoch_ms+259200000 OR ranges&&int8range(from_ms,to_ms,'[)') THEN
+     RAISE EXCEPTION 'Invalid testified worked footprint' USING ERRCODE='23514';END IF;
+    ranges:=ranges+int8multirange(int8range(from_ms,to_ms,'[)'));
+   END LOOP;
+  ELSE
+   IF jsonb_typeof(plan_quantity#>'{workedDay,captures}') IS DISTINCT FROM 'array'
+    OR jsonb_array_length(plan_quantity#>'{workedDay,captures}')<>jsonb_array_length(data#>'{policyClockReview,evidence,intervals}')
+    OR (SELECT count(*) FROM public.attendance_punch p WHERE p.tenant_id=source.tenant_id AND p.attendance_id=source.attendance_id AND p.voided_at IS NULL)
+     <>jsonb_array_length(clock_source->'clocks') THEN RAISE EXCEPTION 'Complete original capture pairs required' USING ERRCODE='23514';END IF;
+   FOR item IN SELECT value FROM jsonb_array_elements(plan_quantity#>'{workedDay,captures}') LOOP
+    SELECT * INTO pin FROM public.attendance_punch WHERE id=(item->>'inPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='in' AND voided_at IS NULL;
+    SELECT * INTO pout FROM public.attendance_punch WHERE id=(item->>'outPunchId')::uuid AND tenant_id=source.tenant_id AND attendance_id=source.attendance_id AND direction='out' AND voided_at IS NULL;
+    SELECT * INTO cin FROM public.attendance_clock_capture WHERE id=pin.clock_capture_id AND id=(item->>'inCaptureId')::uuid AND tenant_id=source.tenant_id;
+    SELECT * INTO cout FROM public.attendance_clock_capture WHERE id=pout.clock_capture_id AND id=(item->>'outCaptureId')::uuid AND tenant_id=source.tenant_id;
+    in_ms:=floor(extract(epoch FROM cin.server_recorded_at)*1000)::bigint;out_ms:=floor(extract(epoch FROM cout.server_recorded_at)*1000)::bigint;
+    IF cin.id IS NULL OR cout.id IS NULL OR in_ms<epoch_ms OR out_ms<=in_ms OR out_ms>epoch_ms+259200000
+     OR item->>'fromEpochMillisecond' IS DISTINCT FROM in_ms::text OR item->>'toEpochMillisecond' IS DISTINCT FROM out_ms::text
+     OR plan_quantity#>'{workedDay,intervals}'->capture_count IS DISTINCT FROM jsonb_build_object('fromEpochMillisecond',in_ms,'toEpochMillisecond',out_ms)
+     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(data#>'{policyClockReview,evidence,intervals}') x
+      WHERE x->>'inMillisecond'=(in_ms-epoch_ms)::text AND x->>'outMillisecond'=(out_ms-epoch_ms)::text)
+     OR ranges&&int8range(in_ms,out_ms,'[)') THEN RAISE EXCEPTION 'Original physical capture pair changed' USING ERRCODE='23514';END IF;
+    ranges:=ranges+int8multirange(int8range(in_ms,out_ms,'[)'));capture_count:=capture_count+1;
+   END LOOP;
+   IF capture_count<>jsonb_array_length(plan_quantity#>'{workedDay,intervals}') THEN RAISE EXCEPTION 'Complete worked footprint required' USING ERRCODE='23514';END IF;
+  END IF;
+  FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id AND tenant_id=header.tenant_id AND company_id=header.company_id ORDER BY sequence LOOP
+   quantity:=plan_quantity->'quantities'->part.sequence;
+   part_payable:=app.attendance_policy_part_payable_count(part,data#>'{policyExecutionProposal,duration}',data->'policyDurationFormulaInput');
+   IF part.sequence<>part_count OR part.input_digest<>header.input_digest OR quantity IS DISTINCT FROM jsonb_build_object(
+    'sequence',part.sequence,'calendarDate',part.calendar_date,'dayClass',part.day_class,
+    'selectedMinutes',part.duration_evidence#>'{planQuantity,selectedMinutes}','payableMinutes',part_payable,
+    'intervals',part.duration_evidence#>'{planQuantity,allocatedIntervals}',
+    'roundingCountAttributions',part.duration_evidence#>'{planQuantity,roundingCountAttributions}') THEN
+    RAISE EXCEPTION 'Exact separate dated plan count required' USING ERRCODE='23514';END IF;
+   FOR item IN SELECT value FROM jsonb_array_elements(quantity->'intervals') LOOP
+    lo:=(item->>'from')::integer;hi:=(item->>'to')::integer;
+    IF lo>=hi OR NOT(plan_ranges @> int8range(lo,hi,'[)')) THEN RAISE EXCEPTION 'Selected quantity escaped complete approved plans' USING ERRCODE='23514';END IF;
+    expected:=jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,'fromMinute',lo,'toMinute',hi,'minutes',hi-lo);
+    IF proof->'allocations'->used IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Selected plan positions changed' USING ERRCODE='23514';END IF;
+    used:=used+1;
+   END LOOP;
+   part_count:=part_count+1;payable_total:=payable_total+part_payable;
+  END LOOP;
+  IF part_count<>header.policy_part_count OR part_count<>jsonb_array_length(plan_quantity->'quantities')
+   OR used<>jsonb_array_length(proof->'allocations') OR payable_total<1 OR proof->>'minutes' IS DISTINCT FROM payable_total::text
+   OR data#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM payable_total::text
+   OR data#>>'{policyExecutionProposal,duration,payableMinutes}' IS DISTINCT FROM payable_total::text THEN
+   RAISE EXCEPTION 'Complete approved-plan payable partition required' USING ERRCODE='23514';END IF;
+  -- Common tail compares the recorded original physical intervals with reconstructed ranges.
+ ELSE
  FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id AND tenant_id=header.tenant_id AND company_id=header.company_id ORDER BY sequence LOOP
   IF part.sequence<>part_count OR part.input_digest<>header.input_digest OR jsonb_typeof(part.duration_evidence->'allocatedIntervals') IS DISTINCT FROM 'array'
    OR jsonb_array_length(part.duration_evidence->'allocatedIntervals')>4320 THEN RAISE EXCEPTION 'Complete captured count parts required' USING ERRCODE='23514';END IF;
@@ -1161,6 +1353,7 @@ BEGIN
  IF part_count<>header.policy_part_count OR used<>jsonb_array_length(proof->'allocations') OR proof->>'minutes' IS DISTINCT FROM payable_total::text
   OR data#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM payable_total::text OR data#>>'{policyExecutionProposal,duration,payableMinutes}' IS DISTINCT FROM payable_total::text THEN
   RAISE EXCEPTION 'Captured parent count partition changed' USING ERRCODE='23514';END IF;
+ END IF; -- distinct approved-plan quantity or original captured/attested count path
  last_ms:=NULL;
  FOR item IN SELECT value FROM jsonb_array_elements(proof->'intervals') LOOP
   IF coalesce(item->>'fromEpochMillisecond','')!~'^-?[0-9]{1,16}$' OR coalesce(item->>'toEpochMillisecond','')!~'^-?[0-9]{1,16}$' THEN RAISE EXCEPTION 'Invalid captured footprint' USING ERRCODE='23514';END IF;
@@ -1297,6 +1490,11 @@ BEGIN
   IF recorded&&span THEN RAISE EXCEPTION 'Recorded physical coverage overlaps itself' USING ERRCODE='23514';END IF;
   recorded:=recorded+int8multirange(span);
  END LOOP;
+ IF EXISTS(SELECT 1 FROM public.attendance_overtime_calculation_evidence e WHERE e.calculation_id=header.id
+  AND e.evidence->>'policyPlanQuantityScope'='approvedPlanWithIndependentWorkedDay') THEN
+  IF proof->>'basis' IS DISTINCT FROM 'approvedPlan' THEN RAISE EXCEPTION 'Separate planned reservation basis required' USING ERRCODE='23514';END IF;
+  ranges:=app.attendance_policy_captured_coverage(header.id);
+ END IF;
  IF recorded IS DISTINCT FROM ranges THEN
   RAISE EXCEPTION 'Recorded coverage does not replay from all dated parts' USING ERRCODE='23514';END IF;
  -- Count coordinates above retain their original owner. Reservation geometry instead binds
@@ -1425,7 +1623,7 @@ BEGIN
   SELECT count(DISTINCT part.version_id),count(DISTINCT version.definition),count(DISTINCT app.attendance_policy_dated_rate_shape(version.definition)),jsonb_agg(part.version_id ORDER BY part.sequence)
    INTO version_count,definition_count,shape_count,part_versions FROM public.attendance_overtime_policy_part part
    JOIN public.overtime_pattern_version version ON version.id=part.version_id AND version.tenant_id=header.tenant_id
-   WHERE part.calculation_id=header.id AND part.tenant_id=header.tenant_id AND part.allocated_payable_minutes>0;
+   WHERE part.calculation_id=header.id AND part.tenant_id=header.tenant_id AND coalesce((part.duration_evidence#>>'{planQuantity,payableMinutes}')::integer,(part.duration_evidence->>'attributedPayableMinutes')::integer,part.allocated_payable_minutes)>0;
   IF version_count>1 THEN
    money_scope:=evidence.evidence->>'policyMoneyScope';
    IF money_scope IS NULL OR money_scope NOT IN('identicalDefinitions','datedRateExpressions','datedFormulaRules')
@@ -1454,7 +1652,7 @@ BEGIN
      WHERE part.calculation_id=header.id AND part.sequence::text=item->>'partSequence'
       AND part.calendar_date::text=item->>'calendarDate' AND part.day_class=item->>'dayClass'
       AND part.money_day=item->>'moneyDay' AND part.version_id::text=item->>'versionId'
-      AND part.allocated_payable_minutes>0)
+      AND coalesce((part.duration_evidence#>>'{planQuantity,payableMinutes}')::integer,(part.duration_evidence->>'attributedPayableMinutes')::integer,part.allocated_payable_minutes)>0)
     OR NOT EXISTS(SELECT 1 FROM public.attendance_overtime_line line WHERE line.calculation_id=header.id
      AND line.sequence=previous_sequence AND line.line_key=item#>>'{line,id}'
      AND line.component_id::text=item#>>'{line,mapping,earningItemId}'

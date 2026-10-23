@@ -138,7 +138,7 @@ function calculationDates(r:CalculationRead):string[]{
  if(r.calculation?.bindingKind!=='attendanceGroupPolicy')return [r.source.attendanceDate];
  const parts='policyParts' in r?r.policyParts:undefined;
  if(!parts||parts.length!==r.calculation.policyPartCount)fail('unavailable');
- const dates=parts.filter(part=>part.allocatedPayableMinutes>0).map(part=>part.calendarDate);
+ const dates=parts.filter(part=>(attendancePolicyStoredPartCount(part)??-1)>0).map(part=>part.calendarDate);
  if(!dates.length||dates.length>3||new Set(dates).size!==dates.length)fail('unavailable');
  return dates;
 }

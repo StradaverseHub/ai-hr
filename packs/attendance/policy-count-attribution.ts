@@ -63,6 +63,21 @@ export function attendancePolicyStoredPartCount(part:{sequence:number;calendarDa
   const value=part.durationEvidence;
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
   const evidence=value as Record<string,unknown>;
+  if(Object.hasOwn(evidence,'planQuantity')){
+   const plan=evidence.planQuantity as {v?:unknown;rawMinutes:number;selectedMinutes:number;payableMinutes:number;sourceIntervals:{from:number;to:number}[];allocatedIntervals:{from:number;to:number}[];roundingCountAttributions:PolicyRoundingCountAttribution[]};
+   if(evidence.intervalBasis!=='approvedPlan'||physical!==0||!Array.isArray(evidence.allocatedIntervals)||evidence.allocatedIntervals.length
+    ||Object.hasOwn(evidence,'attributedPayableMinutes')||Object.hasOwn(evidence,'roundingCountAttributions')||plan?.v!==1
+    ||![plan.rawMinutes,plan.selectedMinutes,plan.payableMinutes].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=4320)
+    ||plan.rawMinutes<1||plan.selectedMinutes>plan.rawMinutes||!Array.isArray(plan.sourceIntervals)||!Array.isArray(plan.allocatedIntervals)
+    ||!Array.isArray(plan.roundingCountAttributions)||plan.roundingCountAttributions.length>1)return null;
+   const raw=unionAttendancePolicyIntervals(plan.sourceIntervals,4320),selected=unionAttendancePolicyIntervals(plan.allocatedIntervals,4320);
+   if(!isDeepStrictEqual(raw,plan.sourceIntervals)||!isDeepStrictEqual(selected,plan.allocatedIntervals)
+    ||raw.reduce((n,row)=>n+row.to-row.from,0)!==plan.rawMinutes||selected.reduce((n,row)=>n+row.to-row.from,0)!==plan.selectedMinutes
+    ||subtractAttendancePolicyIntervals(selected,raw,4320).length)return null;
+   const count=attendancePolicyStoredPartCount({...part,allocatedPayableMinutes:plan.selectedMinutes,durationEvidence:{allocatedIntervals:plan.allocatedIntervals,
+    ...(plan.roundingCountAttributions.length?{roundingCountAttributions:plan.roundingCountAttributions,attributedPayableMinutes:plan.payableMinutes}:{})}});
+   return count===plan.payableMinutes?count:null;
+  }
   if(!Object.hasOwn(evidence,'roundingCountAttributions'))return Object.hasOwn(evidence,'attributedPayableMinutes')?null:physical;
   const rows=evidence.roundingCountAttributions;
   if(!Array.isArray(rows)||rows.length!==1||!Array.isArray(evidence.allocatedIntervals))return null;

@@ -1,3 +1,4 @@
+import {attendancePolicyIndependentApprovedPlanQuantity,type PolicyApprovedPlanQuantity} from './policy-approved-plan-quantity';
 import {attendancePolicyAttestedWorkInput} from './policy-attested-work-input';
 /** Original capture geometry and the separate existing boundary-floor count attribution.
  * This is proposal evidence only; ready headers, current consumers and settlement retain their owners. */
@@ -22,7 +23,27 @@ export type PolicyAttestedCoveragePrepared={state:'prepared';authority:'attested
   attestedFromEpochMillisecond:number;attestedToEpochMillisecond:number;fromEpochMillisecond:number;toEpochMillisecond:number;
   requestedIntervalIndex?:number;requestedFromEpochMillisecond?:number;requestedToEpochMillisecond?:number}[];
  intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
-export type PolicySourceCoverageProposal=PolicyCapturedCoverageProposal|PolicyAttestedCoveragePrepared;
+export type PolicyPlanCoveragePrepared={state:'prepared';authority:'approvedPlanCoverageProposalOnly';identity:PolicyCoverageIdentity;
+ durationDigest:string;countBasis:'approvedPlanWithIndependentWorkedDay';minutes:number;
+ planQuantity:Extract<PolicyApprovedPlanQuantity,{state:'prepared'}>;
+ allocations:{sequence:number;calendarDate:string;fromMinute:number;toMinute:number;minutes:number}[];
+ intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+export type PolicySourceCoverageProposal=PolicyCapturedCoverageProposal|PolicyAttestedCoveragePrepared|PolicyPlanCoveragePrepared;
+function approvedPlanCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicySourceCoverageProposal{
+ const refuse=():PolicySourceCoverageProposal=>({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason:'sourceMismatch'});
+ const context=snapshot.policyExecutionContext;
+ if(context?.state!=='policy'||context.companyId!==identity.companyId||snapshot.source.tenantId!==identity.tenantId
+  ||snapshot.source.employmentId!==identity.employmentId||snapshot.source.date!==identity.date)return refuse();
+ const plan=attendancePolicyIndependentApprovedPlanQuantity(snapshot);if(plan.state!=='prepared')return refuse();
+ const intervals:PolicyPlanCoveragePrepared['intervals']=[];
+ for(const row of plan.workedDay.intervals){const last=intervals.at(-1);
+  if(last&&row.fromEpochMillisecond===last.toEpochMillisecond)last.toEpochMillisecond=row.toEpochMillisecond;
+  else intervals.push({...row});}
+ return {state:'prepared',authority:'approvedPlanCoverageProposalOnly',identity:{...identity},durationDigest:plan.durationDigest,
+  countBasis:'approvedPlanWithIndependentWorkedDay',minutes:plan.minutes,planQuantity:plan,
+  allocations:plan.quantities.flatMap(part=>part.intervals.map(row=>({sequence:part.sequence,calendarDate:part.calendarDate,
+   fromMinute:row.from,toMinute:row.to,minutes:row.to-row.from}))),intervals};
+}
 function attestedCoverage(identity:PolicyCoverageIdentity,snapshot:IndependentPolicyDurationSource):PolicySourceCoverageProposal{
  const refuse=():PolicySourceCoverageProposal=>({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason:'sourceMismatch'});
  const context=snapshot.policyExecutionContext,source=snapshot.policyRawEffectSource?.attested,proposal=snapshot.policyExecutionProposal;
@@ -72,6 +93,7 @@ export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCover
  const refuse=(reason:Extract<PolicyCapturedCoverageProposal,{state:'unavailable'}>['reason']):PolicyCapturedCoverageProposal=>
   ({state:'unavailable',authority:'capturedCountCoverageProposalOnly',reason});
  try{
+  if(snapshot.policyPlanQuantityScope==='approvedPlanWithIndependentWorkedDay')return approvedPlanCoverage(identity,snapshot);
   if(snapshot.policyRawEffectSource?.attested)return attestedCoverage(identity,snapshot);
   const source=snapshot.source,context=snapshot.policyExecutionContext,clocks=snapshot.policyClockSource,review=snapshot.policyClockReview,
    proposal=snapshot.policyExecutionProposal,replay=attendancePolicyIndependentDurationReplay(snapshot);

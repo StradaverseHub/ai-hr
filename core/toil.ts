@@ -1070,7 +1070,8 @@ export async function bankToilCreditTx(
   // Same lock order as Attendance calculation and Payroll source reservation, before any ledger write.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
   const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
-  const dated=p.datedPolicyElection?await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate}):null;
+  const dated=p.datedPolicyElection?await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,claimWindow:p.datedPolicyElection==='claim'?p.formulaClaimWindow:undefined}):null;
+  if(p.datedPolicyElection==='claim'&&!p.formulaClaimWindow)throw new ToilNotEligibleError('The dated claim requires its complete submitted window.');
   if(p.datedPolicyElection&&!dated)throw new ToilNotEligibleError('Complete current dated policy credit is required.');
   if(dated&&(p.companyId!==dated.companyId||p.otMinutes!==dated.minutes||p.dayType!==null||p.workedDayKind!=null||p.declaredDays!==undefined))
     throw new ToilNotEligibleError('A dated credit election must use its complete proven source and independently calculated credit.');
@@ -1143,7 +1144,7 @@ export async function bankToilCreditTx(
   const assessed=dated?calculateDatedToilCredit(dated.parts,policy,p.datedPolicyElection!):null;
   if(assessed&&assessed.days<=0)throw new ToilExtendedHoursBelowThresholdError(p.workedDate,assessed.countedMinutes,policy.extendedHalfDayMinutes);
   const datedCredit:DatedToilCreditEvidence|null=dated&&assessed?{v:1,sourceDate:p.workedDate,calculationId:dated.calculationId,
-    sourceRevision:dated.sourceRevision,durationDigest:dated.durationDigest,path:p.datedPolicyElection!,consumptionOrder:'earliestDateFirst',sourceMinutes:dated.minutes,
+    sourceRevision:dated.sourceRevision,durationDigest:dated.durationDigest,path:p.datedPolicyElection!,...(p.datedPolicyElection==='claim'?{claimWindow:{...p.formulaClaimWindow!}}:{}),consumptionOrder:'earliestDateFirst',sourceMinutes:dated.minutes,
     countedMinutes:assessed.countedMinutes,days:assessed.days,parts:assessed.parts}:null;
   const dayType = p.dayType;
   const otMinutes = assessed?.countedMinutes??p.otMinutes;
@@ -1500,6 +1501,20 @@ export async function accrueExtendedWorkdayToilTx(
     firstScheduleConsent?: boolean;
   },
 ): Promise<AccrueToilResult & { eligibleMinutes: number; shiftEnd: string | null; actualClockOut: string | null }> {
+  const {resolveOvertimePolicyDatedToilQualificationTx}=await import('../packs/attendance/service');
+  const dated=await resolveOvertimePolicyDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mixedOnly:true,
+    claimWindow:{start:p.claimStart,end:p.claimEnd}});
+  if(dated){
+    const [entity]=await tx.select({country:company.country}).from(company).where(eq(company.id,dated.companyId)).limit(1);
+    if(!entity)throw new ToilNotEligibleError('The dated source employer is unavailable.');
+    const [policy]=await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId,dated.companyId)).limit(1);
+    if(!policy)throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
+    const credit=calculateDatedToilCredit(dated.parts,policy,'claim');
+    const result=await bankToilCreditTx(tx,ctx,{employmentId:p.employmentId,workedDate:p.workedDate,companyId:dated.companyId,country:entity.country,
+      dayType:null,workedDayKind:null,otMinutes:dated.minutes,datedPolicyElection:'claim',formulaClaimWindow:{start:p.claimStart,end:p.claimEnd},
+      approvedOn:p.approvedOn,requestedOn:p.requestedOn,firstScheduleConsent:p.firstScheduleConsent,source:'employee_request'});
+    return {...result,eligibleMinutes:credit.countedMinutes,shiftEnd:null,actualClockOut:null};
+  }
   const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,{start:p.claimStart,end:p.claimEnd});
   const [emp] = await tx
     .select({ companyId: employment.companyId, country: company.country })

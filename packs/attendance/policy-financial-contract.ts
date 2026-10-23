@@ -48,7 +48,7 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
    ||!coverage.allocations.length||!coverage.intervals.length)return unavailable('coverageUnavailable');
   const parts=materializeAttendancePolicyProposalParts({source:input.source,policy,context,
    work:snapshot.policyWorkInput,formulas:snapshot.policyFormulaInput,durationFormulas:snapshot.policyDurationFormulaInput,
-   approvals:snapshot.policyApprovalInput,proposal:snapshot.policyExecutionProposal,rawEffect:snapshot.policyRawEffectSource});
+   approvals:snapshot.policyApprovalInput,proposal:snapshot.policyExecutionProposal,rawEffect:snapshot.policyRawEffectSource,planQuantityScope:snapshot.policyPlanQuantityScope});
   if(!parts||!parts.length||parts.length>3||parts.reduce((n,p)=>n+(attendancePolicyStoredPartCount(p)??NaN),0)!==duration.minutes)
    return unavailable('partitionMismatch');
   const pricing=attendancePolicyPricingProposal(snapshot),cash=attendancePolicyCashReplay(snapshot);
@@ -131,6 +131,7 @@ export function recordedAttendancePolicyFinancialContractMatches(source:Financia
    policyFormulaInput:stored.policyFormulaInput as CanonicalOvertimeSnapshot['policyFormulaInput'],
    policyDurationFormulaInput:stored.policyDurationFormulaInput as CanonicalOvertimeSnapshot['policyDurationFormulaInput'],
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
+   policyPlanQuantityScope:stored.policyPlanQuantityScope as CanonicalOvertimeSnapshot['policyPlanQuantityScope'],
    policyMoneyScope:stored.policyMoneyScope as CanonicalOvertimeSnapshot['policyMoneyScope'],
    policyExecutionProposal:stored.policyExecutionProposal as CanonicalOvertimeSnapshot['policyExecutionProposal'],
    policyRawEffectSource:stored.policyRawEffectSource as CanonicalOvertimeSnapshot['policyRawEffectSource']};
@@ -178,7 +179,7 @@ export function attendancePolicyFinancialDurationContract(identity:PolicyCoverag
   if(coverage.state!=='prepared'||coverage.durationDigest!==replay.digest||coverage.minutes!==replay.minutes)return unavailable;
   const parts=materializeAttendancePolicyProposalParts({source:source.source,policy:source.attendanceGroupPolicy,
    context:source.policyExecutionContext,work:source.policyWorkInput,durationFormulas:source.policyDurationFormulaInput,
-   approvals:source.policyApprovalInput,proposal:source.policyExecutionProposal,rawEffect:source.policyRawEffectSource});
+   approvals:source.policyApprovalInput,proposal:source.policyExecutionProposal,rawEffect:source.policyRawEffectSource,planQuantityScope:source.policyPlanQuantityScope});
   if(!parts?.length||parts.length>3||parts.reduce((sum,part)=>sum+(attendancePolicyStoredPartCount(part)??NaN),0)!==replay.minutes)return unavailable;
   return {state:'prepared',authority:'policyFinancialDurationContractOnly',identity:{...identity},
    policyRevisionId:source.attendanceGroupPolicy!.id,approvalStatus:approvalStatus as 'approved'|'notRequired',

@@ -4756,10 +4756,29 @@ export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContex
   const company=(await provenCompanyDatesTx(tx,[p])).get(`${p.employmentId}|${p.date}`);
   if(!company?.companyId||company.reason)return {state:'unavailable',reason:'companyUnavailable'};
   const liveSchedule=await scheduleFor(tx,p.employmentId,p.date);
-  const [rawDay]=await tx.select({dayType:attendance.dayType}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+  const [rawDay]=await tx.select({dayType:attendance.dayType,trace:attendance.calcTrace}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
     eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
   const schedule=p.classification!=='currentSchedule'&&rawDay?.dayType?{...liveSchedule,dayType:rawDay.dayType}:liveSchedule;
-  if(schedule.source==='policy'&&company.companyId!==subject.companyId)return {state:'unavailable',reason:'scheduleUnavailable'};
+  if(schedule.source==='policy'&&company.companyId!==subject.companyId){
+    // A destination employer's schedule cannot resolve the old employer's policy.
+    // Only a recorded, valid original schedule can establish legacy absence here;
+    // missing history or an applicable original policy keeps the explicit refusal.
+    const recorded=isAttendanceTrace(rawDay?.trace)?rawDay.trace:null;
+    if(recorded){
+      const originalRule=recorded.schedule.ruleId;
+      if(originalRule===null){
+        const [current]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+        return current?.allowed?{state:'legacy',reason:'noDatedPolicy'}:{state:'unavailable',reason:'principalUnavailable'};
+      }
+      if(typeof originalRule==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(originalRule)){
+        const original=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:company.companyId,ruleId:originalRule,date:p.date});
+        const [current]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+        if(!current?.allowed)return {state:'unavailable',reason:'principalUnavailable'};
+        if(!original)return {state:'legacy',reason:'noDatedPolicy'};
+      }
+    }
+    return {state:'unavailable',reason:'scheduleUnavailable'};
+  }
   if(!schedule.rule)return {state:'legacy',reason:'noDatedPolicy'};
   const selected=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:company.companyId,ruleId:schedule.rule.id,date:p.date});
   if(!selected)return {state:'legacy',reason:'noDatedPolicy'};

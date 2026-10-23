@@ -665,6 +665,7 @@ export type OvertimePolicyAllocatedPrice=
  |{state:'proposed';authority:'pricingProposalOnly';durationOwner:'attendanceGroupPolicy';minutes:number;
    source:OvertimeSource;patternVersionId:string;policyBinding:OvertimePolicyBinding['policyBinding'];
    currency:{code:string;minorScale:number};amountMinorUnits:string;lines:OvertimeLine[];trace:OvertimeTrace[];
+   approvedPlanQuantity?:OvertimePolicyApprovedPlanCount;
    moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][];formulaScope?:{kind:'identicalDefinitions'|'datedRateExpressions'|'datedFormulaRules';partVersionIds:string[]}};
    /** Original duration configuration remains visible, but cannot run a second time at pricing. */
    retainedDurationConfiguration:{eligibleMinutes:OvertimePattern['eligibleMinutes'];cap:OvertimePattern['durationCap'];
@@ -686,11 +687,46 @@ function policyPriceResourcesAvailable(pattern:OvertimePattern,input:OvertimeInp
  * pure money API grants no approval, readiness or financial capability. */
 export type OvertimePolicyRoundedCount={segmentId:string;minutes:number;allocationPolicy:'earliest'|'latest';
  source:OvertimeSource;policyBinding:OvertimePolicyBinding['policyBinding'];anchor:OvertimeClockSpan};
-function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[]){
+/** Pricing coordinates for the complete approved-plan union. Worked milliseconds
+ * remain a separate witness and can never be inferred from these quantity spans. */
+export type OvertimePolicyApprovedPlanCount={basis:'approvedPlan';sessionBasis:'completeApprovedPlanUnion';durationDigest:string;
+ source:OvertimeSource;policyBinding:OvertimePolicyBinding['policyBinding'];
+ selectedIntervals:{fromEpochSeconds:string;toEpochSeconds:string}[];
+ plans:{correctionId:string;workflowRequestId:string;fromEpochSeconds:string;toEpochSeconds:string}[];
+ workedDayIntervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+function validateApprovedPlanPriceCount(pattern:OvertimePattern,input:OvertimeInput<OvertimePolicyBinding>,plan:OvertimePolicyApprovedPlanCount):boolean{
+ if(plan.basis!=='approvedPlan'||plan.sessionBasis!=='completeApprovedPlanUnion'||!/^[0-9a-f]{64}$/.test(plan.durationDigest)
+  ||(['tenantId','employmentId','attendanceId','date','inputDigest','approvalDigest'] as const).some(key=>plan.source[key]!==input.source[key])
+  ||(['kind','revisionId','dayClass','calendarDate','dayOffset'] as const).some(key=>plan.policyBinding[key]!==input.policyBinding[key])
+  ||input.layer!=='raw'||plan.selectedIntervals.length!==input.segments.length||!plan.plans.length||plan.plans.length>500
+  ||!plan.workedDayIntervals.length||plan.workedDayIntervals.length>128)return false;
+ // The owner defines all approved requests as one planned session. Resource
+ // evidence remains independent; an absent planned-session deduction cannot be invented.
+ const second=(v:string)=>{if(!/^-?[0-9]{1,16}$/.test(v))throw Error('Invalid plan position');return BigInt(v);};
+ for(const reference of plan.plans){overtimeUuid(reference.correctionId,'plan correction');overtimeUuid(reference.workflowRequestId,'plan workflow');
+  if(second(reference.fromEpochSeconds)>=second(reference.toEpochSeconds))return false;}
+ let end:bigint|null=null;
+ for(const [index,segment]of input.segments.entries()){
+  const selected=plan.selectedIntervals[index];if(segment.clock.state!=='known'||segment.clock.provenance.owner!=='approval'||segment.sessionId!=='approved_plan_union')return false;
+  const from=second(selected.fromEpochSeconds),to=second(selected.toEpochSeconds);
+  if(from>=to||end!==null&&from<end||from!==BigInt(segment.clock.value.startEpochSeconds)||to-from!==BigInt(segment.clock.value.elapsedSeconds))return false;
+  let covered=from;
+  for(const reference of [...plan.plans].sort((a,b)=>Number(second(a.fromEpochSeconds)-second(b.fromEpochSeconds)))){
+   const lo=second(reference.fromEpochSeconds),hi=second(reference.toEpochSeconds);if(lo<=covered&&hi>covered)covered=hi;if(covered>=to)break;
+  }
+  if(covered<to)return false;end=to;
+ }
+ let physicalEnd:number|null=null;
+ for(const row of plan.workedDayIntervals){if(!Number.isSafeInteger(row.fromEpochMillisecond)||!Number.isSafeInteger(row.toEpochMillisecond)
+  ||row.fromEpochMillisecond>=row.toEpochMillisecond||physicalEnd!==null&&row.fromEpochMillisecond<physicalEnd)return false;physicalEnd=row.toEpochMillisecond;}
+ return true;
+}
+function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[],approvedPlan?:OvertimePolicyApprovedPlanCount){
  const unavailable=(reason:Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>['reason']):Extract<OvertimePolicyAllocatedPrice,{state:'unavailable'}>=>
   ({state:'unavailable',authority:'pricingProposalOnly',reason});
  try{
   const pattern=validateOvertimePattern(rawPattern),input=validateOvertimePolicyInput(rawInput);
+  if(approvedPlan&&!validateApprovedPlanPriceCount(pattern,input,approvedPlan))return unavailable('allocationUnavailable');
   if(!policyPriceResourcesAvailable(pattern,input))return unavailable('formulaUnavailable');
   if(input.layer!=='raw'||input.mode!=='actual'||input.sessionGranularity!=='recorded')return unavailable('allocationUnavailable');
   let total=ZERO;
@@ -726,9 +762,10 @@ function policyAllocatedStage(rawPattern:OvertimePattern,rawInput:OvertimeInput<
    work.payable=add(work.payable,extra);work.approved=add(work.approved,extra);work.approvalAllocated=add(work.approvalAllocated,extra);
   }
   stage.canonicalApproved=total;
-  if(roundedCounts.length)stage.e.emit('duration','policyRoundedCountAttribution',{physicalMinutes:exact(physicalTotal,'minutes'),
+  if(approvedPlan)stage.e.emit('duration','approvedPlanPricingCoordinates',{...approvedPlan,physicalClockExtended:false});
+  if(roundedCounts.length)stage.e.emit('duration','policyRoundedCountAttribution',{...(approvedPlan?{selectedPlanMinutes:exact(physicalTotal,'minutes')}:{physicalMinutes:exact(physicalTotal,'minutes')}),
    payableMinutes:exact(total,'minutes'),attributions:roundedCounts,physicalClockExtended:false});
-  return {state:'known' as const,pattern,total,stage,roundedBySegment};
+  return {state:'known' as const,pattern,total,stage,roundedBySegment,approvedPlan};
  }catch{return unavailable('allocationUnavailable');}
 }
 function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAllocatedStage>,{state:'known'}>,result:OvertimeEvaluation<OvertimePolicyBinding>):OvertimePolicyAllocatedPrice{
@@ -738,12 +775,12 @@ function allocatedPriceProjection(prepared:Extract<ReturnType<typeof policyAlloc
  const {pattern,stage}=prepared;
  return {state:'proposed',authority:'pricingProposalOnly',durationOwner:'attendanceGroupPolicy',minutes:Number(prepared.total.n),
   source:result.source,patternVersionId:result.patternVersionId,policyBinding:stage.input.policyBinding,
-  currency:stage.input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,moneyScope:{kind:'singleAllocation'},
+  currency:stage.input.currency,amountMinorUnits:result.amountMinorUnits,lines:result.lines,trace:result.trace,...(prepared.approvedPlan?{approvedPlanQuantity:prepared.approvedPlan}:{}),moneyScope:{kind:'singleAllocation'},
   retainedDurationConfiguration:{eligibleMinutes:pattern.eligibleMinutes,cap:pattern.durationCap,rounding:pattern.durationRounding,
    minuteDeductionIds:pattern.deductions.filter(rule=>rule.unit==='minutes').map(rule=>rule.id)}};
 }
-export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[]):OvertimePolicyAllocatedPrice{
- const prepared=policyAllocatedStage(rawPattern,rawInput,roundedCounts);if(prepared.state==='unavailable')return prepared;
+export function evaluateOvertimePolicyAllocatedPrice(rawPattern:OvertimePattern,rawInput:OvertimeInput<OvertimePolicyBinding>,roundedCounts:readonly OvertimePolicyRoundedCount[]=[],approvedPlan?:OvertimePolicyApprovedPlanCount):OvertimePolicyAllocatedPrice{
+ const prepared=policyAllocatedStage(rawPattern,rawInput,roundedCounts,approvedPlan);if(prepared.state==='unavailable')return prepared;
  try{return allocatedPriceProjection(prepared,priceOvertimeStage(prepared.stage,undefined,prepared.roundedBySegment));}
  catch{return {state:'unavailable',authority:'pricingProposalOnly',reason:'formulaUnavailable'};}
 }
@@ -764,14 +801,16 @@ function policyDatedRateShape(pattern:OvertimePattern):string{
  * and independently validate the complete dated source and original version tuple.
  * Shared-rule scopes retain their original comparison. Explicit datedFormulaRules
  * gives each dated formula its own money rules and shares deduction-source consumption. */
-export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[],formulaScope:'sameVersion'|'identicalDefinitions'|'datedRateExpressions'|'datedFormulaRules'='sameVersion'):OvertimePolicyAllocatedParentPrice{
+export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[];approvedPlan?:OvertimePolicyApprovedPlanCount}[],formulaScope:'sameVersion'|'identicalDefinitions'|'datedRateExpressions'|'datedFormulaRules'='sameVersion'):OvertimePolicyAllocatedParentPrice{
  const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
   ({state:'unavailable',authority:'parentPricingProposalOnly',reason});
  try{
   if(!['sameVersion','identicalDefinitions','datedRateExpressions','datedFormulaRules'].includes(formulaScope)||rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
-  const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input,p.roundedCounts));
+  const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input,p.roundedCounts,p.approvedPlan));
   if(prepared.some(p=>p.state!=='known'))return refuse('allocationUnavailable');
   const parts=prepared.filter((p):p is Extract<typeof p,{state:'known'}>=>p.state==='known'),first=parts[0];
+  if(parts.some(p=>p.approvedPlan)&&parts.some(p=>!p.approvedPlan||p.approvedPlan.durationDigest!==first.approvedPlan?.durationDigest
+   ||JSON.stringify(p.approvedPlan.plans)!==JSON.stringify(first.approvedPlan?.plans)||JSON.stringify(p.approvedPlan.workedDayIntervals)!==JSON.stringify(first.approvedPlan?.workedDayIntervals)))return refuse('parentScopeUnavailable');
   const definition=JSON.stringify(first.pattern),datedShape=policyDatedRateShape(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
   if(parent.layer!=='raw'||parent.mode!=='actual'||parent.sessionGranularity!=='recorded'
    ||parent.patternVersionId!==first.stage.input.patternVersionId

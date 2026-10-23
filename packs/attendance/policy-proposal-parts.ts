@@ -1,7 +1,8 @@
+import {attendancePolicySourceReservationCoverage} from './policy-source-reservation-coverage';
+import {attendancePolicyApprovedPlanQuantity} from './policy-approved-plan-quantity';
 import {attendancePolicyCapturedCoverageProposal} from './policy-captured-coverage';
 import {attendancePolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
-import {attendancePolicyCoverageProposal} from './policy-coverage';
 import {attendancePolicyCountAttribution} from './policy-count-attribution';
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
  * generate payment lines or settle cash/TOIL. Parent identities/digests are bound by the writer. */
@@ -19,7 +20,7 @@ import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 export type PolicyProposalStoragePart=Pick<typeof attendanceOvertimePolicyPart.$inferInsert,
  'sequence'|'calendarDate'|'dayClass'|'moneyDay'|'versionId'|'rawMinutes'|'allocatedPayableMinutes'|'sourceIntervals'|'calendarReferences'|'durationEvidence'>;
 export type PolicyProposalPartSource={source:{employmentId:string;date:string;tenantId?:string};policy?:ResolvedAttendanceGroupPolicy;
- context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;durationFormulas?:PolicyDurationFormulaInput;approvals?:PolicyApprovalInput;proposal?:PolicyExecutionProposal;rawEffect?:CanonicalOvertimeSnapshot['policyRawEffectSource']};
+ context?:AttendancePolicyExecutionContext;work?:PolicyWorkInput;formulas?:PolicyFormulaInput;durationFormulas?:PolicyDurationFormulaInput;approvals?:PolicyApprovalInput;proposal?:PolicyExecutionProposal;planQuantityScope?:CanonicalOvertimeSnapshot['policyPlanQuantityScope'];rawEffect?:CanonicalOvertimeSnapshot['policyRawEffectSource']};
 
 /** Null rejects inconsistent prepared evidence. Empty means no complete proposal to materialize.
  * Rounding remainder stays on the parent's class evidence, never an invented child clock/date. */
@@ -45,6 +46,16 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
  for(const [sequence,part]of duration.parts.entries()){
   const formula=expected.formulaParts[sequence];
   if(formula.date!==part.date||formula.dayClass!==part.dayClass||part.companyId!==input.policy.companyId)return null;
+  if(input.planQuantityScope!==undefined){
+   if(input.planQuantityScope!=='approvedPlanWithIndependentWorkedDay'||duration.intervalBasis!=='approvedPlan'||count.state!=='known')return null;
+   parts.push({sequence,calendarDate:part.date,dayClass:part.dayClass,moneyDay:part.moneyDay,versionId:formula.versionId,
+    // Planned quantities never occupy the columns/intervals describing physical work.
+    rawMinutes:0,allocatedPayableMinutes:0,sourceIntervals:[],calendarReferences:[...part.calendarReferences],
+    durationEvidence:{authority:'proposalOnly',policyRevisionId:input.policy.id,intervalBasis:'approvedPlan',parentClass:part.dayClass,allocatedIntervals:[],
+     planQuantity:{v:1,rawMinutes:part.minutes,selectedMinutes:part.allocatedPayableMinutes,payableMinutes:count.parts[sequence].minutes,
+      sourceIntervals:part.intervals.map(row=>({...row})),allocatedIntervals:part.allocations.map(row=>({...row})),
+      roundingCountAttributions:count.parts[sequence].roundingCountAttributions}}});continue;
+  }
   parts.push({sequence,calendarDate:part.date,dayClass:part.dayClass,moneyDay:part.moneyDay,versionId:formula.versionId,
    rawMinutes:part.minutes,allocatedPayableMinutes:part.allocatedPayableMinutes,
    sourceIntervals:part.intervals.map(row=>({...row})),calendarReferences:[...part.calendarReferences],
@@ -86,7 +97,7 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    work:stored.policyWorkInput as PolicyProposalPartSource['work'],formulas:stored.policyFormulaInput as PolicyProposalPartSource['formulas'],
    durationFormulas:stored.policyDurationFormulaInput as PolicyProposalPartSource['durationFormulas'],
    approvals:stored.policyApprovalInput as PolicyProposalPartSource['approvals'],
-   proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal'],rawEffect:stored.policyRawEffectSource as PolicyProposalPartSource['rawEffect']};
+   proposal:stored.policyExecutionProposal as PolicyProposalPartSource['proposal'],planQuantityScope:stored.policyPlanQuantityScope as PolicyProposalPartSource['planQuantityScope'],rawEffect:stored.policyRawEffectSource as PolicyProposalPartSource['rawEffect']};
   if(!input.proposal||!input.policy||input.policy.id!==header.policyRevisionId||input.policy.companyId!==source.companyId)return false;
   const replaySnapshot:CanonicalOvertimeSnapshot={input:inputs as unknown as CanonicalOvertimeSnapshot['input'],resolvedLegacyRuleId:null,referenceDigest:header.referenceDigest,
    attendanceGroupPolicy:input.policy,policyExecutionContext:input.context,policyWorkInput:input.work,policyFormulaInput:input.formulas,
@@ -94,6 +105,7 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    // Preserve an explicit duration-source refusal; absent legacy metadata keeps its original fallback.
    policyDurationFormulaInput:stored.policyDurationFormulaInput as CanonicalOvertimeSnapshot['policyDurationFormulaInput'],
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
+   policyPlanQuantityScope:input.planQuantityScope,
    policyMoneyScope:stored.policyMoneyScope as CanonicalOvertimeSnapshot['policyMoneyScope'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
@@ -102,8 +114,9 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
   if(!isDeepStrictEqual(stored.policyCashReplay,attendancePolicyCashReplay(replaySnapshot))
    ||!isDeepStrictEqual(stored.policyDurationReplay,attendancePolicyDurationReplay(replaySnapshot))
    ||!isDeepStrictEqual(stored.policyPricingProposal,attendancePolicyPricingProposal(replaySnapshot)))return false;
-  const coverage=attendancePolicyCoverageProposal({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},input.proposal);
+  const coverage=attendancePolicySourceReservationCoverage({tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},replaySnapshot);
   if(!isDeepStrictEqual(stored.policyCoverage,coverage))return false;
+  if(input.planQuantityScope&&!isDeepStrictEqual(stored.policyApprovedPlanQuantity,attendancePolicyApprovedPlanQuantity(replaySnapshot)))return false;
   if(!isDeepStrictEqual(stored.policyCapturedCoverage,attendancePolicyCapturedCoverageProposal(
    {tenantId:source.tenantId,companyId:source.companyId,employmentId:source.employmentId,sourceId:source.id,calculationId:header.id,date:source.attendanceDate},replaySnapshot)))return false;
   const expected=materializeAttendancePolicyProposalParts(input);

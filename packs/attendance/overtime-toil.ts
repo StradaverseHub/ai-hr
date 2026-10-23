@@ -152,7 +152,9 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
  }
  const datedAllocations=positive.map(part=>{
   const positioned=proposal.duration.status==='calculated'?proposal.duration.parts[part.sequence]:undefined;
-  if(!positioned||positioned.date!==part.calendarDate||positioned.allocatedPayableMinutes!==part.allocatedPayableMinutes)unavailable();
+  const planQuantity=(part.durationEvidence as Record<string,unknown>).planQuantity as {selectedMinutes?:number}|undefined;
+  if(!positioned||positioned.date!==part.calendarDate||(independent.policyPlanQuantityScope==='approvedPlanWithIndependentWorkedDay'
+   ?planQuantity?.selectedMinutes!==positioned.allocatedPayableMinutes:positioned.allocatedPayableMinutes!==part.allocatedPayableMinutes))unavailable();
   // These are the original count coordinates retained by the duration owner. Physical geometry
   // remains in contract.coverage; no capture is stretched to implement claim qualification.
   const attributed=counts.parts[part.sequence];
@@ -183,7 +185,7 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
 /** Salary-free dated qualification for the credit owner. It deliberately has no
  * scalar worked-day kind: every dated class stays attached to its own quantity.
  * Existing uniform/legacy readers retain their original contract. */
-export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;mixedOnly?:boolean}){
+export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;mixedOnly?:boolean;claimWindow?:{start:string;end:string}}){
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
  const [locked]=await tx.select().from(attendanceOvertimeSource).where(and(eq(attendanceOvertimeSource.tenantId,ctx.tenantId),
   eq(attendanceOvertimeSource.employmentId,p.employmentId),eq(attendanceOvertimeSource.attendanceDate,p.date))).limit(1).for('update');
@@ -199,7 +201,7 @@ export async function resolveOvertimePolicyDatedToilQualificationTx(tx:Tx,ctx:Se
   employmentId:p.employmentId,sourceId:stored.source.id,calculationId:stored.calculation.id,date:p.date},independent);
  if(contract.state!=='prepared'||!isDeepStrictEqual(contract,stored.contract)
   ||!isDeepStrictEqual(JSON.parse(JSON.stringify(independent)),JSON.parse(JSON.stringify(stored.independent))))unavailable('stale');
- const qualified=attendancePolicyDatedToilQualification(independent);
+ const qualified=attendancePolicyDatedToilQualification(independent,p.claimWindow);
  if(qualified.state!=='prepared'||qualified.durationDigest!==contract.durationDigest||qualified.minutes!==contract.minutes)unavailable();
  return {...qualified,companyId:stored.source.companyId,calculationId:stored.calculation.id,sourceRevision:stored.source.revision};
 }

@@ -247,6 +247,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     ...(attestedSelection?{attested:attestedSelection.source}:{})}:undefined;
   const policyExecutionProposal=selectedPolicy
     ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource):undefined;
+  const policyPlanQuantityScope=policyExecutionProposal?.state==='proposed'&&policyExecutionProposal.duration.status==='calculated'&&policyExecutionProposal.duration.intervalBasis==='approvedPlan'?'approvedPlanWithIndependentWorkedDay' as const:undefined;
   // An explicit new comparison mode is retained only when actual dated formula identities
   // differ. Old absent metadata keeps same-version pricing and its original refused history.
   const policyMoneyParts=policyExecutionProposal?.state==='proposed'&&policyExecutionProposal.duration.status==='calculated'
@@ -276,11 +277,11 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     }
   }
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
+    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPlanQuantityScope?{policyPlanQuantityScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
     ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal,
-      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{}),
+      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPlanQuantityScope?{policyPlanQuantityScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -296,6 +297,6 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
       ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput,
-        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),
+        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPlanQuantityScope?{policyPlanQuantityScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),
   };
 }

@@ -24,7 +24,7 @@ export type PolicyDurationReplay=
  * earning references and cash digests are not part of this interface. This is still replay only. */
 export type IndependentPolicyDurationSource=Pick<CanonicalOvertimeSnapshot,
  'attendanceGroupPolicy'|'policyExecutionContext'|'policyClockSource'|'policyClockReview'|
- 'policyWorkInput'|'policyApprovalInput'|'policyClockMeasurements'|'policyRawEffectSource'|'policyExecutionProposal'>&{
+ 'policyPlanQuantityScope'|'policyWorkInput'|'policyApprovalInput'|'policyClockMeasurements'|'policyRawEffectSource'|'policyExecutionProposal'>&{
  source:Pick<CanonicalOvertimeSnapshot['input']['source'],'tenantId'|'employmentId'|'attendanceId'|'date'>;
  policyDurationFormulaInput:NonNullable<CanonicalOvertimeSnapshot['policyDurationFormulaInput']>;
 };
@@ -59,6 +59,7 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   if(!isDeepStrictEqual(proposal,snapshot.policyExecutionProposal))return refuse('proposalMismatch');
   if(proposal.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('sourceUnavailable');
   const duration=proposal.duration;
+  if(snapshot.policyPlanQuantityScope!==undefined&&(snapshot.policyPlanQuantityScope!=='approvedPlanWithIndependentWorkedDay'||duration.intervalBasis!=='approvedPlan'))return refuse('proposalMismatch');
   // Rounded quantities now require explicit date/source ownership. Physical allocations keep
   // their original lengths; the same finalizer's remainder is a separate count contract.
   if(attendancePolicyCountAttribution(duration).state!=='known')return refuse('countPlacementUnavailable');
@@ -66,7 +67,7 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
    policy,context,...(attested?{workSource:'hrAttestedActualWork',attested}:
     {clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview}),
    ...(context.selected.policy.overtime.approval==='manual'?{rawEffect:snapshot.policyRawEffectSource}:{}),
-   measurements:snapshot.policyClockMeasurements,work:snapshot.policyWorkInput,approvals:snapshot.policyApprovalInput,formulas,proposal};
+   ...(snapshot.policyPlanQuantityScope?{policyPlanQuantityScope:snapshot.policyPlanQuantityScope}:{}),measurements:snapshot.policyClockMeasurements,work:snapshot.policyWorkInput,approvals:snapshot.policyApprovalInput,formulas,proposal};
   // PostgreSQL jsonb does not preserve object-key order. Retain array order (capture and
   // approval sequence), but canonicalize object keys before hashing writer/read-back evidence.
   const encoded=JSON.stringify(proof,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
@@ -89,7 +90,7 @@ export function attendancePolicyDurationReplay(snapshot:CanonicalOvertimeSnapsho
    policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,
    policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,
    policyApprovalInput:snapshot.policyApprovalInput,policyRawEffectSource:snapshot.policyRawEffectSource,
-   policyExecutionProposal:snapshot.policyExecutionProposal});
+   ...(snapshot.policyPlanQuantityScope?{policyPlanQuantityScope:snapshot.policyPlanQuantityScope}:{}),policyExecutionProposal:snapshot.policyExecutionProposal});
  }catch{return {state:'unavailable',authority:'durationProposalReplayOnly',reason:'sourceUnavailable'};}
 }
 /** A historical digest alone proves nothing current. Caller must obtain the snapshot through
@@ -134,12 +135,12 @@ export function attendancePolicyIndependentSource(snapshot:CanonicalOvertimeSnap
   policyClockSource:snapshot.policyClockSource,policyClockReview:snapshot.policyClockReview,
   policyClockMeasurements:snapshot.policyClockMeasurements,policyWorkInput:snapshot.policyWorkInput,
   policyApprovalInput:snapshot.policyApprovalInput,policyRawEffectSource:snapshot.policyRawEffectSource,
-  policyExecutionProposal:snapshot.policyExecutionProposal};
+  ...(snapshot.policyPlanQuantityScope?{policyPlanQuantityScope:snapshot.policyPlanQuantityScope}:{}),policyExecutionProposal:snapshot.policyExecutionProposal};
 }
 export function attendancePolicyRecordedApprovalStatus(snapshot:CanonicalOvertimeSnapshot):'approved'|'notRequired'|'pending'|'rejected'|'unknown'{
  const source=attendancePolicyIndependentSource(snapshot);
  return source?attendancePolicyIndependentRecordedApprovalStatus(source):attendancePolicyIndependentRecordedApprovalStatus({
   source:snapshot.input.source,attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyExecutionContext:snapshot.policyExecutionContext,
-  policyApprovalInput:snapshot.policyApprovalInput,policyExecutionProposal:snapshot.policyExecutionProposal,
+  policyApprovalInput:snapshot.policyApprovalInput,...(snapshot.policyPlanQuantityScope?{policyPlanQuantityScope:snapshot.policyPlanQuantityScope}:{}),policyExecutionProposal:snapshot.policyExecutionProposal,
   policyDurationFormulaInput:{authority:'durationSourceOnly',state:'unavailable',reason:'policyChanged'}});
 }

@@ -309,7 +309,7 @@ describe('dated-policy raw writer routing',()=>{
   expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
    versionId:null,assignmentId:null,outcome:'refused',durationOutcome:'refused',transferable:false,payableNumerator:null,payableDenominator:null});
   expect(current?.evidence?.evidence).toMatchObject({attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyClockMeasurements:snapshot.policyClockMeasurements,evaluation:null,duration:null,
-   resolution:{status:'refused',issues:[{path:'attendanceGroupPolicy.execution'}]}});
+   resolution:{status:'policy',policyRevisionId:configured.id},policyExecutionProposal:{state:'unavailable',reason:'workUnavailable'}});
   const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.sourceId,current!.source.id))
    .orderBy(asc(s.attendanceOvertimeCalculation.ordinal));
   expect(calculations.map(calculation=>calculation.ordinal)).toEqual([1,2]);

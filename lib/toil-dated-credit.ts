@@ -9,7 +9,7 @@ export function toilMeasuredCreditDays(minutes:number,dayType:keyof typeof TOIL_
  return Math.round((minutes/TOIL_STANDARD_DAY_MINUTES)*multiplier*100)/100;
 }
 export type DatedToilCreditInput={sequence:number;date:string;dayClass:'normal'|'off'|'rest'|'publicHoliday'|'replacementHoliday';
- minutes:number;afterShiftMinutes:number|null};
+ minutes:number;afterShiftMinutes:number|null;claimMinutes?:number};
 export type DatedToilCredit={sequence:number;date:string;dayClass:DatedToilCreditInput['dayClass'];
  rule:'extendedHours'|'measuredRestDay'|'measuredHoliday'|'claimWindow';sourceMinutes:number;qualifyingMinutes:number;countedMinutes:number;days:number};
 /** Each dated class uses its existing rule. Thresholds, break/grace and caps run
@@ -31,7 +31,8 @@ export function calculateDatedToilCredit(rows:readonly DatedToilCreditInput[],po
   const ordinary=row.dayClass==='normal';
   if(ordinary&&(!policy.extendedHoursEnabled||row.afterShiftMinutes===null||!Number.isSafeInteger(row.afterShiftMinutes)
    ||row.afterShiftMinutes<0||row.afterShiftMinutes>row.minutes))throw Error('Recorded ordinary-day post-shift qualification required.');
-  const qualifyingMinutes=ordinary?row.afterShiftMinutes!:row.minutes;
+  if(row.claimMinutes!==undefined&&(!Number.isSafeInteger(row.claimMinutes)||row.claimMinutes<0||row.claimMinutes>row.minutes))throw Error('Invalid dated claim subset.');
+  const qualifyingMinutes=ordinary?row.afterShiftMinutes!:path==='claim'?(row.claimMinutes??row.minutes):row.minutes;
   if(path==='claim'||ordinary){
    const credit=extendedHoursCreditDays(qualifyingMinutes,policy);
    parts.push({sequence:row.sequence,date:row.date,dayClass:row.dayClass,rule:path==='claim'?'claimWindow':'extendedHours',
@@ -50,7 +51,7 @@ export function calculateDatedToilCredit(rows:readonly DatedToilCreditInput[],po
 
 /** Frozen banking/expiry basis, never a caller-supplied grant or current duration capability. */
 export type DatedToilCreditEvidence={v:1;sourceDate:string;calculationId:string;sourceRevision:number;durationDigest:string;
- path:'roster'|'claim';consumptionOrder:'earliestDateFirst';sourceMinutes:number;countedMinutes:number;days:number;parts:DatedToilCredit[]};
+ path:'roster'|'claim';claimWindow?:{start:string;end:string};consumptionOrder:'earliestDateFirst';sourceMinutes:number;countedMinutes:number;days:number;parts:DatedToilCredit[]};
 
 /** Consume dated credits in the owner's explicit earliest-date-first order. Use
  * integer hundredths of a credit day so partially used lots retain exact balances. */

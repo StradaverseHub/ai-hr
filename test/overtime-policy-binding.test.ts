@@ -1,6 +1,6 @@
 /** Pure formula proposals. No row, policy activation, approval, source reservation or payment. */
 import {describe,expect,it} from 'vitest';
-import {evaluateOvertimePolicyAllocatedParentPrice,evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,type OvertimePolicyRoundedCount,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
+import {evaluateOvertimePolicyAllocatedParentPrice,evaluateOvertimePolicyAllocatedPrice,evaluateOvertimePattern,evaluateOvertimePatternDuration,evaluateOvertimePolicyPart,evaluateOvertimePolicyPartDuration,type OvertimePolicyRoundedCount,type OvertimePolicyApprovedPlanCount,validateOvertimeInput,validateOvertimePolicyInput} from '../lib/overtime-pattern-evaluate';
 import {parseRecordedOvertimeEvaluation,parseRecordedOvertimeDurationEvaluation,parseRecordedOvertimePolicyEvaluation,parseRecordedOvertimePolicyDurationEvaluation} from '../lib/overtime-pattern-result';
 import {overtimeSourceKey,type OvertimeFact,type OvertimeInput,type OvertimePattern} from '../lib/overtime-pattern-model';
 import type {OvertimePolicyBinding} from '../lib/overtime-pattern-binding';
@@ -78,6 +78,25 @@ function roundedCount(input:OvertimeInput<OvertimePolicyBinding>,minutes=30):Ove
   policyBinding:{...input.policyBinding},anchor:{...input.segments[0].clock.value}};
 }
 describe('central pricing of finalized group-policy allocations',()=>{
+ it('prices one approved-plan session with an independently shorter disjoint worked footprint',()=>{
+  const input=positionedPolicy();if(input.layer!=='raw'||input.segments[0].clock.state!=='known')throw Error('Placed fixture');
+  const segment=input.segments[0],clock=segment.clock.value;
+  segment.sessionId='approved_plan_union';segment.clock=fact({...clock},'approval');
+  segment.rawMinutes=fact('120','approval');segment.approvedMinutes=fact('120','approval');
+  const start=BigInt(clock.startEpochSeconds);
+  const plan:OvertimePolicyApprovedPlanCount={basis:'approvedPlan',sessionBasis:'completeApprovedPlanUnion',durationDigest:'c'.repeat(64),
+   source:{...input.source},policyBinding:{...input.policyBinding},selectedIntervals:[{fromEpochSeconds:String(start),toEpochSeconds:String(start+BigInt('7200'))}],
+   plans:[{correctionId:uuid(30),workflowRequestId:uuid(31),fromEpochSeconds:String(start),toEpochSeconds:String(start+BigInt('5400'))},
+    {correctionId:uuid(32),workflowRequestId:uuid(33),fromEpochSeconds:String(start+BigInt('3600')),toEpochSeconds:String(start+BigInt('7200'))}],
+   workedDayIntervals:[{fromEpochMillisecond:Number(start-BigInt('3600'))*1000+555,toEpochMillisecond:Number(start-BigInt('3000'))*1000}]};
+  const pattern=definition();pattern.rates[0].accumulation='session';
+  const before=structuredClone({input,plan});
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[],plan)).toMatchObject({state:'proposed',minutes:120,amountMinorUnits:'3600',approvedPlanQuantity:plan});
+  const forged=structuredClone(plan);forged.plans.pop();
+  expect(evaluateOvertimePolicyAllocatedPrice(pattern,input,[],forged).state).toBe('unavailable');
+  expect({input,plan}).toEqual(before);
+ });
+
  it('retains the same exact rates, money rounding and immutable inputs without exposing a payable capability',()=>{
   const input=positionedPolicy(),pattern=definition(),before=structuredClone({input,pattern});
   const ordinary=evaluateOvertimePolicyPart(pattern,input),priced=evaluateOvertimePolicyAllocatedPrice(pattern,input);

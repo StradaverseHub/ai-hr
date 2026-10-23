@@ -28,6 +28,12 @@ describe('dated TOIL credit rule owner',()=>{
   expect(()=>calculateDatedToilCredit([part(0,'2026-10-23','rest',120),part(1,'2026-10-23','publicHoliday',120)],policy,'roster')).toThrow();
   expect(()=>calculateDatedToilCredit([part(0,'2026-10-23','normal',240)],policy,'claim')).toThrow();
  });
+ it('retains full source minutes while limiting a mixed claim to its proven dated window',()=>{
+  const rows=[{...part(0,'2026-10-23','normal',480,240),claimMinutes:300},{...part(1,'2026-10-24','off',480),claimMinutes:120}];
+  const result=calculateDatedToilCredit(rows,policy,'claim');
+  expect(result.days).toBe(0.5);expect(result.parts.map(p=>[p.sourceMinutes,p.qualifyingMinutes,p.days])).toEqual([[480,240,0.5],[480,120,0]]);
+  expect(()=>calculateDatedToilCredit([{...rows[1],claimMinutes:481}],policy,'claim')).toThrow('claim subset');
+ });
  it('keeps the existing uniform measured credit calculation',()=>{
   expect(toilMeasuredCreditDays(120,'rest_day','premium_equivalent')).toBe(0.5);
   expect(toilMeasuredCreditDays(120,'holiday','hours_worked')).toBe(0.25);
