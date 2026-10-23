@@ -24,6 +24,37 @@ export async function runHarnessStep<T>(execute: () => Promise<T>): Promise<Step
   catch { return { status: 'failed' }; }
 }
 
+/** Only statuses cross the trace boundary; source values and exception text stay with their owners. */
+export type OrchestrationPassTrace = {
+  harnessVersion: typeof HR_HARNESS_VERSION;
+  failed: boolean;
+  steps: Record<'observe' | 'readiness' | 'claims' | 'verify', StepResult<unknown>['status']>;
+};
+
+/**
+ * The production pass and redacted replays use this same sequence. Each step is attempted once,
+ * including verification after an uncertain effect. A missing trace receipt also fails the pass.
+ * Authorization, scope, switches, allowance admission and effects remain in the supplied services.
+ */
+export async function runOrchestrationPass<Observation, Readiness, Claims>(services: {
+  observe: () => Promise<Observation>;
+  readiness: () => Promise<Readiness>;
+  claims: () => Promise<Claims>;
+  recordTrace: (trace: OrchestrationPassTrace) => Promise<unknown>;
+}) {
+  const before = await runHarnessStep(services.observe);
+  const nudge = await runHarnessStep(services.readiness);
+  const triage = await runHarnessStep(services.claims);
+  const after = await runHarnessStep(services.observe);
+  const failed = [before, nudge, triage, after].some(step => step.status === 'failed');
+  const trace = await runHarnessStep(() => services.recordTrace({
+    harnessVersion: HR_HARNESS_VERSION, failed,
+    steps: { observe: before.status, readiness: nudge.status, claims: triage.status, verify: after.status },
+  }));
+  return { harnessVersion: HR_HARNESS_VERSION, before, nudge, triage, after,
+    failed: failed || trace.status === 'failed' };
+}
+
 /** Case-history events share the notification stream. Drain bounded pages so they cannot delay reminders. */
 export async function drainNotificationProjection(
   dispatch: (limit: number) => Promise<{ processed: number; created: number }>,

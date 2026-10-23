@@ -10,7 +10,7 @@ import { EntitlementError } from './entitlements';
 import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
-import { HR_HARNESS_VERSION, readinessTransition, runHarnessStep } from './orchestrator-harness';
+import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass } from './orchestrator-harness';
 
 /** Run state is administrative. Employee self-service continues through its existing services. */
 function assertAdmin(ctx: SessionContext) {
@@ -109,19 +109,16 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
  */
 export async function runHrOrchestrator(ctx: SessionContext) {
   assertAdmin(ctx);
-  const before = await runHarnessStep(() => reconcileReadinessCases(ctx));
-  const nudge = await runHarnessStep(() => sweepReadinessNudges(ctx));
-  const triage = await runHarnessStep(() => triagePendingClaims(ctx));
-  const after = await runHarnessStep(() => reconcileReadinessCases(ctx));
-  const failed = [before, nudge, triage, after].some(s => s.status === 'failed');
-  const trace = await runHarnessStep(() => withTenant(ctx, tx => appendEvent(tx, {
-    tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
-    eventType: 'orchestrator.pass-finished', actor: { type: 'agent' },
-    payload: { scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION, failed,
-      steps: { observe: before.status, readiness: nudge.status, claims: triage.status, verify: after.status } },
-  })));
-  return { harnessVersion: HR_HARNESS_VERSION, before, nudge, triage, after,
-    failed: failed || trace.status === 'failed' };
+  return runOrchestrationPass({
+    observe: () => reconcileReadinessCases(ctx),
+    readiness: () => sweepReadinessNudges(ctx),
+    claims: () => triagePendingClaims(ctx),
+    recordTrace: trace => withTenant(ctx, tx => appendEvent(tx, {
+      tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
+      eventType: 'orchestrator.pass-finished', actor: { type: 'agent' },
+      payload: { scopeDigest: scopeDigest(ctx), ...trace },
+    })),
+  });
 }
 
 /** Scope follows the source employment even after a transfer. Never expose tenant-wide aggregates. */

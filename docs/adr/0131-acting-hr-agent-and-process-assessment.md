@@ -5,9 +5,20 @@ Status: Accepted direction. Phase 1 (process assessment) implemented in this rou
 future increments and are not claimed capabilities.
 
 Extends [ADR-0109](0109-central-hr-orchestrator.md) (central orchestrator), [ADR-0116](0116-central-ai-inventory-and-allowances.md)
-(AI allowances) and [ADR-0084](0084-propose-adjudicate-learn.md) (proposal ledger). Must integrate with
-ADR-0127 (session-bound assistant conversations and confirmed proposals), which is being built on a
-separate branch and is not yet on main.
+(AI allowances) and [ADR-0084](0084-propose-adjudicate-learn.md) (proposal ledger).
+
+Dependency reconciliation, 2026-10-23: the original dependency on ADR-0127's session-bound Assistant
+conversations and confirmed proposals referred to `codex/board16-home-ai`. The owner subsequently
+superseded that branch as reference only (see the `atelier-shell-r1` and `assistant-dispatch-offered` entries
+in [round history](../HANDOFF-HISTORY.md)). It must not be merged as a second conversation or confirmation
+owner. Main still has the read-only Assistant and its offered-tool dispatch fix. The replacement leave
+action-layer plan is not implemented and still awaits owner approval. Reconcile that plan with Phase 2
+before introducing one shared action/confirmation owner; do not create competing ledgers.
+
+The `ai-process-assessment` history records Phase 2 tasks 2–6 as held until the owner says go. No later
+instruction lifting that hold was found during this reconciliation. The direction below does not
+authorize held implementation. Replay coverage for the existing deterministic orchestrator is separate
+from the future action registry, execution ledger, named principal and versioned model bundle.
 
 ## Request
 
@@ -123,8 +134,8 @@ default minutes, no removable-share percentage and no headcount reduction are in
 ## Future phases (not claimed)
 
 2. Registry, execution ledger, agent principal and harness v1 with about six actions. The assistant
-   proposes actions as confirmation cards, integrated with ADR-0127's confirmed-proposal flow rather
-   than a second mechanism.
+   proposes actions as confirmation cards, integrated with the reconciled Assistant action layer rather
+   than a second mechanism (see the dependency reconciliation above).
 3. Goal-driven orchestration agent (scheduled or requested from the Control Tower) planning only
    within the registry; deterministic plan validation; durable steps with leases, approval-bound
    resume and a dead-letter list.

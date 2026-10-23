@@ -95,6 +95,15 @@ governed screens. Show a visible count when the overview is limited to 50 issues
 and database integration tests must cover unknown observations, termination, reopens, overlapping
 runs, unavailable telemetry, switched-off agents, and cross-company/cross-tenant access.
 
+`runOrchestrationPass` is the shared production/replay sequence for the existing `readiness-v2`
+policy. Its provider-independent replay matrix covers all 32 combinations of observe, readiness,
+claims, verify and trace-write success/failure. Each step is attempted once, later steps continue
+after failure, and the pass waits for verification and its trace receipt. Trace payloads contain
+statuses, not source values or exception text; a trace-write failure fails the returned run even
+when every specialist succeeded. This is coverage of the existing coordinator, not the future
+versioned prompt/action/model bundle. Database integration remains necessary evidence for service
+authorization, source outcomes, switches and persisted events.
+
 The enhancement cycle is: capture failure/outcome → build a redacted replay case → change one
 versioned policy/tool/prompt → compare against the previous version → run security and regression
 checks → reviewed rollout → monitor real outcomes and rollback if needed. Acceptance of an AI
