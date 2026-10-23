@@ -83,6 +83,18 @@ describe('Effective-dated employment cost allocation owner',()=>{
   const refs=await costAllocationWorkbookReferences(scoped,[b.companyId,other.id],b.companyId);expect(refs.some(r=>r.code==='ALLOC-A')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);expect(refs.every(r=>r.companyId===b.companyId)).toBe(true);
   await expect(costAllocationWorkbookReferences(scoped,[b.companyId,other.id],other.id)).rejects.toThrow(/permission|unavailable/i);
  });
+ it('resolves lowercase existing Employee IDs through the canonical normalizer',async()=>{
+  const records=[{company_id:b.companyId,employee_code:' alloc01 ',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
+  const p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0]).toMatchObject({employeeCode:'ALLOC01',employmentId,errors:[]});
+  expect(await commitCostAllocationImport(a,records,p.token)).toMatchObject([{employmentId,saved:true}]);expect((await read()).total).toBe(10000);
+ });
+ it('combines mixed-case rows into one employee/date set and refuses an over-total without partial writes',async()=>{
+  const records=[{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'60'},{company_id:b.companyId,employee_code:'alloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'40'}];
+  let p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0].rowNums).toEqual([2,3]);expect(p.groups[0].errors).toEqual([]);
+  await commitCostAllocationImport(a,records,p.token);const before=await read();expect(before.total).toBe(10000);expect(before.rows).toHaveLength(2);
+  records[1].percentage='50';p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.validCount).toBe(0);expect(p.groups[0].errors.join(' ')).toMatch(/100/);
+  const result=await commitCostAllocationImport(a,records,p.token);expect(result).toHaveLength(1);expect(result[0].saved).toBe(false);expect((await read()).revision).toBe(before.revision);expect((await read()).rows).toEqual(before.rows);
+ });
  it('groups repeated update rows, refuses the whole invalid employee set and rechecks the preview token',async()=>{
   const records=[{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'50.01'},{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'50'}];
   let p=await previewCostAllocationImport(a,records);expect(p.groups[0].errors.join(' ')).toMatch(/100/);expect(p.groups[0].rowNums).toEqual([2,3]);await commitCostAllocationImport(a,records,p.token);expect((await read()).revision).toBe(0);
@@ -90,6 +102,13 @@ describe('Effective-dated employment cost allocation owner',()=>{
   p=await previewCostAllocationImport(a,records);const result=await commitCostAllocationImport(a,records,p.token);expect(result).toMatchObject([{saved:true,employmentId,effectiveDate:today}]);expect((await read()).total).toBe(10000);
  });
  const record=()=>({full_name:'New Allocation Joiner',email:'new-allocation@fixture.test',department:'Finance',hired_on:today,employment_type:'full_time',employee_code:'NEWALLOC01',basic_salary:'2500',bank_name:'Maybank',bank_account_no:'001234567'});
+ it('binds lowercase Employee IDs on both full new-joiner sheets to one canonical employee',async()=>{
+  const employee={...record(),employee_code:'newalloc01'};
+  const allocationRecords=[{company_id:b.companyId,employee_code:'newalloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
+  const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[employee],allocationRecords});expect(preview.fileErrors).toEqual([]);expect(preview.allocations?.groups).toMatchObject([{employeeCode:'NEWALLOC01',newEmployeeIndex:0,errors:[]}]);
+  const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[employee],allocationRecords,allocationToken:preview.allocations!.token});expect(result.imported).toBe(1);
+  const[stored]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01')).orderBy(asc(s.employment.id));expect((await getEmploymentCostAllocations(a,stored.id)).total).toBe(10000);
+ });
  it('imports a new-joiner companion in the real employee transaction and leaves omitted sheets valid',async()=>{
   const allocations=[{company_id:b.companyId,employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);expect(preview.allocations?.validCount).toBe(1);
   const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations,allocationToken:preview.allocations!.token});expect(result.imported).toBe(1);

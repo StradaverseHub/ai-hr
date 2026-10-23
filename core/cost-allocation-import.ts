@@ -1,3 +1,4 @@
+import {normalizeEmployeeCode,isValidEmployeeCode} from '../lib/employee-code';
 import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -30,8 +31,9 @@ export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,rec
  const groups=new Map<string,AllocationImportGroup>(),snapshots:unknown[]=[];
  for(const[at,r]of records.entries()){
   if(Object.values(r).every(v=>!String(v).trim()))continue;
-  const key=[r.company_id,r.employee_code,r.effective_date].map(v=>v?.trim()??'').join('|');let g=groups.get(key);
-  if(!g){g={key,companyId:r.company_id?.trim()??'',employeeCode:r.employee_code?.trim()??'',effectiveDate:r.effective_date?.trim()??'',operation:r.operation==='clear'?'clear':'replace',rows:[],rowNums:[],errors:[],expectedRevision:0};groups.set(key,g);}
+  const employeeCode=normalizeEmployeeCode(r.employee_code);
+  const key=`${allocationBindingKey(r.company_id??'',employeeCode)}|${r.effective_date?.trim()??''}`;let g=groups.get(key);
+  if(!g){g={key,companyId:r.company_id?.trim()??'',employeeCode,effectiveDate:r.effective_date?.trim()??'',operation:r.operation==='clear'?'clear':'replace',rows:[],rowNums:[],errors:[],expectedRevision:0};groups.set(key,g);}
   g.rowNums.push(at+2);
   if(r.operation!==g.operation||!['replace','clear'].includes(r.operation))g.errors.push(`Row ${at+2}: use one explicit replace or clear operation per employee and date.`);
   if(g.operation==='clear'){if(r.cost_center_code?.trim()||r.percentage?.trim()||g.rowNums.length>1)g.errors.push(`Row ${at+2}: clear requires one row with blank code and percentage.`);continue;}
@@ -39,7 +41,7 @@ export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,rec
  }
  for(const g of groups.values()){
   try{
-   z.uuid().parse(g.companyId);z.iso.date().parse(g.effectiveDate);if(!g.employeeCode)throw new CostAllocationError('binding');
+   z.uuid().parse(g.companyId);z.iso.date().parse(g.effectiveDate);if(!isValidEmployeeCode(g.employeeCode))throw new CostAllocationError('binding');
    const references=await costAllocationReferencesTx(tx,ctx,g.companyId);snapshots.push([g.companyId,references]);
    const inputRows=records.filter((r,at)=>g.rowNums.includes(at+2));
    if(g.operation==='replace')for(const r of inputRows){const matched=references.filter(c=>c.code.trim().toLowerCase()===r.cost_center_code?.trim().toLowerCase());if(matched.length!==1)g.errors.push(`Row ${records.indexOf(r)+2} (${r.cost_center_code}): unknown, ambiguous, inactive or unavailable cost center code.`);else {g.rows.push({costCenterId:matched[0].id,percentage:r.percentage});(g.displayRows??=[]).push({code:matched[0].code,percentage:r.percentage});}}

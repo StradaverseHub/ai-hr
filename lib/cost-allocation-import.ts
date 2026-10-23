@@ -1,3 +1,4 @@
+import {normalizeEmployeeCode} from './employee-code';
 import {parseCsvRecords} from './csv';
 import {ALLOCATION_COLUMNS} from './employment-cost-allocation';
 export type AllocationImportRecords=Record<string,string>[];
@@ -9,7 +10,7 @@ export function parseCostAllocationCsv(text:string):AllocationImportRecords{
  if(new Set(headers).size!==headers.length)throw new Error('Duplicate allocation column headers are not allowed.');
  const missing=ALLOCATION_COLUMNS.filter(c=>!headers.includes(c));if(missing.length)throw new Error(`Missing allocation columns: ${missing.join(', ')}`);
  const unknown=headers.filter(c=>!(ALLOCATION_COLUMNS as readonly string[]).includes(c));if(unknown.length)throw new Error(`Unexpected allocation columns: ${unknown.join(', ')}`);
- if(records.length>5000)throw new Error('Use at most 5000 allocation rows per file.');return records;
+ if(records.length>5000)throw new Error('Use at most 5000 allocation rows per file.');return records.map(record=>({...record,employee_code:normalizeEmployeeCode(record.employee_code)}));
 }
 function BufferSafeBytes(text:string){return new TextEncoder().encode(text).byteLength;}
-export const allocationBindingKey=(companyId:string,employeeCode:string)=>`${companyId}|${employeeCode.trim()}`;
+export const allocationBindingKey=(companyId:string,employeeCode:string)=>`${companyId.trim()}|${normalizeEmployeeCode(employeeCode)}`;
