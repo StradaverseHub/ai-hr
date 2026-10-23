@@ -2,6 +2,7 @@ import {attendancePolicyCapturedCoverageProposal} from './policy-captured-covera
 import {attendancePolicyCashReplay} from './policy-cash-replay';
 import {attendancePolicyPricingProposal} from './policy-pricing-proposal';
 import {attendancePolicyCoverageProposal} from './policy-coverage';
+import {attendancePolicyCountAttribution} from './policy-count-attribution';
 /** Complete immutable proposal parts beneath ONE calculation. This does not grant approval,
  * generate payment lines or settle cash/TOIL. Parent identities/digests are bound by the writer. */
 import {isDeepStrictEqual} from 'node:util';
@@ -35,15 +36,21 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
  if(expected.state!=='proposed'||expected.duration.status!=='calculated')return [];
  if(expected.policyRevisionId!==input.policy.id||expected.duration.parts.length>3
   ||expected.formulaParts.length!==expected.duration.parts.length)return null;
+ const duration=expected.duration,count=attendancePolicyCountAttribution(duration);
+ if(count.state!=='known')return null;
  const parts:PolicyProposalStoragePart[]=[];
- for(const [sequence,part]of expected.duration.parts.entries()){
+ for(const [sequence,part]of duration.parts.entries()){
   const formula=expected.formulaParts[sequence];
   if(formula.date!==part.date||formula.dayClass!==part.dayClass||part.companyId!==input.policy.companyId)return null;
   parts.push({sequence,calendarDate:part.date,dayClass:part.dayClass,moneyDay:part.moneyDay,versionId:formula.versionId,
    rawMinutes:part.minutes,allocatedPayableMinutes:part.allocatedPayableMinutes,
    sourceIntervals:part.intervals.map(row=>({...row})),calendarReferences:[...part.calendarReferences],
    durationEvidence:{authority:'proposalOnly',policyRevisionId:input.policy.id,intervalBasis:expected.duration.intervalBasis,
-    parentClass:part.dayClass,allocatedIntervals:part.allocations.map(row=>({...row}))}});
+    parentClass:part.dayClass,allocatedIntervals:part.allocations.map(row=>({...row})),
+    // Separate count/date/source identity. Existing physical-count columns and intervals keep
+    // their original meaning. Financial replay/SQL must explicitly adopt this count contract.
+    ...(count.parts[sequence].roundedMinutes>0?{roundingCountAttributions:count.parts[sequence].roundingCountAttributions,
+     attributedPayableMinutes:count.parts[sequence].minutes}:{})}});
  }
  return parts;
 }

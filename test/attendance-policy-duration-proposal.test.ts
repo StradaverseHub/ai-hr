@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyClockDurationProposalInput} from '../packs/attendance/policy-duration';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
+import {attendancePolicyCountAttribution} from '../packs/attendance/policy-count-attribution';
 const companyId='00000000-0000-4000-8000-000000000001';
 const sourceDate='2024-02-29',nextDate='2024-03-01';
 const calendar=(date=sourceDate,dayClass:AttendancePolicyDayClass='normal'):PolicyCalendarProof=>({state:'known',date,companyId,dayClass,
@@ -74,6 +75,47 @@ describe('shared dated-policy duration proposal',()=>{
   const result=calculated(f);expect(result.payableMinutes).toBe(60);expect(result.parts.map(part=>part.minutes)).toEqual([20,20]);
   expect(result.classes).toMatchObject([{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20,steps:[{kind:'rounding',before:40,after:60}]}]);
   expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(40);
+ });
+ it.each(['earliest','latest'] as const)('attributes one rounded class remainder to its %s existing dated source without extending work',direction=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'up',step:30};
+  f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=f.workedIntervals;
+  f.calendar=[calendar(),calendar(nextDate)];f.allocationByClass.normal=direction;
+  const before=structuredClone(f),result=calculated(f),sequence=direction==='earliest'?0:1;
+  expect(result.classes[0].roundingCountAttribution).toEqual({kind:'roundingCount',minutes:20,direction,
+   partSequence:sequence,calendarDate:sequence===0?sourceDate:nextDate,dayClass:'normal',
+   anchor:sequence===0?{from:1420,to:1440}:{from:1440,to:1460}});
+  expect(result.parts.flatMap(part=>part.allocations)).toEqual([{from:1420,to:1440},{from:1440,to:1460}]);
+  expect(result.parts.reduce((n,part)=>n+part.allocatedPayableMinutes,0)).toBe(40);
+  expect(result.payableMinutes).toBe(60);expect(f).toEqual(before);
+  const attributed=attendancePolicyCountAttribution(result);
+  expect(attributed).toMatchObject({state:'known',physicalMinutes:40,roundedMinutes:20,minutes:60});
+  if(attributed.state!=='known')throw Error('Expected explicit count attribution');
+  expect(attributed.parts.map(part=>part.minutes)).toEqual(direction==='earliest'?[40,20]:[20,40]);
+  const changed=structuredClone(result);changed.classes[0].roundingCountAttribution!.calendarDate='2024-03-02';
+  expect(attendancePolicyCountAttribution(changed).state).toBe('unavailable');
+  const missing=structuredClone(result);delete missing.classes[0].roundingCountAttribution;
+  expect(attendancePolicyCountAttribution(missing).state).toBe('unavailable');
+ });
+ it('keeps Nearest rounding count on its own class and respects the final maximum',()=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'nearest',step:30};
+  f.workedIntervals=[{from:1420,to:1456}];f.eligibleActualIntervals=f.workedIntervals;
+  f.calendar=[calendar(),calendar(nextDate,'rest')];
+  const result=calculated(f);
+  expect(result.classes.map(row=>({dayClass:row.dayClass,payable:row.payableMinutes,extra:row.roundingCountAttribution?.minutes})))
+   .toEqual([{dayClass:'normal',payable:30,extra:10},{dayClass:'rest',payable:30,extra:14}]);
+  expect(result.classes.map(row=>row.roundingCountAttribution?.calendarDate)).toEqual([sourceDate,nextDate]);
+  f.policy.overtime.days.rest.maximumMinutes=20;
+  const capped=calculated(f);expect(capped.classes[1]).toMatchObject({payableMinutes:20,roundingCountAttribution:{minutes:4}});
+ });
+ it('does not create a rounded source claim for downward rounding, a maximum reduction or a below-minimum result',()=>{
+  const f=fixture();f.policy.overtime.rounding={mode:'nearest',step:30};f.eligibleActualIntervals=[{from:1080,to:1120}];
+  expect(calculated(f).classes[0].roundingCountAttribution).toBeUndefined();
+  f.policy.overtime.rounding={mode:'up',step:30};f.policy.overtime.days.normal.maximumMinutes=20;
+  expect(calculated(f).classes[0].roundingCountAttribution).toBeUndefined();
+  f.policy.overtime.days.normal.minimumMinutes=21;f.policy.overtime.days.normal.maximumMinutes=30;
+  f.eligibleActualIntervals=[{from:1080,to:1100}];
+  expect(calculated(f).classes[0]).toMatchObject({payableMinutes:0});
+  expect(calculated(f).classes[0].roundingCountAttribution).toBeUndefined();
  });
  it('never extends a physical clock span to disguise rounded payable count',()=>{
   const f=fixture();f.policy.overtime.rounding={mode:'up',step:15};f.eligibleActualIntervals=[{from:1080,to:1117}];

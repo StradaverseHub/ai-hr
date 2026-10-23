@@ -32,13 +32,19 @@ export type PolicyDurationSelectionStep=
  |{kind:'lateOffset';before:number;after:number;requested:number;applied:number}
  |{kind:'method';method:PolicyDurationMethod;before:number;after:number}
  |{kind:'manualCount';before:number;after:number};
+/** A rounded quantity belongs to an existing selected dated source. The anchor identifies
+ * that source; it is never extra elapsed work or an extension of a captured endpoint. */
+export type PolicyRoundingCountAttribution={kind:'roundingCount';minutes:number;direction:'earliest'|'latest';
+ partSequence:number;calendarDate:string;dayClass:AttendancePolicyDayClass;anchor:AttendancePolicyInterval};
 export type PolicyDurationProposal=
  |{status:'unavailable';reason:'workedEvidenceUnavailable'|'eligibleEvidenceUnavailable'|'approvalUnavailable'|'plannedEvidenceUnavailable'|'lateEvidenceUnavailable'|'calendarUnavailable'|'holidayDesignationUnavailable'|'durationLimitExceeded'|'formulaAllocationUnavailable';date?:string;authority:'proposalOnly'}
  |{status:'calculated';authority:'proposalOnly';intervalBasis:'actual'|'approvedPlan';lateOffsetMinutes:number;selectionSteps:PolicyDurationSelectionStep[];
    parts:(AttendancePolicyPart&{allocatedPayableMinutes:number;allocations:AttendancePolicyInterval[]})[];
    classes:{dayClass:AttendancePolicyDayClass;eligibleMinutes:number;payableMinutes:number;
      /** Explicit count with no fabricated clock/date placement; pricing needs a separate bound contract. */
-     unplacedPayableMinutes:number;steps:PolicyOvertimeDurationStep[]}[];payableMinutes:number};
+     unplacedPayableMinutes:number;steps:PolicyOvertimeDurationStep[];
+     /** Present only for a positive rounding remainder; physical allocations stay unchanged. */
+     roundingCountAttribution?:PolicyRoundingCountAttribution}[];payableMinutes:number};
 
 /** Shared eligibility selection before any class threshold, rounding or maximum. It neither
  * approves a request nor supplies payable minutes. Manual comparisons and final duration use
@@ -115,7 +121,15 @@ export function deriveAttendancePolicyDurationProposal(input:PolicyDurationPropo
    parts[index].allocations.push(direction==='earliest'?{from:interval.from,to:interval.from+count}:{from:interval.to-count,to:interval.to});
    parts[index].allocatedPayableMinutes+=count;
   }
-  classes.push({dayClass,eligibleMinutes,payableMinutes:finalized.minutes,unplacedPayableMinutes:remaining,steps:finalized.steps});
+  // Reuse the immutable formula's existing count-allocation direction. The first selected
+  // source in that order owns the entire class rounding remainder, including across midnight.
+  // Never split the rounding operation per date or manufacture a minute outside the source.
+  const anchor=slots[0];
+  if(remaining>0&&(!anchor||!finalized.steps.some(step=>step.kind==='rounding'&&step.after>step.before)))
+   return refuse('formulaAllocationUnavailable');
+  classes.push({dayClass,eligibleMinutes,payableMinutes:finalized.minutes,unplacedPayableMinutes:remaining,steps:finalized.steps,
+   ...(remaining>0?{roundingCountAttribution:{kind:'roundingCount' as const,minutes:remaining,direction,
+    partSequence:anchor.index,calendarDate:parts[anchor.index].date,dayClass,anchor:{...anchor.interval}}}:{})});
  }
  const payableMinutes=classes.reduce((sum,row)=>sum+row.payableMinutes,0);
  if(payableMinutes>bound)return refuse('durationLimitExceeded');

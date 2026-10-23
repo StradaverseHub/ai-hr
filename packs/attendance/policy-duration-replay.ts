@@ -9,6 +9,7 @@ import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 import {attendancePolicyWorkInput} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
+import {attendancePolicyCountAttribution} from './policy-count-attribution';
 
 export type PolicyDurationReplay=
  |{state:'unavailable';authority:'durationProposalReplayOnly';reason:'sourceUnavailable'|'proposalMismatch'|'countPlacementUnavailable'}
@@ -49,9 +50,9 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   if(!isDeepStrictEqual(proposal,snapshot.policyExecutionProposal))return refuse('proposalMismatch');
   if(proposal.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('sourceUnavailable');
   const duration=proposal.duration;
-  if(duration.classes.some(row=>row.unplacedPayableMinutes!==0)
-   ||duration.parts.reduce((sum,row)=>sum+row.allocatedPayableMinutes,0)!==duration.payableMinutes)
-   return refuse('countPlacementUnavailable');
+  // Rounded quantities now require explicit date/source ownership. Physical allocations keep
+  // their original lengths; the same finalizer's remainder is a separate count contract.
+  if(attendancePolicyCountAttribution(duration).state!=='known')return refuse('countPlacementUnavailable');
   const proof={version:1,source:{tenantId:source.tenantId,employmentId:source.employmentId,attendanceId:source.attendanceId,date:source.date},
    policy,context,clocks:snapshot.policyClockSource,clockReview:snapshot.policyClockReview,
    ...(context.selected.policy.overtime.approval==='manual'?{rawEffect:snapshot.policyRawEffectSource}:{}),
