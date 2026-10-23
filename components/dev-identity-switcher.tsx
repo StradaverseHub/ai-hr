@@ -20,7 +20,7 @@ export function DevIdentitySwitcher({
     // which made this dev-only control the widest thing in the cluster and set a 369px floor under the
     // whole left track. The header's left side is the compressible one below md, so a child that
     // refuses to compress pushes the overflow back out of the header. Nothing here is a width floor.
-    <form action={actAs} className="flex min-w-0 items-center gap-1.5">
+    <form action={actAs} data-unsaved-guard="ignore" className="flex min-w-0 items-center gap-1.5">
       <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {t('devAs')}
       </span>
