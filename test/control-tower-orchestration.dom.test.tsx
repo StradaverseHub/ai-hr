@@ -93,6 +93,19 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.receiptNote)).toBeTruthy();
     expect(screen.getByRole('button', { name: en.controlTower.orchestrator.refresh })).toBeTruthy();
   });
+  it.each(['en', 'ms', 'zh', 'vi', 'th', 'ta'] as const)('offers scoped failure details without group-only history in %s', async locale => {
+    renderLocale = locale;
+    const messages = catalogues[locale].controlTower.orchestrator;
+    show(await OrchestrationWorkQueue({ view: { ...empty, lastRun: { at: new Date(),
+      ...summarizeOrchestrationPass({ harnessVersion: HR_HARNESS_VERSION, failed: false, steps: { ...successfulSteps, claims: 'failed' } }) } } }));
+    expect(screen.getByRole('status').textContent).toBe(messages.runFailed);
+    expect(screen.queryByRole('link', { name: messages.runs })).toBeNull();
+    const details = screen.getByText(messages.runDetails.title).closest('details')!;
+    fireEvent.click(details.querySelector('summary')!);
+    expect(details.open).toBe(true);
+    const claims = within(details).getByText(messages.runDetails.steps.claims).closest('div')!;
+    expect(within(claims).getByText(messages.runDetails.states.failed)).toBeTruthy();
+  });
   it.each([
     { name: 'legacy incomplete', payload: { failed: false } },
     { name: 'unsupported future', payload: { harnessVersion: 'readiness-v999', failed: false, steps: successfulSteps } },

@@ -16227,7 +16227,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
-      "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
+      "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy mở chi tiết lần chạy bên dưới.",
       "navigation": "Điều hướng trung tâm điều hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",

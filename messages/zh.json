@@ -16227,7 +16227,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "正在检查记录…",
-      "runFailed": "最近记录的自动化执行需要处理。请查看执行历史。",
+      "runFailed": "最近记录的自动化执行需要处理。请展开下方的执行详情。",
       "navigation": "控制中心导航",
       "overview": "总览",
       "readiness": "员工资料",
