@@ -1226,6 +1226,13 @@ describe('immutable non-payable policy part storage',()=>{
     batchId:batch.batchId,reason:'Fictional attested same-source cash exclusion'})).rejects.toThrow();
    await deleteDraftBatch(ctx,{batchId:batch.batchId});await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional reviewed attested credit reversal'});
    expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,read.source.id)))[0].releasedAt).not.toBeNull();
+   // A real dated schedule change must stale current financial authority, while retaining
+   // the original statement for withdrawal. The replacement keeps the same worked eligibility
+   // but has a different real shift identity; a fresh workflow binds that new context.
+   const replacementShift=await createShift(ctx,{code:'HR_REVIEW_'+randomUUID().slice(0,6),name:'Fictional replacement HR review shift',
+    startTime:'00:00',endTime:'00:01',breakMinutes:0,weeklyPattern:[1,2,3,4,5,6,7],ruleId:f.ruleId});
+   await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:replacementShift.id});
+   expect(await withTenant(ctx,tx=>recordedAttestedPolicyWorkTx(tx,ctx,p))).toBeNull();
    // A real HR approval can be withdrawn after the financial owner releases it. Its
    // original testimony/effect/history remain immutable; a fresh workflow owns the replacement.
    await cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'withdrawn',reason:'Fictional review of the complete unclocked-work statement'});
