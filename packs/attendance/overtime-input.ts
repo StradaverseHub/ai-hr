@@ -109,7 +109,8 @@ export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContex
   if(snapshot.attendanceGroupPolicy){
     // Transfers hold employee/source before entering. Retained Payroll consumers acquire the
     // SAME tenant epoch before their batch lock; this repeated shared read cannot invert it.
-    await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
+    if(snapshot.policyRawEffectSource?.attested)await tx.execute(sql`select app.lock_attendance_policy_raw_context(${p.employmentId}::uuid,${p.date}::date)`);
+    else await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
     snapshot=await readCanonicalInputsTx(tx,ctx,p);
     const after=await tx.execute(sql`select app.can_admin_payroll_for(${proof!.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
     if(!after[0]?.allowed)throw new OvertimeOwnerError('permission','The overtime source is outside your financial scope.');
@@ -124,7 +125,8 @@ export async function canonicalOvertimeToilInputTx(tx: Tx, ctx: SessionContext, 
   if(snapshot.attendanceGroupPolicy){
     // The TOIL owner takes employment/source locks before entering this shared configuration
     // barrier. Re-read after any wait; no monetary inputs are requested by this purpose.
-    await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
+    if(snapshot.policyRawEffectSource?.attested)await tx.execute(sql`select app.lock_attendance_policy_raw_context(${p.employmentId}::uuid,${p.date}::date)`);
+    else await tx.execute(sql`select app.lock_attendance_policy_execution_context(${p.employmentId}::uuid,${p.date}::date)`);
     snapshot=await readCanonicalInputsTx(tx,ctx,p,'duration');
   }
   return snapshot;
@@ -294,7 +296,10 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
         {id: day.id + ':postOtBreak', resource: 'postOtBreak', evidence: 'policyCapacity', basis: 'day', sessionId: null, sourceKeys: [day.id + ':configuredPostOtBreak'], measure: {unit: 'minutes', quantity: work.rawMinutes}},
       ],
     },
-    resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
+    // An attested day has no AttendanceTrace. Its independently replayed current context
+    // supplies the same Schedule Group identity without fabricating a captured raw trace.
+    resolvedLegacyRuleId:attestedReplay?.state==='known'&&policyExecutionContext?.state==='policy'
+      ?policyExecutionContext.schedule.ruleId:trace?trace.schedule.ruleId:null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
       ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput,
         ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPlanQuantityScope?{policyPlanQuantityScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),

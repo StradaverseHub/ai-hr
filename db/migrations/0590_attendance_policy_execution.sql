@@ -807,12 +807,16 @@ BEGIN
   OR header.duration_outcome<>'ready' OR header.approval_status NOT IN('approved','notRequired')
   OR header.policy_part_count<1 THEN
   RAISE EXCEPTION 'Complete current policy duration and approval required' USING ERRCODE='23514';END IF;
- PERFORM app.lock_attendance_policy_execution_context(source.employment_id,source.attendance_date);
  SELECT evidence INTO data FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id
   AND tenant_id=source.tenant_id AND company_id=source.company_id;
  IF NOT FOUND OR data#>>'{policyFinancialDurationContract,state}' IS DISTINCT FROM 'prepared'
   OR data#>>'{policyFinancialDurationContract,durationDigest}' IS DISTINCT FROM header.duration_input_digest THEN
   RAISE EXCEPTION 'Complete retained policy duration contract required' USING ERRCODE='23514';END IF;
+ -- This epoch barrier is not settlement authority. The private coverage owner below
+ -- independently replays the exact live attested effect or original capture footprint.
+ IF data#>>'{policyRawEffectSource,attested,authority}'='attestedSourceOnly' THEN
+  PERFORM app.lock_attendance_policy_raw_context(source.employment_id,source.attendance_date);
+ ELSE PERFORM app.lock_attendance_policy_execution_context(source.employment_id,source.attendance_date);END IF;
  IF NEW.mode='cash' AND (NEW.calculation_id IS DISTINCT FROM header.id OR header.outcome<>'ready' OR NOT header.transferable
   OR data#>>'{policyFinancialContract,state}' IS DISTINCT FROM 'prepared') THEN
   RAISE EXCEPTION 'Complete current policy cash contract required' USING ERRCODE='23514';END IF;
@@ -1733,7 +1737,10 @@ BEGIN
  IF NEW.dated_credit IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.overtime_source_settlement claim
   JOIN public.attendance_overtime_source source ON source.id=claim.source_id AND source.tenant_id=claim.tenant_id
   WHERE claim.tenant_id=NEW.tenant_id AND claim.mode='toil' AND claim.toil_accrual_id=NEW.id
-   AND claim.calculation_id::text=NEW.dated_credit->>'calculationId'
+   -- Cash-only calculation_id stays NULL for TOIL. The existing private coverage
+   -- trigger derives the immutable calculation identity for BOTH settlement kinds.
+   AND claim.coverage_kind='policyPhysical' AND claim.coverage_employment_id=NEW.employment_id
+   AND claim.coverage_calculation_id::text=NEW.dated_credit->>'calculationId'
    AND source.employment_id=NEW.employment_id AND source.attendance_date=NEW.worked_date) THEN
   RAISE EXCEPTION 'Dated TOIL credit requires its canonical policy settlement' USING ERRCODE='23514';END IF;
  RETURN NULL;

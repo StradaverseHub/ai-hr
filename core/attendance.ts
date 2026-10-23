@@ -4269,6 +4269,28 @@ export async function decideAttendanceCorrection(
       }
 
       if (amendedId && payrollBatches) await markAttendancePayrollTx(tx,ctx,payrollBatches,cor.employmentId);
+      if(policyRawDecision&&hasOtRequest&&cor.plannedStartTime!==null&&cor.plannedEndTime!==null){
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(context.state!=='policy')throw Error('The current policy plan context is unavailable.');
+        const overtime=context.selected.policy.overtime;
+        if(overtime.approval==='auto'&&overtime.autoMethod!=='actual'){
+          const [submission]=await tx.select().from(attendancePolicyRequestContract).where(and(
+            eq(attendancePolicyRequestContract.tenantId,ctx.tenantId),eq(attendancePolicyRequestContract.correctionId,cor.id))).limit(1);
+          const minutes=plannedOvertimeMinutes(cor.plannedStartTime.slice(0,5),cor.plannedEndTime.slice(0,5));
+          const from=Number(cor.plannedStartTime.slice(0,2))*60+Number(cor.plannedStartTime.slice(3,5));
+          const plan=minutes===null?null:{version:1,basis:'startDateEarlierEndNextDay',sourceDate:cor.attendanceDate,
+            startLabel:cor.plannedStartTime,endLabel:cor.plannedEndTime,from,to:from+minutes,requestedMinutes:minutes};
+          if(!plan||minutes!==cor.requestedOtMinutes||!submission?.plannedWindow
+            ||!isDeepStrictEqual(submission.plannedWindow,plan)
+            ||!isDeepStrictEqual(submission.policyBinding,attendancePolicyTraceBinding(context)))
+            throw Error('The complete submitted policy plan changed. Withdraw and resubmit.');
+          // Auto planned methods approve the exact submitted positions. The legacy company
+          // scalar comparison cannot replace a 90-minute plan with 120 actual minutes.
+          // Final duration still applies the same plan/intersection, limits and rounding owners.
+          approvedOtMinutes=minutes;
+          eventPayload={...eventPayload,policyPlanDecisionOnly:true};
+        }
+      }
       // Stamp the OT-approval audit fields onto the correction row (requested + approved + method).
       if (hasOtRequest) {
         await tx

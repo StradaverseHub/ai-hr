@@ -1203,6 +1203,10 @@ describe('immutable non-payable policy part storage',()=>{
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
   const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:90,plannedStartTime:'20:00',plannedEndTime:'21:30',reason:'Fictional approved plan disjoint from original 23:00 work'});
   await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  const [decided]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  // The submitted plan stays 90 minutes even though the company scalar method would
+  // choose the separate 120-minute actual day. No plan coordinate comes from that scalar.
+  expect(decided).toMatchObject({requestedOtMinutes:90,approvedOtMinutes:90,otApprovalMethod:'system_calculated',appliedAt:null});
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical approved-plan settlement parent');
   expect(read.calculation,JSON.stringify(read.evidence.evidence)).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
