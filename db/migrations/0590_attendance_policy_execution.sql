@@ -337,7 +337,7 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance a ON a.id=p.attendance_id AND a.tenant_id=p.tenant_id
     WHERE a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id
     AND a.attendance_date=NEW.attendance_date AND p.voided_at IS NULL)
-   OR work IS DISTINCT FROM jsonb_build_object('version',1,'sourceDate',NEW.attendance_date,
+   OR work IS DISTINCT FROM jsonb_build_object('version',1,'completeWorkedDay',true,'sourceDate',NEW.attendance_date,
     'reason',NEW.reason,'intervals',work->'intervals')
    OR char_length(btrim(NEW.reason)) NOT BETWEEN 1 AND 500 OR NEW.reason IS DISTINCT FROM btrim(NEW.reason)
    OR jsonb_typeof(work->'intervals') IS DISTINCT FROM 'array'

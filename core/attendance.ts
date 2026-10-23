@@ -3467,7 +3467,7 @@ export async function requestAttendanceCorrection(
     checkOut?: string | null;
     requestedOtMinutes?: number | null;
     /** HR records actual completed work separately from a clock correction or approved plan. */
-    unclockedWork?:{intervals:AttendancePolicyUnclockedWork['intervals']};
+    unclockedWork?:{completeWorkedDay:true;intervals:AttendancePolicyUnclockedWork['intervals']};
     reason?: string;
     // 1e9145d4 Plan OT — the planned window and the reason category the Apply OT Plan form collects. All
     // optional: every existing caller (the clock-correction form, the tests, the import paths) omits them
@@ -3525,7 +3525,7 @@ export async function requestAttendanceCorrection(
   if (plannedStartTime && plannedEndTime && plannedOvertimeMinutes(plannedStartTime, plannedEndTime) == null) {
     throw new Error('Enter different valid start and end times.');
   }
-  const unclockedWork=p.unclockedWork?validateAttendancePolicyUnclockedWork({version:1,sourceDate:p.date,reason,
+  const unclockedWork=p.unclockedWork?validateAttendancePolicyUnclockedWork({version:1,completeWorkedDay:p.unclockedWork.completeWorkedDay,sourceDate:p.date,reason,
     intervals:p.unclockedWork.intervals},Date.now()):undefined;
   if(unclockedWork&&(clockChanges||checkIn||checkOut||plannedStartTime||plannedEndTime||!requestedOtMinutes
     ||p.date>todayInKualaLumpur()))throw Error('Unclocked overtime needs a completed worked day and a separate overtime-only request.');

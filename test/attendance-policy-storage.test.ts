@@ -1053,12 +1053,12 @@ describe('immutable non-payable policy part storage',()=>{
   const f=await fixture('manual','12','actual',true,undefined,0,false,{mode:'none',step:null},120,'earliest',false,undefined,true),
    date=day(0),midnight=Date.parse(date+'T00:00:00+08:00'),end=Math.max(midnight+1,Math.min(midnight+3600000,Date.now()-1));
   const reason='Fictional HR testimony of actual unclocked work, distinct from the requested overtime count.',
-   work={intervals:[{fromEpochMillisecond:midnight,toEpochMillisecond:end}]};
+   work={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight,toEpochMillisecond:end}]};
   const result=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date,requestedOtMinutes:60,reason,unclockedWork:work});
   const [contract]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyRequestContract)
    .where(eq(s.attendancePolicyRequestContract.correctionId,result.correctionId)));
   expect(contract.attestedWork).toMatchObject({authority:'hrAttestedWorkSubmission',correctionId:result.correctionId,
-   tenantId:b.tenantId,employmentId:f.employmentId,date,work:{version:1,sourceDate:date,reason,intervals:work.intervals}});
+   tenantId:b.tenantId,employmentId:f.employmentId,date,work:{version:1,completeWorkedDay:true,sourceDate:date,reason,intervals:work.intervals}});
   expect(contract.attestedWork).not.toHaveProperty('captureId');
   expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,result.correctionId))).toEqual([]);
   await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyRequestContract).set({attestedWork:{}})

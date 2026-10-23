@@ -2,11 +2,11 @@ import {isCalendarDate} from './calendar-date';
 
 /** Explicit HR testimony of actual work. These are entered instants, never clock captures,
  * approved-plan positions, computed payable counts or an approval capability. */
-export type AttendancePolicyUnclockedWork={version:1;sourceDate:string;reason:string;
+export type AttendancePolicyUnclockedWork={version:1;completeWorkedDay:true;sourceDate:string;reason:string;
  intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
 
 export function validateAttendancePolicyUnclockedWork(value:AttendancePolicyUnclockedWork,nowMillisecond:number):AttendancePolicyUnclockedWork{
- if(!value||value.version!==1||!isCalendarDate(value.sourceDate)||!Number.isSafeInteger(nowMillisecond)
+ if(!value||value.version!==1||value.completeWorkedDay!==true||!isCalendarDate(value.sourceDate)||!Number.isSafeInteger(nowMillisecond)
   ||typeof value.reason!=='string'||value.reason!==value.reason.trim()||value.reason.length<1||value.reason.length>500
   ||!Array.isArray(value.intervals)||value.intervals.length<1||value.intervals.length>16)
   throw Error('Record the actual worked date, intervals and a reason for unclocked overtime.');
@@ -20,5 +20,5 @@ export function validateAttendancePolicyUnclockedWork(value:AttendancePolicyUncl
   previous=row.toEpochMillisecond;
   return {fromEpochMillisecond:row.fromEpochMillisecond,toEpochMillisecond:row.toEpochMillisecond};
  });
- return {version:1,sourceDate:value.sourceDate,reason:value.reason,intervals};
+ return {version:1,completeWorkedDay:true,sourceDate:value.sourceDate,reason:value.reason,intervals};
 }
