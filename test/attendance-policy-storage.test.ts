@@ -986,6 +986,10 @@ describe('immutable non-payable policy part storage',()=>{
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
   expect(slip.overtimePay).toBe('45.00');
   await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
+  // The cash/TOIL conflict above is proved while the Payroll draft exists. Remove that
+  // draft through its real owner before the separate day elects TOIL: the tenant-wide
+  // started-Payroll guard must keep refusing credit changes in an existing run's period.
+  await deleteDraftBatch(ctx,{batchId:batch.batchId});
   // A separate actual source chooses TOIL, even after its cash earning mapping is archived.
   const next=new Date(Date.parse(p.date+'T00:00:00Z')+86400000).toISOString().slice(0,10),
    afterNext=new Date(Date.parse(p.date+'T00:00:00Z')+2*86400000).toISOString().slice(0,10),
