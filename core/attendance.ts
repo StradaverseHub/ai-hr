@@ -2318,6 +2318,18 @@ export async function checkOutTx(
     });
     const otMinutes = plannedOt ?? derived.otMinutes;
     if (plannedOt == null) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Recorded clock-out'});
+    if(derived.policyRaw&&derived.checkInAt&&derived.checkOutAt){
+      const [plan]=await tx.select({createdAt:attendanceCorrection.createdAt}).from(attendanceCorrection)
+        .innerJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),
+          eq(attendancePolicyRequestContract.tenantId,attendanceCorrection.tenantId)))
+        .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
+          eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'approved'),isNull(attendanceCorrection.cancelledAt),
+          isNotNull(attendancePolicyRequestContract.policyBinding),isNotNull(attendancePolicyRequestContract.plannedWindow),
+          isNull(attendancePolicyRequestContract.attestedWork)))
+        .orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);
+      if(plan)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:p.employmentId,workedDate:p.date,dayType,
+        requestedOn:todayInKualaLumpur(plan.createdAt)});
+    }
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -6334,6 +6346,7 @@ export async function addImportedPunchesBatchTx(
   // 1 · What is already there: the day rows, their punches, and which days carry an approved OT decision.
   const rowBy = new Map<string, typeof attendance.$inferSelect>();
   const otKeys = new Set<string>();
+  const policyPlanRequestedOn=new Map<string,string>();
   for (const ids of chunk(empIds, 1000)) {
     for (const r of await tx
       .select()
@@ -6342,8 +6355,13 @@ export async function addImportedPunchesBatchTx(
       rowBy.set(keyOf(r.employmentId, r.attendanceDate), r);
     }
     for (const c of await tx
-      .select({ employmentId: attendanceCorrection.employmentId, date: attendanceCorrection.attendanceDate })
+      .select({ employmentId: attendanceCorrection.employmentId, date: attendanceCorrection.attendanceDate,
+        createdAt:attendanceCorrection.createdAt,cancelledAt:attendanceCorrection.cancelledAt,
+        binding:attendancePolicyRequestContract.policyBinding,window:attendancePolicyRequestContract.plannedWindow,
+        attestedWork:attendancePolicyRequestContract.attestedWork })
       .from(attendanceCorrection)
+      .leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),
+        eq(attendancePolicyRequestContract.tenantId,attendanceCorrection.tenantId)))
       .where(
         and(
           inArray(attendanceCorrection.employmentId, ids),
@@ -6352,8 +6370,11 @@ export async function addImportedPunchesBatchTx(
           eq(attendanceCorrection.status, 'approved'),
           sql`${attendanceCorrection.requestedOtMinutes} is not null`,
         ),
-      )) {
+      ).orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id))) {
       otKeys.add(keyOf(c.employmentId, c.date));
+      const key=keyOf(c.employmentId,c.date);
+      if(c.cancelledAt===null&&c.binding&&c.window&&!c.attestedWork&&!policyPlanRequestedOn.has(key))
+        policyPlanRequestedOn.set(key,todayInKualaLumpur(c.createdAt));
     }
   }
   type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
@@ -6521,6 +6542,15 @@ export async function addImportedPunchesBatchTx(
   }
 
   for (const d of days) if (!plannedBy.has(keyOf(d.employmentId,d.day))) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'});
+  // Work arrival, not public recalculation, triggers the existing opted-in credit owner.
+  // Batched plan metadata supplies only Request Date; the owner replays the complete
+  // current approved union, independent duration and original physical source again.
+  for(const d of days){
+    const key=keyOf(d.employmentId,d.day),requestedOn=policyPlanRequestedOn.get(key),result=results.get(d)!;
+    if(policyRoutes?.get(key)==='policy'&&requestedOn&&result.checkInAt&&result.checkOutAt)
+      await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:d.employmentId,workedDate:d.day,
+        dayType:schedules.get(key)!.dayType,requestedOn});
+  }
 
   // 5 · One `attendance.imported` event per day.
   const events = days.map((d) => {
