@@ -186,8 +186,8 @@ BEGIN
   RAISE EXCEPTION 'Policy calculation requires its entire declared part set' USING ERRCODE='23514';END IF;
  IF EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part a JOIN public.attendance_overtime_policy_part b
   ON a.calculation_id=b.calculation_id AND a.sequence<b.sequence
-  CROSS JOIN LATERAL jsonb_array_elements(a.source_intervals) AS x(value)
-  CROSS JOIN LATERAL jsonb_array_elements(b.source_intervals) AS y(value)
+  CROSS JOIN LATERAL jsonb_array_elements(coalesce(a.duration_evidence#>'{planQuantity,sourceIntervals}',a.source_intervals)) AS x(value)
+  CROSS JOIN LATERAL jsonb_array_elements(coalesce(b.duration_evidence#>'{planQuantity,sourceIntervals}',b.source_intervals)) AS y(value)
   WHERE a.calculation_id=parent_id AND(x.value->>'from')::integer<(y.value->>'to')::integer
    AND(y.value->>'from')::integer<(x.value->>'to')::integer) THEN
   RAISE EXCEPTION 'Policy parts cannot claim overlapping parent intervals' USING ERRCODE='23514';END IF;
@@ -1243,6 +1243,7 @@ BEGIN
    END LOOP;
    IF capture_count<>jsonb_array_length(plan_quantity#>'{workedDay,intervals}') THEN RAISE EXCEPTION 'Complete worked footprint required' USING ERRCODE='23514';END IF;
   END IF;
+  count_ranges:='{}'::int8multirange;
   FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id AND tenant_id=header.tenant_id AND company_id=header.company_id ORDER BY sequence LOOP
    quantity:=plan_quantity->'quantities'->part.sequence;
    part_payable:=app.attendance_policy_part_payable_count(part,data#>'{policyExecutionProposal,duration}',data->'policyDurationFormulaInput');
@@ -1254,7 +1255,8 @@ BEGIN
     RAISE EXCEPTION 'Exact separate dated plan count required' USING ERRCODE='23514';END IF;
    FOR item IN SELECT value FROM jsonb_array_elements(quantity->'intervals') LOOP
     lo:=(item->>'from')::integer;hi:=(item->>'to')::integer;
-    IF lo>=hi OR NOT(plan_ranges @> int8range(lo,hi,'[)')) THEN RAISE EXCEPTION 'Selected quantity escaped complete approved plans' USING ERRCODE='23514';END IF;
+    IF lo>=hi OR NOT(plan_ranges @> int8range(lo,hi,'[)')) OR count_ranges&&int8range(lo,hi,'[)') THEN RAISE EXCEPTION 'Selected quantity escaped complete approved plans' USING ERRCODE='23514';END IF;
+    count_ranges:=count_ranges+int8multirange(int8range(lo,hi,'[)'));
     expected:=jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,'fromMinute',lo,'toMinute',hi,'minutes',hi-lo);
     IF proof->'allocations'->used IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Selected plan positions changed' USING ERRCODE='23514';END IF;
     used:=used+1;

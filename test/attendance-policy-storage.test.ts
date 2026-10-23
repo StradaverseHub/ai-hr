@@ -1157,6 +1157,53 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
  });
 
+ it.each(['cash','toil'] as const)('settles disjoint approved-plan quantity through the actual %s owner while reserving original work',async mode=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
+  // Same explicitly declared private historical group baseline as the existing current
+  // workflow fixtures. Formula activation and the request/final decision are genuine.
+  const f=await fixture('auto','12','preApproved',true,undefined,555,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional approved-plan reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+  const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
+   roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:3,code:'PLAN_FIN_'+randomUUID().slice(0,8),name:'Fictional positioned-plan review',
+   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,
+   stages:[{name:'Review approved positions',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:90,plannedStartTime:'20:00',plannedEndTime:'21:30',reason:'Fictional approved plan disjoint from original 23:00 work'});
+  await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical approved-plan settlement parent');
+  expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
+  expect(read.policyParts.map(row=>[row.rawMinutes,row.allocatedPayableMinutes,row.sourceIntervals])).toEqual([[0,0,[]]]);
+  const proof=read.evidence.evidence.policyCapturedCoverage as {countBasis:string;minutes:number;intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+  const midnight=Date.parse(p.date+'T00:00:00+08:00');
+  expect(proof).toMatchObject({countBasis:'approvedPlanWithIndependentWorkedDay',minutes:90});
+  expect(proof.intervals).toEqual([{fromEpochMillisecond:midnight+1380*60000+555,toEpochMillisecond:midnight+1500*60000+555}]);
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  if(mode==='cash'){
+   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)}),transfer={...p,expectedCalculationId:read.calculation.id,
+    expectedSourceRevision:read.source.revision,batchId:batch.batchId,reason:'Fictional separate planned quantity cash election'};
+   const paid=await transferOvertimePatternToPayroll(ctx,transfer);
+   expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:paid.settlementId});
+   await generatePayslips(ctx,{batchId:batch.batchId});
+   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
+   expect(slip.overtimePay).toBe('27.00');
+   await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
+   await closeBatch(ctx,{batchId:batch.batchId});
+  }else{
+   const credit=await accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date});
+   expect(credit.daysCredited).toBe(0.5);
+   const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.toilAccrualId,credit.accrualId));
+   expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical',coverageCalculationId:read.calculation.id});
+   await reverseLeaveCredit(ctx,{accrualId:credit.accrualId,reason:'Fictional planned quantity canonical release'});
+   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
+  }
+ });
+
  it.each((['cash','toil'] as const).flatMap(mode=>[
   ...(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method,roundMode:'none' as const,physical:120,requested:60})),
   ...(['up','nearest'] as const).flatMap(roundMode=>(['requested','system_calculated'] as const).map(method=>({mode,method,roundMode,
