@@ -1210,6 +1210,9 @@ describe('immutable non-payable policy part storage',()=>{
    await generatePayslips(ctx,{batchId:batch.batchId});
    expect((await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId))))[0].overtimePay).toBe(expectedMoney);
    await closeBatch(ctx,{batchId:batch.batchId});await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
+   await expect(requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,
+    reason:'Fictional closed Payroll cannot accept another actual-work testimony',unclockedWork:actual}))
+    .rejects.toThrow('closed payroll');
    await expect(cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'cancelled',reason:'Fictional closed Payroll must retain original HR approval'})).rejects.toThrow();
    expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId)))[0].status).toBe('approved');
   }else{

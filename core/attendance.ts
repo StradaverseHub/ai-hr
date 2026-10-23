@@ -1,5 +1,5 @@
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
-import {validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
+import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
@@ -3545,9 +3545,10 @@ export async function requestAttendanceCorrection(
         .where(eq(employment.id,p.employmentId)).limit(1);
       if(!subject?.admin||subject.own)throw Error('Another authorised HR administrator must attest this employee’s unclocked work.');
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
-      await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date:p.date});
+      const protectedDates=attendancePolicyUnclockedWorkDates(unclockedWork);
+      for(const date of protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date});
       await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
-      await lockAttendancePayrollTx(tx,p.employmentId,p.date);
+      await lockAttendancePayrollTx(tx,p.employmentId,protectedDates);
       const punches=await punchesForCorrectionTx(tx,p.employmentId,p.date);
       if(punches.some(row=>!row.voidedAt))throw Error('Retain existing clock evidence and use the clock-correction workflow for this day.');
     }
@@ -3959,11 +3960,13 @@ export async function decideAttendanceCorrection(
 
       let unclockedSystemMinutes:number|undefined;
       let unclockedContext:AttendancePolicyExecutionContext|undefined;
+      let unclockedProtectedDates:string[]|undefined;
       if(cor.originalClockSnapshot?.unclockedWork){
         if(deferred||hasClockCorrection||cor.adminAmendment||!workflowStage.versionedFinalEffect)
           throw Error('Unclocked actual work requires its submitted versioned final workflow.');
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+cor.employmentId},0))`);
-        await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        unclockedProtectedDates=attendancePolicyUnclockedWorkDates(cor.originalClockSnapshot.unclockedWork);
+        for(const date of unclockedProtectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
         await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
         const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         const [submission]=await tx.select().from(attendancePolicyRequestContract).where(and(
@@ -3979,7 +3982,7 @@ export async function decideAttendanceCorrection(
           throw Error('Clock evidence was added after this unclocked-work submission. Withdraw and use the clock workflow.');
         unclockedSystemMinutes=eligible.minutes;unclockedContext=context;
       }
-      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
