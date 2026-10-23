@@ -5,10 +5,11 @@ import {isCalendarDate} from '../../lib/calendar-date';
 import {overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {unionAttendancePolicyIntervals} from '../../lib/attendance-policy-intervals';
 import type {PolicyExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyCountAttribution,type PolicyCountAttribution} from './policy-count-attribution';
 export type PolicyCoverageIdentity={tenantId:string;companyId:string;employmentId:string;sourceId:string;calculationId:string;date:string};
 export type PolicyCoverageProposal=
  |{state:'unavailable';authority:'coverageProposalOnly';reason:'durationUnavailable'|'unplacedCountCoverageRequired'|'partitionMismatch'}
- |{state:'prepared';authority:'coverageProposalOnly';identity:PolicyCoverageIdentity;basis:'actual'|'approvedPlan';
+ |{state:'prepared';authority:'coverageProposalOnly';identity:PolicyCoverageIdentity;basis:'actual'|'approvedPlan';countAttribution?:Extract<PolicyCountAttribution,{state:'known'}>;
    intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
 /** Use only the parent's actual dated allocation. Next-day parts stay under this parent; converting
  * a local label from another request or a scalar rounded remainder would fabricate physical cover. */
@@ -20,7 +21,8 @@ export function attendancePolicyCoverageProposal(identity:PolicyCoverageIdentity
  if(proposal.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
  const duration=proposal.duration;
  if(duration.parts.length>3||duration.classes.length>5||duration.parts.some(part=>part.allocations.length>4320))return refuse('partitionMismatch');
- if(duration.classes.some(row=>row.unplacedPayableMinutes!==0))return refuse('unplacedCountCoverageRequired');
+ const counts=attendancePolicyCountAttribution(duration);
+ if(counts.state!=='known')return refuse(duration.classes.some(row=>row.unplacedPayableMinutes!==0)?'unplacedCountCoverageRequired':'partitionMismatch');
  try{
   const allocations=duration.parts.flatMap(part=>{
    if(!Number.isSafeInteger(part.allocatedPayableMinutes)||part.allocatedPayableMinutes<0
@@ -30,10 +32,10 @@ export function attendancePolicyCoverageProposal(identity:PolicyCoverageIdentity
   const normalized=unionAttendancePolicyIntervals(allocations,4320);
   const count=normalized.reduce((n,row)=>n+row.to-row.from,0);
   // Overlapping children cannot claim the same minute twice, including identical copied parts.
-  if(count!==duration.payableMinutes||allocations.reduce((n,row)=>n+row.to-row.from,0)!==count)
+  if(count!==counts.physicalMinutes||allocations.reduce((n,row)=>n+row.to-row.from,0)!==count)
    return refuse('partitionMismatch');
   const midnight=Date.parse(identity.date+'T00:00:00+08:00'); // existing Asia/Kuala_Lumpur timeline
-  return {state:'prepared',authority:'coverageProposalOnly',identity:{...identity},basis:duration.intervalBasis,
+  return {state:'prepared',authority:'coverageProposalOnly',identity:{...identity},basis:duration.intervalBasis,...(counts.roundedMinutes>0?{countAttribution:counts}:{}),
    intervals:normalized.map(row=>({fromEpochMillisecond:midnight+row.from*60000,toEpochMillisecond:midnight+row.to*60000}))};
  }catch{return refuse('partitionMismatch');}
 }

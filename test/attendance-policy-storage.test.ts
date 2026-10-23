@@ -5,7 +5,7 @@ import {requirePackFor} from '../localization/registry';
 import {accrueToil,setToilPolicy,reverseLeaveCredit} from '../core/toil';
 import {readOvertimePolicyDurationTx} from '../packs/attendance/overtime-patterns';
 import {resolveOvertimeToilDurationTx} from '../packs/attendance/overtime-toil';
-import {recordedAttendancePolicyProposalPartsMatch} from '../packs/attendance/policy-proposal-parts';
+import {recordedAttendancePolicyProposalPartsMatch,materializeAttendancePolicyProposalParts} from '../packs/attendance/policy-proposal-parts';
 import {attendancePolicyCapturedCoverageProposal} from '../packs/attendance/policy-captured-coverage';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {attendancePolicyCashReplay,attendancePolicyCurrentCashMatches} from '../packs/attendance/policy-cash-replay';
@@ -39,7 +39,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest'){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -52,7 +52,7 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   const pack=requirePackFor('MY'),seed=pack.payComponents.defaults.find(row=>row.code===pack.payComponents.backfillCodes.overtime)!;
   earning=await createPayComponent(ctx,{...seed,code:'POLICY_OT',name:'Fictional policy earning',label:'Fictional policy earning'});
  }else [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'POLICY_OT',name:'Fictional policy earning',kind:'allowance'}).returning();
- const definition=prepareOvertimeStarter('ot15','day','earliest');definition.currency={code:'MYR',minorScale:2};
+ const definition=prepareOvertimeStarter('ot15','day',direction);definition.currency={code:'MYR',minorScale:2};
  definition.eligibility={id:'eligible',type:'constant',value:true};definition.rates[0].when={id:'rate_eligible',type:'constant',value:true};
  const tier=definition.rates[0].tiers[0];tier.mapping={earningItemId:earning.id,currency:'MYR'};
  if(tier.payment.method!=='hourly'||tier.payment.rate.type!=='hourlyRate')throw Error('Retain the standard fixture formula');
@@ -76,7 +76,7 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  expect(validation.issues).toEqual([]);
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
-  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding:{mode:'none',step:null},
+  overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding,
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
  if(currentManual){
@@ -98,7 +98,8 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  }
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  await capturedClock(worker.employmentId,day(sourceOffset),'in',financial?'23:00:00':'23:50:00',day(sourceOffset),captureMillisecond);
- await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?'01:00:00':'00:10:00',day(sourceOffset+1),captureMillisecond);
+ const endMinute=1380+financialMinutes,financialOut=`${String(Math.floor(endMinute/60)%24).padStart(2,'0')}:${String(endMinute%60).padStart(2,'0')}:00`;
+ await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?financialOut:'00:10:00',day(sourceOffset+1),captureMillisecond);
  return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset),earningId:earning.id};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
@@ -364,6 +365,44 @@ describe('immutable non-payable policy part storage',()=>{
   expect(cause?.code).toBe('23514');
   expect(String(cause?.message)).toContain(kind==='boundary'?'Captured footprint is not original source intersection'
    :kind==='count'?'Captured quantity changed':'Captured allocation boundary identity missing');
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,original.source.id))).toEqual([]);
+ });
+
+ it.each(['count','date','anchor'] as const)('rejects forged rounded %s evidence through the actual private SQL source owner',async kind=>{
+  const f=await fixture('auto','12','actual',false,undefined,555,false,{mode:'up',step:30}),p={employmentId:f.employmentId,date:day(2)};
+  const original=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!original?.calculation||!original.evidence||!original.policyParts)throw Error('Expected genuine rounded captured source');
+  let attempted='',failure:unknown;
+  try{await withTenant(ctx,async tx=>{
+   const {saved}=await header(tx,f,original.policyParts!.length,{inputDigest:original.calculation!.inputDigest,
+    approvalDigest:original.calculation!.approvalDigest,referenceDigest:original.calculation!.referenceDigest});attempted=saved.id;
+   const snapshot=await canonicalOvertimeInputTx(tx,ctx,p),evidence=structuredClone(original.evidence!),
+    parts=original.policyParts!.map(({createdAt,...row})=>({...structuredClone(row),calculationId:saved.id}));
+   delete evidence.evidence.policyFinancialContract;delete evidence.evidence.policyFinancialDurationContract;
+   const proof=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
+    sourceId:saved.sourceId,calculationId:saved.id,date:p.date},snapshot);
+   if(proof.state!=='prepared'||!proof.countAttribution)throw Error('Expected bound rounded source');
+   if(kind==='count')proof.countAttribution.parts[0].roundedMinutes++;
+   if(kind==='date'){
+    const part=parts[0].durationEvidence as {roundingCountAttributions:{calendarDate:string}[]};
+    part.roundingCountAttributions[0].calendarDate=day(3);
+   }
+   if(kind==='anchor'){
+    const proposal=structuredClone(snapshot.policyExecutionProposal);
+    if(proposal?.state!=='proposed'||proposal.duration.status!=='calculated'||!proposal.duration.classes[0].roundingCountAttribution)throw Error('Expected canonical count anchor');
+    proposal.duration.classes[0].roundingCountAttribution.anchor.from++;
+    evidence.evidence.policyExecutionProposal=proposal;
+   }
+   evidence.evidence.policyCapturedCoverage=proof;
+   await tx.insert(s.attendanceOvertimeCalculationEvidence).values({calculationId:saved.id,tenantId:b.tenantId,companyId:b.companyId,
+    inputs:evidence.inputs,evidence:evidence.evidence});
+   await tx.insert(s.attendanceOvertimePolicyPart).values(parts);
+  });}catch(error){failure=error;}
+  const outer=failure as {cause?:{code?:unknown;message?:unknown}}|undefined,cause=(outer?.cause??failure) as {code?:unknown;message?:unknown}|undefined;
+  expect(cause?.code).toBe('23514');
+  expect(String(cause?.message)).toContain(kind==='count'?'Captured rounded count attribution changed'
+   :kind==='date'?'Rounded dated part quantity changed':'Rounded quantity changed its existing dated source anchor');
   expect(await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,attempted))).toEqual([]);
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.sourceId,original.source.id))).toEqual([]);
  });
@@ -867,6 +906,71 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
    expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
    .toMatchObject({status:'transferred'});
+ });
+
+ it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},
+  {mode:'nearest' as const,physical:135,direction:'latest' as const}])('carries $mode rounded counts through actual Payroll and independent TOIL without lengthening captures',async({mode,physical,direction})=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,undefined,555,true,{mode,step:30},physical,direction),
+   p={employmentId:f.employmentId,date:f.sourceDate},extra=150-physical;
+  await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
+  await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+   allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
+   extendedHoursEnabled:true,extendedHalfDayMinutes:60,extendedFullDayMinutes:120});
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected complete rounded financial parent');
+  expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'150',transferable:true});
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  const coverage=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
+   sourceId:read.source.id,calculationId:read.calculation.id,date:p.date},snapshot);
+  expect(coverage).toMatchObject({state:'prepared',minutes:150,countAttribution:{physicalMinutes:physical,roundedMinutes:extra,minutes:150}});
+  if(coverage.state!=='prepared')throw Error('Expected actual captured footprint');
+  expect(coverage.allocations.reduce((n,row)=>n+row.minutes,0)).toBe(physical);
+  expect(coverage.intervals.reduce((n,row)=>n+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(physical*60000-555);
+  const counts=coverage.countAttribution;if(!counts)throw Error('Expected explicit rounded count/date binding');
+  expect(counts.parts.map(row=>row.minutes)).toEqual(direction==='earliest'?[60+extra,physical-60]:[60,physical-60+extra]);
+  expect(read.evidence.evidence.policyCapturedCoverage).toEqual(coverage);
+  // Original refused snapshots with no rounding-attribution field remain refused and readable
+  // as physical proposal parts; the new source owner may not backfill or promote that history.
+  const old=structuredClone(snapshot);
+  if(old.policyExecutionProposal?.state!=='proposed'||old.policyExecutionProposal.duration.status!=='calculated')throw Error('Expected canonical rounding source');
+  for(const row of old.policyExecutionProposal.duration.classes)delete row.roundingCountAttribution;
+  expect(attendancePolicyDurationReplay(old)).toMatchObject({state:'unavailable',reason:'countPlacementUnavailable'});
+  const oldParts=materializeAttendancePolicyProposalParts({source:old.input.source,policy:old.attendanceGroupPolicy,
+   context:old.policyExecutionContext,work:old.policyWorkInput,durationFormulas:old.policyDurationFormulaInput,
+   approvals:old.policyApprovalInput,proposal:old.policyExecutionProposal,rawEffect:old.policyRawEffectSource});
+  expect(oldParts?.map(part=>part.allocatedPayableMinutes)).toEqual([60,physical-60]);
+  expect(oldParts?.every(part=>!Object.hasOwn(part.durationEvidence,'roundingCountAttributions'))).toBe(true);
+  expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app',
+   'app.attendance_policy_part_payable_count(public.attendance_overtime_policy_part,jsonb,jsonb)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)}),transfer={...p,
+   expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,batchId:batch.batchId,reason:'Fictional exact rounded policy cash election'};
+  const first=await transferOvertimePatternToPayroll(ctx,transfer);
+  expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});
+  await generatePayslips(ctx,{batchId:batch.batchId});
+  const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
+  expect(slip.overtimePay).toBe('45.00');
+  await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
+  // A separate actual source chooses TOIL, even after its cash earning mapping is archived.
+  const next=new Date(Date.parse(p.date+'T00:00:00Z')+86400000).toISOString().slice(0,10),
+   afterNext=new Date(Date.parse(p.date+'T00:00:00Z')+2*86400000).toISOString().slice(0,10),
+   end=1380+physical,out=`${String(Math.floor(end/60)%24).padStart(2,'0')}:${String(end%60).padStart(2,'0')}:00`;
+  await capturedClock(f.employmentId,next,'in','23:00:00',next,555);await capturedClock(f.employmentId,next,'out',out,afterNext,555);
+  const toilSource=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:next}));
+  if(!toilSource?.calculation)throw Error('Expected separate rounded duration source');
+  await owner.db.update(s.payComponent).set({archivedAt:new Date()}).where(eq(s.payComponent.id,f.earningId));
+  await calculateOvertimePatternDay(ctx,{employmentId:f.employmentId,date:next,expectedCurrentRevision:toilSource.source.revision,
+   reason:'Fictional rounded TOIL review after cash mapping archival'});
+  const duration=await withTenant(ctx,tx=>resolveOvertimeToilDurationTx(tx,ctx,{employmentId:f.employmentId,date:next}));
+  expect(duration).toMatchObject({kind:'formula',minutes:150,afterShiftMinutes:150});
+  await accrueToil(ctx,{employmentId:f.employmentId,workedDate:next});
+  const [credit]=await owner.db.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.employmentId,f.employmentId),eq(s.toilAccrual.workedDate,next)));
+  expect(credit).toMatchObject({status:'active',otMinutes:150,daysCredited:'1.00'});
+  const [claim]=await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.toilAccrualId,credit.id));
+  expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical'});
+  await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional rounded TOIL reversal'});
+  expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
  });
 
  it('banks canonical policy TOIL when the actual earning mapping no longer permits cash replay',async()=>{

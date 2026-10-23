@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 import {attendancePolicyDurationFormulaProjection} from './policy-formula-source';
-import {attendancePolicyDurationExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyDurationExecutionProposal,attendancePolicyRecordedProposalComparison} from './policy-execution-proposal';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
 import {attendancePolicyWorkInput} from './policy-work-input';
@@ -46,7 +46,7 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   // An explicit duration refusal is authoritative; never bypass it through the money source.
   const formulas=snapshot.policyDurationFormulaInput;
   if(formulas?.state!=='known')return refuse('sourceUnavailable');
-  const proposal=attendancePolicyDurationExecutionProposal(context,snapshot.policyWorkInput,formulas,snapshot.policyApprovalInput,source.tenantId,snapshot.policyRawEffectSource);
+  const proposal=attendancePolicyRecordedProposalComparison(attendancePolicyDurationExecutionProposal(context,snapshot.policyWorkInput,formulas,snapshot.policyApprovalInput,source.tenantId,snapshot.policyRawEffectSource),snapshot.policyExecutionProposal);
   if(!isDeepStrictEqual(proposal,snapshot.policyExecutionProposal))return refuse('proposalMismatch');
   if(proposal.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('sourceUnavailable');
   const duration=proposal.duration;

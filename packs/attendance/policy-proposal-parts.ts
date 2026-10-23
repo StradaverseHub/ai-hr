@@ -12,7 +12,7 @@ import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {PolicyApprovalInput} from './policy-approval-input';
 import type {PolicyWorkInput} from './policy-work-input';
 import type {PolicyFormulaInput,PolicyDurationFormulaInput} from './policy-formula-source';
-import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal,type PolicyExecutionProposal} from './policy-execution-proposal';
+import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal,attendancePolicyRecordedProposalComparison,type PolicyExecutionProposal} from './policy-execution-proposal';
 import {attendancePolicyDurationReplay,attendancePolicyRecordedApprovalStatus} from './policy-duration-replay';
 import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 
@@ -29,15 +29,18 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
  const context=input.context;
  if(context?.state==='policy'&&(context.employmentId!==input.source.employmentId||context.date!==input.source.date
   ||context.companyId!==input.policy.companyId||!isDeepStrictEqual(context.selected,input.policy)))return null;
- const expected=input.durationFormulas!==undefined
+ const computed=input.durationFormulas!==undefined
   ?attendancePolicyDurationExecutionProposal(context,input.work,input.durationFormulas,input.approvals,input.source.tenantId,input.rawEffect)
   :attendancePolicyExecutionProposal(context,input.work,input.formulas,input.approvals,input.source.tenantId,input.rawEffect);
+ const expected=attendancePolicyRecordedProposalComparison(computed,input.proposal);
  if(!isDeepStrictEqual(expected,input.proposal))return null;
  if(expected.state!=='proposed'||expected.duration.status!=='calculated')return [];
  if(expected.policyRevisionId!==input.policy.id||expected.duration.parts.length>3
   ||expected.formulaParts.length!==expected.duration.parts.length)return null;
  const duration=expected.duration,count=attendancePolicyCountAttribution(duration);
- if(count.state!=='known')return null;
+ // Legacy absent-attribution proposals retain only their original refused physical parts.
+ if(count.state!=='known'&&(!duration.classes.some(row=>row.unplacedPayableMinutes>0)
+  ||duration.classes.some(row=>Object.hasOwn(row,'roundingCountAttribution'))))return null;
  const parts:PolicyProposalStoragePart[]=[];
  for(const [sequence,part]of duration.parts.entries()){
   const formula=expected.formulaParts[sequence];
@@ -49,7 +52,7 @@ export function materializeAttendancePolicyProposalParts(input:PolicyProposalPar
     parentClass:part.dayClass,allocatedIntervals:part.allocations.map(row=>({...row})),
     // Separate count/date/source identity. Existing physical-count columns and intervals keep
     // their original meaning. Financial replay/SQL must explicitly adopt this count contract.
-    ...(count.parts[sequence].roundedMinutes>0?{roundingCountAttributions:count.parts[sequence].roundingCountAttributions,
+    ...(count.state==='known'&&count.parts[sequence].roundedMinutes>0?{roundingCountAttributions:count.parts[sequence].roundingCountAttributions,
      attributedPayableMinutes:count.parts[sequence].minutes}:{})}});
  }
  return parts;

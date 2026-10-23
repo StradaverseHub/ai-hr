@@ -4,10 +4,11 @@ import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 import {attendancePolicyIndependentDurationReplay,attendancePolicyIndependentSource,type IndependentPolicyDurationSource} from './policy-duration-replay';
 import {attendancePolicyCoverageProposal,type PolicyCoverageIdentity} from './policy-coverage';
 import {overtimeUuid} from '../../lib/overtime-pattern-schema';
+import {attendancePolicyCountAttribution,type PolicyCountAttribution} from './policy-count-attribution';
 export type PolicyCapturedCoverageProposal=
  |{state:'unavailable';authority:'capturedCountCoverageProposalOnly';reason:'durationUnavailable'|'sourceMismatch'|'countPlacementUnavailable'}
  |{state:'prepared';authority:'capturedCountCoverageProposalOnly';identity:PolicyCoverageIdentity;durationDigest:string;
-   countBasis:'capturedBoundaryFloor';minutes:number;
+   countBasis:'capturedBoundaryFloor';minutes:number;countAttribution?:Extract<PolicyCountAttribution,{state:'known'}>;
    allocations:{sequence:number;calendarDate:string;fromMinute:number;toMinute:number;minutes:number;
     inPunchId:string;outPunchId:string;inCaptureId:string;outCaptureId:string;
     captureInEpochMillisecond:number;captureOutEpochMillisecond:number;
@@ -25,8 +26,8 @@ export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCover
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
   if(source.tenantId!==identity.tenantId||source.employmentId!==identity.employmentId||source.date!==identity.date
    ||context?.state!=='policy'||context.companyId!==identity.companyId||clocks?.state!=='known'||review?.state!=='known')return refuse('sourceMismatch');
-  const count=attendancePolicyCoverageProposal(identity,proposal);
-  if(count.state!=='prepared')return refuse('countPlacementUnavailable');
+  const count=attendancePolicyCoverageProposal(identity,proposal),counts=attendancePolicyCountAttribution(proposal.duration);
+  if(count.state!=='prepared'||counts.state!=='known')return refuse('countPlacementUnavailable');
   const midnight=Date.parse(identity.date+'T00:00:00+08:00');
   const pairs=review.evidence.intervals.map(pair=>{
    const ins=clocks.clocks.filter(clock=>clock.direction==='in'&&clock.atMilliseconds===pair.inMillisecond),
@@ -52,7 +53,7 @@ export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCover
    }
    if(owned!==allocation.to-allocation.from)return refuse('countPlacementUnavailable');
   }
-  if(allocations.reduce((sum,row)=>sum+row.minutes,0)!==replay.minutes)return refuse('countPlacementUnavailable');
+  if(allocations.reduce((sum,row)=>sum+row.minutes,0)!==counts.physicalMinutes)return refuse('countPlacementUnavailable');
   allocations.sort((a,b)=>a.fromEpochMillisecond-b.fromEpochMillisecond||a.toEpochMillisecond-b.toEpochMillisecond);
   const intervals:Extract<PolicyCapturedCoverageProposal,{state:'prepared'}>['intervals']=[];
   for(const row of allocations){
@@ -62,7 +63,7 @@ export function attendancePolicyIndependentCapturedCoverage(identity:PolicyCover
    else intervals.push({fromEpochMillisecond:row.fromEpochMillisecond,toEpochMillisecond:row.toEpochMillisecond});
   }
   return {state:'prepared',authority:'capturedCountCoverageProposalOnly',identity:{...identity},durationDigest:replay.digest,
-   countBasis:'capturedBoundaryFloor',minutes:replay.minutes,allocations,intervals};
+   countBasis:'capturedBoundaryFloor',minutes:replay.minutes,...(counts.roundedMinutes>0?{countAttribution:counts}:{}),allocations,intervals};
  }catch{return refuse('sourceMismatch');}
 }
 

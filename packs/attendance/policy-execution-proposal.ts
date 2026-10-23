@@ -94,3 +94,16 @@ function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContex
  }
  return {state:'proposed',authority:'proposalOnly',policyRevisionId:selected.id,duration,formulaParts,...(planned?.state==='known'?{planEvidence:planned}:{}),...(manual?.state==='known'?{manualEvidence:manual}:{})};
 }
+
+/** Old immutable refused rounding proposals predate source/count attribution. Compare their
+ * original shape without inventing an attribution or promoting them to a known/ready result.
+ * Every other proposal field remains subject to the caller's exact canonical comparison. */
+export function attendancePolicyRecordedProposalComparison(current:PolicyExecutionProposal,recorded:PolicyExecutionProposal|undefined):PolicyExecutionProposal{
+ if(current.state!=='proposed'||current.duration.status!=='calculated'||recorded?.state!=='proposed'
+  ||recorded.duration.status!=='calculated'||!Array.isArray(recorded.duration.classes)
+  ||!recorded.duration.classes.some(row=>row.unplacedPayableMinutes>0)
+  ||recorded.duration.classes.some(row=>Object.hasOwn(row,'roundingCountAttribution')))return current;
+ return {...current,duration:{...current.duration,classes:current.duration.classes.map(row=>{
+  const {roundingCountAttribution:ignored,...original}=row;void ignored;return original;
+ })}};
+}

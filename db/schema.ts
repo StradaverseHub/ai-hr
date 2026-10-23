@@ -10631,8 +10631,9 @@ export const attendanceOvertimeCalculation = pgTable('attendance_overtime_calcul
   outcome:text('outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),currency:text('currency').notNull(),minorScale:integer('minor_scale').notNull(),
   durationInputDigest:text('duration_input_digest'),durationOutcome:text('duration_outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),approvalStatus:text('approval_status').notNull(),transferable:boolean('transferable').notNull(),payableNumerator:text('payable_numerator'),payableDenominator:text('payable_denominator'),reason:text('reason').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_overtime_calculation_ordinal_uq').on(t.sourceId,t.ordinal),index('attendance_overtime_calculation_source_idx').on(t.tenantId,t.sourceId)]);
-/** Immutable dated policy parts beneath the SAME parent calculation/source. SQL0590 owns
- * explicit policy header/evidence admission separately from the retained settlement fence. */
+/** Immutable dated policy parts beneath the SAME parent. allocatedPayableMinutes retains
+ * physical count placement; any extra rounded quantity has a separate dated source/count
+ * contract in durationEvidence. SQL0590 validates both without extending source intervals. */
 export const attendanceOvertimePolicyPart = pgTable('attendance_overtime_policy_part', {
   calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),

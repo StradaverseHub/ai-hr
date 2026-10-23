@@ -675,6 +675,80 @@ ALTER TABLE public.overtime_source_settlement ADD CONSTRAINT overtime_policy_leg
  EXCLUDE USING gist(tenant_id WITH =,coverage_employment_id WITH =,coverage_kind WITH <>,reservation_coverage WITH &&)
  WHERE(released_at IS NULL AND coverage_kind IS NOT NULL);
 --> statement-breakpoint
+-- Private count/dated-source integrity; this validates the retained result of the SAME TS
+-- duration owner, never a second schedule, threshold, rounding or pricing calculator.
+CREATE FUNCTION app.attendance_policy_part_payable_count(arg_part public.attendance_overtime_policy_part,arg_duration jsonb,arg_formulas jsonb)
+ RETURNS integer LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE class_row jsonb;declared jsonb;attribution jsonb;anchor jsonb;anchor_part jsonb;
+ class_count integer;physical integer;eligible integer;remainder integer;payable integer;chosen_sequence integer;direction text;
+BEGIN
+ declared:=arg_duration->'parts'->arg_part.sequence;
+ IF arg_duration->>'status' IS DISTINCT FROM 'calculated' OR jsonb_typeof(arg_duration->'parts') IS DISTINCT FROM 'array'
+  OR jsonb_array_length(arg_duration->'parts')>3 OR jsonb_typeof(arg_duration->'classes') IS DISTINCT FROM 'array'
+  OR jsonb_array_length(arg_duration->'classes')>5
+  OR declared->>'date' IS DISTINCT FROM arg_part.calendar_date::text OR declared->>'dayClass' IS DISTINCT FROM arg_part.day_class
+  OR declared->>'companyId' IS DISTINCT FROM arg_part.company_id::text OR declared->>'moneyDay' IS DISTINCT FROM arg_part.money_day
+  OR declared->>'minutes' IS DISTINCT FROM arg_part.raw_minutes::text
+  OR declared->>'allocatedPayableMinutes' IS DISTINCT FROM arg_part.allocated_payable_minutes::text
+  OR declared->'allocations' IS DISTINCT FROM arg_part.duration_evidence->'allocatedIntervals'
+  OR declared->'intervals' IS DISTINCT FROM arg_part.source_intervals THEN
+  RAISE EXCEPTION 'Rounded count requires its exact original dated part' USING ERRCODE='23514';END IF;
+ SELECT count(*),jsonb_agg(value)->0 INTO class_count,class_row FROM jsonb_array_elements(arg_duration->'classes') WHERE value->>'dayClass'=arg_part.day_class;
+ IF class_count<>1 OR coalesce(class_row->>'unplacedPayableMinutes','')!~'^[0-9]{1,4}$'
+  OR coalesce(class_row->>'payableMinutes','')!~'^[0-9]{1,4}$' OR coalesce(class_row->>'eligibleMinutes','')!~'^[0-9]{1,4}$' THEN
+  RAISE EXCEPTION 'Complete rounded count class required' USING ERRCODE='23514';END IF;
+ remainder:=(class_row->>'unplacedPayableMinutes')::integer;payable:=(class_row->>'payableMinutes')::integer;
+ SELECT coalesce(sum((value->>'allocatedPayableMinutes')::integer),0),coalesce(sum((value->>'minutes')::integer),0) INTO physical,eligible
+  FROM jsonb_array_elements(arg_duration->'parts') WHERE value->>'dayClass'=arg_part.day_class;
+ IF remainder>4320 OR payable>4320 OR physical+remainder<>payable OR class_row->>'eligibleMinutes' IS DISTINCT FROM eligible::text THEN
+  RAISE EXCEPTION 'Rounded class quantity changed' USING ERRCODE='23514';END IF;
+ IF remainder=0 THEN
+  IF class_row?'roundingCountAttribution' OR arg_part.duration_evidence?'roundingCountAttributions'
+   OR arg_part.duration_evidence?'attributedPayableMinutes' THEN
+   RAISE EXCEPTION 'An unrounded part cannot claim rounded quantity' USING ERRCODE='23514';END IF;
+  RETURN arg_part.allocated_payable_minutes;
+ END IF;
+ attribution:=class_row->'roundingCountAttribution';direction:=attribution->>'direction';
+ IF jsonb_typeof(attribution) IS DISTINCT FROM 'object' OR attribution->>'kind' IS DISTINCT FROM 'roundingCount'
+  OR attribution->>'minutes' IS DISTINCT FROM remainder::text OR attribution->>'dayClass' IS DISTINCT FROM arg_part.day_class
+  OR direction IS NULL OR direction NOT IN('earliest','latest') OR coalesce(attribution->>'partSequence','')!~'^[0-2]$'
+  OR jsonb_typeof(class_row->'steps') IS DISTINCT FROM 'array' OR class_row#>>'{steps,-1,after}' IS DISTINCT FROM payable::text
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(class_row->'steps') step WHERE step->>'kind'='rounding'
+   AND coalesce(step->>'before','')~'^[0-9]{1,4}$' AND coalesce(step->>'after','')~'^[0-9]{1,4}$'
+   AND(step->>'after')::integer-(step->>'before')::integer>=remainder)
+  OR arg_formulas->>'state' IS DISTINCT FROM 'known' OR jsonb_typeof(arg_formulas->'references') IS DISTINCT FROM 'array'
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(arg_formulas->'references') ref WHERE ref->>'date'=arg_part.calendar_date::text
+    AND ref->>'state'='known' AND ref->>'dayClass'=arg_part.day_class AND ref->>'versionId'=arg_part.version_id::text
+    AND ref->>'durationAllocation'=direction)
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(arg_formulas->'references') ref WHERE ref->>'dayClass'=arg_part.day_class
+    AND(ref->>'state' IS DISTINCT FROM 'known' OR ref->>'durationAllocation' IS DISTINCT FROM direction)) THEN
+  RAISE EXCEPTION 'Rounded quantity requires its canonical formula direction and finalizer evidence' USING ERRCODE='23514';END IF;
+ SELECT (p.ordinality-1)::integer,p.value,a.value INTO chosen_sequence,anchor_part,anchor
+  FROM jsonb_array_elements(arg_duration->'parts') WITH ORDINALITY p(value,ordinality)
+  CROSS JOIN LATERAL jsonb_array_elements(p.value->'allocations') a(value)
+  WHERE p.value->>'dayClass'=arg_part.day_class
+  ORDER BY CASE WHEN direction='earliest' THEN(a.value->>'from')::integer END ASC,
+   CASE WHEN direction='latest' THEN(a.value->>'from')::integer END DESC,
+   CASE WHEN direction='earliest' THEN(a.value->>'to')::integer END ASC,
+   CASE WHEN direction='latest' THEN(a.value->>'to')::integer END DESC LIMIT 1;
+ IF anchor IS NULL OR attribution->>'partSequence' IS DISTINCT FROM chosen_sequence::text
+  OR attribution->>'calendarDate' IS DISTINCT FROM anchor_part->>'date' OR attribution->'anchor' IS DISTINCT FROM anchor THEN
+  RAISE EXCEPTION 'Rounded quantity changed its existing dated source anchor' USING ERRCODE='23514';END IF;
+ IF arg_part.sequence<>chosen_sequence THEN
+  IF arg_part.duration_evidence?'roundingCountAttributions' OR arg_part.duration_evidence?'attributedPayableMinutes' THEN
+   RAISE EXCEPTION 'Rounded quantity belongs to one exact dated source' USING ERRCODE='23514';END IF;
+  RETURN arg_part.allocated_payable_minutes;
+ END IF;
+ payable:=arg_part.allocated_payable_minutes+remainder;
+ IF payable>4320 OR arg_part.duration_evidence->'roundingCountAttributions' IS DISTINCT FROM jsonb_build_array(attribution)
+  OR arg_part.duration_evidence->>'attributedPayableMinutes' IS DISTINCT FROM payable::text THEN
+  RAISE EXCEPTION 'Rounded dated part quantity changed' USING ERRCODE='23514';END IF;
+ RETURN payable;
+EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR invalid_parameter_value THEN
+ RAISE EXCEPTION 'Invalid rounded count evidence' USING ERRCODE='23514';
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_policy_part_payable_count(public.attendance_overtime_policy_part,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Original capture geometry is a separate contract from boundary-floor minute attribution.
 -- Private source validation only: no app EXECUTE and no payable/settlement admission authority.
 CREATE FUNCTION app.attendance_policy_captured_coverage(arg_calculation_id uuid) RETURNS int8multirange
@@ -682,7 +756,7 @@ CREATE FUNCTION app.attendance_policy_captured_coverage(arg_calculation_id uuid)
 DECLARE header public.attendance_overtime_calculation;source public.attendance_overtime_source;
  part public.attendance_overtime_policy_part;proof jsonb;data jsonb;inputs jsonb;clock_source jsonb;
  item jsonb;clock_row jsonb;expected jsonb;epoch_ms bigint;in_ms bigint;out_ms bigint;from_ms bigint;to_ms bigint;
- lo integer;hi integer;part_total integer;total integer:=0;part_count integer:=0;used integer:=0;
+ lo integer;hi integer;part_total integer;part_payable integer;payable_total integer:=0;count_parts jsonb:='[]'::jsonb;total integer:=0;part_count integer:=0;used integer:=0;
  ranges int8multirange:='{}'::int8multirange;recorded int8multirange:='{}'::int8multirange;
  count_ranges int8multirange;expected_ranges int8multirange;span int8range;last_ms bigint;
  pin public.attendance_punch;pout public.attendance_punch;cin public.attendance_clock_capture;cout public.attendance_clock_capture;
@@ -766,10 +840,20 @@ BEGIN
    part_total:=part_total+hi-lo;used:=used+1;
   END LOOP;
   IF part_total<>part.allocated_payable_minutes OR count_ranges IS DISTINCT FROM expected_ranges THEN RAISE EXCEPTION 'Complete exact captured count partition required' USING ERRCODE='23514';END IF;
+  part_payable:=app.attendance_policy_part_payable_count(part,data#>'{policyExecutionProposal,duration}',data->'policyDurationFormulaInput');
+  payable_total:=payable_total+part_payable;
+  count_parts:=count_parts||jsonb_build_array(jsonb_build_object('sequence',part.sequence,'calendarDate',part.calendar_date,'dayClass',part.day_class,
+   'physicalMinutes',part_total,'roundedMinutes',part_payable-part_total,'minutes',part_payable,
+   'roundingCountAttributions',coalesce(part.duration_evidence->'roundingCountAttributions','[]'::jsonb)));
   total:=total+part_total;
  END LOOP;
- IF part_count<>header.policy_part_count OR used<>jsonb_array_length(proof->'allocations') OR proof->>'minutes' IS DISTINCT FROM total::text
-  OR data#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM total::text OR data#>>'{policyExecutionProposal,duration,payableMinutes}' IS DISTINCT FROM total::text THEN
+ IF payable_total>total THEN
+  IF proof->'countAttribution' IS DISTINCT FROM jsonb_build_object('state','known','physicalMinutes',total,
+   'roundedMinutes',payable_total-total,'minutes',payable_total,'parts',count_parts) THEN
+   RAISE EXCEPTION 'Captured rounded count attribution changed' USING ERRCODE='23514';END IF;
+ ELSIF proof?'countAttribution' THEN RAISE EXCEPTION 'Unexpected captured rounded count attribution' USING ERRCODE='23514';END IF;
+ IF part_count<>header.policy_part_count OR used<>jsonb_array_length(proof->'allocations') OR proof->>'minutes' IS DISTINCT FROM payable_total::text
+  OR data#>>'{policyDurationReplay,minutes}' IS DISTINCT FROM payable_total::text OR data#>>'{policyExecutionProposal,duration,payableMinutes}' IS DISTINCT FROM payable_total::text THEN
   RAISE EXCEPTION 'Captured parent count partition changed' USING ERRCODE='23514';END IF;
  last_ms:=NULL;
  FOR item IN SELECT value FROM jsonb_array_elements(proof->'intervals') LOOP
@@ -868,10 +952,6 @@ BEGIN
   RAISE EXCEPTION 'Exact immutable reservation evidence is required' USING ERRCODE='23514';END IF;
  IF jsonb_array_length(proof->'intervals')>4320 OR jsonb_array_length(duration->'classes')<1 OR jsonb_array_length(duration->'classes')>5 THEN
   RAISE EXCEPTION 'Reservation evidence exceeds its canonical bound' USING ERRCODE='23514';END IF;
- FOR class_row IN SELECT value FROM jsonb_array_elements(duration->'classes') LOOP
-  IF(class_row->>'unplacedPayableMinutes') IS DISTINCT FROM '0' THEN
-   RAISE EXCEPTION 'Unplaced rounded counts require separate proved coverage' USING ERRCODE='23514';END IF;
- END LOOP;
  FOR part IN SELECT * FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id
   AND tenant_id=source.tenant_id AND company_id=source.company_id ORDER BY sequence LOOP
   IF part.sequence<>part_count OR part.input_digest<>header.input_digest
@@ -893,7 +973,8 @@ BEGIN
   END LOOP;
   IF part_total<>part.allocated_payable_minutes THEN
    RAISE EXCEPTION 'Physical allocation count changed' USING ERRCODE='23514';END IF;
-  total:=total+part_total;
+  total:=total+app.attendance_policy_part_payable_count(part,duration,
+   (SELECT evidence->'policyDurationFormulaInput' FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id));
  END LOOP;
  IF part_count<>header.policy_part_count OR total<=0
   OR header.payable_numerator!~'^[0-9]{1,80}$' OR header.payable_denominator!~'^[0-9]{1,80}$'
@@ -914,6 +995,9 @@ BEGIN
   RAISE EXCEPTION 'Recorded coverage does not replay from all dated parts' USING ERRCODE='23514';END IF;
  -- Count coordinates above retain their original owner. Reservation geometry instead binds
  -- exact original captures; payable minute quantity need not equal footprint milliseconds.
+ IF proof->'countAttribution' IS DISTINCT FROM(SELECT evidence#>'{policyCapturedCoverage,countAttribution}'
+  FROM public.attendance_overtime_calculation_evidence WHERE calculation_id=header.id) THEN
+  RAISE EXCEPTION 'Count-coordinate and captured-source attribution differ' USING ERRCODE='23514';END IF;
  ranges:=app.attendance_policy_captured_coverage(header.id);
  -- Rows predating this migration retain all-NULL metadata. Never backfill/rewrite paid history;
  -- conservatively refuse new policy overlap with their possible bounded source period instead.
@@ -939,14 +1023,14 @@ DO $$ DECLARE table_name text;BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
--- Preserve the explicit staged-payment admission refusal before derived coverage validation.
+-- Validate mode-specific policy admission before deriving actual source coverage.
 CREATE TRIGGER ab_overtime_settlement_coverage BEFORE INSERT OR UPDATE ON public.overtime_source_settlement
  FOR EACH ROW EXECUTE FUNCTION app.capture_overtime_settlement_coverage();
 
 --> statement-breakpoint
 -- Complete stored financial parent/dated-line integrity. This does not perform pricing in SQL
 -- or establish current source authority. Financial consumers independently replay the one engine;
--- the earlier aa settlement admission fence remains in force in this candidate.
+-- the earlier aa current mode-specific settlement admission owner remains mandatory.
 CREATE FUNCTION app.guard_attendance_policy_financial_evidence() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE parent_id uuid;header public.attendance_overtime_calculation;source public.attendance_overtime_source;
@@ -971,8 +1055,10 @@ BEGIN
  SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',sequence,'calendarDate',calendar_date,'dayClass',day_class,
   'moneyDay',money_day,'versionId',version_id,'rawMinutes',raw_minutes,'allocatedPayableMinutes',allocated_payable_minutes,
   'sourceIntervals',source_intervals,'calendarReferences',calendar_references,'durationEvidence',duration_evidence)
-  ORDER BY sequence),'[]'::jsonb),count(*),coalesce(sum(allocated_payable_minutes),0)
- INTO part_json,actual_count,total FROM public.attendance_overtime_policy_part WHERE calculation_id=header.id;
+  ORDER BY sequence),'[]'::jsonb),count(*),coalesce(sum(CASE WHEN header.duration_outcome='ready'
+   THEN app.attendance_policy_part_payable_count(part,evidence.evidence#>'{policyExecutionProposal,duration}',evidence.evidence->'policyDurationFormulaInput')
+   ELSE allocated_payable_minutes END),0)
+ INTO part_json,actual_count,total FROM public.attendance_overtime_policy_part part WHERE calculation_id=header.id;
  IF actual_count<>header.policy_part_count THEN
   RAISE EXCEPTION 'Financial policy requires its entire dated part set' USING ERRCODE='23514';END IF;
  IF header.duration_outcome='ready' THEN
