@@ -79,6 +79,17 @@ describe('formula bound never silently becomes a legacy promise',()=>{
   expect(screen.getByRole('alert')).toHaveTextContent('601');expect(screen.getByRole('alert')).toHaveTextContent('60');expect(screen.getByRole('alert')).toHaveTextContent(messages.replacementRequest.formulaReview.errors.exceedsBound);
   expect(screen.getByRole('alert').textContent).not.toMatch(/MYR|basicSalary|amountMinorUnits/);
  });
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('shows each dated class and its own credit in %s',(locale,messages)=>{
+  const review:LeaveCreditClaimReview={...ready,datedClassScope:true,creditDays:1,eligibleMinutes:120,datedParts:[
+   {sequence:0,date:'2026-10-16',dayClass:'rest',rule:'claimWindow',sourceMinutes:60,qualifyingMinutes:60,countedMinutes:60,days:0.5},
+   {sequence:1,date:'2026-10-17',dayClass:'replacementHoliday',rule:'claimWindow',sourceMinutes:60,qualifyingMinutes:60,countedMinutes:60,days:0.5}]};
+  render(<NextIntlClientProvider locale={locale} messages={messages}><LeaveCreditClaimReviewNotice review={review}/></NextIntlClientProvider>);
+  const list=screen.getByTestId('leave-credit-dated-parts');expect(list.querySelectorAll('li')).toHaveLength(2);
+  expect(list).toHaveTextContent('2026-10-16');expect(list).toHaveTextContent('2026-10-17');
+  expect(list).toHaveTextContent(messages.replacementRequest.formulaReview.datedClasses.rest);
+  expect(list).toHaveTextContent(messages.replacementRequest.formulaReview.datedClasses.replacementHoliday);
+  expect(list.textContent).not.toMatch(/MYR|basicSalary|amountMinorUnits/);
+ });
  it('keeps all six locale helpers honest about formula limits and configured tiers',()=>{
   for(const messages of Object.values({en,ms,zh,ta,th,vi:viMessages})){
    expect(messages.replacementRequest.table.help.trim()).not.toBe('');
