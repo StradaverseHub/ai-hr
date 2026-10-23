@@ -1,4 +1,5 @@
 import {describe,expect,it} from 'vitest';
+import {selectAttendancePolicyManualPositions} from '../packs/attendance/policy-manual-duration';
 import {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyClockDurationProposalInput} from '../packs/attendance/policy-duration';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
@@ -61,6 +62,31 @@ describe('shared dated-policy duration proposal',()=>{
   expect(result.parts.map(part=>part.date)).toEqual(expected.map(span=>span.from<1440?sourceDate:nextDate));
   expect(result.intervalBasis).toBe(method==='preApproved'?'approvedPlan':'actual');
   expect(f).toEqual(before);
+ });
+ it.each(ATTENDANCE_POLICY_DAY_CLASSES.flatMap(dayClass=>
+  (['requested','system_calculated','smaller_of','greater_of'] as const).flatMap(method=>
+   (['subset','tie'] as const).map(relation=>({dayClass,method,relation})))))
+ ('composes Manual $method $relation positions with the dated $dayClass duration owner',({dayClass,method,relation})=>{
+  const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.approval='manual';f.approval='approved';
+  f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=[{from:1420,to:1460}];
+  f.calendar=[calendar(sourceDate,dayClass),calendar(nextDate,dayClass)];
+  const requested=relation==='subset'?[{from:1430,to:1450}]:[{from:1420,to:1460}];
+  const requestedCount=relation==='subset'?20:40;
+  const requestedWinner=method!=='system_calculated'&&(relation==='tie'||method==='requested'||method==='smaller_of');
+  const selected=selectAttendancePolicyManualPositions({method,requestedMinutes:requestedCount,
+   approvedMinutes:requestedWinner?requestedCount:40,systemMinutes:40,actualIntervals:f.eligibleActualIntervals,
+   requestedIntervals:requested,hasSubmittedWindow:false,periodMinutes:2880,
+   plan:{state:'unavailable',authority:'approvedPlanOnly',reason:'planUnavailable'}});
+  expect(selected).toMatchObject({state:'known',basis:requestedWinner?'completeAttestedRequest':'completeActualCount'});
+  if(selected.state!=='known')throw Error('Expected the exact scalar winner to retain positions');
+  f.manualApprovedIntervals=selected.intervals;
+  const result=calculated(f),expected=requestedWinner&&relation==='subset'?[{from:1430,to:1440},{from:1440,to:1450}]
+   :[{from:1420,to:1440},{from:1440,to:1460}];
+  expect(result.parts.flatMap(part=>part.allocations)).toEqual(expected);
+  expect(result.parts.map(part=>({date:part.date,dayClass:part.dayClass})))
+   .toEqual([{date:sourceDate,dayClass},{date:nextDate,dayClass}]);
+  expect(result.payableMinutes).toBe(requestedWinner?requestedCount:40);
+  expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(result.payableMinutes);
  });
  it('applies one actual lateness offset before intersecting the approved window',()=>{
   const f=fixture();f.policy.overtime.offsetLateness=true;f.method='intersect';f.policy.overtime.autoMethod='intersect';
