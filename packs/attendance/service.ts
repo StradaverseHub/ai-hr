@@ -88,3 +88,5 @@ export {attendancePolicySystemEligibleMinutes} from './policy-execution-proposal
 export {attendancePolicyFinancialContract,type PolicyFinancialContract,type PolicyFinancialLine} from './policy-financial-contract';
 
 export {lockOvertimePayrollBatchContextTx} from './overtime-patterns';
+
+export {attendancePolicyStoredPartCount} from './policy-count-attribution';

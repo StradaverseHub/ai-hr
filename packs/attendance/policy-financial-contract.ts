@@ -10,6 +10,7 @@ import {attendancePolicyPricingProposal,type PolicyPricingProposal} from './poli
 import {attendancePolicyCapturedCoverageProposal,attendancePolicyIndependentCapturedCoverage,type PolicyCapturedCoverageProposal} from './policy-captured-coverage';
 import {materializeAttendancePolicyProposalParts,type PolicyProposalStoragePart} from './policy-proposal-parts';
 import type {PolicyCoverageIdentity} from './policy-coverage';
+import {attendancePolicyStoredPartCount} from './policy-count-attribution';
 
 type PreparedCash=Extract<PolicyCashReplay,{state:'known'}>;
 type PreparedPricing=Extract<PolicyPricingProposal,{state:'proposed'}>;
@@ -48,18 +49,18 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
   const parts=materializeAttendancePolicyProposalParts({source:input.source,policy,context,
    work:snapshot.policyWorkInput,formulas:snapshot.policyFormulaInput,durationFormulas:snapshot.policyDurationFormulaInput,
    approvals:snapshot.policyApprovalInput,proposal:snapshot.policyExecutionProposal,rawEffect:snapshot.policyRawEffectSource});
-  if(!parts||!parts.length||parts.length>3||parts.reduce((n,p)=>n+(p.allocatedPayableMinutes??0),0)!==duration.minutes)
+  if(!parts||!parts.length||parts.length>3||parts.reduce((n,p)=>n+(attendancePolicyStoredPartCount(p)??NaN),0)!==duration.minutes)
    return unavailable('partitionMismatch');
   const pricing=attendancePolicyPricingProposal(snapshot),cash=attendancePolicyCashReplay(snapshot);
   if(pricing.state!=='proposed'||cash.state!=='known'||pricing.durationDigest!==duration.digest
    ||cash.minutes!==duration.minutes||pricing.amountMinorUnits!==cash.amountMinorUnits
    ||!isDeepStrictEqual(pricing.currency,cash.currency))return unavailable('pricingUnavailable');
-  if(pricing.parts.length!==parts.filter(p=>(p.allocatedPayableMinutes??0)>0).length)return unavailable('partitionMismatch');
+  if(pricing.parts.length!==parts.filter(p=>(attendancePolicyStoredPartCount(p)??NaN)>0).length)return unavailable('partitionMismatch');
   const lines:PolicyFinancialLine[]=[],keys=new Set<string>();let amount=BigInt('0');
   for(const priced of pricing.parts){
    const part=parts[priced.sequence],row=priced.pricing;
    if(!part||part.sequence!==priced.sequence||part.calendarDate!==priced.date||!part.versionId
-    ||part.versionId!==row.patternVersionId||part.allocatedPayableMinutes!==row.minutes
+    ||part.versionId!==row.patternVersionId||attendancePolicyStoredPartCount(part)!==row.minutes
     ||row.policyBinding.revisionId!==policy.id||row.policyBinding.calendarDate!==part.calendarDate
     ||row.policyBinding.dayClass!==part.dayClass||!isDeepStrictEqual(row.source,input.source)
     ||!isDeepStrictEqual(row.currency,cash.currency))return unavailable('partitionMismatch');
@@ -174,7 +175,7 @@ export function attendancePolicyFinancialDurationContract(identity:PolicyCoverag
   const parts=materializeAttendancePolicyProposalParts({source:source.source,policy:source.attendanceGroupPolicy,
    context:source.policyExecutionContext,work:source.policyWorkInput,durationFormulas:source.policyDurationFormulaInput,
    approvals:source.policyApprovalInput,proposal:source.policyExecutionProposal,rawEffect:source.policyRawEffectSource});
-  if(!parts?.length||parts.length>3||parts.reduce((sum,part)=>sum+(part.allocatedPayableMinutes??0),0)!==replay.minutes)return unavailable;
+  if(!parts?.length||parts.length>3||parts.reduce((sum,part)=>sum+(attendancePolicyStoredPartCount(part)??NaN),0)!==replay.minutes)return unavailable;
   return {state:'prepared',authority:'policyFinancialDurationContractOnly',identity:{...identity},
    policyRevisionId:source.attendanceGroupPolicy!.id,approvalStatus:approvalStatus as 'approved'|'notRequired',
    durationDigest:replay.digest,minutes:replay.minutes,coverage,parts};

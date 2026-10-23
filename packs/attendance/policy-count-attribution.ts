@@ -52,3 +52,25 @@ export function attendancePolicyCountAttribution(duration:PolicyDurationProposal
   return {state:'known',physicalMinutes:physical,roundedMinutes:rounded,minutes,parts};
  }catch{return unavailable;}
 }
+
+/** Read a count only AFTER the complete immutable part has matched canonical replay. This
+ * structural adapter does not prove current source, approval, formula or financial authority. */
+export function attendancePolicyStoredPartCount(part:{sequence:number;calendarDate:string;dayClass:string;
+ allocatedPayableMinutes?:number|null;durationEvidence:unknown}):number|null{
+ try{
+  const physical=part.allocatedPayableMinutes;
+  if(typeof physical!=='number'||!Number.isSafeInteger(physical)||physical<0||physical>4320)return null;
+  const value=part.durationEvidence;
+  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+  const evidence=value as Record<string,unknown>;
+  if(!Object.hasOwn(evidence,'roundingCountAttributions'))return Object.hasOwn(evidence,'attributedPayableMinutes')?null:physical;
+  const rows=evidence.roundingCountAttributions;
+  if(!Array.isArray(rows)||rows.length!==1||!Array.isArray(evidence.allocatedIntervals))return null;
+  const row=rows[0] as PolicyRoundingCountAttribution;
+  if(!row||row.kind!=='roundingCount'||!Number.isSafeInteger(row.minutes)||row.minutes<=0||row.minutes>4320
+   ||row.partSequence!==part.sequence||row.calendarDate!==part.calendarDate||row.dayClass!==part.dayClass
+   ||!['earliest','latest'].includes(row.direction)||!evidence.allocatedIntervals.some(interval=>isDeepStrictEqual(interval,row.anchor)))return null;
+  const total=physical+row.minutes;
+  return total<=4320&&evidence.attributedPayableMinutes===total?total:null;
+ }catch{return null;}
+}

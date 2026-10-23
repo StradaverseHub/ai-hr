@@ -9,7 +9,7 @@ import { appendEvent, actorOf } from '../db/events';
 import {
   assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, readOvertimeCalculationTx,
   readOvertimeSettlementForDayTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx,
-  readOvertimeCashDefinitionTx, canonicalOvertimePayrollInputTx, attendancePolicyFinancialContract, lockOvertimePayrollBatchContextTx,
+  readOvertimeCashDefinitionTx, canonicalOvertimePayrollInputTx, attendancePolicyFinancialContract, attendancePolicyStoredPartCount, lockOvertimePayrollBatchContextTx,
 } from '../packs/attendance/service';
 import { parseRecordedOvertimeEvaluation } from '../lib/overtime-pattern-result';
 import { evaluateOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
@@ -162,7 +162,7 @@ async function pricedLinesTx(tx:Tx,ctx:SessionContext,r:CalculationRead,batch:ty
  const currency=bound.kind==='policy'?bound.contract.currency:bound.evaluation.currency;
  if(bound.kind==='policy'){
   for(const [sequence,part]of bound.contract.parts.entries()){
-   const minutes=part.allocatedPayableMinutes??0;if(!minutes)continue;
+   const minutes=attendancePolicyStoredPartCount(part);if(minutes===null)fail('unavailable');if(!minutes)continue;
    if(!['workday','rest_day','holiday'].includes(part.moneyDay))fail('unavailable');
    const lines=bound.contract.lines.filter(row=>row.partSequence===sequence).map(row=>row.line);
    allocations.push({sequence,date:part.calendarDate,dayType:part.moneyDay as Allocation['dayType'],

@@ -12,12 +12,13 @@ import {overtimeDurationProofInput} from '../../lib/overtime-duration-input';
 import {canonicalOvertimeToilInputTx} from './overtime-input';
 import {attendancePolicyFinancialDurationContract} from './policy-financial-contract';
 import {attendancePolicyIndependentSource} from './policy-duration-replay';
+import {attendancePolicyCountAttribution,attendancePolicyStoredPartCount} from './policy-count-attribution';
 import {readOvertimeDurationDefinitionTx,readOvertimePolicyDurationTx,readOvertimeSettlementForDayTx} from './overtime-patterns';
 
 export class OvertimeToilEligibilityError extends Error {
   constructor(message='The recorded overtime duration is unavailable or changed. Recalculate and review this day before banking Leave Credit.',readonly code:LeaveCreditFormulaReason='unavailable') {super(message);this.name='OvertimeToilEligibilityError';}
 }
-export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string;dayType:'workday'|'rest_day'|'holiday';recordedWorkedDayKind:ToilWorkedDayKind;recordedDay:{shiftStart:string|null;shiftEnd:string|null;actualClockIn:string|null;actualClockOut:string|null};minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest';datedAllocations?:{sequence:number;date:string;workedDayKind:ToilWorkedDayKind;minutes:number;afterShiftMinutes:number|null}[]}};
+export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string;dayType:'workday'|'rest_day'|'holiday';recordedWorkedDayKind:ToilWorkedDayKind;recordedDay:{shiftStart:string|null;shiftEnd:string|null;actualClockIn:string|null;actualClockOut:string|null};minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest';datedAllocations?:{sequence:number;date:string;workedDayKind:ToilWorkedDayKind;minutes:number;afterShiftMinutes:number|null;physicalMinutes?:number;roundedMinutes?:number}[]}};
 function unavailable(code:LeaveCreditFormulaReason='unavailable'):never {throw new OvertimeToilEligibilityError(undefined,code);}
 function integerMinutes(value:OvertimeExact):number {
   if(value.unit!=='minutes'||!/^\d{1,80}$/.test(value.numerator)||!/^\d{1,80}$/.test(value.denominator))unavailable();
@@ -111,9 +112,10 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
   ||!isDeepStrictEqual(JSON.parse(JSON.stringify(independent)),JSON.parse(JSON.stringify(stored.independent))))unavailable('stale');
  const proposal=independent.policyExecutionProposal,formulas=independent.policyDurationFormulaInput;
  if(proposal?.state!=='proposed'||proposal.duration.status!=='calculated'||formulas.state!=='known'||!day)unavailable();
+ const counts=attendancePolicyCountAttribution(proposal.duration);if(counts.state!=='known')unavailable();
  const kindFor=(value:string):ToilWorkedDayKind=>value==='normal'?'workday':value==='off'?'off_day':value==='rest'?'rest_day'
   :value==='publicHoliday'||value==='replacementHoliday'?'holiday':unavailable();
- const positive=contract.parts.filter(part=>(part.allocatedPayableMinutes??0)>0);
+ const positive=contract.parts.filter(part=>(attendancePolicyStoredPartCount(part)??-1)>0);
  const kinds=new Set(positive.map(part=>kindFor(part.dayClass)));
  if(kinds.size!==1)unavailable();
  const recordedWorkedDayKind=[...kinds][0],dayType=recordedWorkedDayKind==='holiday'?'holiday'
@@ -146,10 +148,20 @@ async function resolvePolicyToilDurationTx(tx:Tx,ctx:SessionContext,
   if(!positioned||positioned.date!==part.calendarDate||positioned.allocatedPayableMinutes!==part.allocatedPayableMinutes)unavailable();
   // These are the original count coordinates retained by the duration owner. Physical geometry
   // remains in contract.coverage; no capture is stretched to implement claim qualification.
-  const afterShiftMinutes=lower===null?null:positioned.allocations.reduce((sum,row)=>sum
+  const attributed=counts.parts[part.sequence];
+  if(!attributed||attendancePolicyStoredPartCount(part)!==attributed.minutes)unavailable();
+  const physicalAfter=lower===null?null:positioned.allocations.reduce((sum,row)=>sum
    +Math.max(0,Math.min(row.to,upper??4320)-Math.max(row.from,lower!)),0);
+  // The same earliest/latest count anchor used for dated pricing qualifies the rounded
+  // quantity. This point is count attribution on an existing interval, not a new capture.
+  const roundedAfter=lower===null?0:attributed.roundingCountAttributions.reduce((sum,row)=>{
+   const point=row.direction==='earliest'?row.anchor.from:row.anchor.to-1;
+   return sum+(point>=lower!&&point<(upper??4320)?row.minutes:0);
+  },0);
+  const afterShiftMinutes=physicalAfter===null?null:physicalAfter+roundedAfter;
   return {sequence:part.sequence,date:part.calendarDate,workedDayKind:kindFor(part.dayClass),
-   minutes:part.allocatedPayableMinutes!,afterShiftMinutes};
+   minutes:attributed.minutes,afterShiftMinutes,...(attributed.roundedMinutes>0
+    ?{physicalMinutes:attributed.physicalMinutes,roundedMinutes:attributed.roundedMinutes}:{})};
  });
  const afterShiftMinutes=recordedWorkedDayKind==='workday'?datedAllocations.reduce((sum,row)=>sum+(row.afterShiftMinutes??0),0):null;
  const [entity]=await tx.select({country:company.country}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,source.companyId))).limit(1);

@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyClockDurationProposalInput} from '../packs/attendance/policy-duration';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
-import {attendancePolicyCountAttribution} from '../packs/attendance/policy-count-attribution';
+import {attendancePolicyCountAttribution,attendancePolicyStoredPartCount} from '../packs/attendance/policy-count-attribution';
 const companyId='00000000-0000-4000-8000-000000000001';
 const sourceDate='2024-02-29',nextDate='2024-03-01';
 const calendar=(date=sourceDate,dayClass:AttendancePolicyDayClass='normal'):PolicyCalendarProof=>({state:'known',date,companyId,dayClass,
@@ -91,6 +91,14 @@ describe('shared dated-policy duration proposal',()=>{
   expect(attributed).toMatchObject({state:'known',physicalMinutes:40,roundedMinutes:20,minutes:60});
   if(attributed.state!=='known')throw Error('Expected explicit count attribution');
   expect(attributed.parts.map(part=>part.minutes)).toEqual(direction==='earliest'?[40,20]:[20,40]);
+  const owner=attributed.parts[sequence],stored={sequence,calendarDate:owner.calendarDate,dayClass:owner.dayClass,
+   allocatedPayableMinutes:owner.physicalMinutes,durationEvidence:{allocatedIntervals:result.parts[sequence].allocations,
+    roundingCountAttributions:owner.roundingCountAttributions,attributedPayableMinutes:owner.minutes}};
+  expect(attendancePolicyStoredPartCount(stored)).toBe(40);
+  expect(attendancePolicyStoredPartCount({...stored,calendarDate:'2024-03-02'})).toBeNull();
+  expect(attendancePolicyStoredPartCount({...stored,durationEvidence:{...stored.durationEvidence,attributedPayableMinutes:41}})).toBeNull();
+  expect(attendancePolicyStoredPartCount({...stored,durationEvidence:{allocatedIntervals:[],attributedPayableMinutes:40}})).toBeNull();
+
   const changed=structuredClone(result);changed.classes[0].roundingCountAttribution!.calendarDate='2024-03-02';
   expect(attendancePolicyCountAttribution(changed).state).toBe('unavailable');
   const missing=structuredClone(result);delete missing.classes[0].roundingCountAttribution;
