@@ -273,7 +273,7 @@ async function analyze(
    * RUN, where the spreadsheet can still be corrected. Row numbers only — never the value.
    */
   const seenEmails = new Map<string, number>();
-  const seenIcs = new Map<string, number>();
+  const seenIcs = new Map<string, {rowNum:number;personId:string}>();
   const resolved: ResolvedSectionRow[] = [];
 
   records.forEach((rawRecord, idx) => {
@@ -570,7 +570,7 @@ function buildProfile(
     icOwners: Map<string, Set<string>>;
     allowDuplicatedNric: boolean;
     emailOwners: Map<string, string>;
-    seenIcs: Map<string, number>;
+    seenIcs: Map<string, {rowNum:number;personId:string}>;
     seenEmails: Map<string, number>;
     rowNum: number;
   },
@@ -651,12 +651,12 @@ function buildProfile(
       const owner = x.icOwners.get(icNorm);
       const alreadyInFile = x.seenIcs.get(icNorm);
       const unchanged = icNorm === String(subject.statutory?.icNumber ?? '').replace(/\D/g, '');
-      if (!x.allowDuplicatedNric && !unchanged && alreadyInFile !== undefined) {
+      if (!x.allowDuplicatedNric && !unchanged && alreadyInFile !== undefined && alreadyInFile.personId !== subject.personId) {
         errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
       } else if (!x.allowDuplicatedNric && !unchanged && owner && [...owner].some(id => id !== subject.personId)) {
         errors.push(NRIC_DUPLICATE_MESSAGE);
       } else {
-        x.seenIcs.set(icNorm, x.rowNum);
+        x.seenIcs.set(icNorm, {rowNum:x.rowNum,personId:subject.personId});
         row.ic = { icNumber: icNorm };
         if (!unchanged) changes.push('ic_number');
       }

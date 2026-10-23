@@ -17,7 +17,7 @@ import { validateLeaveImport, commitLeaveImport } from '../core/leave-import';
 import { pgSqlState } from '../lib/db-error';
 import { publicErrorMessage } from '../lib/public-error';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE, NRIC_AMBIGUOUS_MESSAGE } from '../lib/nric-policy-message';
-import { seedStoredLegacyProfileRequest } from './helpers/profile-requests';
+import { seedStoredLegacyProfileRequest, requestCurrentProfileChange } from './helpers/profile-requests';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -204,10 +204,18 @@ describe('bcb56d37 all employee entry paths use the current policy',()=>{
     const preview=await validateSectionImport(ctx,{section:'profile',records:[{employee_code:'PROFILE3',ic_number:identity}]});expect(preview.rows[0].errors).toContain(NRIC_DUPLICATE_MESSAGE);
   });
 
-  it('ESS correction approval refuses OFF and succeeds ON through the same canonical statutory writer',async()=>{
+  it('different Employee IDs for the same Person are not distinct-person duplicates in an OFF identity update file',async()=>{
+    const a=await hire('ONEPERSON1');
+    await withTenant(ctx,tx=>tx.insert(schema.employment).values({tenantId:b.tenantId,personId:a.personId,companyId:b.companyId,employeeCode:'ONEPERSON2',hiredOn:'2021-01-01'}));
+    const records=[{employee_code:'ONEPERSON1',ic_number:identity},{employee_code:'ONEPERSON2',ic_number:identity}];
+    const preview=await validateSectionImport(ctx,{section:'profile',records});expect(preview.validCount).toBe(2);
+    const result=await commitSectionImport(ctx,{section:'profile',records});expect(result.updated).toBe(2);expect(await occupants()).toBe(1);
+  });
+
+  it.each(['legacy','current'] as const)('%s ESS correction approval refuses OFF and succeeds ON through the canonical writer',async(version)=>{
     const a=await hire('ESS1'),c=await hire('ESS2');await setIcProfileMY(ctx,{personId:a.personId,icNumber:identity});await setIcProfileMY(ctx,{personId:c.personId,icNumber:changedIdentity});
     const userId=await createAppUser(b.tenantId,c.personId,'employee');const employee={...ctx,userId,personId:c.personId,roles:['employee']};
-    const request=await seedStoredLegacyProfileRequest(employee,{employmentId:c.employmentId,proposed:{icNumber:identity}});
+    const request=await (version==='legacy'?seedStoredLegacyProfileRequest:requestCurrentProfileChange)(employee,{employmentId:c.employmentId,proposed:{icNumber:identity}});
     await refusal(decideProfileChange(ctx,{requestId:request.requestId,decision:'approved'}));expect(await ic(c.personId)).toBe(changedIdentity);
     await policy(true);await decideProfileChange(ctx,{requestId:request.requestId,decision:'approved'});expect(await ic(c.personId)).toBe(identity);
   });
