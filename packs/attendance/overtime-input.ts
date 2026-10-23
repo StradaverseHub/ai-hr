@@ -256,8 +256,8 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyMoneyDefinitions=policyFormulaInput?.state==='known'?policyFormulaInput.references
     .filter(row=>row.state==='known'&&policyMoneyParts.some(part=>part.date===row.date&&part.allocatedPayableMinutes>0))
     .map(row=>row.state==='known'?JSON.stringify(row.definition):null):[];
-  // Computational rate expressions may differ only through the central owner's explicit
-  // common-rule comparison. Distinct incompatible shared rules still refuse pricing.
+  // Each distinct dated formula keeps its own money rules under the explicit parent
+  // scope. Retained older scopes preserve their original shared-rule interpretation.
   const policyMoneyScope:CanonicalOvertimeSnapshot['policyMoneyScope']=purpose==='money'&&new Set(policyMoneyVersions).size>1
     ?new Set(policyMoneyDefinitions).size>1?'datedFormulaRules':'identicalDefinitions':undefined;
   // A dated child uses its own compensation selection, never the parent shift's salary by guess.
