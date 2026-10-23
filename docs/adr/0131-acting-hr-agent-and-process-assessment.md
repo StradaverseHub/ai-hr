@@ -15,10 +15,11 @@ owner. Main still has the read-only Assistant and its offered-tool dispatch fix.
 action-layer plan is not implemented and still awaits owner approval. Reconcile that plan with Phase 2
 before introducing one shared action/confirmation owner; do not create competing ledgers.
 
-The `ai-process-assessment` history records Phase 2 tasks 2–6 as held until the owner says go. No later
-instruction lifting that hold was found during this reconciliation. The direction below does not
-authorize held implementation. Replay coverage for the existing deterministic orchestrator is separate
-from the future action registry, execution ledger, named principal and versioned model bundle.
+The `ai-process-assessment` history records Phase 2 tasks 2–6 as held until the owner says go. On
+2026-10-23 the owner reaffirmed: "Keep Phase 2 held; strengthen the current harness." The direction
+below does not authorize held implementation. Replay coverage for the existing deterministic
+orchestrator is authorized separately from the future action registry, execution ledger, named
+principal and versioned model bundle.
 
 ## Request
 
