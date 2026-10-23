@@ -671,7 +671,7 @@ export type OvertimePolicyAllocatedPrice=
  |{state:'proposed';authority:'pricingProposalOnly';durationOwner:'attendanceGroupPolicy';minutes:number;
    source:OvertimeSource;patternVersionId:string;policyBinding:OvertimePolicyBinding['policyBinding'];
    currency:{code:string;minorScale:number};amountMinorUnits:string;lines:OvertimeLine[];trace:OvertimeTrace[];
-   moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][]};
+   moneyScope:{kind:'singleAllocation'}|{kind:'parent';amountMinorUnits:string;partBindings:OvertimePolicyBinding['policyBinding'][];formulaScope?:{kind:'identicalDefinitions';partVersionIds:string[]}};
    /** Original duration configuration remains visible, but cannot run a second time at pricing. */
    retainedDurationConfiguration:{eligibleMinutes:OvertimePattern['eligibleMinutes'];cap:OvertimePattern['durationCap'];
     rounding:OvertimePattern['durationRounding'];minuteDeductionIds:string[]}};
@@ -757,21 +757,23 @@ export type OvertimePolicyAllocatedParentPrice=
  |{state:'unavailable';authority:'parentPricingProposalOnly';reason:'allocationUnavailable'|'parentScopeUnavailable'|'formulaUnavailable'}
  |{state:'proposed';authority:'parentPricingProposalOnly';amountMinorUnits:string;currency:{code:string;minorScale:number};
    parts:Extract<OvertimePolicyAllocatedPrice,{state:'proposed'}>[];trace:OvertimeTrace[]};
-/** One central money evaluation over complete dated allocations of the SAME immutable formula.
- * Dated facts belong to each physical segment; aggregate rules retain canonical parent facts.
- * Incompatible versions/definitions refuse rather than inventing a shared cap or charge policy.
+/** One central money evaluation over complete dated allocations of the SAME computational definition.
+ * Default history retains exact same-version scope. An explicit new canonical scope may bind
+ * distinct immutable versions only when their complete validated definitions are identical.
+ * Dated facts stay dated; incompatible definitions never invent a shared cap or charge policy.
  * This emits proposal evidence only, never a transferable calculation or settlement authority. */
-export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[]):OvertimePolicyAllocatedParentPrice{
+export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInput<OvertimePolicyBinding>,rawParts:{pattern:OvertimePattern;input:OvertimeInput<OvertimePolicyBinding>;roundedCounts?:readonly OvertimePolicyRoundedCount[]}[],formulaScope:'sameVersion'|'identicalDefinitions'='sameVersion'):OvertimePolicyAllocatedParentPrice{
  const refuse=(reason:Extract<OvertimePolicyAllocatedParentPrice,{state:'unavailable'}>['reason']):OvertimePolicyAllocatedParentPrice=>
   ({state:'unavailable',authority:'parentPricingProposalOnly',reason});
  try{
-  if(rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
+  if(!['sameVersion','identicalDefinitions'].includes(formulaScope)||rawParts.length<1||rawParts.length>3)return refuse('parentScopeUnavailable');
   const parent=validateOvertimePolicyInput(parentRaw),prepared=rawParts.map(p=>policyAllocatedStage(p.pattern,p.input,p.roundedCounts));
   if(prepared.some(p=>p.state!=='known'))return refuse('allocationUnavailable');
   const parts=prepared.filter((p):p is Extract<typeof p,{state:'known'}>=>p.state==='known'),first=parts[0];
   const definition=JSON.stringify(first.pattern),source=JSON.stringify(parent.source),currency=JSON.stringify(parent.currency);
   if(parent.layer!=='raw'||parent.mode!=='actual'||parent.sessionGranularity!=='recorded'
-   ||parts.some(p=>JSON.stringify(p.pattern)!==definition||p.stage.input.patternVersionId!==parent.patternVersionId
+   ||parent.patternVersionId!==first.stage.input.patternVersionId
+   ||parts.some(p=>JSON.stringify(p.pattern)!==definition||formulaScope==='sameVersion'&&p.stage.input.patternVersionId!==parent.patternVersionId
     ||JSON.stringify(p.stage.input.source)!==source||JSON.stringify(p.stage.input.currency)!==currency
     ||p.stage.input.policyBinding.revisionId!==parent.policyBinding.revisionId))return refuse('parentScopeUnavailable');
   const segments=parts.flatMap(p=>p.stage.input.layer==='raw'?p.stage.input.segments:[]),ids=new Set(segments.map(s=>s.id));
@@ -809,7 +811,9 @@ export function evaluateOvertimePolicyAllocatedParentPrice(parentRaw:OvertimeInp
    const value=allocatedPriceProjection(p,{...result,...p.stage.identity,payableMinutes:exact(p.total,'minutes'),lines,
     amountMinorUnits:lines.reduce((n,l)=>n+BigInt(l.amountMinorUnits),BigInt('0')).toString()});
    if(value.state!=='proposed')return refuse('formulaUnavailable');
-   projected.push({...value,moneyScope:{kind:'parent',amountMinorUnits:result.amountMinorUnits,partBindings:parts.map(part=>part.stage.input.policyBinding)}});
+   projected.push({...value,moneyScope:{kind:'parent',amountMinorUnits:result.amountMinorUnits,partBindings:parts.map(part=>part.stage.input.policyBinding),
+    ...(new Set(parts.map(part=>part.stage.input.patternVersionId)).size>1
+     ?{formulaScope:{kind:'identicalDefinitions' as const,partVersionIds:parts.map(part=>part.stage.input.patternVersionId)}}:{})}});
   }
   if(projected.reduce((n,p)=>n+BigInt(p.amountMinorUnits),BigInt('0'))!==BigInt(result.amountMinorUnits))return refuse('formulaUnavailable');
   return {state:'proposed',authority:'parentPricingProposalOnly',amountMinorUnits:result.amountMinorUnits,currency:parent.currency,parts:projected,trace:result.trace};

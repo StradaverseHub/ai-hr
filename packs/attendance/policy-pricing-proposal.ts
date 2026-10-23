@@ -15,6 +15,7 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   const replay=attendancePolicyDurationReplay(snapshot),proposal=snapshot.policyExecutionProposal,formulas=snapshot.policyFormulaInput;
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
   if(formulas?.state!=='known')return refuse('formulaUnavailable');
+  if(snapshot.policyMoneyScope!==undefined&&snapshot.policyMoneyScope!=='identicalDefinitions')return refuse('pricingScopeUnavailable');
   const counts=attendancePolicyCountAttribution(proposal.duration);if(counts.state!=='known')return refuse('sourcePlacementUnavailable');
   if(snapshot.input.layer!=='raw'||snapshot.input.sessionGranularity!=='recorded')return refuse('sourcePlacementUnavailable');
   const base=Date.parse(snapshot.input.source.date+'T00:00:00+08:00')/1000,parts:Extract<PolicyPricingProposal,{state:'proposed'}>['parts']=[];
@@ -75,11 +76,16 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
    // parent counters, charges, resource consumption, cap and rounding once, with rate facts
    // scoped to each actual dated segment. Distinct formula scopes remain explicit refusal.
    const first=dated[0],count=dated.reduce((n,row)=>n+(row.input.approval.minutes.state==='known'?Number(row.input.approval.minutes.value):0),0);
-   if(dated.some(row=>row.definitionDigest!==first.definitionDigest))return refuse('pricingScopeUnavailable');
+   // Version digests also bind immutable names/company metadata. A new explicit scope may
+   // retain distinct version digests only when the SAME central owner proves byte-identical
+   // validated computational definitions; every dated version/digest remains in the proof.
+   const multipleVersions=new Set(dated.map(row=>row.input.patternVersionId)).size>1;
+   if(dated.some(row=>row.definitionDigest!==first.definitionDigest)
+    &&!(snapshot.policyMoneyScope==='identicalDefinitions'&&multipleVersions))return refuse('pricingScopeUnavailable');
    const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,layer:'raw',sessionGranularity:'recorded',facts:snapshot.input.facts,
     segments:dated.flatMap(row=>row.input.layer==='raw'?row.input.segments:[]),resources:snapshot.input.resources,
     approval:{...first.input.approval,minutes:{state:'known',value:String(count),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}}};
-   const priced=evaluateOvertimePolicyAllocatedParentPrice(parent,dated.map(row=>({pattern:row.pattern,input:row.input,roundedCounts:row.roundedCounts})));
+   const priced=evaluateOvertimePolicyAllocatedParentPrice(parent,dated.map(row=>({pattern:row.pattern,input:row.input,roundedCounts:row.roundedCounts})),snapshot.policyMoneyScope??'sameVersion');
    if(priced.state!=='proposed')return refuse('pricingScopeUnavailable');
    total=BigInt(priced.amountMinorUnits);
    for(const [index,row]of dated.entries())parts.push({sequence:row.sequence,date:row.date,definitionDigest:row.definitionDigest,pricing:priced.parts[index]});

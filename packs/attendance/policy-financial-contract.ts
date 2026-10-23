@@ -85,8 +85,11 @@ export function attendancePolicyFinancialContract(identity:PolicyCoverageIdentit
 }
 function moneyScopeMatches(pricing:PreparedPricing,row:PreparedPricing['parts'][number]['pricing']):boolean{
  if(pricing.parts.length===1)return row.moneyScope.kind==='singleAllocation';
- return row.moneyScope.kind==='parent'&&row.moneyScope.amountMinorUnits===pricing.amountMinorUnits
-  &&isDeepStrictEqual(row.moneyScope.partBindings,pricing.parts.map(p=>p.pricing.policyBinding));
+ if(row.moneyScope.kind!=='parent'||row.moneyScope.amountMinorUnits!==pricing.amountMinorUnits
+  ||!isDeepStrictEqual(row.moneyScope.partBindings,pricing.parts.map(p=>p.pricing.policyBinding)))return false;
+ const versions=pricing.parts.map(part=>part.pricing.patternVersionId);
+ return new Set(versions).size>1?isDeepStrictEqual(row.moneyScope.formulaScope,{kind:'identicalDefinitions',partVersionIds:versions})
+  :row.moneyScope.formulaScope===undefined;
 }
 
 /** Current consumers must obtain their snapshot through canonical, scoped reads under their
@@ -128,6 +131,7 @@ export function recordedAttendancePolicyFinancialContractMatches(source:Financia
    policyFormulaInput:stored.policyFormulaInput as CanonicalOvertimeSnapshot['policyFormulaInput'],
    policyDurationFormulaInput:stored.policyDurationFormulaInput as CanonicalOvertimeSnapshot['policyDurationFormulaInput'],
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
+   policyMoneyScope:stored.policyMoneyScope as CanonicalOvertimeSnapshot['policyMoneyScope'],
    policyExecutionProposal:stored.policyExecutionProposal as CanonicalOvertimeSnapshot['policyExecutionProposal'],
    policyRawEffectSource:stored.policyRawEffectSource as CanonicalOvertimeSnapshot['policyRawEffectSource']};
   const expected=attendancePolicyFinancialContract({tenantId:source.tenantId,companyId:source.companyId,

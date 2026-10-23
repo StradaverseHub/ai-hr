@@ -1035,7 +1035,7 @@ CREATE FUNCTION app.guard_attendance_policy_financial_evidence() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE parent_id uuid;header public.attendance_overtime_calculation;source public.attendance_overtime_source;
  evidence public.attendance_overtime_calculation_evidence;duration jsonb;cash jsonb;identity jsonb;
- part_json jsonb;line_json jsonb;actual_count integer;total numeric;item jsonb;previous_sequence integer:=-1;
+ part_json jsonb;line_json jsonb;actual_count integer;version_count integer;definition_count integer;part_versions jsonb;total numeric;item jsonb;priced jsonb;previous_sequence integer:=-1;
 BEGIN
  IF TG_TABLE_NAME='attendance_overtime_calculation' THEN parent_id:=NEW.id;ELSE parent_id:=NEW.calculation_id;END IF;
  SELECT * INTO header FROM public.attendance_overtime_calculation WHERE id=parent_id;
@@ -1097,6 +1097,30 @@ BEGIN
    OR cash->>'amountMinorUnits' IS DISTINCT FROM total::text OR actual_count<1 OR actual_count>16384
    OR cash->'lines' IS DISTINCT FROM line_json OR NOT header.transferable OR header.duration_outcome<>'ready' THEN
    RAISE EXCEPTION 'Financial policy cash/header/dated lines mismatch' USING ERRCODE='23514';END IF;
+  -- Distinct immutable versions share one money scope only through an explicit new
+  -- retained contract and identical computational definitions. Names/company metadata remain
+  -- bound by EACH original version digest; SQL compares identity, never recomputes money.
+  SELECT count(DISTINCT part.version_id),count(DISTINCT version.definition),jsonb_agg(part.version_id ORDER BY part.sequence)
+   INTO version_count,definition_count,part_versions FROM public.attendance_overtime_policy_part part
+   JOIN public.overtime_pattern_version version ON version.id=part.version_id AND version.tenant_id=header.tenant_id
+   WHERE part.calculation_id=header.id AND part.tenant_id=header.tenant_id AND part.allocated_payable_minutes>0;
+  IF version_count>1 THEN
+   IF definition_count<>1 OR evidence.evidence->>'policyMoneyScope' IS DISTINCT FROM 'identicalDefinitions'
+    OR evidence.evidence#>>'{policyPricingProposal,state}' IS DISTINCT FROM 'proposed'
+    OR jsonb_typeof(evidence.evidence#>'{policyPricingProposal,parts}') IS DISTINCT FROM 'array'
+    OR jsonb_array_length(evidence.evidence#>'{policyPricingProposal,parts}')<>jsonb_array_length(part_versions) THEN
+    RAISE EXCEPTION 'Distinct policy versions require one exact compatible definition scope' USING ERRCODE='23514';END IF;
+   FOR priced IN SELECT value FROM jsonb_array_elements(evidence.evidence#>'{policyPricingProposal,parts}') LOOP
+    IF priced#>'{pricing,moneyScope,formulaScope}' IS DISTINCT FROM jsonb_build_object('kind','identicalDefinitions','partVersionIds',part_versions)
+     OR NOT EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part part JOIN public.overtime_pattern_version version
+      ON version.id=part.version_id AND version.tenant_id=header.tenant_id WHERE part.calculation_id=header.id
+      AND part.sequence::text=priced->>'sequence' AND part.calendar_date::text=priced->>'date'
+      AND version.id::text=priced#>>'{pricing,patternVersionId}' AND version.digest=priced->>'definitionDigest') THEN
+     RAISE EXCEPTION 'Compatible policy scope must retain every exact dated version digest' USING ERRCODE='23514';END IF;
+   END LOOP;
+  ELSIF version_count<>1 OR evidence.evidence?'policyMoneyScope' THEN
+   RAISE EXCEPTION 'Policy money scope does not match its dated immutable versions' USING ERRCODE='23514';
+  END IF;
   FOR item IN SELECT value FROM jsonb_array_elements(line_json) LOOP
    previous_sequence:=previous_sequence+1;
    IF item->>'sequence' IS DISTINCT FROM previous_sequence::text
@@ -1120,7 +1144,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.guard_attendance_policy_financial_evidence() FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE table_name text;BEGIN
  FOREACH table_name IN ARRAY ARRAY['attendance_overtime_source','attendance_overtime_calculation',
-  'attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_overtime_line'] LOOP
+  'attendance_overtime_calculation_evidence','attendance_overtime_policy_part','attendance_overtime_line','overtime_pattern_version'] LOOP
   EXECUTE format('CREATE POLICY overtime_financial_proof_owner_read ON public.%I FOR SELECT USING(current_user=pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid=%L::regprocedure)))',
    table_name,'app.guard_attendance_policy_financial_evidence()');
  END LOOP;

@@ -234,6 +234,13 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     underMinutes:day.underMinutes,dayType:day.dayType,trace:policyRawTrace}}:undefined;
   const policyExecutionProposal=selectedPolicy
     ?attendancePolicyDurationExecutionProposal(policyExecutionContext,policyWorkInput,policyDurationFormulaInput,policyApprovalInput,ctx.tenantId,policyRawEffectSource):undefined;
+  // An explicit new comparison mode is retained only when actual dated formula identities
+  // differ. Old absent metadata keeps same-version pricing and its original refused history.
+  const policyMoneyParts=policyExecutionProposal?.state==='proposed'&&policyExecutionProposal.duration.status==='calculated'
+    ?policyExecutionProposal.duration.parts:[];
+  const policyMoneyVersions=policyExecutionProposal?.state==='proposed'?policyExecutionProposal.formulaParts
+    .filter((_part,index)=>(policyMoneyParts[index]?.allocatedPayableMinutes??0)>0).map(part=>part.versionId):[];
+  const policyMoneyScope=purpose==='money'&&new Set(policyMoneyVersions).size>1?'identicalDefinitions' as const:undefined;
   // A dated child uses its own compensation selection, never the parent shift's salary by guess.
   // This bounded money-only read does not enter the import path or TOIL duration source.
   let policyPricingFacts:CanonicalOvertimeSnapshot['policyPricingFacts'];
@@ -250,11 +257,11 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     }
   }
   const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
-    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
+    ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
     ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyApprovalInput,policyFormulaInput,policyExecutionProposal,
-      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{}),
+      ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{}),
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
       layer: 'raw', sessionGranularity: work.placement === 'recordedIntervals' ? 'recorded' : 'dayAggregate', approval: {status: approvalStatus, minutes: approvalMinutes, provenance: approvalProvenance},
       // This is a measurement ceiling per segment, not an invented approved physical interval. The
@@ -270,6 +277,6 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
     resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1,
       ...(selectedPolicy?{attendanceGroupPolicy:selectedPolicy,policyFormulaInput,
-        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),
+        ...(policyDurationFormulaInput?{policyDurationFormulaInput}:{}),...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{} )}),
   };
 }

@@ -21,7 +21,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {assignDefaultShift,createShift} from '../core/roster';
+import {assignDefaultShift,createShift,setRestDay} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -39,7 +39,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest'){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -75,9 +75,18 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
+ let compatibleVersionId=draft.versionId;
+ if(mixedCompatible){
+  const compatible=await saveOvertimePatternDraft(ctx,{draft:{code:'COMPATIBLE_'+randomUUID().slice(0,8),name:'Fictional separate compatible immutable formula',
+   creationCompanyId:b.companyId,companyIds:[b.companyId],definition:structuredClone(definition)}});
+  const validated=await validateOvertimePatternActivation(ctx,{versionId:compatible.versionId,expectedRevision:compatible.revision});
+  expect(validated.issues).toEqual([]);
+  await activateOvertimePattern(ctx,{versionId:compatible.versionId,expectedRevision:compatible.revision,validationDigest:validated.validationDigest!,effectiveFrom:day(1)});
+  compatibleVersionId=compatible.versionId;
+ }
  const policy:AttendanceGroupPolicy={version:1,clock:{pairing:'auto',minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false},
   overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding,
-   days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
+   days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:mixedCompatible&&key==='rest'?compatibleVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
  if(currentManual){
   // Declared historical fixture restoration ONLY: the genuine scheduling API above issued
@@ -97,10 +106,11 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
  }
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
+ if(mixedCompatible)await setRestDay(ctx,{employmentId:worker.employmentId,shiftDate:day(sourceOffset+1)});
  await capturedClock(worker.employmentId,day(sourceOffset),'in',financial?'23:00:00':'23:50:00',day(sourceOffset),captureMillisecond);
  const endMinute=1380+financialMinutes,financialOut=`${String(Math.floor(endMinute/60)%24).padStart(2,'0')}:${String(endMinute%60).padStart(2,'0')}:00`;
  await capturedClock(worker.employmentId,day(sourceOffset),'out',financial?financialOut:'00:10:00',day(sourceOffset+1),captureMillisecond);
- return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset),earningId:earning.id};
+ return {...worker,ruleId,revisionId:revision.id,versionId:draft.versionId,policy,sourceDate:day(sourceOffset),earningId:earning.id,compatibleVersionId};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 async function header(tx:Tx,f:Fixture,count:number,patch:Partial<typeof s.attendanceOvertimeCalculation.$inferInsert>={}){
@@ -906,6 +916,29 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
    expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
    .toMatchObject({status:'transferred'});
+ });
+
+ it('records and pays one capped parent across actual dated classes using distinct identical immutable definitions',async()=>{
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
+  await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
+  const f=await fixture('auto','12','actual',false,'cap',0,true,{mode:'none',step:null},120,'earliest',true),p={employmentId:f.employmentId,date:f.sourceDate};
+  await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
+  expect(snapshot.policyMoneyScope).toBe('identicalDefinitions');
+  expect(attendancePolicyPricingProposal(snapshot)).toMatchObject({state:'proposed',amountMinorUnits:'400'});
+  const old=structuredClone(snapshot);delete old.policyMoneyScope;
+  expect(attendancePolicyPricingProposal(old)).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
+  const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+  if(!read?.calculation||!read.policyParts)throw Error('Expected complete actual compatible-version parent');
+  expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'120'});
+  expect(read.policyParts.map(part=>({kind:part.dayClass,version:part.versionId}))).toEqual([
+   {kind:'normal',version:f.versionId},{kind:'rest',version:f.compatibleVersionId}]);
+  const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
+  await transferOvertimePatternToPayroll(ctx,{...p,expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,
+   batchId:batch.batchId,reason:'Fictional one shared money cap across compatible immutable versions'});
+  await generatePayslips(ctx,{batchId:batch.batchId});
+  const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
+  expect(slip.overtimePay).toBe('4.00');
  });
 
  it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},

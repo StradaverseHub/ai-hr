@@ -94,6 +94,7 @@ export function recordedAttendancePolicyProposalPartsMatch(source:StoredPolicyPa
    // Preserve an explicit duration-source refusal; absent legacy metadata keeps its original fallback.
    policyDurationFormulaInput:stored.policyDurationFormulaInput as CanonicalOvertimeSnapshot['policyDurationFormulaInput'],
    policyPricingFacts:stored.policyPricingFacts as CanonicalOvertimeSnapshot['policyPricingFacts'],
+   policyMoneyScope:stored.policyMoneyScope as CanonicalOvertimeSnapshot['policyMoneyScope'],
    policyClockSource:stored.policyClockSource as CanonicalOvertimeSnapshot['policyClockSource'],
    policyClockReview:stored.policyClockReview as CanonicalOvertimeSnapshot['policyClockReview'],
    policyClockMeasurements:stored.policyClockMeasurements as CanonicalOvertimeSnapshot['policyClockMeasurements']};

@@ -24,7 +24,7 @@ export function attendancePolicyCashReplay(snapshot:CanonicalOvertimeSnapshot):P
   if(pricing.state!=='proposed'||pricing.durationDigest!==duration.digest
    ||pricing.parts.reduce((sum,part)=>sum+part.pricing.minutes,0)!==duration.minutes)return refuse('pricingUnavailable');
   const proof={version:1,input:{...snapshot.input,mode:'actual',patternVersionId:null,assignmentId:null},
-   referenceDigest:snapshot.referenceDigest,formulas:snapshot.policyFormulaInput,datedFacts:snapshot.policyPricingFacts,duration,pricing};
+   referenceDigest:snapshot.referenceDigest,formulas:snapshot.policyFormulaInput,datedFacts:snapshot.policyPricingFacts,...(snapshot.policyMoneyScope?{policyMoneyScope:snapshot.policyMoneyScope}:{}),duration,pricing};
   const encoded=JSON.stringify(proof,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
    ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0)):value);
   return {state:'known',authority:'cashProposalReplayOnly',digest:createHash('sha256').update(encoded).digest('hex'),

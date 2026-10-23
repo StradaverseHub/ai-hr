@@ -181,6 +181,23 @@ describe('one central parent money scope over dated allocations',()=>{
   expect(result.parts.reduce((n,part)=>n+BigInt(part.amountMinorUnits),BigInt('0'))).toBe(BigInt('700'));
   expect(f).toEqual(before);
  });
+ it('requires explicit identical-definition scope for different immutable versions and retains every dated version under one cap',()=>{
+  const f=parentAllocations(),pattern=definition();f.parts[1].patternVersionId=uuid(99);
+  pattern.paymentCap={id:'compatible_versions_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
+  expect(parentPrice(pattern,f).state).toBe('unavailable'); // old absent scope keeps its refusal
+  const before=structuredClone(f),parts=f.parts.map(input=>({pattern,input})),
+   result=evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'identicalDefinitions');
+  expect(result).toMatchObject({state:'proposed',amountMinorUnits:'400'});
+  if(result.state!=='proposed')throw Error('Expected one identical-definition scope');
+  expect(result.parts.map(part=>part.patternVersionId)).toEqual([uuid(4),uuid(99)]);
+  expect(result.parts.every(part=>part.moneyScope.kind==='parent'&&JSON.stringify(part.moneyScope.formulaScope)
+   ===JSON.stringify({kind:'identicalDefinitions',partVersionIds:[uuid(4),uuid(99)]}))).toBe(true);
+  expect(result.trace.filter(row=>row.id==='paymentCap')).toHaveLength(1);expect(f).toEqual(before);
+  const changed=structuredClone(pattern);changed.moneyRounding.mode='down';
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[{pattern,input:f.parts[0]},{pattern:changed,input:f.parts[1]}],'identicalDefinitions').state).toBe('unavailable');
+  const wrongParent={...f.parent,patternVersionId:uuid(98)};
+  expect(evaluateOvertimePolicyAllocatedParentPrice(wrongParent,parts,'identicalDefinitions').state).toBe('unavailable');
+ });
  it('applies a cap once and keeps exact dated parts nontransferable proposals',()=>{
   const p=definition();p.paymentCap={id:'parent_cap',type:'literal',unit:'money',currency:'MYR',value:'4'};
   const f=parentAllocations(),before=structuredClone({p,f}),result=parentPrice(p,f);
