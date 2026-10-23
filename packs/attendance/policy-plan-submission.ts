@@ -1,9 +1,9 @@
 import {isDeepStrictEqual} from 'node:util';
 import {attendancePolicyPlanDates} from '../../lib/attendance-policy-plan-dates';
 import {attendancePolicyTraceBinding} from './policy-trace-binding';
-/** Admission for another positioned request under the existing Auto planned policy.
- * This only permits filing a pending request. The versioned final workflow and complete
- * current plan-set replay still own every approved position, count and settlement. */
+/** Source-only replay of the complete existing Auto approved-plan set. Submission
+ * and withdrawal retain their own actor/action guards. The versioned final workflow
+ * and current financial owners still own approval, work, count and settlement. */
 import {and,asc,eq,inArray,isNull,isNotNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {attendanceCorrection,attendancePolicyRequestContract,attendancePolicyFinalReceipt,attendanceOvertimeSource,overtimeSourceSettlement} from '../../db/schema';
@@ -11,7 +11,7 @@ import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyPlanInput} from './policy-plan-input';
 
-export async function attendancePolicyAdditionalPlanSubmissionTx(tx:Tx,ctx:SessionContext,
+export async function attendancePolicyCompleteApprovedPlanSetTx(tx:Tx,ctx:SessionContext,
  p:{employmentId:string;date:string},context:AttendancePolicyExecutionContext):Promise<boolean>{
  if(context.state!=='policy'||context.employmentId!==p.employmentId||context.date!==p.date
   ||context.selected.activation.epoch<1||!context.selected.policy.overtime.enabled
@@ -23,7 +23,7 @@ export async function attendancePolicyAdditionalPlanSubmissionTx(tx:Tx,ctx:Sessi
    eq(attendanceOvertimeSource.tenantId,overtimeSourceSettlement.tenantId)))
   .where(and(eq(attendanceOvertimeSource.tenantId,ctx.tenantId),eq(attendanceOvertimeSource.employmentId,p.employmentId),
    eq(attendanceOvertimeSource.attendanceDate,p.date),isNull(overtimeSourceSettlement.releasedAt))).limit(1);
- if(claim)throw Error('Release the current unfinalized overtime settlement before submitting another plan. Closed Payroll cannot be changed.');
+ if(claim)throw Error('Release the current unfinalized overtime settlement before changing the approved plan. Closed Payroll cannot be changed.');
  const rows=await tx.select().from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),
   eq(attendanceCorrection.employmentId,p.employmentId),eq(attendanceCorrection.attendanceDate,p.date),
   eq(attendanceCorrection.status,'approved'),isNull(attendanceCorrection.cancelledAt),isNotNull(attendanceCorrection.requestedOtMinutes)))

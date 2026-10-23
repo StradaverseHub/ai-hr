@@ -1210,6 +1210,15 @@ describe('immutable non-payable policy part storage',()=>{
   if(multiple){
    const second=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:60,plannedStartTime:'21:00',plannedEndTime:'22:00',reason:'Fictional overlapping second approved plan'});
    await decideAttendanceCorrection(reviewCtx,{correctionId:second.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+   const beforePunches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,f.employmentId)).orderBy(asc(s.attendancePunch.id));
+   const withdrawn=await cancelAttendanceApplication(reviewCtx,{correctionId:second.correctionId,kind:'withdrawn',reason:'Fictional review removes only the second approved plan'});
+   expect(withdrawn).toEqual({status:'cancelled',reversed:false});
+   const remaining=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
+   expect(remaining?.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90'});
+   expect(await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,f.employmentId)).orderBy(asc(s.attendancePunch.id))).toEqual(beforePunches);
+   expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,second.correctionId))).toHaveLength(1);
+   const replacement=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:60,plannedStartTime:'21:00',plannedEndTime:'22:00',reason:'Fictional newly reviewed second approved plan'});
+   await decideAttendanceCorrection(reviewCtx,{correctionId:replacement.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
   }
   const expectedMinutes=multiple?120:90;
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
@@ -1233,6 +1242,7 @@ describe('immutable non-payable policy part storage',()=>{
     expectedSourceRevision:read.source.revision,batchId:batch.batchId,reason:'Fictional separate planned quantity cash election'};
    const paid=await transferOvertimePatternToPayroll(ctx,transfer);
    expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:paid.settlementId});
+   await expect(cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'withdrawn',reason:'Fictional active cash must protect approved plan'})).rejects.toThrow();
    await generatePayslips(ctx,{batchId:batch.batchId});
    const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
    expect(slip.overtimePay).toBe(multiple?'25.00':'27.00');
