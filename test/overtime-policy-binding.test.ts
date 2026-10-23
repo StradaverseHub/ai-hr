@@ -210,6 +210,23 @@ describe('one central parent money scope over dated allocations',()=>{
   const tierChange=structuredClone(second);tierChange.rates[0].accumulation='session';
   expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,[parts[0],{pattern:tierChange,input:f.parts[1]}],'datedRateExpressions').state).toBe('unavailable');
  });
+ it('keeps incompatible dated formula caps and rounding under one parent without changing old shared scopes',()=>{
+  const f=parentAllocations(),first=definition(),second=definition();f.parts[1].patternVersionId=uuid(99);
+  first.paymentCap={id:'first_cap',type:'literal',unit:'money',currency:'MYR',value:'2'};
+  second.paymentCap={id:'second_cap',type:'literal',unit:'money',currency:'MYR',value:'1'};
+  second.moneyRounding.mode='down';second.rates[0].accumulation='session';
+  const parts=[{pattern:first,input:f.parts[0]},{pattern:second,input:f.parts[1]}],before=structuredClone({f,parts});
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'datedRateExpressions').state).toBe('unavailable');
+  const result=evaluateOvertimePolicyAllocatedParentPrice(f.parent,parts,'datedFormulaRules');
+  expect(result).toMatchObject({state:'proposed',amountMinorUnits:'300'});
+  if(result.state!=='proposed')throw Error('Expected independently scoped dated formula rules');
+  expect(result.parts.map(p=>p.amountMinorUnits)).toEqual(['200','100']);
+  expect(result.parts.every(p=>p.moneyScope.kind==='parent'&&p.moneyScope.formulaScope?.kind==='datedFormulaRules')).toBe(true);
+  expect(result.trace.filter(row=>row.id==='paymentCap')).toHaveLength(2);
+  const forged=structuredClone(parts);forged[1].input.patternVersionId=forged[0].input.patternVersionId;
+  expect(evaluateOvertimePolicyAllocatedParentPrice(f.parent,forged,'datedFormulaRules').state).toBe('unavailable');
+  expect({f,parts}).toEqual(before);
+ });
  it.each(['day','session'] as const)('keeps one shared %s tier counter across distinct dated hourly expressions and rounded quantities',accumulation=>{
   const f=parentAllocations(),first=definition();f.parts[1].patternVersionId=uuid(99);
   const rate=first.rates[0];rate.accumulation=accumulation;rate.tiers[0].to='15';

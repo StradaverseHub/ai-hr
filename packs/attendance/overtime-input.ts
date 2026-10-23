@@ -259,7 +259,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   // Computational rate expressions may differ only through the central owner's explicit
   // common-rule comparison. Distinct incompatible shared rules still refuse pricing.
   const policyMoneyScope:CanonicalOvertimeSnapshot['policyMoneyScope']=purpose==='money'&&new Set(policyMoneyVersions).size>1
-    ?new Set(policyMoneyDefinitions).size>1?'datedRateExpressions':'identicalDefinitions':undefined;
+    ?new Set(policyMoneyDefinitions).size>1?'datedFormulaRules':'identicalDefinitions':undefined;
   // A dated child uses its own compensation selection, never the parent shift's salary by guess.
   // This bounded money-only read does not enter the import path or TOIL duration source.
   let policyPricingFacts:CanonicalOvertimeSnapshot['policyPricingFacts'];

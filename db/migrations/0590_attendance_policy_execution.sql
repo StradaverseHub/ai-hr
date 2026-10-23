@@ -962,8 +962,8 @@ BEGIN
  SELECT e.inputs,e.evidence INTO inputs,data FROM public.attendance_overtime_calculation_evidence e WHERE e.calculation_id=header.id AND e.tenant_id=header.tenant_id AND e.company_id=header.company_id;
  proof:=data->'policyCapturedCoverage';clock_source:=data->'policyClockSource';
  is_attested:=proof->>'countBasis'='attestedBoundaryFloor';
- IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM CASE WHEN is_attested THEN 'attestedCountCoverageProposalOnly' ELSE 'capturedCountCoverageProposalOnly' END
-  OR proof->>'countBasis' IS DISTINCT FROM CASE WHEN is_attested THEN 'attestedBoundaryFloor' ELSE 'capturedBoundaryFloor' END OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
+ IF proof->>'state' IS DISTINCT FROM 'prepared' OR proof->>'authority' IS DISTINCT FROM (CASE WHEN is_attested THEN 'attestedCountCoverageProposalOnly' ELSE 'capturedCountCoverageProposalOnly' END)
+  OR proof->>'countBasis' IS DISTINCT FROM (CASE WHEN is_attested THEN 'attestedBoundaryFloor' ELSE 'capturedBoundaryFloor' END) OR data#>>'{policyDurationReplay,state}' IS DISTINCT FROM 'known'
   OR coalesce(proof->>'durationDigest','')!~'^[0-9a-f]{64}$' OR proof->>'durationDigest' IS DISTINCT FROM data#>>'{policyDurationReplay,digest}'
   OR data#>>'{attendanceGroupPolicy,id}' IS DISTINCT FROM header.policy_revision_id::text
   OR data#>>'{policyExecutionProposal,state}' IS DISTINCT FROM 'proposed' OR data#>>'{policyExecutionProposal,policyRevisionId}' IS DISTINCT FROM header.policy_revision_id::text
@@ -1400,9 +1400,10 @@ BEGIN
    WHERE part.calculation_id=header.id AND part.tenant_id=header.tenant_id AND part.allocated_payable_minutes>0;
   IF version_count>1 THEN
    money_scope:=evidence.evidence->>'policyMoneyScope';
-   IF money_scope IS NULL OR money_scope NOT IN('identicalDefinitions','datedRateExpressions')
+   IF money_scope IS NULL OR money_scope NOT IN('identicalDefinitions','datedRateExpressions','datedFormulaRules')
     OR(money_scope='identicalDefinitions' AND definition_count<>1)
     OR(money_scope='datedRateExpressions' AND(definition_count<2 OR shape_count<>1))
+    OR(money_scope='datedFormulaRules' AND definition_count<2)
     OR evidence.evidence#>>'{policyPricingProposal,state}' IS DISTINCT FROM 'proposed'
     OR jsonb_typeof(evidence.evidence#>'{policyPricingProposal,parts}') IS DISTINCT FROM 'array'
     OR jsonb_array_length(evidence.evidence#>'{policyPricingProposal,parts}')<>jsonb_array_length(part_versions) THEN

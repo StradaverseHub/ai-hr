@@ -936,8 +936,8 @@ describe('immutable non-payable policy part storage',()=>{
   const f=await fixture('auto','12','actual',false,'cap',0,true,{mode:'none',step:null},120,'earliest',scope==='datedRates'?'datedRates':true),p={employmentId:f.employmentId,date:f.sourceDate};
   await setStatutoryProfileMY(ctx,{personId:f.personId,icNumber:'900101011234'});
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));
-  expect(snapshot.policyMoneyScope).toBe(scope==='datedRates'?'datedRateExpressions':'identicalDefinitions');
-  expect(attendancePolicyPricingProposal(snapshot)).toMatchObject({state:'proposed',amountMinorUnits:'400'});
+  expect(snapshot.policyMoneyScope).toBe(scope==='datedRates'?'datedFormulaRules':'identicalDefinitions');
+  expect(attendancePolicyPricingProposal(snapshot)).toMatchObject({state:'proposed',amountMinorUnits:scope==='datedRates'?'800':'400'});
   const old=structuredClone(snapshot);delete old.policyMoneyScope;
   expect(attendancePolicyPricingProposal(old)).toMatchObject({state:'unavailable',reason:'pricingScopeUnavailable'});
   if(scope==='datedRates'){
@@ -955,10 +955,10 @@ describe('immutable non-payable policy part storage',()=>{
    {kind:'normal',version:f.versionId},{kind:'rest',version:f.compatibleVersionId}]);
   const batch=await createBatch(ctx,{companyId:b.companyId,payPeriod:p.date.slice(0,7)});
   await transferOvertimePatternToPayroll(ctx,{...p,expectedCalculationId:read.calculation.id,expectedSourceRevision:read.source.revision,
-   batchId:batch.batchId,reason:'Fictional one shared money cap across compatible immutable versions'});
+   batchId:batch.batchId,reason:'Fictional exact dated formula scope under one parent settlement'});
   await generatePayslips(ctx,{batchId:batch.batchId});
   const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
-  expect(slip.overtimePay).toBe('4.00');
+  expect(slip.overtimePay).toBe(scope==='datedRates'?'8.00':'4.00');
  });
 
  it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},

@@ -15,7 +15,7 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
   const replay=attendancePolicyDurationReplay(snapshot),proposal=snapshot.policyExecutionProposal,formulas=snapshot.policyFormulaInput;
   if(replay.state!=='known'||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')return refuse('durationUnavailable');
   if(formulas?.state!=='known')return refuse('formulaUnavailable');
-  if(snapshot.policyMoneyScope!==undefined&&!['identicalDefinitions','datedRateExpressions'].includes(snapshot.policyMoneyScope))return refuse('pricingScopeUnavailable');
+  if(snapshot.policyMoneyScope!==undefined&&!['identicalDefinitions','datedRateExpressions','datedFormulaRules'].includes(snapshot.policyMoneyScope))return refuse('pricingScopeUnavailable');
   const counts=attendancePolicyCountAttribution(proposal.duration);if(counts.state!=='known')return refuse('sourcePlacementUnavailable');
   if(snapshot.input.layer!=='raw'||snapshot.input.sessionGranularity!=='recorded')return refuse('sourcePlacementUnavailable');
   const base=Date.parse(snapshot.input.source.date+'T00:00:00+08:00')/1000,parts:Extract<PolicyPricingProposal,{state:'proposed'}>['parts']=[];
@@ -84,7 +84,7 @@ export function attendancePolicyPricingProposal(snapshot:CanonicalOvertimeSnapsh
    const multipleVersions=new Set(dated.map(row=>row.input.patternVersionId)).size>1;
    if(snapshot.policyMoneyScope==='datedRateExpressions'&&new Set(dated.map(row=>JSON.stringify(row.pattern))).size<2)return refuse('pricingScopeUnavailable');
    if(dated.some(row=>row.definitionDigest!==first.definitionDigest)
-    &&!((snapshot.policyMoneyScope==='identicalDefinitions'||snapshot.policyMoneyScope==='datedRateExpressions')&&multipleVersions))return refuse('pricingScopeUnavailable');
+    &&!((snapshot.policyMoneyScope==='identicalDefinitions'||snapshot.policyMoneyScope==='datedRateExpressions'||snapshot.policyMoneyScope==='datedFormulaRules')&&multipleVersions))return refuse('pricingScopeUnavailable');
    const parent:OvertimeInput<OvertimePolicyBinding>={...first.input,layer:'raw',sessionGranularity:'recorded',facts:snapshot.input.facts,
     segments:dated.flatMap(row=>row.input.layer==='raw'?row.input.segments:[]),resources:snapshot.input.resources,
     approval:{...first.input.approval,minutes:{state:'known',value:String(count),provenance:{owner:'attendance',reference:proposal.policyRevisionId,asOf:snapshot.input.source.date,basis:'recorded'}}}};
