@@ -408,7 +408,7 @@ describe('immutable non-payable policy part storage',()=>{
    delete evidence.evidence.policyFinancialContract;delete evidence.evidence.policyFinancialDurationContract;
    const proof=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
     sourceId:saved.sourceId,calculationId:saved.id,date:p.date},snapshot);
-   if(proof.state!=='prepared'||!proof.countAttribution)throw Error('Expected bound rounded source');
+   if(proof.state!=='prepared'||proof.countBasis!=='capturedBoundaryFloor'||!proof.countAttribution)throw Error('Expected bound rounded source');
    if(kind==='count')proof.countAttribution.parts[0].roundedMinutes++;
    if(kind==='date'){
     const attributions=parts[0].durationEvidence.roundingCountAttributions;
@@ -1033,7 +1033,7 @@ describe('immutable non-payable policy part storage',()=>{
   const coverage=attendancePolicyCapturedCoverageProposal({tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,
    sourceId:read.source.id,calculationId:read.calculation.id,date:p.date},snapshot);
   expect(coverage).toMatchObject({state:'prepared',minutes:150,countAttribution:{physicalMinutes:physical,roundedMinutes:extra,minutes:150}});
-  if(coverage.state!=='prepared')throw Error('Expected actual captured footprint');
+  if(coverage.state!=='prepared'||coverage.countBasis!=='capturedBoundaryFloor')throw Error('Expected actual captured footprint');
   expect(coverage.allocations.reduce((n,row)=>n+row.minutes,0)).toBe(physical);
   expect(coverage.intervals.reduce((n,row)=>n+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(physical*60000-555);
   const counts=coverage.countAttribution;if(!counts)throw Error('Expected explicit rounded count/date binding');

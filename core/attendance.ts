@@ -56,7 +56,7 @@ import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './a
 // A leaf module with no imports, so the rule service can enforce the write-side half of the same
 // rule without a cycle through this file. Re-exported below for every caller that had it from here.
 import { weekDayKindFor, weekPatternFor, type WeekDayKind, type WeekPattern } from './week-pattern';
-import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
+import { isAttendanceTrace, ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
 // fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name

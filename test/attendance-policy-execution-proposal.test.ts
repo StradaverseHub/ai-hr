@@ -256,7 +256,9 @@ describe('complete positioned-plan source and shared duration replay',()=>{
   expect(rows?.map(attendancePolicyStoredPartCount)).toEqual([90]);
   expect(rows?.[0].durationEvidence).toMatchObject({allocatedIntervals:[],planQuantity:{rawMinutes:90,selectedMinutes:90,payableMinutes:90,
    sourceIntervals:[{from:1200,to:1290}],allocatedIntervals:[{from:1200,to:1290}]}});
-  const forged=structuredClone(rows![0]);(forged.durationEvidence as {planQuantity:{payableMinutes:number}}).planQuantity.payableMinutes++;
+  const forged=structuredClone(rows![0]),retained=forged.durationEvidence.planQuantity;
+  if(!retained||typeof retained!=='object')throw Error('Expected separate plan quantity');
+  Object.assign(retained,{payableMinutes:91});
   expect(attendancePolicyStoredPartCount(forged)).toBeNull();
  });
  it('unions overlapping approved windows before counting and retains every distinct workflow reference',()=>{

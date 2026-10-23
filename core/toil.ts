@@ -2313,7 +2313,7 @@ export async function previewLeaveCredit(
       extendedHoursEnabled: policy?.extendedHoursEnabled === true,
       extendedHoursMinutes: extended?.countedMinutes ?? null,
       extendedHoursDays: extended != null && extended.days > 0 ? extended.days : null,
-      overtimeMinutes: dated?.minutes??(formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate)),
+      overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       // The same arithmetic bankToilCreditTx applies on save (approval instant → resolveExpiry), so the date
       // the form pre-fills is the date an untouched save freezes.
       defaultExpiresOn: policy?.enabled ? resolveExpiry(approvedOnDate, policy) : null,

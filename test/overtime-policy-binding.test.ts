@@ -80,7 +80,7 @@ function roundedCount(input:OvertimeInput<OvertimePolicyBinding>,minutes=30):Ove
 describe('central pricing of finalized group-policy allocations',()=>{
  it('prices one approved-plan session with an independently shorter disjoint worked footprint',()=>{
   const input=positionedPolicy();if(input.layer!=='raw'||input.segments[0].clock.state!=='known')throw Error('Placed fixture');
-  const segment=input.segments[0],clock=segment.clock.value;
+  const segment=input.segments[0];if(segment.clock.state!=='known')throw Error('Placed plan fixture');const clock=segment.clock.value;
   segment.sessionId='approved_plan_union';segment.clock=fact({...clock},'approval');
   segment.rawMinutes=fact('120','approval');segment.approvedMinutes=fact('120','approval');
   const start=BigInt(clock.startEpochSeconds);
