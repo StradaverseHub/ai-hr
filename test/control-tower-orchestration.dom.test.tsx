@@ -8,6 +8,7 @@ import viMessages from '../messages/vi.json';
 import th from '../messages/th.json';
 import ta from '../messages/ta.json';
 import { HR_HARNESS_VERSION, summarizeOrchestrationPass } from '../core/orchestrator-harness';
+import type { orchestrationQueue } from '../core/hr-orchestrator';
 
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 let renderLocale: keyof typeof catalogues = 'en';
@@ -28,6 +29,18 @@ import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale={renderLocale} messages={catalogues[renderLocale]}>{element}</NextIntlClientProvider>);
 const empty = { actionsUnavailable: false, rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };
 const successfulSteps = { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } as const;
+function populatedQueue(): Awaited<ReturnType<typeof orchestrationQueue>> {
+  const now = new Date();
+  const common = { openedAt: now, observedAt: now, verifiedAt: null, reopenCount: 0, company: 'Fictional Lantern Sdn Bhd' };
+  return { ...empty, observedAt: now, total: 2, verified: 3,
+    lastRun: { at: now, ...summarizeOrchestrationPass({ harnessVersion: HR_HARNESS_VERSION, failed: false, steps: successfulSteps }) },
+    rows: [
+      { ...common, id: 'bank-case', employmentId: 'fictional-employee', name: 'Amina Fixture', gap: 'no_bank_account',
+        state: 'needs_input', audience: 'employee', action: { type: 'submit_correction', audience: 'employee', tab: 'bankStatutory', requestId: null, approver: 'admin' } },
+      { ...common, id: 'tax-case', employmentId: 'fictional-pending', name: 'Daniel Fixture', gap: 'no_tax_number',
+        state: 'needs_review', audience: 'hr', action: { type: 'review_submission', audience: 'hr', tab: 'bankStatutory', requestId: 'fictional-request', approver: 'group_admin', mayReview: false } },
+    ] };
+}
 afterEach(() => { cleanup(); renderLocale = 'en'; });
 
 describe('consolidated Control Tower', () => {
@@ -77,6 +90,7 @@ describe('consolidated Control Tower', () => {
     const verification = screen.getByText(en.controlTower.orchestrator.runDetails.steps.verify).closest('div')!;
     expect(within(verification).getByText(en.controlTower.orchestrator.runDetails.states.succeeded)).toBeTruthy();
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.evidenceNote)).toBeTruthy();
+    expect(screen.getByText(en.controlTower.orchestrator.runDetails.receiptNote)).toBeTruthy();
     expect(screen.getByRole('button', { name: en.controlTower.orchestrator.refresh })).toBeTruthy();
   });
   it('does not label a legacy incomplete receipt as completed', async () => {
@@ -84,6 +98,32 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.outcomes.unknown)).toBeTruthy();
     expect(screen.queryByText(en.controlTower.orchestrator.runDetails.outcomes.succeeded)).toBeNull();
     expect(screen.getByText(en.controlTower.orchestrator.runDetails.incomplete)).toBeTruthy();
+  });
+  it('keeps unresolved source work visible after a completed run and respects the supplied review permission', async () => {
+    show(await OrchestrationWorkQueue({ view: populatedQueue() }));
+    const t = createTranslator({ locale: 'en', messages: en, namespace: 'controlTower.orchestrator' });
+    expect(screen.getByText(t('openCount', { count: 2 }))).toBeTruthy();
+    expect(screen.getByText(t('verifiedCount', { count: 3 }))).toBeTruthy();
+    expect(screen.getByText(en.controlTower.orchestrator.runDetails.outcomes.succeeded)).toBeTruthy();
+    expect(screen.queryByText(en.controlTower.orchestrator.empty)).toBeNull();
+    const employeeRow = screen.getByRole('link', { name: 'Amina Fixture' }).closest('tr')!;
+    expect(within(employeeRow).getByText(en.controlTower.orchestrator.collect)).toBeTruthy();
+    const pendingRow = screen.getByRole('link', { name: 'Daniel Fixture' }).closest('tr')!;
+    expect(within(pendingRow).getByText(en.controlTower.corrections.waitingGroup)).toBeTruthy();
+    expect(within(pendingRow).getByText(en.controlTower.corrections.groupHr)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: en.controlTower.corrections.review })).toBeNull();
+    expect(screen.queryByRole('link', { name: en.controlTower.orchestrator.runs })).toBeNull();
+  });
+  it('retains source work when next actions are unavailable without offering a stale review action', async () => {
+    const view = populatedQueue();
+    view.actionsUnavailable = true;
+    view.rows[1].action = { ...view.rows[1].action!, mayReview: true };
+    show(await OrchestrationWorkQueue({ view }));
+    expect(screen.getAllByText(en.controlTower.corrections.actionUnavailable)).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'Amina Fixture' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Daniel Fixture' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: en.controlTower.corrections.review })).toBeNull();
+    expect(screen.queryByText(en.controlTower.orchestrator.empty)).toBeNull();
   });
   it.each(['en', 'ms', 'zh', 'vi', 'th', 'ta'] as const)('renders the complete run summary in %s', async locale => {
     renderLocale = locale;
@@ -96,6 +136,7 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(messages.outcomes.succeeded)).toBeTruthy();
     for (const label of Object.values(messages.steps)) expect(screen.getByText(label)).toBeTruthy();
     expect(screen.getAllByText(messages.states.succeeded)).toHaveLength(4);
+    expect(screen.getByText(messages.receiptNote)).toBeTruthy();
     expect(screen.queryByText(messages.incomplete)).toBeNull();
   });
 });

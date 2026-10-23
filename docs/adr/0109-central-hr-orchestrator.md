@@ -96,6 +96,12 @@ ledger. The existing administrative scope digest and tenant RLS constrain the re
 use event sequence as the deterministic tiebreaker. Only normalized statuses and a bounded version
 label reach the screen, never arbitrary event payloads or exception text.
 
+Cases, check time, permitted next actions and pass receipt are read through the existing read-only
+repeatable-read snapshot option, so a concurrent pass cannot make one response combine different
+committed versions. The screen says "latest recorded" rather than "latest attempted": a later attempt
+whose trace could not commit has no receipt here, and an older successful receipt is not a live-health
+guarantee. The scheduled job's existing execution history remains a separate owner of job outcomes.
+
 A recorded failure wins over a contradictory success flag. Missing, invalid or legacy partial
 metadata does not establish completion. A normally returned step may have been switched off or had
 no work; the screen must explain that execution status does not prove an HR outcome. The existing

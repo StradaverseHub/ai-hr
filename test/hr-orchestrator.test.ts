@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
@@ -8,6 +8,7 @@ import { sweepReadinessNudges } from '../core/readiness-nudge';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotifications } from '../core/notifications';
 import { digestOf } from '../core/agent-proposal';
+import * as readinessActions from '../core/readiness-actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 describe('central HR orchestrator', () => {
@@ -145,6 +146,44 @@ describe('central HR orchestrator', () => {
     expect(JSON.stringify(view.lastRun)).not.toContain('private');
   });
 
+  it('keeps cases, observation time and receipt in one snapshot during a concurrent pass', async () => {
+    const employee = await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    const ctx = adminCtx(base);
+    await runHrOrchestrator(ctx);
+    const before = await orchestrationQueue(ctx);
+    expect(before.total).toBeGreaterThan(0);
+    expect(before.lastRun?.failed).toBe(false);
+
+    const original = readinessActions.loadReadinessActions;
+    let interleaved = false;
+    const read = vi.spyOn(readinessActions, 'loadReadinessActions').mockImplementation(async (...args: Parameters<typeof original>) => {
+      const actions = await original(...args);
+      if (!interleaved) {
+        // The queue has read its cases and check time. Commit an actual source correction and a
+        // newer failed pass before it reads the pass receipt. No sleeps or assumed timestamp gaps.
+        interleaved = true;
+        await owner.db.update(schema.employment).set({ paymentMethod: 'cash' }).where(eq(schema.employment.id, employee.employmentId));
+        await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
+        await owner.db.execute(sql`revoke select on agent_proposal from ai_hr_app`);
+        try {
+          const newer = await runHrOrchestrator(adminCtx(base));
+          expect(newer.nudge.status).toBe('failed');
+          expect(newer.after.status).toBe('succeeded');
+        } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
+      }
+      return actions;
+    });
+    const during = await orchestrationQueue(ctx).finally(() => { read.mockRestore(); });
+    expect(interleaved).toBe(true);
+    expect(during).toEqual(before);
+    const after = await orchestrationQueue(adminCtx(base));
+    expect(after.total).toBeLessThan(before.total);
+    expect(after.verified).toBeGreaterThan(before.verified);
+    expect(after.lastRun?.failed).toBe(true);
+  });
+
   it('a failed specialist does not suppress verification and is recorded as failed', async () => {
     await hire();
     await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
@@ -159,10 +198,14 @@ describe('central HR orchestrator', () => {
     } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
   });
 
-  it('fails the run when only its trace receipt cannot commit, while preserving source observations', async () => {
+  it.each([false, true])('fails an unrecorded run without inventing a receipt; prior receipt: %s', async priorReceipt => {
     await hire();
     await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
     await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    const ctx = adminCtx(base);
+    if (priorReceipt) await runHrOrchestrator(ctx);
+    const previous = (await orchestrationQueue(ctx)).lastRun;
+    if (priorReceipt) expect(previous?.failed).toBe(false);
     await owner.db.execute(sql`create function public.test_refuse_orchestrator_trace() returns trigger
       language plpgsql as $$ begin
         if new.event_type = 'orchestrator.pass-finished' then raise exception 'fictional trace refusal'; end if;
@@ -171,7 +214,6 @@ describe('central HR orchestrator', () => {
     try {
       await owner.db.execute(sql`create trigger test_refuse_orchestrator_trace before insert on domain_event
         for each row execute function public.test_refuse_orchestrator_trace()`);
-      const ctx = adminCtx(base);
       const result = await runHrOrchestrator(ctx);
       expect(result.before.status).toBe('succeeded');
       expect(result.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
@@ -181,10 +223,11 @@ describe('central HR orchestrator', () => {
       const view = await orchestrationQueue(ctx);
       expect(view.total).toBeGreaterThan(0);
       expect(view.observedAt).not.toBeNull();
-      expect(view.lastRun).toBeNull(); // No invented receipt for a run whose trace did not commit.
+      // The last recorded pass can predate this failed attempt. It is not a live-health guarantee.
+      expect(view.lastRun).toEqual(previous);
       const checks = await owner.db.select().from(schema.domainEvent)
         .where(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked')).orderBy(schema.domainEvent.sequence);
-      expect(checks).toHaveLength(2);
+      expect(checks).toHaveLength(priorReceipt ? 4 : 2);
     } finally {
       await owner.db.execute(sql`drop trigger if exists test_refuse_orchestrator_trace on domain_event`);
       await owner.db.execute(sql`drop function public.test_refuse_orchestrator_trace()`);

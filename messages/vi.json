@@ -16227,7 +16227,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
-      "runFailed": "Lần tự động hóa gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
+      "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
       "navigation": "Điều hướng trung tâm điều hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",
@@ -16260,7 +16260,7 @@
       "quality": "Chất lượng bảng lương và AI",
       "opportunities": "Cơ hội",
       "runDetails": {
-        "title": "Lần điều phối gần nhất",
+        "title": "Lần tự động hóa được ghi nhận gần nhất",
         "recorded": "Đã ghi nhận: {date}",
         "version": "Bộ điều phối: {version}",
         "steps": {
@@ -16280,6 +16280,7 @@
           "unknown": "Chưa xác nhận hoàn thành"
         },
         "incomplete": "Một số chi tiết thực thi chưa được ghi nhận hoặc không đọc được.",
+        "receiptNote": "Những lần chạy không ghi nhận được kết quả có thể không xuất hiện trong lịch sử này.",
         "evidenceNote": "Bước kết thúc bình thường có thể đã bị tắt hoặc không có việc cần làm. Kết quả nhân sự cần bằng chứng từ hồ sơ nguồn."
       }
     },

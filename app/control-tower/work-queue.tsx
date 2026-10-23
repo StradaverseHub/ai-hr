@@ -48,6 +48,7 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
           <dd className={`mt-1 ${run.steps[step] === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>{t(`runDetails.states.${run.steps[step]}`)}</dd>
         </div>)}</dl>
         {incompleteRun && <p className="text-sm text-muted-foreground">{t('runDetails.incomplete')}</p>}
+        <p className="text-xs text-muted-foreground">{t('runDetails.receiptNote')}</p>
         <p className="text-xs text-muted-foreground">{t('runDetails.evidenceNote')}</p>
       </div>
     </details>}

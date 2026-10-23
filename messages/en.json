@@ -16227,7 +16227,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Checking records…",
-      "runFailed": "The last automation pass needs attention. Review the execution history.",
+      "runFailed": "The latest recorded automation run needs attention. Review the execution history.",
       "navigation": "Control Tower navigation",
       "overview": "Overview",
       "readiness": "Employee data",
@@ -16260,7 +16260,7 @@
       "quality": "Payroll and AI quality",
       "opportunities": "Opportunities",
       "runDetails": {
-        "title": "Latest orchestration pass",
+        "title": "Latest recorded automation run",
         "recorded": "Recorded: {date}",
         "version": "Harness: {version}",
         "steps": {
@@ -16280,6 +16280,7 @@
           "unknown": "Completion unconfirmed"
         },
         "incomplete": "Some run details were not recorded or could not be read.",
+        "receiptNote": "Attempts whose results could not be recorded may be missing from this history.",
         "evidenceNote": "A step that finishes normally may have been switched off or had no work. HR outcomes require source evidence."
       }
     },

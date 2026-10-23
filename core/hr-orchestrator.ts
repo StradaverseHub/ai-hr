@@ -161,5 +161,5 @@ export async function orchestrationQueue(ctx: SessionContext) {
       observedAt: checks.length ? checks[0].at : null,
       lastRun: runs.length ? { at: runs[0].at, ...summarizeOrchestrationPass(runs[0].payload) } : null,
     };
-  });
+  }, { readOnlySnapshot: true });
 }
