@@ -10,7 +10,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -6679,16 +6679,13 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
             // The application lock already holds the employee advisory. A positioned
             // plan withdrawal removes quantity, never restores or edits clock figures.
             await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
-            const initial=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
-            if(initial.state==='policy'&&initial.selected.activation.epoch>0&&initial.selected.policy.overtime.enabled
-              &&initial.selected.policy.overtime.approval==='auto'&&initial.selected.policy.overtime.autoMethod!=='actual'){
-                const dates=await attendancePolicyPlanProtectionDatesTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate},initial);
-                for(const date of dates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+            const retained=await retainedAttendancePolicyPlanCancellationTx(tx,ctx,{correctionId:cor.id,employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(retained){
+                for(const date of retained.protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
                 await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
-                const current=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
-                if(!await attendancePolicyCompleteApprovedPlanSetTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate},current))
-                    throw Error('The complete approved-plan evidence changed. Review the current policy and retained approvals before withdrawal.');
-                const batches=await lockAttendancePayrollTx(tx,cor.employmentId,dates);
+                const reserved=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+                if(reserved?.settlement)throw Error('Release the existing Payroll contribution or reverse its Leave Credit before withdrawing this approved plan.');
+                const batches=await lockAttendancePayrollTx(tx,cor.employmentId,retained.protectedDates);
                 const [credit]=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,cor.employmentId),
                     eq(toilAccrual.workedDate,cor.attendanceDate),sql`${toilAccrual.status}<>'reversed'`)).limit(1);
                 if(credit)throw Error('Review and reverse the dependent Leave Credit before cancelling this application.');

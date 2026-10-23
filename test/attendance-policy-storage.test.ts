@@ -1258,6 +1258,37 @@ describe('immutable non-payable policy part storage',()=>{
   }
  });
 
+ it('withdraws a retained prospective plan after a genuine later policy revision without reviving old financial authority',async()=>{
+  const f=await fixture('auto','12','preApproved',false,undefined,555,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional retained plan reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
+   companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
+  const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
+   roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,routingVersion:4,code:'RETAIN_PLAN_'+randomUUID().slice(0,7),name:'Fictional retained plan approval',
+   applicationType:'self_overtime',priority:100,criteria:{employeeIds:[f.employmentId]},active:true,cc:[],
+   stages:[{name:'Review plan',mode:'sequential',sources:[{kind:'specific_employee',employmentIds:[reviewer.employmentId]}],hrAlternative:false}]});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:90,plannedStartTime:'20:00',plannedEndTime:'21:30',reason:'Fictional prospective plan under the original revision'});
+  expect(await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'})).toMatchObject({deferred:true});
+  const [contract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId));
+  const receipt=await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,request.correctionId));
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,f.employmentId)).orderBy(asc(s.attendancePunch.id));
+  const nextPolicy=structuredClone(f.policy);nextPolicy.overtime.autoMethod='intersect';
+  const replacement=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId:f.ruleId,expectedOrdinal:1,effectiveFrom:p.date,
+   reason:'Fictional genuine future policy replacement before the planned work date',policy:nextPolicy});
+  expect(contract.policyBinding?.revisionId).toBe(f.revisionId);expect(replacement.id).not.toBe(f.revisionId);
+  await cancelAttendanceApplication(reviewCtx,{correctionId:request.correctionId,kind:'withdrawn',reason:'Fictional HR withdrawal preserves the superseded plan evidence'});
+  expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId)))[0].status).toBe('cancelled');
+  expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,request.correctionId))).toEqual(receipt);
+  expect((await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)))[0]).toEqual(contract);
+  expect(await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.employmentId,f.employmentId)).orderBy(asc(s.attendancePunch.id))).toEqual(punches);
+  const fresh=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:90,plannedStartTime:'20:00',plannedEndTime:'21:30',reason:'Fictional fresh plan binds the new revision'});
+  const [freshContract]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,fresh.correctionId));
+  expect(freshContract.policyBinding?.revisionId).toBe(replacement.id);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement).innerJoin(s.attendanceOvertimeSource,eq(s.attendanceOvertimeSource.id,s.overtimeSourceSettlement.sourceId))
+   .where(eq(s.attendanceOvertimeSource.employmentId,f.employmentId))).toEqual([]);
+ });
+
  it.each([...( ['cash','toil'] as const).flatMap(mode=>[
   ...(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method,roundMode:'none' as const,physical:120,requested:60})),
   ...(['up','nearest'] as const).flatMap(roundMode=>(['requested','system_calculated'] as const).map(method=>({mode,method,roundMode,

@@ -1,12 +1,13 @@
 import {isDeepStrictEqual} from 'node:util';
 import {attendancePolicyPlanDates} from '../../lib/attendance-policy-plan-dates';
 import {attendancePolicyTraceBinding} from './policy-trace-binding';
+import {validateAttendanceGroupPolicy} from '../../lib/attendance-group-policy';
 /** Source-only replay of the complete existing Auto approved-plan set. Submission
  * and withdrawal retain their own actor/action guards. The versioned final workflow
  * and current financial owners still own approval, work, count and settlement. */
 import {and,asc,eq,inArray,isNull,isNotNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {attendanceCorrection,attendancePolicyRequestContract,attendancePolicyFinalReceipt,attendanceOvertimeSource,overtimeSourceSettlement} from '../../db/schema';
+import {attendanceCorrection,attendancePolicyRequestContract,attendancePolicyFinalReceipt,attendanceOvertimeSource,overtimeSourceSettlement,attendanceGroupPolicyRevision} from '../../db/schema';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import {attendancePolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyPlanInput} from './policy-plan-input';
@@ -69,4 +70,61 @@ export async function attendancePolicyPlanProtectionDatesTx(tx:Tx,ctx:SessionCon
  }
  if(additional)windows.push({...additional});
  return attendancePolicyPlanDates(p.date,windows);
+}
+
+/** Withdrawal-only identity from the original immutable revision and completed workflow.
+ * Current policy may differ. This does not return quantity, duration, cash or a work
+ * witness, and may never be used by the current financial/credit admission owners. */
+export async function retainedAttendancePolicyPlanCancellationTx(tx:Tx,ctx:SessionContext,
+ p:{correctionId:string;employmentId:string;date:string}){
+ const [row]=await tx.select().from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),
+  eq(attendanceCorrection.id,p.correctionId),eq(attendanceCorrection.employmentId,p.employmentId),
+  eq(attendanceCorrection.attendanceDate,p.date))).limit(1);
+ const [contract]=await tx.select().from(attendancePolicyRequestContract).where(and(eq(attendancePolicyRequestContract.tenantId,ctx.tenantId),
+  eq(attendancePolicyRequestContract.correctionId,p.correctionId))).limit(1);
+ const binding=contract?.policyBinding;
+ if(!row||!binding||!contract.plannedWindow||contract.attestedWork)return null;
+ const [revision]=await tx.select().from(attendanceGroupPolicyRevision).where(and(eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId),
+  eq(attendanceGroupPolicyRevision.id,binding.revisionId))).limit(1);
+ if(!revision)throw Error('The original approved-plan policy is unavailable.');
+ const policy=validateAttendanceGroupPolicy(revision.policy,4320);
+ if(!policy.overtime.enabled||policy.overtime.approval!=='auto'||policy.overtime.autoMethod==='actual')return null;
+ const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+ if(!principal?.allowed)throw Error('Current Attendance principal required.');
+ const selected={id:revision.id,companyId:revision.companyId,ruleId:revision.ruleId,ordinal:revision.ordinal,
+  effectiveFrom:revision.effectiveFrom,policy,activation:{epoch:revision.activationEpoch,actorUserId:revision.createdByUserId,
+   recordedAt:revision.createdAt.toISOString(),reason:revision.reason}};
+ const expected={authority:'datedPolicyOnly',sourceDate:p.date,employmentId:p.employmentId,companyId:selected.companyId,
+  revisionId:selected.id,ruleId:selected.ruleId,ordinal:selected.ordinal,effectiveFrom:selected.effectiveFrom,
+  activation:{epoch:selected.activation.epoch,actorUserId:selected.activation.actorUserId,recordedAt:selected.activation.recordedAt},pairing:binding.pairing};
+ const [receipt]=await tx.select().from(attendancePolicyFinalReceipt).where(and(eq(attendancePolicyFinalReceipt.tenantId,ctx.tenantId),
+  eq(attendancePolicyFinalReceipt.correctionId,p.correctionId))).limit(1);
+ const approval=attendancePolicyApprovalInput(selected,[row],[contract],receipt?[receipt]:[]).requests[0];
+ const submission=approval.submissionContract;
+ if(row.status!=='approved'||row.cancelledAt!==null||row.appliedAt!==null||row.proposedCheckIn!==null||row.proposedCheckOut!==null
+  ||row.clockChanges!==null||!['auto','firstInLastOut'].includes(binding.pairing)||!Number.isSafeInteger(revision.activationEpoch)||revision.activationEpoch<1
+  ||selected.effectiveFrom>p.date||!isDeepStrictEqual(binding,expected)||submission.state!=='recorded'||submission.kind!=='epoch'
+  ||submission.visibleEpoch===null||submission.visibleEpoch<revision.activationEpoch
+  ||approval.finalReceipt.state!=='recorded'||approval.positionedPlan.state!=='recorded'
+  ||Date.parse(submission.recordedAt)<revision.createdAt.getTime()
+  ||Date.parse(approval.finalReceipt.recordedAt)<Date.parse(submission.recordedAt))
+  throw Error('The original approved-plan workflow and submitted positions cannot be verified.');
+ // An overlap union can redistribute dated counts when one request is removed.
+ // Protect every immutable active planned date, without granting those rows approval.
+ const rows=await tx.select({window:attendancePolicyRequestContract.plannedWindow})
+  .from(attendanceCorrection).innerJoin(attendancePolicyRequestContract,and(
+   eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),eq(attendancePolicyRequestContract.tenantId,attendanceCorrection.tenantId)))
+  .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
+   eq(attendanceCorrection.attendanceDate,p.date),inArray(attendanceCorrection.status,['approved','pending']),
+   isNull(attendanceCorrection.cancelledAt),isNotNull(attendancePolicyRequestContract.plannedWindow)))
+  .orderBy(asc(attendanceCorrection.id)).limit(501);
+ if(rows.length>500)throw Error('The complete retained plan date scope is unavailable.');
+ const windows=rows.map(({window})=>{
+  if(!window||window.sourceDate!==p.date||window.version!==1||window.basis!=='startDateEarlierEndNextDay'
+   ||typeof window.from!=='number'||typeof window.to!=='number')throw Error('The retained plan date scope is unavailable.');
+  return {from:window.from,to:window.to};
+ });
+ windows.push(...approval.positionedPlan.intervals.map(span=>({...span})));
+ return {authority:'retainedPlanCancellationOnly' as const,correctionId:p.correctionId,
+  protectedDates:attendancePolicyPlanDates(p.date,windows)};
 }

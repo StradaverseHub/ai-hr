@@ -99,4 +99,4 @@ export {retainedAttestedPolicyCancellationTx} from './policy-attested-work-sourc
 
 export * from '../../core/attendance-allowance-selection';
 
-export {attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';
+export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';
