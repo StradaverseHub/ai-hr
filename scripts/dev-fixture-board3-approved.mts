@@ -39,6 +39,7 @@ const {setCompensation}=await import('../core/comp'); // Employment spine, inten
 const {createMovementEvent,movementHistory,resignationInformation}=await import('../core/movement');
 const {requirePackFor}=await import('../localization/registry');
 const {getPeopleGeneral,savePeopleGeneral}=await import('../core/people-general');
+const {createProfileOption,listAllProfileOptions}=await import('../core/profile-options');
 const {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations}=await import('../core/employment-cost-allocations');
 const rewards=await import('../packs/rewards/service');
 const {emptyFacts,emptyRecommendation}=await import('../packs/rewards/model');
@@ -67,6 +68,23 @@ async function main(){
  if(!rewardModule)await owner.db.insert(s.tenantModule).values({tenantId,moduleCode:'rewards',status:'active'});
  else if(rewardModule.status!=='active'||rewardModule.expiresAt)throw new Error('Existing fixture entitlement changed; preserving it.');
  const bootstrap=await context(seedAdmin);
+ // Approved939ffafb: a code selected from a workbook must beat another option's label.
+ // Base is a tenant-level catalogue; company Criteria belong to the separate org masters below.
+ const profileChoices:Record<string,{id:string;value:string;label:string;isActive:boolean}>={};
+ const baseDefinitions=[
+  ['sameA','0003901','Shared fictional base',true],
+  ['sameB','0003902','Shared fictional base',true],
+  ['codeLabelCollision','0003903','0003901',true],
+  ['xmlCode','00039&<A>','Fictional XML & base',true],
+  ['inactive','0003904','Inactive fictional base',false],
+ ] as const;
+ let allProfiles=await listAllProfileOptions(bootstrap);
+ for(const[key,value,label,isActive]of baseDefinitions){
+  let option=allProfiles.base.find(row=>row.value===value);
+  if(!option){await createProfileOption(bootstrap,{category:'base',value,label,isActive});allProfiles=await listAllProfileOptions(bootstrap);option=allProfiles.base.find(row=>row.value===value);}
+  if(!option||option.label!==label||option.isActive!==isActive)throw new Error('Existing import-reference fixture changed; preserving it.');
+  profileChoices[key]={id:option.id,value:option.value,label:option.label,isActive:option.isActive};
+ }
  const companies:Record<string,string>={};
  for(const key of ['Main','Foreign']){
   const marker=`B3-FICTION-${key}`;
@@ -179,14 +197,16 @@ async function main(){
  await allocationCsv('allocation-foreign-reference.csv',[{...allocationRow,cost_center_code:masters.foreignCost.code}],'Unavailable company reference refuses without foreign record details.');
  await allocationCsv('allocation-overprecision.csv',[{...allocationRow,percentage:'33.333'}],'Overprecision refuses rather than rounding.');
  const columns=employeeTemplate.columns.map(c=>c.key);
- for(const[filename,allocations]of [['new-hire-no-allocation.xlsx',null],['new-hire-with-allocation.xlsx','valid'],['new-hire-allocation-refuses.xlsx','invalid']]as const){
-  const code=filename==='new-hire-no-allocation.xlsx'?'B3-IMPORT-NONE':filename==='new-hire-with-allocation.xlsx'?'B3-IMPORT-SPLIT':'B3-IMPORT-REFUSE';
+ for(const[filename,allocations]of [['new-hire-no-allocation.xlsx',null],['new-hire-with-allocation.xlsx','valid'],['new-hire-allocation-refuses.xlsx','invalid'],['new-hire-reference-codes.xlsx',null]]as const){
+  const referenceCodes=filename==='new-hire-reference-codes.xlsx';
+  const code=referenceCodes?'000B3-CODES':filename==='new-hire-no-allocation.xlsx'?'B3-IMPORT-NONE':filename==='new-hire-with-allocation.xlsx'?'B3-IMPORT-SPLIT':'B3-IMPORT-REFUSE';
   const row:ImportRecord={employee_code:code,full_name:`Board3 fictional imported ${code}`,email:`${code.toLowerCase()}@example.invalid`,company:companies.Main,department:masters.department.code,hired_on:today,employment_type:'full_time',basic_salary:'3000',ic_number:''};
+  if(referenceCodes)Object.assign(row,{business_unit:masters.sameA.code,position:masters.position.code,cost_center:masters.costA.code,job_grade:'B3_GRADE',org_base:profileChoices.sameA.value});
   const split=[{...allocationRow,employee_code:code,percentage:allocations==='invalid'?'100.01':'50.00'}];
-  await fs.writeFile(path.join(out,'uploads',filename),await buildXlsx(columns,[columns.map(k=>row[k]??'')],{sheetName:EMPLOYEE_XLSX_SHEETS.data,textColumns:columns.map((_,i)=>i),extraSheets:allocations?[{name:ALLOCATION_SHEET,rows:[[...ALLOCATION_COLUMNS],...split.map(r=>ALLOCATION_COLUMNS.map(k=>(r as ImportRecord)[k]??''))]}]:[]}));files.push({name:filename,purpose:allocations==='invalid'?'UI whole new-hire rollback on invalid companion allocation.':allocations?'UI atomic new-hire with valid companion allocation.':'UI new-hire without allocation sheet; no allocation action.'});
+  await fs.writeFile(path.join(out,'uploads',filename),await buildXlsx(columns,[columns.map(k=>row[k]??'')],{sheetName:EMPLOYEE_XLSX_SHEETS.data,textColumns:columns.map((_,i)=>i),extraSheets:allocations?[{name:ALLOCATION_SHEET,rows:[[...ALLOCATION_COLUMNS],...split.map(r=>ALLOCATION_COLUMNS.map(k=>(r as ImportRecord)[k]??''))]}]:[]}));files.push({name:filename,purpose:referenceCodes?'UI exact-code new hire: duplicate org labels, Base code-versus-label collision, leading-zero employee and Base codes; verify exact stored IDs/values.':allocations==='invalid'?'UI whole new-hire rollback on invalid companion allocation.':allocations?'UI atomic new-hire with valid companion allocation.':'UI new-hire without allocation sheet; no allocation action.'});
  }
  const base='http://127.0.0.1:3160';
- const manifest={fictional:true,evidence:'prerequisites only; all browser outcomes UNVERIFIED',database,namespace,port:3160,tenantId,companies,masters,gradeId:grade.id,people,groupConfigurationUserId:seedAdmin.id,job:{id:jobId,status:'draft',url:`${base}/admin/job-descriptions/${jobId}`},resignation,legacyProvisioning:'One local migration-role pre-owner snapshot on fictional Legacy employee; no Movement history fabricated.',nric:{initialPolicy:'OFF',duplicatePersonIds:[people.NricA.personId,people.NricB.personId],freshPersonId:people.NricFresh.personId,fictionalDuplicateKey:nricKey},allocations:{employmentId:people.Subject.employmentId,revision:allocationView.revision,totalHundredths:allocationView.total,historyIds:allocationView.history.map(h=>h.id)},rewards:reviewStates,urls:{home:base,personnel:`${base}/admin/personnel/${people.Subject.employmentId}`,legacy:`${base}/admin/personnel/${people.Legacy.employmentId}`,jobs:`${base}/admin/job-descriptions`,jobConfiguration:`${base}/admin/job-descriptions/configuration`,rewards:`${base}/admin/rewards`,access:`${base}/admin/rewards/access`,peopleGeneral:`${base}/admin/settings/people-general`,import:`${base}/admin/personnel/import`,systemLabels:`${base}/admin/settings/system-labels`},identitySwitch:'Use the existing native app dev identity switcher with the fictional user IDs. Group settings require the seeded fictional group administrator; company HR must be denied tenant-wide policy configuration.',files};
+ const manifest={fictional:true,evidence:'prerequisites only; all browser outcomes UNVERIFIED',database,namespace,port:3160,tenantId,companies,masters,profileChoices,gradeId:grade.id,people,groupConfigurationUserId:seedAdmin.id,job:{id:jobId,status:'draft',url:`${base}/admin/job-descriptions/${jobId}`},resignation,legacyProvisioning:'One local migration-role pre-owner snapshot on fictional Legacy employee; no Movement history fabricated.',nric:{initialPolicy:'OFF',duplicatePersonIds:[people.NricA.personId,people.NricB.personId],freshPersonId:people.NricFresh.personId,fictionalDuplicateKey:nricKey},allocations:{employmentId:people.Subject.employmentId,revision:allocationView.revision,totalHundredths:allocationView.total,historyIds:allocationView.history.map(h=>h.id)},rewards:reviewStates,urls:{home:base,personnel:`${base}/admin/personnel/${people.Subject.employmentId}`,legacy:`${base}/admin/personnel/${people.Legacy.employmentId}`,jobs:`${base}/admin/job-descriptions`,jobConfiguration:`${base}/admin/job-descriptions/configuration`,rewards:`${base}/admin/rewards`,access:`${base}/admin/rewards/access`,peopleGeneral:`${base}/admin/settings/people-general`,import:`${base}/admin/personnel/import`,systemLabels:`${base}/admin/settings/system-labels`},identitySwitch:'Use the existing native app dev identity switcher with the fictional user IDs. Group settings require the seeded fictional group administrator; company HR must be denied tenant-wide policy configuration.',files};
  await fs.writeFile(path.join(out,'fixture-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
  console.log('BOARD3_APPROVED_MANIFEST\n'+JSON.stringify(manifest,null,2));
 }
