@@ -43,13 +43,20 @@ const pairKey = (m: {
     role: string;
 }) => `${m.userId}:${m.role}`;
 async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessChange, lock = false) {
+    // Access/eligibility writers share this barrier. Join before review locks and authority reads,
+    // so an in-flight employment suspension or scope revocation cannot pass stale eligibility.
+    if (lock)
+        await tx.execute(sql `select app.access_workforce_write_lock()`);
     const unit = await adminUnit(tx, input.unitId, input.revision, lock);
     const current = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unit.id)).orderBy(asc(rewardMember.userId), asc(rewardMember.role));
     if (input.before && !current.some(m => pairKey(m) === pairKey(input.before!)))
         throw new RewardMaintenanceError('membership');
     const next = current.filter(m => !input.before || pairKey(m) !== pairKey(input.before));
     if (input.after) {
-        const [account] = await tx.select({ id: appUser.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.id, input.after.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).for('share');
+        // Do not add account/person tuple SHARE locks: legacy archival takes its tuple before
+        // its access-barrier row trigger. The barrier above serializes supported account,
+        // employment and permission writers without reversing that lock order.
+        const [account] = await tx.select({ id: appUser.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.id, input.after.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`));
         if (!account)
             throw new RewardMaintenanceError('account');
         if (next.some(m => pairKey(m) === pairKey(input.after!)))
@@ -57,7 +64,7 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
         next.push({ id: '', ...input.after });
     }
     const gr = next.filter(m => m.role === 'gr').map(m => m.userId);
-    const activeGr = gr.length ? await tx.select({ id: appUser.id }).from(appUser).where(and(inArray(appUser.id, gr), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).for('share') : [];
+    const activeGr = gr.length ? await tx.select({ id: appUser.id }).from(appUser).where(and(inArray(appUser.id, gr), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)) : [];
     if (!activeGr.length)
         throw new RewardMaintenanceError('lastGr');
     const digest = createHash('sha256').update(JSON.stringify({ actor: ctx.userId, tenant: ctx.tenantId, input, current, activeGr: activeGr.map(x => x.id).sort() })).digest('hex');

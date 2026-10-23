@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setEmploymentBlacklist } from '../core/org';
 import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, previewRewardAccessChange, rewardAccessAdministration, rewardDeletionEligibility, saveRewardAccessChange, setRewardMember, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, emptyRecommendation, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -72,6 +72,61 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect((await rewardAccessAdministration(admin, [b.companyId])).members.filter(m => m.userId === reviewer.userId)).toHaveLength(1);
         expect(await revision()).toBe(p.revision + 1);
     });
+    it.each(['previewed', 'legacy'] as const)('serializes the %s membership writer behind a real employment suspension before checking replacement eligibility', async (writer) => {
+        const hire = await hireEmployee(admin, { person: { fullName: 'Concurrent suspended reviewer' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
+        const [employee] = await owner.db.select().from(s.employment).where(eq(s.employment.id, hire.employmentId));
+        const target = await createAppUser(b.tenantId, employee.personId, 'employee');
+        const p = await preview({ userId: target, role: 'gr' }, { userId: admin.userId!, role: 'gr' });
+        const originalRevision = p.revision;
+        let release!: () => void, ready!: (pid: number) => void, failed!: (error: unknown) => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const started = new Promise<number>((resolve, reject) => { ready = resolve; failed = reject; });
+        // Use the actual restricted-role canonical writer, not raw SQL or a mocked policy check.
+        // Its employment UPDATE deliberately stays uncommitted while Rewards attempts its save.
+        const revocation = withTenant(admin, async tx => {
+            const [backend] = await tx.execute<{ pid: number }>(sql `select pg_backend_pid() as pid`);
+            await setEmploymentBlacklist(admin, { employmentId: hire.employmentId, blacklisted: true, reason: 'Concurrent suspension fixture' }, tx);
+            ready(backend.pid);
+            await held;
+        }).then(() => ({ ok: true as const }), error => { failed(error); return { ok: false as const, error }; });
+        let pending: Promise<{ ok: true } | { ok: false; error: unknown }> | undefined;
+        try {
+            const blocker = await started;
+            let settled = false;
+            // The legacy add path also has to reject. It cannot remove the existing GR, but must
+            // not create an unusable replacement membership while suspension is in flight.
+            pending = (writer === 'previewed' ? save(p) : setRewardMember(admin, id, originalRevision, target, 'gr'))
+                .then(() => ({ ok: true as const }), error => ({ ok: false as const, error }))
+                .finally(() => { settled = true; });
+            let blocked = false;
+            const deadline = Date.now() + 3000;
+            while (!settled && Date.now() < deadline) {
+                const [wait] = await owner.db.execute<{ blocked: boolean }>(sql `select exists (
+                    select 1 from pg_locks l where l.locktype='advisory' and not l.granted
+                    and ${blocker}::integer = any(pg_blocking_pids(l.pid))
+                ) as blocked`);
+                if (wait.blocked) { blocked = true; break; }
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            // This pins the intended synchronization guard. Without it, MVCC sees the old
+            // active employment and the save succeeds; incidental membership RLS allows it.
+            expect(blocked).toBe(true);
+            expect(settled).toBe(false);
+            release();
+            expect(await revocation).toEqual({ ok: true });
+            expect(await pending).toMatchObject({ ok: false, error: { code: 'account' } });
+            expect(await revision()).toBe(originalRevision);
+            const state = await rewardAccessAdministration(admin, [b.companyId]);
+            expect(state.reviews.some(review => review.id === id)).toBe(true); // Actor remains authorized.
+            expect(state.members.filter(member => member.role === 'gr')).toMatchObject([{ userId: admin.userId }]);
+            expect(state.members.some(member => member.userId === target)).toBe(false);
+            expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId, id), eq(s.domainEvent.eventType, 'reward-unit.access-changed')))).toHaveLength(0);
+        } finally {
+            release();
+            await revocation;
+            await pending;
+        }
+    }, 15000);
     it('retains active Group Rewards coverage and allows a replacement within one edit', async () => {
         await expect(preview(null, { userId: admin.userId!, role: 'gr' })).rejects.toThrow(/at least one active Group Rewards/);
         const replacement = await preview({ userId: reviewer.userId!, role: 'gr' }, { userId: admin.userId!, role: 'gr' });
