@@ -10499,7 +10499,8 @@
     "requestedPendingLabel": "Đã yêu cầu, đang chờ duyệt:",
     "maRejectReason": "Giải thích từ chối",
     "maRejectNotRecorded": "Chưa ghi giải thích",
-    "maAskedClockData": "Điều chỉnh chấm công: đề xuất {count} lượt chấm công"
+    "maAskedClockData": "Điều chỉnh chấm công: đề xuất {count} lượt chấm công",
+    "otPolicyPlanTotalsHelp": "Các tổng này thể hiện từng yêu cầu. Các khoảng thời gian đã duyệt bị trùng chỉ được tính một lần khi tính làm thêm giờ."
   },
   "mobilePreview": {
     "title": "Ứng dụng di động",

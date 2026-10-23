@@ -10499,7 +10499,8 @@
     "requestedPendingLabel": "ขอแล้ว รออนุมัติ:",
     "maRejectReason": "คำอธิบายการปฏิเสธ",
     "maRejectNotRecorded": "ไม่ได้บันทึกคำอธิบาย",
-    "maAskedClockData": "แก้ไขข้อมูลลงเวลา: เสนอรายการลงเวลา {count} รายการ"
+    "maAskedClockData": "แก้ไขข้อมูลลงเวลา: เสนอรายการลงเวลา {count} รายการ",
+    "otPolicyPlanTotalsHelp": "ยอดรวมนี้แสดงคำขอแต่ละรายการ ช่วงเวลาที่อนุมัติซ้อนทับกันจะนับเพียงครั้งเดียวในการคำนวณค่าล่วงเวลา"
   },
   "mobilePreview": {
     "title": "แอปมือถือ",

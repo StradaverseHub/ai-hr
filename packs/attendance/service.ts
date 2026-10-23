@@ -98,3 +98,5 @@ export {canSubmitUnclockedAttendanceWork} from './unclocked-work-setup';
 export {retainedAttestedPolicyCancellationTx} from './policy-attested-work-source';
 
 export * from '../../core/attendance-allowance-selection';
+
+export {attendancePolicyAdditionalPlanSubmissionTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';

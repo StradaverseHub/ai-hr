@@ -10499,7 +10499,8 @@
     "requestedPendingLabel": "Requested, waiting for approval:",
     "maRejectReason": "Rejection explanation",
     "maRejectNotRecorded": "Explanation not recorded",
-    "maAskedClockData": "Clock data correction: {count} clockings proposed"
+    "maAskedClockData": "Clock data correction: {count} clockings proposed",
+    "otPolicyPlanTotalsHelp": "These totals describe individual requests. Overlapping approved windows count once in calculated overtime."
   },
   "mobilePreview": {
     "title": "Mobile App",

@@ -1,3 +1,4 @@
+import {attendancePolicyPlanDates} from '../lib/attendance-policy-plan-dates';
 /** Source serialization only; these facts cannot authorize an approval, final effect or money. */
 import {describe,expect,it} from 'vitest';
 import {attendancePolicyApprovalInput,type PolicyApprovalSourceRow,type PolicySubmissionSourceRow,type PolicyFinalReceiptSourceRow} from '../packs/attendance/policy-approval-input';
@@ -125,5 +126,17 @@ describe('canonical policy application source facts',()=>{
  });
  it('keeps the canonical application-history bound',()=>{
   expect(()=>attendancePolicyApprovalInput(policy(),Array.from({length:501},()=>row()))).toThrow('bounded');
+ });
+});
+
+describe('planned quantity Payroll date protection',()=>{
+ it('uses the exclusive minute endpoint and keeps the source date across a month boundary',()=>{
+  expect(attendancePolicyPlanDates('2026-01-31',[{from:1380,to:1440}])).toEqual(['2026-01-31']);
+  expect(attendancePolicyPlanDates('2026-01-31',[{from:1380,to:1441}])).toEqual(['2026-01-31','2026-02-01']);
+  expect(attendancePolicyPlanDates('2026-01-31',[{from:1380,to:1500},{from:1400,to:1470}])).toEqual(['2026-01-31','2026-02-01']);
+ });
+ it('refuses malformed positions instead of inventing a protection date',()=>{
+  for(const window of [{from:1,to:1},{from:-1,to:10},{from:1,to:2881},{from:1.5,to:10}])
+   expect(()=>attendancePolicyPlanDates('2026-01-31',[window])).toThrow();
  });
 });

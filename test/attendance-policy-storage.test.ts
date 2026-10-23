@@ -1184,12 +1184,12 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await owner.db.execute(sql`select has_function_privilege('ai_hr_app','app.attendance_workflow_final_effect(uuid,integer)','EXECUTE') as allowed`)).toMatchObject([{allowed:false}]);
  });
 
- it.each((['cash','toil'] as const).flatMap(mode=>([3,4] as const).map(routingVersion=>({mode,routingVersion}))))('settles disjoint approved-plan quantity through the actual $mode owner with v$routingVersion while reserving original work',async({mode,routingVersion})=>{
+ it.each([...( ['cash','toil'] as const).flatMap(mode=>([3,4] as const).map(routingVersion=>({mode,routingVersion,multiple:false}))),{mode:'cash' as const,routingVersion:4 as const,multiple:true}])('settles disjoint approved-plan quantity through the actual $mode owner with v$routingVersion (combined=$multiple) while reserving original work',async({mode,routingVersion,multiple})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   // Same explicitly declared private historical group baseline as the existing current
   // workflow fixtures. Formula activation and the request/final decision are genuine.
-  const f=await fixture('auto','12','preApproved',true,undefined,555,true),p={employmentId:f.employmentId,date:f.sourceDate};
+  const f=await fixture('auto','12','preApproved',true,multiple?'sessionCharge':undefined,555,true),p={employmentId:f.employmentId,date:f.sourceDate};
   const reviewer=await hireEmployee(ctx,{person:{fullName:'Fictional approved-plan reviewer',primaryEmail:randomUUID()+'@fixture.invalid'},
    companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:day(-10)});
   const userId=await createAppUser(b.tenantId,reviewer.personId,'hr_admin'),reviewCtx:SessionContext={...ctx,userId,personId:reviewer.personId,
@@ -1207,16 +1207,23 @@ describe('immutable non-payable policy part storage',()=>{
   // The submitted plan stays 90 minutes even though the company scalar method would
   // choose the separate 120-minute actual day. No plan coordinate comes from that scalar.
   expect(decided).toMatchObject({requestedOtMinutes:90,approvedOtMinutes:90,otApprovalMethod:'system_calculated',appliedAt:null});
+  if(multiple){
+   const second=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:60,plannedStartTime:'21:00',plannedEndTime:'22:00',reason:'Fictional overlapping second approved plan'});
+   await decideAttendanceCorrection(reviewCtx,{correctionId:second.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  }
+  const expectedMinutes=multiple?120:90;
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));
   if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical approved-plan settlement parent');
-  expect(read.calculation,JSON.stringify(read.evidence.evidence)).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:'90',transferable:true});
+  expect(read.calculation,JSON.stringify(read.evidence.evidence)).toMatchObject({outcome:'ready',durationOutcome:'ready',payableNumerator:String(expectedMinutes),transferable:true});
   expect(read.policyParts.map(row=>[row.rawMinutes,row.allocatedPayableMinutes,row.sourceIntervals])).toEqual([[0,0,[]]]);
   const review=await withTenant(ctx,tx=>readOvertimePatternCalculationTx(tx,ctx,p));
-  expect(review?.policyPayableParts).toEqual([{sequence:0,calendarDate:p.date,minutes:90}]);
+  expect(review?.policyPayableParts).toEqual([{sequence:0,calendarDate:p.date,minutes:expectedMinutes}]);
 
   const proof=read.evidence.evidence.policyCapturedCoverage as {countBasis:string;minutes:number;intervals:{fromEpochMillisecond:number;toEpochMillisecond:number}[]};
+  if(multiple)expect(read.evidence.evidence.policyCapturedCoverage).toMatchObject({planQuantity:{plan:{intervals:[{from:1200,to:1320}],references:expect.arrayContaining([expect.objectContaining({correctionId:request.correctionId})])}}});
+  if(multiple){const retained=JSON.parse(JSON.stringify(read.evidence.evidence.policyCapturedCoverage));expect(retained.planQuantity.plan.references).toHaveLength(2);}
   const midnight=Date.parse(p.date+'T00:00:00+08:00');
-  expect(proof).toMatchObject({countBasis:'approvedPlanWithIndependentWorkedDay',minutes:90});
+  expect(proof).toMatchObject({countBasis:'approvedPlanWithIndependentWorkedDay',minutes:expectedMinutes});
   expect(proof.intervals).toEqual([{fromEpochMillisecond:midnight+1380*60000+555,toEpochMillisecond:midnight+1500*60000+555}]);
   await setToilPolicy(ctx,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
    allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,
@@ -1228,7 +1235,7 @@ describe('immutable non-payable policy part storage',()=>{
    expect(await transferOvertimePatternToPayroll(ctx,transfer)).toMatchObject({status:'unchanged',settlementId:paid.settlementId});
    await generatePayslips(ctx,{batchId:batch.batchId});
    const [slip]=await owner.db.select().from(s.payslip).where(and(eq(s.payslip.batchId,batch.batchId),eq(s.payslip.employmentId,f.employmentId)));
-   expect(slip.overtimePay).toBe('27.00');
+   expect(slip.overtimePay).toBe(multiple?'25.00':'27.00');
    await expect(accrueToil(ctx,{employmentId:f.employmentId,workedDate:p.date})).rejects.toThrow('already reserved for cash');
    await closeBatch(ctx,{batchId:batch.batchId});
   }else{

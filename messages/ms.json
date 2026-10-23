@@ -10499,7 +10499,8 @@
     "requestedPendingLabel": "Dimohon, menunggu kelulusan:",
     "maRejectReason": "Penjelasan penolakan",
     "maRejectNotRecorded": "Penjelasan tidak direkod",
-    "maAskedClockData": "Pembetulan data waktu: {count} rekod dicadangkan"
+    "maAskedClockData": "Pembetulan data waktu: {count} rekod dicadangkan",
+    "otPolicyPlanTotalsHelp": "Jumlah ini merujuk kepada setiap permohonan. Tempoh diluluskan yang bertindih dikira sekali sahaja dalam pengiraan kerja lebih masa."
   },
   "mobilePreview": {
     "title": "Aplikasi Mudah Alih",

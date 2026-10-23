@@ -10,7 +10,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { attendancePolicyAdditionalPlanSubmissionTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -3584,7 +3584,22 @@ export async function requestAttendanceCorrection(
         // `?error=`. Same refusal, same wording, now typed so the action can print it in the employee's own
         // language (`me.otPlanApprovedNotCounted`). The sentence is not a guard being loosened: it still
         // names the date and still says to withdraw the first plan.
-        throw new OvertimePlanAlreadyApprovedError(p.date);
+        let additionalPositionedPlan=false;
+        if(!clockChanges&&!checkIn&&!checkOut&&!unclockedWork&&plannedStartTime&&plannedEndTime
+          &&plannedOvertimeMinutes(plannedStartTime,plannedEndTime)===requestedOtMinutes){
+          // Serialize the same employee/source/configuration owners before re-reading
+          // every retained plan. The pending-request unique fence still arbitrates inserts.
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+          const initial=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+          const from=Number(plannedStartTime.slice(0,2))*60+Number(plannedStartTime.slice(3,5));
+          const protectedDates=await attendancePolicyPlanProtectionDatesTx(tx,ctx,p,initial,{from,to:from+requestedOtMinutes!});
+          for(const date of protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date});
+          await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+          const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+          additionalPositionedPlan=await attendancePolicyAdditionalPlanSubmissionTx(tx,ctx,p,context);
+          if(additionalPositionedPlan)await lockAttendancePayrollTx(tx,p.employmentId,protectedDates);
+        }
+        if(!additionalPositionedPlan)throw new OvertimePlanAlreadyApprovedError(p.date);
       }
       // ── ec30b2e9 (r364) · AND THE HOLE THAT LEFT: APPROVED **AND ALREADY COUNTED** ──────────────────
       // The guard above only closes the window in which an approved plan is still waiting for its day. For
@@ -3982,7 +3997,18 @@ export async function decideAttendanceCorrection(
           throw Error('Clock evidence was added after this unclocked-work submission. Withdraw and use the clock workflow.');
         unclockedSystemMinutes=eligible.minutes;unclockedContext=context;
       }
-      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??cor.attendanceDate);
+      let plannedProtectedDates:string[]|undefined;
+      if(!deferred&&hasOtRequest&&cor.plannedStartTime!==null&&cor.plannedEndTime!==null){
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(context.state==='policy'&&context.selected.activation.epoch>0&&context.selected.policy.overtime.enabled&&context.selected.policy.overtime.approval==='auto'
+          &&context.selected.policy.overtime.autoMethod!=='actual'){
+          plannedProtectedDates=await attendancePolicyPlanProtectionDatesTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate},context);
+          // Complete date/source union precedes the checked configuration barrier and batches.
+          for(const date of plannedProtectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+          await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+        }
+      }
+      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??plannedProtectedDates??cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual

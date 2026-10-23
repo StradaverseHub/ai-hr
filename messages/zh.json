@@ -10499,7 +10499,8 @@
     "requestedPendingLabel": "已申请，等待审批：",
     "maRejectReason": "拒绝说明",
     "maRejectNotRecorded": "未记录说明",
-    "maAskedClockData": "打卡数据更正：拟保留 {count} 条打卡记录"
+    "maAskedClockData": "打卡数据更正：拟保留 {count} 条打卡记录",
+    "otPolicyPlanTotalsHelp": "这些合计按每项申请统计。已批准的重叠时段在加班计算中只计一次。"
   },
   "mobilePreview": {
     "title": "移动应用",
