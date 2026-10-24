@@ -9,9 +9,10 @@ import { commitSectionImport } from '../core/import-sections';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { listQualifications } from '../core/qualifications';
-import { previewMovementImport, commitMovementImport } from '../core/movement-import';
+import { previewMovementImport, commitMovementImport, movementImportCatalog } from '../core/movement-import';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { toCsv } from '../lib/csv';
+import {parseMovementTypeCsv} from '../lib/movement-type-csv';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b:Base;
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
@@ -19,6 +20,26 @@ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase()
 const fullRow=(code:string,base:string)=>({full_name:'Fictional code selection',email:`${code.toLowerCase()}@codes.test`,employee_code:code,department:'Finance',hired_on:day(-100),employment_type:'full_time',basic_salary:'4200',ic_number:'900101010001',org_base:base});
 
 describe('939ffafb canonical code admission through existing owners',()=>{
+ it('keeps a same-label Base code change visible in the single-type Movement preview before committing',async()=>{
+  const ctx=adminCtx(b);
+  await createProfileOption(ctx,{category:'base',value:'001',label:'Shared base'});
+  await createProfileOption(ctx,{category:'base',value:'002',label:'Shared base'});
+  expect((await commitEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('000BASECHANGE','001')]})).imported).toBe(1);
+  const catalog=await movementImportCatalog(ctx,b.companyId),type=catalog.types.find(type=>type.code==='orgAssignmentChange');
+  expect(type).toBeDefined();
+  const parsed=parseMovementTypeCsv(toCsv([['employeeCode','orgBase','effectiveDate','remarks'],['000BASECHANGE','002',day(-1),'Fictional same-label Base change']]),type!,(_key,fallback)=>fallback);
+  expect(parsed.fileErrors).toEqual([]);expect(parsed.records[0].cells.orgBase).toBe('002');
+  const input={companyId:b.companyId,csv:'',records:parsed.records,sourceHash:'same-label-base-fixture'},preview=await previewMovementImport(ctx,input);
+  expect(preview.valid).toBe(1);
+  const row=preview.employees[0].rows[0];
+  expect(row.before?.orgBase).toContain('001');expect(row.proposed?.orgBase).toContain('002');
+  expect(row.before?.orgBase).not.toBe(row.proposed?.orgBase);
+  const result=await commitMovementImport(ctx,{...input,selection:preview.selection,inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.filter(employee=>employee.fingerprint).map(employee=>[employee.employeeCode,employee.fingerprint!])),acknowledgeExcluded:true});
+  expect(result.imported).toBe(1);
+  const [stored]=await owner.db.select().from(s.employment).where(and(eq(s.employment.companyId,b.companyId),eq(s.employment.employeeCode,'000BASECHANGE'))).orderBy(s.employment.id);
+  expect(stored.orgBase).toBe('002');
+ });
+
  it('full preview and commit choose the code owner over another record label, with exact stored identity',async()=>{
   const ctx=adminCtx(b);
   await createProfileOption(ctx,{category:'base',value:'001',label:'Shared base'});
