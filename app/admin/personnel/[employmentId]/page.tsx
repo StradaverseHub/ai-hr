@@ -3285,7 +3285,8 @@ export default async function EmployeePage({
                               ? t('movement.rollbackConfirmPayroll')
                               : t('movement.rollbackConfirmDescription')
                         }
-                        confirmLabel={m.status === 'pending' ? t('movement.cancel') : t('movement.rollback')}
+                        confirmLabel={m.status === 'pending' ? t('movement.cancelEvent') : t('movement.rollback')}
+                        cancelLabel={m.status === 'pending' ? t('movement.keepEvent') : undefined}
                         // The reason is MANDATORY (bd89ccd8): Confirm stays disabled until it is typed,
                         // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
                         // only caller, so the control lives in the service and the form only mirrors it.

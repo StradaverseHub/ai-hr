@@ -1715,6 +1715,8 @@
         "edit": "Edit",
         "rollback": "Roll Back",
         "cancel": "Cancel",
+        "keepEvent": "Keep event",
+        "cancelEvent": "Cancel event",
         "reversedBy": "Rolled back by",
         "editTitle": "Edit Movement Event",
         "reversedBadge": "Reversed",

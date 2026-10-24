@@ -1715,6 +1715,8 @@
         "edit": "编辑",
         "rollback": "撤销",
         "cancel": "取消",
+        "keepEvent": "保留事件",
+        "cancelEvent": "取消事件",
         "reversedBy": "撤销人",
         "editTitle": "编辑异动事件",
         "reversedBadge": "已撤销",

@@ -1715,6 +1715,8 @@
         "edit": "Sửa",
         "rollback": "Hoàn tác",
         "cancel": "Hủy",
+        "keepEvent": "Giữ sự kiện",
+        "cancelEvent": "Hủy sự kiện",
         "reversedBy": "Hoàn tác bởi",
         "editTitle": "Sửa sự kiện biến động nhân sự",
         "reversedBadge": "Đã hoàn tác",

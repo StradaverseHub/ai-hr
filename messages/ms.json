@@ -1715,6 +1715,8 @@
         "edit": "Sunting",
         "rollback": "Batalkan",
         "cancel": "Batalkan",
+        "keepEvent": "Kekalkan peristiwa",
+        "cancelEvent": "Batalkan peristiwa",
         "reversedBy": "Dibatalkan oleh",
         "editTitle": "Sunting Peristiwa Pergerakan",
         "reversedBadge": "Dibatalkan",
