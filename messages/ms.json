@@ -1955,7 +1955,7 @@
       "validate": "Sahkan",
       "validating": "Mengesahkan…",
       "loadSample": "Muat sampel",
-      "resolveHint": "Medan organisasi dipadankan dengan label dahulu, kemudian kod, dalam syarikat baris tersebut. Lajur Syarikat yang kosong bermaksud {company}.",
+      "resolveHint": "Medan organisasi dipadankan dengan kod dahulu, kemudian label yang tidak kabur, dalam syarikat baris tersebut. Lajur Syarikat yang kosong bermaksud {company}.",
       "theCompany": "syarikat",
       "columnReference": "Rujukan lajur",
       "required": "Diperlukan",

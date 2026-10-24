@@ -1955,7 +1955,7 @@
       "validate": "Xác thực",
       "validating": "Đang xác thực…",
       "loadSample": "Tải mẫu",
-      "resolveHint": "Các trường tổ chức khớp theo nhãn trước, rồi mới theo mã, trong công ty của từng dòng. Cột Công ty để trống sẽ dùng {company}.",
+      "resolveHint": "Các trường tổ chức khớp theo mã trước, rồi theo nhãn không gây nhầm lẫn, trong công ty của từng dòng. Cột Công ty để trống sẽ dùng {company}.",
       "theCompany": "công ty",
       "columnReference": "Tham chiếu cột",
       "required": "Bắt buộc",

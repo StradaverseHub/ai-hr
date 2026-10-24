@@ -1955,7 +1955,7 @@
       "validate": "校验",
       "validating": "校验中…",
       "loadSample": "加载示例",
-      "resolveHint": "组织字段先按标签匹配，无标签匹配时再按代码匹配，并以该行的公司为准。“公司”列留空时使用 {company}。",
+      "resolveHint": "组织字段在该行的公司范围内先按代码匹配，再按无歧义的标签匹配。“公司”列留空时使用 {company}。",
       "theCompany": "该公司",
       "columnReference": "列说明",
       "required": "必填",

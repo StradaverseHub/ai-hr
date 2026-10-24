@@ -1955,7 +1955,7 @@
       "validate": "Validate",
       "validating": "Validating…",
       "loadSample": "Load sample",
-      "resolveHint": "Organisation fields match labels first, then codes, within the row's company. A blank Company column means {company}.",
+      "resolveHint": "Organisation fields match codes first, then unambiguous labels, within the row's company. A blank Company column means {company}.",
       "theCompany": "the company",
       "columnReference": "Column reference",
       "required": "Required",
