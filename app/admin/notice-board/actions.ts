@@ -114,12 +114,13 @@ export async function updateNoticeAction(formData: FormData) {
 export async function publishNoticeAction(formData: FormData) {
   const s = await requireAdmin();
   const id = String(formData.get('id') ?? '');
+  let recipients: number;
   try {
-    const res = await publishNotice(s, id);
-    okToast(detail(id), `Published to ${res.recipients} employee(s)`);
+    ({ recipients } = await publishNotice(s, id));
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), `Published to ${recipients} employee(s)`);
 }
 
 export async function archiveNoticeAction(formData: FormData) {
@@ -127,10 +128,10 @@ export async function archiveNoticeAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   try {
     await archiveNotice(s, id);
-    okToast(detail(id), 'Notice archived');
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), 'Notice archived');
 }
 
 export async function restoreNoticeAction(formData: FormData) {
@@ -138,10 +139,10 @@ export async function restoreNoticeAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   try {
     await restoreNotice(s, id);
-    okToast(detail(id), 'Notice restored');
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), 'Notice restored');
 }
 
 export async function deleteNoticeAction(formData: FormData) {

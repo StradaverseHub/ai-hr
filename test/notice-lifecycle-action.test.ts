@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {archiveNotice,createNotice,getNotice} from '../core/notice';
+import {createNotice,getNotice} from '../core/notice';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
@@ -18,18 +18,18 @@ describe('notice lifecycle action confirmations',()=>{
   const {id}=await createNotice(ctx,{title:'Fictional action confirmation',body:'Local test notice.',startOn:todayInKualaLumpur(),endOn:todayInKualaLumpur()});
   await expect(publishNoticeAction(form(id))).rejects.toThrow('NEXT_REDIRECT');
   expect(new URL(redirected,'http://localhost').searchParams.get('toast')).toBe('Published to 1 employee(s)');
-  expect((await getNotice(ctx,id)).publishedAt).not.toBeNull();
+  expect((await getNotice(ctx,id))!.publishedAt).not.toBeNull();
   await expect(archiveNoticeAction(form(id))).rejects.toThrow('NEXT_REDIRECT');
   expect(new URL(redirected,'http://localhost').searchParams.get('toast')).toBe('Notice archived');
-  expect((await getNotice(ctx,id)).archivedAt).not.toBeNull();
+  expect((await getNotice(ctx,id))!.archivedAt).not.toBeNull();
   await expect(restoreNoticeAction(form(id))).rejects.toThrow('NEXT_REDIRECT');
   expect(new URL(redirected,'http://localhost').searchParams.get('toast')).toBe('Notice restored');
-  expect((await getNotice(ctx,id)).archivedAt).toBeNull();
+  expect((await getNotice(ctx,id))!.archivedAt).toBeNull();
  });
  it('still redirects actual lifecycle refusals through the error path',async()=>{
   const {id}=await createNotice(ctx,{title:'Fictional empty audience',body:'Nobody is employed in this fixture.',startOn:todayInKualaLumpur(),endOn:todayInKualaLumpur()});
   await expect(publishNoticeAction(form(id))).rejects.toThrow('NEXT_REDIRECT');
   expect(new URL(redirected,'http://localhost').searchParams.has('error')).toBe(true);
-  expect((await getNotice(ctx,id)).publishedAt).toBeNull();
+  expect((await getNotice(ctx,id))!.publishedAt).toBeNull();
  });
 });
