@@ -3300,6 +3300,8 @@ export type ReviewedOwnLeaveEffect = Readonly<{
   days: number;
   /** Private source estimate, including pending reservations, even when hidden in ESS. */
   availableBalance: number;
+  /** Exact canonical warnings shown at review, including an explicitly empty list. */
+  holidayWarnings: readonly Readonly<HolidayCompletenessWarning>[];
 }>;
 export class LeaveReviewedEffectError extends Error {
   constructor(readonly reason: 'changed' | 'unsupported') {
@@ -3352,9 +3354,11 @@ export async function requestLeave(
   reviewedOwnLeave?: ReviewedOwnLeaveEffect,
 ): Promise<RequestLeaveResult> {
   if (reviewedOwnLeave) {
+    if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
     // Capture the server-owned inputs before any await; a caller retaining its object cannot change
     // the expectation or nominal request while this submission is reading source facts.
-    reviewedOwnLeave = { ...reviewedOwnLeave };
+    reviewedOwnLeave = { ...reviewedOwnLeave,
+      holidayWarnings: reviewedOwnLeave.holidayWarnings.map(warning => ({ ...warning })) };
     p = { ...p };
     if (!existingTx || !ctx.userId || !Number.isFinite(reviewedOwnLeave.days) || reviewedOwnLeave.days <= 0
       || !Number.isFinite(reviewedOwnLeave.availableBalance) || reviewedOwnLeave.availableBalance < reviewedOwnLeave.days
@@ -4070,6 +4074,16 @@ export async function requestLeave(
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (days !== reviewedOwnLeave.days || available !== reviewedOwnLeave.availableBalance)
         throw new LeaveReviewedEffectError('changed');
+      const warnings = lt?.counting === 'working_days'
+        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate) : [];
+      const reviewedWarnings = reviewedOwnLeave.holidayWarnings;
+      if (warnings.length !== reviewedWarnings.length
+        || warnings.some((warning, index) => {
+          const reviewed = reviewedWarnings[index];
+          return warning.country !== reviewed.country || warning.state !== reviewed.state
+            || warning.year !== reviewed.year || warning.loaded !== reviewed.loaded
+            || warning.required !== reviewed.required;
+        })) throw new LeaveReviewedEffectError('changed');
     }
 
     const { id } = await insertLeaveRequest(tx, ctx, {

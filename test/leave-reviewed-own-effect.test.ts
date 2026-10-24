@@ -1,9 +1,10 @@
 import { count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { domainEvent, employment, leaveLedger, leaveRequest, leaveType } from '../db/schema';
+import { domainEvent, employment, holiday, leaveLedger, leaveRequest, leaveType } from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { LeaveReviewedEffectError, requestLeave, type ReviewedOwnLeaveEffect } from '../packs/leave/service';
+import { LeaveReviewedEffectError, previewLeaveDeduction, requestLeave, type ReviewedOwnLeaveEffect } from '../packs/leave/service';
+import { setAttendancePolicy } from '../packs/attendance/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -28,7 +29,7 @@ describe('reviewed own-leave precondition at the canonical write', () => {
     args = { employmentId: employee.employmentId, leaveTypeId: base.annualLeaveTypeId,
       startDate: date, endDate: date, durationType: 'full_day' };
     reviewed = { employmentId: employee.employmentId, companyId: base.companyId,
-      leaveTypeId: base.annualLeaveTypeId, date, days: 1, availableBalance: 10 };
+      leaveTypeId: base.annualLeaveTypeId, date, days: 1, availableBalance: 10, holidayWarnings: [] };
   });
   const counts = (tx: Tx) => Promise.all([
     tx.select({ count: count() }).from(leaveRequest).where(eq(leaveRequest.tenantId, base.tenantId)),
@@ -59,6 +60,33 @@ describe('reviewed own-leave precondition at the canonical write', () => {
 
   it('requires an enclosing command transaction', async () => {
     await expect(requestLeave(ctx, args, undefined, reviewed)).rejects.toThrow(LeaveReviewedEffectError);
+  });
+
+  it('refuses a changed warning even when the actual deduction and pending-aware balance are unchanged', async () => {
+    await setAttendancePolicy(adminCtx(base), { companyId: base.companyId,
+      workStart: '09:00', workEnd: '18:00', breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00',
+      workingDays: [1, 2, 3, 4, 5, 6, 7] });
+    await owner.db.update(leaveType).set({ counting: 'working_days' }).where(eq(leaveType.id, base.annualLeaveTypeId));
+    const beforeReview = await previewLeaveDeduction(ctx,
+      { ...args, includeAvailableBalance: true, includeHolidayWarnings: true });
+    expect(beforeReview.holidayWarnings).toHaveLength(1);
+    // Add a gazette entry on another date: completeness changes without changing this day's weight.
+    const year = reviewed.date.slice(0, 4);
+    const holidayDate = `${year}-${reviewed.date.slice(5, 7) === '01' ? '07' : '01'}-01`;
+    await owner.db.insert(holiday).values({ tenantId: base.tenantId, country: 'MY', state: null,
+      holidayDate, name: 'Fictional reviewed-warning fixture' });
+    await withTenant(ctx, async tx => {
+      const fresh = await previewLeaveDeduction(ctx,
+        { ...args, includeAvailableBalance: true, includeHolidayWarnings: true }, tx);
+      expect(fresh.days).toBe(beforeReview.days);
+      expect(fresh.availableBalance).toBe(beforeReview.availableBalance);
+      expect(fresh.holidayWarnings).not.toEqual(beforeReview.holidayWarnings);
+      const before = await counts(tx);
+      await expect(requestLeave(ctx, args, tx, { ...reviewed,
+        holidayWarnings: beforeReview.holidayWarnings! }))
+        .rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'changed' });
+      expect(await counts(tx)).toEqual(before);
+    });
   });
 
   it('refuses an HR own-request that would require an advance-notice bypass', async () => {

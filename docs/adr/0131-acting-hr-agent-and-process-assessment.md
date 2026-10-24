@@ -285,9 +285,11 @@ Source-only preview work also adds opt-in `includeHolidayWarnings` to `previewLe
 Read-only projection and submission events share the leave owner's dated company/calendar traversal
 and the holidays owner's completeness calculation; the default preview output stays unchanged.
 The projection creates no request or warning event. Its new tests inspect the still-open transaction
-and compare preview/submission warnings, but remain unrun. The Assistant candidate and review digest
-do not yet consume these warnings: render and bind them, or hand unsupported cases to the Leave form,
-before wiring confirmation. Equal deduction and balance alone do not freeze calendar warnings.
+and compare preview/submission warnings, but remain unrun. The Assistant candidate now carries the
+exact canonical warning list, and the review digest binds each country/state/year/loaded/required
+field, including absence. The bounded one-date candidate accepts at most one warning; unexpected
+fan-out hands off to the Leave form. The schema describes evidence, not a second completeness rule.
+The future UI must actually render these fields before its confirmation is usable.
 
 One strict candidate schema is shared by the source reader and human-review digest. The review digest
 uses a separate domain from the immutable input digest and binds the exact labels, deduction and
@@ -335,6 +337,11 @@ canonical availability immediately before insertion. Existing HR bypass flags (i
 notice) are refused without fabricating another role context. Tests catch the typed refusal inside
 the still-open transaction and then check for unchanged requests/events, so rollback cannot conceal
 a guard placed after a write. These tests remain unrun.
+The expected effect now also requires an explicit canonical warning list, copied before awaits and
+compared field-for-field with a read-only recheck before insertion. An unrun regression changes the
+loaded gazette count on another date while preserving deduction/balance, then requires refusal in
+the still-open transaction. This is a sequential recheck; calendar writers still need the eventual
+dependency concurrency protection, including the post-insertion warning-event path.
 The guarded path also reuses `isEmploymentEnded` for both the current day and requested date and
 requires the employment to have started. A last-day login retaining source visibility does not make
 a later absence an active-employment request. The unrun test asserts visibility before refusal.

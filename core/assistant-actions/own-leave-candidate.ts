@@ -74,12 +74,13 @@ export async function readOwnLeaveCandidateTx(
 
   const preview = await previewLeaveDeduction(ctx, { employmentId: subject.employmentId,
     leaveTypeId: type.id, startDate: intent.date, endDate: intent.date, durationType: 'full_day',
-    includeAvailableBalance: true, today }, tx);
+    includeAvailableBalance: true, includeHolidayWarnings: true, today }, tx);
   if (!Number.isFinite(preview.days) || preview.days <= 0 || preview.isEmergencySplit
     || (preview.unpaidDays ?? 0) > 0 || (preview.overrides?.length ?? 0) > 0
     || !Number.isFinite(preview.availableBalance) || !Number.isFinite(preview.availableAfter)
     || preview.availableBalance === undefined || preview.availableAfter === undefined
-    || preview.availableBalance < preview.days) return { kind: 'use_leave_form' };
+    || preview.availableBalance < preview.days || !Array.isArray(preview.holidayWarnings)
+    || preview.holidayWarnings.length > 1) return { kind: 'use_leave_form' };
   const showAvailable = resolveEssView(identity.essViewConfig as Record<string, boolean> | null).available;
   const candidate = OwnLeaveReviewCandidate.safeParse({
     binding: binding.data, nomination: intent, humanText: text.data,
@@ -88,6 +89,7 @@ export async function readOwnLeaveCandidateTx(
     deductionDays: preview.days,
     availableBalance: showAvailable ? preview.availableBalance : null,
     estimatedAvailableAfter: showAvailable ? preview.availableAfter : null,
+    holidayWarnings: preview.holidayWarnings,
     approvalRouting: 'unknown',
   });
   return candidate.success ? { kind: 'candidate', candidate: candidate.data } : { kind: 'unavailable' };

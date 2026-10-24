@@ -10,7 +10,7 @@ const nomination = { action: 'leave.apply', contractVersion: 1, employmentId: id
 const humanText = { reason: 'Fictional private reason', employeeRemark: 'Fictional own remark' };
 const review = { binding, nomination, humanText, intentDigest: ownLeaveIntentDigest(binding, nomination, humanText),
   companyName: 'Fictional Company A', employeeCode: 'FIC-001', leaveTypeName: 'Annual Leave',
-  deductionDays: 0.5, availableBalance: 8, estimatedAvailableAfter: 7.5, approvalRouting: 'unknown' };
+  deductionDays: 0.5, availableBalance: 8, estimatedAvailableAfter: 7.5, approvalRouting: 'unknown', holidayWarnings: [] };
 
 describe('exact own-leave human review digest', () => {
   it('keeps a distinct domain from immutable input and copies no private content', () => {
@@ -33,7 +33,7 @@ describe('exact own-leave human review digest', () => {
     const reordered = { approvalRouting: review.approvalRouting, estimatedAvailableAfter: review.estimatedAvailableAfter,
       availableBalance: review.availableBalance, deductionDays: review.deductionDays, leaveTypeName: review.leaveTypeName,
       employeeCode: review.employeeCode, companyName: review.companyName, intentDigest: review.intentDigest,
-      humanText, nomination, binding };
+      humanText, nomination, binding, holidayWarnings: review.holidayWarnings };
     expect(ownLeaveReviewedDigest(reordered)).toBe(ownLeaveReviewedDigest(review));
   });
 
@@ -44,6 +44,19 @@ describe('exact own-leave human review digest', () => {
       intentDigest: ownLeaveIntentDigest(binding, nomination, changedText) })).not.toBe(ownLeaveReviewedDigest(review));
   });
 
+  it('binds every shown canonical warning field, including its presence, without depending on key order', () => {
+    const warning = { country: 'MY', state: null, year: Number(nomination.date.slice(0, 4)), loaded: 4, required: 11 };
+    const warned = { ...review, holidayWarnings: [warning] };
+    expect(ownLeaveReviewedDigest(warned)).not.toBe(ownLeaveReviewedDigest(review));
+    for (const change of [{ country: 'SG' }, { state: 'Selangor' }, { year: warning.year + 1 },
+      { loaded: 5 }, { required: 12 }]) {
+      expect(ownLeaveReviewedDigest({ ...review, holidayWarnings: [{ ...warning, ...change }] }))
+        .not.toBe(ownLeaveReviewedDigest(warned));
+    }
+    expect(ownLeaveReviewedDigest({ ...review, holidayWarnings: [{ required: 11, loaded: 4,
+      year: warning.year, state: null, country: 'MY' }] })).toBe(ownLeaveReviewedDigest(warned));
+  });
+
   it.each([
     { binding: { ...binding, userId: id(9) } }, { nomination: { ...nomination, employmentId: id(9) } },
     { binding: { ...binding, userId: 'private invalid identity' } },
@@ -52,6 +65,10 @@ describe('exact own-leave human review digest', () => {
     { availableBalance: null }, { estimatedAvailableAfter: null }, { deductionDays: 0 },
     { deductionDays: Number.NaN }, { availableBalance: Number.POSITIVE_INFINITY },
     { approvalRouting: 'approved' }, { requestApproved: true }, { receipt: 'private sentinel' },
+    { holidayWarnings: undefined },
+    { holidayWarnings: [{ country: 'MY', state: null, year: 2026, loaded: 11, required: 11 }] },
+    { holidayWarnings: [{ country: 'MY', state: null, year: 2026, loaded: -1, required: 11 }] },
+    { holidayWarnings: [{ country: 'MY', state: null, year: 2026, loaded: 1, required: 11, approval: true }] },
   ])('refuses inconsistent, malformed or overstated review content: %j', change => {
     expect(OwnLeaveReviewCandidate.safeParse({ ...review, ...change }).success).toBe(false);
     expect(() => ownLeaveReviewedDigest({ ...review, ...change })).toThrow('Own-leave review unavailable');

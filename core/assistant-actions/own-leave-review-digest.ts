@@ -5,6 +5,13 @@ import { z } from 'zod';
 import { OwnLeaveDigest, OwnLeaveHumanText, OwnLeaveNomination } from '../../lib/assistant-actions/own-leave-contract';
 import { OwnLeaveBinding, ownLeaveIntentDigest } from './own-leave-review';
 
+/** Evidence shape, not the gazette threshold rule (which remains owned by core/holidays). */
+const ReviewHolidayWarning = z.object({
+  country: z.string().min(1), state: z.string().min(1).nullable(),
+  year: z.number().int().min(0).max(9999), loaded: z.number().int().nonnegative(),
+  required: z.number().int().positive(),
+}).strict().refine(value => value.loaded < value.required);
+
 /** Server-only candidate content, not lifecycle metadata, model context or a client-posted command.
  * Hidden estimates stay null together. Labels and human text remain exact, without normalization. */
 export const OwnLeaveReviewCandidate = z.object({
@@ -18,6 +25,8 @@ export const OwnLeaveReviewCandidate = z.object({
   deductionDays: z.number().finite().positive(),
   availableBalance: z.number().finite().nullable(),
   estimatedAvailableAfter: z.number().finite().nullable(),
+  // One full-day date in one proven company/calendar. Unexpected fan-out uses the full form.
+  holidayWarnings: z.array(ReviewHolidayWarning).max(1),
   approvalRouting: z.literal('unknown'),
 }).strict()
   .refine(value => (value.availableBalance === null) === (value.estimatedAvailableAfter === null))
@@ -45,5 +54,7 @@ export function ownLeaveReviewedDigest(value: unknown): string {
     'assistant:leave.apply:review:1', review.intentDigest,
     review.companyName, review.employeeCode, review.leaveTypeName, review.deductionDays,
     review.availableBalance, review.estimatedAvailableAfter, review.approvalRouting,
+    review.holidayWarnings.map(warning =>
+      [warning.country, warning.state, warning.year, warning.loaded, warning.required]),
   ])).digest('hex');
 }

@@ -58,7 +58,7 @@ describe('own-leave read-only candidate', () => {
     if (outcome.kind !== 'candidate') throw new Error('Expected candidate');
     expect(outcome.candidate).toMatchObject({ binding: { userId: ctx.userId, personId: ctx.personId,
       employmentId, companyId: base.companyId }, humanText: text, deductionDays: 1,
-      availableBalance: 10, estimatedAvailableAfter: 9, approvalRouting: 'unknown' });
+      availableBalance: 10, estimatedAvailableAfter: 9, approvalRouting: 'unknown', holidayWarnings: [] });
     expect(outcome.candidate.intentDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(outcome.candidate).not.toHaveProperty('actionId');
     expect(outcome.candidate).not.toHaveProperty('leaveRequestId');
@@ -191,6 +191,21 @@ describe('own-leave read-only candidate', () => {
     expect(outcome.kind).toBe('candidate');
     if (outcome.kind === 'candidate') expect(outcome.candidate)
       .toMatchObject({ deductionDays: 0.5, availableBalance: 10, estimatedAvailableAfter: 9.5 });
+  });
+
+  it('carries the canonical warning into review without appending the submission warning event', async () => {
+    await setAttendancePolicy(adminCtx(base), { companyId: base.companyId,
+      workStart: '09:00', workEnd: '18:00', breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00',
+      workingDays: [1, 2, 3, 4, 5, 6, 7] });
+    await owner.db.update(leaveType).set({ counting: 'working_days' }).where(eq(leaveType.id, base.annualLeaveTypeId));
+    const before = await sourceCounts();
+    const preview = await previewLeaveDeduction(ctx, { employmentId, leaveTypeId: base.annualLeaveTypeId,
+      startDate: date, endDate: date, includeHolidayWarnings: true });
+    expect(preview.holidayWarnings).toHaveLength(1);
+    const outcome = await read();
+    expect(outcome.kind).toBe('candidate');
+    if (outcome.kind === 'candidate') expect(outcome.candidate.holidayWarnings).toEqual(preview.holidayWarnings);
+    expect(await sourceCounts()).toEqual(before);
   });
 
   it('omits both availability estimates when the ESS owner hides them', async () => {
