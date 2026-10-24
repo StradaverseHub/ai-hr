@@ -15,21 +15,9 @@ import { isEmploymentEnded } from '../employment-status';
 import { resolveEssView } from '../ess-view';
 import { listEligibleLeaveTypesFor, myOwnEmploymentSubjectsTx } from '../read';
 import { OwnLeaveBinding, ownLeaveIntentDigest } from './own-leave-review';
+import { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 
-export type OwnLeaveReviewCandidate = {
-  binding: OwnLeaveBinding;
-  nomination: OwnLeaveNomination;
-  humanText: OwnLeaveHumanText;
-  intentDigest: string;
-  companyName: string;
-  employeeCode: string | null;
-  leaveTypeName: string;
-  deductionDays: number;
-  /** Null means hidden by the canonical ESS setting, never zero or permission to infer it. */
-  availableBalance: number | null;
-  estimatedAvailableAfter: number | null;
-  approvalRouting: 'unknown';
-};
+export type { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 export type OwnLeaveCandidateResult =
   | { kind: 'candidate'; candidate: OwnLeaveReviewCandidate }
   | { kind: 'unavailable' }
@@ -92,7 +80,7 @@ export async function readOwnLeaveCandidateTx(
     || preview.availableBalance === undefined || preview.availableAfter === undefined
     || preview.availableBalance < preview.days) return { kind: 'use_leave_form' };
   const showAvailable = resolveEssView(identity.essViewConfig as Record<string, boolean> | null).available;
-  return { kind: 'candidate', candidate: {
+  const candidate = OwnLeaveReviewCandidate.safeParse({
     binding: binding.data, nomination: intent, humanText: text.data,
     intentDigest: ownLeaveIntentDigest(binding.data, intent, text.data),
     companyName: subject.company, employeeCode: subject.employeeCode, leaveTypeName: type.name,
@@ -100,5 +88,6 @@ export async function readOwnLeaveCandidateTx(
     availableBalance: showAvailable ? preview.availableBalance : null,
     estimatedAvailableAfter: showAvailable ? preview.availableAfter : null,
     approvalRouting: 'unknown',
-  } };
+  });
+  return candidate.success ? { kind: 'candidate', candidate: candidate.data } : { kind: 'unavailable' };
 }

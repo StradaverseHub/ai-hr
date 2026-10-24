@@ -281,6 +281,12 @@ and omits both estimates when hidden. Full-day duration retains the engine's wei
 These source paths remain unvalidated and internal. They do not check every submission gate or AI
 control and cannot be wired as a prepared/confirmable action until those owners are complete.
 
+One strict candidate schema is shared by the source reader and human-review digest. The review digest
+uses a separate domain from the immutable input digest and binds the exact labels, deduction and
+visible estimates to that input. Hidden estimates remain null together. This does not freeze or
+validate hidden source dependencies; the command still needs the authoritative effect check before
+writing. Neither hash encrypts protected content or proves consent.
+
 ### Atomic execution and uncertain outcomes
 
 The intended confirm transaction locks the prepared action, checks its identity/final state/expiry,
