@@ -517,3 +517,68 @@ A future document import agent can extract and propose mappings from explicitly 
 retain page/cell evidence, flag ambiguity and duplicates, then submit a reviewed batch through each
 module's existing import owner. Broad-format extraction does not grant write access or justify guessed
 identity, bank, salary or policy values. This is a candidate scenario, not authorization to build it.
+
+## Amendment, 2026-10-25: remaining AI delivery and non-admitting controls
+
+The owner instructed AI dev 2 to work on all remaining AI parts and explicitly selected **Take over
+and coordinate directly** for AI dev, Board 3 and Mobile. This authorizes continuing the remaining
+design and implementation. It does not establish that any future phase is implemented, remove the
+existing human decision boundaries, or permit concurrent use of another chat's runtime window.
+
+Delivery order follows the dependencies: finish the existing harness and its production-mode outcome
+walkthrough first; complete the confirmed own-leave action with protected intent, fresh authority,
+source dependency protection and atomic receipt next; then expand the closed action registry and
+named non-login principal, durable orchestration/recovery, controlled bundle evaluation/rollout and
+before/after measurement. Each action must demonstrate its own canonical outcome and boundaries.
+Completing a shared runtime does not establish that every HR adapter is ready. Existing user/company
+daily request and monthly token controls remain authoritative. No invented savings or unattended
+consequential HR decisions are authorized.
+
+### A pause check is not a model admission
+
+FACT (source): `app.ai_admit` always inserts a model-run row. An allowed zero-token reservation still
+counts as a daily request, while an employee's ordinary policy query cannot see every applicable
+company policy. Neither operation is a suitable pause check for deterministic confirmation.
+
+DECISION: use a non-admitting boolean from the canonical governance owner within the command's
+caller-scoped transaction. It checks the same feature switches, applicable company scope and effective
+user policy as admission, including individual-user replacement of the tenant default. It reveals no
+policy rows or hidden company identity. New model admissions still enforce quotas; deterministic
+confirmation consumes no additional model request/tokens and does not refund prior usage. An explicit
+pause refuses a new effect even if the earlier proposal was admitted.
+
+The source draft extracts two **private** SQL helpers shared by model admission and this boolean:
+
+- Context validation, the existing tenant `ai-control` lock, authorized company attribution and canonical
+  feature setting resolution.
+- Applicable feature/company/user/default policy selection, in the existing `scope_key` order.
+
+Admission keeps its quota loop, attribution, reservation, run insertion and settlement contract. A
+feature pause retains its precedence over quota refusals. The action check considers enabled/paused
+state only; zero/exhausted quotas do not become pauses. The internal policy selectors are revoked from
+PUBLIC and the application role; only the boolean is exposed. The TypeScript wrapper shares the
+gateway's existing fresh entitlement/platform-kill calculation and treats absent/malformed answers
+as unavailable.
+
+This boolean is only a prerequisite. It does not grant Assistant, module, employment, action or
+approval authority; verify those through their canonical owners. The action owner must keep the same
+transaction open through the effect. The `ai-control` lock fences `ai_control_policy` writes, including
+removal of a user override. It does not by itself fence settings, membership, company transfers or
+other source changes. Those still require the action's existing access barrier and complete dependency
+strategy. A stale repeatable-read snapshot must not be presented as a fresh control read.
+
+### Draft integration and required acceptance
+
+`db/migration-drafts/ai-action-controls.sql` is deliberately outside the migration journal and must
+never be applied manually. Allocate a migration only after coordinating the current unpublished
+Board 3 reservations and their ascending release order. No existing applied migration is edited.
+No route, model tool, UI, principal or action executor calls this source-only check.
+
+The authored integration cases require an actually migrated, isolated database and app-role execution:
+hidden applicable company pause; full company scope; effective default/override replacement; feature,
+setting and platform pauses; no-login/default behavior and tenant isolation; inaccessible private
+helpers; invalid capability refusal; and byte-equivalent model-run rows before/after repeated checks.
+Admission must still enforce zero quotas and retain pending reservations. Also required before wiring:
+concurrent pause/confirmation ordering, source actor freshness, valid and invalid tenant contexts,
+unchanged allowance/accounting consumers, restricted-owner upgrade rehearsal and the final release
+gate. These cases are authored or specified, **not runtime-verified** by this source checkpoint.

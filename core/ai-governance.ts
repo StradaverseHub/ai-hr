@@ -1,18 +1,39 @@
 import { sql } from 'drizzle-orm';
-import { withTenant,type SessionContext } from '../db/client';
+import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } from '../lib/ai/types';
 import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
+
+/** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
+async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
+ const definition=AI_FEATURES.find(f=>f.id===feature)!;
+ if(!definition.setting)return false;
+ const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};
+ return getSetting(fresh,definition.setting)!==true;
+}
+
+/**
+ * SOURCE-ONLY until ai-action-controls.sql has a coordinated, journalled migration and passes its
+ * app-role acceptance. Not wired to an endpoint. This is a pause prerequisite, NEVER action authority.
+ * The caller owns fresh authentication/module/subject/consent checks and the exact transaction.
+ * Keep that transaction open through the effect so policy writers cannot race its ai-control lock.
+ * No model admission, reservation, quota reset, usage settlement or provider call occurs here.
+ */
+export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
+ if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ const forcedPause=await forcedPauseTx(tx,ctx,feature);
+ const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
+ if(control?.unpaused===false)throw new AiAllowanceError('paused');
+ if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
+}
 
 /** The resolved configuration carries the calling authorization as an opaque, server-only capability. */
 export function governedAiConfig(ctx:SessionContext,cfg:ResolvedAiConfig,feature:AiFeatureId):ResolvedAiConfig{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
  return {...cfg,governance:{async run(request,call){
   const [admission]=await withTenant(ctx,async tx=>{
-   const definition=AI_FEATURES.find(f=>f.id===feature)!;
-   const fresh=definition.setting?{...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined}:ctx;
-   const forcedPause=definition.setting?getSetting(fresh,definition.setting)!==true:false;
+   const forcedPause=await forcedPauseTx(tx,ctx,feature);
    return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint,${forcedPause})`);
   });
   if(!admission?.allowed){
