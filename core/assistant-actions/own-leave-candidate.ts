@@ -9,13 +9,13 @@ import {
   OwnLeaveHumanSelection, OwnLeaveHumanText, OwnLeaveNomination,
 } from '../../lib/assistant-actions/own-leave-contract';
 import { leaveTypeIs, previewLeaveDeduction } from '../../packs/leave/service';
-import { mayUseAssistant } from '../assistant-grant';
 import { provenCompanyDatesTx } from '../employment-company';
 import { isEmploymentEnded } from '../employment-status';
 import { resolveEssView } from '../ess-view';
 import { listEligibleLeaveTypesFor, myOwnEmploymentSubjectsTx } from '../read';
 import { OwnLeaveBinding, ownLeaveIntentDigest } from './own-leave-review';
 import { OwnLeaveReviewCandidate } from './own-leave-review-digest';
+import { readOwnLeaveActorTx } from './own-leave-actor';
 
 export type { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 export type OwnLeaveCandidateResult =
@@ -25,7 +25,7 @@ export type OwnLeaveCandidateResult =
   | { kind: 'needs_employee_remark' }
   | { kind: 'use_leave_form' };
 
-/** The transaction must have THIS caller's context. Its entitlement snapshot must be freshly resolved.
+/** The transaction must have THIS caller's context. Actor/module reads refresh through their owners.
  * A candidate is advisory even in one transaction: the menu answers as of today, policy may change,
  * and requestLeave remains the authority at submission. Never log/persist the returned private content
  * as lifecycle metadata or tool traces. Selection and text must come from the human input owner. */
@@ -33,8 +33,9 @@ export async function readOwnLeaveCandidateTx(
   tx: Tx, ctx: SessionContext, nominationValue: unknown, selectionValue: unknown,
   humanTextValue: unknown, locale?: string,
 ): Promise<OwnLeaveCandidateResult> {
-  if (!ctx.userId || !ctx.personId) return { kind: 'unavailable' };
-  if (!(await mayUseAssistant(ctx, tx)).allowed) return { kind: 'unavailable' };
+  const actor = await readOwnLeaveActorTx(tx, ctx);
+  if (!actor) return { kind: 'unavailable' };
+  ctx = actor;
   const nomination = OwnLeaveNomination.safeParse(nominationValue);
   const text = OwnLeaveHumanText.safeParse(humanTextValue);
   if (!nomination.success || !text.success) return { kind: 'use_leave_form' };

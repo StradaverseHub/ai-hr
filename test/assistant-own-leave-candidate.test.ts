@@ -1,7 +1,7 @@
 import { count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
-import { domainEvent, employment, leaveLedger, leaveRequest, leaveType } from '../db/schema';
+import { appUser, domainEvent, employment, leaveLedger, leaveRequest, leaveType, roleAssignment } from '../db/schema';
 import { readOwnLeaveCandidateTx } from '../core/assistant-actions/own-leave-candidate';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { hireEmployee } from '../core/org';
@@ -79,6 +79,52 @@ describe('own-leave read-only candidate', () => {
   it('refuses a revoked Assistant grant without returning source details', async () => {
     await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
     expect(await read()).toEqual({ kind: 'unavailable' });
+  });
+
+  it('refreshes Assistant module authority instead of accepting the old session snapshot', async () => {
+    expect((await read()).kind).toBe('candidate');
+    await setModule(base.tenantId, 'assistant', 'disabled');
+    const before = await sourceCounts();
+    expect(await read()).toEqual({ kind: 'unavailable' });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('refuses a relinked login while the supplied context still names the old person', async () => {
+    expect((await read()).kind).toBe('candidate');
+    await owner.db.update(appUser).set({ personId: null }).where(eq(appUser.id, ctx.userId!));
+    const before = await sourceCounts();
+    expect(await read()).toEqual({ kind: 'unavailable' });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('refuses stale claimed roles after the real role is removed', async () => {
+    expect((await read()).kind).toBe('candidate');
+    await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId, ctx.userId!));
+    const before = await sourceCounts();
+    expect(await read()).toEqual({ kind: 'unavailable' });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('refuses a transaction scoped to a different login, including an administrator', async () => {
+    const before = await sourceCounts();
+    expect(await withTenant(adminCtx(base), tx =>
+      readOwnLeaveCandidateTx(tx, ctx, nomination, selection, text))).toEqual({ kind: 'unavailable' });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('does not attach broader in-memory role claims to the same login transaction', async () => {
+    const forged: SessionContext = { ...ctx, roles: ['hr_admin'],
+      grants: [{ role: 'hr_admin', companyId: null }] };
+    const before = await sourceCounts();
+    expect(await withTenant(ctx, tx =>
+      readOwnLeaveCandidateTx(tx, forged, nomination, selection, text))).toEqual({ kind: 'unavailable' });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('does not label an older report snapshot as fresh confirmation authority', async () => {
+    expect(await withTenant(ctx, tx =>
+      readOwnLeaveCandidateTx(tx, ctx, nomination, selection, text), { readOnlySnapshot: true }))
+      .toEqual({ kind: 'unavailable' });
   });
 
   it('refuses another person even when the caller is an HR admin who can read that employment', async () => {

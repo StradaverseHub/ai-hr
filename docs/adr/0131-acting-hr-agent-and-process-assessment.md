@@ -305,6 +305,16 @@ confirmed effect at the authoritative calculation
 point, with the relevant existing locks or dependency checks, before its first write. A second preview
 on a different snapshot is insufficient. Do not implement a preview by calling the write service and
 rolling it back, or duplicate the leave engine's policy math in the action registry.
+The source candidate now composes an internal `readOwnLeaveActorTx`: it joins the existing access
+configuration lock, checks the transaction's login/tenant/role carriers against the supplied context,
+verifies the live login/person link and `app.principal_snapshot_current()`, then resolves fresh entitlements and
+uses the canonical Assistant-grant gate in that transaction. It never replaces claimed roles with
+broader current grants. It refuses a transaction isolation other than Read Committed rather than
+calling an older report snapshot fresh. The shared access migration already joins identity/role/lifecycle
+writers to that lock. This is a bounded authority prerequisite; it does not fence Assistant grants, modules,
+leave policies or balances, and does not supply the missing AI pause check. Its refusal tests for a
+disabled module, relinked person, removed role, older snapshot and mismatched transaction/role claims
+remain unrun. No confirmation command or authority capability is created by this refreshed context.
 Source-only work now adds an optional server-owned `ReviewedOwnLeaveEffect` precondition to
 `requestLeave`, requiring an enclosing transaction. It captures the expected subject/company/type,
 one date, deduction and private pending-aware balance; it can only add a refusal. The ordinary calling
