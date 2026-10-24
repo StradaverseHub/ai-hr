@@ -165,7 +165,9 @@ describe('non-admitting AI pause prerequisite', () => {
 
   it('refuses an older report snapshot instead of calling its controls fresh', async () => {
     await expect(withTenant(group, tx => assertAiActionUnpausedTx(tx, group, 'hr_assistant'),
-      { readOnlySnapshot: true })).rejects.toThrow();
+      { readOnlySnapshot: true })).rejects.toMatchObject({ cause: {
+        message: expect.stringContaining('Fresh AI action controls require Read Committed'),
+      } });
     expect(await runs()).toEqual([]);
   });
 
