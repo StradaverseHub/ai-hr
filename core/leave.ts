@@ -65,6 +65,7 @@ import {
 import {
   holidayDatesFor,
   effectiveHolidayState,
+  readHolidayCompletenessWarnings,
   warnIfHolidaysIncomplete,
   yearsSpanned,
   type HolidayCompletenessWarning,
@@ -4175,7 +4176,7 @@ export async function requestLeave(
     // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
     // the rest of the state gazette. Only meaningful for working_days types (calendar types ignore holidays).
     const holidayWarnings = lt?.counting === 'working_days'
-      ? await warnLeaveHolidayCompleteness(tx, ctx, p.employmentId, p.startDate, p.endDate, id)
+      ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate, { ctx, leaveRequestId: id })
       : [];
 
     return {
@@ -4216,6 +4217,8 @@ export async function previewLeaveDeduction(
     /** Opt-in available estimate after pending reservations, from availableLeaveBalance. The legacy
      * balanceAvailable/balanceAfter fields remain the raw-ledger preview for existing consumers. */
     includeAvailableBalance?: boolean;
+    /** Opt-in read-only warning projection through the same dated-calendar owner as submission. */
+    includeHolidayWarnings?: boolean;
     /** Override Leave Application (56910869): the tenant-local "today" the advance-notice trigger is judged
      *  against — the same value the action layer passes to requestLeave, so the pop-out the employee is
      *  shown and the rule the submission applies can never describe different days. Defaults as requestLeave
@@ -4233,6 +4236,7 @@ export async function previewLeaveDeduction(
   isEmergencySplit: boolean;
   availableBalance?: number;
   availableAfter?: number;
+  holidayWarnings?: HolidayCompletenessWarning[];
   dayRows?: LeaveApplyDayRow[];
   /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will NOT cover, so the employee is told
    *  BEFORE submitting rather than discovering it on a payslip. 0 (and absent on every type that has not
@@ -4406,6 +4410,11 @@ export async function previewLeaveDeduction(
     const availableBalance = p.includeAvailableBalance
       ? await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId)
       : undefined;
+    const holidayWarnings = p.includeHolidayWarnings
+      ? lt?.counting === 'working_days'
+        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate)
+        : []
+      : undefined;
     return {
       days,
       balanceAvailable,
@@ -4420,6 +4429,7 @@ export async function previewLeaveDeduction(
       ...(availableBalance !== undefined
         ? { availableBalance, availableAfter: round2(availableBalance - (days - unpaidDays)) }
         : {}),
+      ...(holidayWarnings !== undefined ? { holidayWarnings } : {}),
     };
   };
   return existingTx ? perform(existingTx) : withTenant(ctx, perform);
@@ -4502,16 +4512,14 @@ async function resolveApplyDayRows(
   });
 }
 
-/** Phase-B #15: resolve the request's effective (country, state) and span years, then emit a non-blocking
- *  holiday-completeness warning event for any (state, year) below the s.60D minimum. Returns the warnings so
- *  the leave screen can surface them. Threaded onto the leave-request aggregate for the audit trail. */
-async function warnLeaveHolidayCompleteness(
+/** One dated-calendar owner for read-only previews and post-submission warning events. Passing an
+ * event target preserves the existing warning audit; omitting it performs only source reads. */
+async function leaveHolidayCompletenessTx(
   tx: Tx,
-  ctx: SessionContext,
   employmentId: string,
   startDate: string,
   endDate: string,
-  leaveRequestId: string,
+  event?: { ctx: SessionContext; leaveRequestId: string },
 ): Promise<HolidayCompletenessWarning[]> {
   const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
   const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
@@ -4522,10 +4530,13 @@ async function warnLeaveHolidayCompleteness(
     const years=yearsSpanned(window.from,window.to).filter(year=>{
       const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
     });
-    warnings.push(...await warnIfHolidaysIncomplete(tx,ctx,{
-      country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:leaveRequestId,
-      subjectEmploymentId:employmentId,context:{leaveRequestId,startDate:window.from,endDate:window.to},
-    }));
+    const currentWarnings = event
+      ? await warnIfHolidaysIncomplete(tx,event.ctx,{
+        country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:event.leaveRequestId,
+        subjectEmploymentId:employmentId,context:{leaveRequestId:event.leaveRequestId,startDate:window.from,endDate:window.to},
+      })
+      : await readHolidayCompletenessWarnings(tx,eff.country,eff.state,years);
+    warnings.push(...currentWarnings);
   }
   return warnings;
 }

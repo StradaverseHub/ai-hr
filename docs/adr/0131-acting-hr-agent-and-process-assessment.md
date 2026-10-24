@@ -281,6 +281,14 @@ and omits both estimates when hidden. Full-day duration retains the engine's wei
 These source paths remain unvalidated and internal. They do not check every submission gate or AI
 control and cannot be wired as a prepared/confirmable action until those owners are complete.
 
+Source-only preview work also adds opt-in `includeHolidayWarnings` to `previewLeaveDeduction`.
+Read-only projection and submission events share the leave owner's dated company/calendar traversal
+and the holidays owner's completeness calculation; the default preview output stays unchanged.
+The projection creates no request or warning event. Its new tests inspect the still-open transaction
+and compare preview/submission warnings, but remain unrun. The Assistant candidate and review digest
+do not yet consume these warnings: render and bind them, or hand unsupported cases to the Leave form,
+before wiring confirmation. Equal deduction and balance alone do not freeze calendar warnings.
+
 One strict candidate schema is shared by the source reader and human-review digest. The review digest
 uses a separate domain from the immutable input digest and binds the exact labels, deduction and
 visible estimates to that input. Hidden estimates remain null together. This does not freeze or
