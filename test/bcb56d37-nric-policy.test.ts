@@ -182,7 +182,8 @@ describe('bcb56d37 all employee entry paths use the current policy',()=>{
     await policy(true);const allowed=await validateEmployeeImport(ctx,{companyId:b.companyId,records});expect(allowed.validCount).toBe(2);
     const result=await commitEmployeeImport(ctx,{companyId:b.companyId,records});expect(result.imported).toBe(2);expect(result.failed).toEqual([]);
     const colliding=[fullRow('IMPORT1',changedIdentity),{...fullRow('IMPORT3',changedIdentity),email:records[0].email}];
-    const unrelated=await validateEmployeeImport(ctx,{companyId:b.companyId,records:colliding});expect(unrelated.validCount).toBe(0);
+    const unrelated=await validateEmployeeImport(ctx,{companyId:b.companyId,records:colliding});expect(unrelated.validCount).toBe(1);expect(unrelated.rows[0].ok).toBe(false);expect(unrelated.rows[1].warnings).toContain('A person with this email already exists');
+    const duplicateEmail=await validateEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('EMAIL1',changedIdentity),{...fullRow('EMAIL2',changedIdentity),email:fullRow('EMAIL1',changedIdentity).email}]});expect(duplicateEmail.rows[1].errors).toContain('Duplicate email in this file');
     const sameCode=await validateEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('SAMECODE',changedIdentity),{...fullRow('SAMECODE',changedIdentity),email:'distinct@nric-policy.test'}]});expect(sameCode.rows[1].ok).toBe(false);
     await saveEmployeeDraft(ctx,{data:{profile:{fullName:'Reserved fixture',primaryEmail:'reserved@nric-policy.test',employeeCode:'RESERVED'},employment:{companyId:b.companyId,departmentId:b.deptA}},currentStep:0});
     expect((await validateEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('RESERVED',changedIdentity)]})).validCount).toBe(0);

@@ -54,7 +54,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
  });
  it('chooses only proven company-history dates for omitted future/ended views and refuses explicit invalid dates',async()=>{
   const futureDate=`${year+1}-06-01`;
-  const futureHire=await hireEmployee(a,{person:{fullName:'Future allocation subject'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:futureDate,employeeCode:'FUTALLOC'});
+  const futureHire=await hireEmployee(a,{person:{fullName:'Future allocation subject',primaryEmail:'future-allocation@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:futureDate,employeeCode:'FUTALLOC'});
   const futureView=await getEmploymentCostAllocations(a,futureHire.employmentId);expect(futureView.effectiveDate).toBe(futureDate);expect(futureView.canEdit).toBe(true);
   await expect(getEmploymentCostAllocations(a,futureHire.employmentId,today)).rejects.toThrow(/history/);
   const endDate=dayBefore(today);await owner.db.update(s.employment).set({terminatedOn:endDate}).where(eq(s.employment.id,employmentId));

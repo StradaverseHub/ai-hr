@@ -127,7 +127,7 @@ describe('setEmploymentInfo', () => {
 
   it('ignores a resignation date posted through the retired general writer', async () => {
     const e = await hire('Resign', '2026-06-01');
-    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, resignationDate: '2026-05-01' });
+    await expect(setEmploymentInfo(adminCtx(b), { employmentId: e.id, resignationDate: '2026-05-01' })).rejects.toThrow('Nothing to change.');
     expect((await employeeDetail(adminCtx(b),e.id))!.resignationDate).toBeNull();
   });
 

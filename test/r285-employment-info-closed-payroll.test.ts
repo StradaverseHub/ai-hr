@@ -184,7 +184,7 @@ describe('setEmploymentInfo — the gate is scoped by FIELD, so legitimate edits
     const id = await hire('2026-01-01');
     await closedPayrollFor(id, '2026-01');
 
-    await setEmploymentInfo(adminCtx(b), { employmentId: id, tenderResignationDate: '2026-01-05' });
+    await expect(setEmploymentInfo(adminCtx(b), { employmentId: id, tenderResignationDate: '2026-01-05' })).rejects.toThrow('Nothing to change.');
 
     expect((await employmentRow(id)).tenderResignationDate).toBeNull();
   });

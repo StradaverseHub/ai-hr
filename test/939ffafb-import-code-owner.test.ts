@@ -36,7 +36,7 @@ describe('939ffafb canonical code admission through existing owners',()=>{
   expect(ambiguous.validCount).toBe(0);expect(ambiguous.rows[0].errors.some(error=>/ambiguous/i.test(error))).toBe(true);
  });
  it('section qualification updates use canonical codes and keep unambiguous older label input',async()=>{
-  const ctx=adminCtx(b),employee=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-100),employeeCode:'000UPDATE',person:{fullName:'Fictional section update'}});
+  const ctx=adminCtx(b),employee=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-100),employeeCode:'000UPDATE',person:{fullName:'Fictional section update',primaryEmail:'section-update@codes.test'}});
   await createProfileOption(ctx,{category:'qualificationLevel',value:'Q001',label:'Academic qualification'});
   await createProfileOption(ctx,{category:'qualificationLevel',value:'Q002',label:'Q001'});
   const result=await commitSectionImport(ctx,{section:'qualification',records:[{employee_code:'000UPDATE',qualification:'Q001',institute:'First institute'},{employee_code:'000UPDATE',qualification:'Academic qualification',institute:'Second institute'}]});
@@ -45,7 +45,7 @@ describe('939ffafb canonical code admission through existing owners',()=>{
   expect(rows).toHaveLength(2);expect(rows.every(row=>row.qualification==='Q001')).toBe(true);
  });
  it('Movement preview and commit resolve grade codes before another grade label without bypassing its canonical owner',async()=>{
-  const ctx=adminCtx(b),employee=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-100),employeeCode:'000MOVEMENT',person:{fullName:'Fictional Movement code'}});
+  const ctx=adminCtx(b),employee=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-100),employeeCode:'000MOVEMENT',person:{fullName:'Fictional Movement code',primaryEmail:'movement@codes.test'}});
   await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:3500,effectiveFrom:day(-100)});
   const grade=await createJobGrade(ctx,{code:'G01',name:'Specialist',rank:1});
   await createJobGrade(ctx,{code:'G02',name:'G01',rank:2});

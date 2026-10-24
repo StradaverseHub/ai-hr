@@ -73,7 +73,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(await revision()).toBe(p.revision + 1);
     });
     it.each(['previewed', 'legacy'] as const)('serializes the %s membership writer behind a real employment suspension before checking replacement eligibility', async (writer) => {
-        const hire = await hireEmployee(admin, { person: { fullName: 'Concurrent suspended reviewer' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
+        const hire = await hireEmployee(admin, { person: { fullName: 'Concurrent suspended reviewer', primaryEmail: 'suspended@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
         const [employee] = await owner.db.select().from(s.employment).where(eq(s.employment.id, hire.employmentId));
         const target = await createAppUser(b.tenantId, employee.personId, 'employee');
         const p = await preview({ userId: target, role: 'gr' }, { userId: admin.userId!, role: 'gr' });
@@ -154,7 +154,8 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'pbp');
         const v = await getRewardUnit(reviewer, id);
         expect(v.canEdit).toBe(false);
-        await expect(saveRewardPolicy(reviewer, id, v.unit.revision, v.unit.policy)).rejects.toThrow(/Group Rewards/);
+        await expect(saveRewardPolicy(reviewer, id, v.unit.revision, v.unit.policy)).rejects.toThrow('Reward unit not found or access has been removed.');
+        expect(await revision()).toBe(v.unit.revision);
     });
     it('refuses unknown and cross-tenant login accounts without altering the review', async () => {
         const v = await revision();
@@ -229,12 +230,12 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(retainedMember.role).toBe('pbp');
         await deleteRewardReview(admin,id,await revision(),id);
         const replacement=await createRewardUnit(admin,{name:'Replacement review',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
-        await expect(withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)))).rejects.toThrow(/cannot move/);
+        await expect(withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:'Reward evidence cannot move between reviews',code:'23514'})});
         const retained=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
         expect(retained).toEqual(before);
     });
     it('retains owned source snapshots on removal but refuses changed facts and recommendations', async () => {
-        const hire = await hireEmployee(admin, { person: { fullName: 'Snapshot employee' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
+        const hire = await hireEmployee(admin, { person: { fullName: 'Snapshot employee', primaryEmail: 'snapshot@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
         await owner.db.update(s.assignment).set({ businessUnitId: bu }).where(eq(s.assignment.employmentId, hire.employmentId));
         // A second review sees the real immutable source snapshot; no employee award has been entered.
         const create = async (name: string) => createRewardUnit(admin, { name, year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today });
