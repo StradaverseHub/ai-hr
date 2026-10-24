@@ -146,6 +146,58 @@ describe('reviewed own-leave precondition at the canonical write', () => {
     await expect(requestLeave(ctx, args, undefined, reviewed)).rejects.toThrow(LeaveReviewedEffectError);
   });
 
+  it('refuses a stale review after an ordinary borrower request reserves the Annual source balance', async () => {
+    const [borrower] = await owner.db.insert(leaveType).values({ tenantId: base.tenantId,
+      code: 'REVIEW_BORROW', name: 'Fictional Borrowed Leave', paid: true, counting: 'calendar_days',
+      balanceSourceTypeId: base.annualLeaveTypeId }).returning({ id: leaveType.id });
+    const atReview = await previewLeaveDeduction(ctx, { ...args, includeAvailableBalance: true });
+    expect(atReview.days).toBe(1); expect(atReview.availableBalance).toBe(10);
+    // The full form's canonical path writes a pending borrower, not a fake ledger adjustment.
+    const reservation = await requestLeave(ctx, { ...args, leaveTypeId: borrower.id });
+    expect(await owner.db.select({ status: leaveRequest.status }).from(leaveRequest)
+      .where(eq(leaveRequest.id, reservation.leaveRequestId)).orderBy(leaveRequest.id))
+      .toEqual([{ status: 'pending' }]);
+    await withTenant(ctx, async tx => {
+      const fresh = await previewLeaveDeduction(ctx, { ...args, includeAvailableBalance: true }, tx);
+      expect(fresh.days).toBe(atReview.days);
+      expect(fresh.balanceAvailable).toBe(atReview.balanceAvailable);
+      expect(fresh.balanceAvailable).toBe(10);
+      expect(fresh.availableBalance).toBe(9);
+      const before = await counts(tx);
+      await expect(requestLeave(ctx, args, tx, { ...reviewed,
+        days: atReview.days, availableBalance: atReview.availableBalance! }))
+        .rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'changed' });
+      expect(await counts(tx)).toEqual(before);
+    });
+  });
+
+  it('refuses a stale deduction after the attendance owner changes Full working dates to Half', async () => {
+    const policy = { companyId: base.companyId, workStart: '09:00', workEnd: '18:00',
+      breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00' };
+    const weekdays = [1, 2, 3, 4, 5, 6, 7];
+    await setAttendancePolicy(adminCtx(base), { ...policy, workingDays: weekdays });
+    await owner.db.update(leaveType).set({ counting: 'working_days' }).where(eq(leaveType.id, base.annualLeaveTypeId));
+    const atReview = await previewLeaveDeduction(ctx,
+      { ...args, includeAvailableBalance: true, includeHolidayWarnings: true });
+    expect(atReview.days).toBe(1);
+    expect(atReview.holidayWarnings).toHaveLength(1);
+    // Both policy writes use the public Attendance owner. This is a sequential source change,
+    // not proof that concurrent policy writers are fenced by the future confirm command.
+    await setAttendancePolicy(adminCtx(base), { ...policy, workingDays: [], halfWorkingDays: weekdays });
+    await withTenant(ctx, async tx => {
+      const fresh = await previewLeaveDeduction(ctx,
+        { ...args, includeAvailableBalance: true, includeHolidayWarnings: true }, tx);
+      expect(fresh.days).toBe(0.5);
+      expect(fresh.availableBalance).toBe(atReview.availableBalance);
+      expect(fresh.holidayWarnings).toEqual(atReview.holidayWarnings);
+      const before = await counts(tx);
+      await expect(requestLeave(ctx, args, tx, { ...reviewed, days: atReview.days,
+        availableBalance: atReview.availableBalance!, holidayWarnings: atReview.holidayWarnings! }))
+        .rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'changed' });
+      expect(await counts(tx)).toEqual(before);
+    });
+  });
+
   it('binds guarded subject, tenant and event actor before the first database await', async () => {
     await withTenant(ctx, async tx => {
       const supplied: SessionContext = { ...ctx, roles: ctx.roles?.slice(),

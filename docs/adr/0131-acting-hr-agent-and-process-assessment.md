@@ -373,6 +373,12 @@ covering changes by existing form, approval, ledger and configuration writers; a
 does not coordinate those writers. Hidden balance expectations belong in protected server-owned
 content, not in a posted review or public lifecycle metadata. No confirmation endpoint may rely on this
 precondition as an authorization, freshness or receipt mechanism by itself.
+Two additional authored regressions change actual source data after review: an ordinary canonical
+borrower submission reserves Annual availability while its raw ledger stays unchanged, and the
+public Attendance policy owner changes Full dates to Half while availability and holiday warnings
+stay unchanged. Each requires the stale reviewed effect to refuse inside a still-open transaction
+without adding requests/events. Both remain unrun and cover sequential revalidation only, not
+concurrent writer fencing or a completed confirm command.
 Source review confirms that `withTenant` passes no explicit write-isolation option and does not call
 `lockAccessConfigurationTx`. Its optional read-only report snapshot cannot be treated as a write
 dependency lock. Joining an explicit transaction is therefore only one prerequisite of confirmation.
