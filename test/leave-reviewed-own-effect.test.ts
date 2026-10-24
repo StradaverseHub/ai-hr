@@ -85,4 +85,19 @@ describe('reviewed own-leave precondition at the canonical write', () => {
       expect(await counts(tx)).toEqual(before);
     });
   });
+
+  it('refuses a target date beyond tenure while the final-day login still sees its own employment', async () => {
+    await owner.db.update(employment).set({ terminatedOn: reviewed.date }).where(eq(employment.id, args.employmentId));
+    const nextDate = todayInKualaLumpur(new Date(Date.now() + 86_400_000));
+    await withTenant(ctx, async tx => {
+      // Current source remains readable on the last working day. The target-date lifecycle check,
+      // rather than an empty RLS read, must refuse the later absence.
+      expect(await tx.select({ id: employment.id }).from(employment).where(eq(employment.id, args.employmentId)))
+        .toHaveLength(1);
+      const before = await counts(tx);
+      await expect(requestLeave(ctx, { ...args, startDate: nextDate, endDate: nextDate }, tx,
+        { ...reviewed, date: nextDate })).rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'changed' });
+      expect(await counts(tx)).toEqual(before);
+    });
+  });
 });

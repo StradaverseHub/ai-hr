@@ -314,12 +314,18 @@ canonical availability immediately before insertion. Existing HR bypass flags (i
 notice) are refused without fabricating another role context. Tests catch the typed refusal inside
 the still-open transaction and then check for unchanged requests/events, so rollback cannot conceal
 a guard placed after a write. These tests remain unrun.
+The guarded path also reuses `isEmploymentEnded` for both the current day and requested date and
+requires the employment to have started. A last-day login retaining source visibility does not make
+a later absence an active-employment request. The unrun test asserts visibility before refusal.
 
 This precondition is not a concurrency solution. The command still needs a source/dependency strategy
 covering changes by existing form, approval, ledger and configuration writers; an action-ID mutex alone
 does not coordinate those writers. Hidden balance expectations belong in protected server-owned
 content, not in a posted review or public lifecycle metadata. No confirmation endpoint may rely on this
 precondition as an authorization, freshness or receipt mechanism by itself.
+Source review confirms that `withTenant` passes no explicit write-isolation option and does not call
+`lockAccessConfigurationTx`. Its optional read-only report snapshot cannot be treated as a write
+dependency lock. Joining an explicit transaction is therefore only one prerequisite of confirmation.
 Before implementing savepoint recovery, trace every command callee for effects outside the supplied
 transaction. A database rollback cannot undo a network delivery or a separately committed writer;
 such a path must be moved behind the existing transactional event owner or excluded from this action.

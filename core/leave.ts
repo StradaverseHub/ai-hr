@@ -3380,7 +3380,10 @@ export async function requestLeave(
     // ABOVE the Emergency-Leave short-circuit below, which returns into a whole separate submission path,
     // and above every other gate: nothing is read or written on behalf of someone the caller may not act for.
     const [subject] = await tx
-      .select({ personId: employment.personId, companyId: employment.companyId })
+      .select({ personId: employment.personId, companyId: employment.companyId,
+        hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn,
+        resignationDate: employment.resignationDate, lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
@@ -3389,8 +3392,11 @@ export async function requestLeave(
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
-    if (reviewedOwnLeave && (!isSelfSubject || subject?.companyId !== reviewedOwnLeave.companyId)) {
-      throw new LeaveReviewedEffectError('changed');
+    if (reviewedOwnLeave) {
+      const currentDate = todayInKualaLumpur();
+      if (!isSelfSubject || !subject || subject.companyId !== reviewedOwnLeave.companyId
+        || subject.hiredOn > currentDate || isEmploymentEnded(subject, currentDate)
+        || isEmploymentEnded(subject, p.startDate)) throw new LeaveReviewedEffectError('changed');
     }
     // AN EMPLOYMENT THE CALLER CANNOT SEE IS REFUSED HERE, not thirty gates later by a policy violation. The
     // select above runs under the caller's own RLS, so `subject` is undefined for an employment outside their
