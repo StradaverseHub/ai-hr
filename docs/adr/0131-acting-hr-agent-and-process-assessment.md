@@ -305,6 +305,21 @@ confirmed effect at the authoritative calculation
 point, with the relevant existing locks or dependency checks, before its first write. A second preview
 on a different snapshot is insufficient. Do not implement a preview by calling the write service and
 rolling it back, or duplicate the leave engine's policy math in the action registry.
+Source-only work now adds an optional server-owned `ReviewedOwnLeaveEffect` precondition to
+`requestLeave`, requiring an enclosing transaction. It captures the expected subject/company/type,
+one date, deduction and private pending-aware balance; it can only add a refusal. The ordinary calling
+path retains its existing policy. The guarded path excludes documents/consents/special facts and
+nonordinary types, checks own-subject/company binding, and compares this execution's deduction and
+canonical availability immediately before insertion. Existing HR bypass flags (including advance
+notice) are refused without fabricating another role context. Tests catch the typed refusal inside
+the still-open transaction and then check for unchanged requests/events, so rollback cannot conceal
+a guard placed after a write. These tests remain unrun.
+
+This precondition is not a concurrency solution. The command still needs a source/dependency strategy
+covering changes by existing form, approval, ledger and configuration writers; an action-ID mutex alone
+does not coordinate those writers. Hidden balance expectations belong in protected server-owned
+content, not in a posted review or public lifecycle metadata. No confirmation endpoint may rely on this
+precondition as an authorization, freshness or receipt mechanism by itself.
 Before implementing savepoint recovery, trace every command callee for effects outside the supplied
 transaction. A database rollback cannot undo a network delivery or a separately committed writer;
 such a path must be moved behind the existing transactional event owner or excluded from this action.

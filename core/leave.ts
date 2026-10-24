@@ -3159,6 +3159,8 @@ const leaveTypeRequestColumns = {
   // code comparison that was already dead on this tenant.
   role: leaveType.role,
   name: leaveType.name,
+  paid: leaveType.paid,
+  archivedAt: leaveType.archivedAt,
   counting: leaveType.counting,
   eligibility: leaveType.eligibility,
   // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
@@ -3287,6 +3289,24 @@ export function canApplyLeaveOnBehalf(ctx: SessionContext, companyId?: string | 
   return withTenant(ctx, (tx) => resolveApplyOnBehalfTx(tx, ctx, companyId ?? null));
 }
 
+/** Server-owned precondition for the bounded own-leave submission. Never take these values from a
+ * confirmation POST. This is not a lock, an authorization grant, or an action/consent receipt. */
+export type ReviewedOwnLeaveEffect = Readonly<{
+  employmentId: string;
+  companyId: string;
+  leaveTypeId: string;
+  date: string;
+  days: number;
+  /** Private source estimate, including pending reservations, even when hidden in ESS. */
+  availableBalance: number;
+}>;
+export class LeaveReviewedEffectError extends Error {
+  constructor(readonly reason: 'changed' | 'unsupported') {
+    super(`leave.reviewed_effect:${reason}`);
+    this.name = 'LeaveReviewedEffectError';
+  }
+}
+
 export async function requestLeave(
   ctx: SessionContext,
   p: {
@@ -3326,7 +3346,25 @@ export async function requestLeave(
     overrideConsent?: string | readonly string[];
   },
   existingTx?: Tx,
+  /** Additional refusal-only precondition. The enclosing command still owns concurrency control,
+   * live authority/dependency checks, consent and atomic lifecycle/receipt persistence. */
+  reviewedOwnLeave?: ReviewedOwnLeaveEffect,
 ): Promise<RequestLeaveResult> {
+  if (reviewedOwnLeave) {
+    // Capture the server-owned inputs before any await; a caller retaining its object cannot change
+    // the expectation or nominal request while this submission is reading source facts.
+    reviewedOwnLeave = { ...reviewedOwnLeave };
+    p = { ...p };
+    if (!existingTx || !ctx.userId || !Number.isFinite(reviewedOwnLeave.days) || reviewedOwnLeave.days <= 0
+      || !Number.isFinite(reviewedOwnLeave.availableBalance) || reviewedOwnLeave.availableBalance < reviewedOwnLeave.days
+      || (p.durationType ?? 'full_day') !== 'full_day' || p.document !== undefined || p.hasDocument !== undefined
+      || p.hours !== undefined || p.fromTime !== undefined || p.toTime !== undefined || p.reasonCategory !== undefined
+      || p.unpaidConsent !== undefined || p.overrideConsent !== undefined || p.survivingChildren !== undefined
+      || p.confinementDate !== undefined) throw new LeaveReviewedEffectError('unsupported');
+    if (p.employmentId !== reviewedOwnLeave.employmentId || p.leaveTypeId !== reviewedOwnLeave.leaveTypeId
+      || p.startDate !== reviewedOwnLeave.date || p.endDate !== reviewedOwnLeave.date)
+      throw new LeaveReviewedEffectError('changed');
+  }
   const perform = async (tx: Tx) => {
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
@@ -3351,6 +3389,9 @@ export async function requestLeave(
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
+    if (reviewedOwnLeave && (!isSelfSubject || subject?.companyId !== reviewedOwnLeave.companyId)) {
+      throw new LeaveReviewedEffectError('changed');
+    }
     // AN EMPLOYMENT THE CALLER CANNOT SEE IS REFUSED HERE, not thirty gates later by a policy violation. The
     // select above runs under the caller's own RLS, so `subject` is undefined for an employment outside their
     // scope — a company-scoped hr_admin naming another company's employee, say — and for one that does not
@@ -3377,6 +3418,10 @@ export async function requestLeave(
     // conversion re-points BOTH so every gate after it is judged against the type the application actually
     // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
     let lt = lt0;
+    if (reviewedOwnLeave && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
+      || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.employeeCanApply === false)) {
+      throw new LeaveReviewedEffectError('unsupported');
+    }
     let overrideAudit: LeaveOverrideAudit | null = null;
     if (p.document && lt) validateLeaveDocument(lt, { mimeType: p.document.mimeType, sizeBytes: p.document.content.byteLength });
     // Match the existing action's first-child attachment ownership, inside this transaction.
@@ -4008,6 +4053,17 @@ export async function requestLeave(
       // two was the unpaid one, and any rule we invented would silently change what the employee is paid.
       // The request still goes through normally, just as one whole-span decision.
       unpaidDays === 0;
+
+    if (reviewedOwnLeave) {
+      // Reuse THIS execution's calculations, not a second preview. This adds no lock or retry:
+      // the future action command must also protect against concurrent dependency/source changes.
+      if (today !== todayInKualaLumpur() || p.startDate < today || backdatedOverride || advanceOverride
+        || leaveYearOverride || overrideAudit !== null || unpaidDays !== 0 || maternity !== null
+        || maternityAllowanceWarning) throw new LeaveReviewedEffectError('unsupported');
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      if (days !== reviewedOwnLeave.days || available !== reviewedOwnLeave.availableBalance)
+        throw new LeaveReviewedEffectError('changed');
+    }
 
     const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
