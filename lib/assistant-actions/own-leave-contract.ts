@@ -49,8 +49,24 @@ export const OwnLeaveState = z.enum([
 ]);
 export type OwnLeaveState = z.infer<typeof OwnLeaveState>;
 
+/** A terminal action receipt records submission, never approval or an HR outcome. These references
+ * must be obtained from the canonical write in the same transaction as the completed lifecycle. */
+const receiptIdentity = {
+  actionId: z.string().uuid(),
+  contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
+};
+export const OwnLeaveFinalReceipt = z.discriminatedUnion('state', [
+  z.object({ ...receiptIdentity, state: z.literal('completed'),
+    leaveRequestId: z.string().uuid(), submissionEventId: z.string().uuid() }).strict(),
+  z.object({ ...receiptIdentity, state: z.literal('refused'), code: OwnLeaveRefusalCode }).strict(),
+  z.object({ ...receiptIdentity, state: z.literal('discarded') }).strict(),
+  z.object({ ...receiptIdentity, state: z.literal('expired') }).strict(),
+]);
+export type OwnLeaveFinalReceipt = z.infer<typeof OwnLeaveFinalReceipt>;
+
 /** Transport uncertainty belongs to the client, never to the durable lifecycle. */
 export type OwnLeaveClientOutcome =
   | { status: 'checking_submission'; actionId: string }
   | { status: 'submission_recorded'; actionId: string; leaveRequestId: string }
+  | { status: 'discarded'; actionId: string }
   | { status: 'refused'; actionId: string; code: OwnLeaveRefusalCode };
