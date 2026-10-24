@@ -1,3 +1,4 @@
+import {validatePhaseReuse,type PhaseReuseReceipt} from '../gate-phase-reuse-evidence';
 /**
  * Improvement-loop release (ADR-0045, IL-4) — the HUMAN-GATED step. Ships a built, green worktree to the
  * server and closes the feedback item. This is NEVER run by the schedule: a human reviews the preview + the
@@ -419,6 +420,13 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
     receiptError,
     head,
     deployedVerdict: () => deployedVerdict(p.worktree),
+    phaseReuseVerdict: () => {
+      try {
+        const deployedRef=readyProductionBaseline(parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000})));
+        const proof=validatePhaseReuse(receipt as PhaseReuseReceipt,{head,deployedRef,worktree:p.worktree});
+        return {ok:true,lines:[`→ final gate: phase-reuse; ${proof.base.counted.files} DB files reused, ${proof.freshNodb.files} no-DB files freshly verified; original full attempt remains FAIL`]};
+      }catch(e){return {ok:false,lines:['✗ REFUSED: phase reuse revalidation: '+String(e)]};}
+    },
     impactVerdict: () => {
       try {
         const status=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000}));
@@ -434,6 +442,10 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
 
   console.log('→ final gate: npx tsc --noEmit');
   run('npx', ['tsc', '--noEmit'], p.worktree, tscEnv());
+  if(receipt?.tier==='phase-reuse'){
+    const deployedRef=readyProductionBaseline(parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000})));
+    validatePhaseReuse(receipt as PhaseReuseReceipt,{head,deployedRef,worktree:p.worktree});
+  }
 
   // One fresh immutable code-only record for this exact clean candidate. No guide is restamped and
   // neither a prepared record nor a built artifact supplies arrival or a tester's observation.

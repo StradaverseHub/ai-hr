@@ -2,14 +2,14 @@ import * as React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({
- session:{tenantId:'fictional-tenant',personId:'fictional-person',userId:'fictional-login',roles:['employee'] as string[]},
+ session:{tenantId:'fictional-tenant',personId:'fictional-person',userId:'fictional-login',roles:['employee'] as string[],entitlements:{tenantId:'fictional-tenant',enabledModules:[] as string[],scopedModules:{},settings:{},tenantStatus:'active'}},
  reports:[] as {id:string}[],aggregate:vi.fn(),assistant:vi.fn(),legacyEmployment:vi.fn(),reporting:vi.fn(),identity:vi.fn(),
 }));
 vi.mock('@/lib/scope',()=>({scopedSession:async()=>({s:state.session,scopeIds:['fictional-company'],allowedCount:1})}));
 vi.mock('@/lib/authz',()=>({isAdmin:()=>state.session.roles.includes('hr_admin')}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('not-found');}}));
-vi.mock('@/components/employee-home/personal-home',()=>({EmployeePersonalHome:({employmentId}:{employmentId?:string})=>React.createElement('main',{'data-selected':employmentId},'Personal Home')}));
+vi.mock('@/components/employee-home/personal-home',()=>({EmployeePersonalHome:({employmentId,greetingsEnabled}:{employmentId?:string;greetingsEnabled:boolean})=>React.createElement('main',{'data-selected':employmentId,'data-greetings':String(greetingsEnabled)},'Personal Home')}));
 vi.mock('@/core/employee-home',()=>({readEmployeeHomeIdentity:state.identity,HomeAccessError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('@/core/read',()=>({
  myEmployment:state.legacyEmployment,reportingLinesFor:state.reporting,
@@ -20,7 +20,7 @@ vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:state.assistant}));
 import DashboardPage from '../app/page';
 import {HomeAccessError} from '../core/employee-home';
 beforeEach(()=>{
- vi.clearAllMocks();state.session.roles=['employee'];state.reports=[];
+ vi.clearAllMocks();state.session.roles=['employee'];state.session.entitlements.enabledModules=[];state.reports=[];
  state.legacyEmployment.mockImplementation(()=>{throw Error('legacy first-employment/compensation read must not run on personal Home');});
  state.reporting.mockImplementation(async()=>({reports:state.reports}));
  state.identity.mockResolvedValue({role:'employee',selectedEmploymentId:'selected-own'});
@@ -28,6 +28,12 @@ beforeEach(()=>{
  state.assistant.mockImplementation(()=>{throw Error('assistant path must not run on personal Home');});
 });
 describe('personal web landing isolates legacy aggregate and assistant composition',()=>{
+ it.each([true,false])('passes the resolved notifications entitlement to personal Home (%s)',async(enabled)=>{
+  state.session.entitlements.enabledModules=enabled?['notifications']:[];
+  const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({})}));
+  expect(html).toContain('data-greetings="'+String(enabled)+'"');
+  expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
+ });
  it('lands an employee directly on personal Home, including a supplied company/employment choice',async()=>{
   const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({employmentId:'selected-own'})}));
   expect(html).toContain('Personal Home');expect(html).toContain('data-selected="selected-own"');
