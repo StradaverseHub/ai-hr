@@ -158,7 +158,11 @@ type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedField
 function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
  return Object.fromEntries(Object.entries(values).map(([key,value])=>{
   const options=key==='companyId'?catalog.companies:catalog.fields[key as MovementFormField];
-  const found=options?.find(option=>option.value===value);return [key,found?found.label:UUID.test(value??'')?null:value];
+  const found=options?.find(option=>option.value===value);
+  // Equal configured labels must not hide a canonical reference change in Before/Proposed.
+  const duplicateLabel=found&&options?.some(option=>option.value!==found.value&&option.label===found.label);
+  const shown=found?(duplicateLabel?`${found.label} (${found.codes?.[0]??found.value})`:found.label):UUID.test(value??'')?null:value;
+  return [key,shown];
  }));
 }
 function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
