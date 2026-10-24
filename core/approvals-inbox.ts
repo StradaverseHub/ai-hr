@@ -20,7 +20,7 @@ import type {SessionContext} from '../db/client';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {pendingClaimTaskMetadata} from '../packs/claims/service';
-import {pendingAttendanceTaskMetadata} from './attendance';
+import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';

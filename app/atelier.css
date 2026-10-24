@@ -307,6 +307,10 @@
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
     min-height: 2rem; height: auto; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
   }
+  /* Preserve an explicit accessible target minimum supplied by a screen, including disabled actions. */
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input'])[class~='min-h-11'] {
+    min-height: 2.75rem;
+  }
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='bg-primary']:hover:not(:disabled) { background: var(--atelier-accent-hover); }
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input'] { border-color: var(--atelier-line-strong); background: var(--card); color: var(--foreground); }
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input']:hover:not(:disabled) { background: var(--sidebar); }

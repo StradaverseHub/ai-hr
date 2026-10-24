@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * a57f0584 REV 2 — "Redesign Attendance Roster Screen and Workflow", the half that is not geometry.
  *
@@ -211,15 +212,10 @@ const FROM = '2026-07-01';
 const TO = '2026-07-31';
 
 async function makeEmp(name: string) {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: name, primaryEmail: `r328_${randomUUID().slice(0, 8)}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: name, primaryEmail: `r328_${randomUUID().slice(0, 8)}@t.local`}});
+  return hired.employmentId;
 }
 
 beforeAll(async () => {

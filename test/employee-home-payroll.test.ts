@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
-import {appUser} from '../db/schema';
+import {appUser,roleAssignment} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {readEmployeeHomePayHints} from '../core/employee-home';
@@ -17,6 +17,7 @@ let b:Base,admin:SessionContext,period:string;
 let icSequence=1234;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');
+ await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:b.adminUserId,role:'super_admin',companyId:null});
  admin=await entitledCtx(b,['hr_admin','super_admin']);period=todayInKualaLumpur().slice(0,7);});
 async function worker(role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(admin,{person:{fullName:'Fictional Home '+randomUUID(),primaryEmail:randomUUID()+'@example.test'},

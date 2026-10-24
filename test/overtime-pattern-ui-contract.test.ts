@@ -28,7 +28,7 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
  });
  it('uses fresh server context for every public operation and never accepts a computed amount for transfer',()=>{
   const names=[...action.matchAll(/export async function (\w+)/g)].map(match=>match[1]);
-  expect(names).toEqual(['saveOvertimeDraftAction','forkOvertimeDraftAction','validateOvertimeAction','activateOvertimeAction','stopOvertimeAction','archiveOvertimeAction','saveOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction']);
+  expect(names).toEqual(['initializeOvertimeStartersAction','saveOvertimeDraftAction','forkOvertimeDraftAction','validateOvertimeAction','activateOvertimeAction','stopOvertimeAction','archiveOvertimeAction','saveOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction']);
   for(const name of names){const start=action.indexOf(`export async function ${name}`);const next=action.indexOf('\nexport async function',start+1);const body=action.slice(start,next<0?action.length:next);expect(body.length).toBeGreaterThan(100);expect(body,`${name} derives server authority`).toContain('await scopedAdmin()');}
   const transferStart=action.indexOf('export async function transferOvertimePayrollAction');
   const transferEnd=action.indexOf('\nfunction makeSampleInput',transferStart);
@@ -54,7 +54,8 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
  it('uses the canonical incomplete Draft parser and constructs a new policy only after explicit required choices',()=>{
   expect(workspace).toContain('validateOvertimePatternDraft(props.version.definition)');
   expect(workspace).toContain("useState<OvertimePattern['durationAllocation']|''>('')");
-  expect(workspace).toContain('setPrepared(newPattern(basis,direction))');
+  expect(workspace).toContain('disabled={!basis||!direction}');
+  expect(workspace).toContain('if(basis&&direction)setPrepared(props.starterKey?prepareOvertimeStarter(props.starterKey,basis,direction):newPattern(basis,direction))');
   expect(workspace).not.toContain("durationAllocation:'earliest'");
   expect(existsSync(resolve(root,'lib/overtime-pattern-ui-shape.ts'))).toBe(false);
   const controls=read('components/overtime-patterns/rule-controls.tsx');expect(controls).toContain("t('recordedWorkStart')");expect(controls).toContain("t('recordedWorkEnd')");

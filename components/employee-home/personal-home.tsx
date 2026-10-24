@@ -4,7 +4,6 @@ import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
-import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {listEmployeeHomeCards} from '@/core/dashboard-card-config';
 import {getEmployeeHomePreferences} from '@/core/dashboard-prefs';
 import {EmployeeHomeSurface} from './home-surface';
@@ -20,7 +19,7 @@ import {HomeCelebrationsCard} from './celebrations-card';
 import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
-export async function EmployeePersonalHome({session,employmentId}:{session:SessionContext;employmentId?:string}){
+export async function EmployeePersonalHome({session,employmentId,greetingsEnabled=false}:{session:SessionContext;employmentId?:string;greetingsEnabled?:boolean}){
  const ownIdentity=readEmployeeHomeIdentity(session,employmentId).catch(error=>{
   if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
   throw error;
@@ -35,7 +34,7 @@ export async function EmployeePersonalHome({session,employmentId}:{session:Sessi
   tasks:<HomeTasksCard employmentId={selected}/>,
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
   team:<HomeTeamCard key={selected} employmentId={selected}/>,
-  celebrations:<HomeCelebrationsCard key={selected} employmentId={selected} greetingsEnabled={isModuleEnabledOrFalse(session,'notifications')}/>,
+  celebrations:<HomeCelebrationsCard key={selected} employmentId={selected} greetingsEnabled={greetingsEnabled}/>,
   calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));

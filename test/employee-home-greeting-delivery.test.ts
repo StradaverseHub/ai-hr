@@ -188,6 +188,15 @@ describe('explicit Home greeting transaction and private content',()=>{
    (SELECT count(*)::int FROM domain_event WHERE event_type='pii.erased') AS events`);
   expect(remaining).toEqual({intents:0,effects:0,events:0});
  });
+ it('accepts the addressed browser authority while refusing foreign origins and forwarded-host spoofing',async()=>{
+  const own=await worker('Fictional addressed sender'),target=await worker('Fictional addressed recipient');await configure();caller=own.ctx;const p=command(own,target);
+  const addressed=(origin:string,host='127.0.0.1:3311',forwarded?:string)=>new Request('http://localhost:3311/api/home/greetings',{
+   method:'POST',headers:{origin,host,'Content-Type':'application/json',...(forwarded?{'x-forwarded-host':forwarded}:{})},body:JSON.stringify(p)});
+  for(const bad of [addressed('http://other.invalid'),addressed('http://other.invalid','127.0.0.1:3311','other.invalid'),addressed('http://127.0.0.1:3311','127.0.0.1:3311,other.invalid')])expect((await POST(bad)).status).toBe(400);
+  expect(await counts()).toEqual({greetings:0,events:0,notifications:0,intents:0});
+  const result=await POST(addressed('http://127.0.0.1:3311'));
+  expect(result.status).toBe(200);expect(await result.json()).toMatchObject({employmentId:own.employmentId,nonce:p.nonce,state:'sent'});
+ });
  it('requires same-origin bounded exact JSON and returns a sender-bound private no-store receipt',async()=>{
   const own=await worker('Fictional sender'),target=await worker('Fictional recipient');await configure();caller=own.ctx;const p=command(own,target);
   expect((await POST(request(p,'https://other.invalid'))).status).toBe(400);

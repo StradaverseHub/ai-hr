@@ -60,6 +60,9 @@ const snap = (ps: Record<string, unknown>) => ({
 const PROVENANCE_ONLY = ['componentLines'] as const;
 const money = (st: unknown) => {
   const rest = { ...((st ?? {}) as Record<string, unknown>) };
+  const context=rest.reportContext as Record<string,unknown>;
+  expect(context.itemization).toBe('componentLines' in rest?'complete':'partial');
+  rest.reportContext={...context,itemization:'validated-itemization'};
   for (const k of PROVENANCE_ONLY) delete rest[k];
   return rest;
 };

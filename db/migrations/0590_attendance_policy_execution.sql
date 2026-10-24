@@ -1,4 +1,4 @@
--- Board 1 reservation: 0590 / 1791900000070. DRAFT, UNREGISTERED AND UNAPPLIED.
+-- Board 1 reservation: 0590 / 1791900000080. Registered candidate; unapplied in production.
 -- Add immutable policy-part storage and explicit policy financial evidence below the existing OT
 -- parent. The settlement admission fence remains until actual current consumer replay is complete.
 -- Existing assignment calculations, source identity and the single cash/TOIL settlement are retained.
@@ -1786,3 +1786,88 @@ CREATE TRIGGER policy_dated_toil_credit_immutable BEFORE UPDATE ON public.toil_a
  FOR EACH ROW EXECUTE FUNCTION app.guard_policy_dated_toil_credit();
 CREATE CONSTRAINT TRIGGER policy_dated_toil_credit_settled AFTER INSERT ON public.toil_accrual
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.guard_policy_dated_toil_credit();
+
+--> statement-breakpoint
+-- Preserve the complete read graph while computing the authorized employment set once per statement.
+ALTER POLICY attendance_group_policy_read ON public.attendance_group_policy_revision USING(
+ tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND(app.is_admin_for(company_id)
+ OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=attendance_group_policy_revision.tenant_id
+  AND e.company_id=attendance_group_policy_revision.company_id AND e.id=ANY((SELECT app.visible_employment_ids())::uuid[]))
+ OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=attendance_group_policy_revision.tenant_id
+  AND a.company_id=attendance_group_policy_revision.company_id AND a.superseded_at IS NULL
+  AND a.employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]))));
+--> statement-breakpoint
+ALTER POLICY attendance_policy_final_receipt_read ON public.attendance_policy_final_receipt USING(
+ tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current())
+ AND(employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.can_admin_payroll_for(company_id)));
+
+--> statement-breakpoint
+CREATE POLICY attendance_group_policy_revision_company_retention ON public.attendance_group_policy_revision FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY attendance_overtime_policy_part_company_retention ON public.attendance_overtime_policy_part FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY attendance_policy_attested_effect_company_retention ON public.attendance_policy_attested_effect FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY attendance_policy_company_epoch_company_retention ON app.attendance_policy_company_epoch FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY attendance_policy_final_receipt_company_retention ON public.attendance_policy_final_receipt FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY attendance_policy_request_contract_company_retention ON public.attendance_policy_request_contract FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY employee_home_configuration_revision_company_retention ON public.employee_home_configuration_revision FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(company_id));
+
+--> statement-breakpoint
+CREATE POLICY notice_company_retention ON public.notice FOR SELECT
+ USING(current_user<>'ai_hr_app' AND tenant_id=app.current_tenant_id()
+  AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(owner_company_id));
+
+--> statement-breakpoint
+-- Only a current administrator receives a boolean, never private policy or employee rows.
+CREATE FUNCTION app.retained_company_history_in_use(wanted_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT wanted_company IS NOT NULL AND app.current_tenant_id() IS NOT NULL
+ AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(wanted_company)
+ AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id())
+ AND (EXISTS(SELECT 1 FROM public.attendance_group_policy_revision h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.attendance_overtime_policy_part h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.attendance_policy_attested_effect h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM app.attendance_policy_company_epoch h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.attendance_policy_final_receipt h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.attendance_policy_request_contract h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.employee_home_configuration_revision h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ OR EXISTS(SELECT 1 FROM public.notice h WHERE h.tenant_id=app.current_tenant_id() AND h.owner_company_id=wanted_company));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.retained_company_history_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.retained_company_history_in_use(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.attendance_policy_rule_company_in_use(wanted_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT wanted_company IS NOT NULL AND app.current_tenant_id() IS NOT NULL
+ AND (SELECT app.principal_snapshot_current()) AND app.is_admin_for(wanted_company)
+ AND EXISTS(SELECT 1 FROM public.attendance_group_policy_revision r JOIN public.attendance_rule g
+  ON g.id=r.rule_id AND g.tenant_id=r.tenant_id WHERE r.tenant_id=app.current_tenant_id() AND g.company_id=wanted_company);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.attendance_policy_rule_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_policy_rule_company_in_use(uuid) TO ai_hr_app;

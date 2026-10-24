@@ -165,7 +165,7 @@ export default async function DashboardPage({
   const admin = isAdmin(s);
   const personalLanding=()=><>
     {unavailableModule&&<Card className="mb-5 border-warning/30 p-4"><h2 className="text-sm font-semibold">{tModule('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{tModule('body',{module:unavailableModule.name})}</p></Card>}
-    <EmployeePersonalHome session={s} employmentId={Array.isArray(homeQuery?.employmentId)?undefined:homeQuery?.employmentId}/>
+    <EmployeePersonalHome session={s} greetingsEnabled={isModuleEnabledOrFalse(s,'notifications')} employmentId={Array.isArray(homeQuery?.employmentId)?undefined:homeQuery?.employmentId}/>
   </>;
   let teamEmploymentId:string|null=null;
   if(!admin){

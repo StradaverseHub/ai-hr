@@ -338,6 +338,8 @@ describe('1.2.2 Individual Transaction', () => {
       const [savedBatch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
       expect(savedBatch).toMatchObject({tenantId:ps.tenantId,companyId});expect(selection).toBeDefined();expect(selection.transitionState).toBe('resolved');
       const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
+      const report=statutory.reportContext as Record<string,unknown>;
+      expect(report.payingCompanyId).toBe(savedBatch.companyId);
       expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
       // Independently locate each fixture employee's applicable salary, rather than trusting the
       // saved stamp to choose its own owner. Compare every saved input before normalizing identity.
@@ -359,7 +361,7 @@ describe('1.2.2 Individual Transaction', () => {
         basicSalary: '4321.00', payMode: 'monthly' });
       // Distinct fixture employees have distinct authority UUIDs. Preserve all financial fields and
       // complete statutory JSON; normalize only the independently validated ownership UUIDs.
-      return {...figures,statutory:{...statutory,
+      return {...figures,statutory:{...statutory,reportContext:{...report,payingCompanyId:'validated-paying-company'},
         salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
         pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}}};
     }

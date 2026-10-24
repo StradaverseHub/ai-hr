@@ -8,7 +8,7 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-const nav=vi.hoisted(()=>({entries:[{href:'/leave'},{href:'/claims'},{href:'/me'},{href:'/notices'}]}));
+const nav=vi.hoisted(()=>({entries:[{href:'/leave'},{href:'/claims'},{href:'/me'}]}));
 vi.mock('../components/nav-index-context',()=>({useNavIndex:()=>nav}));
 vi.mock('../components/employee-home/knowledge-search',()=>({HomeKnowledgeSearch:()=> <p>Permission-filtered search</p>}));
 import {HomeSummaryOverview} from '../components/employee-home/summary-overview';
@@ -18,7 +18,7 @@ const data=()=>({version:1,employmentId,serverNow,items:[{key:'tasks',message:'W
  {key:'holiday',message:'Fictional <script>literal</script> holiday.',destination:'calendar'}],calm:null,
  quickActions:[{key:'leave',reason:null},{key:'claim',reason:null},{key:'payslip',reason:'noPayslip'},{key:'profile',reason:'detailsLocked'}]});
 const fetcher=vi.fn();
-beforeEach(()=>{nav.entries=[{href:'/leave'},{href:'/claims'},{href:'/me'},{href:'/notices'}];fetcher.mockReset();fetcher.mockImplementation(async()=>Response.json(data()));vi.stubGlobal('fetch',fetcher);});
+beforeEach(()=>{nav.entries=[{href:'/leave'},{href:'/claims'},{href:'/me'}];fetcher.mockReset();fetcher.mockImplementation(async()=>Response.json(data()));vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 function mount(locale:keyof typeof catalogues='en',children:React.ReactNode=<HomeSummaryOverview employmentId={employmentId}/>){
  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}>{children}</NextIntlClientProvider>);
@@ -32,6 +32,24 @@ describe('Home summary and configured quick actions',()=>{
   expect(screen.getByRole('button',{name:catalogues[locale].employeeHome.quickActions.profile})).toBeDisabled();expect(screen.getByText(catalogues[locale].employeeHome.summary.detailsLocked)).toBeVisible();
   expect(screen.getByText('Fictional <script>literal</script> holiday.')).toBeVisible();expect(document.querySelector('script')).toBeNull();
   expect(fetcher).toHaveBeenCalledOnce();expect(fetcher.mock.calls[0][1]).toMatchObject({cache:'no-store',credentials:'same-origin'});
+ });
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s keeps all six configured actions when notices is an own-profile child outside the rail',async locale=>{
+  nav.entries=[{href:'/leave'},{href:'/claims'},{href:'/me'}];
+  fetcher.mockImplementation(async()=>Response.json({...data(),quickActions:[...data().quickActions,{key:'calendar',reason:null},{key:'notices',reason:null}]}));
+  mount(locale);await screen.findByText('Waiting for you: 2 tasks.');
+  expect(screen.getByRole('link',{name:catalogues[locale].employeeHome.quickActions.calendar})).toHaveAttribute('href','/me/calendar?employmentId=second-own');
+  expect(screen.getByRole('link',{name:catalogues[locale].employeeHome.quickActions.notices})).toHaveAttribute('href','/notices?employmentId=second-own');
+  expect(screen.getByRole('navigation',{name:catalogues[locale].employeeHome.summary.quickTitle}).querySelectorAll('a,button')).toHaveLength(6);
+ });
+ it('does not render own-profile actions when their navigation authority is absent',async()=>{
+  nav.entries=[{href:'/leave'},{href:'/claims'}];
+  fetcher.mockImplementation(async()=>Response.json({...data(),quickActions:[...data().quickActions,{key:'calendar',reason:null},{key:'notices',reason:null}]}));
+  mount();await screen.findByText('Waiting for you: 2 tasks.');
+  for(const key of ['calendar','notices','payslip','profile'] as const){
+   expect(screen.queryByRole('link',{name:en.employeeHome.quickActions[key]})).toBeNull();
+   expect(screen.queryByRole('button',{name:en.employeeHome.quickActions[key]})).toBeNull();
+  }
+  expect(screen.getByRole('navigation',{name:en.employeeHome.summary.quickTitle}).querySelectorAll('a,button')).toHaveLength(2);
  });
  it('uses the live rail result rather than inventing another client role map',async()=>{
   nav.entries=[{href:'/me'}];mount();await screen.findByText('Waiting for you: 2 tasks.');

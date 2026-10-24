@@ -90,7 +90,8 @@ describe('RequestLeaveDialog: client modal hosting the unchanged apply form', ()
   it('hosts the existing apply form: LeaveDurationFields + Reason + submit → submitAction (multipart)', () => {
     expect(src.includes('<LeaveDurationFields')).toBe(true);
     expect(src.includes('action={submitAction}')).toBe(true);
-    expect(src.includes("encType=\"multipart/form-data\"")).toBe(true);
+    // React supplies multipart encoding for function actions and warns if encType is set explicitly.
+    expect(src).not.toMatch(/\bencType=/);
     expect(src.includes('name="reason"')).toBe(true);
     expect(src.includes('showDocumentFields')).toBe(true);
   });

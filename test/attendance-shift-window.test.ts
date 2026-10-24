@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * b7b886e2 — "Attendance Calculation Based on Shift Time-In / Time-Out Settings".
  *
@@ -33,15 +34,10 @@ let b: Base;
 const WED = '2026-07-01';
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Shift Window', primaryEmail: `sw_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'Shift Window', primaryEmail: `sw_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 /** The reporter's shift: 09:00–18:00 with an explicit 13:00–14:00 break window. */

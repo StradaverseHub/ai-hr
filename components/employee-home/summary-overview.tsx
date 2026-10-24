@@ -33,9 +33,9 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
   return ()=>{current=false;controller.abort();};
  },[key,employmentId]);
  const routes=new Set(entries.map(row=>row.href.split('?')[0]));
- // The rail is the owner of visible navigation. Calendar/payslip/profile are own-profile children;
+ // The rail is the owner of visible navigation. Notices/calendar/payslip/profile are own-profile children;
  // they additionally require the server's current subject/module/field/publication capability.
- const visible=(key:string)=>routes.has(key==='leave'?'/leave':key==='claim'?'/claims':key==='notices'?'/notices':'/me');
+ const visible=(key:string)=>routes.has(key==='leave'?'/leave':key==='claim'?'/claims':'/me');
  return <section aria-labelledby={titleId} aria-busy={result.state==='loading'} className="space-y-4 border-t border-border pt-5">
   <div className="flex flex-wrap items-center justify-between gap-3"><h3 id={titleId} className="text-sm font-semibold">{t('title')}</h3>
    <Button type="button" variant="outline" className="min-h-11" disabled={result.state==='loading'} onClick={()=>setAttempt(value=>value+1)}

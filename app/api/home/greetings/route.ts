@@ -3,9 +3,10 @@ import {AuthRequiredError} from '@/lib/auth-errors';
 import {HomeAccessError} from '@/core/employee-home';
 import {sendHomeGreeting} from '@/core/employee-home-greetings';
 import {HomeGreetingInputError} from '@/lib/employee-home-greeting';
+import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 const headers={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff'};
 async function commandBody(request:Request):Promise<unknown>{
- if(request.headers.get('origin')!==new URL(request.url).origin||new URL(request.url).search
+ if(!isSameOriginBrowserRequest(request)||new URL(request.url).search
   ||!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')??'')||!request.body)throw new HomeGreetingInputError();
  const reader=request.body.getReader(),chunks:Uint8Array[]=[];let total=0;
  try{for(;;){const {done,value}=await reader.read();if(done)break;total+=value.byteLength;

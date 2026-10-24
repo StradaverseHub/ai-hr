@@ -315,7 +315,7 @@ describe('the Dashboard no longer carries the calendar', () => {
       .split(';')
       .map((p) => p.split(':')[0].replace('?', '').trim())
       .filter(Boolean);
-    expect(declaredParams).toEqual(['moduleUnavailable']);
+    expect(declaredParams).toEqual(['moduleUnavailable','employmentId','workspace']);
     // …which also retires app/page.tsx from the leave pack's drift allowlist (the ratchet only shrinks).
     expect(dashboard).not.toContain("from '@/core/leave'");
     const allowlist = JSON.parse(read('test/pack-drift-allowlist.json')) as Record<string, string[]>;

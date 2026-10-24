@@ -1,8 +1,11 @@
 import {getLocale,getTranslations} from 'next-intl/server';
 import {validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '@/lib/attendance-policy-unclocked-work';
 /** Original submitted testimony only; never inferred clock labels or financial readiness. */
-export async function AttendanceUnclockedEvidence({work}:{work:AttendancePolicyUnclockedWork|undefined}){
+export function AttendanceUnclockedEvidence({work}:{work:AttendancePolicyUnclockedWork|undefined}){
  if(!work)return null;
+ return renderAttendanceUnclockedEvidence(work);
+}
+async function renderAttendanceUnclockedEvidence(work:AttendancePolicyUnclockedWork){
  const t=await getTranslations('attendance.unclockedWork'),locale=await getLocale();
  const format=new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3});
  // Display the same submitted actual-work contract, including requested subsets.

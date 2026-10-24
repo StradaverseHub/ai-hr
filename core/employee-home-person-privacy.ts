@@ -30,6 +30,9 @@ export function readOwnHomePersonPrivacy(ctx:SessionContext):Promise<HomePersonP
 export function saveOwnHomePersonPrivacy(ctx:SessionContext,raw:unknown):Promise<HomePersonPrivacy>{
  const input=validateHomePersonPrivacyInput(raw);
  return withTenant(ctx,async tx=>{
+  // Refuse forged/unlinked identity with the public typed error before a configuration lock
+  // can reject it at SQL level. Repeat the identity proof under the barrier below.
+  if(!await ownPersonTx(tx,ctx))throw new HomePersonPrivacyAccessError();
   // Same first barrier as greeting Send/erasure. Taking the person advisory lock first would
   // invert their Person-row/FK order; the SQL trigger repeats this for direct application inserts.
   await tx.execute(sql`SELECT app.access_profile_policy_write_lock()`);

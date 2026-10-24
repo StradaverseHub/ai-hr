@@ -56,12 +56,12 @@ describe('employee attendance day action', () => {
   });
   it.each(['','report-employment','bfd90e63-c78c-4a10-8c51-56e878f42722'])('refuses explicit unavailable selector %s without falling back',async id=>{
     const data=form();data.set('employmentId',id);
-    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('error=correctionForbidden');
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('correctionError=correctionForbidden');
     expect(state.myEmployment).not.toHaveBeenCalled();expect(state.request).not.toHaveBeenCalled();
   });
   it('refuses duplicate selectors before writes',async()=>{
     const data=form();data.append('employmentId','8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');data.append('employmentId','8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');
-    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('error=correctionForbidden');expect(state.request).not.toHaveBeenCalled();
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('correctionError=correctionForbidden');expect(state.request).not.toHaveBeenCalled();
   });
   it.each([
     ['reason', '', 'correctionReasonRequired'],

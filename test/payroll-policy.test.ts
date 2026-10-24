@@ -84,7 +84,7 @@ afterAll(async () => {
  * Validate each identity against its own employer-scoped owner; normalize only that UUID for the
  * financial oracle. Every calculation, version/source, noncash and child working field stays compared.
  */
-async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelect, differentPayStructure = false) {
+async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelect, differentPayStructure = false, expectedWindow?:{from:string;to:string}) {
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
   const rows=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId));
   const selection=rows.find(row=>row.tenantId===ps.tenantId&&row.companyId===batch.companyId);
@@ -101,8 +101,18 @@ async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelec
   expect(salary.validFrom<=referenceDate && (salary.validTo==null || salary.validTo>referenceDate)).toBe(true);
   expect(salary.supersededAt).toBeNull();
   expect(basis).toEqual({version:1,referenceDate,compensationId:salary.id,effectiveFrom:salary.validFrom,basicSalary:salary.basicSalary,payMode:salary.payMode});
+  const report=statutory.reportContext as Record<string,unknown>;
+  const [employer]=await owner.db.select().from(schema.company).where(eq(schema.company.id,batch.companyId));
+  const [worker]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,ps.employmentId));
+  expect(worker.tenantId).toBe(ps.tenantId);expect(employer.tenantId).toBe(ps.tenantId);
+  expect(report).toEqual({version:1,payingCompanyId:batch.companyId,currency:employer.currency,itemization:'partial',
+    proration:{payMode:salary.payMode,from:worker.hiredOn,to:worker.terminatedOn,factor:1,
+      window:expectedWindow??{from:batch.payPeriod+'-01',to:referenceDate}}});
+  const proration=report.proration as Record<string,unknown>;
+  const reportComparison={...report,payingCompanyId:'validated-paying-company',proration:{...proration,
+    payMode:differentPayStructure?'validated-pay-mode':proration.payMode,window:'validated-proration-window'}};
   // Keep every saved input and monetary field; only independently validated employment-owned UUIDs differ.
-  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:differentPayStructure?'validated-whole-salary-basis':{...basis,compensationId:'validated-compensation-selection'}};
+  return {...statutory,reportContext:reportComparison,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:differentPayStructure?'validated-whole-salary-basis':{...basis,compensationId:'validated-compensation-selection'}};
 }
 
 describe('2.1 Payroll Policy — service + substrate', () => {
@@ -640,7 +650,7 @@ describe('2.1 Payroll Policy — kernel non-perturbation + history', () => {
     const unassignedSlip=await payslipOf(batchId,eUnassigned.employmentId);
     const unassigned={...snap(unassignedSlip),statutory:await statutoryForMoneyComparison(unassignedSlip)};
     const assignedSlip=await payslipOf(batchId,eAssigned.employmentId);
-    const assigned={...snap(assignedSlip),statutory:await statutoryForMoneyComparison(assignedSlip)};
+    const assigned={...snap(assignedSlip),statutory:await statutoryForMoneyComparison(assignedSlip,false,{from:'2026-04-25',to:'2026-05-24'})};
 
     // The custom_period policy + its recorded window changes nothing — the window is configurable but not effective.
     expect(assigned.cols).toEqual(unassigned.cols);

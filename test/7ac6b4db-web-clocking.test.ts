@@ -81,7 +81,7 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
 
   it('the shift window depends on the existing engine schedule resolver', () => {
     const reader = codeOnly(read('/core/attendance-clock-read.ts'));
-    expect(reader).toContain('const schedule = await clockScheduleForTx(tx, me.employmentId, date)');
+    expect(reader).toContain('const schedule = await clockScheduleForTx(tx, employmentId, date)');
     expect(reader).toContain('shift:{code:schedule.code,start:schedule.start,end:schedule.end}');
     expect(read('/core/attendance.ts')).toContain('const schedule = await scheduleFor(tx, employmentId, date)');
   });

@@ -6,8 +6,8 @@ import type {OvertimeInput,OvertimePattern,OvertimeFact} from '../lib/overtime-p
 import {evaluateOvertimePattern} from '../lib/overtime-pattern-evaluate';
 import {overtimeDurationProofInput} from '../lib/overtime-duration-input';
 const mocks=vi.hoisted(()=>({existing:vi.fn(),stored:vi.fn(),canonical:vi.fn()}));
-vi.mock('../packs/attendance/overtime-patterns',()=>({readOvertimeSettlementForDayTx:mocks.existing,readOvertimeDurationDefinitionTx:mocks.stored,readOvertimePolicyDurationTx:vi.fn().mockResolvedValue(null)}));
-vi.mock('../packs/attendance/overtime-input',()=>({canonicalOvertimeToilInputTx:mocks.canonical}));
+vi.mock('../packs/attendance/overtime-patterns',async importOriginal=>({...await importOriginal<typeof import('../packs/attendance/overtime-patterns')>(),readOvertimeSettlementForDayTx:mocks.existing,readOvertimeDurationDefinitionTx:mocks.stored,readOvertimePolicyDurationTx:vi.fn().mockResolvedValue(null)}));
+vi.mock('../packs/attendance/overtime-input',async importOriginal=>({...await importOriginal<typeof import('../packs/attendance/overtime-input')>(),canonicalOvertimeToilInputTx:mocks.canonical}));
 import {resolveOvertimeToilDurationTx,OvertimeToilEligibilityError} from '../packs/attendance/overtime-toil';
 const id='00000000-0000-4000-8000-000000000001',date='2026-10-01';
 const fact=(value:string):OvertimeFact<string>=>({state:'known',value,provenance:{owner:'attendance',reference:'recorded',asOf:date,basis:'recorded'}});

@@ -330,7 +330,7 @@ export async function fillTables() {
   const seeded = new Set(['employment', 'person', 'assignment']);
   const targets = [...new Set([...TABLES, ...support])].filter((t) => !seeded.has(t));
   const fks = await q(`
-    select c.conrelid::regclass::text as tbl, a.attname as col, c.confrelid::regclass::text as ref
+    select c.conrelid::regclass::text as tbl, a.attname as col, c.confrelid::regclass::text as ref, a.attnotnull as required
     from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
     where c.contype = 'f' and array_length(c.conkey, 1) = 1 and c.connamespace = 'public'::regnamespace`);
   const checks = await q(`
@@ -339,12 +339,13 @@ export async function fillTables() {
   const enums = await q(`select t.typname, (array_agg(e.enumlabel order by e.enumsortorder))[1] as first
                          from pg_type t join pg_enum e on e.enumtypid = t.oid group by t.typname`);
   const enumFirst = new Map(enums.map((r) => [r.typname as string, r.first as string]));
-  // Order: a target referenced by another target first.
+  // Order required parents first. Nullable references are omitted by the generic builder;
+  // following them here creates a false cycle through Attendance's attested correction backlink.
   const ordered: string[] = [];
   const visit = (t: string, seen = new Set<string>()) => {
     if (ordered.includes(t) || seen.has(t)) return;
     seen.add(t);
-    for (const fk of fks.filter((f) => f.tbl === t && targets.includes(f.ref as string) && f.ref !== t)) visit(fk.ref as string, seen);
+    for (const fk of fks.filter((f) => f.tbl === t && f.required && targets.includes(f.ref as string) && f.ref !== t)) visit(fk.ref as string, seen);
     ordered.push(t);
   };
   // leave_ledger BEFORE leave_encashment_snapshot: a frozen snapshot makes a trigger refuse ledger rows.
@@ -418,7 +419,11 @@ export async function fillTables() {
             }
           }
           const ids = refCache.get(key)!;
-          if (ids.length === 0) return null;
+          if (ids.length === 0) {
+            const detail=`missing referenced row: ${table}.${c.name} -> ${ref} for tenant ${e.tenant_id}`;
+            if(!fill[table].errors.includes(detail))fill[table].errors.push(detail);
+            return null;
+          }
           v = lit(ids[i % ids.length]);
         } else if (c.nullable || c.hasDefault) continue;
         else v = scalarFor(c, tableChecks, enumFirst, i);

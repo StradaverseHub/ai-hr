@@ -33,7 +33,7 @@ import {
   seedBase,
   type Base,
 } from './harness';
-import { hireEmployee } from '../core/org';
+import { hireEmployee,transferEmploymentCompanyTx } from '../core/org';
 import { createCompany, createDepartment } from '../core/admin';
 import {
   createClockingLocation,
@@ -438,8 +438,10 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [oldSite]);
     const { id: coB } = await createCompany(a, { legalName: 'Transfer Co' });
-    // The transfer itself is another service; the fact this rule reads is employment.company_id.
-    await owner.db.update(schema.employment).set({ companyId: coB }).where(eq(schema.employment.id, e.employmentId));
+    const department=await createDepartment(a,{companyId:coB,name:'Transferred worker department'});
+    await withTenant(a,tx=>transferEmploymentCompanyTx(tx,a,{employmentId:e.employmentId,newCompanyId:coB,
+      effectiveDate:'2026-07-06',placement:{departmentId:department.id,positionId:null,businessUnitId:null,locationId:null,managerEmploymentId:null},
+      movement:{type:'entityTransfer',groupId:randomUUID()}}));
 
     const [flagged] = await listEmployeeClockingLocations(a, e.employmentId);
     expect(flagged.id).toBe(oldSite);
@@ -708,14 +710,9 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
   it('import never overwrites a web check-in; the end an import supplies carries no geo reading', async () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'ImpSite', lat: HQ.lat, lng: HQ.lng });
-    const [p] = await owner.db
-      .insert(schema.person)
-      .values({ tenantId: b.tenantId, fullName: 'Imp Emp', primaryEmail: uniqEmail() })
-      .returning({ id: schema.person.id });
-    const [emp] = await owner.db
-      .insert(schema.employment)
-      .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2024-01-01', employeeCode: 'IMP1' })
-      .returning({ id: schema.employment.id });
+    const hired=await hireEmployee(a,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',
+      hiredOn:'2024-01-01',employeeCode:'IMP1',person:{fullName:'Imp Emp',primaryEmail:uniqEmail()}});
+    const emp={id:hired.employmentId};
     await assign(a, emp.id, [site]);
     await checkIn(a, { employmentId: emp.id, date: '2026-07-06', time: '09:00', geo: HQ });
     let row = await attendanceRow(emp.id, '2026-07-06');
@@ -765,14 +762,9 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
   it('import check-in then web check-out: in=import, out=web with out-geo stamped', async () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'MixSite', lat: HQ.lat, lng: HQ.lng });
-    const [p] = await owner.db
-      .insert(schema.person)
-      .values({ tenantId: b.tenantId, fullName: 'Mix Emp', primaryEmail: uniqEmail() })
-      .returning({ id: schema.person.id });
-    const [emp] = await owner.db
-      .insert(schema.employment)
-      .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2024-01-01', employeeCode: 'MIX1' })
-      .returning({ id: schema.employment.id });
+    const hired=await hireEmployee(a,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',
+      hiredOn:'2024-01-01',employeeCode:'MIX1',person:{fullName:'Mix Emp',primaryEmail:uniqEmail()}});
+    const emp={id:hired.employmentId};
     await assign(a, emp.id, [site]);
 
     const csv = 'Staff ID,Timestamp\nMIX1,2026-07-06 09:00:00';
