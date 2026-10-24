@@ -870,7 +870,7 @@ function PreviewTable({
             </thead>
             <tbody className="divide-y divide-border">
               {preview.dependents.rows.map((r) => (
-                <Fragment key={r.rowNum}><tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+                <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
                   <td className="px-4 py-2 font-mono text-xs">{r.employeeCode || '—'}</td>
                   <td className="px-4 py-2 font-medium">{r.fullName || '—'}</td>
