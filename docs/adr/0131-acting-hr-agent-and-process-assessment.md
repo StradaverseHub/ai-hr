@@ -267,6 +267,20 @@ the broader Phase 2 principal decision is not treated as implemented.
    action to the same login, tenant and person; replay by another login is refused even for the same
    person. Discard and expiry create no leave request.
 
+The source-only candidate reader creates no action ID or durable preparation. It requires a separate
+human-selected employment/type pair matching the model nomination, uses the salary-free own-subject
+inventory and dated company proof, and delegates the eligible catalogue and deduction to their existing
+owners. Unknown company history, future company transfers, documents, non-Annual types, uncovered
+deductions and conversion/split previews hand off to the existing form. This narrows the Assistant
+envelope; it does not change what the canonical form or leave service permits.
+
+Available estimates must subtract pending reservations through `availableLeaveBalance`; the legacy
+preview's `balanceAvailable` is the raw ledger figure. The opt-in preview fields preserve that distinction
+without changing existing consumers. The own-leave card respects the canonical ESS `available` setting
+and omits both estimates when hidden. Full-day duration retains the engine's weight, including 0.5.
+These source paths remain unvalidated and internal. They do not check every submission gate or AI
+control and cannot be wired as a prepared/confirmable action until those owners are complete.
+
 ### Atomic execution and uncertain outcomes
 
 The intended confirm transaction locks the prepared action, checks its identity/final state/expiry,

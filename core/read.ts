@@ -1185,8 +1185,8 @@ const applyMenuEmpColumns = {
  * Answered AS AT TODAY, where `requestLeave` answers as at the leave's start date — see
  * `mayAppearInApplyMenu` above for why a menu has no other date to use and why the difference is safe.
  */
-export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string) {
-  return withTenant(ctx, async (tx) => {
+export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string, existingTx?: Tx) {
+  const perform = async (tx: Tx) => {
     const [types, [emp]] = await Promise.all([
       tx
         .select({
@@ -1261,7 +1261,8 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           name: pickName(r.name, i18n, locale),
         }),
       );
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /**

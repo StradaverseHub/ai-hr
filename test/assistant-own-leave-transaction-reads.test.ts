@@ -7,6 +7,7 @@ import {
 } from '../core/assistant-grant';
 import { previewLeaveDeduction } from '../core/leave';
 import { hireEmployee } from '../core/org';
+import { listEligibleLeaveTypesFor } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, resetDb, seedBase,
@@ -92,5 +93,25 @@ describe('own-leave confirmation prerequisites share the caller transaction', ()
     })).rejects.toBe(rollback);
 
     expect(await previewLeaveDeduction(ctx, args)).toEqual(before);
+  });
+
+  it('sees an uncommitted catalogue refusal and preserves the original menu after rollback', async () => {
+    const ctx = await entitledCtx(base);
+    const employee = await hireEmployee(ctx, {
+      person: { fullName: 'Fictional Catalogue Applicant', primaryEmail: 'own-leave-menu@acme.test' },
+      companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time',
+      hiredOn: todayInKualaLumpur(),
+    });
+    expect((await listEligibleLeaveTypesFor(ctx, employee.employmentId)).some(row => row.id === base.annualLeaveTypeId))
+      .toBe(true);
+    const rollback = new Error('rollback fictional catalogue');
+    await expect(withTenant(ctx, async tx => {
+      await tx.update(leaveType).set({ employeeCanApply: false }).where(eq(leaveType.id, base.annualLeaveTypeId));
+      expect((await listEligibleLeaveTypesFor(ctx, employee.employmentId, undefined, tx))
+        .some(row => row.id === base.annualLeaveTypeId)).toBe(false);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect((await listEligibleLeaveTypesFor(ctx, employee.employmentId)).some(row => row.id === base.annualLeaveTypeId))
+      .toBe(true);
   });
 });

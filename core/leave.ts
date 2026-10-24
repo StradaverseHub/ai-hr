@@ -4151,6 +4151,9 @@ export async function previewLeaveDeduction(
      *  that produced `days` also returns its per-date detail as `dayRows`. Absent ⇒ byte-identical work, so
      *  every existing caller (notably app/me/actions.ts myPreviewLeaveDeduction) is untouched. */
     includeDayRows?: boolean;
+    /** Opt-in available estimate after pending reservations, from availableLeaveBalance. The legacy
+     * balanceAvailable/balanceAfter fields remain the raw-ledger preview for existing consumers. */
+    includeAvailableBalance?: boolean;
     /** Override Leave Application (56910869): the tenant-local "today" the advance-notice trigger is judged
      *  against — the same value the action layer passes to requestLeave, so the pop-out the employee is
      *  shown and the rule the submission applies can never describe different days. Defaults as requestLeave
@@ -4166,6 +4169,8 @@ export async function previewLeaveDeduction(
   balanceAfter: number;
   hasHalfScheduleDate: boolean;
   isEmergencySplit: boolean;
+  availableBalance?: number;
+  availableAfter?: number;
   dayRows?: LeaveApplyDayRow[];
   /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will NOT cover, so the employee is told
    *  BEFORE submitting rather than discovering it on a payslip. 0 (and absent on every type that has not
@@ -4336,6 +4341,9 @@ export async function previewLeaveDeduction(
       }
     }
 
+    const availableBalance = p.includeAvailableBalance
+      ? await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId)
+      : undefined;
     return {
       days,
       balanceAvailable,
@@ -4347,6 +4355,9 @@ export async function previewLeaveDeduction(
       ...(dayRows ? { dayRows } : {}),
       ...(unpaidDays > 0 ? { unpaidDays } : {}),
       ...(overrides.length ? { overrides } : {}),
+      ...(availableBalance !== undefined
+        ? { availableBalance, availableAfter: round2(availableBalance - (days - unpaidDays)) }
+        : {}),
     };
   };
   return existingTx ? perform(existingTx) : withTenant(ctx, perform);

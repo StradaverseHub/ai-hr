@@ -30,6 +30,13 @@ export const OwnLeaveHumanText = z.object({
 }).strict();
 export type OwnLeaveHumanText = z.infer<typeof OwnLeaveHumanText>;
 
+/** The person's explicit selection, captured outside model nomination. As with human text, parsing
+ * cannot establish provenance: the authenticated UI/command owner must supply this separately. */
+export const OwnLeaveHumanSelection = z.object({
+  employmentId: z.string().uuid(),
+  leaveTypeId: z.string().uuid(),
+}).strict();
+
 /** The human POST cannot replace any business argument in the immutable prepared intent. */
 export const OwnLeaveConfirmation = z.object({
   actionId: z.string().uuid(),
