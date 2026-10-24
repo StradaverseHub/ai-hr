@@ -25,6 +25,15 @@ On 2026-10-23 the owner authorized **design only** for one human-confirmed leave
 kept implementation on hold. The proposed first-action contract below is preparation for that later
 decision. It does not lift the Phase 2 hold, allocate migrations or authorize new action code.
 
+Owner amendment, 2026-10-24: the hold is lifted **only for source-only development of
+human-confirmed own-leave submission**, in a separate worktree. The human explicitly retained the
+resource order: runtime checks wait for both Board 1 and Board 3 verified releases and explicit
+handbacks, and the current harness must release before Phase 2. This authorizes only the first-action
+slice below and its necessary shared preparation/confirmation lifecycle. It does not authorize an
+unattended principal, other actions, new autonomy, authentication changes or allowance changes.
+No migration number is allocated or database changed by this amendment. Source authored under this
+exception remains unvalidated until the granted runtime window and is not a shipped capability.
+
 ## Request
 
 The owner wants an AI HR orchestration agent and its harness on top of the existing HR engine. The
@@ -152,7 +161,7 @@ inventory (ADR-0116) and are governed by its allowances.
 
 ## Design-only amendment, 2026-10-23: submit my leave
 
-Status: **Proposed design; implementation ON HOLD.** Source review used main `acfede39b`; this is not
+Status: **Source-only development authorized on 2026-10-24; runtime and release deferred as above.** Source review used main `acfede39b`; this is not
 runtime acceptance or a production capability claim. The current harness increment remains separate
 and awaits both boards' explicit resource handovers before validation.
 
@@ -266,10 +275,13 @@ refreshes authority, and validates the exact current effect before executing. It
 references and completed action receipt commit together. One action ID can produce at most one
 committed submission, including simultaneous double clicks and a lost HTTP response.
 
-Required future owner work is explicit: the current preview and Assistant grant helpers open their
-own transactions. They must gain or share transaction-scoped read owners before claiming an atomic
-confirm recheck. Calling those wrappers inside the confirm transaction would not make their reads
-part of it. The leave owner must expose/check the confirmed effect at the authoritative calculation
+The source-only exception adds optional enclosing-transaction parameters to the existing preview and
+Assistant grant helpers. Their default paths still open their own transactions; passing the command's
+caller-scoped transaction is required for a shared recheck. These source changes and their rollback
+regression tests are not yet runtime-validated. The grant helper still consumes the supplied session's
+entitlement snapshot: that snapshot must be freshly resolved by the command's authority owner.
+Neither change establishes an atomic confirm command. The leave owner must expose/check the
+confirmed effect at the authoritative calculation
 point, with the relevant existing locks or dependency checks, before its first write. A second preview
 on a different snapshot is insufficient. Do not implement a preview by calling the write service and
 rolling it back, or duplicate the leave engine's policy math in the action registry.
@@ -333,10 +345,11 @@ another user's confirmation button. Execution completion and approved HR outcome
 | Honest experience | Six locales, populated/empty/refused/changed/unknown states, desktop/mobile, keyboard confirmation, source links and runtime logs |
 | Privacy and accounting | No source/private text in traces; retention/erasure demonstrated; model admissions count normally and deterministic confirm makes no provider call |
 
-Implementation remains blocked by owner hold, not by a missing migration number. No action registry,
-table, endpoint, confirmation card, principal, prompt or migration is created by this design. Before
-that later increment, refresh source and reconcile the final shared lifecycle with the prior plan,
-allocate migrations centrally, and complete the current harness acceptance under the resource policy.
+The original design created no action registry, table, endpoint, confirmation card, principal, prompt
+or migration. The 2026-10-24 exception permits only source development of this first action. Before
+runtime validation, refresh released source and reconcile the final shared lifecycle with the prior
+plan, coordinate any migration allocation centrally, and honor both predecessor handbacks. Complete
+and release the current harness before Phase 2 release work.
 
 ### Adjacent candidates discussed, not part of the first action
 

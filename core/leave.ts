@@ -4157,6 +4157,9 @@ export async function previewLeaveDeduction(
      *  does, so every existing caller is untouched. */
     today?: string;
   },
+  /** Caller-scoped transaction for a command's live recheck. This preview remains advisory:
+   * requestLeave owns eligibility, acceptance and the persisted deduction. */
+  existingTx?: Tx,
 ): Promise<{
   days: number;
   balanceAvailable: number;
@@ -4180,7 +4183,7 @@ export async function previewLeaveDeduction(
    *  fill the whole thing in first. */
   overrides?: LeaveOverridePreview[];
 }> {
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
     const [lt] = await tx
       // Day Type Inclusion (feedback ef6d7146): projected so the preview's day-count matches what submission
@@ -4345,7 +4348,8 @@ export async function previewLeaveDeduction(
       ...(unpaidDays > 0 ? { unpaidDays } : {}),
       ...(overrides.length ? { overrides } : {}),
     };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** One rule the apply form must tell the employee about before they submit. Flat + serialisable: it crosses
