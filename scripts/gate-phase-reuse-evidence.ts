@@ -11,6 +11,8 @@ import {planImpact} from './gate-impact';
 import {releaseHistory,learningDirectory} from './gate-learning';
 
 export const HOME_REPAIR={path:'test/employee-home-landing.test.ts',before:'25e5c3c719b55a70b28a86c8e5b0381c71b45113f74464bd4bf7db8ea6035528',after:'8cb53750d0b79d61cfbf377808a9fe852114c2d41813cb611deb14c83943ab1e'};
+// Owner-approved CSS-only phone header repair and its browser regression; exact bytes only.
+export const PHONE_HEADER_REPAIRS=[{"path":"app/atelier.css","before":"9305ba8556196cceaa51db9d32f246f9e35caf0f504cca78bc11eda3d1e7ad87","after":"2d3dcc4a024699f0a569b6e6ac6ed132dfd36d36b3736fa120e6bbe9a6811ccb"},{"path":"test/employee-home-touch-targets.browser.test.tsx","before":"244ad9a8b57694577f0c2588a93e52e5f05cf7e9851c8b33fcef0f592b08d05a","after":"7a1dc7149c5143840baba2b5fb137428c97bdaf1260f3d1b1df475f47eb4820e"}];
 // This is a deliberately bounded initial machinery bootstrap, not permission for arbitrary tests,
 // helpers, runtime or configuration changes. Later work outside this contract requires the full gate.
 export const BOOTSTRAP_FILES=[
@@ -59,11 +61,16 @@ export function readArtifacts(root:string,manifest:Artifact[]):Map<string,string
  const out=new Map<string,string>();for(const x of manifest){proof(/^[a-f0-9]{64}$/.test(x.sha256),'invalid artifact hash');const b=safeFile(root,x.path);proof(digest(b)===x.sha256,'tampered '+x.path);out.set(x.path,b.toString('utf8'));}return out;
 }
 export function validateRepairDelta(base:string,head:string,cwd:string){
- const before=trackedTree(base,cwd),after=trackedTree(head,cwd),allowed=new Set([...BOOTSTRAP_FILES,HOME_REPAIR.path]);
+ const before=trackedTree(base,cwd),after=trackedTree(head,cwd),allowed=new Set([...BOOTSTRAP_FILES,HOME_REPAIR.path,...PHONE_HEADER_REPAIRS.map(r=>r.path)]);
  const changed=[...new Set([...before.keys(),...after.keys()])].filter(p=>before.get(p)!==after.get(p)).sort();
  proof(changed.includes(HOME_REPAIR.path),'the exact test fixture repair is required');
  for(const path of changed){proof(allowed.has(path),'unapproved product/configuration/helper/test delta: '+path);proof(after.has(path),'file removal: '+path);}
  proof(digest(textAt(base,HOME_REPAIR.path,cwd))===HOME_REPAIR.before&&digest(textAt(head,HOME_REPAIR.path,cwd))===HOME_REPAIR.after,'Home fixture is not the reviewed additive repair');
+ const uiChanged=PHONE_HEADER_REPAIRS.some(r=>changed.includes(r.path));
+ if(uiChanged)for(const r of PHONE_HEADER_REPAIRS){
+  proof(changed.includes(r.path)&&before.has(r.path)&&after.has(r.path),'incomplete phone header repair');
+  proof(digest(textAt(base,r.path,cwd))===r.before&&digest(textAt(head,r.path,cwd))===r.after,'phone header is not the reviewed CSS/browser repair');
+ }
  proof(BOOTSTRAP_FILES.every(p=>after.has(p)),'incomplete verification bootstrap');return changed;
 }
 export function validateBaseline(artifacts:Map<string,string>,base:string,cwd:string,now=Date.now()){
@@ -102,8 +109,8 @@ export function phaseReusePlan(base:string,head:string,cwd:string){
  const classified=classifyTestFiles(all,p=>files.get(p)??null);
  const impact=planImpact(collectChanges(base,head,cwd),files,[],undefined,true);
  const dbSet=new Set(classified.db),affected=impact.run.filter(p=>dbSet.has(p));
- // The owner chose no fresh DB phase for this exact additive fixture repair. Product, DB-test,
- // shared-fixture and dependency bytes are all frozen by validateRepairDelta. Verification consumers
+ // The owner chose no fresh DB phase for this exact additive fixture repair. Product logic, DB-test,
+ // shared-fixture and dependency bytes are all frozen; only the pinned CSS/browser repair is excepted by validateRepairDelta. Verification consumers
  // still execute separately against a closed port; a connection attempt fails instead of using a DB.
  const tooling=affected.filter(p=>(impact.selection[p]??[]).some(reason=>reason.startsWith('transitive import consumer of ')&&BOOTSTRAP_FILES.includes(reason.slice('transitive import consumer of '.length))));
  return {changed,all,nodb:classified.nodb,db:classified.db,affected,tooling,impact};

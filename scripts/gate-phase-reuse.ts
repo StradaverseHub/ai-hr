@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const PHASE_REUSE_POLICY_VERSION = 2;
+export const PHASE_REUSE_POLICY_VERSION = 3;
 export const digest = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 function requireProof(condition: unknown, reason: string): asserts condition {
   if (!condition) throw new Error('Phase reuse refused: ' + reason);

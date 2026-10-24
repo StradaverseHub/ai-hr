@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
-import {artifactManifest,readArtifacts,validateRepairDelta,validatePhaseReuse,phaseReusePlan,HOME_REPAIR,BOOTSTRAP_FILES,BASELINE_ARTIFACTS,type PhaseReuseReceipt} from '../scripts/gate-phase-reuse-evidence';
+import {artifactManifest,readArtifacts,validateRepairDelta,validatePhaseReuse,phaseReusePlan,HOME_REPAIR,PHONE_HEADER_REPAIRS,BOOTSTRAP_FILES,BASELINE_ARTIFACTS,type PhaseReuseReceipt} from '../scripts/gate-phase-reuse-evidence';
 import {environmentHash} from '../scripts/gate-impact-git';
 import {digest} from '../scripts/gate-phase-reuse';
 import {decideReleaseGate} from '../scripts/improve/release-gate';
@@ -30,11 +30,12 @@ beforeAll(()=>{
  put(cwd,'app/page.ts','export {};');put(cwd,'core/employee-home.ts','export {};');
  // The classifier requires a resolvable local path even for mocked product imports.
  put(cwd,'lib/scope.ts','export {};');put(cwd,'lib/authz.ts','export {};');put(cwd,'core/read.ts','export {};');put(cwd,'core/assistant-grant.ts','export {};');put(cwd,'components/employee-home/personal-home.tsx','export {};');
+ for(const r of PHONE_HEADER_REPAIRS)put(cwd,r.path,execFileSync('git',['show','fa9108fc7391ccaabebd72c369eaf4f6b46cf9e2:'+r.path],{cwd:owner,encoding:'utf8'}));
  base=commit();
- const all=shell(['ls-files','test']).split('\n').sort(),db=all.filter(p=>p.startsWith('test/db')),nodb=all.filter(p=>!db.includes(p));
+ const all=shell(['ls-files','test']).split('\n').filter(p=>!p.endsWith('.browser.test.tsx')).sort(),db=all.filter(p=>p.startsWith('test/db')),nodb=all.filter(p=>!db.includes(p));
  expect(nodb.length).toBe(948);
  for(const p of BOOTSTRAP_FILES)put(cwd,p,readFileSync(join(owner,p),'utf8'));
- put(cwd,HOME_REPAIR.path,readFileSync(join(owner,HOME_REPAIR.path),'utf8'));head=commit();
+ put(cwd,HOME_REPAIR.path,readFileSync(join(owner,HOME_REPAIR.path),'utf8'));for(const r of PHONE_HEADER_REPAIRS)put(cwd,r.path,readFileSync(join(owner,r.path),'utf8'));head=commit();
  const plan=phaseReusePlan(base,head,cwd),env=environmentHash(cwd),at=new Date().toISOString();
  const originalPlan={sha:base,base,deployed:base,environmentHash:env,plan:{synthetic:true}};
  const learning={sha:base,base,environmentHash:env,tier:'full',result:'FAIL',failed:[HOME_REPAIR.path],at,id:base+'.synthetic',plan:originalPlan.plan,fullReceipt:{sha:base,tier:'full',result:'FAIL'}};
@@ -57,7 +58,7 @@ beforeAll(()=>{
  const tooling=plan.tooling.length?{files:plan.tooling,log:'fresh-tooling-closed-port.log',exit:0}:null;
  if(tooling)put(archive,tooling.log,passing(tooling.files.length));
  const names=[...BASELINE_ARTIFACTS,'fresh-fixture-5433-before.json','fresh-fixture-5433-after.json','fresh-port-handover-result.json','fresh-nodb.log',...(tooling?[tooling.log]:[])];
- receipt={sha:head,result:'PASS',tier:'phase-reuse',base,deployedBase:base,environmentHash:env,policyVersion:2,at,archive,artifacts:artifactManifest(archive,names),nodb:{files:plan.nodb,log:'fresh-nodb.log',exit:0},database,tooling,strategy:'frozen-product-nodb',planFingerprint:plan.impact.fingerprint};
+ receipt={sha:head,result:'PASS',tier:'phase-reuse',base,deployedBase:base,environmentHash:env,policyVersion:3,at,archive,artifacts:artifactManifest(archive,names),nodb:{files:plan.nodb,log:'fresh-nodb.log',exit:0},database,tooling,strategy:'frozen-product-nodb',planFingerprint:plan.impact.fingerprint};
 },120000);
 afterAll(()=>{if(originalState===undefined)delete process.env.AIHR_IMPACT_STATE_DIR;else process.env.AIHR_IMPACT_STATE_DIR=originalState;rmSync(scratch,{recursive:true,force:true});});
 const check=(r=receipt)=>validatePhaseReuse(r,{head,deployedRef:base,worktree:cwd});
@@ -96,6 +97,7 @@ describe('real filesystem, committed source and release provenance',()=>{
   const before=shell(['rev-parse','HEAD']);put(cwd,path,'// unauthorized delta');const changed=commit();
   try{expect(()=>validateRepairDelta(base,changed,cwd)).toThrow(/unapproved/);}finally{shell(['reset','--hard',before]);}
  });
+ it.each(PHONE_HEADER_REPAIRS.map(r=>r.path))('refuses any change outside the pinned CSS/browser repair: %s',path=>{const before=shell(['rev-parse','HEAD']);put(cwd,path,'/* arbitrary repair */');const changed=commit();try{expect(()=>validateRepairDelta(base,changed,cwd)).toThrow(/reviewed CSS/);}finally{shell(['reset','--hard',before]);}});
  it('refuses dirty current source',()=>{put(cwd,'app/page.ts','// dirty');try{expect(()=>check()).toThrow(/dirty/);}finally{shell(['restore','app/page.ts']);}});
  it('refuses a missing artifact, a changed raw file and a symlink',()=>{
   const p=join(archive,'chunk1.log'),old=readFileSync(p,'utf8');
