@@ -3403,6 +3403,13 @@
       "when": 1791900000084,
       "tag": "0597_employment_cost_allocations",
       "breakpoints": true
+    },
+    {
+      "idx": 598,
+      "version": "7",
+      "when": 1791900000085,
+      "tag": "0598_cost_allocation_criteria_guard",
+      "breakpoints": true
     }
   ]
 }
