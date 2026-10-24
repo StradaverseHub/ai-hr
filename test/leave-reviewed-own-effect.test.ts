@@ -62,6 +62,31 @@ describe('reviewed own-leave precondition at the canonical write', () => {
     await expect(requestLeave(ctx, args, undefined, reviewed)).rejects.toThrow(LeaveReviewedEffectError);
   });
 
+  it('binds guarded subject, tenant and event actor before the first database await', async () => {
+    await withTenant(ctx, async tx => {
+      const supplied: SessionContext = { ...ctx, roles: ctx.roles?.slice(),
+        grants: ctx.grants?.map(grant => ({ ...grant })) };
+      const pending = requestLeave(supplied, args, tx, reviewed);
+      // The real subject query is pending. Mutate the retained input, including nested carriers;
+      // the request must still use its original binding rather than changing subject or event actor.
+      supplied.tenantId = '00000000-0000-4000-8000-000000000098';
+      supplied.userId = '00000000-0000-4000-8000-000000000099';
+      supplied.personId = null;
+      supplied.roles?.splice(0, supplied.roles.length, 'employee');
+      if (supplied.grants?.[0]) supplied.grants[0].role = 'employee';
+      const result = await pending;
+      expect(await tx.select({ tenantId: leaveRequest.tenantId, employmentId: leaveRequest.employmentId })
+        .from(leaveRequest).where(eq(leaveRequest.id, result.leaveRequestId)).orderBy(leaveRequest.id))
+        .toEqual([{ tenantId: ctx.tenantId, employmentId: args.employmentId }]);
+      const events = await tx.select({ tenantId: domainEvent.tenantId, actorType: domainEvent.actorType,
+        actorId: domainEvent.actorId, eventType: domainEvent.eventType, subject: domainEvent.subjectEmploymentId })
+        .from(domainEvent).where(eq(domainEvent.aggregateId, result.leaveRequestId)).orderBy(domainEvent.id);
+      expect(events.filter(event => event.eventType === 'leave-request.submitted'))
+        .toEqual([{ tenantId: ctx.tenantId, actorType: 'user', actorId: ctx.userId,
+          eventType: 'leave-request.submitted', subject: args.employmentId }]);
+    });
+  });
+
   it('refuses a changed warning even when the actual deduction and pending-aware balance are unchanged', async () => {
     await setAttendancePolicy(adminCtx(base), { companyId: base.companyId,
       workStart: '09:00', workEnd: '18:00', breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00',

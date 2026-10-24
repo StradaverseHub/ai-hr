@@ -3360,6 +3360,10 @@ export async function requestLeave(
     reviewedOwnLeave = { ...reviewedOwnLeave,
       holidayWarnings: reviewedOwnLeave.holidayWarnings.map(warning => ({ ...warning })) };
     p = { ...p };
+    // Keep subject checks, HR-override decisions and written tenant/actor bound to the same
+    // supplied identity even if its caller mutates retained carriers during a database await.
+    // This captures inputs only; the enclosing command still owns the live principal proof.
+    ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
     if (!existingTx || !ctx.userId || !Number.isFinite(reviewedOwnLeave.days) || reviewedOwnLeave.days <= 0
       || !Number.isFinite(reviewedOwnLeave.availableBalance) || reviewedOwnLeave.availableBalance < reviewedOwnLeave.days
       || (p.durationType ?? 'full_day') !== 'full_day' || p.document !== undefined || p.hasDocument !== undefined
