@@ -27,7 +27,7 @@ export interface GateReceipt {
 export type DeployedVerdict = { deployedRef: string; verdict: TierVerdict } | { error: string };
 
 export type ReleaseGateDecision =
-  | { ok: true; tier: 'full' | 'affected' | 'impact'; lines: string[] }
+  | { ok: true; tier: 'full' | 'affected' | 'impact' | 'phase-reuse'; lines: string[] }
   | { ok: false; lines: string[] };
 
 const RUN_THE_GATE = [
@@ -46,6 +46,7 @@ export function decideReleaseGate(p: {
   /** Called only for an affected-tier receipt. */
   deployedVerdict: () => DeployedVerdict;
   impactVerdict?: () => {ok:boolean;lines:string[]};
+  phaseReuseVerdict?: () => {ok:boolean;lines:string[]};
 }): ReleaseGateDecision {
   const short = (s: string) => s.slice(0, 7);
   const r = p.receipt;
@@ -69,6 +70,11 @@ export function decideReleaseGate(p: {
         `→ final gate: tier=full covers HEAD ${short(p.head)}${r.tier === undefined ? ' (receipt predates tiers: the full gate)' : ''}`,
       ],
     };
+  }
+  if (r.tier === 'phase-reuse') {
+    const proof=p.phaseReuseVerdict?.();
+    if(!proof)return {ok:false,lines:['✗ REFUSED: phase reuse requires complete release-time provenance revalidation.',...RUN_THE_GATE]};
+    return proof.ok?{ok:true,tier:'phase-reuse',lines:proof.lines}:{ok:false,lines:proof.lines};
   }
   if (r.tier === 'impact') {
     const proof=p.impactVerdict?.();

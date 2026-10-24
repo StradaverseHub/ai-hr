@@ -195,12 +195,18 @@ for (const theme of ['monolith', 'classic'] as const) {
         expect(table.getAttribute('role')).toBe('table');
         expect(row.getAttribute('role')).toBe('row');
         expect(cells.every((c) => c.getAttribute('role') === 'cell')).toBe(true);
-        const labelled = cells.filter((c) => getComputedStyle(c, '::before').content === `"${c.dataset.label}"`);
+        const labelled = cells.filter((c) => {
+          const content = getComputedStyle(c, '::before').content;
+          // Firefox reports the attr() expression; Chromium/WebKit report its resolved string.
+          // Both must read this cell's actual label, and the exact four labels are asserted below.
+          return !!c.dataset.label && (content === `"${c.dataset.label}"` || content === 'attr(data-label)');
+        });
         if (narrow) {
           expect(getComputedStyle(row).display).toBe('grid');
           expect(rect(table.querySelector('thead')!).width).toBeLessThanOrEqual(1);
           // Title, status (split) and actions print no label; the four plain cells do.
           expect(labelled.map((c) => c.dataset.label)).toEqual(['File Type', 'Layout', 'Device', 'Last Used']);
+          expect(labelled.every(c => getComputedStyle(c, '::before').display === 'block')).toBe(true);
           // The status word is top-right, beside the title; the reason spans the foot of the block.
           const word = rect(row.querySelector('[data-status-word]')!);
           const title = rect(cells[0]);

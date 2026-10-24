@@ -722,6 +722,26 @@ export type AssignedClockingLocation = {
   usable: boolean;
 };
 
+/** Shared current-assignment usability for both the full configuration read and minimal own hints. */
+function usableAssignedClockingLocationSql(){
+ return sql<boolean>`(${clockingLocation.archivedAt} is null and exists (
+  select 1 from clocking_location_company uc join employment ue on ue.company_id = uc.company_id
+  where uc.clocking_location_id = ${clockingLocation.id} and ue.id = ${employeeClockingLocation.employmentId}
+ ))`;
+}
+
+/** Minimal names of the same usable assigned sites. Total is computed before the three-name display
+ * bound; no address, coordinates, geofence radius or other employee data is selected. */
+export function employeeClockingLocationLabels(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.select({name:clockingLocation.name,total:sql<number>`count(*) over ()`.mapWith(Number)})
+   .from(employeeClockingLocation).innerJoin(clockingLocation,eq(clockingLocation.id,employeeClockingLocation.clockingLocationId))
+   .where(and(eq(employeeClockingLocation.employmentId,employmentId),usableAssignedClockingLocationSql()))
+   .orderBy(asc(clockingLocation.name),asc(clockingLocation.id)).limit(3);
+  return {total:rows[0]?.total??0,names:rows.map(row=>row.name)};
+ });
+}
+
 /** The clocking sites currently assigned to one employment. Deliberately does NOT join `location`: this is
  *  read under the EMPLOYEE's own session too, and `location` is admin-only under RLS. */
 export function listEmployeeClockingLocations(
@@ -739,11 +759,7 @@ export function listEmployeeClockingLocations(
         locationId: clockingLocation.locationId,
         address: clockingLocation.address,
         archivedAt: clockingLocation.archivedAt,
-        usable: sql<boolean>`(${clockingLocation.archivedAt} is null and exists (
-          select 1 from clocking_location_company uc
-          join employment ue on ue.company_id = uc.company_id
-          where uc.clocking_location_id = ${clockingLocation.id} and ue.id = ${employeeClockingLocation.employmentId}
-        ))`,
+        usable: usableAssignedClockingLocationSql(),
       })
       .from(employeeClockingLocation)
       .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))

@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {ownAttendanceRecordSubject} from '../my-records/subject';
 import {personalCalendarHolidayContext} from './holiday-context';
 import {personalHolidayContext} from '@/lib/personal-holiday-context';
 import Link from 'next/link';
@@ -23,7 +25,7 @@ import {
 } from './view';
 
 /** Attendance Calendar composes the existing personal roster and attendance owners.
- * No employment selection is accepted; all writes remain in the existing daily workflow.
+ * Explicit own-employment selection retains the same subject proof; writes use the daily workflow.
  */
 export default async function MyRosterPage({
   searchParams,
@@ -39,12 +41,13 @@ export default async function MyRosterPage({
   // satisfied for this registered route). Only the session is taken — see the fence note in the header.
   const { s } = await scopedSession();
   const sp = await searchParams;
+  if(sp.employmentId!==undefined&&!await ownAttendanceRecordSubject(s,sp.employmentId))notFound();
 
   const today = todayInKualaLumpur();
   const state = resolveAttendanceCalendarState(sp, today);
   const w = state.window;
   const calendarHref = (window:MyRosterWindow, selected=state.selected) => attendanceCalendarHref({...state,tab:'calendar',window,selected});
-  const loaded = await myAttendanceCalendarWindow(s, { from: w.from, to: w.to });
+  const loaded = await myAttendanceCalendarWindow(s, { from: w.from, to: w.to,...(state.employmentId?{employmentId:state.employmentId}:{}) });
 
   if (!loaded) {
     /**

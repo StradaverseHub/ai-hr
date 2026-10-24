@@ -22,6 +22,7 @@ vi.mock('../lib/session', async (importOriginal) => ({
 }));
 
 const { POST, GET } = await import('../app/api/attendance/clock/route');
+const { GET:todayGET } = await import('../app/api/attendance/today/route');
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -57,6 +58,26 @@ const post = (fields: Record<string, string>) => {
 };
 
 describe('r430 — POST /api/attendance/clock contract', () => {
+  it('requires a context for a selected command, rejects foreign or duplicate selectors, and recovers only its own selected receipt',async()=>{
+    const employmentId=await hire(),requestId=randomUUID();
+    const state=await ownClockToday(CALLER,undefined,employmentId);
+    expect((await post({action:'in',requestId,employmentId})).status).toBe(400);
+    const foreign=await post({action:'in',requestId,employmentId:randomUUID(),clockContext:state.clockContext});
+    expect(foreign.status).toBe(409);expect(await foreign.json()).toEqual({error:'accountChanged'});
+    const fields={action:'in',requestId,employmentId,clockContext:state.clockContext};
+    const duplicate=new FormData();for(const [key,value] of Object.entries(fields))duplicate.set(key,value);duplicate.append('employmentId',employmentId);
+    expect((await POST(new Request('http://localhost/api/attendance/clock',{method:'POST',headers:{origin:'http://localhost'},body:duplicate}))).status).toBe(400);
+    const accepted=await post(fields);expect(accepted.status).toBe(200);
+    const lookup=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}&employmentId=${employmentId}`));
+    expect(lookup.status).toBe(200);expect(await lookup.json()).toEqual(await accepted.json());
+    const refreshed=await todayGET(new Request(`http://localhost/api/attendance/today?employmentId=${employmentId}`));
+    expect(refreshed.status).toBe(200);expect(await refreshed.json()).toMatchObject({clockContext:state.clockContext,clockedIn:true});
+    expect((await todayGET(new Request(`http://localhost/api/attendance/today?employmentId=${randomUUID()}`))).status).toBe(403);
+    for(const query of [`employmentId=`,`employmentId=${employmentId}&employmentId=${employmentId}`]){
+      expect((await todayGET(new Request('http://localhost/api/attendance/today?'+query))).status).toBe(400);
+      expect((await GET(new Request('http://localhost/api/attendance/clock?requestId='+requestId+'&'+query))).status).toBe(400);
+    }
+  });
   it('a posted deviceToken is an UNRECOGNISED key now — refused (400), nothing written', async () => {
     const employmentId = await hire();
     const res = await post({ action: 'in', requestId: randomUUID(), deviceToken: randomUUID(), lat: '3', lng: '101', accuracy: '10' });
@@ -89,11 +110,11 @@ describe('r430 — POST /api/attendance/clock contract', () => {
   });
 });
 
-// Receipt lookup accepts only a request ID, and scopes it to the current employee.
-it('confirms own accepted request and refuses a supplied subject or another employee receipt',async()=>{
+// An optional subject selector is re-authorized; it cannot widen receipt ownership.
+it('confirms own accepted request and refuses a foreign selection or another employee receipt',async()=>{
   await hire();const requestId=randomUUID();const accepted=await post({action:'in',requestId,lat:'3',lng:'101',accuracy:'10'});expect(accepted.status).toBe(200);
   const own=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(own.status).toBe(200);expect((await own.json()).receipt).toEqual((await accepted.json()).receipt);
-  const invalid=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}&employmentId=${randomUUID()}`));expect(invalid.status).toBe(400);
+  const invalid=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}&employmentId=${randomUUID()}`));expect(invalid.status).toBe(404);
   await hire();const other=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(other.status).toBe(404);
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attendanceCalendarBackHref, attendanceCalendarDetailHref, calendarReturnParams } from '../app/attendance/my-roster/attendance-links';
+import { attendanceCalendarBackHref, attendanceCalendarDetailHref, calendarReturnParams,resolveAttendanceCalendarState } from '../app/attendance/my-roster/attendance-links';
 import { resolveMyRosterWindow } from '../app/attendance/my-roster/view';
 
 const today = '2026-03-18';
@@ -13,6 +13,15 @@ describe('personal calendar detail and return navigation', () => {
     expect(back.searchParams.get('view')).toBe(view);
     expect(back.searchParams.get(view==='month'?'month':'date')).toBe(view==='month'?'2026-03':view==='week'?'2026-03-16':today);
     if(view!=='day')expect(back.searchParams.get('selected')).toBe(today);
+  });
+  it('retains an explicit own-employment coordinate across list, calendar detail and back navigation',()=>{
+    const employmentId='00000000-0000-4000-8000-000000000011';
+    const state=resolveAttendanceCalendarState({employmentId,tab:'list',from:today,to:today},today);
+    const detail=new URL(attendanceCalendarDetailHref(today,state.window,state),'https://local.invalid');
+    expect(detail.searchParams.get('employmentId')).toBe(employmentId);
+    const back=new URL(attendanceCalendarBackHref(Object.fromEntries(detail.searchParams),today),'https://local.invalid');
+    expect(back.searchParams.get('employmentId')).toBe(employmentId);
+    expect(back.searchParams.get('tab')).toBe('list');
   });
   it('ignores foreign destinations, invalid dates, arbitrary views and employee selectors', () => {
     const hostile={calendar:'1',calendarView:'https://untrusted.invalid',calendarMonth:'2026-99',calendarDate:'2026-02-30',employmentId:'someone-else',returnTo:'https://untrusted.invalid'};

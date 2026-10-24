@@ -1,9 +1,10 @@
-import { getTranslations } from 'next-intl/server';
+import { getTranslations,getLocale } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { NoticeForm } from '@/components/notice/notice-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import {noticeAuthoringScope} from '@/core/notice';
 import { criteriaVocabulary } from '../criteria-options';
 import { createNoticeAction } from '../actions';
 
@@ -28,8 +29,10 @@ export default async function NewNoticePage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('notices');
+  const locale=await getLocale();
   const { error } = await searchParams;
   const vocab = await criteriaVocabulary(s);
+  const authoring=await noticeAuthoringScope(s);
   const today = todayInKualaLumpur();
 
   return (
@@ -45,6 +48,7 @@ export default async function NewNoticePage({
         <SectionHeader title={t('setupTitle')} />
         <div className="px-4 pb-4 pt-3">
           <NoticeForm
+            authoring={{groupAllowed:authoring.groupAllowed,companies:authoring.companies.map(c=>({value:c.id,label:c.name})),owner:null}}
             action={createNoticeAction}
             values={{
               title: '',
@@ -68,6 +72,10 @@ export default async function NewNoticePage({
             employees={vocab.employees}
             targetingFrozen={false}
             labels={{
+              attachmentLocale:locale,
+              attachments:{title:t('attachmentTitle'),help:t('attachmentHelp'),choose:t('attachmentChoose'),add:t('attachmentAdd'),pending:t('attachmentPending'),remove:t('attachmentRemove'),saveFirst:t('attachmentSaveFirst'),saveHint:t('attachmentSaveHint'),file:t('attachmentFile'),tooLarge:t('attachmentTooLarge'),changed:t('attachmentChanged'),limit:t('attachmentLimit'),unavailable:t('attachmentUnavailable'),failed:t('attachmentFailed')},
+              category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
+              authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),
               sectionContent: t('sectionContent'),
               sectionAudience: t('sectionAudience'),
@@ -119,6 +127,7 @@ export default async function NewNoticePage({
               fPopupFrequency: t('fPopupFrequency'),
               popupOnce: t('popupOnce'),
               popupUntilAcknowledged: t('popupUntilAcknowledged'),
+              popupUntilRevisionAcknowledged:t('popupUntilRevisionAcknowledged'),
               submit: t('saveDraft'),
             }}
           />

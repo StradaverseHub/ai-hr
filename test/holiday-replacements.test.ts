@@ -9,9 +9,10 @@ import {createShift,assignDefaultShift,updateShift,setEmploymentScheduleGroup} f
 import {createAttendanceRule,setRuleShifts} from '../core/attendance-rule';
 import {saveScheduleRotation,getScheduleRotation} from '../core/attendance-rotation';
 import {assignEmployeeShiftDated} from '../core/shift-arrangement';
-import {checkIn,checkOut,setAttendancePolicy,rawScheduleDaysTx,rawScheduleDayFactsTx} from '../packs/attendance/service';
+import {checkIn,checkOut,setAttendancePolicy,rawScheduleDaysTx,rawScheduleDayFactsTx,attendancePolicyCalendarTx} from '../packs/attendance/service';
+import {partitionAttendancePolicyWork} from '../packs/attendance/policy-partition';
 import {workingDatesForSpan} from '../packs/leave/service';
-import {holidayDatesFor,holidayDatesByEmployment,originalHolidayCalendarFor} from '../core/holidays';
+import {holidayDatesFor,holidayDatesByEmployment,originalHolidayCalendarFor,holidayCalendarProvenanceFor} from '../core/holidays';
 import {adjustReplacementHoliday,reconcileReplacementHolidays,saveReplacementHolidayPolicy} from '../core/holiday-replacements';
 import {listReplacementHolidays,replacementHolidayHistory,replacementHolidayReviewRows} from '../core/holiday-replacement-read';
 import {addHolidayDays} from '../lib/holiday-replacement';
@@ -40,9 +41,29 @@ describe('employee replacement owner and shared calendar',()=>{
   expect((await owner.db.select().from(schema.holiday).where(eq(schema.holiday.id,f.h.id)))[0].holidayDate).toBe(f.sourceDate);
   expect((await withTenant(f.ctx,tx=>rawScheduleDaysTx(tx,f.e.employmentId,f.sourceDate,f.sourceDate))).get(f.sourceDate)).toBe('rest');
   expect(await withTenant(f.ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:replacement,endDate:replacement}))).toEqual(new Set([replacement]));
+  const provenance=await withTenant(f.ctx,tx=>holidayCalendarProvenanceFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:replacement}));
+  expect(provenance.originals).toContainEqual({id:f.h.id,companyId:b.companyId,date:f.sourceDate,holidayType:'public'});
+  expect(provenance.replacements).toEqual([{id:row.id,employmentId:f.e.employmentId,companyId:b.companyId,sourceDate:f.sourceDate,replacementDate:replacement}]);
+  const calendar=await withTenant(f.ctx,tx=>attendancePolicyCalendarTx(tx,{employmentId:f.e.employmentId,dates:[f.sourceDate,replacement]}));
+  expect(calendar).toMatchObject([{date:f.sourceDate,state:'known',dayClass:'publicHoliday',moneyDay:'holiday'},
+    {date:replacement,state:'known',dayClass:'replacementHoliday',moneyDay:'holiday'}]);
+  const replacementFact=calendar.find(fact=>fact.date===replacement)!;
+  expect(replacementFact.state==='known'&&replacementFact.references).toContain(`replacement-holiday:${row.id}`);
+  expect(partitionAttendancePolicyWork({sourceDate:replacement,companyId:b.companyId,periodMinutes:1440,splitAtMidnight:true,
+    intervals:[{from:540,to:600}],calendar})).toMatchObject({status:'ready',minutes:60,parts:[{date:replacement,dayClass:'replacementHoliday',minutes:60}]});
+  expect(new Set([...provenance.originals.map(h=>h.date),...provenance.replacements.map(h=>h.replacementDate)]))
+    .toEqual(await withTenant(f.ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:replacement})));
   expect(await withTenant(f.ctx,tx=>workingDatesForSpan(tx,f.e.employmentId,replacement,replacement))).toEqual([]);
   await checkIn(f.ctx,{employmentId:f.e.employmentId,date:replacement,time:'09:00'});await checkOut(f.ctx,{employmentId:f.e.employmentId,date:replacement,time:'19:00'});
   const [record]=await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.e.employmentId),eq(schema.attendance.attendanceDate,replacement)));expect(record.dayType).toBe('holiday');expect(record.ot30Minutes).toBeGreaterThan(0);
+ });
+ it('refuses differentiated policy binding when an original and retained replacement collide on one date',async()=>{
+  const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [row]=await rows(f.e.employmentId);
+  await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,country:'MY',companyId:b.companyId,holidayDate:row.replacementDate!,name:'Fictional later calendar collision'});
+  expect(await withTenant(f.ctx,tx=>attendancePolicyCalendarTx(tx,{employmentId:f.e.employmentId,dates:[row.replacementDate!]})))
+   .toEqual([{date:row.replacementDate,state:'unknown',reason:'holidayDesignationUnavailable'}]);
+  // Resolving evidence must neither move the retained allocation nor rewrite its source.
+  expect(await rows(f.e.employmentId)).toEqual([row]);
  });
  it('repeat and concurrent processing preserve one allocation and unchanged revision counts',async()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [before]=await rows(f.e.employmentId),history=await replacementHolidayHistory(f.ctx,before.id);
@@ -213,15 +234,18 @@ describe('employee replacement owner and shared calendar',()=>{
   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Scoped HR',primaryEmail:`${randomUUID()}@test.local`}).returning();
   const userId=await createAppUser(b.tenantId,person.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:otherCompany.id}).where(eq(schema.roleAssignment.appUserId,userId));
   const scoped:SessionContext={...f.ctx,userId,personId:person.id,grants:[{role:'hr_admin',companyId:otherCompany.id}]};
+  expect(await withTenant(scoped,tx=>holidayCalendarProvenanceFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:day(3)}))).toEqual({originals:[],replacements:[]});
   expect(await listReplacementHolidays(scoped,{employmentId:f.e.employmentId})).toEqual([]);await expect(adjustReplacementHoliday(scoped,{allocationId:row.id,date:day(3),reason:'Outside company scope.'})).rejects.toThrow();
   await expect(saveReplacementHolidayPolicy(scoped,{companyId:b.companyId,effectiveFrom:day(1),regime:'company_confirmed',confirmed:true,restMode:'scheduled_rest',halfEligible:false,searchDays:7,reason:'Forged cross-company policy.'})).rejects.toThrow('cannot administer');
   const foreign=adminCtx(await seedBase());expect(await listReplacementHolidays(foreign,{employmentId:f.e.employmentId})).toEqual([]);await expect(adjustReplacementHoliday(foreign,{allocationId:row.id,date:day(3),reason:'Outside tenant scope.'})).rejects.toThrow();
+  expect(await withTenant(foreign,tx=>holidayCalendarProvenanceFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:day(3)}))).toEqual({originals:[],replacements:[]});
   expect((await rows(f.e.employmentId))[0]).toEqual(row);
  });
  it('does not allow an employee to adjust or read another employee’s replacement',async()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [row]=await rows(f.e.employmentId),other=await hireEmployee(f.ctx,{person:{fullName:'Unrelated',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-366)});
   const user=await createAppUser(b.tenantId,other.personId,'employee');const ctx:SessionContext={...f.ctx,userId:user,personId:other.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
   const history=await replacementHolidayHistory(f.ctx,row.id);
+  expect(await withTenant(ctx,tx=>holidayCalendarProvenanceFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:day(3)}))).toEqual({originals:[],replacements:[]});
   expect(await listReplacementHolidays(ctx,{employmentId:f.e.employmentId})).toEqual([]);expect(()=>adjustReplacementHoliday(ctx,{allocationId:row.id,date:day(3),reason:'Forged employee adjustment.'})).toThrow('Only an HR administrator can adjust replacement holidays.');
   expect(await rows(f.e.employmentId)).toEqual([row]);expect(await replacementHolidayHistory(f.ctx,row.id)).toEqual(history);
  });

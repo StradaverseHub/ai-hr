@@ -98,7 +98,7 @@ export function CompanySwitcher({
           setOpen(!open);
         }}
         aria-expanded={open}
-        className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100"
+        className="flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100"
       >
         <span className="size-2 shrink-0 rounded-full bg-primary monolith:hidden" />
         <span className="min-w-0 max-w-[14rem] truncate">{label}</span>

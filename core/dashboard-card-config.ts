@@ -21,6 +21,7 @@ import { and, count, eq, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { dashboardCardConfig } from '../db/schema';
+import {EMPLOYEE_HOME_CARD_DEFAULTS,EMPLOYEE_HOME_CARDS} from '../lib/employee-home';
 
 export const DASHBOARD_CARD_TYPES = ['information', 'action', 'shortcut'] as const;
 export type DashboardCardType = (typeof DASHBOARD_CARD_TYPES)[number];
@@ -102,6 +103,12 @@ function cleanOptText(v: string | undefined | null): string | null {
   return s ? s : null;
 }
 
+const isHomeCardKey=(key:string)=>EMPLOYEE_HOME_CARDS.some(card=>card===key);
+function assertHomeSummary(p:{cardKey:string;status:string;mandatory:boolean;defaultDisplay:boolean;employeeSelectable:boolean;audience:readonly string[]}):void{
+ if(p.cardKey==='summary'&&(p.status!=='active'||!p.mandatory||!p.defaultDisplay||p.employeeSelectable||!p.audience.includes('employee')))
+  throw Error('My Day at a Glance is required on employee Home. Keep it active, mandatory and visible to employees.');
+}
+
 /**
  * Guard the UNIQUE-card_key-per-tenant invariant BEFORE the write (the unique index is the race-safe net;
  * this raises a friendly typed error in the common case). `excludeId` skips the row being updated.
@@ -145,6 +152,7 @@ export async function createCard(
   const description = cleanOptText(p.description);
   const href = cleanOptText(p.href);
   const audience = normalizeAudience(p.audience);
+  assertHomeSummary({cardKey,status,mandatory,defaultDisplay,employeeSelectable,audience});
 
   return withTenant(ctx, async (tx) => {
     await assertKeyUnique(tx, ctx.tenantId, cardKey);
@@ -220,6 +228,9 @@ export async function updateCard(
     const audience =
       p.audience !== undefined ? normalizeAudience(p.audience) : normalizeAudience(before.audience);
 
+    if(isHomeCardKey(before.cardKey)&&cardKey!==before.cardKey)throw Error('A Home card key cannot be renamed. Deactivate an optional card instead.');
+    assertHomeSummary({cardKey,status,mandatory,defaultDisplay,employeeSelectable,audience});
+
     if (cardKey !== before.cardKey) await assertKeyUnique(tx, ctx.tenantId, cardKey, p.id);
     try {
       await tx
@@ -261,6 +272,7 @@ export async function setStatus(ctx: SessionContext, p: { id: string; status: st
   return withTenant(ctx, async (tx) => {
     const [before] = await tx.select().from(dashboardCardConfig).where(eq(dashboardCardConfig.id, p.id)).limit(1);
     if (!before) throw new Error('Dashboard card not found');
+    if(before.cardKey==='summary'&&status!=='active')throw Error('My Day at a Glance is required on employee Home.');
     await tx.update(dashboardCardConfig).set({ status, updatedAt: sql`now()` }).where(eq(dashboardCardConfig.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -276,6 +288,8 @@ export async function setStatus(ctx: SessionContext, p: { id: string; status: st
 
 export async function deleteCard(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    const [before]=await tx.select({cardKey:dashboardCardConfig.cardKey}).from(dashboardCardConfig).where(eq(dashboardCardConfig.id,p.id)).limit(1);
+    if(before&&isHomeCardKey(before.cardKey))throw Error('Home card definitions are retained. Deactivate an optional card instead.');
     await tx.delete(dashboardCardConfig).where(eq(dashboardCardConfig.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -382,4 +396,24 @@ export async function listDashboardCards(
 /** The employee-role projection — kept as the pre-9606c59f name for existing callers/tests. */
 export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
   return listDashboardCards(ctx, 'employee');
+}
+
+/** Home consumes the same HR master. Missing defaults remain available for a newly provisioned tenant;
+ * an explicit inactive or non-employee row is respected and is never revived by a fallback. */
+export async function listEmployeeHomeCards(ctx:SessionContext):Promise<EmployeeDashboardCard[]>{
+ const rows=await listCards(ctx),byKey=new Map(rows.map(row=>[row.cardKey,row]));
+ return EMPLOYEE_HOME_CARD_DEFAULTS.flatMap(fallback=>{
+  const row=byKey.get(fallback.cardKey);
+  if(row&&(row.status!=='active'||!row.audience.includes('employee')))return [];
+  const source=row??fallback;
+  return [{cardKey:source.cardKey,name:source.name,cardType:source.cardType,href:source.href,
+   employeeSelectable:fallback.cardKey==='summary'?false:source.employeeSelectable,defaultDisplay:fallback.cardKey==='summary'?true:source.defaultDisplay,
+   mandatory:fallback.cardKey==='summary'?true:source.mandatory,displayOrder:source.displayOrder}];
+ }).sort((a,b)=>a.displayOrder-b.displayOrder||EMPLOYEE_HOME_CARDS.indexOf(a.cardKey as typeof EMPLOYEE_HOME_CARDS[number])-EMPLOYEE_HOME_CARDS.indexOf(b.cardKey as typeof EMPLOYEE_HOME_CARDS[number]));
+}
+
+/** Provisioning seeds defaults into the same editable master. Existing customer choices survive retries. */
+export async function seedEmployeeHomeCardCatalog(tx:Tx,tenantId:string):Promise<void>{
+ await tx.insert(dashboardCardConfig).values(EMPLOYEE_HOME_CARD_DEFAULTS.map(row=>({...row,tenantId,status:'active',audience:['employee']})))
+  .onConflictDoNothing({target:[dashboardCardConfig.tenantId,dashboardCardConfig.cardKey]});
 }

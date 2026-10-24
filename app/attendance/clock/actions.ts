@@ -85,7 +85,7 @@ export async function clockOutAction(_formData: FormData) {
 // listRegisteredDevices/enforceDeviceGateTx are UNCHANGED — the admin Attendance Policy screen and the
 // policy-gated admin Daily path still use them.
 
-export async function requestClockRemovalAction(input:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+export async function requestClockRemovalAction(input:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string;employmentId?:string}){
   const session=await getSession();
   try{const result=await requestOwnClockRemoval(session,input);revalidatePath('/attendance/clock');revalidatePath('/attendance/request-status');revalidatePath('/attendance/application-history');return {ok:true as const,...result};}
   catch(error){return {ok:false as const,message:publicErrorMessage(error)};}

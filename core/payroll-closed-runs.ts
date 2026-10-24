@@ -73,14 +73,15 @@ export async function closedBatchesCoveringAttendanceDates(
 }
 
 /** Scoped operational facts only: managers cannot read the payslips that establish coverage. */
-export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: string, date: string) {
+export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: string, date: string|readonly string[]) {
+  const dates=[...new Set(typeof date==='string'?[date]:date)].sort();
   // Match raw Attendance trigger/factory order: Attendance day -> source -> Payroll batch.
-  await lockOvertimeDayForAttendanceWriteTx(tx, { employmentId, date });
+  for(const date of dates)await lockOvertimeDayForAttendanceWriteTx(tx, { employmentId, date });
   const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as {
     batch_id: string; status: 'processed' | 'closed'; pay_period: string;
     policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;
   }[];
-  return attendanceCoverage(rows,date);
+  return attendanceCoverage(rows,dates);
 }
 
 /** Future-effective recurring schedules affect every later covered attendance window. */
@@ -105,10 +106,11 @@ export async function markPayrollForAttendanceChange(tx: Tx, ctx: SessionContext
   }
 }
 
-function attendanceCoverage(rows:{batch_id:string;status:'processed'|'closed';pay_period:string;policy_config:PayrollPolicyConfig|null;attendance_cutoff_day:number|null}[],date:string){
+function attendanceCoverage(rows:{batch_id:string;status:'processed'|'closed';pay_period:string;policy_config:PayrollPolicyConfig|null;attendance_cutoff_day:number|null}[],date:string|readonly string[]){
+  const dates=typeof date==='string'?[date]:date;
   return rows.filter(row => {
     const window = cutOffWindowFor('attendance', row.policy_config, { attendanceCutOffDay: row.attendance_cutoff_day }, row.pay_period);
-    return date >= window.start && date <= window.end;
+    return dates.some(date=>date >= window.start && date <= window.end);
   }).map(row => ({ batchId: row.batch_id, status: row.status }));
 }
 /** Employee removal may inspect only their own coverage facts, never payslips or other employees. */

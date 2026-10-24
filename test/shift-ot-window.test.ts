@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * cf21e554 STAGE 2 — the shift's own Overtime Schedule (table shift_ot_window, migration 0418).
  *
@@ -32,15 +33,10 @@ let b: Base;
 const WED = '2026-07-01'; // ISO weekday 3
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'OT Window', primaryEmail: `otw_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'OT Window', primaryEmail: `otw_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 /** The reporter's MB28: 08:00–17:00, one hour of break. */

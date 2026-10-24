@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { leaveSelfReturnUrl } from '../lib/leave-return-context';
+import { leaveSelfReturnUrl,withLeaveEmploymentContext } from '../lib/leave-return-context';
 
 describe('own leave action return context', () => {
+  it('preserves a verified own selection without replacing warning or outcome context',()=>{
+    const id='bd841cc0-3c23-43f7-aa24-996de1f5345f';
+    const result=new URL(withLeaveEmploymentContext('/leave?warnHoliday=1&toast=Saved',id),'https://fixture.invalid');
+    expect(result.pathname).toBe('/leave');expect(result.searchParams.get('employmentId')).toBe(id);
+    expect(result.searchParams.get('toast')).toBe('Saved');expect(result.searchParams.get('warnHoliday')).toBe('1');
+    expect(withLeaveEmploymentContext('/leave?error=Refused',undefined)).toBe('/leave?error=Refused');
+    for(const bad of ['https://evil.invalid/leave?','//evil.invalid/leave?','/leave/foreign?'])expect(()=>withLeaveEmploymentContext(bad,id)).toThrow();
+    expect(()=>withLeaveEmploymentContext('/leave?toast=Saved','not-an-id')).toThrow();
+  });
   it('preserves repeated type filters and the history view on success and refusal', () => {
     const form = new FormData();
     form.set('leaveOrigin', 'history');

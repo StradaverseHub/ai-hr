@@ -20,6 +20,7 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
+import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
   resolveApprovalDecision,
@@ -5858,54 +5859,18 @@ async function approvedLeaveCalendarPresence(
   from: string,
   to: string,
   fullDayOnly: boolean,
+  status: 'approved' | 'pending' = 'approved',
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
-  const add = (emp: string, d: string, duration: string | null) => {
-    let s = out.get(emp);
-    if (!s) out.set(emp, (s = new Map()));
-    if (!s.has(d) || duration === 'full_day') s.set(d, duration === 'full_day' ? 'full_day' : 'part_day');
-  };
-
-  // (a) per-date requests: every APPROVED sub-row in the window is one on-leave date.
-  const dateRows = await tx
-    .select({ employmentId: leaveRequest.employmentId, d: leaveRequestDate.leaveDate, duration: leaveRequest.durationType })
-    .from(leaveRequestDate)
-    .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
-    .where(
-      and(
-        inArray(leaveRequest.employmentId, empIds),
-        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequestDate.status, 'approved'),
-        gte(leaveRequestDate.leaveDate, from),
-        lte(leaveRequestDate.leaveDate, to),
-      ),
-    );
-  for (const r of dateRows) add(r.employmentId, r.d, r.duration);
-
-  // (b) whole-span requests (no per-date rows): expand [start,end] ∩ [from,to] where the REQUEST is approved.
-  const spanRows = await tx
-    .select({
-      employmentId: leaveRequest.employmentId,
-      duration: leaveRequest.durationType,
-      startDate: leaveRequest.startDate,
-      endDate: leaveRequest.endDate,
-    })
-    .from(leaveRequest)
-    .where(
-      and(
-        inArray(leaveRequest.employmentId, empIds),
-        fullDayOnly ? eq(leaveRequest.durationType, 'full_day') : undefined,
-        eq(leaveRequest.status, 'approved'),
-        lte(leaveRequest.startDate, to),
-        gte(leaveRequest.endDate, from),
-        sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
-      ),
-    );
-  for (const r of spanRows) {
-    const lo = r.startDate < from ? from : r.startDate;
-    const hi = r.endDate > to ? to : r.endDate;
-    for (const d of eachDate(lo, hi)) add(r.employmentId, d, r.duration);
+  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
+  // Home projection may compose it without granting coworkers access to the underlying leave rows.
+  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  for(const row of rows){
+   let dates=out.get(row.employmentId);if(!dates)out.set(row.employmentId,(dates=new Map()));
+   dates.set(row.date,row.presence);
   }
   return out;
 }
@@ -5919,6 +5884,42 @@ async function approvedLeaveDates(tx: Tx, empIds: string[], from: string, to: st
 /** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. */
 export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
   return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
+}
+
+/** Bounded calendar statuses through the same child-date/span semantics as approved absence.
+ * Pending dates never relieve absence. No reason, type, medical fact or approval body is selected.
+ * The caller must establish the permitted subjects before entering this transaction helper. */
+export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string){
+ calendarWindowDates(from,to);
+ const [approved,pending]=await Promise.all([
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending'),
+ ]);
+ return {approved,pending};
+}
+
+/** Earliest approved presence from today, through the same per-date/whole-span distinction above.
+ * Do not expand an unbounded future span or publish private request/type/medical context. An approved
+ * cancellation removes its actual dates through the existing writer before this projection reads them.
+ */
+export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,today:string):Promise<{
+ requestId:string;date:string;duration:'full_day'|'part_day';
+}|null>{
+ const rows=await tx.execute(sql`
+  SELECT candidate."requestId",candidate.date,candidate.duration FROM (
+   SELECT ${leaveRequest.id} AS "requestId",${leaveRequestDate.leaveDate}::text AS date,
+    CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
+   FROM ${leaveRequestDate} INNER JOIN ${leaveRequest} ON ${leaveRequest.id}=${leaveRequestDate.leaveRequestId}
+   WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequestDate.status}='approved'
+    AND ${leaveRequestDate.leaveDate}>=${today}::date
+   UNION ALL
+   SELECT ${leaveRequest.id} AS "requestId",greatest(${leaveRequest.startDate},${today}::date)::text AS date,
+    CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
+   FROM ${leaveRequest} WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequest.status}='approved'
+    AND ${leaveRequest.endDate}>=${today}::date
+    AND NOT EXISTS(SELECT 1 FROM ${leaveRequestDate} WHERE ${leaveRequestDate.leaveRequestId}=${leaveRequest.id})
+  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`);
+ return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
 }
 
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */
@@ -11669,25 +11670,14 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
   });
 }
 
-// ═════════════════════ Festive / one-off leave grant (ADR-0066, Model 3) ═════════════════════
-// A festive grant credits N extra days to EVERY active employee in a chosen (company, leave_type) on a chosen
-// date, with a human reason (e.g. "CNY 2026"). No new table: each grant is one `leaveLedger` `adjustment`
-// (+days) per targeted employment + ONE summary DomainEvent. Festive leave types are expected to live OUTSIDE
-// STANDING_LEAVE_CODES (and, since r299, outside Annual Leave, the only type the earned sweep covers) so the
-// accrual / openLeaveYear / expiry engines never touch them (deliberate — see
-// ADR-0066: this is why festive days escape annual carry-cap/forfeit). Expiry clawback is DEFERRED; `expiresOn`
-// is accepted and stored only as a payload/reason note (no sweep this pass).
-
-
-
-
-
 /** Pending decisions the actual current-step writer allows, for an already authorized team subset. */
-export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{employmentIds:string[]}){
+export function actionableLeaveRequests(ctx:SessionContext,{employmentIds,requestIds}:{employmentIds:string[];requestIds?:readonly string[]}){
+  if(requestIds&&requestIds.length>1000)throw Error('Too many leave decision candidates');
   return withTenant(ctx,async tx=>{
-    if(!employmentIds.length)return [];
+    if(!employmentIds.length||requestIds?.length===0)return [];
     const requests=await tx.select({request:leaveRequest,leaveTypeName:leaveType.name}).from(leaveRequest)
-      .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId)).where(and(inArray(leaveRequest.employmentId,[...new Set(employmentIds)]),eq(leaveRequest.status,'pending')));
+      .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId)).where(and(inArray(leaveRequest.employmentId,[...new Set(employmentIds)]),eq(leaveRequest.status,'pending'),requestIds?inArray(leaveRequest.id,[...new Set(requestIds)]):undefined))
+      .orderBy(asc(leaveRequest.createdAt),asc(leaveRequest.id));
     if(!requests.length)return [];
     const ids=requests.map(r=>r.request.id);
     const [steps,dates]=await Promise.all([

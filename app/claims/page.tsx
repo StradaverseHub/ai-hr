@@ -1,9 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import {notFound} from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
-import { myEmployment } from '@/core/read';
-import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/core/claims';
+import {ownClaimSubject} from './subject';
+import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
@@ -35,6 +36,7 @@ export default async function ClaimsPage({
     size?: string;
     /** id of a draft being edited — the form opens prefilled with it instead of empty. */
     draft?: string;
+    employmentId?:string|string[];
   }>;
 }) {
   // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
@@ -46,7 +48,10 @@ export default async function ClaimsPage({
   const t = await getTranslations('claims');
   const sp = await searchParams;
   const { error } = sp;
-  const me = await myEmployment(s);
+  const me = await ownClaimSubject(s,sp.employmentId);
+  if(sp.employmentId!==undefined&&!me)notFound();
+  const selectedQuery:Record<string,string>=typeof sp.employmentId==='string'?{employmentId:sp.employmentId}:{};
+  const subjectField=selectedQuery.employmentId?<input type="hidden" name="employmentId" value={selectedQuery.employmentId}/>:null;
 
   if (!me) {
     return (
@@ -67,6 +72,7 @@ export default async function ClaimsPage({
   const drafts = allClaims.filter((c) => c.status === 'draft');
   const claims = allClaims.filter((c) => c.status !== 'draft');
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
+  if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
     ? {
         id: editing.id,
@@ -114,7 +120,7 @@ export default async function ClaimsPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PageHeader title={t('title')} description={[t('subtitle'),...(selectedQuery.employmentId?[me.company,me.employeeCode]:[])].filter(Boolean).join(' · ')} />
       <ErrorBanner message={error} />
 
       <Card data-tour="claims-compose" className="p-4">
@@ -125,11 +131,12 @@ export default async function ClaimsPage({
           <ClaimForm
             // Remounts the controlled form when the employee switches between drafts (or back to a new
             // claim): without a changing key React keeps the first draft's useState values.
-            key={draftPrefill?.id ?? 'new'}
+            key={JSON.stringify([selectedQuery.employmentId,draftPrefill?.id??'new'])}
             types={formTypes}
             submitAction={submitClaimAction}
             todayUtc={today}
             draft={draftPrefill}
+            employmentId={selectedQuery.employmentId}
           />
         )}
       </Card>
@@ -141,6 +148,7 @@ export default async function ClaimsPage({
           {/* Bulk submit. Every checkbox posts the same field name, so the action reads them with
               getAll('draftIds') and the service files them in ONE transaction against ONE limit. */}
           <form action={submitDraftsAction}>
+            {subjectField}
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -170,7 +178,7 @@ export default async function ClaimsPage({
                     <td className="px-4 py-2.5 tabular-nums">{d.amount > 0 ? rm(d.amount) : <span className="text-muted-foreground">{t('draftNoAmount')}</span>}</td>
                     <td className="px-4 py-2.5 tabular-nums">{d.incurredOn}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <Link href={`/claims?draft=${d.id}`} className="mr-3 text-xs text-primary underline-offset-2 hover:underline">
+                      <Link href={'/claims?'+new URLSearchParams({draft:d.id,...selectedQuery})} className="mr-3 text-xs text-primary underline-offset-2 hover:underline">
                         {t('edit')}
                       </Link>
                     </td>
@@ -187,6 +195,7 @@ export default async function ClaimsPage({
           <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3">
             {drafts.map((d) => (
               <form key={d.id} action={deleteDraftAction}>
+                {subjectField}
                 <input type="hidden" name="id" value={d.id} />
                 <ConfirmSubmit
                   size="sm"
@@ -250,6 +259,7 @@ export default async function ClaimsPage({
                   <td className="px-4 py-2.5 text-right">
                     {c.status === 'pending' && (
                       <form action={cancelClaimAction}>
+                        {subjectField}
                         <input type="hidden" name="id" value={c.id} />
                         <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('cancelConfirmTitle')} description={t('cancelConfirmDescription')} confirmLabel={t('cancelConfirmLabel')}>
                           {t('cancel')}
@@ -262,7 +272,7 @@ export default async function ClaimsPage({
             </tbody>
           </table>
         )}
-        <Pager basePath="/claims" state={pgState} />
+        <Pager basePath="/claims" params={selectedQuery} state={pgState} />
       </Card>
     </div>
   );

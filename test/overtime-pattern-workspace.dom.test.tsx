@@ -17,6 +17,7 @@ vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({saveO
 import {OvertimeWorkspace} from '../components/overtime-patterns/workspace';
 import {ConditionControl,ExpressionControl} from '../components/overtime-patterns/rule-controls';
 import {overtimeMoneyText,OvertimeCalculationResult} from '../components/overtime-patterns/calculation-result';
+import {overtimeStarterSeed} from '../lib/overtime-pattern-starters';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {__resetUnsavedGuards} from '../lib/unsaved-changes';
 
@@ -39,6 +40,55 @@ function tab(key:keyof typeof words.sections) {fireEvent.click(screen.getByRole(
 beforeEach(()=>{cleanup();__resetUnsavedGuards();vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,value:{patternId,versionId,revision:8}});mocks.fork.mockResolvedValue({ok:true,value:{patternId,versionId,revision:1}});mocks.validate.mockResolvedValue({ok:true,value:{validationDigest:'fresh-digest',issues:[],requiredFields:[]}});mocks.activate.mockResolvedValue({ok:true,value:{versionId}});mocks.assign.mockResolvedValue({ok:true,value:{assignmentId:'assignment'}});mocks.choices.mockResolvedValue({ok:true,value:setup});});
 
 describe('typed Overtime Pattern editing',()=>{
+ it.each(['ot15','ot20','ot30','ot00'] as const)('prepares %s without saving or activating before explicit configuration',key=>{
+  wrap(<OvertimeWorkspace detail={null} setup={setup} starterKey={key}/>);
+  expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();
+  expect(screen.getByText(words.starterHelp)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'day'}});
+  fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'earliest'}});
+  fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
+  const basic=screen.getByRole('tabpanel',{name:words.sections.basic});
+  expect(within(basic).getByLabelText(words.name)).toHaveValue({ot15:'OT 1.5',ot20:'OT 2.0',ot30:'OT 3.0',ot00:'OT 0.0'}[key]);
+  expect(within(basic).getByLabelText(words.currency)).toHaveValue('');
+  const posted=JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
+  expect(posted.definition.rates[0].tiers[0].payment.multiplier.value).toBe({ot15:'1.5',ot20:'2',ot30:'3',ot00:'0'}[key]);
+  expect(posted.definition.rates[0].tiers[0].payment.rate.divisorMinutes.value).toBe('');
+  expect(posted.definition.rates[0].tiers[0].mapping.earningItemId).toBe('');
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
+ });
+
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows the honest zero-rate starting summary and required choices in %s',locale=>{
+  const errors:unknown[]=[];
+  render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup} starterKey="ot00"/></NextIntlClientProvider>);
+  const words=catalogues[locale].overtimePatterns;
+  expect(screen.getByText('0×')).toBeVisible();expect(screen.getByText(words.status.draft)).toBeVisible();
+  expect(screen.getAllByText(words.notConfigured)).toHaveLength(3);
+  expect(screen.getByText(words.starterUnassigned)).toBeVisible();expect(screen.getByText(words.starterZeroHelp)).toBeVisible();
+  expect(screen.getByText(words.starterFormula.replace('{multiplier}','0'))).toBeVisible();
+  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(errors).toEqual([]);
+ });
+ it('reopens a saved starting entry without guessing policies and saves into the original version',async()=>{
+  const item=detail();item.versions[0].definition=overtimeStarterSeed('ot00');item.versions[0].name='OT 0.0';
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);
+  expect(screen.queryByText(words.malformedDraft)).toBeNull();
+  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');
+  expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'session'}});
+  fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'latest'}});
+  fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
+  expect(screen.getByLabelText(words.code)).toHaveValue('SYNTH-OT');
+  expect(screen.getByLabelText(words.name)).toHaveValue('OT 0.0');
+  fireEvent.change(screen.getByLabelText(words.currency),{target:{value:'MYR'}});
+  fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
+  const sent=mocks.save.mock.calls[0][0];
+  expect(sent).toMatchObject({patternId,versionId,expectedRevision:7,draft:{code:'SYNTH-OT',creationCompanyId:companyId,companyIds:[companyId],definition:{eligibilityBasis:'session',durationAllocation:'latest'}}});
+  expect(sent.draft.definition.rates[0].tiers[0].payment.multiplier.value).toBe('0');
+  expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
+ });
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows all seven translated sections in %s',locale=>{
   const errors:unknown[]=[];
   render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup}/></NextIntlClientProvider>);

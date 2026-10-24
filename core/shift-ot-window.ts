@@ -1,3 +1,4 @@
+import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 /**
  * cf21e554 STAGE 2 — the arithmetic of the shift's own Overtime Schedule (table shift_ot_window,
  * migration 0418). Pure and DB-free, kept out of core/attendance.ts and core/roster.ts for the same reason
@@ -23,13 +24,10 @@ const toMin = (t: string): number => {
 /**
  * Place a time-of-day on the shift's own timeline. This is the SAME 12-hour rule core/attendance.ts uses to
  * anchor a punch (anchorToShift) — a time more than 12h before the shift start belongs to the next calendar
- * day — restated here rather than imported, because importing it would close a cycle between this module
- * and the engine and would drag the DB client into the unit test. The two must agree: the punch and the
- * window are compared against each other, so a window placed by a different rule would silently overlap the
- * wrong hours. Any change to one is a change to both.
+ * day. The leaf timeline owner is shared with the engine without importing its DB client. The existing
+ * OT-window contract uses the default 12-hour anchor; fixed break windows may use an explicit cutoff.
  */
-const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
-  minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
+// Shared with Attendance; this existing window owner deliberately uses the default 12-hour anchor.
 
 /** One declared overtime window, as stored (shift_ot_window). Times are 'HH:MM[:SS]'. */
 export type ShiftOtWindowSpec = {
@@ -87,9 +85,7 @@ export function otMinutesFromWindows(
   const rows: ShiftOtWindowMatch[] = [];
   let total = 0;
   for (const w of windows) {
-    const startAbs = anchorToShift(toMin(w.startTime), shiftStartAbs);
-    const lengthMinutes = toMin(w.endTime) + (w.endNextDay ? MINS_PER_DAY : 0) - toMin(w.startTime);
-    const endAbs = startAbs + lengthMinutes;
+    const {from:startAbs,to:endAbs} = shiftOvertimeWindowBounds(w,shiftStartAbs);
     const raw = (intervals??[punch]).reduce((sum,part)=>sum+Math.max(0,Math.min(part.outAbs,endAbs)-Math.max(part.inAbs,startAbs)),0);
     let minutes = raw;
     if (w.minMinutes != null && minutes < w.minMinutes) minutes = 0;
@@ -107,3 +103,9 @@ export function otMinutesFromWindows(
  *  business — this returns only the two clock faces, trimmed of seconds, like shift-break-display.ts. */
 export const otWindowClock = (w: { startTime: string; endTime: string }): string =>
   `${w.startTime.slice(0, 5)}–${w.endTime.slice(0, 5)}`;
+
+/** Position only; the existing per-window min/max/adjustment still belongs to this module. */
+export function shiftOvertimeWindowBounds(w:ShiftOtWindowSpec,shiftStartAbs:number){
+ const from=anchorToShift(toMin(w.startTime),shiftStartAbs);
+ return {from,to:from+toMin(w.endTime)+(w.endNextDay?MINS_PER_DAY:0)-toMin(w.startTime)};
+}

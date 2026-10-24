@@ -14,4 +14,8 @@ if [ -f "$DEVLOCK" ] && [ "$(AIHR_LOCK_DIR="$HOME/.aihr-gate-state/devdb-locks" 
 fi
 printf '▸ tree: %s  branch: %s  head: %s\n' "$(pwd)" "$(git branch --show-current)" "$(git rev-parse --short HEAD)"
 gate_print_load
-node --import tsx scripts/gate-impact-run.ts "$@"
+if [ "${1:-}" = "--reuse-db" ]; then
+  node --import tsx scripts/gate-phase-reuse-run.ts "$@"
+else
+  node --import tsx scripts/gate-impact-run.ts "$@"
+fi

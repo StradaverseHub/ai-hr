@@ -20,7 +20,7 @@ async function actor(name: string) {
   const ctx: SessionContext = { ...adminCtx(b), userId, personId: hired.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: b.companyId }] };
   return { ...hired, userId, ctx };
 }
-async function fixture(mode: 'sequential' | 'any_one' = 'sequential') {
+async function fixture(mode: 'sequential' | 'any_one' = 'sequential', withOt = false) {
   const root = adminCtx(b), worker = await actor('Fictional request employee'), first = await actor('Fictional first reviewer'), second = await actor('Fictional second reviewer');
   const date = todayInKualaLumpur();
   await checkIn(root, { employmentId: worker.employmentId, date, time: '08:00', manual: true });
@@ -28,18 +28,18 @@ async function fixture(mode: 'sequential' | 'any_one' = 'sequential') {
   await saveAttendanceWorkflow(root, { companyId: b.companyId, routingVersion: 3, code: 'HISTORY_REVIEW', name: 'Saved history review route', applicationType: 'irregularity', priority: 100, criteria: { employeeIds: [worker.employmentId] }, active: true,
     stages: [{ name: 'Review', mode, source: { kind: 'specific_employee', employmentIds: [first.employmentId, second.employmentId] }, hrAlternative: false }] });
   await setAttendanceWorkflowEnabled(root, b.companyId, 'irregularity', true);
-  const { correctionId: id } = await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional recorded evidence' });
+  const { correctionId: id } = await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date, checkIn: '09:00', checkOut: '18:00', ...(withOt ? { requestedOtMinutes: 60 } : {}), reason: 'Fictional recorded evidence' });
   return { root, worker, first, second, id };
 }
 const projection = (ctx: SessionContext, id: string) => withTenant(ctx, tx => tx.execute(sql`select * from app.attendance_workflow_review_participants(${id}::uuid)`));
 describe('Request-bound history review and original Overview visibility', () => {
   it('keeps future participants readable but read-only and never grants general HR history', async () => {
-    const f = await fixture(), unrelated = await actor('Fictional unrelated employee');
+    const f = await fixture('sequential', true), unrelated = await actor('Fictional unrelated employee');
     await addAttendanceCorrectionAttachment(f.worker.ctx, { correctionId: f.id, fileName: 'fictional-history-review.png', mimeType: 'image/png', content: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aTUkAAAAASUVORK5CYII=', 'base64') });
     const current = await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' });
     const future = await listAttendanceCorrections(f.second.ctx, { companyIds: [b.companyId], status: 'pending' });
     expect(current.find(row => row.id === f.id)).toMatchObject({ canDecide: true, hasAttachment: true });
-    expect(future.find(row => row.id === f.id)).toMatchObject({ canDecide: false, hasAttachment: true });
+    expect(future.find(row => row.id === f.id)).toMatchObject({ canDecide: false, hasAttachment: true, requestedOtMinutes: 60, systemOtMinutes: null, canReadRawComparison: false });
     expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
     await expect(listAttendanceApplicationHistory(f.second.ctx, [b.companyId], { status: 'pending' })).rejects.toThrow();
     expect(await projection(f.second.ctx, f.id)).toHaveLength(0);

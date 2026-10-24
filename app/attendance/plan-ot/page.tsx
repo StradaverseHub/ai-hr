@@ -411,6 +411,7 @@ export default async function SelfOvertimePage({
               )}
               {windowCaption && <span className="text-xs text-muted-foreground">{windowCaption}</span>}
             </div>
+            <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{t('otPolicyPlanTotalsHelp')}</p>
 
             {plans.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>

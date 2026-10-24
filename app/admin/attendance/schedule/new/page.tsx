@@ -8,22 +8,8 @@ import { SCHEDULE } from '../../../attendance-policy/schedule-panel';
 import { RuleForm } from '../../../attendance-policy/rules/rule-form';
 import { ruleShiftChoices } from '../../../attendance-policy/rules/shift-choices';
 
-/**
- * 665de026 — A READING COLUMN, NOT EDGE TO EDGE, and it is the same decision r301 made one level down.
- *
- * rules/rule-form.tsx capped ITSELF at `mx-auto max-w-3xl` for as long as it drew its own page chrome,
- * and test/attendance-screens-layout.test.ts pinned that ("a form spread across a very wide screen is
- * harder to fill in, not easier"). The cap moved UP here with the chrome, so the whole screen is one
- * column instead of a 3xl form sitting inside a full-width page beside wider sections. 5xl rather than
- * the old 3xl because this page carries more than the form did: the seven-day working-week row and the
- * overtime ladder both want the extra room, and the ladder is the table r301's note said the cap existed
- * to protect.
- */
-/* ⚠️ A STRING LITERAL, NOT A CONSTANT. test/attendance-screens-layout.test.ts reads className VALUES out
- * of the source, and its own header records the limit: "a className composed through cn() or a variable
- * escapes a source check like this one". Writing this as `className={FORM_COLUMN}` made all three pages
- * silently uncovered — the guard passed by seeing no className at all. Measured, not assumed: the three
- * cases failed with "expected 0 to be greater than 0" until the literal went back inline. */
+/** 7500c083 supersedes the old reading-width cap. Schedule configuration uses the available width;
+ * section-specific saves and the page's existing navigation/confirmation contracts remain intact. */
 
 /**
  * ADD SCHEDULE — a new Schedule Group, on a page of its own (feedback 665de026, r331).
@@ -68,7 +54,7 @@ export default async function AddScheduleGroupPage({
   const [rules, shifts] = await Promise.all([listAttendanceRules(s), listShiftsForTenant(s)]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <AttendanceSettingsNavigation />
       <PageHeader
         title={t('addTitle')}

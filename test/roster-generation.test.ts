@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * R7 Multi-Shift — PHASE 2 (weekly pattern + roster generation). Covers: a shift's Mon–Sun weekly_pattern
  * splitting a date window into working rows AND explicit rest rows for EVERY date (the two-sources
@@ -22,27 +23,13 @@ import { createShift, generateRosterFromTemplate } from '../core/roster';
 let b: Base;
 let empId: string;
 
-async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: `W ${randomUUID().slice(0, 8)}`, primaryEmail: `w_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+async function makeEmp(departmentId=b.deptA) {
+  const hired=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId,
+    employmentType:'full_time',hiredOn:'2020-01-01',
+    person:{fullName:`W ${randomUUID().slice(0,8)}`,primaryEmail:`w_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
-async function assignDept(employmentId: string, departmentId: string) {
-  await owner.db.insert(schema.assignment).values({
-    tenantId: b.tenantId,
-    employmentId,
-    departmentId,
-    employmentType: 'full_time',
-    validFrom: '2020-01-01',
-  });
-}
 
 function rowsFor(employmentId: string) {
   return owner.db
@@ -118,10 +105,7 @@ describe('roster generation from a weekly pattern (R7 Multi-Shift Phase 2)', () 
   it('department scope: resolves employments via listEmployeesPage current-assignment dept filter', async () => {
     const inA1 = empId;
     const inA2 = await makeEmp();
-    const inB = await makeEmp();
-    await assignDept(inA1, b.deptA);
-    await assignDept(inA2, b.deptA);
-    await assignDept(inB, b.deptB);
+    const inB = await makeEmp(b.deptB);
 
     const s = await mkShift();
     const r = await generateRosterFromTemplate(adminCtx(b), {

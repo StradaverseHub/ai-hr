@@ -44,6 +44,7 @@ import { requirePackFor } from '../localization/registry';
 import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies, settingsOnInstallFor } from '../packs/catalog';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
+import {seedEmployeeHomeCardCatalog} from '../core/dashboard-card-config';
 import { seedGuides } from './seed-guides';
 
 /** Mirrors core/auth.ts INVITE_TTL_DAYS and scripts/auth/bootstrap-invite.ts — one invitation lifetime. */
@@ -128,6 +129,7 @@ export async function seedTenantCatalogs(
   // here would make a tenant impossible to provision. A drift test reads this file to prove the
   // 'provisioning' exemption names real code rather than describing an intention.
   await seedProfileOptions({ tenantId, entitlementsExempt: 'provisioning' }, tx);
+  await seedEmployeeHomeCardCatalog(tx,tenantId);
 
   return leaveTypeIds;
 }

@@ -1,4 +1,8 @@
-import type {AssignedApprovalMetadata} from '../lib/assigned-work';
+import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
+import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
+import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
+import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
+import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 import {isCalendarDate} from '../lib/calendar-date';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
@@ -6,9 +10,9 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx } from '../packs/attendance/service';
+import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
-import { myEmployment } from './read';
+import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
 /**
  * Attendance — generic, jurisdiction-neutral time engine (ADR-0011).
@@ -44,6 +48,7 @@ import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { randomUUID } from 'node:crypto';
 import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
@@ -51,7 +56,7 @@ import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './a
 // A leaf module with no imports, so the rule service can enforce the write-side half of the same
 // rule without a cycle through this file. Re-exported below for every caller that had it from here.
 import { weekDayKindFor, weekPatternFor, type WeekDayKind, type WeekPattern } from './week-pattern';
-import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
+import { isAttendanceTrace, ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
 // fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name
@@ -75,7 +80,11 @@ import {
   deductAbsentDaysByEmployment,
   type AbsenceBreakdown,
 } from './absence-days';
-import { holidayDatesByEmployment, holidayDatesFor } from './holidays';
+import { holidayDatesByEmployment, holidayDatesFor, holidayCalendarProvenanceFor } from './holidays';
+import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
+import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from './attendance-group-policy';
+import {HR_LOCAL_TZ} from '../lib/hr-date';
+import {overtimeUuid,overtimeDate} from '../lib/overtime-pattern-schema';
 import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
 // module (see its header): this file reads the rows and hands them over, it does not restate the rule.
@@ -97,6 +106,7 @@ import {
   assignment,
   attendance,
   attendanceCorrection,
+  attendancePolicyRequestContract,
   attendanceClockCapture,
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
@@ -529,10 +539,7 @@ type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: nu
  *
  *  `cutoffAbs` NULL (every shift today, and every shift that leaves the box off) ⇒ the original expression,
  *  byte for byte. */
-const anchorToShift = (minutes: number, shiftStartAbs: number, cutoffAbs?: number | null): number => {
-  if (cutoffAbs != null) return minutes < cutoffAbs ? minutes + MINS_PER_DAY : minutes;
-  return minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
-};
+// The unchanged placement rule is shared with the OT-window and dated-policy owners.
 
 /** b8aa3466 — the four-way weekly row, resolved for one ISO weekday.
  *
@@ -627,17 +634,7 @@ const perRowBreakMinutes = (
   cutoffAbs: number | null | undefined,
   span: number,
 ): number | null => {
-  if (!periods || periods.length === 0) return null;
-  const unpaid = periods.filter((bp) => bp.paid !== true);
-  if (!unpaid.some((bp) => bp.flexible === true && bp.flexibleMinutes != null)) return null;
-  const total = unpaid.reduce((acc, bp) => {
-    if (bp.flexible === true && bp.flexibleMinutes != null) return acc + Math.max(0, Math.trunc(bp.flexibleMinutes));
-    // The SAME placement rule the punch used (b8aa3466), for the same reason as in spannedBreakMinutes.
-    const bs = anchorToShift(toMinutes(bp.start), w.startAbs, cutoffAbs);
-    const be = anchorToShift(toMinutes(bp.end), w.startAbs, cutoffAbs);
-    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
-  }, 0);
-  return Math.min(total, breakMinutes, span);
+  return perRowAttendanceBreakMinutes(periods,breakMinutes,[{inAbs:w.inAbs,outAbs:w.outAbs}],w.startAbs,cutoffAbs,span);
 };
 
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
@@ -1896,11 +1893,34 @@ function punchGeoValues(geo: GeofenceCheck) {
   };
 }
 
+/** Shared policy projection. Current-schedule classification is used only by canonical schedule/
+ * calendar recompute owners; ordinary clock mutations retain the day classification already stored.
+ * The helper does not write a raw day or grant approval and never accepts a posted day type. */
+async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;
+ fallbackIn:string|null;fallbackOut:string|null;classification?:'stored'|'currentSchedule'}){
+  const raw=await attendancePolicyRawInputTx(tx,ctx,p);
+  if(raw.state==='unavailable')throw Error('Canonical raw Attendance inputs are unavailable.');
+  if(raw.state!=='policy')return {state:'legacy' as const};
+  const current=await scheduleFor(tx,p.employmentId,p.date);
+  const [day]=await tx.select({dayType:attendance.dayType}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+    eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
+  const sched=p.classification!=='currentSchedule'&&day?.dayType?{...current,dayType:day.dayType}:current;
+  const first=raw.clocks?.checkInMillisecond;
+  const inLabel=first===undefined||first===null?p.fallbackIn:fmtTime(Math.floor(first/60000)%1440);
+  const template=raw.source.state==='known'&&first!==undefined&&first!==null&&inLabel
+    ?deriveAttendance({...sched,manualOtRows:{}},inLabel,null,p.date).trace:null;
+  const columns=attendancePolicyRawDay(raw,{rule:sched.rule,template,dayType:sched.dayType,
+    halfDayBefore:toMinutes(sched.halfDayBefore),fallbackIn:p.fallbackIn,fallbackOut:p.fallbackOut});
+  return {state:'policy' as const,schedule:sched,columns};
+}
+
 /**
  * R45 92bdf77a — Multiple Clocking. Re-derive the day AGGREGATE row from its child punches after a punch is
  * appended. Stage-1 rule (per the approved plan): official Clock-In = the earliest in-punch, official
  * Clock-Out = the latest out-punch, and the day only "closes" (worked/OT computed) when the in/out punches
- * BALANCE (equal count, ≥1 each). An unbalanced day — a single clocking, or a forgotten clock-out — keeps
+ * BALANCE (equal count, ≥1 each). This legacy branch is retained only for uncovered dates and
+ * frozen legacy applications. New dated policies use the complete captured-clock projection below.
+ * An unbalanced legacy day — a single clocking, or a forgotten clock-out — keeps
  * checkOutAt null, so worked/OT stay null and the read-time 'odd' flag (core/attendance-derive.ts) surfaces
  * it for manager/HR review instead of silently miscounting. Worked/OT themselves come from the SAME
  * deriveAttendance the single-pair path used (first-in → last-out span, minus the shift break) — byte-
@@ -1908,22 +1928,32 @@ function punchGeoValues(geo: GeofenceCheck) {
  * pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
  */
 async function recomputeDayFromPunches(
-  tx: Tx,
-  p: { attendanceId: string; attendanceDate: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
+  tx: Tx, ctx: SessionContext,
+  p: { employmentId:string; attendanceId: string; attendanceDate: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
 ): Promise<{
   status: 'present' | 'late' | 'half_day';
   workedMinutes: number | null;
   otMinutes: number | null;
   checkInAt: string | null;
   checkOutAt: string | null;
+  policyRaw:boolean;
 }> {
   const punches = await tx
     .select({ punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
     .from(attendancePunch)
     .where(and(eq(attendancePunch.attendanceId, p.attendanceId), isNull(attendancePunch.voidedAt)));
+  const ins=punches.filter(row=>row.direction==='in').map(row=>row.punchAt).sort();
+  const outs=punches.filter(row=>row.direction==='out').map(row=>row.punchAt).sort();
+  const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.attendanceDate,
+    fallbackIn:ins[0]??p.fallbackCheckInAt,fallbackOut:outs.at(-1)??null});
+  if(projected.state==='policy'){
+    const set=projected.columns;
+    await tx.update(attendance).set(set).where(and(eq(attendance.id,p.attendanceId),eq(attendance.tenantId,ctx.tenantId)));
+    return {status:set.status,workedMinutes:set.workedMinutes,otMinutes:set.otMinutes,checkInAt:set.checkInAt,checkOutAt:set.checkOutAt,policyRaw:true};
+  }
   const { set, result } = deriveDayFromPunchList(p.sched, p.attendanceDate, punches, p.fallbackCheckInAt);
   if (set) await tx.update(attendance).set(set).where(eq(attendance.id, p.attendanceId));
-  return result;
+  return {...result,policyRaw:false};
 }
 
 /**
@@ -2089,8 +2119,8 @@ export async function checkInTx(
       ...punchGeoValues(geo),
     });
 
-    const derived = await recomputeDayFromPunches(tx, {
-      attendanceId,
+    const derived = await recomputeDayFromPunches(tx, ctx, {
+      employmentId:p.employmentId,attendanceId,
       attendanceDate: p.date,
       sched,
       fallbackCheckInAt: p.time,
@@ -2264,8 +2294,8 @@ export async function checkOutTx(
 
     // Workday OT = beyond the scheduled net day; rest-day/holiday work is OT-class in full (EA 1955 pays it
     // at premium rates — classification here, monetization in payroll). Derived from first-in / last-out.
-    const derived = await recomputeDayFromPunches(tx, {
-      attendanceId: rec.id,
+    const derived = await recomputeDayFromPunches(tx, ctx, {
+      employmentId:p.employmentId,attendanceId: rec.id,
       attendanceDate: p.date,
       sched,
       fallbackCheckInAt: rec.checkInAt,
@@ -2279,7 +2309,7 @@ export async function checkOutTx(
     // recomputeDayFromPunches above has just overwritten ot_minutes from the punches, which would otherwise
     // quietly erase what a human approved. Returns null (and changes nothing) when there is no plan, which
     // is every ordinary day.
-    const plannedOt = await applyApprovedOtPlanTx(tx, ctx, {
+    const plannedOt = derived.policyRaw?null:await applyApprovedOtPlanTx(tx, ctx, {
       employmentId: p.employmentId,
       date: p.date,
       attendanceId: rec.id,
@@ -2288,6 +2318,18 @@ export async function checkOutTx(
     });
     const otMinutes = plannedOt ?? derived.otMinutes;
     if (plannedOt == null) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Recorded clock-out'});
+    if(derived.policyRaw&&derived.checkInAt&&derived.checkOutAt){
+      const [plan]=await tx.select({createdAt:attendanceCorrection.createdAt}).from(attendanceCorrection)
+        .innerJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),
+          eq(attendancePolicyRequestContract.tenantId,attendanceCorrection.tenantId)))
+        .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.employmentId,p.employmentId),
+          eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'approved'),isNull(attendanceCorrection.cancelledAt),
+          isNotNull(attendancePolicyRequestContract.policyBinding),isNotNull(attendancePolicyRequestContract.plannedWindow),
+          isNull(attendancePolicyRequestContract.attestedWork)))
+        .orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id)).limit(1);
+      if(plan)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:p.employmentId,workedDate:p.date,dayType,
+        requestedOn:todayInKualaLumpur(plan.createdAt)});
+    }
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3387,7 +3429,21 @@ export function resolveApprovedOt(
 }
 
 /** The company's OT-approval calculation method for an employee (from attendance_policy; default system_calculated). */
-async function otApprovalCalculationFor(tx: Tx, employmentId: string): Promise<OtApprovalMethod> {
+async function otApprovalCalculationFor(tx: Tx, employmentId: string, correctionId?: string): Promise<OtApprovalMethod> {
+  // Newly submitted requests retain the company method observed by the submission owner.
+  // This does not establish a group-policy binding, worked interval or payment authority.
+  if (correctionId) {
+    const [contract] = await tx.select().from(attendancePolicyRequestContract)
+      .where(and(eq(attendancePolicyRequestContract.correctionId, correctionId),
+        eq(attendancePolicyRequestContract.employmentId, employmentId))).limit(1);
+    if (contract?.kind === 'epoch') {
+      const method = contract.manualApprovalMethod;
+      if (!method || !['requested', 'system_calculated', 'smaller_of', 'greater_of'].includes(method))
+        throw new Error('The submitted overtime calculation method is unavailable.');
+      return method;
+    }
+  }
+
   const [row] = await tx
     .select({ m: attendancePolicy.otApprovalCalculation })
     .from(employment)
@@ -3423,6 +3479,8 @@ export async function requestAttendanceCorrection(
     checkIn?: string | null;
     checkOut?: string | null;
     requestedOtMinutes?: number | null;
+    /** HR records actual completed work separately from a clock correction or approved plan. */
+    unclockedWork?:Pick<AttendancePolicyUnclockedWork,'completeWorkedDay'|'intervals'|'requestedIntervals'>;
     reason?: string;
     // 1e9145d4 Plan OT — the planned window and the reason category the Apply OT Plan form collects. All
     // optional: every existing caller (the clock-correction form, the tests, the import paths) omits them
@@ -3480,6 +3538,10 @@ export async function requestAttendanceCorrection(
   if (plannedStartTime && plannedEndTime && plannedOvertimeMinutes(plannedStartTime, plannedEndTime) == null) {
     throw new Error('Enter different valid start and end times.');
   }
+  const unclockedWork=p.unclockedWork?validateAttendancePolicyUnclockedWork({version:1,completeWorkedDay:p.unclockedWork.completeWorkedDay,sourceDate:p.date,reason,
+    intervals:p.unclockedWork.intervals,...(p.unclockedWork.requestedIntervals!==undefined?{requestedIntervals:p.unclockedWork.requestedIntervals}:{})},Date.now(),requestedOtMinutes??undefined):undefined;
+  if(unclockedWork&&(clockChanges||checkIn||checkOut||plannedStartTime||plannedEndTime||!requestedOtMinutes
+    ||p.date>todayInKualaLumpur()))throw Error('Unclocked overtime needs a completed worked day and a separate overtime-only request.');
   const otReasonCategory = p.otReasonCategory ?? null;
   // 2166ef79 — the remark is OPTIONAL and stays optional in stage one: the reporter's "Require Remark"
   // switch belongs to the Attendance Request Settings screen, which is deliberately stage two. An empty
@@ -3489,6 +3551,19 @@ export async function requestAttendanceCorrection(
   const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
   return withTenant(ctx, async (tx) => {
+    if(unclockedWork){
+      const [subject]=await tx.select({admin:sql<boolean>`app.can_admin_employment(${employment.id})`,
+        own:sql<boolean>`app.is_self_person(${employment.personId})`}).from(employment)
+        .where(eq(employment.id,p.employmentId)).limit(1);
+      if(!subject?.admin||subject.own)throw Error('Another authorised HR administrator must attest this employee’s unclocked work.');
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+      const protectedDates=attendancePolicyUnclockedWorkDates(unclockedWork);
+      for(const date of protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date});
+      await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+      await lockAttendancePayrollTx(tx,p.employmentId,protectedDates);
+      const punches=await punchesForCorrectionTx(tx,p.employmentId,p.date);
+      if(punches.some(row=>!row.voidedAt))throw Error('Retain existing clock evidence and use the clock-correction workflow for this day.');
+    }
     if (clockChanges) {
       const [subject] = await tx.select({ allowed: sql<boolean>`app.can_admin_employment(${employment.id})` })
         .from(employment).where(eq(employment.id, p.employmentId)).limit(1);
@@ -3521,7 +3596,22 @@ export async function requestAttendanceCorrection(
         // `?error=`. Same refusal, same wording, now typed so the action can print it in the employee's own
         // language (`me.otPlanApprovedNotCounted`). The sentence is not a guard being loosened: it still
         // names the date and still says to withdraw the first plan.
-        throw new OvertimePlanAlreadyApprovedError(p.date);
+        let additionalPositionedPlan=false;
+        if(!clockChanges&&!checkIn&&!checkOut&&!unclockedWork&&plannedStartTime&&plannedEndTime
+          &&plannedOvertimeMinutes(plannedStartTime,plannedEndTime)===requestedOtMinutes){
+          // Serialize the same employee/source/configuration owners before re-reading
+          // every retained plan. The pending-request unique fence still arbitrates inserts.
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+          const initial=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+          const from=Number(plannedStartTime.slice(0,2))*60+Number(plannedStartTime.slice(3,5));
+          const protectedDates=await attendancePolicyPlanProtectionDatesTx(tx,ctx,p,initial,{from,to:from+requestedOtMinutes!});
+          for(const date of protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:p.employmentId,date});
+          await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+          const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+          additionalPositionedPlan=await attendancePolicyCompleteApprovedPlanSetTx(tx,ctx,p,context);
+          if(additionalPositionedPlan)await lockAttendancePayrollTx(tx,p.employmentId,protectedDates);
+        }
+        if(!additionalPositionedPlan)throw new OvertimePlanAlreadyApprovedError(p.date);
       }
       // ── ec30b2e9 (r364) · AND THE HOLE THAT LEFT: APPROVED **AND ALREADY COUNTED** ──────────────────
       // The guard above only closes the window in which an approved plan is still waiting for its day. For
@@ -3562,7 +3652,7 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
-    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind});
+    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork});
   }).catch((error: unknown) => {
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
     let cause: unknown = error;
@@ -3846,6 +3936,7 @@ export async function decideAttendanceCorrection(
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
+    let policyRawDecision = false;
     let finalizedV2 = false;
     let approvedCredit: {dayType: DayType; requestedOn: string} | null = null;
 
@@ -3894,7 +3985,42 @@ export async function decideAttendanceCorrection(
       // (overtime claimed for a day with no recorded work) and holding that line is the regression contract.
       const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
-      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+      let unclockedSystemMinutes:number|undefined;
+      let unclockedContext:AttendancePolicyExecutionContext|undefined;
+      let unclockedProtectedDates:string[]|undefined;
+      if(cor.originalClockSnapshot?.unclockedWork){
+        if(deferred||hasClockCorrection||cor.adminAmendment||!workflowStage.versionedFinalEffect)
+          throw Error('Unclocked actual work requires its submitted versioned final workflow.');
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+cor.employmentId},0))`);
+        unclockedProtectedDates=attendancePolicyUnclockedWorkDates(cor.originalClockSnapshot.unclockedWork);
+        for(const date of unclockedProtectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+        await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        const [submission]=await tx.select().from(attendancePolicyRequestContract).where(and(
+          eq(attendancePolicyRequestContract.correctionId,cor.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId))).limit(1);
+        const binding=attendancePolicyTraceBinding(context);
+        if(!binding||!submission?.attestedWork||!isDeepStrictEqual(submission.policyBinding,binding)
+          ||!isDeepStrictEqual(submission.attestedWork.work,cor.originalClockSnapshot.unclockedWork))
+          throw Error('The submitted unclocked-work policy or actual intervals changed. Withdraw and resubmit.');
+        const comparison=attendancePolicyUnclockedWorkComparison(context,cor.originalClockSnapshot.unclockedWork);
+        const eligible=comparison.state==='known'?attendancePolicySystemEligibleMinutes(context,comparison.work):null;
+        if(eligible?.state!=='known')throw Error('The attested work cannot be positioned under the current dated Schedule Group policy.');
+        if((await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).some(row=>!row.voidedAt))
+          throw Error('Clock evidence was added after this unclocked-work submission. Withdraw and use the clock workflow.');
+        unclockedSystemMinutes=eligible.minutes;unclockedContext=context;
+      }
+      let plannedProtectedDates:string[]|undefined;
+      if(!deferred&&hasOtRequest&&cor.plannedStartTime!==null&&cor.plannedEndTime!==null){
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(context.state==='policy'&&context.selected.activation.epoch>0&&context.selected.policy.overtime.enabled&&context.selected.policy.overtime.approval==='auto'
+          &&context.selected.policy.overtime.autoMethod!=='actual'){
+          plannedProtectedDates=await attendancePolicyPlanProtectionDatesTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate},context);
+          // Complete date/source union precedes the checked configuration barrier and batches.
+          for(const date of plannedProtectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+          await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+        }
+      }
+      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??plannedProtectedDates??cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
@@ -3905,11 +4031,13 @@ export async function decideAttendanceCorrection(
       let otApprovalMethod: OtApprovalMethod | null = null;
       let systemOtForComparison: number | null = null;
       if (hasOtRequest) {
-        otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId);
+        otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId, cor.id);
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
         // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
         // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).
-        if (deferred) {
+        if(unclockedSystemMinutes!==undefined){
+          systemOtForComparison=unclockedSystemMinutes;
+        } else if (deferred) {
           // Nothing has been clocked, so there is NO comparison figure and resolving one now would be
           // fiction: under `system_calculated` or `smaller_of` a null system figure reads as zero, and the
           // plan would be stamped "approved: 0 hours" the moment the manager clicked approve. What is
@@ -3931,10 +4059,18 @@ export async function decideAttendanceCorrection(
               ),
             )
             .limit(1);
-          systemOtForComparison =
-            existing?.checkInAt != null
-              ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt, cor.attendanceDate).otMinutes
-              : null;
+          if(existing?.checkInAt!=null){
+            const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(raw.state==='unavailable')throw Error('Canonical overtime comparison inputs are unavailable.');
+            if(raw.state==='policy'){
+              const comparison=attendancePolicySystemEligibleMinutes(raw.context,raw.work);
+              if(comparison.state!=='known'&&otApprovalMethod!=='requested')
+                throw Error('Captured overtime eligibility is unavailable for this decision.');
+              // Requested-only approval retains an unknown comparison as unknown; it is not a
+              // fabricated zero or positioned/payment authority. Other methods require the count.
+              systemOtForComparison=comparison.state==='known'?comparison.minutes:null;
+            }else systemOtForComparison=deriveAttendance(sched,existing.checkInAt,existing.checkOutAt,cor.attendanceDate).otMinutes;
+          }else systemOtForComparison=null;
         }
         // The deferred branch above has already set approvedOtMinutes to the agreed (requested) figure and
         // deliberately does NOT resolve — there is nothing to resolve against until the day is worked.
@@ -3971,15 +4107,33 @@ export async function decideAttendanceCorrection(
           dayType,
           deferredToDate: cor.attendanceDate,
         };
+      } else if(unclockedSystemMinutes!==undefined){
+        // The actual-work testimony has a separate immutable scoped final effect. Its
+        // scalar decision never lands in raw Attendance or manufactures a captured trace.
+        // SQL still requires the owner-issued attested effect before status can finalize.
+        const [existingAnchor]=await tx.select().from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+          eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1);
+        if(existingAnchor&&[existingAnchor.checkInAt,existingAnchor.checkOutAt,existingAnchor.workedMinutes,
+          existingAnchor.otMinutes,existingAnchor.otFlatMinutes,existingAnchor.ot00Minutes,existingAnchor.ot10Minutes,
+          existingAnchor.ot15Minutes,existingAnchor.ot20Minutes,existingAnchor.ot30Minutes,existingAnchor.lateMinutes,
+          existingAnchor.earlyOutMinutes,existingAnchor.underMinutes,existingAnchor.lateDeductMinutes,existingAnchor.earlyOutDeductMinutes,attendancePolicyAttestedRawTrace(existingAnchor.calcTrace)].some(value=>value!==null))
+          throw Error('Retain the existing Attendance evidence and correct it through its own workflow before attesting this day.');
+        if(existingAnchor)await tx.update(attendance).set({attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present',calcTrace:null})
+          .where(eq(attendance.id,existingAnchor.id));
+        else await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,
+          attestedWorkCorrectionId:cor.id,attestedWorkContext:JSON.parse(JSON.stringify(unclockedContext)),dayType,status:'present'});
+        policyRawDecision=true;
+        eventPayload={correctionId:cor.id,date:cor.attendanceDate,dayType,otMinutes:null,
+          attestedActualWorkDecisionOnly:true};
       } else if (cor.clockChanges) {
         const [day] = lockedDay ? [lockedDay] : await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,dayType,status:'present'}).returning({id:attendance.id});
         amendedId = day.id;
         await applyClockChangesTx(tx,ctx,{attendanceId:day.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? '',correctionId:cor.id,changes:cor.clockChanges});
-        const d = await recomputeDayFromPunches(tx,{attendanceId:day.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+        const d = await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,attendanceId:day.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
         // Removing every clocking must clear the former paid figures, not retain a stale aggregate.
         if (!d.checkInAt) await tx.update(attendance).set({checkInAt:null,checkOutAt:d.checkOutAt,status:d.checkOutAt ? 'present' : 'absent',workedMinutes:null,otMinutes:null,lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,calcTrace:null,...otSplitColumns(null)}).where(eq(attendance.id,day.id));
         await tx.update(attendance).set({dayType,remarks:'Corrected',checkInMethod:null,checkOutMethod:null,checkInLat:null,checkInLng:null,checkInClockingLocationId:null,checkInDistanceM:null,checkInGeofenceStatus:null,checkInRadiusM:null,checkOutLat:null,checkOutLng:null,checkOutClockingLocationId:null,checkOutDistanceM:null,checkOutGeofenceStatus:null,checkOutRadiusM:null}).where(eq(attendance.id,day.id));
-        if (d.checkInAt && d.checkOutAt) await applyApprovedOtPlanTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,attendanceId:day.id,sched,systemOtMinutes:d.otMinutes});
+        if (!d.policyRaw && d.checkInAt && d.checkOutAt) await applyApprovedOtPlanTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,attendanceId:day.id,sched,systemOtMinutes:d.otMinutes});
         eventPayload = {correctionId:cor.id,date:cor.attendanceDate,dayType,clockDataChanged:true};
       } else if (hasClockCorrection) {
         const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate);
@@ -4066,7 +4220,15 @@ export async function decideAttendanceCorrection(
         // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
         // that). Skipped when this correction carries its own OT figure: the human who approved it decided
         // the day's overtime a moment ago and that decision wins.
-        if (!hasOtRequest) {
+        // Reconcile a proposed-pair correction through the same policy raw owner AFTER its
+        // effective punch rows exist and BEFORE the final effect/audit snapshot is captured.
+        // Manually entered labels do not acquire capture provenance merely because HR approved them.
+        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(raw.state==='unavailable')throw Error('Canonical corrected Attendance inputs are unavailable.');
+        const policyDerived=raw.state==='policy'?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
+          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn}):null;
+        if(policyDerived)otMinutes=policyDerived.otMinutes;
+        if (!hasOtRequest&&!policyDerived) {
           const planned = await applyApprovedOtPlanTx(tx, ctx, {
             employmentId: cor.employmentId,
             date: cor.attendanceDate,
@@ -4081,15 +4243,15 @@ export async function decideAttendanceCorrection(
           date: cor.attendanceDate,
           checkIn: cor.proposedCheckIn,
           checkOut: cor.proposedCheckOut,
-          status: d.status,
+          status: policyDerived?.status??d.status,
           dayType,
-          workedMinutes: d.workedMinutes,
+          workedMinutes: policyDerived?policyDerived.workedMinutes:d.workedMinutes,
           otMinutes,
         };
       } else {
         // OT-only request: there MUST already be an attendance row (you cannot bank OT against a day with no
-        // recorded work). We update ONLY that row's otMinutes to the approved figure — punches are left intact
-        // (we do NOT null them, unlike a clock correction).
+        // recorded work). Frozen legacy days retain scalar landing. A bound policy day replays
+        // captured raw inputs and retains the approved scalar only on its decision, not on raw work.
         const [existing] = await tx
           .select({ id: attendance.id })
           .from(attendance)
@@ -4106,6 +4268,21 @@ export async function decideAttendanceCorrection(
           // overtime is being claimed for a day on which no work was ever recorded.
           throw new Error('No attendance record exists for this date to attach overtime to.');
         }
+        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(raw.state==='unavailable')throw Error('Canonical overtime decision inputs are unavailable.');
+        if(raw.state==='policy'){
+          if(!workflowStage.versionedFinalEffect)throw Error('A dated policy overtime decision requires its frozen versioned workflow.');
+          const [submission]=await tx.select().from(attendancePolicyRequestContract)
+            .where(and(eq(attendancePolicyRequestContract.correctionId,cor.id),eq(attendancePolicyRequestContract.tenantId,ctx.tenantId))).limit(1);
+          const binding=attendancePolicyTraceBinding(raw.context);
+          if(!binding||!submission?.policyBinding||!isDeepStrictEqual(submission.policyBinding,binding))
+            throw Error('The submitted Attendance policy changed. Withdraw and resubmit the request.');
+          const derived=await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,attendanceId:existing.id,
+            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+          if(!derived.policyRaw||derived.workedMinutes===null||derived.checkOutAt===null)
+            throw Error('A captured complete Attendance day is required for this policy decision.');
+          policyRawDecision=true;
+        }else{
         await tx
           .update(attendance)
           // 7c834696: the punches are untouched here, so lateness / early-out / short-hours keep whatever
@@ -4118,16 +4295,40 @@ export async function decideAttendanceCorrection(
             ),
           })
           .where(eq(attendance.id, existing.id));
+        }
         amendedId = existing.id;
         eventPayload = {
           correctionId: cor.id,
           date: cor.attendanceDate,
           dayType,
-          otMinutes: approvedOtMinutes,
+          otMinutes: policyRawDecision?null:approvedOtMinutes,
+          ...(policyRawDecision?{policyRawOnly:true}:{}),
         };
       }
 
       if (amendedId && payrollBatches) await markAttendancePayrollTx(tx,ctx,payrollBatches,cor.employmentId);
+      if(policyRawDecision&&hasOtRequest&&cor.plannedStartTime!==null&&cor.plannedEndTime!==null){
+        const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        if(context.state!=='policy')throw Error('The current policy plan context is unavailable.');
+        const overtime=context.selected.policy.overtime;
+        if(overtime.approval==='auto'&&overtime.autoMethod!=='actual'){
+          const [submission]=await tx.select().from(attendancePolicyRequestContract).where(and(
+            eq(attendancePolicyRequestContract.tenantId,ctx.tenantId),eq(attendancePolicyRequestContract.correctionId,cor.id))).limit(1);
+          const minutes=plannedOvertimeMinutes(cor.plannedStartTime.slice(0,5),cor.plannedEndTime.slice(0,5));
+          const from=Number(cor.plannedStartTime.slice(0,2))*60+Number(cor.plannedStartTime.slice(3,5));
+          const plan=minutes===null?null:{version:1,basis:'startDateEarlierEndNextDay',sourceDate:cor.attendanceDate,
+            startLabel:cor.plannedStartTime,endLabel:cor.plannedEndTime,from,to:from+minutes,requestedMinutes:minutes};
+          if(!plan||minutes!==cor.requestedOtMinutes||!submission?.plannedWindow
+            ||!isDeepStrictEqual(submission.plannedWindow,plan)
+            ||!isDeepStrictEqual(submission.policyBinding,attendancePolicyTraceBinding(context)))
+            throw Error('The complete submitted policy plan changed. Withdraw and resubmit.');
+          // Auto planned methods approve the exact submitted positions. The legacy company
+          // scalar comparison cannot replace a 90-minute plan with 120 actual minutes.
+          // Final duration still applies the same plan/intersection, limits and rounding owners.
+          approvedOtMinutes=minutes;
+          eventPayload={...eventPayload,policyPlanDecisionOnly:true};
+        }
+      }
       // Stamp the OT-approval audit fields onto the correction row (requested + approved + method).
       if (hasOtRequest) {
         await tx
@@ -4144,7 +4345,9 @@ export async function decideAttendanceCorrection(
             // the attendance row's own, double-counting them against the 104-hour ceiling, and (b) the
             // next clock-out of that day would LAND it a second time, re-resolving a figure a human had
             // already agreed and re-running the replacement-leave accrual. Both are silent.
-            ...(deferred ? {} : { appliedAt: sql`now()` }),
+            // A raw policy decision has not placed approved hours on this scalar day.
+            // Retain its decision/receipt, but leave legacy landing and credit stamps unset.
+            ...(deferred||policyRawDecision ? {} : { appliedAt: sql`now()` }),
           })
           .where(eq(attendanceCorrection.id, cor.id));
         eventPayload = {
@@ -4184,6 +4387,8 @@ export async function decideAttendanceCorrection(
       // Deferred plans bank only when actual work lands. Immediate decisions bank after their
       // approved status is written, so the canonical formula reader sees this exact approval.
       if (!deferred) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
+      // Policy raw columns stay unknown. Auto-accrual below reads the newly finalized
+      // independent duration and existing TOIL policy, after the canonical refresh.
       deferredApproval = deferred;
     }
     // Keep v2's writing savepoint active until SQL verifies the actual target-day result.
@@ -4193,9 +4398,9 @@ export async function decideAttendanceCorrection(
       await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
       finalizedV2 = true;
     }
-    if (approvedCredit) {
+    if (approvedCredit||policyRawDecision) {
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,reason:'Approved attendance decision'});
-      await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
+      if(approvedCredit)await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
     }
 
     } catch (effectError) {
@@ -4287,6 +4492,8 @@ export function listAttendanceCorrections(
         adminAmendment: attendanceCorrection.adminAmendment,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        plannedStartTime: attendanceCorrection.plannedStartTime,
+        plannedEndTime: attendanceCorrection.plannedEndTime,
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otApprovalMethod: attendanceCorrection.otApprovalMethod,
@@ -4298,12 +4505,13 @@ export function listAttendanceCorrections(
         clockChanges: attendanceCorrection.clockChanges,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
-        // ADR-0069 / R45 3707cba9 — surface the "Actual vs Approved" OT comparison the decide path already
-        // computes. systemOtMinutes = the OT the engine derived from the day's real clockings (the row's
-        // stored figure); otApprovalCalculation = the company rule that turns it + the request into the
-        // approved figure. The approver page previews the resolved figure with resolveApprovedOt().
+        // A request's frozen method is independent of today's company configuration.
+        // Request visibility alone never grants the raw subject/day comparison.
         systemOtMinutes: attendance.otMinutes,
-        otApprovalCalculation: attendancePolicy.otApprovalCalculation,
+        otApprovalCalculation: sql<OtApprovalMethod | null>`case when ${attendancePolicyRequestContract.kind}='epoch'
+          then ${attendancePolicyRequestContract.manualApprovalMethod} else ${attendancePolicy.otApprovalCalculation}::text end`,
+        submittedPolicyBound: sql<boolean>`${attendancePolicyRequestContract.policyBinding} is not null`,
+        canReadRawComparison: sql<boolean>`${attendance.id} is not null and app.can_see_employment(${attendanceCorrection.employmentId})`,
       })
       .from(attendanceCorrection)
       .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`, sql`true`)
@@ -4314,6 +4522,9 @@ export function listAttendanceCorrections(
           eq(attendance.attendanceDate, attendanceCorrection.attendanceDate),
         ),
       )
+      .leftJoin(attendancePolicyRequestContract, and(
+        eq(attendancePolicyRequestContract.correctionId, attendanceCorrection.id),
+        eq(attendancePolicyRequestContract.tenantId, attendanceCorrection.tenantId)))
       .leftJoin(attendancePolicy, sql`${attendancePolicy.companyId}=subject.company_id`)
       .where(
         and(
@@ -4335,6 +4546,34 @@ export function listAttendanceCorrections(
     const visibleIds = new Set([...genericVisible, ...v2Visible, ...v3Visible].map(r => r.id));
     const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
+    const comparisons = new Map<string, Promise<number | null>>();
+    const comparisonFor = (r: typeof visible[number]) => {
+      const hasProposedClocks = r.proposedCheckIn != null || r.proposedCheckOut != null;
+      const key = `${r.employmentId}:${r.attendanceDate}:${hasProposedClocks}`;
+      let pending = comparisons.get(key);
+      if (!pending) {
+        pending = (async () => {
+          const raw = await attendancePolicyRawInputTx(tx, ctx, { employmentId: r.employmentId, date: r.attendanceDate });
+          if (raw.state === 'unavailable') return null;
+          if (raw.state !== 'policy') return r.systemOtMinutes;
+          if (hasProposedClocks) return null;
+          const comparison = attendancePolicySystemEligibleMinutes(raw.context, raw.work);
+          return comparison.state === 'known' ? comparison.minutes : null;
+        })();
+        comparisons.set(key, pending);
+      }
+      return pending;
+    };
+    for (const row of visible) {
+      if (row.requestedOtMinutes == null || row.status !== 'pending') continue;
+      if (!row.canReadRawComparison) { row.systemOtMinutes = null; continue; }
+      // Proposed labels are not captured instants. A policy correction preview cannot
+      // claim the current captured day's count as the result of those proposed changes.
+      if (row.submittedPolicyBound && (row.proposedCheckIn != null || row.proposedCheckOut != null)) {
+        row.systemOtMinutes = null; continue;
+      }
+      row.systemOtMinutes = await comparisonFor(row);
+    }
     return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: (workflows.get(r.id)?.routingVersion === 3 || workflows.get(r.id)?.routingVersion === 4) ? v3Visible.find(a => a.id === r.id)?.canDecide === true : workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }
@@ -4472,12 +4711,143 @@ export function dayTypeFor(ctx: SessionContext, employmentId: string, date: stri
  * labelled, not what kind of day a date is — and this question is the latter.
  */
 export type WorkedDayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
-export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
-  const s = await scheduleFor(tx, employmentId, date);
+function workedDayKindForSchedule(s:ResolvedSchedule):WorkedDayKind {
   if (s.dayType === 'holiday') return 'holiday';
   if (s.dayType === 'rest_day') return 'rest_day';
   if (s.source === 'default-shift-rest') return 'off_day';
   return 'workday';
+}
+export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
+  return workedDayKindForSchedule(await scheduleFor(tx, employmentId, date));
+}
+
+/** Bounded calendar evidence for one policy timeline. Uses the final Schedule owner, including day
+ * adjustments and the effective holiday overlay. The replacement allocator's raw schedule seam
+ * intentionally suppresses holidays and must never answer this question. No work is approved here. */
+export async function attendancePolicyCalendarTx(tx:Tx,p:{employmentId:string;dates:readonly string[]}):Promise<PolicyCalendarProof[]> {
+  overtimeUuid(p.employmentId,'employmentId');
+  if(p.dates.length>3||new Set(p.dates).size!==p.dates.length)throw Error('Choose at most three distinct policy calendar dates.');
+  for(const date of p.dates)overtimeDate(date,'calendar.date');
+  const dates=[...p.dates].sort();if(!dates.length)return [];
+  const from=dates[0],to=dates[dates.length-1];
+  if(Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z')>2*86400000)throw Error('Policy calendar dates must belong to one three-day timeline.');
+  const [employee]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
+  const companies=await provenCompanyDatesTx(tx,dates.map(date=>({employmentId:p.employmentId,date})));
+  if(!employee)return dates.map(date=>({date,state:'unknown',reason:'calendarUnavailable'}));
+  const memo=await newScheduleMemo(tx,{employmentIds:[p.employmentId],from,to});
+  const provenance=await holidayCalendarProvenanceFor(tx,{employmentId:p.employmentId,startDate:from,endDate:to});
+  const out:PolicyCalendarProof[]=[];
+  for(const date of dates){
+    const company=companies.get(`${p.employmentId}|${date}`);
+    if(!company?.companyId||company.reason){out.push({date,state:'unknown',reason:'calendarUnavailable'});continue;}
+    const schedule=await scheduleFor(tx,p.employmentId,date,memo);
+    // Today's company policy cannot prove the outgoing employer's historical weekdays.
+    if(schedule.source==='policy'&&company.companyId!==employee.companyId){out.push({date,state:'unknown',reason:'calendarUnavailable'});continue;}
+    const adjustment=memo.adjustments?.get(`${p.employmentId}|${date}`);
+    const references=[`employment:${p.employmentId}`,`company:${company.companyId}`,`schedule:${date}:${schedule.source}`,
+      ...(schedule.displayShiftId?[`shift:${schedule.displayShiftId}`]:[]),...(schedule.rule?[`attendance-rule:${schedule.rule.id}`]:[]),
+      ...(adjustment?[`attendance-day-adjustment:${adjustment.id}:${adjustment.version}`]:[])];
+    const kind=workedDayKindForSchedule(schedule);
+    if(kind!=='holiday'){
+      // Reuse this same memoized dated schedule. Retain ordinary-day qualification
+      // separately from calendar class and payable quantity, without another schedule query.
+      const boundary=kind==='workday'?attendancePolicyClockPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,
+       crossesMidnight:schedule.crossesMidnight,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
+       dayType:schedule.dayType,includeGraceInLateness:false,includeGraceInEarlyOut:false}):undefined;
+      const toilQualification:Extract<PolicyCalendarProof,{state:'known'}>['toilQualification']=kind!=='workday'?undefined
+       :boundary?.state==='known'&&schedule.rule?{state:'known',basis:'datedScheduleOnly',shiftId:schedule.displayShiftId??null,
+        ruleId:schedule.rule.id,scheduled:{...boundary.scheduled}}:{state:'unavailable',basis:'datedScheduleOnly',reason:'noFixedShift'};
+      out.push({date,state:'known',companyId:company.companyId,dayClass:kind==='rest_day'?'rest':kind==='off_day'?'off':'normal',moneyDay:kind==='rest_day'?'rest_day':'workday',references,
+       ...(toilQualification?{toilQualification}:{})});continue;
+    }
+    const originals=provenance.originals.filter(row=>row.date===date&&row.companyId===company.companyId);
+    const replacements=provenance.replacements.filter(row=>row.replacementDate===date&&row.companyId===company.companyId);
+    // Generic manual holiday labels and collisions cannot invent which differentiated formula owns it.
+    if((originals.length===0)===(replacements.length===0)){
+      out.push({date,state:'unknown',reason:'holidayDesignationUnavailable'});continue;
+    }
+    out.push({date,state:'known',companyId:company.companyId,dayClass:originals.length?'publicHoliday':'replacementHoliday',moneyDay:'holiday',
+      references:[...references,...originals.map(row=>`holiday:${row.id}`),...replacements.map(row=>`replacement-holiday:${row.id}`)]});
+  }
+  return out;
+}
+
+export type AttendancePolicyExecutionContext=
+  |{state:'legacy';reason:'noDatedPolicy'}
+  |{state:'unavailable';reason:'subjectUnavailable'|'companyUnavailable'|'principalUnavailable'|'scheduleUnavailable'}
+  |{state:'policy';employmentId:string;date:string;companyId:string;timeZone:typeof HR_LOCAL_TZ;
+    selected:ResolvedAttendanceGroupPolicy;
+    resolvedClock:ResolvedAttendanceGroupPolicy['policy']['clock'];
+    schedule:{source:ResolvedSchedule['source'];shiftId:string|null;ruleId:string;start:string|null;end:string|null;
+      crossesMidnight:boolean;dailyCutoffMinutes:number|null;durationOnly:boolean;flexiDuration:boolean;
+      normalMinutes:number;breakMinutes:number;breakPeriods:BreakPeriod[]|null;flexibleBreakMinutes:number|null};
+    calendar:PolicyCalendarProof[];clockPlacement?:PolicyClockPlacement;workPlacement?:PolicyWorkPlacement;placement:PolicySchedulePlacement};
+
+/** Selection seam for the canonical calculation writer. No form-supplied company/group/policy ID.
+ * This is live input, not final-effect authority or an immutable receipt: the writer must freeze its
+ * selected revision and complete facts before financial consumers can use the resulting calculation. */
+export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;classification?:'stored'|'currentSchedule'}):Promise<AttendancePolicyExecutionContext>{
+  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
+  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+  if(!principal?.allowed)return {state:'unavailable',reason:'principalUnavailable'};
+  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
+    .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+  if(!subject)return {state:'unavailable',reason:'subjectUnavailable'};
+  const company=(await provenCompanyDatesTx(tx,[p])).get(`${p.employmentId}|${p.date}`);
+  if(!company?.companyId||company.reason)return {state:'unavailable',reason:'companyUnavailable'};
+  const liveSchedule=await scheduleFor(tx,p.employmentId,p.date);
+  const [rawDay]=await tx.select({dayType:attendance.dayType,trace:attendance.calcTrace}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
+    eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
+  const schedule=p.classification!=='currentSchedule'&&rawDay?.dayType?{...liveSchedule,dayType:rawDay.dayType}:liveSchedule;
+  if(schedule.source==='policy'&&company.companyId!==subject.companyId){
+    // A destination employer's schedule cannot resolve the old employer's policy.
+    // Only a recorded, valid original schedule can establish legacy absence here;
+    // missing history or an applicable original policy keeps the explicit refusal.
+    const recorded=isAttendanceTrace(rawDay?.trace)?rawDay.trace:null;
+    if(recorded){
+      const originalRule=recorded.schedule.ruleId;
+      if(originalRule===null){
+        const [current]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+        return current?.allowed?{state:'legacy',reason:'noDatedPolicy'}:{state:'unavailable',reason:'principalUnavailable'};
+      }
+      if(typeof originalRule==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(originalRule)){
+        const original=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:company.companyId,ruleId:originalRule,date:p.date});
+        const [current]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+        if(!current?.allowed)return {state:'unavailable',reason:'principalUnavailable'};
+        if(!original)return {state:'legacy',reason:'noDatedPolicy'};
+      }
+    }
+    return {state:'unavailable',reason:'scheduleUnavailable'};
+  }
+  if(!schedule.rule)return {state:'legacy',reason:'noDatedPolicy'};
+  const selected=await attendanceGroupPolicyOnTx(tx,ctx,{companyId:company.companyId,ruleId:schedule.rule.id,date:p.date});
+  if(!selected)return {state:'legacy',reason:'noDatedPolicy'};
+  // An explicit shift grace remains authoritative. An absent override takes the new group value;
+  // fixed-clock penalties still do not apply to duration/flexi schedules under their existing owner.
+  const [overrides]=schedule.displayShiftId?await tx.select({late:shift.lateGraceMinutes,early:shift.earlyLeaveGraceMinutes})
+    .from(shift).where(eq(shift.id,schedule.displayShiftId)).limit(1):[];
+  const fixed=schedule.dayType==='workday'&&!schedule.flexiDuration&&!schedule.durationOnly;
+  const resolvedClock={...selected.policy.clock,
+    lateGraceMinutes:fixed?overrides?.late??selected.policy.clock.lateGraceMinutes:0,
+    earlyGraceMinutes:fixed?overrides?.early??selected.policy.clock.earlyGraceMinutes:0};
+  const dates=selected.policy.overtime.splitAtMidnight?[p.date,addDays(p.date,1),addDays(p.date,2)]:[p.date];
+  const calendar=await attendancePolicyCalendarTx(tx,{employmentId:p.employmentId,dates});
+  return {state:'policy',employmentId:p.employmentId,date:p.date,companyId:company.companyId,timeZone:HR_LOCAL_TZ,selected,resolvedClock,
+    schedule:{source:schedule.source,shiftId:schedule.displayShiftId??null,ruleId:schedule.rule.id,start:schedule.scheduledStart,end:schedule.scheduledEnd,
+      crossesMidnight:schedule.crossesMidnight,dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
+      normalMinutes:schedule.normalMinutesOverride??schedule.scheduledMinutes,breakMinutes:schedule.breakMinutes,
+      breakPeriods:schedule.breakPeriods?.map(row=>({...row}))??null,flexibleBreakMinutes:schedule.flexibleBreakMinutes},calendar,
+    clockPlacement:attendancePolicyClockPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
+      durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false}),
+    workPlacement:attendancePolicyWorkPlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
+      dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      breakMinutes:schedule.breakMinutes,breakPeriods:schedule.breakPeriods,flexibleBreakMinutes:schedule.flexibleBreakMinutes,otWindows:schedule.otWindows,
+      includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false}),
+    placement:attendancePolicySchedulePlacement({start:schedule.scheduledStart,end:schedule.scheduledEnd,crossesMidnight:schedule.crossesMidnight,
+      dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,dayType:schedule.dayType,
+      breakMinutes:schedule.breakMinutes,breakPeriods:schedule.breakPeriods,flexibleBreakMinutes:schedule.flexibleBreakMinutes,otWindows:schedule.otWindows,
+      includeGraceInLateness:schedule.rule?.includeGraceInLateness??false,includeGraceInEarlyOut:schedule.rule?.includeGraceInEarlyOut??false},selected.policy)};
 }
 
 /** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
@@ -5242,7 +5612,12 @@ async function applyApprovedOtPlanTx(
   // ── 2 · RE-ASSERTION ────────────────────────────────────────────────────────────────────────────────
   if (plan.appliedAt != null) {
     if (plan.approvedOtMinutes == null) return null;
-    return writeOt(plan.approvedOtMinutes);
+    const minutes=await writeOt(plan.approvedOtMinutes);
+    // Reasserting a scalar legacy approval is not positional policy approval. This branch otherwise
+    // skips the normal refresh in both clock-out and import; retain raw clocks but fence final effects.
+    if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,{employmentId:p.employmentId,date:p.date}))
+      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Reasserted overtime plan under dated policy'});
+    return minutes;
   }
 
   // ── 1 · LANDING ─────────────────────────────────────────────────────────────────────────────────────
@@ -5960,6 +6335,9 @@ export async function addImportedPunchesBatchTx(
 ): Promise<{ punchIds: string[][] }> {
   const days = p.days.filter((d) => d.punches.length > 0);
   if (days.length === 0) return { punchIds: p.days.map(() => []) };
+  // Acquire the checked shared policy epoch before any memoized schedule or dated selection.
+  // The batch barrier proves actual visible subjects, including first imports with no day row yet.
+  const policyConfigured=await lockAttendancePolicyImportTx(tx,ctx,days.map(d=>({employmentId:d.employmentId,date:d.day})));
   const empIds = [...new Set(days.map((d) => d.employmentId))];
   const sorted = days.map((d) => d.day).sort();
   const from = sorted[0];
@@ -5970,6 +6348,7 @@ export async function addImportedPunchesBatchTx(
   // 1 · What is already there: the day rows, their punches, and which days carry an approved OT decision.
   const rowBy = new Map<string, typeof attendance.$inferSelect>();
   const otKeys = new Set<string>();
+  const policyPlanRequestedOn=new Map<string,string>();
   for (const ids of chunk(empIds, 1000)) {
     for (const r of await tx
       .select()
@@ -5978,8 +6357,13 @@ export async function addImportedPunchesBatchTx(
       rowBy.set(keyOf(r.employmentId, r.attendanceDate), r);
     }
     for (const c of await tx
-      .select({ employmentId: attendanceCorrection.employmentId, date: attendanceCorrection.attendanceDate })
+      .select({ employmentId: attendanceCorrection.employmentId, date: attendanceCorrection.attendanceDate,
+        createdAt:attendanceCorrection.createdAt,cancelledAt:attendanceCorrection.cancelledAt,
+        binding:attendancePolicyRequestContract.policyBinding,window:attendancePolicyRequestContract.plannedWindow,
+        attestedWork:attendancePolicyRequestContract.attestedWork })
       .from(attendanceCorrection)
+      .leftJoin(attendancePolicyRequestContract,and(eq(attendancePolicyRequestContract.correctionId,attendanceCorrection.id),
+        eq(attendancePolicyRequestContract.tenantId,attendanceCorrection.tenantId)))
       .where(
         and(
           inArray(attendanceCorrection.employmentId, ids),
@@ -5988,8 +6372,11 @@ export async function addImportedPunchesBatchTx(
           eq(attendanceCorrection.status, 'approved'),
           sql`${attendanceCorrection.requestedOtMinutes} is not null`,
         ),
-      )) {
+      ).orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id))) {
       otKeys.add(keyOf(c.employmentId, c.date));
+      const key=keyOf(c.employmentId,c.date);
+      if(c.cancelledAt===null&&c.binding&&c.window&&!c.attestedWork&&!policyPlanRequestedOn.has(key))
+        policyPlanRequestedOn.set(key,todayInKualaLumpur(c.createdAt));
     }
   }
   type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
@@ -6007,6 +6394,18 @@ export async function addImportedPunchesBatchTx(
   }
   const memo = await newScheduleMemo(tx, { employmentIds: empIds, from: addDays(from, -7), to: addDays(to, 7) });
 
+  const schedules=new Map<string,ResolvedSchedule>();
+  for(const d of days){
+    const current=await scheduleFor(tx,d.employmentId,d.day,memo),existing=rowBy.get(keyOf(d.employmentId,d.day));
+    schedules.set(keyOf(d.employmentId,d.day),existing?.dayType?{...current,dayType:existing.dayType}:current);
+  }
+  const policyRoutes=policyConfigured?await attendancePolicyImportRoutesTx(tx,ctx,days.map(d=>{
+    const sched=schedules.get(keyOf(d.employmentId,d.day))!;
+    return {employmentId:d.employmentId,date:d.day,ruleId:sched.rule?.id??null,scheduleSource:sched.source};
+  })):null;
+  if(policyRoutes&&days.some(d=>!policyRoutes.has(keyOf(d.employmentId,d.day))||policyRoutes.get(keyOf(d.employmentId,d.day))==='unavailable'))
+    throw Error('Canonical import policy inputs are unavailable.');
+
   // 2 · Work every day out in memory.
   const newRows: (typeof attendance.$inferInsert)[] = [];
   const punchRows: (typeof attendancePunch.$inferInsert)[] = [];
@@ -6015,8 +6414,8 @@ export async function addImportedPunchesBatchTx(
   const results = new Map<ImportedDayInput, { attendanceId: string; punchIds: string[]; checkInAt: string | null; checkOutAt: string | null }>();
   for (const d of days) {
     const existing = rowBy.get(keyOf(d.employmentId, d.day));
-    const sched0 = await scheduleFor(tx, d.employmentId, d.day, memo);
-    const sched: ResolvedSchedule = existing?.dayType ? { ...sched0, dayType: existing.dayType } : sched0;
+    const sched=schedules.get(keyOf(d.employmentId,d.day))!;
+    const policyRaw=policyRoutes?.get(keyOf(d.employmentId,d.day))==='policy';
     const attendanceId = existing?.id ?? randomUUID();
     const base = { tenantId: ctx.tenantId, attendanceId, employmentId: d.employmentId, attendanceDate: d.day };
     const all: Kid[] = [...(existing ? (kidsBy.get(existing.id) ?? []) : [])];
@@ -6063,7 +6462,13 @@ export async function addImportedPunchesBatchTx(
       punchRows.push({ ...base, id, punchAt: x.time, direction: x.direction, method: 'import' });
       all.push({ punchAt: x.time, direction: x.direction, method: 'import' });
     }
-    const { set, result } = deriveDayFromPunchList(sched, d.day, all, existing?.checkInAt ?? d.punches[0].time);
+    const legacy=deriveDayFromPunchList(sched,d.day,all,existing?.checkInAt??d.punches[0].time);
+    // Every imported child has no capture receipt. Retain actual labels, including an unmatched
+    // Out, but do not reuse the legacy envelope's numeric work, deductions, OT or trace.
+    const raw=policyRaw?attendancePolicyUncapturedRawDay({fallbackIn:all.filter(k=>k.direction==='in').map(k=>k.punchAt).sort()[0]??null,
+      fallbackOut:all.filter(k=>k.direction==='out').map(k=>k.punchAt).sort().at(-1)??null}):null;
+    const set=raw??legacy.set;
+    const result=raw?{status:raw.status,workedMinutes:raw.workedMinutes,otMinutes:raw.otMinutes,checkInAt:raw.checkInAt,checkOutAt:raw.checkOutAt}:legacy.result;
     // The aggregate's method / geo columns describe the clocking that supplies each end NOW. When an
     // imported clocking has become the day's first in or last out, that end carries no geofence reading.
     const endFrom = (dir: 'in' | 'out', at: string | null) => (at == null ? [] : all.filter((k) => k.direction === dir && k.punchAt === at));
@@ -6112,7 +6517,7 @@ export async function addImportedPunchesBatchTx(
     } else if (set || Object.keys(ends).length) {
       updates.push({ id: attendanceId, set: { ...(set ?? {}), ...ends } });
     }
-    if (otKeys.has(keyOf(d.employmentId, d.day))) {
+    if (!policyRaw&&otKeys.has(keyOf(d.employmentId, d.day))) {
       otDays.push({ employmentId: d.employmentId, day: d.day, attendanceId, sched, systemOt: result.otMinutes });
     }
     results.set(d, { attendanceId, punchIds, checkInAt: result.checkInAt, checkOutAt: result.checkOutAt });
@@ -6139,6 +6544,15 @@ export async function addImportedPunchesBatchTx(
   }
 
   for (const d of days) if (!plannedBy.has(keyOf(d.employmentId,d.day))) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'});
+  // Work arrival, not public recalculation, triggers the existing opted-in credit owner.
+  // Batched plan metadata supplies only Request Date; the owner replays the complete
+  // current approved union, independent duration and original physical source again.
+  for(const d of days){
+    const key=keyOf(d.employmentId,d.day),requestedOn=policyPlanRequestedOn.get(key),result=results.get(d)!;
+    if(policyRoutes?.get(key)==='policy'&&requestedOn&&result.checkInAt&&result.checkOutAt)
+      await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:d.employmentId,workedDate:d.day,
+        dayType:schedules.get(key)!.dayType,requestedOn});
+  }
 
   // 5 · One `attendance.imported` event per day.
   const events = days.map((d) => {
@@ -6194,15 +6608,17 @@ export async function addImportedPunchesBatchTx(
  * Re-derive ONE stored day against the schedule that applies to it TODAY, and hand back both the figures
  * and the exact column bag to write. Writes nothing itself.
  *
- * `approvedOtMinutes` is the ADR-0069 guard: when a human has approved an OT figure for this day, that
+ * For legacy days/applications, `approvedOtMinutes` is the ADR-0069 guard: that approved
  * number is kept and only its per-rate split is recut (exactly as decideAttendanceCorrection does), so a
- * recompute can refresh the measured figures beside it without ever overwriting the approved total.
+ * recompute can refresh the measured figures beside it without overwriting the approved legacy total.
+ * New policy days use the shared captured-source projection; a scalar approval cannot supply their
+ * unfinished positioned receipt or financial result.
  *
  * Idempotent by construction: the result is a pure function of (stored clock evidence, current schedule,
  * date), so running it twice over the same range produces the same bag the second time.
  */
 export async function recomputeDayFigures(
-  tx: Tx,
+  tx: Tx, ctx:SessionContext,
   p: {
     employmentId: string;
     date: string;
@@ -6211,6 +6627,16 @@ export async function recomputeDayFigures(
     approvedOtMinutes?: number | null;
   },
 ) {
+  const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.date,
+    fallbackIn:p.checkInAt,fallbackOut:p.checkOutAt,classification:'currentSchedule'});
+  if(projected.state==='policy'){
+    // Clock labels are outside the range-recompute contract. A scalar historical OT approval cannot
+    // replace this policy owner's future positioned receipt and independent financial replay.
+    const {checkInAt,checkOutAt,...columns}=projected.columns;
+    return {dayType:projected.schedule.dayType,source:projected.schedule.source,
+      shiftCode:projected.schedule.displayShiftCode??null,otPreserved:false,
+      columns:{...columns,dayType:projected.schedule.dayType}};
+  }
   const sched = await scheduleFor(tx, p.employmentId, p.date);
   const d = await deriveStoredAttendanceTx(tx, sched, p);
   const keepOt = p.approvedOtMinutes != null;
@@ -6280,7 +6706,48 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
         if (cor.status !== 'pending' && cor.status !== 'approved')
             throw new Error('Only pending or approved applications can be cancelled or withdrawn.');
         let reversed = false;
-        if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
+        let attestedCancellation=false;
+        let plannedCancellation=false;
+        if(cor.status==='approved'&&!cor.originalClockSnapshot?.unclockedWork&&!cor.proposedCheckIn&&!cor.proposedCheckOut
+          &&!cor.clockChanges&&cor.plannedStartTime!==null&&cor.plannedEndTime!==null&&cor.requestedOtMinutes!==null){
+            // The application lock already holds the employee advisory. A positioned
+            // plan withdrawal removes quantity, never restores or edits clock figures.
+            await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            const retained=await retainedAttendancePolicyPlanCancellationTx(tx,ctx,{correctionId:cor.id,employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(retained){
+                for(const date of retained.protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+                await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+                const reserved=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+                if(reserved?.settlement)throw Error('Release the existing Payroll contribution or reverse its Leave Credit before withdrawing this approved plan.');
+                const batches=await lockAttendancePayrollTx(tx,cor.employmentId,retained.protectedDates);
+                const [credit]=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,cor.employmentId),
+                    eq(toilAccrual.workedDate,cor.attendanceDate),sql`${toilAccrual.status}<>'reversed'`)).limit(1);
+                if(credit)throw Error('Review and reverse the dependent Leave Credit before cancelling this application.');
+                await markAttendancePayrollTx(tx,ctx,batches,cor.employmentId);
+                plannedCancellation=true;
+            }
+        }
+        if(cor.status==='approved'&&cor.originalClockSnapshot?.unclockedWork){
+            // Employee advisory is already held by lockAttendanceApplicationTx. Preserve
+            // source/configuration/batch ordering and the original immutable HR evidence.
+            await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            const retained=await retainedAttestedPolicyCancellationTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(!retained||retained.correctionId!==cor.id)throw Error('The original unclocked-work approval no longer owns this day. Review its later changes first.');
+            // Lock the complete physical statement before configuration and then ask the
+            // same Payroll protection owner once for every covered date, including later months.
+            for(const date of retained.protectedDates)await lockOvertimeDayForAttendanceWriteTx(tx,{employmentId:cor.employmentId,date});
+            await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:cor.employmentId,date:cor.attendanceDate}]);
+            const reserved=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            if(reserved?.settlement)throw Error('Release the existing Payroll contribution or reverse its Leave Credit before cancelling this unclocked-work approval.');
+            const batches=await lockAttendancePayrollTx(tx,cor.employmentId,retained.protectedDates);
+            const credits=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,cor.employmentId),
+                eq(toilAccrual.workedDate,cor.attendanceDate),sql`${toilAccrual.status}<>'reversed'`)).limit(1);
+            if(credits.length)throw Error('Review and reverse the dependent Leave Credit before cancelling this application.');
+            await tx.update(attendance).set({attestedWorkCorrectionId:null,attestedWorkContext:null})
+                .where(and(eq(attendance.id,retained.attendanceId),eq(attendance.tenantId,ctx.tenantId),eq(attendance.attestedWorkCorrectionId,cor.id)));
+            await markAttendancePayrollTx(tx,ctx,batches,cor.employmentId);
+            attestedCancellation=true;
+        }else if (!plannedCancellation && cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
             const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
             const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, cor.decidedAt ? gt(attendanceCorrection.decidedAt, cor.decidedAt) : sql`false`)).limit(1);
             if (later.length)
@@ -6333,23 +6800,33 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
             reversed = true;
         }
         await tx.update(attendanceCorrection).set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: p.kind, cancellationReason: p.reason.trim() }).where(eq(attendanceCorrection.id, cor.id));
-        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
+        // The existing calculation owner refuses active cash/TOIL claims atomically. A
+        // cancellation cannot release money or credit, or keep a ready duration on a cancelled source.
+        if(attestedCancellation||plannedCancellation)await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,
+            reason:attestedCancellation?'Cancelled unclocked-work approval':'Withdrawn approved-plan quantity'});
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, ...(attestedCancellation?{attestedApprovalWithdrawn:true}:{}), ...(plannedCancellation?{approvedPlanWithdrawn:true}:{}), date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
         return { status: 'cancelled' as const, reversed };
     });
 }
 
 
-export async function attendanceDayCalculationTx(tx:Tx,employmentId:string,date:string) {
-  const schedule=await scheduleFor(tx,employmentId,date);
+export async function attendanceDayCalculationTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string) {
+  let schedule=await scheduleFor(tx,employmentId,date);
   const [day]=await tx.select().from(attendance).where(and(eq(attendance.employmentId,employmentId),eq(attendance.attendanceDate,date))).limit(1);
   const [approved]=await tx.select({minutes:attendanceCorrection.approvedOtMinutes}).from(attendanceCorrection)
     .where(and(eq(attendanceCorrection.employmentId,employmentId),eq(attendanceCorrection.attendanceDate,date),eq(attendanceCorrection.status,'approved'),isNotNull(attendanceCorrection.approvedOtMinutes)))
     .orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.id)).limit(1);
-  const automatic=day?.checkInAt?await deriveStoredAttendanceTx(tx,{...schedule,manualOtRows:{}},{employmentId,date,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt}):null;
+  const projected=day?.checkInAt?await policyRawDayProjectionTx(tx,ctx,{employmentId,date,
+    fallbackIn:day.checkInAt,fallbackOut:day.checkOutAt,classification:'currentSchedule'}):null;
+  if(projected?.state==='policy')schedule=projected.schedule;
+  const policyRaw=projected?.state==='policy';
+  const automatic=projected?.state==='policy'?{...projected.columns,trace:projected.columns.calcTrace,otSplit:null}:
+    day?.checkInAt?await deriveStoredAttendanceTx(tx,{...schedule,manualOtRows:{}},{employmentId,date,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt}):null;
   const automaticMinutes=automatic?.otMinutes??0;
-  return {day:day??null,approvedOtMinutes:approved?.minutes??null,automatic,
-    rows:overtimeCalculationRows(automaticMinutes,schedule.dayType,schedule.rule),
-    effectiveBaseRows:overtimeCalculationRows(approved?.minutes??automaticMinutes,schedule.dayType,schedule.rule),
+  const approvedOtMinutes=policyRaw?null:approved?.minutes??null;
+  return {day:day??null,approvedOtMinutes,automatic,policyRaw,
+    rows:policyRaw?[]:overtimeCalculationRows(automaticMinutes,schedule.dayType,schedule.rule),
+    effectiveBaseRows:policyRaw?[]:overtimeCalculationRows(approvedOtMinutes??automaticMinutes,schedule.dayType,schedule.rule),
     schedule:{shiftId:schedule.displayShiftId??null,shiftCode:schedule.displayShiftCode??null,
       dayKind:schedule.dayType==='holiday'?'holiday' as const:schedule.dayType==='rest_day'?'rest_day' as const:schedule.scheduleDayKind==='off'?'off_day' as const:'workday' as const,
       scheduledMinutes:schedule.scheduledMinutes,shiftStart:schedule.shiftStart,shiftEnd:schedule.shiftEnd,source:schedule.source},
@@ -6384,16 +6861,35 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
   id?:string;removalPunchId?:string;employmentId:string;date:string;clockChanges:ClockChanges|null;
   checkIn:string|null;checkOut:string|null;requestedOtMinutes:number|null;reason:string;
   plannedStartTime:string|null;plannedEndTime:string|null;otReasonCategory:OtReasonCategory|null;
-  remark:string|null;requestKind:AttendanceRequestKind;
+  remark:string|null;requestKind:AttendanceRequestKind;unclockedWork?:AttendancePolicyUnclockedWork;
 }){
   const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
+  // Freeze the server resolver's selected identity, never a form-supplied rule/revision. Use the
+  // existing configuration barrier BEFORE selection and the DB submission owner records/checks
+  // the immutable revision under the same transaction. This binding proves neither work nor pay.
+  let executionPolicy:ReturnType<typeof attendancePolicyTraceBinding>=null;
+  if(requestedOtMinutes!==null){
+    await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+    const context=await attendancePolicyExecutionContextTx(tx,ctx,{employmentId:p.employmentId,date:p.date});
+    if(context.state==='unavailable')throw Error('The submitted Attendance policy is unavailable.');
+    if(p.unclockedWork&&(context.state!=='policy'||!context.selected.policy.overtime.enabled
+      ||!context.selected.policy.overtime.allowBackdatedWithoutClock||context.selected.activation.epoch<1))
+      throw Error('The dated Schedule Group policy does not permit unclocked overtime.');
+    if(context.state==='policy'){
+      executionPolicy=attendancePolicyTraceBinding(context);
+      if(!executionPolicy)throw Error('The submitted Attendance policy identity is unavailable.');
+    }
+  }
+
     const [original] = clockChanges || checkIn || checkOut ? await tx.select({
       id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
     }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
-    const originalClockSnapshot = clockChanges || checkIn || checkOut ? {
+    const originalClockSnapshot = clockChanges || checkIn || checkOut || executionPolicy ? {
       version: 1 as const, attendanceId: original?.id ?? null,
       originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
       capturedAt: new Date().toISOString(),
+      ...(executionPolicy?{executionPolicy}:{}),
+      ...(p.unclockedWork?{unclockedWork:structuredClone(p.unclockedWork)}:{}),
     } : null;
     const [row] = await tx
       .insert(attendanceCorrection)
@@ -6443,12 +6939,13 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
     return { correctionId: row.id };
 }
 
-/** Own web punch only. The caller never supplies a subject, day, or replacement clock set. */
-export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+/** Own web punch only. A selector must resolve to an own active employment; the caller cannot supply
+ * a trusted subject, attendance day or replacement clock set. */
+export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string;employmentId?:string}){
   const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   const reason=typeof p.reason==='string'?p.reason.trim():'';
   if(!uuid.test(p.punchId)||!uuid.test(p.requestId)||!reason||reason.length>500||!/^[0-9a-f]{64}$/.test(p.baseline))throw new Error('Choose a clocking and enter a removal remark of at most 500 characters.');
-  const me=await myEmployment(ctx);if(!me)throw new Error('No active employee profile.');
+  const me=await resolveOwnClockEmployment(ctx,p.employmentId);if(!me)throw new Error('No active employee profile.');
   if(p.clockContext!==clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId))throw new Error('Your employee account changed. Reopen Web Clocking.');
   return withTenant(ctx,async tx=>{
     // Same fence as captureEmployeeClock, including a day that has never had a correction.

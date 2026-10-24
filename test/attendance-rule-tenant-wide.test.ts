@@ -1,3 +1,5 @@
+import {hireEmployee} from '../core/org';
+import {createDepartment} from '../core/admin';
 /**
  * 6da67ab7 — "Remove Company-Level Segregation from Attendance Policy (Bind Directly to Shift Setting)".
  *
@@ -45,15 +47,11 @@ async function otherCompany(): Promise<string> {
 }
 
 async function makeEmp(companyId: string) {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Cross Co', primaryEmail: `xco_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  const departmentId=companyId===b.companyId?b.deptA:(await createDepartment(adminCtx(b),{companyId,name:`Fictional cross-company department ${randomUUID()}`})).id;
+  const hired=await hireEmployee(adminCtx(b),{companyId,departmentId,
+    employmentType:'full_time',hiredOn:'2020-01-01',
+    person:{fullName:'Cross Co',primaryEmail:`xco_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const ruleInput = (name: string, over: Partial<AttendanceRuleInput> = {}): AttendanceRuleInput => ({

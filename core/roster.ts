@@ -3239,12 +3239,12 @@ export type MyRosterView = {
  */
 export async function myRosterWindow(
   ctx: SessionContext,
-  p: { from: string; to: string },
+  p: { from: string; to: string; employmentId?:string },
 ): Promise<MyRosterView | null> {
   // FIRST, before any query: an over-wide window must cost nothing to refuse, and the employee's address
   // bar can reach this read exactly as the operator's can (see assertRosterWindow's note).
   assertRosterWindow(p.from, p.to);
-  const me = await myEmployment(ctx);
+  const me = await myEmployment(ctx,p.employmentId===undefined?undefined:{employmentId:p.employmentId});
   if (!me) return null;
 
   const [roster, usualRows] = await Promise.all([

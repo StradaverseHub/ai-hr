@@ -88,8 +88,8 @@ export const HEADER_CLS =
 export const RIGHT_CLUSTER_CLS = 'flex min-w-0 items-center justify-end gap-2 2xl:gap-2.5';
 /** app/layout.tsx — the divider that drops below md. */
 export const DIVIDER_CLS = 'hidden h-5 w-px shrink-0 bg-border md:block';
-/** The 36px footprint every icon control in the cluster carries (theme / language / bell). */
-export const ICON_CLS = 'inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground';
+/** Desktop icons retain their 36px width budget; every trigger is 44px high and phone targets widen to44px. */
+export const ICON_CLS = 'inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-lg text-muted-foreground';
 
 /**
  * The room the identity must be left, in CSS px. This is the width the seeded employee's name
@@ -144,7 +144,7 @@ function Shell({ account, myTeam = false }: { account: ReactNode; myTeam?: boole
               <span className="shrink-0 font-medium text-foreground/80">Demo Group</span>
             </div>
             <div className="flex min-w-0 items-center justify-center">
-              <span className="inline-flex h-10 w-auto min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm sm:w-full" />
+              <span className="inline-flex h-11 w-auto min-w-0 items-center max-sm:min-w-11 gap-2 rounded-md border border-input bg-card px-3 text-sm sm:w-full" />
             </div>
             <div className={RIGHT_CLUSTER_CLS} data-testid="right-cluster">
               <div className={DIVIDER_CLS} />
@@ -223,6 +223,7 @@ describe('topbar identity is actually visible at laptop widths', () => {
     it(`renders the name and the Employee ID whole at ${width}`, async () => {
       await page.viewport(width, 900);
       wrap(<UserMenuShell name="Aisyah Rahman" code="EMP-0001" />);
+      expect(document.querySelector('[data-tour="account"]')!.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       const name = lineWithText('Aisyah Rahman');
       const code = lineWithText('EMP-0001');
       // The reported defect, in the form it was measured: width 0, scrollWidth 87.
@@ -380,7 +381,7 @@ export const MONO_LEFT_CLS =
   'monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]';
 /** components/notification-center.tsx — the trigger button, Classic footprint + Monolith suffix. */
 export const BELL_CLS =
-  'relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink';
+  'relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink';
 /** components/sidebar.tsx — the Monolith rail follows CLASSIC's breakpoints (visible from sm). r398's first cut hid
  *  it below 900px per the README, but nothing else opens navigation at those widths, so a tablet had none. */
 export const MONO_RAIL_CLS = '';
@@ -412,7 +413,7 @@ function MonolithShell({ account }: { account: ReactNode }) {
               </span>
             </div>
             <div className="flex min-w-0 items-center justify-center monolith:hidden">
-              <span className="inline-flex h-10 w-auto min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm sm:w-full" />
+              <span className="inline-flex h-11 w-auto min-w-0 items-center max-sm:min-w-11 gap-2 rounded-md border border-input bg-card px-3 text-sm sm:w-full" />
             </div>
             <div className={RIGHT_CLUSTER_CLS} data-testid="right-cluster">
               <div className={DIVIDER_CLS} />

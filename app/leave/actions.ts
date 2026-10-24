@@ -2,11 +2,11 @@
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
-import { leaveSelfReturnUrl } from '@/lib/leave-return-context';
+import { leaveSelfReturnUrl,withLeaveEmploymentContext } from '@/lib/leave-return-context';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listLeaveTypes, myEmployment } from '@/core/read';
+import { listLeaveTypes, myEmployment,myOwnEmploymentSubjects } from '@/core/read';
 import {
   // 65f466e2 — role-aware identity, replacing a dead `code === 'EMERGENCY'` comparison.
   leaveTypeIs,
@@ -103,7 +103,8 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
     const employmentId = p.employmentId || me?.employmentId;
     if (!employmentId) return null;
     const s = await leaveTypeApplySummary(session, { employmentId, leaveTypeId: p.leaveTypeId });
-    if (!me || employmentId !== me.employmentId) {
+    const ownSelected=employmentId===me?.employmentId||(await myOwnEmploymentSubjects(session,{profileEdit:true})).some(row=>row.employmentId===employmentId);
+    if (!ownSelected) {
       return { pending: s.pending, taken: s.taken, balance: s.balance, available: s.available, expiringSoon: s.expiringSoon };
     }
     const view = resolveEssView(s.essViewConfig);
@@ -124,6 +125,8 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
 
 export async function requestLeaveAction(formData: FormData) {
   const session = await getSession();
+  let selectedOwnReturnId:string|undefined;
+  const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
   const leaveTypeId = String(formData.get('leaveTypeId'));
   const durationType = (String(formData.get('durationType') || 'full_day') as LeaveDurationType);
   // Hourly-leave time window (0129): the form now posts a From/To window (not a raw hours number) for hourly
@@ -179,6 +182,11 @@ export async function requestLeaveAction(formData: FormData) {
   let refusedEmploymentId: string | undefined;
   let refusedOnBehalf = false;
   try {
+    if(formData.getAll('employmentId').length>1)throw Error('Choose one employment.');
+    if(postedEmploymentId){
+      const ownActive=await myOwnEmploymentSubjects(session,{profileEdit:true});
+      selectedOwnReturnId=ownActive.find(row=>row.employmentId===postedEmploymentId)?.employmentId;
+    }
     // Orphan-prevention: validate the file BEFORE requestLeave commits the row + event, so a
     // disallowed/oversized file is rejected with no committed pending request left behind.
     if (attach) {
@@ -202,14 +210,13 @@ export async function requestLeaveAction(formData: FormData) {
     // subject who is not the caller unless the caller holds `leave.apply_on_behalf` (LeaveOnBehalfNotAllowedError,
     // localized below). This line is unchanged on purpose: the fallback is what a self-service submit relies
     // on, and re-deriving the employment here would only move the check to the weaker of the two places.
-    const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
     const ownEmploymentId = (await myEmployment(session))?.employmentId;
     const employmentId = postedEmploymentId || ownEmploymentId;
     if (!employmentId) {
       throw new Error('No employment on record for this account.');
     }
     refusedEmploymentId = employmentId;
-    refusedOnBehalf = employmentId !== ownEmploymentId;
+    refusedOnBehalf = employmentId !== ownEmploymentId&&selectedOwnReturnId===undefined;
     const res = await requestLeave(session, {
       employmentId,
       leaveTypeId,
@@ -253,9 +260,9 @@ export async function requestLeaveAction(formData: FormData) {
     // resort is the raw English service message — which is exactly what a permission refusal must not show.
     if (e instanceof LeaveOnBehalfNotAllowedError) {
       const tErr = await getTranslations('leave.errors');
-      redirect(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`);
+      redirect(withLeaveEmploymentContext(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`,selectedOwnReturnId));
     }
-    redirect(
+    redirect(withLeaveEmploymentContext(
       `/leave?error=${encodeURIComponent(
         await localizeLeaveError(
           e,
@@ -269,8 +276,8 @@ export async function requestLeaveAction(formData: FormData) {
               }
             : undefined,
         ),
-      )}`,
-    );
+      )}`,selectedOwnReturnId,
+    ));
   }
   revalidatePath('/leave');
   revalidatePath('/leave/history');
@@ -289,7 +296,7 @@ export async function requestLeaveAction(formData: FormData) {
   // raw query string, so never pass an i18n key), leaving exactly one emitter and the right words in it.
   const tToast = await getTranslations('leave');
   const done = encodeURIComponent(tToast('submittedToast'));
-  redirect(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`);
+  redirect(withLeaveEmploymentContext(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`,selectedOwnReturnId));
 }
 
 // Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The

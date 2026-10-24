@@ -13,9 +13,8 @@
  * the identity RLS would let through — and the first one proves the leak is genuinely available by
  * taking it through `rosterForRange` in the same test before showing `myRosterWindow` refusing it.
  *
- * The guard being tested is `myRosterWindow`'s SHAPE: it takes no employment id, and resolves the
- * caller's own from the session. Revert that — key the read on a passed id — and
- * `'the manager gets their OWN roster, not the subordinate's'` fails.
+ * The own-subject owner resolves the default employment or proves an explicit own selector.
+ * Manager visibility never admits somebody else's employment to the personal Calendar/List read.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -170,7 +169,11 @@ describe('6948727a — My Roster shows the caller their own roster and nobody el
   });
   it('the consolidated calendar keeps the same self-only roster and canonical attendance for every date', async () => {
     const manager = await sessionFor(managerPersonId);
-    const result = (await myAttendanceCalendarWindow(manager, { from, to, employmentId:subordinateId } as {from:string;to:string}))!;
+    // A visible subordinate is still not an own employment. Explicit selectors refuse;
+    // they never fall back to the first record and mislabel the chosen subject.
+    expect(await myAttendanceCalendarWindow(manager,{from,to,employmentId:subordinateId})).toBeNull();
+    expect(await myRosterWindow(manager,{from,to,employmentId:subordinateId})).toBeNull();
+    const result = (await myAttendanceCalendarWindow(manager, { from, to, employmentId:managerId }))!;
     expect(result.employmentId).toBe(managerId);
     expect([...new Set(result.days.map(day=>day.shift?.code).filter(Boolean))]).toEqual(['MGR1']);
     const rows=await attendanceForEmploymentRange(manager,managerId,from,to);
@@ -179,6 +182,18 @@ describe('6948727a — My Roster shows the caller their own roster and nobody el
       expect(day.attendance).toEqual({status:statusOf(row),flag:flagOf(row),checkInAt:row.checkInAt,checkOutAt:row.checkOutAt});
     }
     expect(await myAttendanceCalendarWindow(ctx,{from,to})).toBeNull();
+  });
+  it('selects a second genuine own employment and refuses a substituted person or invalid selector',async()=>{
+    const manager=await sessionFor(managerPersonId);
+    const second=await hireEmployee(ctx,{person:{id:managerPersonId},companyId:b.companyId,departmentId:b.deptA,
+      positionId:b.positionId,employmentType:'full_time',hiredOn:'2020-02-01'});
+    await assignDefaultShift(ctx,{employmentId:second.employmentId,shiftId:subordinateShift});
+    const selected=await myAttendanceCalendarWindow(manager,{from,to,employmentId:second.employmentId});
+    expect(selected?.employmentId).toBe(second.employmentId);
+    expect([...new Set(selected!.days.map(day=>day.shift?.code).filter(Boolean))]).toEqual(['SUB1']);
+    expect((await myRosterWindow(manager,{from,to}))?.employmentId).toBe(managerId);
+    expect(await myAttendanceCalendarWindow({...manager,personId:subordinatePersonId},{from,to,employmentId:subordinateId})).toBeNull();
+    expect(await myAttendanceCalendarWindow(manager,{from,to,employmentId:'not-an-id'})).toBeNull();
   });
   it('the combined attendance entry refuses a disabled module even with a valid personal employment', async () => {
     const self = await sessionFor(managerPersonId);
@@ -251,10 +266,10 @@ describe('6948727a — My Roster shows the caller their own roster and nobody el
 // ── 3 · THE PAGE TAKES NO EMPLOYMENT FROM THE URL ───────────────────────────────────────────────────
 
 describe('6948727a — nobody opens somebody else’s roster by editing the address', () => {
-  it('the page reads no employment id, code or name off the query string', () => {
+  it('proves the optional own employment before any Calendar/List read and accepts no person or company authority', () => {
     const src = code(read(PAGE));
-    // Not "validated" — never read at all. There is no comparison to get wrong.
-    expect(src, 'the URL cannot name an employment').not.toMatch(/sp\.employmentId|searchParams\.get\(['"]employmentId['"]\)/);
+    expect(src).toContain('if(sp.employmentId!==undefined&&!await ownAttendanceRecordSubject(s,sp.employmentId))notFound();');
+    expect(src.indexOf('ownAttendanceRecordSubject(s,sp.employmentId)')).toBeLessThan(src.indexOf('myAttendanceCalendarWindow(s,'));
     expect(src, 'nor an employee code').not.toMatch(/sp\.employeeCode|searchParams\.get\(['"]employeeCode['"]\)/);
     expect(src, 'nor a person').not.toMatch(/sp\.personId|searchParams\.get\(['"]personId['"]\)/);
     // Board2 adds typed independent Calendar/List coordinates. The shared parser accepts no subject.
@@ -266,10 +281,9 @@ describe('6948727a — nobody opens somebody else’s roster by editing the addr
     const parser = links.slice(from, end);
     expect(parser.length).toBeGreaterThan(500);
     expect(parser).toContain('resolveMyRosterWindow({');
-    expect(parser).not.toMatch(/input\.(?:employmentId|employeeCode|personId|companyId)/);
+    expect(parser).not.toMatch(/input\.(?:employeeCode|personId|companyId)/);
     expect(parser).toContain('parsePageQuery(input)');
-    // The read itself takes the SESSION and a pair of dates. No id passes through this call.
-    expect(src, 'the session decides whose roster this is').toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to })');
+    expect(src).toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to,...(state.employmentId?{employmentId:state.employmentId}:{}) })');
   });
 
   it('the page is authenticated, ungated, and imports no roster write', () => {

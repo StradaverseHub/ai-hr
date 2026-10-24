@@ -1,3 +1,6 @@
+import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
+import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
+import {payPeriodBounds, payslipCoverage} from './payslip-segment';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
  * Payroll Transaction View (feedback a4a05174) — the centralized, READ-ONLY transaction inquiry.
@@ -3073,4 +3076,46 @@ export function listFilableRunsForPeriod(
       // list in. Explicit, because an asserted array from a query needs one.
       .orderBy(asc(payrollBatch.runSeq)),
   );
+}
+
+/** Recorded comparison inputs for a caller-held, freshly authorized report snapshot. The service owns
+ * permissions and audit; this owner owns saved payroll semantics. No live company-currency fallback. */
+export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p: {
+  companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; payItemCode: string;
+}) {
+  if (!p.companyIds.length) return { runs: [], sources: [] };
+  if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
+  const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId,
+    period: payrollBatch.payPeriod, runType: payrollBatch.runType, status: payrollBatch.status,
+    needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollBatch)
+    .where(and(eq(payrollBatch.tenantId, ctx.tenantId), inArray(payrollBatch.companyId, [...p.companyIds]),
+      inArray(payrollBatch.payPeriod, [p.previousPeriod, p.currentPeriod]),
+      p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined))
+    .orderBy(asc(payrollBatch.companyId), asc(payrollBatch.payPeriod), asc(payrollBatch.runSeq)).limit(10001);
+  if (batches.length > 10000) throw new Error('Payroll comparison exceeds 10000 runs. Narrow the scope.');
+  const runs = batches.map(({needsRecalcAt, ...run}) => ({...run, stale: needsRecalcAt !== null}));
+  // Availability is established before loading or returning any partial money.
+  const availability = payrollComparisonAvailability(runs, p.companyIds, p.previousPeriod, p.currentPeriod, p.runType);
+  if (availability.issues.length || !batches.length) return { runs, sources: [] };
+  const batchById = new Map(batches.map(batch => [batch.id, batch]));
+  const results = await tx.select({ id: payslip.id, version: payslip.version, runId: payslip.batchId,
+    employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, statutory: payslip.statutory,
+    coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo }).from(payslip)
+    .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
+    .orderBy(asc(payslip.id)).limit(20001);
+  if (results.length > 20000) throw new Error('Payroll comparison exceeds 20000 saved results. Narrow the company scope.');
+  const counts=new Map<string,number>();for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
+  if(batches.some(batch=>(counts.get(batch.id)??0)!==batch.expectedResults))throw new Error('Saved payroll results are incomplete or unavailable in this scope. No partial comparison was generated.');
+  const sources = results.map(slip => {
+    const batch = batchById.get(slip.runId)!;
+    const period = payPeriodBounds(batch.period);
+    if (!period) throw new Error('Saved payroll period is invalid.');
+    return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
+      companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
+      coverage: payslipCoverage(slip, period),
+      // The recorded factor describes Basic. It cannot prove a different item's proration.
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,p.payItemCode) };
+  });
+  return { runs, sources };
 }

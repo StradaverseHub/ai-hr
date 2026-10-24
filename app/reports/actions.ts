@@ -8,6 +8,7 @@ import { isAdmin } from '@/lib/authz';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import {
+  getCustomReport,
   deleteCustomReport,
   duplicateCustomReport,
   runCustomReport,
@@ -64,10 +65,10 @@ export async function saveReportAction(formData: FormData) {
 }
 
 export async function deleteReportAction(formData: FormData) {
-  const s = await getSession();
+  const {s,scopeIds}=await scope();
   const id = String(formData.get('id') ?? '');
   try {
-    await deleteCustomReport(s, id);
+    await deleteCustomReport(s, id,scopeIds);
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
@@ -76,25 +77,26 @@ export async function deleteReportAction(formData: FormData) {
 }
 
 export async function duplicateReportAction(formData: FormData) {
-  const s = await getSession();
+  const {s,scopeIds}=await scope();
   const id = String(formData.get('id') ?? '');
   let newId: string | null = null;
   try {
-    const r = await duplicateCustomReport(s, id);
+    const r = await duplicateCustomReport(s, id,scopeIds);
     newId = r?.id ?? null;
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
-  redirect(newId ? `${BASE}/builder/${newId}?toast=${encodeURIComponent('Report duplicated')}` : BASE);
+  const copy=newId?await getCustomReport(s,newId,scopeIds):null;
+  redirect(copy?.spec.payrollComparison?`${BASE}/payroll-comparison/${newId}`:newId?`${BASE}/builder/${newId}?toast=${encodeURIComponent('Report duplicated')}`:BASE);
 }
 
 export async function toggleFavouriteAction(formData: FormData) {
-  const s = await getSession();
+  const {s,scopeIds}=await scope();
   const id = String(formData.get('id') ?? '');
   const next = String(formData.get('next') ?? 'true') === 'true';
   try {
-    await toggleFavourite(s, { id, isFavourite: next });
+    await toggleFavourite(s, { id, isFavourite: next },scopeIds);
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
@@ -103,11 +105,11 @@ export async function toggleFavouriteAction(formData: FormData) {
 }
 
 export async function setSharedAction(formData: FormData) {
-  const s = await getSession();
+  const {s,scopeIds}=await scope();
   const id = String(formData.get('id') ?? '');
   const next = String(formData.get('next') ?? 'true') === 'true';
   try {
-    await setShared(s, { id, shared: next });
+    await setShared(s, { id, shared: next },scopeIds);
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
@@ -154,11 +156,11 @@ export async function draftReport(
 /** Save-as-Template (c440b365 gap-9): duplicate the given saved report as a fresh, shared template copy.
  *  Gated in the service by the 'manageTemplates' verb of the source report's permission grid. */
 export async function saveAsTemplateAction(formData: FormData) {
-  const s = await getSession();
+  const {s,scopeIds}=await scope();
   const id = String(formData.get('id') ?? '');
   let newId: string | null = null;
   try {
-    const r = await saveReportAsTemplate(s, id);
+    const r = await saveReportAsTemplate(s, id,scopeIds);
     newId = r?.id ?? null;
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);

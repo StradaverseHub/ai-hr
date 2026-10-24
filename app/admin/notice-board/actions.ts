@@ -11,6 +11,7 @@ import {
   restoreNotice,
   updateNotice,
   type NoticeInput,
+  NoticeError,
 } from '@/core/notice';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 import { listEmployeePickOptions } from '@/core/read';
@@ -43,12 +44,18 @@ const detail = (id: string) => `${BOARD}/${id}`;
  * criteria notice names nobody by reference and must not pay for a list it will not look at.
  */
 async function inputFrom(s: SessionContext, fd: FormData): Promise<NoticeInput> {
+  const owners=fd.getAll('authoringCompany');
+  if(owners.length>1||owners.some(value=>typeof value!=='string'))throw new NoticeError('Choose one authoring company.');
+  const owner=owners[0] as string|undefined;
   const list = (name: string) => fd.getAll(name).map(String).filter(Boolean);
   const targetMode = fd.get('targetMode') === 'individual' ? 'individual' : 'criteria';
   const audience = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
   return {
+    companyId:owner===undefined?undefined:owner==='group'?null:owner,
     title: String(fd.get('title') ?? ''),
     body: String(fd.get('body') ?? ''),
+    summary:String(fd.get('summary')??''),category:String(fd.get('category')??''),pinned:fd.get('pinned')==='on',requiresAcknowledgement:fd.get('requiresAcknowledgement')==='on',
+    attachmentIds:fd.getAll('attachmentIds').map(String),expectedContentVersion:fd.has('expectedContentVersion')?Number(fd.get('expectedContentVersion')):undefined,
     startOn: String(fd.get('startOn') ?? ''),
     endOn: String(fd.get('endOn') ?? ''),
     showEndDate: fd.get('showEndDate') === 'on',
@@ -107,12 +114,13 @@ export async function updateNoticeAction(formData: FormData) {
 export async function publishNoticeAction(formData: FormData) {
   const s = await requireAdmin();
   const id = String(formData.get('id') ?? '');
+  let recipients: number;
   try {
-    const res = await publishNotice(s, id);
-    okToast(detail(id), `Published to ${res.recipients} employee(s)`);
+    ({ recipients } = await publishNotice(s, id));
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), `Published to ${recipients} employee(s)`);
 }
 
 export async function archiveNoticeAction(formData: FormData) {
@@ -120,10 +128,10 @@ export async function archiveNoticeAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   try {
     await archiveNotice(s, id);
-    okToast(detail(id), 'Notice archived');
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), 'Notice archived');
 }
 
 export async function restoreNoticeAction(formData: FormData) {
@@ -131,10 +139,10 @@ export async function restoreNoticeAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   try {
     await restoreNotice(s, id);
-    okToast(detail(id), 'Notice restored');
   } catch (e) {
-    fail(detail(id), e);
+    return fail(detail(id), e);
   }
+  okToast(detail(id), 'Notice restored');
 }
 
 export async function deleteNoticeAction(formData: FormData) {

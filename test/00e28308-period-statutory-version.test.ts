@@ -377,6 +377,7 @@ describe('00e28308 · the month records the ruleset version it was opened under'
       grossPay: '5000.00',
       statutory: {
         ...GOLDEN_STATUTORY,
+        reportContext:{version:1,payingCompanyId:base.companyId,currency:'MYR',itemization:'partial',proration:{payMode:'monthly',from:'2025-01-01',to:null,factor:1,window:{from:'2026-05-01',to:'2026-05-31'}}},
         // Exact additive display evidence; all pre-existing monetary fields stay pinned below.
         pcbExemptions: {version:1,payPeriod:MONTH,taxYear:2026,basis:'selected_calculation',rows:[]},
         salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,

@@ -70,6 +70,14 @@ async function makeEmp(opts: {
   return e.id;
 }
 
+/** Clock-screen commands need the genuine hire owner to retain dated employer provenance. */
+async function clockEmp(code:string,card?:string){
+ const hired=await hireEmployee(adminCtx(b),{person:{fullName:`Clock ${code}`,primaryEmail:`clock_${randomUUID()}@fixture.invalid`},
+  companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',employeeCode:code});
+ if(card)await owner.db.update(schema.employment).set({cardId:card}).where(eq(schema.employment.id,hired.employmentId));
+ return hired.employmentId;
+}
+
 /** Card, day, month, year, hours, minute, code — comma separated, IN / OUT. */
 const CODED: ClockingMappingInput = {
   name: 'Suprema CSV',
@@ -253,7 +261,7 @@ describe('duplicates (plan item 15): importing a file twice adds nothing twice',
 describe('imported clockings are ADDED to the day, never written over it (plan items 16-17)', () => {
   it('a coded file on a Clock-screen day adds its clockings and the day is first in / last out', async () => {
     const ctx = adminCtx(b);
-    const emp = await makeEmp({ code: 'E200', card: 'C200' });
+    const emp = await clockEmp('E200','C200');
     await checkIn(ctx, { employmentId: emp, date: '2026-07-03', time: '08:30:00' });
     await checkOut(ctx, { employmentId: emp, date: '2026-07-03', time: '12:00:00' });
     const mappingId = await createClockingMapping(ctx, CODED);
@@ -295,7 +303,7 @@ describe('imported clockings are ADDED to the day, never written over it (plan i
 
   it('uncoded lines may not add to a day with Clock-screen clockings; they are listed instead', async () => {
     const ctx = adminCtx(b);
-    const emp = await makeEmp({ code: 'E203' });
+    const emp = await clockEmp('E203');
     await checkIn(ctx, { employmentId: emp, date: '2026-07-06', time: '08:30:00' });
     const r = await importText(ctx, BUILTIN_MAPPING_ID, 'staff,time\nE203,2026-07-06 17:00');
     expect(r.imported).toBe(0);

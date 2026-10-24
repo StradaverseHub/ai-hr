@@ -460,7 +460,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
      */
     const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-roster/record-list.tsx'), 'utf8');
     const page = pageSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-    expect(page, 'the employee screen resolves the caller’s own employment').toMatch(/myEmployment\(\s*s\s*\)/);
+    expect(page, 'the employee screen resolves the caller’s own employment').toMatch(/ownAttendanceRecordSubject\(\s*s,\s*state\.employmentId\)/);
     expect(page, 'and the attendance read is keyed on that employment, not on a company scope').toMatch(
       /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
     );

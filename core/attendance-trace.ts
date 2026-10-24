@@ -153,7 +153,15 @@ export type OvertimeTrace = {
   split: TraceOtSplit;
 };
 
+/** The exact canonical resolver identity captured at this raw calculation. A final workflow
+ * receipt can retain it without guessing a group from a company epoch. Not work/approval proof. */
+export type TraceAttendancePolicyBinding={
+ authority:'datedPolicyOnly';sourceDate:string;employmentId:string;companyId:string;revisionId:string;ruleId:string;
+ ordinal:number;effectiveFrom:string;activation:{epoch:number;actorUserId:string;recordedAt:string};pairing:'auto'|'firstInLastOut';
+};
+
 export type AttendanceTraceV1 = {
+  executionPolicy?:TraceAttendancePolicyBinding;
   /** Reference only: exact quantities and evidence remain in the immutable OT owner. A refusal
    * prevents financial consumers from silently using the legacy OT fields for this formula day. */
   overtimePattern?: {status:'recorded';sourceId:string;calculationId:string;revision:number} | {status:'refused';reason:'sourceUnavailable'};
@@ -189,6 +197,8 @@ export type AttendanceTraceV1 = {
      * only precise physical placement when the canonical punch source proves one closed pair. */
     calculationIntervals?: {inAbs: number; outAbs: number}[];
     intervalSource?: 'closedPunchPairs' | 'elapsedEnvelope';
+    /** A duration-owner break allowance is a count, not an invented physical unpaid interval. */
+    workBasis?: 'positionedUnpaidOverlap' | 'fullFlexiDurationOwner' | 'semiFlexiDurationOwner' | 'fixedBreakCountOwner';
     inAbs: number;
     /** Null on an open day (checked in, not yet out) — worked and overtime are unknowable then. */
     outAbs: number | null;

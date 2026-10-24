@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * ADR-0032 C2 — the roster drives the time engine. Asserts: NO roster ⇒ byte-identical to the pre-Phase-C
  * policy engine (compat); a rostered shift's scheduled hours drive workday OT (not the company policy);
@@ -18,15 +19,10 @@ let b: Base;
 let empId: string;
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'W', primaryEmail: `w_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'W', primaryEmail: `w_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 beforeAll(async () => {

@@ -66,9 +66,15 @@ function ctxIsAdmin(ctx: SessionContext): boolean {
   return roles.some((r) => r === 'hr_admin' || r === 'super_admin');
 }
 
+export class AuditChainScopeError extends Error {
+  constructor(){super('Complete current tenant audit authority is required to verify the chain.');this.name='AuditChainScopeError';}
+}
+
 export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerification> {
   if (!ctxIsAdmin(ctx)) throw new Error('verifyTenantChain is admin-only (needs the full event log).');
   return withTenant(ctx, async (tx) => {
+    const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+    if(!scope?.allowed)throw new AuditChainScopeError();
     // ALL THREE counts in one pass, so they are read from the same snapshot and cannot disagree.
     //
     // The third is positional, keyed on `sequence` — the table's bigserial — and NOT on `occurred_at`.

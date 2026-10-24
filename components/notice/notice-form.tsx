@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 import { Markdown } from '@/components/markdown';
+import {NoticeAttachmentEditor,type NoticeAttachmentMetadata,type NoticeAttachmentEditorLabels} from './attachment-editor';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
@@ -16,6 +17,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type NoticeFormValues = {
   title: string;
   body: string;
+  summary?:string;category?:string|null;pinned?:boolean;requiresAcknowledgement?:boolean;contentVersion?:number;attachmentIds?:string[];attachments?:NoticeAttachmentMetadata[];
   startOn: string;
   endOn: string;
   showEndDate: boolean;
@@ -28,6 +30,13 @@ export type NoticeFormValues = {
 };
 
 export type NoticeFormLabels = {
+  attachmentLocale:string;attachments:NoticeAttachmentEditorLabels;
+  category:string;summary:string;pinned:string;requiresAcknowledgement:string;acknowledgementHelp:string;
+  authoringCompany:string;
+  chooseAuthoringCompany:string;
+  groupAuthoring:string;
+  authoringCompanyHelp:string;
+  noAuthoringScope:string;
   sectionBasics: string;
   sectionContent: string;
   sectionAudience: string;
@@ -79,6 +88,7 @@ export type NoticeFormLabels = {
   fPopupFrequency: string;
   popupOnce: string;
   popupUntilAcknowledged: string;
+  popupUntilRevisionAcknowledged:string;
   submit: string;
 };
 
@@ -98,8 +108,7 @@ export type NoticeFormLabels = {
  * publish button that uses it. A number computed by the browser from a half-filled form is not the number
  * the publish will use, and showing it there would be worse than showing none.
  *
- * NOT HERE, ON PURPOSE (release two): the acknowledgement section. No "require acknowledgement" checkbox,
- * no agreement text, no name fields. Half of an evidence feature is worse than none of it.
+ * Acknowledgement records are tied to the retained version, not to this checkbox or popup state.
  */
 export function NoticeForm({
   action,
@@ -112,6 +121,7 @@ export function NoticeForm({
   employees,
   targetingFrozen,
   labels,
+  authoring,
 }: {
   action: Action;
   values: NoticeFormValues;
@@ -131,9 +141,12 @@ export function NoticeForm({
   /** True once the notice is published — the audience snapshot is fixed and the step is read-only. */
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
+  authoring:{groupAllowed:boolean;companies:Opt[];owner:{companyId:string|null;label:string}|null};
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const [body, setBody] = useState(values.body);
+  const [requiresAcknowledgement,setRequiresAcknowledgement]=useState(values.requiresAcknowledgement===true);
+  const [attachmentIds,setAttachmentIds]=useState(values.attachmentIds??[]),[attachments,setAttachments]=useState(values.attachments??[]),[attachmentBusy,setAttachmentBusy]=useState(false);
   const [mode, setMode] = useState<'criteria' | 'individual'>(values.targetMode);
   const [anyCriteria, setAnyCriteria] = useState(
     Object.values(values.criteria).some((v) => (v ?? []).length > 0),
@@ -214,8 +227,15 @@ export function NoticeForm({
   const audienceBlocked = !targetingFrozen && mode === 'individual' && individualIds.length === 0;
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={action} className="space-y-6 [&_input[type=text]]:min-h-11 [&_input[type=date]]:min-h-11 [&_select]:min-h-11 [&_button]:min-h-11 [&_label]:min-h-11">
       {idField && <input type="hidden" name="id" value={idField} />}
+      {values.contentVersion!==undefined&&<input type="hidden" name="expectedContentVersion" value={values.contentVersion}/>}
+      {attachmentIds.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
+      <section className="space-y-2 text-sm">
+        {authoring.owner?<><h2 className="font-medium">{labels.authoringCompany}</h2><p>{authoring.owner.label}</p><input type="hidden" name="authoringCompany" value={authoring.owner.companyId??'group'}/></>:<label className="block space-y-2"><span className="block font-medium">{labels.authoringCompany}</span><select name="authoringCompany" required defaultValue={!authoring.groupAllowed&&authoring.companies.length===1?authoring.companies[0].value:''} className={cn(inputCls,'min-h-11 w-full')}><option value="" disabled>{labels.chooseAuthoringCompany}</option>{authoring.groupAllowed&&<option value="group">{labels.groupAuthoring}</option>}{authoring.companies.map(company=><option key={company.value} value={company.value}>{company.label}</option>)}</select></label>}
+        <p className="max-w-prose text-muted-foreground">{labels.authoringCompanyHelp}</p>
+        {!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0&&<p role="alert">{labels.noAuthoringScope}</p>}
+      </section>
       {/* ── Section 1 — basic information ──────────────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -231,6 +251,11 @@ export function NoticeForm({
             className={cn(inputCls, 'w-full')}
           />
         </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={labels.category}><input name="category" maxLength={80} defaultValue={values.category??''} className={cn(inputCls,'min-h-11 w-full')}/></Field>
+          <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="pinned" defaultChecked={values.pinned}/>{labels.pinned}</label>
+        </div>
+        <Field label={labels.summary}><input name="summary" maxLength={240} defaultValue={values.summary??''} className={cn(inputCls,'min-h-11 w-full')}/></Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={labels.fStartOn}>
             <input name="startOn" type="date" required defaultValue={values.startOn} className={cn(inputCls, 'w-full')} />
@@ -249,6 +274,14 @@ export function NoticeForm({
           {labels.fShowEndDate}
         </label>
       </section>
+
+      <section className="space-y-2">
+        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="requiresAcknowledgement" checked={requiresAcknowledgement} onChange={event=>setRequiresAcknowledgement(event.target.checked)}/>{labels.requiresAcknowledgement}</label>
+        <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
+      </section>
+
+      <NoticeAttachmentEditor locale={labels.attachmentLocale} noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
+        onBusyChange={setAttachmentBusy} onUploaded={item=>{setAttachments(prior=>[...prior.filter(row=>row.id!==item.id),item]);setAttachmentIds(prior=>prior.includes(item.id)?prior:[...prior,item.id]);}} onRemove={id=>setAttachmentIds(prior=>prior.filter(item=>item!==id))}/>
 
       {/* ── Section 2 — content ────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-2">
@@ -280,7 +313,7 @@ export function NoticeForm({
               required
               value={body}
               onChange={(e) => setBody(e.currentTarget.value)}
-              className={cn(inputCls, 'w-full font-mono text-xs')}
+              className={cn(inputCls, 'h-auto min-h-48 w-full resize-y py-3 font-mono text-xs')}
             />
           </Field>
           <p className="mt-1 text-xs text-muted-foreground">{labels.fBodyHelp}</p>
@@ -322,9 +355,8 @@ export function NoticeForm({
 
             {mode === 'criteria' ? (
               <div className="space-y-3" onChange={() => setAnyCriteria(true)}>
-                {/* "Posting Company: All Companies / Selected Companies" IS this field — leaving it empty
-                    means every company. One vocabulary, so there is no second company-scope control that
-                    could disagree with the criteria. */}
+                {/* Audience filters narrow the recorded authoring boundary. Empty company filters
+                    include that boundary; they never expand a company-owned notice to the whole group. */}
                 <ChipMultiSelect
                   name="companyIds"
                   label={labels.companies}
@@ -446,7 +478,7 @@ export function NoticeForm({
                     rows={3}
                     value={pastedRaw}
                     onChange={(e) => setPastedRaw(e.currentTarget.value)}
-                    className={cn(inputCls, 'w-full font-mono text-xs')}
+                    className={cn(inputCls, 'h-auto min-h-48 w-full resize-y py-3 font-mono text-xs')}
                   />
                   <p className="pt-1 text-[11px] text-muted-foreground">{labels.pasteAlternativeHelp}</p>
                   {/* r289 — WHAT WE COULD NOT READ, NAMED. Rendered only when there is something to say, so
@@ -495,7 +527,7 @@ export function NoticeForm({
             className={cn(inputCls, 'w-full')}
           >
             <option value="once">{labels.popupOnce}</option>
-            <option value="until_acknowledged">{labels.popupUntilAcknowledged}</option>
+            <option value="until_acknowledged">{requiresAcknowledgement?labels.popupUntilRevisionAcknowledged:labels.popupUntilAcknowledged}</option>
           </select>
         </Field>
       </section>
@@ -504,7 +536,7 @@ export function NoticeForm({
           same thing server-side and stays the authority; this is the half that tells the operator before
           they have written the whole notice rather than after. */}
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={audienceBlocked}>
+        <Button type="submit" size="sm" disabled={attachmentBusy||audienceBlocked||(!authoring.owner&&!authoring.groupAllowed&&authoring.companies.length===0)}>
           {labels.submit}
         </Button>
         {audienceBlocked && (

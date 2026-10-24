@@ -1,10 +1,11 @@
+import type {DatedToilCredit} from './toil-dated-credit';
 import type {LeaveCreditDayType} from './leave-credit-day-type';
 /** Duration-only review. It is neither an approval nor a cash/leave entitlement. */
 export type LeaveCreditFormulaReason = 'unavailable'|'stale'|'fractional'|'cashConflict';
 export type LeaveCreditClaimReview =
   | {basis:'legacy'}
   | {basis:'unavailable';reason:LeaveCreditFormulaReason}
-  | {basis:'formula';workedDayKind:LeaveCreditDayType;status:'incomplete'|'ready'|'refused';reason:'exceedsBound'|'belowThreshold'|'ordinaryDisabled'|null;
+  | {basis:'formula';/** Source-date form label only; datedParts own each credit classification. */workedDayKind:LeaveCreditDayType;datedClassScope?:true;datedParts?:DatedToilCredit[];status:'incomplete'|'ready'|'refused';reason:'exceedsBound'|'belowThreshold'|'ordinaryDisabled'|null;
       claimedMinutes:number|null;boundMinutes:number;eligibleMinutes:number|null;creditDays:number|null;
       calculationId:string;sourceRevision:number};
 

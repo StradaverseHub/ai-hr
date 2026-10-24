@@ -3379,33 +3379,82 @@
     {
       "idx": 594,
       "version": "7",
+      "when": 1791900000074,
+      "tag": "0581_attendance_group_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 595,
+      "version": "7",
+      "when": 1791900000075,
+      "tag": "0582_employee_home_notice_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 596,
+      "version": "7",
+      "when": 1791900000076,
+      "tag": "0583_employee_home_person_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 597,
+      "version": "7",
+      "when": 1791900000077,
+      "tag": "0584_employee_home_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 598,
+      "version": "7",
+      "when": 1791900000078,
+      "tag": "0585_home_team_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1791900000079,
+      "tag": "0586_employee_home_greetings",
+      "breakpoints": true
+    },
+    {
+      "idx": 600,
+      "version": "7",
+      "when": 1791900000080,
+      "tag": "0590_attendance_policy_execution",
+      "breakpoints": true
+    },
+    {
+      "idx": 601,
+      "version": "7",
       "when": 1791900000081,
       "tag": "0594_people_nric_policy",
       "breakpoints": true
     },
     {
-      "idx": 595,
+      "idx": 602,
       "version": "7",
       "when": 1791900000082,
       "tag": "0595_job_description_documents",
       "breakpoints": true
     },
     {
-      "idx": 596,
+      "idx": 603,
       "version": "7",
       "when": 1791900000083,
       "tag": "0596_rewards_review_maintenance",
       "breakpoints": true
     },
     {
-      "idx": 597,
+      "idx": 604,
       "version": "7",
       "when": 1791900000084,
       "tag": "0597_employment_cost_allocations",
       "breakpoints": true
     },
     {
-      "idx": 598,
+      "idx": 605,
       "version": "7",
       "when": 1791900000085,
       "tag": "0598_cost_allocation_criteria_guard",

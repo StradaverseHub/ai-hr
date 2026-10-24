@@ -11,6 +11,9 @@ export function LeaveCreditClaimReviewNotice({review}:{review:LeaveCreditClaimRe
   <p>{t('bound',{minutes:review.boundMinutes})}{review.claimedMinutes!==null?' · '+t('claimed',{minutes:review.claimedMinutes}):''}</p>
   {review.status==='incomplete'?<p>{t('incomplete')}</p>:review.reason?<p>{t(`errors.${review.reason}`)}</p>:review.eligibleMinutes!==null?<p>{t('reviewed',{minutes:review.eligibleMinutes})}</p>:<p>{t('incomplete')}</p>}
   {review.status==='ready'&&review.creditDays!==null?<p>{t('reviewedCredit',{days:formatDays(review.creditDays)})}</p>:null}
+  {review.datedParts?.length?<ul className="space-y-1" aria-label={t('datedBreakdown')} data-testid="leave-credit-dated-parts">
+    {review.datedParts.map(part=><li key={part.sequence}>{t('datedCredit',{date:part.date,dayClass:t(`datedClasses.${part.dayClass}`),minutes:part.countedMinutes,days:formatDays(part.days)})}</li>)}
+  </ul>:null}
   <p className="break-all text-muted-foreground">{t('reference',{id:review.calculationId,revision:review.sourceRevision})}</p>
   <p className="text-muted-foreground">{t('subjectToApproval')}</p>
  </div>;

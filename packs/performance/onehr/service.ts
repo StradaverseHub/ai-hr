@@ -31,6 +31,8 @@ import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
 import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark, assessmentTalentRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
+import {assertAssignedWorkPrincipalTx} from '../../../core/approvals';
+import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { assessmentAiStateTx } from './ai-settings';
 import { isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
@@ -1256,6 +1258,29 @@ export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
 }
 export async function onehrAssignments(ctx:SessionContext) {
   return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,cycleStatus:reviewCycle.status,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
+}
+/** Form assignment metadata, repeating the canonical feedback owner's current window and frozen
+ * recipient gates. No feedback answers, remarks, draft or assessment ratings enter this projection. */
+export function pendingOnehrFeedbackTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
+ return withPerformanceTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const rows=await tx.select({id:onehrPanel.requestId,subjectName:peerFeedbackRequest.subjectName,
+   sourceUpdatedAt:peerFeedbackRequest.createdAt,cycleId:sql<string>`app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId'`})
+   .from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId))
+   .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),
+    sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,
+    sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
+      AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`))
+   .orderBy(desc(peerFeedbackRequest.createdAt),onehrPanel.requestId);
+  const cycles=new Map<string,Awaited<ReturnType<typeof loadCycle>>>(),result:AssignedPersonalTaskMetadata[]=[];
+  for(const row of rows){
+   let cycle=cycles.get(row.cycleId);
+   if(!cycle){cycle=await loadCycle(tx,row.cycleId);cycles.set(row.cycleId,cycle);}
+   if(!['open','calibration'].includes(cycle.native.status)||!assessmentWorkWindowOpen(cycle.policy,'f360'))continue;
+   result.push({id:row.id,kind:'feedback',subjectName:row.subjectName,sourceUpdatedAt:row.sourceUpdatedAt,linkPath:`/performance/assessment/feedback/${row.id}`});
+  }
+  return result;
+ });
 }
 /** Rewards consumes this immutable projection under its own transaction and company authorization. */
 export async function onehrRewardResultTx(tx:Tx,employmentId:string,year:number,rewardUnitId:string) {

@@ -115,6 +115,10 @@
   :root[data-ui-theme='atelier'] .atelier-crumb { flex: none; max-width: 22rem; }
   :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1.75rem 2rem 2.5rem; }
   @media (max-width: 639px) {
+    /* Keep company scope and account controls on separate rows when their labels cannot fit. */
+    :root[data-ui-theme='atelier'] [data-app-header] { height: auto; min-height: 3rem; flex-wrap: wrap; gap: .5rem; padding-block: .5rem; }
+    :root[data-ui-theme='atelier'] [data-app-header] > div:first-child { flex-basis: 100%; }
+    :root[data-ui-theme='atelier'] [data-app-header] > div:last-child { max-width: 100%; }
     :root[data-ui-theme='atelier'] [data-app-content] > main { padding: 1rem; }
   }
   :root[data-ui-theme='atelier'] main h1 { letter-spacing: -.015em; }
@@ -128,7 +132,7 @@
     outline: 2px solid var(--ring); outline-offset: 2px;
   }
   :root[data-ui-theme='atelier'] [data-company-switcher] {
-    min-height: 1.875rem; border: 1px solid var(--border); border-radius: .5rem;
+    min-height: 2.75rem; border: 1px solid var(--border); border-radius: .5rem;
     background: var(--background); padding-inline: .625rem; color: var(--sidebar-foreground); font-size: .8125rem;
   }
   :root[data-ui-theme='atelier'] [data-company-switcher]:hover { background: var(--accent); color: var(--foreground); }
@@ -306,6 +310,10 @@
   /* Buttons: one height, one corner, one soft shadow; the accent only on the primary. */
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
     min-height: 2rem; height: auto; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
+  }
+  /* Preserve an explicit accessible target minimum supplied by a screen, including disabled actions. */
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input'])[class~='min-h-11'] {
+    min-height: 2.75rem;
   }
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='bg-primary']:hover:not(:disabled) { background: var(--atelier-accent-hover); }
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex'][class~='border-input'] { border-color: var(--atelier-line-strong); background: var(--card); color: var(--foreground); }

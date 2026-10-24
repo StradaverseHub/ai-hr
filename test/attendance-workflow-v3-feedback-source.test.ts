@@ -10,10 +10,13 @@ function actionSection(start: string, end: string) {
 }
 describe('last assigned Attendance task retains feedback without broadening inbox admission', () => {
     it('resolves a post-decision allowed destination while preserving legacy audiences', () => {
-        const destination = actionSection('async function attendanceDecisionReturnUrl', 'function done(');
+        const destination = actionSection('async function decisionReturnUrl', 'function done(');
         expect(destination).toContain("!isAdmin(s) && !(s.roles ?? []).includes('manager')");
         expect(destination).toContain('await hasPendingAttendanceParticipantAssignment(s)');
-        expect(destination).toContain('await pendingRewardReviews(s, scopeIds)');
+        expect(destination).toContain('const [tasks,rewards]=await Promise.all([');
+        expect(destination).toContain('pendingRewardReviews(s, scopeIds)');
+        expect(destination).toContain('listPendingTasks(s,scopeIds,');
+        expect(destination).toContain('!tasks.length&&!rewards.length');
         expect(destination).toContain('return `/?${query.toString()}`');
         expect(destination).toContain('return approvalsReturnUrl({ ...nav, ...feedback })');
         expect(destination).toContain("query.set('toast', feedback.toast)");
@@ -21,9 +24,9 @@ describe('last assigned Attendance task retains feedback without broadening inbo
     });
     it('uses that destination after single and all-Attendance bulk decisions; the neutral shell renders feedback', () => {
         const action = actionSection('export async function approveCorrectionAction', '/**');
-        expect(action.indexOf('await decideAttendanceCorrection')).toBeLessThan(action.indexOf('attendanceDecisionReturnUrl'));
-        expect(action).toContain('attendanceDecisionReturnUrl(s, nav, { toast })');
-        expect(actions).toContain("items.every(item => item.type === 'attendance') ? await attendanceDecisionReturnUrl");
+        expect(action.indexOf('await decideAttendanceCorrection')).toBeLessThan(action.indexOf('decisionReturnUrl'));
+        expect(action).toContain('decisionReturnUrl(s, nav, { toast })');
+        expect(actions).toContain('redirect(await decisionReturnUrl(s, nav, { toast: summary }))');
         expect(shell).toContain('<ToastFromQuery />');
         expect(toast).toContain("params.get('toast')");
         expect(toast).toContain("params.get('error')");

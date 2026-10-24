@@ -4,11 +4,17 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { myEmployment } from '@/core/read';
-import { cancelClaim, deleteClaimDraft, saveClaimDraft, submitClaimWithAttachment, submitDraftClaims } from '@/core/claims';
+import {ownClaimSubject,claimFormSelector} from './subject';
+import { cancelClaim, deleteClaimDraft, saveClaimDraft, submitClaimWithAttachment, submitDraftClaims } from '@/packs/claims/service';
 
 const BASE = '/claims';
-const errorUrl = (e: unknown) => `${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`;
+const returnUrl=(selector:string|string[]|undefined,fields:Record<string,string>)=>BASE+'?'+new URLSearchParams({...fields,...(selector!==undefined?{employmentId:typeof selector==='string'?selector:''}:{})});
+const errorUrl = (e: unknown,selector?:string|string[]) => returnUrl(selector,{error:publicErrorMessage(e)});
+async function actionSubject(s:Parameters<typeof ownClaimSubject>[0],selector:string|string[]|undefined){
+ const own=await ownClaimSubject(s,selector);
+ if(!own)throw new Error('No active employment is linked to your account.');
+ return own;
+}
 
 /**
  * Derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown signature → null).
@@ -46,11 +52,9 @@ export async function submitClaimAction(_prevState: SubmitClaimState, formData: 
   const intent = String(formData.get('intent') ?? '');
   const draftId = String(formData.get('draftId') ?? '').trim() || undefined;
   let toast = 'Claim submitted';
+  const selector=claimFormSelector(formData);
   try {
-    const me = await myEmployment(s);
-    // myEmployment is null when the account has no active employment; give a clear, actionable message
-    // (the page also renders its own no-employment card, but the action guards the POST path too).
-    if (!me) throw new Error('No active employment is linked to your account.');
+    const me = await actionSubject(s,selector);
     const file = formData.get('receipt');
     const hasFile = file instanceof File && file.size > 0;
     let attachment: { fileName: string; mimeType: string; content: Buffer } | null = null;
@@ -78,7 +82,7 @@ export async function submitClaimAction(_prevState: SubmitClaimState, formData: 
       // lock and reserves, and it must be the identical path the Drafts list uses. If it refuses (over
       // limit, missing receipt), the SAVE still stands, so nothing the employee typed is lost.
       await saveClaimDraft(s, { ...fields, id: draftId }, attachment);
-      await submitDraftClaims(s, { ids: [draftId] });
+      await submitDraftClaims(s, { ids: [draftId],...(selector!==undefined?{employmentId:me.employmentId}:{}) });
     } else {
       await submitClaimWithAttachment(s, { ...fields, hasReceipt: hasFile }, attachment);
     }
@@ -86,47 +90,53 @@ export async function submitClaimAction(_prevState: SubmitClaimState, formData: 
   } catch (e) {
     return { error: publicErrorMessage(e) };
   }
-  redirect(`${BASE}?toast=${encodeURIComponent(toast)}`);
+  redirect(returnUrl(selector,{toast}));
 }
 
 /** Bulk "Submit Selected" over the Drafts list. All-or-nothing in the service; the whole batch competes
  *  for one limit, so a partial result would mean the system chose which claims to file. */
 export async function submitDraftsAction(formData: FormData) {
   const s = await getSession();
+  const selector=claimFormSelector(formData);
   let redirectTo: string;
   try {
     const ids = formData.getAll('draftIds').map(String).filter(Boolean);
-    const { submitted } = await submitDraftClaims(s, { ids });
+    const own=selector===undefined?null:await actionSubject(s,selector);
+    const { submitted } = await submitDraftClaims(s, { ids,...(own?{employmentId:own.employmentId}:{}) });
     revalidatePath(BASE);
-    redirectTo = `${BASE}?toast=${encodeURIComponent(`${submitted} claim(s) submitted`)}`;
+    redirectTo = returnUrl(selector,{toast:`${submitted} claim(s) submitted`});
   } catch (e) {
-    redirectTo = errorUrl(e);
+    redirectTo = errorUrl(e,selector);
   }
   redirect(redirectTo);
 }
 
 export async function deleteDraftAction(formData: FormData) {
   const s = await getSession();
+  const selector=claimFormSelector(formData);
   let redirectTo: string;
   try {
-    await deleteClaimDraft(s, String(formData.get('id')));
+    const own=selector===undefined?null:await actionSubject(s,selector);
+    await deleteClaimDraft(s, String(formData.get('id')),own?.employmentId);
     revalidatePath(BASE);
-    redirectTo = `${BASE}?toast=${encodeURIComponent('Draft deleted')}`;
+    redirectTo = returnUrl(selector,{toast:'Draft deleted'});
   } catch (e) {
-    redirectTo = errorUrl(e);
+    redirectTo = errorUrl(e,selector);
   }
   redirect(redirectTo);
 }
 
 export async function cancelClaimAction(formData: FormData) {
   const s = await getSession();
+  const selector=claimFormSelector(formData);
   let redirectTo: string;
   try {
-    await cancelClaim(s, String(formData.get('id')));
+    const own=selector===undefined?null:await actionSubject(s,selector);
+    await cancelClaim(s, String(formData.get('id')),own?.employmentId);
     revalidatePath(BASE);
-    redirectTo = `${BASE}?toast=${encodeURIComponent('Claim cancelled')}`;
+    redirectTo = returnUrl(selector,{toast:'Claim cancelled'});
   } catch (e) {
-    redirectTo = errorUrl(e);
+    redirectTo = errorUrl(e,selector);
   }
   redirect(redirectTo);
 }

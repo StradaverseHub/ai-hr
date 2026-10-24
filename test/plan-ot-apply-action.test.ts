@@ -32,7 +32,7 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { setAttendancePolicy } from '../core/attendance';
+import { checkIn, checkOut, decideAttendanceCorrection, setAttendancePolicy } from '../core/attendance';
 import type { SessionContext } from '../db/client';
 
 // The action calls getSession() (a request the harness has no equivalent of). ME carries the seeded
@@ -240,10 +240,8 @@ describe('2 · the refusals the employee reads are the ones that are TRUE of wha
   it('a duplicate approved plan is still refused, with the date in the sentence', async () => {
     await redirectOf(() => myRequestOvertime(form({ date: FUTURE, otHours: '2', reason: 'First plan' })));
     const first = await planFor(FUTURE);
-    await owner.db
-      .update(schema.attendanceCorrection)
-      .set({ status: 'approved', approvedOtMinutes: 120 })
-      .where(eq(schema.attendanceCorrection.id, first.id));
+    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved'});
+    expect(await planFor(FUTURE)).toMatchObject({status:'approved',approvedOtMinutes:120,appliedAt:null});
     const url = await redirectOf(() => myRequestOvertime(form({ date: FUTURE, otHours: '1', reason: 'Second plan' })));
     // ── ec30b2e9 (r364) · THIS ASSERTION IS UPDATED, NOT LOOSENED ──────────────────────────────────────
     // IT USED TO READ, and was right to:
@@ -265,15 +263,14 @@ describe('2 · the refusals the employee reads are the ones that are TRUE of wha
     // waiting and can be withdrawn. Here the hours are on the attendance day and in what payroll reads, so
     // withdrawal is refused by design and the only route is an attendance correction.
     //
-    // The stored state is set directly, the way the case above sets `approved`: this file's subject is the
-    // ACTION and the sentence it produces. That the SERVICE reaches this state by itself — and that a clock
-    // correction is still accepted here — is pinned against the real engine in test/plan-ot.test.ts §4.
+    // Reach the counted state through the same public approval owner as the real workflow;
+    // an invented status or applied timestamp is not authority for the employee-facing refusal.
     await redirectOf(() => myRequestOvertime(form({ date: PAST, otHours: '3', reason: 'Last Wednesday' })));
     const first = await planFor(PAST);
-    await owner.db
-      .update(schema.attendanceCorrection)
-      .set({ status: 'approved', approvedOtMinutes: 180, appliedAt: new Date(), decidedAt: new Date() })
-      .where(eq(schema.attendanceCorrection.id, first.id));
+    await checkIn(adminCtx(b),{employmentId,date:PAST,time:'09:00'});
+    await checkOut(adminCtx(b),{employmentId,date:PAST,time:'21:00'});
+    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved'});
+    expect(await planFor(PAST)).toMatchObject({status:'approved',approvedOtMinutes:180});
     // The premise in its own right: this fixture is in the COUNTED window, not the unapplied one.
     expect((await planFor(PAST)).appliedAt, 'counted means applied_at is stamped').not.toBeNull();
 
