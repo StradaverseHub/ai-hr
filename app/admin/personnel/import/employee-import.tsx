@@ -10,7 +10,7 @@ import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColu
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { useRef, useState, useTransition } from 'react';
+import { Fragment, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -813,9 +813,9 @@ function PreviewTable({
         </thead>
         <tbody className="divide-y divide-border">
           {preview.rows.map((r) => (
-            <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+            <Fragment key={r.rowNum}><tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
               <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
-              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}<PersonnelImportValues values={r.proposed} sheet="employee" /></td>
+              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.email || '—'}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.company || '—'}</td>
               <td className="px-4 py-2">
@@ -831,6 +831,12 @@ function PreviewTable({
                 )}
               </td>
             </tr>
+            {!!r.proposed?.length && <tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+              <td colSpan={5} className="px-4 pb-3">
+                <PersonnelImportValues values={r.proposed} sheet="employee" />
+              </td>
+            </tr>}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -864,7 +870,7 @@ function PreviewTable({
             </thead>
             <tbody className="divide-y divide-border">
               {preview.dependents.rows.map((r) => (
-                <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+                <Fragment key={r.rowNum}><tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
                   <td className="px-4 py-2 font-mono text-xs">{r.employeeCode || '—'}</td>
                   <td className="px-4 py-2 font-medium">{r.fullName || '—'}</td>
