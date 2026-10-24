@@ -8,7 +8,7 @@ import { todayInKualaLumpur } from '../../lib/hr-date';
 import {
   OwnLeaveHumanSelection, OwnLeaveHumanText, OwnLeaveNomination,
 } from '../../lib/assistant-actions/own-leave-contract';
-import { leaveTypeIs, previewLeaveDeduction } from '../../packs/leave/service';
+import { leaveTypeIs, normalizeLeaveEmployeeRemark, previewLeaveDeduction } from '../../packs/leave/service';
 import { provenCompanyDatesTx } from '../employment-company';
 import { isEmploymentEnded } from '../employment-status';
 import { resolveEssView } from '../ess-view';
@@ -72,7 +72,12 @@ export async function readOwnLeaveCandidateTx(
     .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, type.id))).limit(1);
   if (!identity || !leaveTypeIs(identity, 'annual') || identity.country !== subject.country
     || !type.paid || type.requiresDocument || type.balanceSourceTypeId !== null) return { kind: 'use_leave_form' };
-  if (type.employeeRemarkRequired && !text.data.employeeRemark?.trim()) return { kind: 'needs_employee_remark' };
+  const storedRemark = normalizeLeaveEmployeeRemark(text.data.employeeRemark);
+  if (type.employeeRemarkRequired && !storedRemark) return { kind: 'needs_employee_remark' };
+  // Retain the human's exact text in the intent. If the canonical writer would normalize it,
+  // this bounded slice cannot present that text as the effect it will record.
+  if (storedRemark !== (text.data.employeeRemark ?? null))
+    return { kind: 'use_leave_form' };
 
   const preview = await previewLeaveDeduction(ctx, { employmentId: subject.employmentId,
     leaveTypeId: type.id, startDate: intent.date, endDate: intent.date, durationType: 'full_day',

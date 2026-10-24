@@ -3295,6 +3295,11 @@ export function canApplyLeaveOnBehalf(ctx: SessionContext, companyId?: string | 
   return withTenant(ctx, (tx) => resolveApplyOnBehalfTx(tx, ctx, companyId ?? null));
 }
 
+/** Canonical stored remark for leave submission. Review consumers must not promise different text. */
+export function normalizeLeaveEmployeeRemark(value: string | undefined): string | null {
+  return value?.trim() || null;
+}
+
 /** Server-owned precondition for the bounded own-leave submission. Never take these values from a
  * confirmation POST. This is not a lock, an authorization grant, or an action/consent receipt. */
 export type ReviewedOwnLeaveEffect = Readonly<{
@@ -3984,9 +3989,14 @@ export async function requestLeave(
     }
 
     // Doc-config: mandatory employee remark.
-    const employeeRemark = p.employeeRemark?.trim() || null;
+    const employeeRemark = normalizeLeaveEmployeeRemark(p.employeeRemark);
     if (lt?.employeeRemarkRequired && !employeeRemark) {
       throw new LeaveRemarkRequiredError(lt.name);
+    }
+    // The bounded action promises the exact human text shown at review. Keep the canonical
+    // normalization policy; refuse instead of silently saving a different remark from that review.
+    if (reviewedOwnLeave && employeeRemark !== (p.employeeRemark ?? null)) {
+      throw new LeaveReviewedEffectError('unsupported');
     }
 
     // Phase-B #13 (ADR-0062): EA s.37 maternity paid-ALLOWANCE eligibility. The 98-day LEAVE is granted

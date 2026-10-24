@@ -245,11 +245,21 @@ describe('own-leave read-only candidate', () => {
     await owner.db.update(leaveType).set({ employeeRemarkRequired: true })
       .where(eq(leaveType.id, base.annualLeaveTypeId));
     expect(await read(nomination, selection, {})).toEqual({ kind: 'needs_employee_remark' });
-    const supplied = { employeeRemark: '  My exact human text\n' };
+    expect(await read(nomination, selection, { employeeRemark: '   ' })).toEqual({ kind: 'needs_employee_remark' });
+    const supplied = { employeeRemark: 'My exact human text\nkept inside' };
     const outcome = await read(nomination, selection, supplied);
     expect(outcome.kind).toBe('candidate');
     if (outcome.kind === 'candidate') expect(outcome.candidate.humanText).toEqual(supplied);
   });
+
+  it.each(['  My exact human text', 'My exact human text\n', '', '   '])(
+    'uses the form when canonical remark normalization would change the reviewed text: %j', async employeeRemark => {
+      const before = await sourceCounts();
+      expect(await read(nomination, selection, { reason: 'Exact human reason', employeeRemark }))
+        .toEqual({ kind: 'use_leave_form' });
+      expect(await sourceCounts()).toEqual(before);
+    },
+  );
 
   it.each([{ requiresDocument: true }, { role: 'sick' as const }, { country: 'SG' }, { paid: false }])(
     'hands cases outside ordinary own Annual Leave to the full form: %j', async change => {

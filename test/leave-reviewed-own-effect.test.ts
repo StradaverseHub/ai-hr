@@ -101,10 +101,34 @@ describe('reviewed own-leave precondition at the canonical write', () => {
   });
 
   it('retains the ordinary request result without a submitted-event reference', async () => {
-    const result = await requestLeave(ctx, args);
+    const result = await requestLeave(ctx, { ...args, reason: '  Exact reason\n', employeeRemark: '  Ordinary remark\n' });
     expect(result).not.toHaveProperty('submittedEventId');
     expect(result.children).toHaveLength(1);
+    expect(await owner.db.select({ reason: leaveRequest.reason, remark: leaveRequest.employeeRemark })
+      .from(leaveRequest).where(eq(leaveRequest.id, result.leaveRequestId)).orderBy(leaveRequest.id))
+      .toEqual([{ reason: '  Exact reason\n', remark: 'Ordinary remark' }]);
   });
+
+  it('records unchanged human text when canonical remark normalization is already satisfied', async () => {
+    const text = { reason: '  Exact human reason\n', employeeRemark: 'Exact human\nremark' };
+    await withTenant(ctx, async tx => {
+      const result = await requestLeave(ctx, { ...args, ...text }, tx, reviewed);
+      expect(await tx.select({ reason: leaveRequest.reason, employeeRemark: leaveRequest.employeeRemark })
+        .from(leaveRequest).where(eq(leaveRequest.id, result.leaveRequestId)).orderBy(leaveRequest.id))
+        .toEqual([text]);
+    });
+  });
+
+  it.each(['  My exact human text', 'My exact human text\n', '', '   '])(
+    'refuses canonical normalization of reviewed remarks before any write: %j', async employeeRemark => {
+      await withTenant(ctx, async tx => {
+        const before = await counts(tx);
+        await expect(requestLeave(ctx, { ...args, employeeRemark }, tx, reviewed))
+          .rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'unsupported' });
+        expect(await counts(tx)).toEqual(before);
+      });
+    },
+  );
 
   it.each([{ days: 0.5 }, { availableBalance: 9 }, { companyId: '00000000-0000-4000-8000-000000000099' }])(
     'refuses a changed effect before any write in the still-open transaction: %j', async change => {

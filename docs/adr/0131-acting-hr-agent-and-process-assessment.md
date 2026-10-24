@@ -351,6 +351,14 @@ canonical availability immediately before insertion. Existing HR bypass flags (i
 notice) are refused without fabricating another role context. Tests catch the typed refusal inside
 the still-open transaction and then check for unchanged requests/events, so rollback cannot conceal
 a guard placed after a write. These tests remain unrun.
+Source review found that the candidate's exact human remark could differ from the canonical
+request's stored text: submission trims the remark and stores an empty result as null. The bounded
+candidate now consumes that same normalization owner and hands such input to the existing form;
+the guarded write independently refuses a normalization change before insertion. It never silently
+rewrites the immutable intent or changes the ordinary form's storage policy. Missing required
+remarks still request human input. Internal whitespace and reason text remain exact when the
+canonical writer preserves them. Candidate/refusal/persistence regressions for these cases are
+authored but unrun; the prior whitespace candidate test was insufficient to prove stored text.
 The expected effect now also requires an explicit canonical warning list, copied before awaits and
 compared field-for-field with a read-only recheck before insertion. An unrun regression changes the
 loaded gazette count on another date while preserving deduction/balance, then requires refusal in
