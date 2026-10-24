@@ -53,8 +53,16 @@ export type AppendEventArgs = {
   payload?: unknown;
 };
 
-export async function appendEvent(tx: Tx, e: AppendEventArgs): Promise<void> {
-  await tx.insert(domainEvent).values({
+export function appendEvent(tx: Tx, e: AppendEventArgs): Promise<void>;
+export function appendEvent(tx: Tx, e: AppendEventArgs, options: { returnId: true }): Promise<string>;
+export function appendEvent(tx: Tx, e: AppendEventArgs, options: { returnId: boolean }): Promise<string | undefined>;
+/** Opt-in source reference for an enclosing command receipt. The returned ID belongs to this
+ * INSERT in the supplied transaction; it is not proof of commit or permission to reopen the event.
+ * Existing callers retain the insert-only path and its void result. */
+export async function appendEvent(
+  tx: Tx, e: AppendEventArgs, options?: { returnId: boolean },
+): Promise<string | void> {
+  const insert = tx.insert(domainEvent).values({
     tenantId: e.tenantId,
     aggregateType: e.aggregateType,
     aggregateId: e.aggregateId,
@@ -65,6 +73,12 @@ export async function appendEvent(tx: Tx, e: AppendEventArgs): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payload: (e.payload ?? null) as any,
   });
+  if (options?.returnId) {
+    const [row] = await insert.returning({ id: domainEvent.id });
+    if (!row) throw new Error('domain_event.insert_reference_missing');
+    return row.id;
+  }
+  await insert;
 }
 
 /** r424 — several events in ONE statement (a clocking import appends one per changed day, thousands per

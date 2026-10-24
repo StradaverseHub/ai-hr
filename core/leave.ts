@@ -2995,7 +2995,8 @@ async function insertLeaveRequest(
     // ⇒ nothing extra on the payload, so every existing assertion stays green.
     overrideAudit?: LeaveOverrideAudit | null;
   },
-): Promise<{ id: string }> {
+  includeSubmittedEventId = false,
+): Promise<{ id: string; submittedEventId?: string }> {
   const [row] = await tx
     .insert(leaveRequest)
     .values({
@@ -3022,7 +3023,7 @@ async function insertLeaveRequest(
       allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
-  await appendEvent(tx, {
+  const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: row.id,
@@ -3117,11 +3118,12 @@ async function insertLeaveRequest(
           }
         : {}),
     },
-  });
+  }, { returnId: includeSubmittedEventId });
+  if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
   // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
   // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
   await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
-  return { id: row.id };
+  return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 
 /** requestLeave's result. `leaveRequestId` is the created request (the AL child, else the UPL child, for
@@ -3129,6 +3131,9 @@ async function insertLeaveRequest(
  *  every created request (one for an ordinary request; one or two for EL). */
 export type RequestLeaveResult = {
   leaveRequestId: string;
+  /** Present only for the bounded reviewed own-leave path. Exact canonical submitted event in
+   * the supplied transaction, not an action receipt, commit acknowledgment or approval. */
+  submittedEventId?: string;
   days: number;
   parentGroupId: string | null;
   children: { id: string; code: string; days: number }[];
@@ -4090,7 +4095,7 @@ export async function requestLeave(
         })) throw new LeaveReviewedEffectError('changed');
     }
 
-    const { id } = await insertLeaveRequest(tx, ctx, {
+    const { id, submittedEventId } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
@@ -4130,7 +4135,7 @@ export async function requestLeave(
       // Override Leave Application (56910869): null on every application no rule changed, which is every
       // application until HR enables a rule — so the ordinary payload is byte-identical to before.
       overrideAudit,
-    });
+    }, reviewedOwnLeave !== undefined);
 
     // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
     // computed by THIS submission so the earned-credit reader never guesses from a later calendar.
@@ -4199,6 +4204,7 @@ export async function requestLeave(
 
     return {
       leaveRequestId: id,
+      ...(submittedEventId ? { submittedEventId } : {}),
       days,
       parentGroupId: null,
       children: [{ id, code: lt?.code ?? '', days }],

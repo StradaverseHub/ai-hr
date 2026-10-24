@@ -41,9 +41,69 @@ describe('reviewed own-leave precondition at the canonical write', () => {
       const result = await requestLeave(ctx, args, tx, reviewed);
       expect(result.days).toBe(1); expect(result.parentGroupId).toBeNull();
       expect(result.children).toHaveLength(1);
+      expect(result.submittedEventId).toEqual(expect.any(String));
+      expect(await tx.select({ aggregate: domainEvent.aggregateId, type: domainEvent.eventType,
+        subject: domainEvent.subjectEmploymentId, actor: domainEvent.actorId })
+        .from(domainEvent).where(eq(domainEvent.id, result.submittedEventId!)).orderBy(domainEvent.id))
+        .toEqual([{ aggregate: result.leaveRequestId, type: 'leave-request.submitted',
+          subject: args.employmentId, actor: ctx.userId }]);
       expect(await tx.select({ status: leaveRequest.status }).from(leaveRequest).where(eq(leaveRequest.id, result.leaveRequestId)))
         .toEqual([{ status: 'pending' }]);
     });
+  });
+
+  it('returns the submitted event rather than a later holiday-warning companion', async () => {
+    await setAttendancePolicy(adminCtx(base), { companyId: base.companyId,
+      workStart: '09:00', workEnd: '18:00', breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00',
+      workingDays: [1, 2, 3, 4, 5, 6, 7] });
+    await owner.db.update(leaveType).set({ counting: 'working_days' }).where(eq(leaveType.id, base.annualLeaveTypeId));
+    // A second real login exercises the own-subject event SELECT policy, without an admin grant.
+    const userId = await createAppUser(base.tenantId, ctx.personId!, 'employee');
+    const employeeCtx: SessionContext = { ...ctx, userId, roles: ['employee'],
+      grants: [{ role: 'employee', companyId: null }] };
+    await withTenant(employeeCtx, async tx => {
+      const preview = await previewLeaveDeduction(employeeCtx,
+        { ...args, includeAvailableBalance: true, includeHolidayWarnings: true }, tx);
+      expect(preview.holidayWarnings).toHaveLength(1);
+      const result = await requestLeave(employeeCtx, args, tx, { ...reviewed,
+        days: preview.days, availableBalance: preview.availableBalance!, holidayWarnings: preview.holidayWarnings! });
+      expect(result.holidayWarnings).toHaveLength(1);
+      const events = await tx.select({ id: domainEvent.id, type: domainEvent.eventType })
+        .from(domainEvent).where(eq(domainEvent.aggregateId, result.leaveRequestId)).orderBy(domainEvent.sequence);
+      expect(events.filter(event => event.type === 'leave-request.submitted'))
+        .toEqual([{ id: result.submittedEventId, type: 'leave-request.submitted' }]);
+      expect(events.filter(event => event.type === 'holiday.completeness.warned')).toHaveLength(1);
+      const submittedIndex = events.findIndex(event => event.type === 'leave-request.submitted');
+      expect(submittedIndex).toBeGreaterThanOrEqual(0);
+      expect(events.findIndex(event => event.type === 'holiday.completeness.warned')).toBeGreaterThan(submittedIndex);
+      expect(events.filter(event => event.id === result.submittedEventId)).toHaveLength(1);
+    });
+  });
+
+  it('keeps the request and returned event inside the enclosing rollback boundary', async () => {
+    let requestId = '', submittedEventId = '';
+    const rollback = new Error('fictional enclosing command refused');
+    await expect(withTenant(ctx, async tx => {
+      const result = await requestLeave(ctx, args, tx, reviewed);
+      requestId = result.leaveRequestId;
+      submittedEventId = result.submittedEventId!;
+      expect(submittedEventId).toEqual(expect.any(String));
+      expect(await tx.select({ id: domainEvent.id }).from(domainEvent)
+        .where(eq(domainEvent.id, submittedEventId)).orderBy(domainEvent.id))
+        .toEqual([{ id: submittedEventId }]);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(requestId).not.toBe(''); expect(submittedEventId).not.toBe('');
+    expect(await owner.db.select({ id: leaveRequest.id }).from(leaveRequest)
+      .where(eq(leaveRequest.id, requestId)).orderBy(leaveRequest.id)).toEqual([]);
+    expect(await owner.db.select({ id: domainEvent.id }).from(domainEvent)
+      .where(eq(domainEvent.id, submittedEventId)).orderBy(domainEvent.id)).toEqual([]);
+  });
+
+  it('retains the ordinary request result without a submitted-event reference', async () => {
+    const result = await requestLeave(ctx, args);
+    expect(result).not.toHaveProperty('submittedEventId');
+    expect(result.children).toHaveLength(1);
   });
 
   it.each([{ days: 0.5 }, { availableBalance: 9 }, { companyId: '00000000-0000-4000-8000-000000000099' }])(

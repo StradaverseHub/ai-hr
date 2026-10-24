@@ -309,6 +309,16 @@ refreshes authority, and validates the exact current effect before executing. It
 references and completed action receipt commit together. One action ID can produce at most one
 committed submission, including simultaneous double clicks and a lost HTTP response.
 
+The source-only bounded path now requests the canonical submitted event's ID directly from
+`appendEvent`'s own INSERT, and returns it with the request reference. A later holiday warning or
+other companion event cannot substitute for that reference. Existing event callers retain their
+insert-only/void path; ordinary leave callers do not receive the new field. The opt-in INSERT uses
+RETURNING under the caller's existing event policies; it does not add an access grant. Authored
+tests check an employee's own event, a later warning companion, the ordinary result and enclosing
+transaction rollback, but remain unrun. These are uncommitted source references, not an action
+receipt or acknowledgment of commit. The command, lifecycle storage and atomic completed receipt
+still do not exist.
+
 The source-only exception adds optional enclosing-transaction parameters to the existing preview and
 Assistant grant helpers. Their default paths still open their own transactions; passing the command's
 caller-scoped transaction is required for a shared recheck. These source changes and their rollback
