@@ -201,7 +201,7 @@ FACT — the sources to reuse:
 | Submit and approval routing | `requestLeave` through `packs/leave/service`; accepts an explicit enclosing transaction |
 | Submission result | `RequestLeaveResult` references the request and possible children; it does not itself return approval status |
 | Atomic replay precedent | `core/mobile-leave-command.ts`: own-subject check, lock, intent digest, domain command and receipt in one transaction |
-| Assistant authorization | `core/assistant-grant.ts`; current grant helper opens its own transaction |
+| Assistant authorization | `core/assistant-grant.ts`; the source-only change accepts an optional caller transaction; module resolution remains separate |
 | Model work and allowances | `core/assistant.ts`, the governed gateway and ADR-0116 |
 | HR change history | `domain_event` and canonical leave records; no model-written HR facts |
 
@@ -368,6 +368,37 @@ they neither refund nor reset earlier model usage. Recommendation: exhausted mod
 new model admissions, while a still-authorized prepared confirmation spends no extra model quota.
 Explicit pause/revocation stops new confirmations; the ordinary Leave form remains available. A future
 non-admitting control check must reuse the canonical governance owners, not invent a quota bypass.
+
+FACT (source only) — `0541_ai_control_centre.sql` and its replacement admission function in
+`0568_ai_user_default_allowance.sql` do not expose a non-admitting pause check. `app.ai_admit` inserts
+an `ai_model_run` for both allowed and blocked requests, including a zero-token reservation. An
+allowed zero-token run still participates in daily request counting. Calling it and settling zero
+tokens therefore cannot implement deterministic confirmation without changing accounting. The
+ordinary policy read is also insufficient: its RLS permits an employee to read feature/default/own
+user policies but not every applicable company policy. An absent visible company policy cannot mean
+that company is unpaused.
+
+DECISION — confirmation must consume a non-admitting answer from the canonical governance owner,
+with complete policy visibility and the same tenant `ai-control` lock used by policy writes. Extract
+the applicable pause predicate there when the centrally coordinated migration is available; do not
+duplicate the filtered policy query in the Assistant action owner or change existing admission
+accounting. Preserve the admission owner's applicable-company resolution and the individual-user
+replacement of the default policy, including disabled defaults. Checking only the nominated
+employment's company would silently narrow the existing control scope. This is a required owner
+integration, not an existing function or a claim that the full dependency concurrency problem is
+solved. No endpoint may execute while that answer is unavailable. Acceptance must show that an
+otherwise invisible applicable company pause refuses confirmation, and deterministic confirmation,
+replay and reconciliation leave model-run rows and allowance usage unchanged.
+
+FACT (source only) — `lib/ai/crypto.ts` provides master-key authenticated encryption; the per-subject
+erasure key custody is a separate owner in `core/pii-vault.ts`. Directly encrypting an action payload
+with the master key does not join subject erasure. The vault's existing seal/unseal wrappers open
+their own transactions and its key rows are admin/DPO-only. The confirmed employee flow must not
+expand those permissions, open a second transaction for private intent custody or claim that importing
+the crypto helpers supplies erasure. Protected intent storage still needs an explicitly scoped
+transactional owner, action/identity binding and integration with `erasePersonPii`; none exists in this
+source checkpoint. Keep private text and hidden balance expectations out of metadata and receipts
+while that integration is unresolved.
 
 The same action owner supplies the person's prepared card and status. Control Tower uses scoped
 metadata aggregates and authorized failure codes; it does not expose employee reasons, bank data or
