@@ -25,6 +25,8 @@ beforeAll(()=>{
  const old=execFileSync('git',['show','65ee43f2632f7e63a3780e57e22e52a83a9ac614:'+HOME_REPAIR.path],{cwd:owner,encoding:'utf8'});
  expect(digest(old)).toBe(HOME_REPAIR.before);put(cwd,HOME_REPAIR.path,old);
  put(cwd,'scripts/gate-impact-git.ts','export {};');
+ put(cwd,'scripts/gate-impact.ts','export {};');
+ put(cwd,'test/db0.test.ts',"import '../scripts/gate-impact'; // migrate"+'TestDb(\n');
  put(cwd,'app/page.ts','export {};');put(cwd,'core/employee-home.ts','export {};');
  // The classifier requires a resolvable local path even for mocked product imports.
  put(cwd,'lib/scope.ts','export {};');put(cwd,'lib/authz.ts','export {};');put(cwd,'core/read.ts','export {};');put(cwd,'core/assistant-grant.ts','export {};');put(cwd,'components/employee-home/personal-home.tsx','export {};');
@@ -51,17 +53,18 @@ beforeAll(()=>{
   put(archive,prefix+'port-handover-result.json',JSON.stringify({candidate:prefix?head:base,gateExit:prefix?0:1,nextBuildExit:null,currentOwnedFixtureClusterRestoredAndLogicallyUnchanged:true,productionChanged:false}));
  }
  put(archive,'fresh-nodb.log',passing(plan.nodb.length));
- const batches=Array.from({length:Math.ceil(plan.affected.length/64)},(_,i)=>plan.affected.slice(i*64,(i+1)*64));
- const database=batches.map((files,i)=>{const log=`fresh-db-${i+1}.log`;put(archive,log,passing(files.length));return {files,log,exit:0};});
- const names=[...BASELINE_ARTIFACTS,'fresh-fixture-5433-before.json','fresh-fixture-5433-after.json','fresh-port-handover-result.json','fresh-nodb.log',...database.map(r=>r.log)];
- receipt={sha:head,result:'PASS',tier:'phase-reuse',base,deployedBase:base,environmentHash:env,policyVersion:1,at,archive,artifacts:artifactManifest(archive,names),nodb:{files:plan.nodb,log:'fresh-nodb.log',exit:0},database,planFingerprint:plan.impact.fingerprint};
+ const database:PhaseReuseReceipt['database']=[];
+ const tooling=plan.tooling.length?{files:plan.tooling,log:'fresh-tooling-closed-port.log',exit:0}:null;
+ if(tooling)put(archive,tooling.log,passing(tooling.files.length));
+ const names=[...BASELINE_ARTIFACTS,'fresh-fixture-5433-before.json','fresh-fixture-5433-after.json','fresh-port-handover-result.json','fresh-nodb.log',...(tooling?[tooling.log]:[])];
+ receipt={sha:head,result:'PASS',tier:'phase-reuse',base,deployedBase:base,environmentHash:env,policyVersion:2,at,archive,artifacts:artifactManifest(archive,names),nodb:{files:plan.nodb,log:'fresh-nodb.log',exit:0},database,tooling,strategy:'frozen-product-nodb',planFingerprint:plan.impact.fingerprint};
 },120000);
 afterAll(()=>{if(originalState===undefined)delete process.env.AIHR_IMPACT_STATE_DIR;else process.env.AIHR_IMPACT_STATE_DIR=originalState;rmSync(scratch,{recursive:true,force:true});});
 const check=(r=receipt)=>validatePhaseReuse(r,{head,deployedRef:base,worktree:cwd});
 describe('real filesystem, committed source and release provenance',()=>{
  it('accepts all eight original phases plus the complete fresh partitions and restored fixtures',()=>{
   const x=check();expect(x.base.counted).toEqual({files:8,tests:16});expect(x.freshNodb.files).toBe(receipt.nodb.files.length);
-  expect(x.plan.affected.length).toBeGreaterThan(0);expect(x.base.learning.result).toBe('FAIL');
+  expect(x.plan.tooling).toEqual(['test/db0.test.ts']);expect(receipt.database).toEqual([]);expect(x.base.learning.result).toBe('FAIL');
  });
  it.each([
   ['wrong SHA',(r:PhaseReuseReceipt)=>r.sha='0'.repeat(40)],
@@ -73,9 +76,12 @@ describe('real filesystem, committed source and release provenance',()=>{
   ['graph change',(r:PhaseReuseReceipt)=>r.planFingerprint='bad'],
   ['missing fresh no-DB file',(r:PhaseReuseReceipt)=>r.nodb.files.pop()],
   ['failed fresh no-DB exit',(r:PhaseReuseReceipt)=>r.nodb.exit=1],
-  ['missing fresh DB batch',(r:PhaseReuseReceipt)=>r.database.pop()],
-  ['failed fresh DB exit',(r:PhaseReuseReceipt)=>r.database[0].exit=1],
-  ['duplicate fresh DB batch',(r:PhaseReuseReceipt)=>r.database.push(r.database[0])],
+  ['missing tooling control',(r:PhaseReuseReceipt)=>r.tooling=null],
+  ['failed tooling control',(r:PhaseReuseReceipt)=>r.tooling!.exit=1],
+  ['wrong tooling inventory',(r:PhaseReuseReceipt)=>r.tooling!.files=[]],
+  ['wrong tooling log',(r:PhaseReuseReceipt)=>r.tooling!.log='fresh-nodb.log'],
+  ['unexpected fresh DB claim',(r:PhaseReuseReceipt)=>r.database.push(r.nodb)],
+  ['wrong strategy',(r:PhaseReuseReceipt)=>(r as {strategy:string}).strategy='unchecked'],
   ['missing artifact',(r:PhaseReuseReceipt)=>r.artifacts=r.artifacts.filter(a=>a.path!=='chunk8.log')],
   ['altered artifact hash',(r:PhaseReuseReceipt)=>r.artifacts[0].sha256='0'.repeat(64)],
   ['duplicate artifact',(r:PhaseReuseReceipt)=>r.artifacts.push(r.artifacts[0])],

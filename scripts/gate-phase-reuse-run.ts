@@ -24,10 +24,10 @@ if(finalize){
  for(const name of ['port-handover-result.json','fixture-5433-before.json','fixture-5433-after.json'])copyFileSync(join(out,name),join(archive,'fresh-'+name),2);
  const receipt:PhaseReuseReceipt={...pending,result:'PASS',at:new Date().toISOString(),artifacts:artifactManifest(archive,[...pending.artifacts.map(x=>x.path),'fresh-port-handover-result.json','fresh-fixture-5433-before.json','fresh-fixture-5433-after.json'])};
  const verified=validatePhaseReuse(receipt,{head,deployedRef:deployed,worktree:cwd});frozen();
- const observation=saveGate({sha:head,base:receipt.base,environmentHash:receipt.environmentHash,result:'PASS',tier:'phase-reuse',plan:verified.plan.impact,failed:[],executed:[...receipt.nodb.files,...receipt.database.flatMap(r=>r.files)],wallSeconds:(Date.now()-started)/1000,phaseReuse:receipt});
+ const observation=saveGate({sha:head,base:receipt.base,environmentHash:receipt.environmentHash,result:'PASS',tier:'phase-reuse',plan:verified.plan.impact,failed:[],executed:[...receipt.nodb.files,...(receipt.tooling?.files??[])],wallSeconds:(Date.now()-started)/1000,phaseReuse:receipt});
  write('learning.json',observation);write('receipt.json',receipt);
  writeFileSync('.gate-receipt.json',JSON.stringify(receipt,null,2)+'\n');
- console.log(`PASS tier=phase-reuse: reused ${verified.base.counted.files} DB files/${verified.base.counted.tests} tests from ${receipt.base}; freshly ran ${receipt.nodb.files.length} no-DB files and ${receipt.database.flatMap(r=>r.files).length} affected DB files. Original full attempt remains FAIL.`);
+ console.log(`PASS tier=phase-reuse: reused ${verified.base.counted.files} DB files/${verified.base.counted.tests} tests from ${receipt.base}; freshly ran ${receipt.nodb.files.length} no-DB files and ${receipt.tooling?.files.length??0} tooling controls against a closed DB port; no DB phase was rerun. Original full attempt remains FAIL.`);
 }else{
  mkdirSync(out,{recursive:true,mode:0o700});mkdirSync(archive,{mode:0o700});
  for(const name of BASELINE_ARTIFACTS){
@@ -40,7 +40,7 @@ if(finalize){
  proof(witness.plan.deployed===deployed&&witness.plan.environmentHash===env,'original environment or deployed base changed');
  proof(JSON.stringify(witness.db)===JSON.stringify(plan.db),'DB inventory changed');
  write('plan.json',{head,base:baselineSha,deployed,environmentHash:env,...plan});
- console.log(`Phase reuse: ${witness.counted.files} original DB files; fresh ${plan.nodb.length} no-DB files + ${plan.affected.length} affected DB files`);
+ console.log(`Phase reuse: ${witness.counted.files} original DB files; fresh ${plan.nodb.length} no-DB files + ${plan.tooling.length} closed-port tooling controls; no fresh DB phase (frozen product repair)`);
  const logs:string[]=[],run=(command:string[],name:string,extra:Partial<NodeJS.ProcessEnv>={})=>{
   const fd=openSync(join(archive,name),'wx',0o600);let status:number|null;
   try{const r=spawnSync(command[0],command.slice(1),{cwd,stdio:['ignore',fd,fd],env:{...process.env,...extra},timeout:7200000});if(r.error)throw r.error;status=r.status;}finally{closeSync(fd);}
@@ -50,13 +50,8 @@ if(finalize){
  const nodb:PhaseRun={files:plan.nodb,log:'fresh-nodb.log',exit:run(['pnpm','exec','vitest','run','--config','vitest.nodb.config.ts',...plan.nodb],'fresh-nodb.log',{DATABASE_URL:closed,MIGRATION_DATABASE_URL:closed,TEST_DATABASE_URL:closed,TEST_MIGRATION_DATABASE_URL:closed,VITEST_MAX_WORKERS_NODB:'1'})};
  passedPhase(readFileSync(join(archive,nodb.log),'utf8'),nodb.files.length);
  const database:PhaseRun[]=[];
- for(let offset=0;offset<plan.affected.length;offset+=64){
-  // The surrounding preservation wrapper owns this isolated PGDATA and restores the fixture.
-  proof(process.env.PGDATA_AIHR?.startsWith('/private/tmp/aihr-board1-phase-reuse-')&&process.env.PGPORT_AIHR==='5433','isolated preservation wrapper is required for DB refresh');
-  const n=offset/64+1,files=plan.affected.slice(offset,offset+64),log=`fresh-db-${n}.log`;
-  run(['bash','scripts/dev-db-rebuild.sh'],`fresh-rebuild-${n}.log`);run(['pnpm','db:migrate'],`fresh-migrate-${n}.log`);
-  const exit=run(['pnpm','exec','vitest','run',...files],log,{VITEST_MAX_WORKERS:'1'});passedPhase(readFileSync(join(archive,log),'utf8'),files.length);database.push({files,log,exit});
- }
- const pending:PhaseReuseReceipt={sha:head,result:'FAIL',tier:'phase-reuse',base:baselineSha,deployedBase:deployed,environmentHash:env,policyVersion:PHASE_REUSE_POLICY_VERSION,at:new Date().toISOString(),archive,artifacts:artifactManifest(archive,[...BASELINE_ARTIFACTS,...logs]),nodb,database,planFingerprint:plan.impact.fingerprint};
+ const tooling:PhaseRun|null=plan.tooling.length?{files:plan.tooling,log:'fresh-tooling-closed-port.log',exit:run(['pnpm','exec','vitest','run','--config','vitest.nodb.config.ts',...plan.tooling],'fresh-tooling-closed-port.log',{DATABASE_URL:closed,MIGRATION_DATABASE_URL:closed,TEST_DATABASE_URL:closed,TEST_MIGRATION_DATABASE_URL:closed,VITEST_MAX_WORKERS_NODB:'1'})}:null;
+ if(tooling)passedPhase(readFileSync(join(archive,tooling.log),'utf8'),tooling.files.length);
+ const pending:PhaseReuseReceipt={sha:head,result:'FAIL',tier:'phase-reuse',base:baselineSha,deployedBase:deployed,environmentHash:env,policyVersion:PHASE_REUSE_POLICY_VERSION,at:new Date().toISOString(),archive,artifacts:artifactManifest(archive,[...BASELINE_ARTIFACTS,...logs]),nodb,database,tooling,strategy:'frozen-product-nodb',planFingerprint:plan.impact.fingerprint};
  frozen();write('pending.json',pending);console.log('Fresh phases passed; receipt remains FAIL until the wrapper restores and compares the fixture, then --finalize validates all evidence.');
 }

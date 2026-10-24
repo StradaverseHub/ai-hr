@@ -23,7 +23,7 @@ export const BOOTSTRAP_FILES=[
 export const BASELINE_ARTIFACTS=['plan.json','learning.json','all-files.txt','db-files.txt','nodb-files.txt','classify.tsv','full-controller.log','nodb.log',...Array.from({length:8},(_,i)=>`chunk${i+1}.log`),'port-handover-result.json','fixture-5433-before.json','fixture-5433-after.json','verify-local-fullgate-5433.py','impact-gate-5433.log'];
 export type Artifact={path:string;sha256:string};
 export type PhaseRun={files:string[];log:string;exit:number};
-export type PhaseReuseReceipt={sha:string;result:string;tier:'phase-reuse';base:string;deployedBase:string;environmentHash:string;policyVersion:number;at:string;archive:string;artifacts:Artifact[];nodb:PhaseRun;database:PhaseRun[];planFingerprint:string};
+export type PhaseReuseReceipt={sha:string;result:string;tier:'phase-reuse';base:string;deployedBase:string;environmentHash:string;policyVersion:number;at:string;archive:string;artifacts:Artifact[];nodb:PhaseRun;database:PhaseRun[];tooling:PhaseRun|null;strategy:'frozen-product-nodb';planFingerprint:string};
 export function proof(ok:unknown,why:string):asserts ok {if(!ok)throw Error('Phase reuse refused: '+why);}
 const equal=(a:unknown,b:unknown)=>isDeepStrictEqual(a,b);
 export const inventory=(files:Iterable<string>)=>[...files].filter(p=>/^test\/.+\.(?:test\.ts|dom\.test\.tsx)$/.test(p)).sort();
@@ -102,7 +102,11 @@ export function phaseReusePlan(base:string,head:string,cwd:string){
  const classified=classifyTestFiles(all,p=>files.get(p)??null);
  const impact=planImpact(collectChanges(base,head,cwd),files,[],undefined,true);
  const dbSet=new Set(classified.db),affected=impact.run.filter(p=>dbSet.has(p));
- return {changed,all,nodb:classified.nodb,db:classified.db,affected,impact};
+ // The owner chose no fresh DB phase for this exact additive fixture repair. Product, DB-test,
+ // shared-fixture and dependency bytes are all frozen by validateRepairDelta. Verification consumers
+ // still execute separately against a closed port; a connection attempt fails instead of using a DB.
+ const tooling=affected.filter(p=>(impact.selection[p]??[]).some(reason=>reason.startsWith('transitive import consumer of ')&&BOOTSTRAP_FILES.includes(reason.slice('transitive import consumer of '.length))));
+ return {changed,all,nodb:classified.nodb,db:classified.db,affected,tooling,impact};
 }
 export function validatePhaseReuse(receipt:PhaseReuseReceipt,ctx:{head:string;deployedRef:string;worktree:string;now?:number}){
  const {head,deployedRef,worktree:cwd}=ctx,now=ctx.now??Date.now();
@@ -126,9 +130,11 @@ export function validatePhaseReuse(receipt:PhaseReuseReceipt,ctx:{head:string;de
  };
  proof(receipt.nodb.log==='fresh-nodb.log','incorrect fresh no-DB log identity');
  const freshNodb=verifyRun(receipt.nodb,plan.nodb);
- const expectedBatches=Array.from({length:Math.ceil(plan.affected.length/64)},(_,i)=>plan.affected.slice(i*64,(i+1)*64));
- proof(receipt.database.length===expectedBatches.length,'missing/duplicate fresh DB batches');
- const logNames=[receipt.nodb.log,...receipt.database.map(r=>r.log)];proof(new Set(logNames).size===logNames.length,'duplicate fresh log');
- for(let i=0;i<expectedBatches.length;i++){proof(receipt.database[i].log===`fresh-db-${i+1}.log`,'incorrect fresh DB log identity');verifyRun(receipt.database[i],expectedBatches[i]);}
+ proof(receipt.strategy==='frozen-product-nodb','missing frozen-product no-DB strategy');
+ proof(Array.isArray(receipt.database)&&receipt.database.length===0,'this strategy must not claim newly run DB phases');
+ if(plan.tooling.length){
+  proof(receipt.tooling?.log==='fresh-tooling-closed-port.log','missing closed-port tooling coverage');
+  verifyRun(receipt.tooling,plan.tooling);
+ }else proof(receipt.tooling===null,'unexpected tooling coverage');
  return {plan,base,freshNodb};
 }
