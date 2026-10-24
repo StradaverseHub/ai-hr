@@ -1,4 +1,8 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import { NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
+vi.mock('@/app/scope-actions',()=>({setCompanyScope:async()=>{}}));
+import { CompanySwitcher } from '../components/company-switcher';
 import { cleanup, render, screen } from '@testing-library/react';
 import '../app/globals.css';
 import '../app/atelier.css';
@@ -18,13 +22,13 @@ for (const theme of ['classic', 'monolith', 'atelier']) {
         document.documentElement.setAttribute('data-ui-theme', theme);
         document.documentElement.classList.toggle('dark', dark);
         document.body.style.width = `${width}px`;
-        render(<main>
+        render(<><header><NextIntlClientProvider locale="en" messages={en}><CompanySwitcher companies={[{id:'fictional-company',name:'Fictional company'}]} selected={['fictional-company']}/></NextIntlClientProvider></header><main>
           <Button className="min-h-11">Refresh</Button>
           <Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2" disabled>Submit claim</Button>
           <Button variant="outline" asChild className="h-auto min-h-11 w-full whitespace-normal py-2"><a href="/me">View calendar</a></Button>
-        </main>);
-        const controls = [screen.getByRole('button', { name: 'Refresh' }), screen.getByRole('button', { name: 'Submit claim' }), screen.getByRole('link', { name: 'View calendar' })];
-        expect(controls).toHaveLength(3);
+        </main></>);
+        const controls = [screen.getByRole('button', { name: 'All companies' }), screen.getByRole('button', { name: 'Refresh' }), screen.getByRole('button', { name: 'Submit claim' }), screen.getByRole('link', { name: 'View calendar' })];
+        expect(controls).toHaveLength(4);
         for (const control of controls) {
           expect(control.getBoundingClientRect().height, control.textContent ?? '').toBeGreaterThanOrEqual(44);
           expect(parseFloat(getComputedStyle(control).minHeight)).toBeGreaterThanOrEqual(44);

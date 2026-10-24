@@ -128,7 +128,7 @@
     outline: 2px solid var(--ring); outline-offset: 2px;
   }
   :root[data-ui-theme='atelier'] [data-company-switcher] {
-    min-height: 1.875rem; border: 1px solid var(--border); border-radius: .5rem;
+    min-height: 2.75rem; border: 1px solid var(--border); border-radius: .5rem;
     background: var(--background); padding-inline: .625rem; color: var(--sidebar-foreground); font-size: .8125rem;
   }
   :root[data-ui-theme='atelier'] [data-company-switcher]:hover { background: var(--accent); color: var(--foreground); }
