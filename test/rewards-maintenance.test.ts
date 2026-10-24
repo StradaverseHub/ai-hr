@@ -160,7 +160,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const v = await revision();
         await expect(preview({ userId: randomUUID(), role: 'bu' })).rejects.toThrow(/active existing/);
         const other = await seedBase();
-        const [p] = await owner.db.insert(s.person).values({ tenantId: other.tenantId, fullName: 'Foreign account' }).returning();
+        const [p] = await owner.db.insert(s.person).values({ tenantId: other.tenantId, fullName: 'Foreign account', primaryEmail: 'foreign@rewards.test' }).returning();
         const foreign = await createAppUser(other.tenantId, p.id, 'employee');
         await expect(preview({ userId: foreign, role: 'bu' })).rejects.toThrow(/active existing/);
         expect(await revision()).toBe(v);

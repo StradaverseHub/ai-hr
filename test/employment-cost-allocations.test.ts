@@ -99,7 +99,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
  });
  it('filters workbook code references by current maintain authority and refuses a denied selected company',async()=>{
   const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Hidden catalogue company'}).returning();await createCostCenter(a,{companyId:other.id,code:'HIDDEN-CODE',name:'Hidden cost centre'});
-  const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Scoped allocation administrator'}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Scoped allocation administrator',primaryEmail:'scoped-allocation@example.test'}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
   const scoped={...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
   const refs=await costAllocationWorkbookReferences(scoped,[b.companyId,other.id],b.companyId);expect(refs.some(r=>r.code==='ALLOC-A')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);expect(refs.every(r=>r.companyId===b.companyId)).toBe(true);
   await expect(costAllocationWorkbookReferences(scoped,[b.companyId,other.id],other.id)).rejects.toThrow(/permission|unavailable/i);

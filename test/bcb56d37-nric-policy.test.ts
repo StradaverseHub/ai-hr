@@ -205,7 +205,7 @@ describe('bcb56d37 all employee entry paths use the current policy',()=>{
     const a=await hire('ONEPERSON1');
     await withTenant(ctx,tx=>tx.insert(schema.employment).values({tenantId:b.tenantId,personId:a.personId,companyId:b.companyId,employeeCode:'ONEPERSON2',hiredOn:'2021-01-01'}));
     const records=[{employee_code:'ONEPERSON1',ic_number:identity},{employee_code:'ONEPERSON2',ic_number:identity}];
-    const preview=await validateSectionImport(ctx,{section:'profile',records});expect(preview.validCount).toBe(2);
+    const preview=await validateSectionImport(ctx,{section:'profile',records});expect(preview.updateCount).toBe(2);expect(preview.fileErrors).toEqual([]);expect(preview.rows.every(row=>row.errors.length===0)).toBe(true);
     const result=await commitSectionImport(ctx,{section:'profile',records});expect(result.updated).toBe(2);expect(await occupants()).toBe(1);
   });
 

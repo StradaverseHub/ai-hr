@@ -99,7 +99,7 @@ describe('939ffafb workbook cells use codes while Reference explains labels', ()
     const bytes=await buildXlsx(['Base'],[],{validationLists:[{column:0,values}],validationListFallbackNote:note,extraSheets:[{name:'Reference',rows:buildReferenceRows('Codes',[{label:'Base',values,entries:values.map(value=>({value,label:`Office ${value}`}))}],{code:'Code',label:'Label'})}]});
     const zip=await JSZip.loadAsync(bytes),book=XLSX.read(bytes,{type:'array',cellNF:true});
     expect(await zip.file('xl/worksheets/sheet1.xml')!.async('string')).not.toContain('<dataValidations');
-    expect(book.Sheets['Leave Import'].A1.c?.some(comment=>comment.t===note)).toBe(true);
+    expect(book.Sheets['Leave Import'].A1.c?.some((comment:XLSX.Comment)=>comment.t===note)).toBe(true);
     expect(book.Sheets['Leave Import'].A501.z).toBe('@');
     const rows=XLSX.utils.sheet_to_json<string[]>(book.Sheets.Reference,{header:1});
     for(const value of values)expect(rows).toContainEqual([value,`Office ${value}`]);
