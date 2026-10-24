@@ -18,6 +18,9 @@ import { resolveEntitlementsTx } from '../entitlements';
 export async function readOwnLeaveActorTx(tx: Tx, ctx: SessionContext): Promise<SessionContext | null> {
   if (!ctx.userId || !ctx.personId || ctx.entitlementsExempt !== undefined
     || ctx.statutoryOverride !== undefined) return null;
+  // The caller can retain and mutate its context while this function awaits the lock or SQL.
+  // Bind every later read and the returned context to the same initial identity/carriers.
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   // Match withTenant's carrier serialization, including its legacy roles-only context. Checking
   // only login/person would let a different context reuse this transaction's principal proof.
   const grants = ctx.grants ?? (ctx.roles ?? []).map(role => ({ role, companyId: null }));

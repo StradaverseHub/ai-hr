@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import { appUser, domainEvent, employment, leaveLedger, leaveRequest, leaveType, roleAssignment } from '../db/schema';
 import { readOwnLeaveCandidateTx } from '../core/assistant-actions/own-leave-candidate';
+import { readOwnLeaveActorTx } from '../core/assistant-actions/own-leave-actor';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { hireEmployee } from '../core/org';
 import { previewLeaveDeduction, requestLeave } from '../packs/leave/service';
@@ -125,6 +126,24 @@ describe('own-leave read-only candidate', () => {
     expect(await withTenant(ctx, tx =>
       readOwnLeaveCandidateTx(tx, ctx, nomination, selection, text), { readOnlySnapshot: true }))
       .toEqual({ kind: 'unavailable' });
+  });
+
+  it('binds actor reads before yielding to the database, including nested role carriers', async () => {
+    await withTenant(ctx, async tx => {
+      const input: SessionContext = { ...ctx, roles: ctx.roles?.slice(),
+        grants: ctx.grants?.map(grant => ({ ...grant })) };
+      // Calling the async reader captures the identity before its first await. Mutate immediately
+      // while its real access-lock query is pending; no timers, fake SQL answers or separate commit.
+      const pending = readOwnLeaveActorTx(tx, input);
+      input.userId = base.adminUserId;
+      input.personId = null;
+      input.roles!.push('hr_admin');
+      input.grants![0].role = 'hr_admin';
+      const actor = await pending;
+      expect(actor).toMatchObject({ userId: ctx.userId, personId: ctx.personId,
+        roles: ['employee'], grants: [{ role: 'employee', companyId: null }] });
+      expect(actor?.grants).not.toBe(input.grants);
+    });
   });
 
   it('refuses another person even when the caller is an HR admin who can read that employment', async () => {

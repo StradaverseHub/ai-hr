@@ -315,6 +315,9 @@ writers to that lock. This is a bounded authority prerequisite; it does not fenc
 leave policies or balances, and does not supply the missing AI pause check. Its refusal tests for a
 disabled module, relinked person, removed role, older snapshot and mismatched transaction/role claims
 remain unrun. No confirmation command or authority capability is created by this refreshed context.
+The actor reader copies identity and nested role carriers before its first await, so caller mutation
+cannot switch the context between its transaction proof and subsequent reads. Its unrun regression
+mutates the retained input while the real lock query is pending and checks the original binding.
 Source-only work now adds an optional server-owned `ReviewedOwnLeaveEffect` precondition to
 `requestLeave`, requiring an enclosing transaction. It captures the expected subject/company/type,
 one date, deduction and private pending-aware balance; it can only add a refusal. The ordinary calling
