@@ -19,12 +19,14 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   const shared=await rewardSharedPolicyChoices(s,choices.companies.map(c=>c.id));
   return <div className="w-full space-y-6">
     <div data-tour="rewards-configuration"><PageHeader title={t('adminTitle')} description={t('adminDescription')} /></div>
-    <Link href="/rewards" className="text-sm text-primary hover:underline">{t('openReviews')}</Link>
-    <Link href="/admin/rewards/shared" className="inline-block text-sm text-primary hover:underline">{t('sharedPolicy.title')}</Link>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <Link href="/rewards" className="text-sm text-primary hover:underline">{t('openReviews')}</Link>
+      <Link href="/admin/rewards/shared" className="text-sm text-primary hover:underline">{t('sharedPolicy.title')}</Link>
+      <Link href="/admin/rewards/access" className="text-sm text-primary hover:underline">{(await getTranslations('rewardsAccess'))('title')}</Link>
+    </div>
     <ErrorBanner message={error} />
     <ErrorBanner message={deletionError?td('error'):undefined}/>
     {deleted==='1'&&<p role="status" className="rounded-md border p-3 text-sm">{td('saved')}</p>}
-    <Link href="/admin/rewards/access" className="inline-block text-sm text-primary hover:underline">{(await getTranslations('rewardsAccess'))('title')}</Link>
     <ErrorBanner message={['invalid','changed','scope','system'].includes(sharedError??'')?t(`sharedPolicy.errors.${sharedError as 'invalid'|'changed'|'scope'|'system'}`):undefined}/>
     <div data-tour="rewards-admin-units" className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle', 'company', 'unit', 'stage', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{units.map(u => <tr key={u.id}><td className="px-3 py-3 font-medium">{u.cycle} · {t(`kinds.${u.kind}`)}<span className="ml-2 text-muted-foreground">{u.year}</span></td><td className="px-3 py-3">{u.company}</td><td className="px-3 py-3">{u.unit}</td><td className="px-3 py-3">{t(`stages.${u.status}`)}</td><td className="px-3 py-3"><RewardReviewActions review={u}/></td></tr>)}</tbody>
