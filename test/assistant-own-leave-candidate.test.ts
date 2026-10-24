@@ -71,6 +71,28 @@ describe('own-leave read-only candidate', () => {
     expect(await read(nomination, { ...selection, leaveTypeId: base.companyId })).toEqual({ kind: 'needs_selection' });
   });
 
+  it('captures the separate human inputs and nomination before its first database await', async () => {
+    const input = { ...nomination };
+    const selected = { ...selection };
+    const supplied = { reason: 'Fictional original human reason', employeeRemark: 'Fictional original remark' };
+    const before = await sourceCounts();
+    const outcome = await withTenant(ctx, async tx => {
+      const pending = readOwnLeaveCandidateTx(tx, ctx, input, selected, supplied);
+      input.date = '1900-01-01';
+      input.leaveTypeId = base.companyId;
+      selected.leaveTypeId = base.companyId;
+      supplied.reason = 'Fictional changed reason';
+      supplied.employeeRemark = 'Fictional changed remark';
+      return pending;
+    });
+    expect(outcome.kind).toBe('candidate');
+    if (outcome.kind === 'candidate') expect(outcome.candidate).toMatchObject({
+      nomination: { date, leaveTypeId: base.annualLeaveTypeId },
+      humanText: { reason: 'Fictional original human reason', employeeRemark: 'Fictional original remark' },
+    });
+    expect(await sourceCounts()).toEqual(before);
+  });
+
   it.each([{ durationType: 'hourly' }, { reason: 'Model-invented reason' }, { execute: true }])(
     'hands unsupported or forged model input to the existing form: %j', extra => {
       return expect(read({ ...nomination, ...extra })).resolves.toEqual({ kind: 'use_leave_form' });
@@ -87,6 +109,8 @@ describe('own-leave read-only candidate', () => {
     await setModule(base.tenantId, 'assistant', 'disabled');
     const before = await sourceCounts();
     expect(await read()).toEqual({ kind: 'unavailable' });
+    expect(await read({ execute: true }, null, { reason: 'x'.repeat(2001) }))
+      .toEqual({ kind: 'unavailable' });
     expect(await sourceCounts()).toEqual(before);
   });
 

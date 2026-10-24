@@ -280,6 +280,10 @@ without changing existing consumers. The own-leave card respects the canonical E
 and omits both estimates when hidden. Full-day duration retains the engine's weight, including 0.5.
 These source paths remain unvalidated and internal. They do not check every submission gate or AI
 control and cannot be wired as a prepared/confirmable action until those owners are complete.
+The candidate reader captures validated copies of nomination, human selection and human text before
+its first database await, while withholding their refusal responses until after authorization. A
+retained input object cannot replace this invocation's human text or selection during actor reads.
+The corresponding real-transaction mutation regression is authored but unrun.
 
 Source-only preview work also adds opt-in `includeHolidayWarnings` to `previewLeaveDeduction`.
 Read-only projection and submission events share the leave owner's dated company/calendar traversal

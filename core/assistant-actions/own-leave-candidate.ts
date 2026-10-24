@@ -33,13 +33,15 @@ export async function readOwnLeaveCandidateTx(
   tx: Tx, ctx: SessionContext, nominationValue: unknown, selectionValue: unknown,
   humanTextValue: unknown, locale?: string,
 ): Promise<OwnLeaveCandidateResult> {
+  // Capture this invocation's model nomination and separate human inputs before any database await.
+  // Defer their refusal responses until after authorization, preserving the unavailable boundary.
+  const nomination = OwnLeaveNomination.safeParse(nominationValue);
+  const text = OwnLeaveHumanText.safeParse(humanTextValue);
+  const selection = OwnLeaveHumanSelection.safeParse(selectionValue);
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) return { kind: 'unavailable' };
   ctx = actor;
-  const nomination = OwnLeaveNomination.safeParse(nominationValue);
-  const text = OwnLeaveHumanText.safeParse(humanTextValue);
   if (!nomination.success || !text.success) return { kind: 'use_leave_form' };
-  const selection = OwnLeaveHumanSelection.safeParse(selectionValue);
   if (!selection.success || selection.data.employmentId !== nomination.data.employmentId
     || selection.data.leaveTypeId !== nomination.data.leaveTypeId) return { kind: 'needs_selection' };
   const intent = nomination.data;
