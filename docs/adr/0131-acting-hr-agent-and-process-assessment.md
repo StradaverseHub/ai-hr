@@ -354,6 +354,31 @@ precondition as an authorization, freshness or receipt mechanism by itself.
 Source review confirms that `withTenant` passes no explicit write-isolation option and does not call
 `lockAccessConfigurationTx`. Its optional read-only report snapshot cannot be treated as a write
 dependency lock. Joining an explicit transaction is therefore only one prerequisite of confirmation.
+
+FACT (source only) — the balance dependency extends beyond the selected Annual type.
+`availableLeaveBalance` resolves its source ledger and subtracts pending requests for that source
+**and every type borrowing from it**, through `balanceSpenderTypeIds` and `pendingLeaveDays`.
+Excluding borrowing types from this Assistant's selectable menu does not exclude their reservations
+from the authoritative balance. A lock on only this action ID or selected request cannot protect that
+predicate, including insertion of a new pending borrower request.
+
+The existing approval owner takes `leave-balance:<tenant>:<employment>:<source type>` in
+`finalizeLeaveApproval`. Source inspection found additional direct ledger inserts in leave adjustments,
+opening-balance/history/ordinary imports, hiring, TOIL and the leave grant/year/reversal owners.
+The inspected adjustment and import services do not explicitly join that approval lock. The existing
+`guard_frozen_leave_balance` trigger checks an encashment hold; it does not acquire the balance lock.
+These findings do not establish an exhaustive transitive writer inventory or current database behavior.
+They rule out treating the approval mutex as an already universal reservation barrier.
+
+DECISION — settle and enforce the dependency barrier at the existing source owners before exposing
+confirmation, covering pending reservation inserts/status changes, ledger movements and source-type
+mapping changes. Do not add an Assistant-only mutex and call it protection from legacy writers.
+Prove the chosen strategy against actual legacy form submissions, approval/cancellation, negative
+adjustments/imports and a borrowing type reserving Annual balance, with the protected expectation
+either still valid at the serialized effect or refused for fresh review. The participant/lock order,
+predicate coverage, employee RLS behavior and deadlock handling still require design and runtime
+evidence; no new barrier, migration or isolation guarantee is implemented by this audit.
+
 Before implementing savepoint recovery, trace every command callee for effects outside the supplied
 transaction. A database rollback cannot undo a network delivery or a separately committed writer;
 such a path must be moved behind the existing transactional event owner or excluded from this action.
