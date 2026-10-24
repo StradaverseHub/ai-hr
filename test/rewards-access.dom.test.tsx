@@ -34,6 +34,7 @@ describe('Central Rewards access journey', () => {
         await screen.findByRole('heading', { name: 'Review changes before saving' });
         expect(ports.preview).toHaveBeenCalledWith({ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } });
         expect(ports.save).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm and save' }).hasAttribute('disabled')).toBe(false));
         fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
         await screen.findByText(en.rewardsAccess.saved);
         await waitFor(() => expect(ports.save).toHaveBeenCalledWith({ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } }, 'a'.repeat(64)));
@@ -45,12 +46,16 @@ describe('Central Rewards access journey', () => {
         fireEvent.change(screen.getByLabelText('Existing login account'), { target: { value: 'user' } });
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('button', { name: 'Confirm and save' });
+        // The preview can render before its transition settles; a user must wait for an enabled action.
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm and save' }).hasAttribute('disabled')).toBe(false));
         fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'pbp' } });
         expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('button', { name: 'Confirm and save' });
         ports.save.mockResolvedValueOnce({ ok: false, error: 'changed' });
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm and save' }).hasAttribute('disabled')).toBe(false));
         fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+        await waitFor(() => expect(ports.save).toHaveBeenCalledOnce());
         expect(await screen.findByRole('alert')).toHaveProperty('textContent', en.rewardsAccess.errors.changed);
         expect(ports.refresh).not.toHaveBeenCalled();
     });
