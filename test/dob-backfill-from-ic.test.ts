@@ -70,9 +70,13 @@ async function legacyPerson(ic: string | null, dob: string | null = null): Promi
       dateOfBirth: dob,
     })
     .returning({ id: schema.person.id });
-  await owner.db
-    .insert(schema.employeeStatutoryMy)
-    .values({ tenantId: b.tenantId, personId: p.id, icNumber: ic });
+  // This is a migration-era fixture, including values now refused by the NRIC trigger.
+  // Restrict historical seeding to this owner transaction; current writers keep every guard.
+  await owner.db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    await tx.insert(schema.employeeStatutoryMy)
+      .values({ tenantId: b.tenantId, personId: p.id, icNumber: ic });
+  });
   return p.id;
 }
 
