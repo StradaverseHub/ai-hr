@@ -26,6 +26,17 @@ ALTER TABLE app.assistant_own_leave_review ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.assistant_own_leave_review_content ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE app.assistant_own_leave_review,app.assistant_own_leave_review_content FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE TABLE app.assistant_review_erasure_intent (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
+ person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
+ employment_id uuid NOT NULL REFERENCES public.employment(id) ON DELETE CASCADE,
+ cleared integer NOT NULL CHECK(cleared>=0),event_id uuid REFERENCES public.domain_event(id),
+ PRIMARY KEY(xact_id,tenant_id,user_id,person_id)
+);
+ALTER TABLE app.assistant_review_erasure_intent ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE app.assistant_review_erasure_intent FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- The access/privacy writer barrier precedes action row locks. Read Committed takes the post-lock
 -- identity snapshot. This verifies custody ownership, not leave eligibility, Assistant grants or pauses.
 CREATE FUNCTION app._assistant_own_leave_review_identity(p_person uuid,p_employment uuid,p_company uuid) RETURNS void
@@ -141,17 +152,6 @@ GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_expire(integer) TO ai_
 --> statement-breakpoint
 -- Untyped private review content follows the canonical person's erasure, across every employment.
 -- The existing erasure owner admits/locks the person and requires its real audit at commit.
-CREATE TABLE app.assistant_review_erasure_intent (
- xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
- user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
- person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
- employment_id uuid NOT NULL REFERENCES public.employment(id) ON DELETE CASCADE,
- cleared integer NOT NULL CHECK(cleared>=0),event_id uuid REFERENCES public.domain_event(id),
- PRIMARY KEY(xact_id,tenant_id,user_id,person_id)
-);
-ALTER TABLE app.assistant_review_erasure_intent ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE app.assistant_review_erasure_intent FROM PUBLIC,ai_hr_app;
---> statement-breakpoint
 CREATE FUNCTION app.assistant_own_leave_reviews_redact(p_employment uuid) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE i app.home_greeting_erasure_intent%ROWTYPE;total integer;
@@ -160,6 +160,8 @@ BEGIN
   AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND employment_id=p_employment;
  IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(p_employment) IS NOT TRUE THEN
   RAISE EXCEPTION 'Review erasure admission unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.assistant_review_erasure_intent WHERE tenant_id=i.tenant_id
+  AND xact_id<>pg_current_xact_id() AND event_id IS NOT NULL;
  IF EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent e WHERE e.xact_id=i.xact_id
   AND e.tenant_id=i.tenant_id AND e.user_id=i.user_id AND e.person_id=i.person_id) THEN
   RAISE EXCEPTION 'Review erasure already prepared' USING ERRCODE='40001';END IF;

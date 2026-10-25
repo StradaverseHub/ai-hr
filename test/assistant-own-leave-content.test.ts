@@ -2,12 +2,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import * as vault from '../lib/pii/vault';
 import { sealOwnLeaveReview, unsealOwnLeaveReview, OwnLeaveContentUnavailable } from '../core/assistant-actions/own-leave-content';
 import { ownLeaveIntentDigest } from '../core/assistant-actions/own-leave-review';
 import { ownLeaveReviewedDigest } from '../core/assistant-actions/own-leave-review-digest';
 
 beforeEach(() => vi.stubEnv('AI_CONFIG_SECRET', 'fictional-own-review-master-passphrase-12345'));
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 function fixture() {
   const binding = { tenantId: randomUUID(), userId: randomUUID(), personId: randomUUID(),
@@ -68,6 +69,23 @@ describe('protected own-leave review content', () => {
     vi.stubEnv('AI_CONFIG_SECRET', '');
     expect(() => sealOwnLeaveReview(f.metadata, f.content)).toThrow(OwnLeaveContentUnavailable);
     expect(() => unsealOwnLeaveReview(f.metadata, sealed)).toThrow(OwnLeaveContentUnavailable);
+  });
+
+  it('clears temporary DEKs after success and a late wrapping failure without propagating the sensitive cause', () => {
+    const f = fixture();
+    const successfulKey = Buffer.alloc(32, 0x4b), failedKey = Buffer.alloc(32, 0x5a);
+    vi.spyOn(vault, 'newDek').mockReturnValueOnce(successfulKey).mockReturnValueOnce(failedKey);
+    const sealed = sealOwnLeaveReview(f.metadata, f.content);
+    expect(successfulKey.every(byte => byte === 0)).toBe(true);
+    expect(unsealOwnLeaveReview(f.metadata, sealed)).toEqual(f.content);
+    vi.spyOn(vault, 'wrapDek').mockImplementationOnce(() => { throw new Error('Fictional private wrapping detail'); });
+    let failure: unknown;
+    try { sealOwnLeaveReview(f.metadata, f.content); }
+    catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect((failure as Error).message).toBe('Own-leave private review unavailable');
+    expect(failure).not.toHaveProperty('cause');
+    expect(failedKey.every(byte => byte === 0)).toBe(true);
   });
 
   it('rejects oversized source labels and a private expectation inconsistent with a shown balance', () => {
