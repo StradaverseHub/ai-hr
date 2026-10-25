@@ -54,7 +54,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: CI integrity regression checks
-        run: node --test .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/manifest.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/manifest.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs
       - name: Build byte transport regression checks
         run: python3 .github/ci/build-bundle.test.py
       - name: Resolve frozen candidate
