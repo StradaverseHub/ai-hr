@@ -5,6 +5,8 @@ const state = vi.hoisted(() => ({ operator: true, demo: false, list: vi.fn(async
 vi.mock('../lib/session', () => ({ getSession: async () => ({ grants: state.operator ? [{ role: 'operator', companyId: null }] : [] }) }));
 vi.mock('../lib/authz', () => ({ isOperator: (s: { grants: { role: string }[] }) => s.grants.some(g => g.role === 'operator') }));
 vi.mock('../lib/demo-mode', () => ({ isDemoDeployment: () => state.demo }));
+vi.mock('../core/operator-customers',()=>({listOperatorCustomers:async()=>[]}));
+vi.mock('../app/operator/customer-forms',()=>({CustomerCreateForm:()=>null}));
 vi.mock('../core/operator', () => ({ listProvisionRequests: state.list, PROVISION_STEPS: [] }));
 vi.mock('../app/operator/actions', () => ({ createCustomerAction: vi.fn(), requestReissueAction: vi.fn() }));
 vi.mock('../localization/registry', () => ({ countryPacks: () => [{ country: 'MY' }] }));

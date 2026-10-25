@@ -1,3 +1,7 @@
+import { internalSelected } from '@/lib/internal-auth/config';
+import Link from 'next/link';
+import { listOperatorCustomers } from '@/core/operator-customers';
+import { CustomerCreateForm } from './customer-forms';
 import { GuideTourButton } from '@/components/guide-tour-button';
 import { guideTourId } from '@/lib/onboarding-tour';
 import { Markdown } from '@/components/markdown';
@@ -21,7 +25,7 @@ import { DEFAULT_PROVISION_MODULE_CODES, MODULE_CATALOG } from '@/packs/catalog'
  *
  * DELIBERATELY AT /operator, NOT UNDER /admin. Everything under /admin is CUSTOMER-facing: it is the
  * screen set a customer's own HR administrators use. This is the installation tier and belongs to a
- * different audience entirely, so it gets its own route and NO nav entry — an operator types the URL.
+ * different audience entirely, with its own installation navigation.
  *
  * GATED IN-PAGE (the app/admin/scheduled-actions precedent) on two conditions:
  *   1. isOperator — the tier itself. Note that a customer's group admin fails this: operator is not an
@@ -41,6 +45,9 @@ export default async function OperatorPage() {
   const t = await getTranslations('operator');
   const locale = await getLocale();
   const requests = await listProvisionRequests(s);
+  const customers = await listOperatorCustomers(s);
+  const w = await getTranslations('operatorWorkspace');
+  const internalAuth = internalSelected();
   // Registered packs only — see the form comment. countryPacks() works in a server component because
   // importing localization/registry IS the registration (its registerPack call runs at module load).
   const countries = countryPacks().map((p) => p.country.toUpperCase()).sort();
@@ -73,80 +80,22 @@ export default async function OperatorPage() {
           instruction — it is wanted during setup, which happens under Admin. The link is gone rather
           than pointing at the new route: an operator is not a tenant admin, so following it would only
           bounce them. */}
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={w('customers')} description={w('workspaceDescription')} />
       <a href="#operator-knowledge-base" className="text-sm font-medium text-primary underline underline-offset-2">{t('knowledgeBase')}</a>
 
-      <Card data-tour="operator-customer-form" className="p-4">
+      <section id="customers" className="scroll-mt-4">
+        <Card className="p-4"><SectionHeader title={w('customers')} count={customers.length}/>
+          {customers.length===0?<p className="mt-3 text-sm text-muted-foreground">{w('emptyCustomers')}</p>:<ul className="mt-3 divide-y divide-border">{customers.map(c=><li key={c.tenant_id}>
+            <Link href={`/operator/customers/${c.tenant_id}`} className="flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-md px-2 py-3 hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">
+              <span className="min-w-0"><span className="block font-medium">{c.customer_name}</span><span className="mt-1 block text-xs text-muted-foreground">{c.organizationCode??w('codeUnavailable')}</span></span>
+              <span className="flex items-center gap-3"><Badge variant={c.customer_status==='suspended'?'warning':'default'}>{w.has(c.customer_status)?w(c.customer_status):c.customer_status}</Badge><span className="text-sm text-primary">{w('manageCustomer')}</span></span>
+            </Link></li>)}</ul>}
+        </Card>
+      </section>
+      <Card id="new-customer" data-tour="operator-customer-form" className="p-4">
         <SectionHeader title={t('newCustomer')} />
-        <form action={createCustomerAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('customerName')}</span>
-            <input name="customerName" required className={inputCls} placeholder={t('customerNamePlaceholder')} />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('adminEmail')}</span>
-            <input name="adminEmail" type="email" required className={inputCls} placeholder={t('adminEmailPlaceholder')} />
-          </label>
-          <div className="flex items-end">
-            <button type="submit" className={btnPrimary}>
-              {t('create')}
-            </button>
-          </div>
-          {/* ADR-0077 slice 1 — the sale, captured at intake. Both fields span the whole grid so the
-              existing two-column name/email row keeps its shape.
-              The country list comes from the REGISTERED country packs, so it shows exactly what this
-              installation can actually provision (one entry today) rather than a hopeful list of ISO
-              codes that would fail in the runner an hour later. core/operator re-validates both. */}
-          <label className="block sm:col-span-3">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">Country</span>
-            <select name="country" defaultValue="MY" className={inputCls}>
-              {countries.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <fieldset className="block sm:col-span-3">
-            <legend className="mb-1 block text-xs font-medium text-muted-foreground">Modules</legend>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {sellableModules.map((m) => (
-                <label key={m.code} className="flex items-center gap-2 text-sm">
-                  {/* PRE-TICKED for everything a customer provisioned TODAY would actually run —
-                      DEFAULT_PROVISION_MODULE_CODES, the tracked parity set narrowed to sellable
-                      codes. An untouched form used to queue a customer with ZERO entitlement rows,
-                      which reads as "everything the customer has today" until slice 3 and as
-                      "nothing" after it. The default states what the product currently includes;
-                      unticking is still the operator's decision and is honoured verbatim by
-                      provisionTenant.
+        <CustomerCreateForm internalAuth={internalAuth} countries={countries} modules={sellableModules} defaults={DEFAULT_PROVISION_MODULE_CODES} coreNames={coreModules.map(m=>m.name).join(', ')}/>
 
-                      A CONSTANT, NOT `process.env` (review r3). This read `defaultProvisionModuleCodesIn(
-                      process.env)`, which resolved NOTIFICATIONS_ENABLED / MULTI_CYCLE_PAYROLL_ENABLED /
-                      TYPED_PAY_COMPONENTS_ENABLED at request time — three gates slice 3 migrated, read
-                      from env in application source, and invisible to every gate check in
-                      test/module-catalog-drift.test.ts because the names appeared in neither file as a
-                      literal. It also meant that retiring those vars would silently drop three modules
-                      from every new customer's ticks. See DEFAULT_PROVISION_MODULE_CODES for why the
-                      env filter bought nothing after the flip. */}
-                  <input
-                    type="checkbox"
-                    name="modules"
-                    value={m.code}
-                    defaultChecked={DEFAULT_PROVISION_MODULE_CODES.includes(m.code)}
-                    className="size-4 rounded"
-                  />
-                  {m.name}
-                </label>
-              ))}
-            </div>
-            {/* Core modules are deliberately absent: they are always on, take no entitlement row at
-                all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
-            <p className="mt-1 text-xs text-muted-foreground">
-              Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included. Ticked by
-              default are the modules every customer runs on this deployment today; untick to sell less.
-            </p>
-          </fieldset>
-        </form>
         <p className="mt-2 text-xs text-muted-foreground">{t('formNote')}</p>
       </Card>
 
@@ -164,6 +113,7 @@ export default async function OperatorPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-medium">{r.customerName}</div>
+                    {r.organizationCode&&<p className="text-xs text-muted-foreground">{w('organizationCode')}: {r.organizationCode}</p>}
                     <p className="text-sm text-muted-foreground">{r.adminEmail}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{dateTime.format(r.createdAt)}</p>
                   </div>
@@ -198,6 +148,7 @@ export default async function OperatorPage() {
                     <form action={createCustomerAction}>
                       <input type="hidden" name="customerName" value={r.customerName} />
                       <input type="hidden" name="adminEmail" value={r.adminEmail} />
+                      {internalAuth&&<label className="block text-sm">{w('organizationCode')}<input name="organizationCode" defaultValue={r.organizationCode??''} required minLength={2} maxLength={64} pattern="[a-z0-9][a-z0-9-]{1,63}" className={inputCls}/></label>}
                       {/* THE WHOLE SALE IS REPLAYED — country, plan and every ticked module. Retry
                           re-posts this form to the same action that created the request, so anything
                           missing here is silently dropped: a retry carrying no modules would

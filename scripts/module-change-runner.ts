@@ -91,6 +91,8 @@ export async function assertActivatable(tx: Tx, req: Request): Promise<void> {
             eq(tenantModule.tenantId, req.tenantId),
             inArray(tenantModule.moduleCode, deps),
             inArray(tenantModule.status, ['active', 'trial']),
+            sql`(${tenantModule.expiresAt} is null or ${tenantModule.expiresAt}>now())`,
+            req.companyId ? or(isNull(tenantModule.companyId),eq(tenantModule.companyId,req.companyId)) : isNull(tenantModule.companyId),
           ),
         );
       const have = new Set([...core.map((c) => c.code), ...granted.map((a) => a.code)]);
@@ -123,9 +125,17 @@ export async function assertActivatable(tx: Tx, req: Request): Promise<void> {
  * back together, so a half-installed module is not a state the system can be left in.
  */
 export async function applyModuleChange(tx: Tx, req: Request): Promise<ActivationOutcome> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'operator-modules:' + req.tenantId},0))`);
   await assertActivatable(tx, req);
 
   if (req.action === 'deactivate') {
+    const dependents = await tx.select({code:tenantModule.moduleCode}).from(tenantModule)
+      .innerJoin(module_,eq(module_.code,tenantModule.moduleCode))
+      .where(and(eq(tenantModule.tenantId,req.tenantId),inArray(tenantModule.status,['active','trial']),
+        sql`${module_.dependsOn} ? ${req.moduleCode}`,
+        sql`(${tenantModule.expiresAt} is null or ${tenantModule.expiresAt}>now())`,
+        req.companyId ? eq(tenantModule.companyId,req.companyId) : sql`true`));
+    if (dependents.length) throw new ModuleChangeRefused('depends_on', `Disable dependent module(s) first: ${dependents.map(d=>d.code).join(', ')}`);
     // TWO-PHASE (slice 5). Enumerate what turning this off would strand, and refuse until the operator
     // has recorded a decision for each. NOT a veto — a customer who stopped paying is entitled to stop
     // paying — but the decision must be INFORMED and RECORDED rather than discovered afterwards by
@@ -199,7 +209,7 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   const firstInstall = !anyScope;
 
   if (existing) {
-    await tx.update(tenantModule).set({ status: 'active' }).where(eq(tenantModule.id, existing.id));
+    await tx.update(tenantModule).set({ status: 'active', expiresAt: null, activatedAt: new Date() }).where(eq(tenantModule.id, existing.id));
   } else {
     await tx.insert(tenantModule).values({
       tenantId: req.tenantId,
@@ -234,14 +244,7 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   };
 }
 
-async function tick(): Promise<'idle' | 'done' | 'failed'> {
-  const url = process.env.MIGRATION_DATABASE_URL;
-  if (!url) {
-    console.error('module-change-runner requires MIGRATION_DATABASE_URL (owner role).');
-    process.exit(1);
-  }
-  const owner = createDb(url);
-
+export async function runModuleChangeTick(owner: ReturnType<typeof createDb>): Promise<'idle' | 'done' | 'failed'> {
   // Stale reclaim first: a row left 'running' by a killed runner would otherwise never be retried.
   const staleBefore = new Date(Date.now() - STALE_CLAIM_MINUTES * 60_000);
   await owner.db
@@ -253,10 +256,10 @@ async function tick(): Promise<'idle' | 'done' | 'failed'> {
     .update(moduleChangeRequest)
     .set({ status: 'running', claimedAt: new Date() })
     .where(
-      eq(
+      and(eq(moduleChangeRequest.status,'pending'),eq(
         moduleChangeRequest.id,
-        sql`(select id from module_change_request where status = 'pending' order by created_at asc limit 1 for update skip locked)`,
-      ),
+        sql`(select id from module_change_request where status = 'pending' order by created_at asc,id asc limit 1 for update skip locked)`,
+      )),
     )
     .returning();
 
@@ -265,6 +268,10 @@ async function tick(): Promise<'idle' | 'done' | 'failed'> {
 
   try {
     const outcome = await owner.db.transaction(async (tx) => {
+      const locked = await tx.select({status:moduleChangeRequest.status}).from(moduleChangeRequest)
+        .where(and(eq(moduleChangeRequest.id,claimed.id),eq(moduleChangeRequest.status,'running'),eq(moduleChangeRequest.claimedAt,claimed.claimedAt!)))
+        .for('update');
+      if(!locked.length) throw new ModuleChangeRefused('claim','This change is no longer owned by this worker.');
       const result = await applyModuleChange(tx as unknown as Tx, claimed);
       await appendEvent(tx as unknown as Tx, {
         tenantId: claimed.tenantId,
@@ -294,11 +301,19 @@ async function tick(): Promise<'idle' | 'done' | 'failed'> {
     const step = e instanceof ModuleChangeRefused ? e.step : 'apply';
     await owner.db
       .update(moduleChangeRequest)
-      .set({ status: 'failed', currentStep: step, error: (e as Error).message, decidedAt: new Date() })
-      .where(eq(moduleChangeRequest.id, claimed.id));
+      .set({ status: 'failed', currentStep: step, error: e instanceof ModuleChangeRefused ? e.message : 'The module change could not be applied. Review the worker log before retrying.', decidedAt: new Date() })
+      .where(and(eq(moduleChangeRequest.id, claimed.id),eq(moduleChangeRequest.status,'running'),eq(moduleChangeRequest.claimedAt,claimed.claimedAt!)));
     console.error(`  refused at ${step}: ${(e as Error).message}`);
     return 'failed';
   }
+}
+
+async function tick(): Promise<'idle' | 'done' | 'failed'> {
+  const url = process.env.MIGRATION_DATABASE_URL;
+  if (!url) throw new Error('module-change-runner requires MIGRATION_DATABASE_URL (owner role).');
+  const owner = createDb(url, {max:2});
+  try { return await runModuleChangeTick(owner); }
+  finally { await owner.client.end({timeout:5}); }
 }
 
 if (process.argv[1]?.endsWith('module-change-runner.ts')) {

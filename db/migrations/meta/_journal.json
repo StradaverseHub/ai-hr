@@ -3424,6 +3424,13 @@
       "when": 1791900000080,
       "tag": "0590_attendance_policy_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 601,
+      "version": "7",
+      "when": 1791900000081,
+      "tag": "0601_operator_customer_workspace",
+      "breakpoints": true
     }
   ]
 }
