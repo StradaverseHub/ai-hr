@@ -16380,7 +16380,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
-      "runFailed": "Lần tự động hóa gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
+      "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy mở chi tiết lần chạy bên dưới.",
       "navigation": "Điều hướng trung tâm điều hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",
@@ -16411,7 +16411,31 @@
       "shown": "Hiển thị {shown} trên {total} vấn đề.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
       "quality": "Chất lượng bảng lương và AI",
-      "opportunities": "Cơ hội"
+      "opportunities": "Cơ hội",
+      "runDetails": {
+        "incomplete": "Một số chi tiết thực thi chưa được ghi nhận hoặc không đọc được.",
+        "receiptNote": "Những lần chạy không ghi nhận được kết quả có thể không xuất hiện trong lịch sử này.",
+        "steps": {
+          "readiness": "Nhắc bổ sung thông tin",
+          "claims": "Sàng lọc yêu cầu hoàn phí",
+          "observe": "Kiểm tra hồ sơ nguồn",
+          "verify": "Kiểm tra lại hồ sơ nguồn"
+        },
+        "recorded": "Đã ghi nhận: {date}",
+        "outcomes": {
+          "succeeded": "Đã hoàn thành",
+          "unknown": "Chưa xác nhận hoàn thành",
+          "failed": "Thất bại"
+        },
+        "title": "Lần tự động hóa được ghi nhận gần nhất",
+        "evidenceNote": "Bước kết thúc bình thường có thể đã bị tắt hoặc không có việc cần làm. Kết quả nhân sự cần bằng chứng từ hồ sơ nguồn.",
+        "states": {
+          "succeeded": "Kết thúc bình thường",
+          "unknown": "Chưa ghi nhận",
+          "failed": "Thất bại"
+        },
+        "version": "Bộ điều phối: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Hoàn thiện hồ sơ của bạn",

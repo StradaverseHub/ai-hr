@@ -16380,7 +16380,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Checking records…",
-      "runFailed": "The last automation pass needs attention. Review the execution history.",
+      "runFailed": "The latest recorded automation run needs attention. Open the run details below.",
       "navigation": "Control Tower navigation",
       "overview": "Overview",
       "readiness": "Employee data",
@@ -16411,7 +16411,31 @@
       "shown": "Showing {shown} of {total} issues.",
       "verificationNote": "Closure means the information is present or no longer required at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
       "quality": "Payroll and AI quality",
-      "opportunities": "Opportunities"
+      "opportunities": "Opportunities",
+      "runDetails": {
+        "incomplete": "Some run details were not recorded or could not be read.",
+        "receiptNote": "Attempts whose results could not be recorded may be missing from this history.",
+        "steps": {
+          "readiness": "Readiness reminders",
+          "claims": "Claims triage",
+          "observe": "Check source records",
+          "verify": "Recheck source records"
+        },
+        "recorded": "Recorded: {date}",
+        "outcomes": {
+          "succeeded": "Completed",
+          "unknown": "Completion unconfirmed",
+          "failed": "Failed"
+        },
+        "title": "Latest recorded automation run",
+        "evidenceNote": "A step that finishes normally may have been switched off or had no work. HR outcomes require source evidence.",
+        "states": {
+          "succeeded": "Finished normally",
+          "unknown": "Not recorded",
+          "failed": "Failed"
+        },
+        "version": "Harness: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Complete your record",

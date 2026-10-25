@@ -16380,7 +16380,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Menyemak rekod…",
-      "runFailed": "Pelaksanaan automasi terakhir memerlukan perhatian. Semak sejarah pelaksanaan.",
+      "runFailed": "Pelaksanaan automasi terkini yang direkodkan memerlukan perhatian. Buka butiran pelaksanaan di bawah.",
       "navigation": "Navigasi Menara Kawalan",
       "overview": "Gambaran keseluruhan",
       "readiness": "Data pekerja",
@@ -16411,7 +16411,31 @@
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI",
-      "opportunities": "Peluang"
+      "opportunities": "Peluang",
+      "runDetails": {
+        "incomplete": "Sesetengah butiran pelaksanaan tidak direkodkan atau tidak dapat dibaca.",
+        "receiptNote": "Percubaan yang keputusannya tidak dapat direkodkan mungkin tidak ditunjukkan dalam sejarah ini.",
+        "steps": {
+          "readiness": "Peringatan kelengkapan",
+          "claims": "Saringan tuntutan",
+          "observe": "Semak rekod sumber",
+          "verify": "Semak semula rekod sumber"
+        },
+        "recorded": "Direkodkan: {date}",
+        "outcomes": {
+          "succeeded": "Selesai",
+          "unknown": "Penyelesaian belum disahkan",
+          "failed": "Gagal"
+        },
+        "title": "Pelaksanaan automasi terkini yang direkodkan",
+        "evidenceNote": "Langkah yang selesai tanpa ralat mungkin telah dimatikan atau tiada kerja untuk dilakukan. Hasil HR memerlukan bukti daripada sumber.",
+        "states": {
+          "succeeded": "Selesai tanpa ralat",
+          "unknown": "Tidak direkodkan",
+          "failed": "Gagal"
+        },
+        "version": "Harnes: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Lengkapkan rekod anda",
