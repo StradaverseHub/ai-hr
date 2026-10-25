@@ -2,6 +2,7 @@
 import {readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {createPlan, hash} from './plan.mjs';
 export function verifyReports(plan, reports) {
   if (reports.length !== plan.units.length) throw Error('Expected exactly one report per CI unit');
@@ -14,6 +15,7 @@ export function verifyReports(plan, reports) {
       || JSON.stringify(report.files) !== JSON.stringify(unit.files) || report.exitCode !== 0 || !Array.isArray(report.batches)) throw Error('Stale, failed or altered CI unit');
     const files = [];
     for (const batch of report.batches) {
+      if(unit.kind==='db')validatePostgresEvidence(batch.databaseEvidence,plan.execution);
       const result = batch.result;
       if (batch.exitCode !== 0 || result?.success !== true || result.numFailedTests !== 0 || result.numFailedTestSuites !== 0
         || (result.numPendingTests ?? 0) !== 0 || (result.numPendingTestSuites ?? 0) !== 0 || (result.numTodoTests ?? 0) !== 0

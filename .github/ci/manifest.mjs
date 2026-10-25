@@ -1,5 +1,6 @@
 /** Coverage topology is deterministic; scheduler concurrency never changes batch membership. */
 import {createHash} from 'node:crypto';
+export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'}};
 export const DB_BATCH_FILES=64;
 export const NODB_BATCH_FILES=256;
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];

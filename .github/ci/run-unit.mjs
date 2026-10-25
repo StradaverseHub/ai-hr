@@ -4,6 +4,7 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
+import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evidence.mjs';
 import {hostHealth} from './host-health.mjs';
 import {createPlan} from './plan.mjs';
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
@@ -17,6 +18,7 @@ try {
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
   if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));
+  if(unit.kind==='db'&&(process.env.AIHR_CI_PG_MEMORY_GIB!=='2'||process.env.AIHR_CI_PG_JIT!=='on'))throw Error('Full CI requires measured 2 GiB/default-JIT database budget');
   const batchSize = unit.kind === 'db' ? 64 : Math.max(1, unit.files.length);
   for (let offset = 0; offset < unit.files.length; offset += batchSize) {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
@@ -37,12 +39,14 @@ try {
       args.push('--config', config);
     }
     args.push(...files, '--reporter=default', '--reporter=json', '--outputFile.json=' + path);
-    const env = {...process.env, VITEST_MAX_WORKERS: '2', VITEST_MAX_WORKERS_NODB: '2', AIHR_BROWSER_ENGINE: unit.engine ?? ''};
+    const env = {...process.env, VITEST_MAX_WORKERS: String(plan.execution.workers), VITEST_MAX_WORKERS_NODB: String(plan.execution.workers), AIHR_BROWSER_ENGINE: unit.engine ?? ''};
     if (unit.kind !== 'db') for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closed;
     const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
     const exitCode = child.status ?? 1;
     const stats = unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
-    report.batches.push({exitCode, databaseResourceSnapshot: stats?.status === 0 ? JSON.parse(stats.stdout) : null, result: JSON.parse(readFileSync(path, 'utf8'))});
+    const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id):null;
+    report.batches.push({exitCode,databaseEvidence, databaseResourceSnapshot: stats?.status === 0 ? JSON.parse(stats.stdout) : null, result: JSON.parse(readFileSync(path, 'utf8'))});
+    if(databaseEvidence)validatePostgresEvidence(databaseEvidence,plan.execution);
     failure ||= exitCode !== 0;
   }
   if(createPlan().fingerprint!==plan.fingerprint)throw Error('Candidate changed during CI execution');
@@ -53,6 +57,7 @@ try {
 } finally {
   report.healthAfter = hostHealth();
   if (unit.kind === 'db') {
+    try{report.databaseTerminalEvidence=capturePostgresEvidence(id);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
     const cleanup = spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
     if (cleanup.status !== 0) report.exitCode = 1;
   }

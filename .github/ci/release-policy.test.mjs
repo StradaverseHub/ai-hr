@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {CI_POLICY,REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof,digest} from './release-policy.mjs';
 import {verifyReports} from './verify-shards.mjs';
 import {hash} from './plan.mjs';
-import {buildUnits,requiredEvidence} from './manifest.mjs';
+import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {assessHealth} from './host-health.mjs';
 import {bindStaging,STAGING} from './operator-release.mjs';
 const candidate='a'.repeat(40),controller='c'.repeat(40),baseline='b'.repeat(40),runId=123,now=Date.now();
@@ -19,9 +19,9 @@ function artifacts(){return requiredEvidence(proof().expectedPlan).artifacts.map
 function proof(){
  const suite=Array.from({length:8},(_,n)=>`test/example-${n}.test.ts`);
  const units=buildUnits(suite,{nodb:suite.slice(0,4),db:suite.slice(4)},['test/layout.browser.test.tsx']);
- const body={schemaVersion:2,policyVersion:CI_POLICY,sha:candidate,controller,migrationBase:baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'},suite,units};
+ const body={schemaVersion:2,policyVersion:CI_POLICY,sha:candidate,controller,migrationBase:baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite,units};
  const plan={...body,fingerprint:hash(body)};
- const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,batches:[{exitCode:0,result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
+ const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:{schemaVersion:1,memoryLimit:2*1024**3,memoryMax:2*1024**3,memoryPeak:500000000,memoryEvents:{oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}}}:{}),result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
  return {plan,reports,receipt:verifyReports(plan,reports),expectedPlan:structuredClone(plan),p:expected};
 }
 test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);});
