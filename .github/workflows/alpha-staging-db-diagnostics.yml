@@ -17,6 +17,11 @@ on:
         default: 'on'
         type: choice
         options: ['on', 'off']
+      repaired_focus:
+        description: Exact resolved repaired candidate; three original DB regression files, development only
+        required: false
+        default: false
+        type: boolean
       organization_only:
         description: Only the unchanged original organization file
         required: false
@@ -34,7 +39,7 @@ on:
         type: boolean
 permissions: {contents: read, actions: read}
 concurrency:
-  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}
+  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}-${{ inputs.repaired_focus }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -57,12 +62,14 @@ jobs:
         run: node .github/ci/resolve.mjs
   db-observation:
     needs: resolve
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        probe: ${{ fromJSON(inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
+        probe: ${{ fromJSON(inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
     defaults: {run: {working-directory: source}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
