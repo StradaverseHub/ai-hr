@@ -1259,3 +1259,32 @@ production pilot. Pack/feature capabilities outside this catalogue, such as Job 
 an explicit module/engine relationship and agent coverage as well; catalogue counting alone cannot
 silently exclude a system feature. This inventory has not yet audited all exported functions, engine
 transitive dependencies or fine-grained data scopes and does not authorize generic service exports.
+
+
+### OpenRouter routing boundary: source-only preparation, 26 October 2026
+
+Current official [provider-routing documentation](https://openrouter.ai/docs/guides/routing/provider-selection)
+exposes an explicit allowlist, ordered preferences, fallback controls, parameter-support filtering,
+data-collection filtering, ZDR and price/latency sorting. Defaults permit fallback and do not require
+all requested parameters. DECISION: the unregistered policy builder always pins `only` alongside
+`order`, requires supported parameters, denies data collection and requests ZDR; fallback is off
+unless explicitly configured and remains within the approved set. Latency sorting is a preference,
+not a deadline or response-time guarantee. This does not establish compliance or authorize HR disclosure.
+
+The [client-tool documentation](https://openrouter.ai/docs/guides/features/tool-calling) places execution
+in the application and requires the tool schema on continuation requests. No provider server tools,
+plugins or remotely executed HR actions are admitted by this policy. The eventual adapter must preserve
+the local typed tool dispatcher and reauthorize every engine call.
+
+The [provider-logging documentation](https://openrouter.ai/docs/guides/privacy/provider-logging)
+distinguishes provider policies from OpenRouter's own policies and third-party tool policies. Its
+generic retention wording and the routing page's explicit ZDR support are not a universal retention
+guarantee. Account settings, actual endpoints and applicable terms still require verification before
+enabling confidential data. No credentials, API connection, provider registration, tenant enablement
+or production data transfer has occurred.
+
+IMPLEMENTED SOURCE ONLY: `lib/ai/providers/openrouter-policy.ts` rejects unknown policy fields, empty/
+duplicate/wildcard/URL provider identifiers and captures an immutable approved set. Authored tests
+cover default constraints, bounded fallback, policy-expansion attempts and mutation. Tests are UNRUN
+while Mobile owns the runtime window; static syntax and diff checks alone are not runtime/security
+proof. Own-leave remains the next effect capability and its dependency/atomicity work is unchanged.
