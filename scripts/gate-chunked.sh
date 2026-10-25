@@ -129,15 +129,34 @@ NODB_SECS=0
 DB_SECS=0
 declare -a SUMMARY
 
+# Normalize display-only SGR escapes before parsing Vitest's anchored terminal summaries.
+# Keep the original log bytes intact for audit/review.
+vitest_summary_line() { # <log> <label>
+  LC_ALL=C awk -v label="$2" '{
+    gsub(/\033\[[0-9;]*m/, "")
+    sub(/[[:space:]]+$/, "")
+    if ($0 ~ "^[[:space:]]*" label "[[:space:]]+") { line=$0; seen++ }
+  } END { if (seen==1) print line }' "$1"
+}
+
 # Read vitest's "Test Files … (N)" line out of a log and compare N with what was asked for.
 # Sets LINE, COUNTED and (on a mismatch) RC=1.
 check_counted() { # <log> <asked>
-  LINE=$(grep -E "^ *Test Files" "$1" | tail -1)
+  LINE=$(vitest_summary_line "$1" "Test Files")
   # (N) at the end of the Test Files line is the number vitest actually counted.
   COUNTED=$(echo "$LINE" | grep -oE '\([0-9]+\)$' | tr -d '()')
-  if [ -z "$COUNTED" ] || [ "$COUNTED" != "$2" ]; then
-    echo "  ⚠️  ASKED FOR $2 FILES, VITEST COUNTED ${COUNTED:-NOTHING} — a file that fails to spawn is"
-    echo "      not counted at all, so this is a RED gate however the pass/fail numbers read."
+  TEST_LINE=$(vitest_summary_line "$1" "Tests")
+  TEST_PASSED=$(echo "$TEST_LINE" | awk '{print $2}')
+  DURATION_LINE=$(vitest_summary_line "$1" "Duration")
+  TEST_TOTAL=$(echo "$TEST_LINE" | grep -oE '\([0-9]+\)$' | tr -d '()')
+  if [ -z "$COUNTED" ] || [ "$COUNTED" != "$2" ] ||
+     ! echo "$LINE" | grep -Eq "^[[:space:]]*Test Files[[:space:]]+$2 passed[[:space:]]+\\($2\\)$" ||
+     ! echo "$TEST_LINE" | grep -Eq '^[[:space:]]*Tests[[:space:]]+[0-9]+ passed[[:space:]]+\([0-9]+\)$' ||
+     [ "$TEST_PASSED" != "$TEST_TOTAL" ] || [ "${TEST_PASSED:-0}" -le 0 ] ||
+     [ "${#DURATION_LINE}" -gt 2048 ] ||
+     ! echo "$DURATION_LINE" | grep -Eq '^[[:space:]]*Duration[[:space:]]+[0-9]+([.][0-9]+)?(ms|s)([[:space:]]+\(.*\))?$'; then
+    echo "  ⚠️  ASKED FOR $2 FILES, VITEST COUNTED ${COUNTED:-NOTHING} — missing, ambiguous or non-passing summary."
+    echo "      Refusing incomplete, skipped or failed coverage; this is a RED gate."
     RC=1
   fi
 }
@@ -160,13 +179,15 @@ if [ "$CHUNK_FROM" = "1" ] && [ "${#NODB[@]}" -gt 0 ]; then
   env TEST_DATABASE_URL="$CLOSED" TEST_MIGRATION_DATABASE_URL="$CLOSED" \
     DATABASE_URL="$CLOSED" MIGRATION_DATABASE_URL="$CLOSED" VITEST_MAX_WORKERS_NODB="$NODB_WORKERS" \
     pnpm vitest run --config vitest.nodb.config.ts "${NODB[@]}" > "$LOG" 2>&1
-  RC=$?
+  PROCESS_RC=$?
+  RC=$PROCESS_RC
   NODB_SECS=$(( $(date +%s) - t0 ))
   check_counted "$LOG" "${#NODB[@]}"
+  echo "  process_exit=$PROCESS_RC"
   echo "  exit=$RC  wall=${NODB_SECS}s"
   echo "  $LINE"
-  echo "  $(grep -E "^ *Tests " "$LOG" | tail -1)"
-  echo "  $(grep -E "^ *Duration" "$LOG" | tail -1)"
+  echo "  $(vitest_summary_line "$LOG" "Tests")"
+  echo "  $(vitest_summary_line "$LOG" "Duration")"
   SUMMARY+=("part a (no-DB): exit=$RC ${LINE:-<no summary>}")
   RAN=$((RAN + 1))
   [ -n "$COUNTED" ] && COUNTED_TOTAL=$((COUNTED_TOTAL + COUNTED))
@@ -191,13 +212,15 @@ for ((c = CHUNK_FROM - 1; c < CHUNK_TO; c++)); do
     echo "  migrate FAILED — see $OUT/migrate$((c + 1)).log"; exit 1; }
 
   pnpm vitest run "${FILES[@]}" > "$LOG" 2>&1
-  RC=$?
+  PROCESS_RC=$?
+  RC=$PROCESS_RC
   check_counted "$LOG" "${#FILES[@]}"
-  TESTS=$(grep -E "^ *Tests " "$LOG" | tail -1)
-  DUR=$(grep -E "^ *Duration" "$LOG" | tail -1)
+  TESTS=$(vitest_summary_line "$LOG" "Tests")
+  DUR=$(vitest_summary_line "$LOG" "Duration")
   DISK=$(df -P /opt/homebrew/var/aihr-pg16-ram 2>/dev/null | awk 'NR==2{print $5}')
   SECS=$(( $(date +%s) - t0 ))
   DB_SECS=$((DB_SECS + SECS))
+  echo "  process_exit=$PROCESS_RC"
   echo "  exit=$RC  peak-disk=${DISK:-n/a}  wall=${SECS}s (rebuild+migrate+vitest)"
   echo "  $LINE"
   echo "  $TESTS"
