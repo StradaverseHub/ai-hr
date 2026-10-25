@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyLocaleComposition,verifyFreshMergedResult,MERGED_EXCEPTION as P,ACCEPTANCE_TIER} from './local-counter-merged-acceptance.mjs';
-import {counterExceptionFlow,validateMergedLedger} from './local-counter-merged-operator.mjs';
+import {bindMergedOperatorEvidence,counterExceptionFlow,validateMergedLedger} from './local-counter-merged-operator.mjs';
 import {validateWalkthrough} from './local-counter-exception-acceptance.mjs';
 test('disjoint locale merge preserves all original values and genuine removals; collisions refuse',()=>{
   const base=Object.fromEntries(Array.from({length:61},(_,i)=>['key'+i,'old'+i])),h={...base},peer={...base};
@@ -48,9 +48,12 @@ test('fresh seam requires every real assertion and refuses pending or extra sour
   const foreign=structuredClone(result);foreign.testResults[0].name='/other/test/hr-orchestrator.test.ts';assert.throws(()=>verify(foreign));
 });
 test('merged operator retains cancelled/unknown provenance and refuses baseline movement before transport',()=>{
-  const evidence={tier:ACCEPTANCE_TIER,result:'ACCEPTED_WITH_OWNER_EXCEPTION',stagingBuildAuthorized:true,canonicalResult:'INCOMPLETE_CANCELLED',composedFromCancelledPrefix:true,controller:{partialOriginalBatch9Excluded:true},originalCandidate:P.candidate,rawVitestExit:'UNKNOWN_NOT_SEPARATELY_RECORDED',sourceBoundary:{counterRepairApplied:true},candidate:P.final,candidatePath:'/candidate'};
+  const collected={tier:ACCEPTANCE_TIER,result:'ACCEPTED_WITH_OWNER_EXCEPTION',stagingBuildAuthorized:true,canonicalResult:'INCOMPLETE_CANCELLED',composedFromCancelledPrefix:true,controller:{partialOriginalBatch9Excluded:true},originalCandidate:P.candidate,rawVitestExit:'UNKNOWN_NOT_SEPARATELY_RECORDED',sourceBoundary:{counterRepairApplied:true},candidate:P.final,candidatePath:'/candidate'};
+  const evidence=bindMergedOperatorEvidence(collected,'57796f613d7564873533aa25b78bcd182240fdf6');
+  assert.equal(evidence.gateControllerEvidence,collected.controller);assert.equal(typeof collected.controller,'object');
+  assert.throws(()=>bindMergedOperatorEvidence(evidence,evidence.controller));
   const calls=[],args={evidence,official:{isSuccessState:state=>state==='ok',buildPendingCommand:()=>'',buildTestingRecordCommand:()=>'',buildLaunchCommand:()=>'',buildFollowCommand:()=>'',followDeploy:()=>({state:'ok',ref:P.final,built_ref:P.final,stale_build:'0',built_build_id:'built'})},testingBuild:{identity:{buildRecordId:'owned'}},stableTestingJson:()=>'',revalidate:()=>{},assertBuildFrozen:()=>{},transport:{ssh:()=>{calls.push('ssh');return '';},transfer:()=>calls.push('transfer')},save:()=>{}};
   assert.equal(counterExceptionFlow(args).ref,P.final);assert(calls.includes('transfer'));calls.length=0;
   assert.throws(()=>counterExceptionFlow({...args,revalidate:()=>{throw Error('baseline moved');}}));assert.equal(calls.length,0);
-  for(const replacement of [{canonicalResult:'PASS'},{rawVitestExit:'0'},{originalCandidate:P.final},{tier:'ci'}])assert.throws(()=>counterExceptionFlow({...args,evidence:{...evidence,...replacement}}));
+  for(const replacement of [{canonicalResult:'PASS'},{rawVitestExit:'0'},{originalCandidate:P.final},{tier:'ci'},{gateControllerEvidence:null},{controller:'not-a-commit'},{gateControllerEvidence:{partialOriginalBatch9Excluded:false}}]){calls.length=0;assert.throws(()=>counterExceptionFlow({...args,evidence:{...evidence,...replacement}}));assert.equal(calls.length,0);}
 });

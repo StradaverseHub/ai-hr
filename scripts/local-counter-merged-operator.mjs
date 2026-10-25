@@ -15,10 +15,15 @@ const ALIGNED_BASE=P.aligned;
 const requireProof=(v,why)=>assert(v,'Owner exception operator refused: '+why);
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024}).trim();
 const cleanHead=cwd=>{const head=git(cwd,'rev-parse','HEAD');requireProof(/^[a-f0-9]{40}$/.test(head)&&!git(cwd,'status','--porcelain'),'dirty or missing source');return head;};
+export function bindMergedOperatorEvidence(collected,controller) {
+  requireProof(/^[a-f0-9]{40}$/.test(controller)&&collected?.controller&&typeof collected.controller==='object'
+    &&!Array.isArray(collected.controller)&&!Object.hasOwn(collected,'gateControllerEvidence'),'invalid or already-bound controller evidence');
+  return {...collected,gateControllerEvidence:collected.controller,controller};
+}
 const load=async(root,path)=>{const value=await import(pathToFileURL(join(root,path)).href);return {...(value.default??{}),...value};};
 function privateConfig(path){path=resolve(path);const stat=lstatSync(path);requireProof(realpathSync(path)===path&&stat.isFile()&&!stat.isSymbolicLink()&&(stat.mode&0o077)===0,'SSH config must be a private canonical regular file');return path;}
 export function counterExceptionFlow({evidence,official,testingBuild,stableTestingJson,revalidate,assertBuildFrozen,transport,save}) {
-  requireProof(evidence.tier===ACCEPTANCE_TIER&&evidence.result==='ACCEPTED_WITH_OWNER_EXCEPTION'&&evidence.stagingBuildAuthorized===true&&(evidence.canonicalResult==='FAIL'||evidence.canonicalResult==='INCOMPLETE_CANCELLED'&&evidence.composedFromCancelledPrefix===true&&evidence.controller?.partialOriginalBatch9Excluded===true)
+  requireProof(evidence.tier===ACCEPTANCE_TIER&&evidence.result==='ACCEPTED_WITH_OWNER_EXCEPTION'&&evidence.stagingBuildAuthorized===true&&/^[a-f0-9]{40}$/.test(evidence.controller??'')&&(evidence.canonicalResult==='FAIL'||evidence.canonicalResult==='INCOMPLETE_CANCELLED'&&evidence.composedFromCancelledPrefix===true&&evidence.gateControllerEvidence?.partialOriginalBatch9Excluded===true)
     &&evidence.originalCandidate===P.candidate&&evidence.rawVitestExit==='UNKNOWN_NOT_SEPARATELY_RECORDED'&&evidence.sourceBoundary.counterRepairApplied===true,'unvalidated exception');
   revalidate('baseline');assertBuildFrozen();
   transport.ssh(official.buildPendingCommand(evidence.candidate),{stdio:'inherit'});
@@ -78,7 +83,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
   assertTransportFrozen();
   requireProof(baselineRules.readyProductionBaseline(current())===P.baseline,'staging baseline moved');
-  const args={candidatePath,runDirectory,counterRoot},evidence={...await collectOwnerCounterAcceptance(args),controller};checkBranches(evidence.candidate);
+  const args={candidatePath,runDirectory,counterRoot},evidence=bindMergedOperatorEvidence(await collectOwnerCounterAcceptance(args),controller);checkBranches(evidence.candidate);
   const verifyLedger=()=>{
     const command="cd /opt/ai-hr && set -a && . ./.env.production && set +a && PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' psql \"${MIGRATION_DATABASE_URL:-$DATABASE_URL}\" -XAt -v ON_ERROR_STOP=1 -c "+shellQuote("SELECT coalesce(json_agg(json_build_object('id', id, 'hash', hash, 'created_at', created_at::text) ORDER BY id), '[]'::json) FROM drizzle.__drizzle_migrations");
     validateMergedLedger(JSON.parse(ssh(command)),evidence.migrationLedger);
@@ -90,7 +95,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   if(!execute)return {...evidence,evidenceDirectory:dir};
   const prepared=testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:evidence.candidate,buildRecordId:randomUUID()});
   const buildDirectory=testing.systemTestingBuildDirectory('local');testing.ensurePrivateReleaseDirectory(buildDirectory);testing.publishSystemTestingBuild(prepared,buildDirectory);
-  requireProof(equal({...await collectOwnerCounterAcceptance(args),controller},evidence),'evidence changed after preparation');
+  requireProof(equal(bindMergedOperatorEvidence(await collectOwnerCounterAcceptance(args),controller),evidence),'evidence changed after preparation');
   const roots={run:runDirectory,...(evidence.resumeDirectory?{resume:evidence.resumeDirectory}:{}),source:candidatePath,historicalSource:evidence.historicalSourcePath,peerCI:evidence.peerEvidenceRoot,runtime:join(candidatePath,'scratchpad'),counter:counterRoot,counterProof:join(counterRoot,'scratchpad/ai-counter-repair-20261026')};
   const revalidate=phase=>{
     assertTransportFrozen();
