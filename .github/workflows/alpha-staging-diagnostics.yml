@@ -11,6 +11,11 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      statutory_probe:
+        description: Original statutory DOM file and labelled 5000ms stage/style measurement copy
+        required: false
+        default: false
+        type: boolean
       nodb_probe:
         description: Measure the three original Node/DOM failure files
         required: false
@@ -128,5 +133,26 @@ jobs:
             ${{ runner.temp }}/layout-diagnostic.log
             ${{ runner.temp }}/font-list.txt
             ${{ runner.temp }}/runner-resources.json
+          if-no-files-found: error
+          retention-days: 14
+
+  statutory-timing:
+    if: ${{ inputs.statutory_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - run: node ../automation/.github/ci/diagnostics/statutory-probe.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: statutory-diagnostic
+          path: ${{ runner.temp }}/statutory-diagnostic/
           if-no-files-found: error
           retention-days: 14
