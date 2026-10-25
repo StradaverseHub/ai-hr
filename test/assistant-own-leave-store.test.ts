@@ -189,6 +189,8 @@ describe('pending own-leave review custody', () => {
 
   it('joins canonical person erasure across employments and retains only unavailable terminal references', async () => {
     const a = await prepare();
+    await owner.db.update(schema.person).set({ phone: 'FICTIONAL-CONTACT-TO-ERASE' })
+      .where(eq(schema.person.id, subject.personId));
     const [company] = await owner.db.insert(schema.company).values({ tenantId: base.tenantId,
       legalName: 'Fictional Second Employment Company' }).returning();
     const [department] = await owner.db.insert(schema.department).values({ tenantId: base.tenantId,
@@ -201,9 +203,26 @@ describe('pending own-leave review custody', () => {
     const report = await erasePersonPii(adminCtx(base), { subjectEmploymentId: subject.employmentId,
       scope: 'contact', requestRef: 'FICTIONAL-REVIEW-ERASURE', reason: 'Fictional private review cleanup' });
     expect(report.erased).toContain('assistantPreparedReviews');
+    expect(report.erased).toContain('phone');
+    const [person] = await owner.db.select({ phone: schema.person.phone }).from(schema.person)
+      .where(eq(schema.person.id, subject.personId));
+    expect(person.phone).toBeNull();
     expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
     for (const review of [a, b]) expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toMatchObject({ kind: 'retired', receipt: { actionId: review.actionId, state: 'refused', code: 'unavailable' } });
+  });
+
+  it('keeps ordinary contact erasure working without inventing a review-erasure effect', async () => {
+    await owner.db.update(schema.person).set({ phone: 'FICTIONAL-CONTACT-WITHOUT-REVIEW' })
+      .where(eq(schema.person.id, subject.personId));
+    const report = await erasePersonPii(adminCtx(base), { subjectEmploymentId: subject.employmentId,
+      scope: 'contact', requestRef: 'FICTIONAL-NO-REVIEW-ERASURE', reason: 'Fictional ordinary contact cleanup' });
+    expect(report.erased).toContain('phone');
+    expect(report.erased).not.toContain('assistantPreparedReviews');
+    const [person] = await owner.db.select({ phone: schema.person.phone }).from(schema.person)
+      .where(eq(schema.person.id, subject.personId));
+    expect(person.phone).toBeNull();
+    expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
   });
 
   it('fails closed without key custody and can still discard an existing review without decrypting it', async () => {

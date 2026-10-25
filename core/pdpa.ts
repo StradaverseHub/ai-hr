@@ -100,7 +100,11 @@ export async function erasePersonPii(
     // per-field event (that would just duplicate the erasure log).
     const personSet: Record<string, null> = {};
     const statSet: Record<string, null> = {};
-    for (const k of erased) (PII_FIELDS.find((f) => f.key === k)!.table === 'person' ? personSet : statSet)[k] = null;
+    // The report also contains non-column effects, such as retired Assistant reviews. Only the
+    // canonical field registry may supply columns; effect labels must never become UPDATE keys.
+    for (const f of PII_FIELDS) {
+      if (erased.includes(f.key)) (f.table === 'person' ? personSet : statSet)[f.key] = null;
+    }
     if (Object.keys(personSet).length) {
       await tx.update(person).set(personSet as Partial<typeof person.$inferInsert>).where(eq(person.id, emp.personId));
     }

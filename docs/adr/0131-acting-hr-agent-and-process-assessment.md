@@ -655,6 +655,13 @@ the shared Access lock. No raw reason, review or key is copied to this erasure m
 
 ### Acceptance and remaining boundary
 
+Source integration review caught a concrete erasure/report boundary defect: the new
+`assistantPreparedReviews` report label reached the legacy field-to-column lookup, which assumed
+every report entry was a PII column. The column update now iterates the canonical field registry
+and selects only its erased members; private-review retirement remains a reported effect. Authored
+regression cases require contact NULLing and review/key retirement together, and ordinary contact
+erasure without a false review-erasure report. These cases remain UNRUN.
+
 New authored cases cover envelope round-trip/tamper/transplant/oversize/missing-key failures; actual
 save/reopen/discard/expiry; hidden balances/public-field exclusions; same-person different logins and
 tenant refusal; no model accounting or leave writes; private-table/helper ACLs; enclosing rollback;
