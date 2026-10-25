@@ -10,14 +10,15 @@ Staging environment branch policy permits only `alpha`. `STAGING_DEPLOY_ENABLED=
 
 Board 3 retains staging release ownership. The owner authorized replacing its duplicate local full gate with a complete validated CI witness. The versioned [CI staging verification policy](CI-STAGING-VERIFICATION-POLICY.md) defines that evidence and an operator adapter which uses the frozen candidate’s official deployment helpers. Automatic staging CD remains disabled; the coordinating release owner operates the adapter with existing operator access, verifies arrival and advances alpha. Main deployment stays disabled until the separate live installation is ready.
 
-## Run the first pilot
+## Run a frozen candidate
 
 After the release owner freezes and publishes a clean same-repository pilot branch:
 
 ```sh
 gh workflow run alpha-staging.yml --repo StradaverseHub/ai-hr --ref main \
   -f candidate_ref=codex/board3-ci-pilot-20261025 \
-  -f expected_sha=THE_EXACT_40_CHARACTER_CANDIDATE_COMMIT
+  -f expected_sha=THE_EXACT_40_CHARACTER_CANDIDATE_COMMIT \
+  -f test_parallelism=16
 ```
 
 The resolver refuses a moved branch, a different repository and invalid refs. `STAGING_DEPLOYED_SHA` must be the verified deployed staging baseline, used for append-only journal and unchanged applied-SQL checks. It is a migration baseline, not a test receipt.
@@ -29,11 +30,11 @@ Ready same-repository PRs targeting `alpha` and pushes to `alpha` are also decla
 - Whole-repository type check on Node 22 and production build on Node 20/Linux. Disposable runner preparation removes only measured unused .NET, Android and GHC SDK directories, then retains the 20 GiB admission guard. The compiler uses an 8 GiB heap and, on small runners, a job-owned bounded 4 GiB swap file with exit cleanup; it does not change the Mac or staging host.
 - Controller integrity and refusal tests, plus tests exercising the frozen candidate’s actual detached-deploy polling helpers with fixture transport (including disconnects and failed or stale builds).
 - Journal prefix and applied SQL bytes against the staging migration baseline.
-- The candidate's existing deterministic DB classifier partitions every tracked Node/DOM test file across four no-DB and four DB jobs. No-DB jobs receive closed-port database URLs. DB jobs use separate 1 GiB PostgreSQL 16 containers on disposable runner disks and rebuild between batches of at most 64 files. They never contact the Mac or staging database.
+- The candidate's existing deterministic DB classifier partitions the complete tracked Node/DOM inventory into content-addressed batches: at most 256 no-DB files or 64 DB files per job. Required job/artifact sets derive independently from that manifest. A separate standard-runner concurrency choice of 4, 8, 16 or 20 does not change coverage. No-DB jobs receive closed-port database URLs. DB jobs use separate 2 GiB PostgreSQL 16 containers on disposable runner disks, two test workers and server-default JIT on. Each successful DB batch and terminal state must have validated actual cap, peak memory, zero OOM kills, live-server and JIT settings evidence before cleanup. They never contact the Mac or staging database.
 - Existing browser suites run in Chromium, Firefox and WebKit. Runner-generated ignored config selects the actual engine while preserving candidate source.
 - A final verifier refuses absent, duplicate, foreign-commit, skipped, failed or zero-test evidence, and checks every expected file and assertion count. Artifacts identify both candidate and controller commits. Matrix jobs do not stop the other jobs on failure.
 
-`gate-evidence` remains a distinct **CI receipt** under `aihr-staging-ci/v1`. The operator verifier authenticates the successful run, all required jobs and all artifact digests, recomputes source classification and validates every executed report before accepting it. No `.gate-receipt.json` is manufactured, and partial runs cannot be combined into a PASS. A diagnostic-only success is not release evidence. Policy or controller repairs require a fresh whole run on the final controller commit.
+`gate-evidence` remains a distinct **CI receipt** under `aihr-staging-ci/v2`. The operator verifier authenticates the successful run, all required jobs and all artifact digests, recomputes source classification and validates every executed report before accepting it. No `.gate-receipt.json` is manufactured, and partial runs cannot be combined into a PASS. A diagnostic-only success is not release evidence. Policy or controller repairs require a fresh whole run on the final controller commit.
 
 Node/DOM unit artifacts are retained for 14 days; the final CI receipt for 30 days. Staging secrets are absent from every verification job. Read actual workflow conclusions and artifact totals; a workflow being installed or dispatched is not a passing pilot.
 
