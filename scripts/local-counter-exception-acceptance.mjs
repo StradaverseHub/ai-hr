@@ -41,9 +41,9 @@ export function validateBrowserResult(result, expected) {
   requireProof(equal(names,[...expected].sort()) && count === 251, 'browser file/case membership differs');
   return {files:expected.length,cases:251};
 }
-export function validateWalkthrough(report, journey) {
+export function validateWalkthrough(report, journey, expected={source:BUILD_SOURCE,controller:'acb01a1a18c9a3e494781cabe971213bdd27d045',buildId:BUILD_ID}) {
   requireProof(report.kind === 'LOCAL_PRODUCTION_RENDERER_DEVELOPMENT_ONLY' && report.releaseEligible === false && report.terminal === true && report.exitCode === 0
-    && report.sha === BUILD_SOURCE && report.controller === 'acb01a1a18c9a3e494781cabe971213bdd27d045' && report.buildId === BUILD_ID && report.journey === journey
+    && report.sha === expected.source && report.controller === expected.controller && report.buildId === expected.buildId && report.journey === journey
     && report.databaseEvidenceValid === true && report.databaseEvidenceKind === 'LOCAL_NATIVE_NO_CGROUP_CAP_CLAIM' && report.ownedDatabaseDropped === true
     && !report.error && !report.progressError && !report.serverShutdownError && !report.serverLogError, 'walkthrough incomplete');
   requireProof(equal(report.browserErrors,[]) && equal(report.consoleErrors,[]) && equal(report.serverErrors,[]) && report.modelRunsBefore === 0 && report.modelRunsAfter === 0, 'walkthrough errors or model admissions');
@@ -74,7 +74,7 @@ export function validateWalkthrough(report, journey) {
       && equal(c.audit[0].payload,{before:null,after:'cash'}) && equal(c.audit[2].payload,{before:'cash',after:null})
       && c.writes === 'ACTUAL_HR_FORM_AND_REFRESH_ACTIONS_ONLY' && c.images.length === 5, 'actual correction audit differs');
   }
-  return {journey,observedSource:BUILD_SOURCE,exitCode:0,localOnly:true};
+  return {journey,observedSource:expected.source,exitCode:0,localOnly:true};
 }
 export async function collectOwnerCounterAcceptance({candidatePath,runDirectory,counterRoot,now=Date.now()}) {
   candidatePath=resolve(candidatePath);runDirectory=resolve(runDirectory);counterRoot=resolve(counterRoot);

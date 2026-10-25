@@ -71,7 +71,7 @@ export function counterSourceBoundary(candidatePath) {
   return {original: P.candidate, final: head, counterRepairApplied: true, repairSource: COUNTER_REPAIR.source, changedPaths: paths};
 }
 const list = text => {requireEvidence(text.endsWith('\n'), 'unterminated inventory'); return text.slice(0, -1).split('\n');};
-export async function collectCounterException({candidatePath, runDirectory, now = Date.now()}) {
+export async function collectCounterException({candidatePath, runDirectory, historicalResumeDirectory = null, now = Date.now()}) {
   candidatePath = resolve(candidatePath); runDirectory = resolve(runDirectory);
   requireEvidence(basename(runDirectory) === P.run, 'different run');
   const artifacts = [], read = boundedReader(runDirectory, 'run', artifacts, {maxFileBytes:128*1024*1024,maxTotalBytes:2*1024*1024*1024}), json = path => JSON.parse(read(path));
@@ -84,7 +84,8 @@ export async function collectCounterException({candidatePath, runDirectory, now 
     const followup=json('recovery-followup.json');
     requireEvidence(followup.passed===true&&followup.originalCleanupFailureRetained===true&&followup.pinnedRecoveryExit===0&&followup.sharedRestoredAndContentsVerified===true&&followup.privateDirectoryRemoved===true,'cancelled run recovery retry incomplete');
     const failure=json('failure.json');requireEvidence(failure.source===P.candidate&&failure.gateExit===-15&&failure.interrupted===15,'original interruption not preserved');
-    resumeDirectory=join(candidatePath,'scratchpad',P.resume);
+    resumeDirectory=historicalResumeDirectory===null?join(candidatePath,'scratchpad',P.resume):resolve(historicalResumeDirectory);
+    requireEvidence(basename(resumeDirectory)===P.resume,'historical remaining-slice directory differs');
     resumeRead=boundedReader(resumeDirectory,'resume',artifacts,{maxFileBytes:128*1024*1024,maxTotalBytes:2*1024*1024*1024});
     resumeJson=path=>JSON.parse(resumeRead(path));
     const resumeCleanup=resumeJson('cleanup.json');
