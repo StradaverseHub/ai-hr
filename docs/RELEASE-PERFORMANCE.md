@@ -21,6 +21,14 @@ The second run passed all 12,550 no-DB and 753 browser cases. Two database cases
 
 The longest passing file in that run, `attendance-policy-storage.test.ts`, took 17m 12s. Parallel execution only between whole files cannot overcome that file's current duration.
 
+## Local frozen-candidate diagnostic
+
+Board 3's completed local attempt 080 on `f20275f` took **112m 09s inside its verification wrapper**, ending FAIL solely on the canonical-port Reports guard in batch 11. Independent source/classifier reconstruction, raw logs and terminal commands/exits verified all 1,944 files: 963 no-DB plus 981 DB. All other 15 DB batches passed. Whole TypeScript took 162.7s, the production build 82.3s, and the three browser invocations 34.1s in total. The serial full gate took 6,333.1s, about 94.1% of wrapper elapsed time.
+
+This is not an end-to-end deployment result or a comparable A/B against the GitHub runs: the candidate, operating system, execution layout and resources differ. Queueing before the wrapper, the repair, deployment and verified arrival are still excluded from this diagnostic and must be included in the goal measurement. Its controller's `peak-disk` output reads the foreign RAM mount; it does not measure the owned SSD cluster's peak use.
+
+The owner explicitly authorized retaining all passing work and rerunning only original batch 11 on canonical port 5433. A separate, independently reviewed [local environment-repair controller](https://github.com/StradaverseHub/ai-hr/tree/codex/local-port-repair-controller-20261025) binds the exact frozen candidate, all original completed batches, fresh original 61-file/774-case batch 11, unchanged compiler/build/browser claims, actual endpoint/JIT proof and preservation/restoration of the foreign cluster. All 66 policy/reader/actual-helper flow checks passed, and the collector validated the real original FAIL record. Fresh verification and release acceptance remain pending. It never relabels the full receipt or grants generic cross-commit reuse. No Actions run was started by publishing that controller.
+
 ## Included-minute constraint
 
 A read-only GitHub billing observation on 25 October showed **1,672 Linux minutes used out of 3,000 included**, a displayed 56%. The arithmetic remainder was 1,328 minutes. Gross usage of $10.03 was fully discounted, with $0 billed; the panel displayed seven days until reset. Billing can lag running jobs. No billing settings or spending authorization changed.
@@ -46,6 +54,7 @@ These changes are prepared in `codex/test-suite-efficiency-review-20261025`. The
 | Change | Evidence and limit |
 | --- | --- |
 | Move pure personnel-search checks out of database fixtures | Same-controller comparison: resets 16 → 3; reset time 8.788s → 1.519s; DB file time 10.199s → 2.100s. Unique protections retained; complete TypeScript checks passed in both focused runs. See [coverage map](TEST-OPTIMIZATION-SEARCH.md). This is one group, not an end-to-end result. |
+| Reserve local resources together | An isolated launcher requests both memory slots and the shared DB slot as one set, holds none while waiting, refuses nested upgrades, and preserves foreign/uncertain leases. All 14 private subprocess checks passed, including recognition by the actual gate helper. It is not installed in the shared runtime and cannot repair existing legacy waiters. See [local admission](LOCAL-RESOURCE-LOCKS.md). |
 | Opt-in fixture profiling | Records reset, seed, close, template setup/migration and worker cloning. It records timings, not SQL, fixture records or error contents. Inclusive/parallel timings must not be summed as elapsed time. |
 | Reuse Next compiler work | Optional pinned compiler-only cache prepared for the Linux build; production compilation always runs. YAML/shell/scope and tiny upload-budget probes passed. Cold/warm timings and actual cloud behavior remain unverified. See [build efficiency and deployment boundaries](CI-BUILD-EFFICIENCY.md). |
 | Reduce planning setup | Planning and final report verification use shallow source checkouts, pinned Node setup and the native classifier, with no package installation. The web build retains root dependencies and omits the mobile SDK. All actual test/compiler jobs retain full history and native dependencies. Native sign-in tests execute installed Expo sources, so those dependencies cannot simply be removed everywhere. Cloud savings are unmeasured. |
