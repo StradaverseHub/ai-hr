@@ -2,6 +2,31 @@
 
 This manual diagnostic follows the authenticated one-case [SQL profile40232115042](https://github.com/StradaverseHub/ai-hr/actions/runs/40232115042): the visibility query had3501 calls/3498 plans/4184.636ms planning, no observed JIT, with all time/financial guards retained. Reusing its exact query plan is a hypothesis. No saving or semantic equivalence is proved by source comparison alone.
 
+## Verified limited result — 26 October MYT
+
+[Repaired run40235881438](https://github.com/StradaverseHub/ai-hr/actions/runs/40235881438) on frozen source/controller `86b969ac9e51d05e480573cdba97776acca5397f` passed both phases. Root independently authenticated repository/run/attempt, complete job/artifact inventory and artifact12615046517 ZIP SHA256 `9402557824fd633b8a3e84a79e25f28f865efb3527480f8832fe16ed305e41b3`. It regenerated the exact copy/selection proof from frozen source and inspected raw Vitest, catalog, counter, resource and cleanup records.
+
+| Observed measure | SQL baseline | PL/pgSQL prototype |
+| --- | ---: | ---: |
+| Selected / registered cases |37 /125 |37 /125 |
+| Deliberately unselected, never passing |88 |88 |
+| Complete selected Vitest command |51.445s |44.683s |
+| Unchanged selected cash-case interval |19.258s |13.459s |
+| Canonical target-query calls |3647 |3647 |
+| Canonical target-query plans |3644 |3 |
+| Canonical target planning |4496.121ms |4.700ms |
+| PostgreSQL peak memory |448036864bytes |446189568bytes |
+| Minimum sampled source-volume available |10658598912bytes |10653765632bytes |
+| OOM kills |0 |0 |
+
+The cash interval was30.11% lower, the complete37-case command13.14% lower, and target planning99.90% lower in this one ordered pair. All original selected identities matched across phases. Function query text and every catalog property except the intended language/source wrapper stayed unchanged, including OID/owner/ACL/security/search path. Both phases passed72 actual queries across24 contexts/two tenants on one reserved non-bypass application connection, with22 distinct visibility sets; real role revocation, login archival, graph expiry and rollback recovery passed, and the entire control transaction was rolled back. Fresh containers, unchanged tracked source and owned-copy/container cleanup were independently checked.
+
+The diagnostic took218s from submission to last job completion and212 occupied job-seconds (3.533 runner-minutes, not billing). Root's private `scratchpad/visibility-plan-experiment-20261026/run-40235881438/independent-review.json` and `cost-report.json` retain calculations and caveats. Baseline ran first; normal compiler/library/OS warming may contribute to elapsed differences. Nested timing overlaps remain. This is37-case coverage per phase, not125 passing cases, a full suite, an applied migration, verified staging arrival or the under-ten-minute release goal.
+
+Actual capacity preparation fell from107406ms in the original failed attempt to314ms here. The new runner began with12810468KiB available and skipped all SDK deletion; the5-second samples above retained more than9.9GiB throughout this bounded scope. This demonstrates that component saving and observed diagnostic headroom, not full-suite capacity safety. Ordinary test/compiler/build job cleanup is still unchanged.
+
+Wider financial/authorization coverage, normal append-only migration allocation, complete release validation and build-once transport/adoption remain required. Migration allocation facts have been requested from AI dev2; its coordination reply is currently behind an automatic approval-review authorization request. No migration number is being guessed and no staging change is authorized by this diagnostic.
+
 ## Scope and boundaries
 
 The existing alpha-staging-db-diagnostics workflow adds explicit slow_suite=visibility-plan-benchmark and plan_phases=both (default), or prototype only for a repaired failed prototype. It uses one standard Ubuntu24 runner, PostgreSQL16 with JIT on and2GiB, and one Vitest worker. Baseline then prototype run sequentially on the same VM with fresh owned containers. Each migration/test subprocess retains actual exit/signal/timeout; the database job has a25-minute ceiling. This is a bounded diagnostic, not a ten-minute-release claim. Ordinary workflows, release policy and staging are unchanged.
@@ -30,7 +55,7 @@ Retain exact source-copy hashes, all raw Vitest JSON/logs, per-worker before/aft
 
 Before adoption, independently authenticate actual workflow/run/attempt/artifact bytes and inspect every required scope. Any missing/failing control, altered metadata, timeout, eviction, source change or cleanup failure remains incomplete. A diagnostic success cannot authorize release or create a full-PASS baseline. Adoption would require normal append-only migration allocation, genuine security/financial/full-gate/compiler/build checks and verified staging arrival under the applicable policy. The complete required under-ten-minute goal remains unfinished.
 
-Runtime evidence is pending; this source is prepared, not deployed. Planning behavior rationale: PostgreSQL16 [PL/pgSQL plan caching](https://www.postgresql.org/docs/16/plpgsql-implementation.html#PLPGSQL-PLAN-CACHING) and the upstream [SQL-function plan-cache change](https://www.postgresql.org/message-id/E1u02Tn-002Kp0-0Q@gemulon.postgresql.org).
+The limited genuine runtime evidence is recorded above; normal adoption and wider required coverage remain unverified. This source is not deployed. Planning behavior rationale: PostgreSQL16 [PL/pgSQL plan caching](https://www.postgresql.org/docs/16/plpgsql-implementation.html#PLPGSQL-PLAN-CACHING) and the upstream [SQL-function plan-cache change](https://www.postgresql.org/message-id/E1u02Tn-002Kp0-0Q@gemulon.postgresql.org).
 
 ## First execution and guard repair
 
