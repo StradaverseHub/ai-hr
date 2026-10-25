@@ -24,7 +24,7 @@ describe('My Team URL state preserves narrowing without inventing authority',()=
   expect(()=>stepMyTeamAnchor({view:'week',scope:'direct'},1)).toThrow(MyTeamQueryError);
  });
  it('has one explicit role boundary, excluding employee delegation and functional partners',()=>{
-  for(const role of ['employee','payroll_partner','performance_comp_partner','operator'])expect(hasTeamAccess({roles:[role]} as SessionContext),role).toBe(false);
+  for(const role of ['employee','payroll_partner','performance_comp_partner','performance_partner','operator'])expect(hasTeamAccess({roles:[role]} as SessionContext),role).toBe(false);
   for(const role of ['manager','hr_admin','super_admin'])expect(hasTeamAccess({roles:[role]} as SessionContext),role).toBe(true);
   expect(hasTeamAccess({roles:['employee'],grants:[{role:'employee',companyId:null}]} as SessionContext)).toBe(false);
  });
