@@ -87,7 +87,7 @@ export async function operatorLocalEnvironmentRepair({candidatePath,originalDire
  requireRepair(equal(await collectLocalEnvironmentRepair(args),evidence),'evidence changed after preparation');
  const revalidate=phase=>{
   requireRepair(cleanRepairHead(candidatePath)===evidence.sha&&cleanRepairHead(controllerDirectory)===evidence.controller,'source changed before deploy');
-  for(const a of evidence.artifacts){const root=a.group==='original'?evidence.originalDirectory:evidence.freshDirectory;const path=join(root,a.path),stat=lstatSync(path);requireRepair(stat.isFile()&&!stat.isSymbolicLink()&&realpathSync(path)===path&&stat.size===a.bytes&&digest(readFileSync(path))===a.sha256,'bound archive changed: '+a.group+'/'+a.path);}
+  for(const a of evidence.artifacts){const root={original:evidence.originalDirectory,fresh:evidence.freshDirectory,admission:evidence.admissionDirectory}[a.group];requireRepair(typeof root==='string','unknown archive group');const path=join(root,a.path),stat=lstatSync(path);requireRepair(stat.isFile()&&!stat.isSymbolicLink()&&realpathSync(path)===path&&stat.size===a.bytes&&digest(readFileSync(path))===a.sha256,'bound archive changed: '+a.group+'/'+a.path);}
   requireRepair(digest(readFileSync(join(candidatePath,'.gate-receipt.json')))===evidence.failedFullReceiptSha256,'original failed receipt changed');
   const status=current();
   if(phase==='baseline')requireRepair(baselineRules.readyProductionBaseline(status)===baseline,'staging baseline moved before announcement');

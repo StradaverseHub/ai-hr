@@ -1,6 +1,6 @@
 /** Read actual local artifacts and independently rebuild their coverage. No DB, SSH or writes. */
 import {execFileSync} from 'node:child_process';
-import {readFileSync,lstatSync,realpathSync} from 'node:fs';
+import {readFileSync,lstatSync,realpathSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual as equal} from 'node:util';
@@ -83,6 +83,13 @@ export async function collectLocalEnvironmentRepair({candidatePath,originalDirec
  const controller=cleanRepairHead(controllerDirectory);
  const {original,expected,artifacts}=await collectOriginalPortAttempt({candidatePath,originalDirectory,baseline});
  const read=repairArtifactReader(freshDirectory,'fresh',artifacts),json=path=>JSON.parse(read(path));
+ const admissionDirectory=freshDirectory+'-lock-environment-attempt';
+ const history=repairArtifactReader(admissionDirectory,'admission',artifacts),historyJson=path=>JSON.parse(history(path));
+ const admission={runnerHash:digest(history('run.py')),result:historyJson('result.json'),controller:history('repair-batch-11.log'),receiptBefore:history('full-receipt-before.json'),sharedBefore:historyJson('shared-before-smart-stop.json'),sharedAfter:historyJson('shared-restored.json')};
+ const priorBorrowHash=digest(history('borrow-canonical.py'));
+ const priorProvenance=historyJson('execution-provenance.json');
+ requireRepair(priorBorrowHash===P.freshScripts['borrow-canonical.py']&&priorProvenance.scripts?.['borrow-canonical.py']===priorBorrowHash&&priorProvenance.sha===P.candidate&&priorProvenance.baseline===baseline&&priorProvenance.scripts?.['run.py']===P.interruptedRunner&&priorProvenance.chunkFrom===11&&priorProvenance.chunkTo===11&&priorProvenance.workers===2&&!existsSync(join(admissionDirectory,'repair-slice')),'prior admission provenance differs or tests started');
+ history('shared-smart-stopped.json');history('restore-shared.log');
  const scriptHashes=Object.fromEntries(Object.keys(P.freshScripts).map(f=>[f,digest(read(f))]));
  requireRepair(equal(scriptHashes,P.freshScripts),'reviewed fresh scripts changed');
  const provenance=json('execution-provenance.json'),endpoint=json('canonical-environment.json'),settings=endpoint.settings;
@@ -104,8 +111,8 @@ export async function collectLocalEnvironmentRepair({candidatePath,originalDirec
  requireRepair(result.endedAt*1000<=now&&now-original.result.startedAt*1000<24*3600*1000,'evidence is future-dated or older than this bounded release');
  const currentReceipt=readFileSync(join(candidatePath,'.gate-receipt.json'),'utf8');
  requireRepair(currentReceipt===receiptAfter,'candidate failed full receipt changed after repair');
- const input={original,fresh,authorization:{scope:P.authorization,threadId:'01a16508-ab6a-7e72-8b47-5dd1c6012ace'}};
+ const input={original,fresh,admission,authorization:{scope:P.authorization,threadId:'01a16508-ab6a-7e72-8b47-5dd1c6012ace'}};
  const proof=validateLocalEnvironmentRepair(input,expected);
  requireRepair(cleanRepairHead(candidatePath)===expected.sha&&cleanRepairHead(controllerDirectory)===controller,'source changed during evidence verification');
- return {...proof,controller,candidatePath,originalDirectory:resolve(originalDirectory),freshDirectory,environmentHash:expected.environmentHash,artifacts:artifacts.sort((a,b)=>(a.group+'/'+a.path).localeCompare(b.group+'/'+b.path)),failedFullReceiptSha256:digest(receiptAfter)};
+ return {...proof,controller,candidatePath,originalDirectory:resolve(originalDirectory),freshDirectory,admissionDirectory,environmentHash:expected.environmentHash,artifacts:artifacts.sort((a,b)=>(a.group+'/'+a.path).localeCompare(b.group+'/'+b.path)),failedFullReceiptSha256:digest(receiptAfter)};
 }

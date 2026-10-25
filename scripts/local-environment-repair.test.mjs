@@ -43,8 +43,11 @@ function fixture(){
   endpoint:{candidate:P.candidate,environmentHash:expected.environmentHash,jit:'on',version:'PostgreSQL 16.14 fixture',dataDirectory:'/fixture/owned',systemIdentifier:'7700000001',connections:{application:{name:'ai_hr_app',rolsuper:false,rolbypassrls:false,server_addr:'127.0.0.1',server_port:5433,database:'ai_hr_test',database_oid:'123'},migration:{name:'postgres',server_addr:'127.0.0.1',server_port:5433,database:'ai_hr_test',database_oid:'123'}}},
   receiptBefore:JSON.stringify(originalReceipt),receiptAfter:JSON.stringify(originalReceipt),focusedLog:pass(1,2),controller:makeController(true),chunkLogs:Array.from({length:1},(_,i)=>pass(61,caseCount(i+11))),
   sharedBefore:{...shared,at:201},sharedStopped:{at:202,systemIdentifier:P.sharedSystem,dataPreserved:true,onlyLifecycleOperation:'pg_ctl smart stop',databaseMutations:0},sharedAfter:{...shared,at:299,sameClusterAndDatabaseOidsAndRoles:true,databaseMutations:0}};
- fresh.result.steps=freshCommands.map(([name,command,exitCode],i)=>({name,command,exitCode,ownedProcessGroup:2000+i,startedAt:201+i*2,endedAt:202+i*2}));
- return {input:{original,fresh,authorization:{scope:P.authorization,threadId:'01a16508-ab6a-7e72-8b47-5dd1c6012ace'}},expected};
+ fresh.result.startedAt=221;fresh.sharedBefore.at=221;fresh.sharedStopped.at=222;
+ fresh.result.steps=freshCommands.map(([name,command,exitCode],i)=>({name,command,exitCode,ownedProcessGroup:2000+i,startedAt:221+i*2,endedAt:222+i*2}));
+ const admission={runnerHash:P.interruptedRunner,result:{sha:P.candidate,success:false,error:'RuntimeError: Owned verification interrupted',ownedPgSmartStopped:false,releaseEvidence:false,startedAt:201,endedAt:220,originalWindowStartedAt:100,steps:[{name:'borrow-canonical-stop',command:['python3',directory+'/borrow-canonical.py','stop'],exitCode:0},{name:'repair-batch-11',command:['bash','scripts/gate-chunked.sh']}]},
+  controller:'▸ test lock: acquiring 1 more slot(s) — blocks until running vitest/tsc/gates release them\ntestlock: gate-b waiting; held by: board3-local081-db \n',receiptBefore:fresh.receiptBefore,sharedBefore:structuredClone({...shared,at:201}),sharedAfter:structuredClone({...shared,at:219,sameClusterAndDatabaseOidsAndRoles:true,databaseMutations:0})};
+ return {input:{original,fresh,admission,authorization:{scope:P.authorization,threadId:'01a16508-ab6a-7e72-8b47-5dd1c6012ace'}},expected};
 }
 test('Complete original failed attempt stays FAIL; separate successful batch11 supplies complete test coverage',()=>{
  const {input,expected}=fixture(),proof=validateLocalEnvironmentRepair(input,expected);
@@ -74,6 +77,11 @@ const refusals={
  'original endpoint different error':a=>a.original.chunkLogs[10]=a.original.chunkLogs[10].replace('Actual Reports role/database proof refused.','other failure'),
  'missing human scope':a=>a.authorization.scope='rerun only one batch',
  'fresh changed environment':a=>a.fresh.environmentHash='b'.repeat(64),
+ 'missing prior failed admission':a=>delete a.admission,
+ 'prior admission relabelled':a=>a.admission.result.success=true,
+ 'prior admission ran tests':a=>a.admission.controller+=' Test Files  61 passed (61)\n',
+ 'prior admission source changed':a=>a.admission.runnerHash='f'.repeat(64),
+ 'prior admission restore changed':a=>a.admission.sharedAfter.roles=[],
  'fresh wrong range':a=>a.fresh.range.to=16,
  'fresh more workers':a=>a.fresh.range.workers=4,
  'fresh reviewed script changed':a=>a.fresh.scriptHashes['run.py']='e'.repeat(64),

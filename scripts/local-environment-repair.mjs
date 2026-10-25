@@ -8,6 +8,7 @@ export const LOCAL_REPAIR = Object.freeze({
  candidate:'f20275ffa150ecc41b745f625f085308ea283379',
  tree:'1b38bb08fddbcefb682240e42871db9d1869ad48',
  baseline:'c98bfed60f6330b57f5a67d959ce6e3757df3b53',
+ interruptedRunner:'079854f04638b40b6717bd804123028ea6e3d15afb3356b5ff3713bccfd00e91',
  originalRunner:'2a56d35bd8b415aecb4423132cc7014fd780dc0cbd09d1b2c9a9a04f9918d7ba',
  originalImpactFingerprint:'54bbf0f488b126723fa8e3dae89346aae1e26f9c6093e2ae9ba0d58439bc4946',
  chunks:16, from:11, to:11, workers:2,
@@ -15,7 +16,7 @@ export const LOCAL_REPAIR = Object.freeze({
  test:'test/report-fixture-connection.test.ts',
  case:'actual Reports fixture loopback endpoint proof > accepts actual PostgreSQL host addresses while inet text retains its network prefix',
  authorization:'Wait, if 12-16 passed, we only need to rerun gate 11 for deployment right? Dont need to rerun 11-16',
- freshScripts:Object.freeze({'run.py':'079854f04638b40b6717bd804123028ea6e3d15afb3356b5ff3713bccfd00e91','borrow-canonical.py':'f656711ac6fc8857f1a245ab73b23bd42a08f889c879b05420dc4b7a30bd9f8c','capture-environment.mjs':'a0a113412e17a94c332ee83c1b7e59ee2475b9a2c7f85b77806d1de04946a979'}),
+ freshScripts:Object.freeze({'run.py':'6ec218fa90c0b2cc8443d2182d14ad22c4ced5d6dde1610260f6b8eef2a55e0f','borrow-canonical.py':'f656711ac6fc8857f1a245ab73b23bd42a08f889c879b05420dc4b7a30bd9f8c','capture-environment.mjs':'a0a113412e17a94c332ee83c1b7e59ee2475b9a2c7f85b77806d1de04946a979'}),
 });
 export const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const plain=text=>text.replace(/\u001b\[[0-9;]*m/g,'');
@@ -129,12 +130,20 @@ export function validateOriginalPortAttempt(input,expected){
  return {noDb,chunks,endedAt:r.endedAt,startedAt:r.startedAt,originalResult:'FAIL'};
 }
 
-export function validateLocalEnvironmentRepair({original,fresh,authorization},expected){
+export function validateLocalEnvironmentRepair({original,fresh,admission,authorization},expected){
  const old=validateOriginalPortAttempt(original,expected);
  requireRepair(authorization?.scope===LOCAL_REPAIR.authorization&&authorization.threadId==='01a16508-ab6a-7e72-8b47-5dd1c6012ace','explicit human resume scope missing');
  requireRepair(fresh.sha===expected.sha&&fresh.baseline===expected.baseline&&fresh.environmentHash===expected.environmentHash,'fresh source/baseline/environment changed');
  requireRepair(equal(fresh.inventory,original.inventory),'fresh inventory/partition changed');
  requireRepair(fresh.range?.chunks===16&&fresh.range.from===11&&fresh.range.to===11&&fresh.range.workers===2,'fresh range/worker count differs');
+ const a=admission?.result;
+ requireRepair(admission?.runnerHash===LOCAL_REPAIR.interruptedRunner&&a?.sha===expected.sha&&a.success===false&&a.error==='RuntimeError: Owned verification interrupted'&&a.ownedPgSmartStopped===false&&a.releaseEvidence===false,'prior interrupted admission missing/altered');
+ requireRepair(a.startedAt>=old.endedAt&&a.endedAt>a.startedAt&&a.endedAt<=fresh.result.startedAt&&a.originalWindowStartedAt===old.startedAt,'prior admission chronology differs');
+ requireRepair(a.steps?.length===2&&a.steps[0].name==='borrow-canonical-stop'&&a.steps[0].exitCode===0&&equal(a.steps[0].command,['python3',fresh.directory+'/borrow-canonical.py','stop'])&&a.steps[1].name==='repair-batch-11'&&equal(a.steps[1].command,['bash','scripts/gate-chunked.sh'])&&a.steps[1].exitCode===undefined&&a.steps[1].endedAt===undefined,'prior admission process scope differs');
+ requireRepair(admission.controller.trim()==='▸ test lock: acquiring 1 more slot(s) — blocks until running vitest/tsc/gates release them\ntestlock: gate-b waiting; held by: board3-local081-db','prior admission did not stop before tests');
+ requireRepair(admission.receiptBefore===fresh.receiptBefore,'prior admission changed the failed receipt');
+ const ab=admission.sharedBefore,aa=admission.sharedAfter;
+ requireRepair(ab?.identity?.endsWith('|'+LOCAL_REPAIR.sharedSystem)&&aa?.identity===ab.identity&&Array.isArray(ab.databases)&&ab.databases.length>0&&Array.isArray(ab.roles)&&ab.roles.length>0&&equal(ab.databases,aa.databases)&&equal(ab.roles,aa.roles)&&aa.sameClusterAndDatabaseOidsAndRoles===true&&aa.databaseMutations===0&&aa.at<=a.endedAt,'prior admission shared restoration missing/changed');
  const r=fresh.result;
  requireRepair(r.sha===expected.sha&&r.success===true&&r.error===null&&r.ownedPgSmartStopped===true&&r.privatePort===5433&&r.releaseEvidence===false&&r.sliceOnly===true&&r.fullReceiptRemains==='FAIL','fresh process incomplete/failed or receipt relabelled');
  requireRepair(r.originalWindowStartedAt===old.startedAt&&r.startedAt>=old.endedAt&&r.endedAt>r.startedAt&&r.endedAt<=old.startedAt+8*3600,'fresh process exceeded original bounded window or overlapped original');
@@ -154,5 +163,5 @@ export function validateLocalEnvironmentRepair({original,fresh,authorization},ex
  const before=fresh.sharedBefore,after=fresh.sharedAfter,stopped=fresh.sharedStopped;
  requireRepair(before?.identity?.endsWith('|'+LOCAL_REPAIR.sharedSystem)&&after?.identity===before.identity&&Array.isArray(before.databases)&&before.databases.length>0&&Array.isArray(before.roles)&&before.roles.length>0&&equal(before.databases,after.databases)&&equal(before.roles,after.roles)&&after.sameClusterAndDatabaseOidsAndRoles===true&&after.databaseMutations===0,'shared database restoration missing/changed');
  requireRepair(stopped?.systemIdentifier===LOCAL_REPAIR.sharedSystem&&stopped.dataPreserved===true&&stopped.onlyLifecycleOperation==='pg_ctl smart stop'&&stopped.databaseMutations===0&&Number.isFinite(before.at)&&stopped.at>=before.at&&after.at>stopped.at&&after.at<=r.endedAt,'shared stop/restore provenance missing');
- return {policyVersion:LOCAL_REPAIR.version,tier:LOCAL_REPAIR.tier,sha:expected.sha,baseline:expected.baseline,originalResult:'FAIL',coverage:{files:expected.all.length,nodb:old.noDb,retained:old.chunks.filter(p=>p.number!==11),fresh:repaired},compiler:'separate-original-whole-typecheck',build:'separate-original-production-build',browsers:'separate-original-three-engine-checks',arrivalVerified:false};
+ return {policyVersion:LOCAL_REPAIR.version,tier:LOCAL_REPAIR.tier,sha:expected.sha,baseline:expected.baseline,originalResult:'FAIL',priorAdmission:'INTERRUPTED_BEFORE_TESTS',coverage:{files:expected.all.length,nodb:old.noDb,retained:old.chunks.filter(p=>p.number!==11),fresh:repaired},compiler:'separate-original-whole-typecheck',build:'separate-original-production-build',browsers:'separate-original-three-engine-checks',arrivalVerified:false};
 }
