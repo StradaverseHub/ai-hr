@@ -7,6 +7,7 @@ import { LeaveReviewedEffectError, previewLeaveDeduction, requestLeave, type Rev
 import { setAttendancePolicy } from '../packs/attendance/service';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
+import { readOwnLeaveSubmissionReferenceTx } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -80,6 +81,30 @@ describe('reviewed own-leave precondition at the canonical write', () => {
       expect(events.findIndex(event => event.type === 'holiday.completeness.warned')).toBeGreaterThan(submittedIndex);
       expect(events.filter(event => event.id === result.submittedEventId)).toHaveLength(1);
     });
+  });
+
+  it('reads only the canonical own submission references for the original human actor', async () => {
+    const userId = await createAppUser(base.tenantId, ctx.personId!, 'employee');
+    const employeeCtx: SessionContext = { ...ctx, userId, roles: ['employee'],
+      grants: [{ role: 'employee', companyId: null }] };
+    const result = await withTenant(employeeCtx, tx => requestLeave(employeeCtx,
+      { ...args, reason: 'Private reference-reader sentinel' }, tx, reviewed));
+    const evidence = await withTenant(employeeCtx, tx => readOwnLeaveSubmissionReferenceTx(
+      tx, employeeCtx, result.leaveRequestId, result.submittedEventId!));
+    expect(evidence).toEqual({
+      request: { id: result.leaveRequestId, tenantId: base.tenantId, employmentId: args.employmentId,
+        personId: ctx.personId, companyId: base.companyId },
+      event: { id: result.submittedEventId, tenantId: base.tenantId, aggregateType: 'leave-request',
+        aggregateId: result.leaveRequestId, eventType: 'leave-request.submitted', actorType: 'user',
+        actorId: employeeCtx.userId, subjectEmploymentId: args.employmentId },
+    });
+    expect(JSON.stringify(evidence)).not.toContain('Private reference-reader sentinel');
+    // A different real login for the SAME person has no receipt from this original actor. Even its
+    // HR role and own-person row visibility must not substitute for that submitted-event binding.
+    expect(await withTenant(ctx, tx => readOwnLeaveSubmissionReferenceTx(
+      tx, ctx, result.leaveRequestId, result.submittedEventId!))).toBeNull();
+    expect(await withTenant(employeeCtx, tx => readOwnLeaveSubmissionReferenceTx(
+      tx, employeeCtx, result.leaveRequestId, result.leaveRequestId))).toBeNull();
   });
 
   it('keeps the request and returned event inside the enclosing rollback boundary', async () => {

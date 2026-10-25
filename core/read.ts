@@ -1528,6 +1528,39 @@ export function listLeaveRequests(
 /** One row of the leave-request history table (shared projection + resolved workingDates). */
 export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[number];
 
+/** Minimal own-submission references for a server-side receipt reader. The caller must supply its
+ * current authenticated withTenant transaction; this neither establishes fresh Assistant authority
+ * nor reads an action record. Both canonical source rows must be visible through RLS, and the same
+ * delegation trim as the flat leave reader remains in force. Explicit own-person/actor predicates
+ * narrow that access even for HR admins. No reason, balance, status, approver or event payload is
+ * materialized. Returning references does not prove an enclosing command committed or authorize a
+ * new effect. The lifecycle owner must still bind them to its stored receipt/current identity. */
+export async function readOwnLeaveSubmissionReferenceTx(
+  tx: Tx, ctx: SessionContext, requestId: string, submittedEventId: string,
+) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  if (!ctx.userId || !ctx.personId) return null;
+  const rows = await tx.select({
+    request: { id: leaveRequest.id, tenantId: leaveRequest.tenantId,
+      employmentId: leaveRequest.employmentId, personId: employment.personId, companyId: employment.companyId },
+    event: { id: domainEvent.id, tenantId: domainEvent.tenantId, aggregateType: domainEvent.aggregateType,
+      aggregateId: domainEvent.aggregateId, eventType: domainEvent.eventType, actorType: domainEvent.actorType,
+      actorId: domainEvent.actorId, subjectEmploymentId: domainEvent.subjectEmploymentId },
+  }).from(leaveRequest)
+    .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .innerJoin(domainEvent, and(eq(domainEvent.id, submittedEventId),
+      eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateId, leaveRequest.id),
+      eq(domainEvent.aggregateType, 'leave-request'), eq(domainEvent.eventType, 'leave-request.submitted'),
+      eq(domainEvent.actorType, 'user'), eq(domainEvent.actorId, ctx.userId),
+      eq(domainEvent.subjectEmploymentId, leaveRequest.employmentId)))
+    .where(and(eq(leaveRequest.id, requestId), eq(leaveRequest.tenantId, ctx.tenantId),
+      eq(employment.personId, ctx.personId))).limit(1);
+  const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, row => row.request.employmentId);
+  return scoped[0] ?? null;
+}
+
 /**
  * Advanced Search & Filter for Leave Management (feedback 0773bda9) — the paginated, filterable, sortable
  * read behind the /leave admin surface. Mirrors `listEmployeesPage`: returns { rows, total } so the page can

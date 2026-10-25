@@ -803,6 +803,25 @@ recheck the exact reviewed effect at the canonical write, commit the request/exa
 and completed action receipt together, and reconcile uncertain transport outcomes. It must not
 mistake this pending store or its digests for that missing authority, concurrency or execution proof.
 
+### Source-only canonical submission reference reader
+
+The canonical read owner now has an unmounted `readOwnLeaveSubmissionReferenceTx` draft. In the
+caller's transaction it joins the exact request and submitted-event IDs through the existing leave,
+employment, person and type sources, with RLS and the flat leave reader's delegation filter. It
+additionally narrows to the caller's own person and original human event actor, including for an HR
+admin. It selects only request identity/company references and submitted-event identity/actor/subject
+references; it never materializes reason, balance, status, approvers or event payload. An authored DB
+regression uses a real employee submission and fresh read, refuses another real login for the same
+person even with an HR role, and refuses a mismatched event reference.
+
+This is **UNRUN** source preparation. Syntax parsing and diff checks are not database/RLS proof.
+The helper neither establishes fresh Assistant authority nor reads completed action storage; a
+future server-only lifecycle adapter must obtain that authority and bind these source projections to
+the same stored action/receipt. There is no mounted confirmation/reconciliation endpoint, new effect,
+provider call or migration. The existing concurrency/atomic-completion and security acceptance remain
+unfinished. The P branch's canonical read change must be integrated with the actually released
+baseline before runtime acceptance; it is excluded from the current H release and Mobile handback.
+
 ### Source-only representative display
 
 `components/assistant/own-leave-review-card.tsx` consumes only the strict public card shape and is not
