@@ -5,13 +5,30 @@ on:
     inputs:
       candidate_ref: {description: Original frozen candidate branch, required: true, type: string}
       expected_sha: {description: Exact original source commit, required: true, type: string}
+      memory_gib:
+        description: PostgreSQL memory cap for measured A/B comparison
+        required: false
+        default: '1'
+        type: choice
+        options: ['1', '2']
+      baseline_only:
+        description: Explicit released-c98 original organization-file comparison
+        required: false
+        default: false
+        type: boolean
+      isolated_only:
+        description: Skip the original batch; compare only the two original isolated files
+        required: false
+        default: false
+        type: boolean
 permissions: {contents: read, actions: read}
 concurrency:
-  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}
+  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_CI_PG_MEMORY_GIB: ${{ inputs.memory_gib }}
 jobs:
   resolve:
     runs-on: ubuntu-24.04
@@ -32,7 +49,8 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      matrix: {probe: [original-batch, isolated-r298, isolated-organization]}
+      matrix:
+        probe: ${{ fromJSON(inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
     defaults: {run: {working-directory: source}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803

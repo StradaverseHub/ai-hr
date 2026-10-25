@@ -4,6 +4,8 @@ set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${CI:-}" == true ]] || { echo 'GitHub CI only' >&2; exit 2; }
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${AIHR_CI_UNIT:-}" =~ ^db-[1-4]$ ]] || exit 2
 [[ "${1:-}" == reset || "${1:-}" == stop || "${1:-}" == stats ]] || exit 2
+memory_gib="${AIHR_CI_PG_MEMORY_GIB:-1}"
+[[ "$memory_gib" == 1 || "$memory_gib" == 2 ]] || exit 2
 name="aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}"
 if docker container inspect "$name" >/dev/null 2>&1; then
   [[ "$(docker inspect --format '{{index .Config.Labels "aihr-owner"}}' "$name")" == "$name" ]] || { echo 'Container ownership mismatch' >&2; exit 2; }
@@ -15,7 +17,7 @@ fi
 [[ "${1:-}" == reset ]] || exit 2
 # Data lives on the disposable runner disk, not a RAM disk. Removal also removes its anonymous volume.
 docker run -d --name "$name" --label "aihr-owner=$name" --network host \
-  --memory=1g --memory-swap=1g --shm-size=128m \
+  --memory="${memory_gib}g" --memory-swap="${memory_gib}g" --shm-size=128m \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e TZ=Asia/Kuala_Lumpur postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 \
   -c listen_addresses=127.0.0.1 -c port=5433 -c fsync=off -c synchronous_commit=off \
   -c full_page_writes=off -c wal_level=minimal -c max_wal_senders=0 \

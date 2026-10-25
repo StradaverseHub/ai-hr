@@ -6,22 +6,24 @@ import {fileURLToPath} from 'node:url';
 import {hostHealth} from '../host-health.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.platform!=='linux')throw Error('Disposable Linux CI only');
 const fixture=JSON.parse(readFileSync(new URL('./db-original-batch.json',import.meta.url),'utf8'));
-const mode=process.argv[2],modes={'original-batch':fixture.files,'isolated-r298':['test/r298-payroll-sections-gate.test.ts'],'isolated-organization':['test/organization-list-detail.test.ts']};
+const mode=process.argv[2],modes={'original-batch':fixture.files,'isolated-r298':['test/r298-payroll-sections-gate.test.ts'],'isolated-organization':['test/organization-list-detail.test.ts'],'isolated-organization-baseline':['test/organization-list-detail.test.ts']};
 const files=modes[mode];if(!files||files.length>64)throw Error('Invalid diagnostic mode');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const sha=git('rev-parse','HEAD');if(sha!==fixture.source||git('status','--porcelain'))throw Error('Diagnostic requires unchanged original source');
-const unit=mode==='isolated-organization'?'db-2':'db-3';process.env.AIHR_CI_UNIT=unit;
+const sha=git('rev-parse','HEAD'),expectedSource=mode==='isolated-organization-baseline'?'c98bfed60f6330b57f5a67d959ce6e3757df3b53':fixture.source;if(sha!==expectedSource||git('status','--porcelain'))throw Error('Diagnostic requires unchanged original source');
+const unit=mode.includes('organization')?'db-2':'db-3';process.env.AIHR_CI_UNIT=unit;
 const name=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${unit}`;
 const out=join(process.env.RUNNER_TEMP,'diagnostic-db-'+mode);mkdirSync(out,{recursive:true});
 const postgres=fileURLToPath(new URL('../postgres.sh',import.meta.url));
 const invoke=(cmd,args,opts={})=>spawnSync(cmd,args,{encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,...opts});
-const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,files,postgresMemoryBytes:1073741824,workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
+const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,sourceRole:mode.endsWith('-baseline')?'released-staging-baseline':'original-failed-candidate',migrationJournalEntries:JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')).entries.length,files,postgresMemoryBytes:1073741824*Number(process.env.AIHR_CI_PG_MEMORY_GIB??1),workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
 let logger,fd,sampler;
 function snapshot(label){
  const state=invoke('docker',['inspect','--format','{{json .State}}',name]);
  const memory=invoke('docker',['exec',name,'sh','-c','for f in memory.events memory.current memory.peak memory.max; do echo "$f"; cat "/sys/fs/cgroup/$f" 2>/dev/null || true; done']);
  const stats=invoke('docker',['stats','--no-stream','--format','{{json .}}',name]);
- appendFileSync(join(out,'postgres-snapshots.jsonl'),JSON.stringify({label,time:new Date().toISOString(),state:state.stdout,stateExit:state.status,memory:memory.stdout,memoryExit:memory.status,stats:stats.stdout,statsExit:stats.status})+'\n');
+ const activitySql="SELECT coalesce(json_agg(row_to_json(a)),'[]'::json) FROM (SELECT pid,datname,state,backend_type,wait_event_type,wait_event,extract(epoch FROM clock_timestamp()-query_start) AS query_seconds,pg_blocking_pids(pid) AS blocking_pids,left(query,1200) AS query FROM pg_stat_activity WHERE datname LIKE 'ai_hr_%' AND pid<>pg_backend_pid() ORDER BY pid LIMIT 100) a";
+ const activity=invoke('docker',['exec','-e','PGCONNECT_TIMEOUT=3','-e','PGOPTIONS=-c statement_timeout=2000',name,'psql','-U','postgres','-p','5433','-d','postgres','-Atc',activitySql],{timeout:10000});
+ appendFileSync(join(out,'postgres-snapshots.jsonl'),JSON.stringify({label,time:new Date().toISOString(),state:state.stdout,stateExit:state.status,memory:memory.stdout,memoryExit:memory.status,stats:stats.stdout,statsExit:stats.status,activity:activity.stdout,activityExit:activity.status,activityError:activity.stderr?.slice(0,3000)})+'\n');
 }
 try{
  if(!report.healthBefore.ok)throw Error('Insufficient runner headroom');
