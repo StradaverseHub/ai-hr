@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {validateFixture, receiptExpectation, localesForActor, bounded} from './orchestrator-browser.mjs';
+import {validateFixture, receiptExpectation, localesForActor, bounded, observed} from './orchestrator-browser.mjs';
 
 const id = number => `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
 function manifest(reused = false) {
@@ -87,4 +87,16 @@ test('bounded operations preserve ordinary results and errors', async () => {
   assert.equal(await bounded(Promise.resolve('finished'), 'Fictional response', 50), 'finished');
   const error = new Error('Transport failed');
   await assert.rejects(bounded(Promise.reject(error), 'Fictional response', 50), received => received === error);
+});
+
+test('observed completion requires the actual outcome, not merely an action response', async () => {
+  let calls = 0;
+  await observed(async () => ++calls === 2, 'Saved preference', 1000);
+  assert.equal(calls, 2);
+  await assert.rejects(observed(async () => false, 'Unsaved preference', 5), /Unsaved preference/);
+});
+test('outcome observation bounds a stalled read and preserves real read errors', async () => {
+  await assert.rejects(observed(() => new Promise(() => {}), 'Stalled read', 5), /Stalled read/);
+  const error = new Error('Read refused');
+  await assert.rejects(observed(async () => { throw error; }, 'Saved preference', 50), received => received === error);
 });

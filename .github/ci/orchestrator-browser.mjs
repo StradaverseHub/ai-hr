@@ -51,6 +51,18 @@ export async function bounded(operation, label, milliseconds = 15_000) {
   } finally { clearTimeout(timer); }
 }
 
+export async function observed(predicate, label, milliseconds = 15_000) {
+  assert(Number.isSafeInteger(milliseconds) && milliseconds > 0);
+  const deadline = Date.now() + milliseconds;
+  do {
+    if (await bounded(Promise.resolve().then(predicate), label, Math.max(1, deadline - Date.now()))) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(100, remaining));
+  } while (Date.now() < deadline);
+  throw new Error(`${label} was not observed within ${milliseconds}ms`);
+}
+
 export function validateFixture(value, reused) {
   assert.equal(value?.preparationOnly, true); assert.equal(value?.reused, reused);
   assert.equal(value?.scenario, 'prepare'); assert.equal(value?.version, 1); assert.equal(value?.tenantId, tenant);
@@ -141,7 +153,9 @@ async function main() {
     assert(!child.error && child.status === 0 && child.signal === null, label + ' did not exit naturally with success');
     return child.stdout;
   };
-  const psql = query => run('query-' + report.phases.length, 'docker', ['exec', container, 'psql', '-U', 'postgres', '-p', '5433', '-d', target, '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], pgEnv).trim();
+  const psql = query => run('query-' + report.phases.length, 'docker', ['exec', '-e', 'PGCONNECT_TIMEOUT=2',
+    '-e', 'PGOPTIONS=-c statement_timeout=2000', container, 'psql', '-U', 'postgres', '-p', '5433', '-d', target,
+    '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], pgEnv, 5000).trim();
   const fixture = scenario => JSON.parse(run('fixture-' + scenario + '-' + report.phases.length,
     process.execPath, ['--import', 'tsx', 'scripts/dev-fixture-orchestrator-harness.ts', scenario]));
   const captureFailure = async () => {
@@ -220,10 +234,15 @@ async function main() {
             && Boolean(response.request().headers()['next-action']), {timeout: 15_000}),
           tour.getByRole('button', {name: onboarding.skip, exact: true}).click(),
         ]);
-        checkpoint('onboarding-response-body', {actor: actor.key, status: completed.status()});
-        await bounded(completed.finished(), 'Onboarding response completion');
+        checkpoint('onboarding-observe-saved-state', {actor: actor.key, status: completed.status()});
+        assert(completed.ok(), 'Onboarding action returned an unsuccessful response');
         await tour.waitFor({state: 'hidden'});
-        assert.equal(psql(`select onboarded_at is not null from app_user where id = '${actor.userId}'`), 't');
+        // UI dismissal alone is optimistic. Require its actual saved preference, without relying
+        // on a response-body stream ending and without writing fixture/browser state ourselves.
+        await observed(() => {
+          const saved = psql(`select onboarded_at is not null from app_user where id = '${actor.userId}'`);
+          assert(['t', 'f'].includes(saved)); return saved === 't';
+        }, 'Saved onboarding preference');
         (report.onboardingDismissed ??= []).push(actor.key);
       }
       checkpoint('login-complete', {actor: actor.key});
@@ -237,9 +256,11 @@ async function main() {
         page.waitForResponse(r => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action']), {timeout: 15_000}),
         page.locator(`button[name="locale"][value="${locale}"]`).click(),
       ]);
-      checkpoint('locale-response-body', {actor, locale, status: response.status()});
-      await bounded(response.finished(), 'Locale response completion');
-      assert.equal((await context.cookies(base)).find(cookie => cookie.name === 'NEXT_LOCALE')?.value, locale);
+      checkpoint('locale-observe-rendered-state', {actor, locale, status: response.status()});
+      assert(response.ok(), 'Locale action returned an unsuccessful response');
+      await observed(async () => (await context.cookies(base)).find(cookie => cookie.name === 'NEXT_LOCALE')?.value === locale,
+        'Saved locale cookie');
+      await page.waitForFunction(expected => document.documentElement.lang === expected, locale, {timeout: 15_000});
       checkpoint('locale-complete', {actor, locale});
     };
     const noPrivateText = async page => assert(!(await page.content()).includes(second.privateSentinel), 'Private receipt text reached HTML');
