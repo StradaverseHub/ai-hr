@@ -1005,3 +1005,70 @@ Local verification is required in this session under the user's no-GitHub-Action
 Run the classifier-selected exact-candidate release gate after outcome evidence; only then use the
 canonical release and verify service/build/source/ledger arrival. Keep main/alpha at the same VERIFIED
 commit per standing owner policy. These remain planned acceptance requirements, not current PASS claims.
+
+
+### Owner requirement: self-improving agents, orchestrator and shared harness
+
+**Decision (2026-10-26 KL):** Every domain agent, the orchestrator tied to the Assistant, and the
+shared harness must support measurable self-improvement. This is required product scope, not an
+optional later label. The Assistant remains the human interaction and confirmation boundary; the
+orchestrator plans and coordinates its scoped tools/agents behind that boundary. A separate chat,
+agent or improvement worker cannot inherit greater authority from orchestration.
+
+Use one versioned improvement loop: authorized feedback and verified run outcomes → categorized
+failure/opportunity → proposed candidate → isolated replay/evaluation → security and quality gates →
+controlled promotion → monitored outcomes → rollback when required. Capture user corrections,
+rejected suggestions, unresolved questions, canonical validation results, failed/refused/uncertain
+runs, import rework and measured cost/latency. A model self-rating or unverified user assertion is not
+a ground-truth label. Preserve provenance and distinguish observations from reviewed labels.
+
+- **Domain agents:** improve prompts, task plans, explanation clarity, mapping suggestions and tool
+  selection against domain-specific evaluation cases. Retain canonical financial/leave/attendance
+  rules; do not learn new policy or missing HR facts from an example. Learn from successful AND failed
+  cases and review error categories rather than simply optimize completion counts.
+- **Orchestrator:** evaluate routing, decomposition, handoff quality, tool ordering, recovery,
+  cancellation, repeated-work avoidance and budget use across the Assistant's actual end-to-end jobs.
+  No routing shortcut may bypass human confirmation, current permission checks or canonical validators.
+- **Harness:** turn observed failures into proposed regression cases and improve diagnostic coverage,
+  typed contracts, bounded retries, reconciliation and evaluation instrumentation. Harness/code/tool
+  changes use the repository's reviewed implementation and exact-candidate verification pipeline.
+  An executing model has no shell, repository-writing or deploy credential to patch its own guardrails.
+
+Version agent definitions, prompts, tool schemas, orchestration policy, model/provider configuration,
+evaluation datasets and harness code. Record which versions produced each result and improvement.
+Compare candidates with the same baseline and protected holdout cases, including adversarial security,
+not solely examples seen while learning. Check task accuracy, factual grounding, refusal correctness,
+canonical successful effects, duplicate prevention, human corrections, privacy, latency and cost.
+Reject regressions in mandatory access/privacy or money/data-integrity invariants even if average
+quality or speed improves. Include tests that deliberately attempt to weaken these invariants.
+
+Promotions are bounded by an independently owned policy: candidate generation and sandbox evaluation
+can run automatically within explicit tenant budgets; only the permitted change classes may use
+validated automatic promotion. Authorization rules, security/evaluation thresholds, tool capabilities,
+provider data policies, financial rules, production datasets and rollout eligibility cannot be relaxed
+by the candidate or evaluator itself. High-impact changes use the existing owner/review/release path.
+The improvement loop cannot approve its own security exception or remove a failing release test.
+No infinite self-modification/retry cycle: cap iterations, concurrency, spend and wall time, and pause
+on repeated failure, leakage suspicion, degraded outcomes or insufficient evidence.
+
+Use offline/redacted replays first, shadow recommendations next and a limited opted-in rollout only
+after eligibility. Promotion must have a reversible version pointer and a recorded reason/evidence;
+rollback or disable the new version when monitoring finds regressions. Shadow work cannot make
+business writes. Test actual rollback, interrupted promotion and in-flight version consistency.
+
+Learning data remains permission-scoped. Do not pool raw conversations, import rows, salary or
+employee facts into shared prompts, embeddings, memory, training sets or provider fine-tuning.
+Tenant/user authorization, consent where applicable, retention and erasure govern feedback storage
+and reuse. A current user may not retrieve another user's historical learning examples. Cross-tenant
+product improvements must use approved de-identified/synthetic cases and privacy review; a claimed
+anonymization is not evidence. Provider model training or fine-tuning requires a separate explicit
+approved data policy. Revocation and erasure must propagate to derived feedback and replay datasets.
+
+Acceptance for EACH agent AND the Assistant-linked orchestrator/harness includes: a reproducible
+baseline; one observed failure converted into a reviewed improvement candidate; measured before/after
+results on relevant held-out cases; unchanged negative access/security results; bounded evaluation
+cost; honest failure/uncertainty reporting; versioned promotion receipt; and verified rollback. A
+candidate must demonstrate improved outcomes without lowering security or silently reducing coverage.
+Until that loop is implemented and proven for a component, label it learning-capable/planned rather
+than claiming it is already self-improving. The current H release does not acquire these capabilities
+merely because this roadmap records them.
