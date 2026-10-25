@@ -1,5 +1,7 @@
 # AI HR
 
+> **Repository and environments:** [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr) is the sole repository. `alpha` targets the existing staging server; `main` is reserved for the new live installation. Read [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md) before building deployment automation.
+
 A modern, AI-assisted Human Resource Management System (HRMS).
 
 > **Status:** Active development — the Malaysia payroll/compliance core is **built and tested**.

@@ -1,5 +1,7 @@
 # ai-hr — how to work here
 
+> **Repository and release targets:** The sole repository is [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr). Before changing branches, CI/CD or deployments, read [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md): `alpha` owns the existing host as staging; `main` is reserved for a separate future live installation. This owner decision supersedes older main-to-existing-host release instructions below.
+
 The only instruction file. AGENTS.md and HANDOFF.md were retired on 2026-09-11; do not recreate a
 status file. Live state is read from git, the server and the board (§3), never from a document.
 History lives in `docs/HANDOFF-HISTORY.md` (rounds, newest first) and `docs/adr/` (decisions).

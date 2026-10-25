@@ -1,3 +1,7 @@
+## Branch alignment — 2026-10-25
+
+Owner requested that `main` and `alpha` share one commit for this and future verified releases until revoked. Merged existing main CI/documentation history into released Board 3 alpha without application conflicts; preserved both parent histories and unrelated main checkout WIP. Board 3 remains deployed at application source f20275ffa150ecc41b745f625f085308ea283379; this integration commit is not a new deployment. Staging remains the existing host and a separate live installation is not provisioned. Canonical policy is recorded in docs/REPOSITORY-AND-ENVIRONMENTS.md. No gate rerun or server restart was needed for branch integration.
+
 ## board1-approved-four — 2026-10-25 · main@c98bfed60f6330b57f5a67d959ce6e3757df3b53 · migrations 0581–0586, 0590
 
 **Released scope.** The four complete approved Board 1 plans: Schedule Group Configuration (7500c083), Centralised Overtime Settings (dc2fee3a), Payroll Basic Variance (d0a3c225) and Employee Home (d4989b16). Approved descriptions, expected behavior/functions, attachments and plan revisions 1/1/2/1 were retained. Native Home was outside the approved boundary; responsive mobile web is included. Board 3, AI and Mobile are not represented as deployed here.
