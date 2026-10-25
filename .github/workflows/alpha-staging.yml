@@ -186,6 +186,7 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -198,8 +199,8 @@ jobs:
           path: source
           fetch-depth: 1
           persist-credentials: false
-      - uses: ./automation/.github/actions/setup-alpha
-        with: {mobile: 'false'}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
       - run: node ../automation/.github/ci/plan.mjs > "$RUNNER_TEMP/ci-plan.json"
       - name: Derive execution matrix from complete trusted manifest
         id: matrix
@@ -248,7 +249,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {node: '20'}
+        with: {node: '20', mobile: 'false'}
       - run: pnpm build
         env: {NODE_OPTIONS: --max-old-space-size=6144}
   test:
@@ -343,6 +344,7 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
     steps:
       - name: Every prerequisite succeeded
         working-directory: ${{ github.workspace }}
@@ -359,8 +361,8 @@ jobs:
           path: source
           fetch-depth: 1
           persist-credentials: false
-      - uses: ./automation/.github/actions/setup-alpha
-        with: {mobile: 'false'}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: ${{ runner.temp }}/aihr-ci
