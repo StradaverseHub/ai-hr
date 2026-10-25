@@ -483,6 +483,18 @@ Reopening the request rechecks current source access; a frozen receipt does not 
 revocation. Display current canonical approval status separately from **Submission recorded**.
 Notifications remain owned by existing event projection; delivery failure cannot resubmit leave.
 
+Source preparation now makes that display boundary fail closed in
+`core/assistant-actions/own-leave-reconciliation.ts`: a completed lifecycle/receipt pair alone returns
+**Checking submission**. To name the recorded request, the interpreter additionally requires minimal
+server-only projections of the currently readable canonical request and its actual submitted event.
+The request must match the receipt reference and current tenant/person/employment/company binding;
+the exact event must match the receipt reference, request aggregate, submitting user and subject.
+Wrong event kinds/actors, missing evidence, transplanted references and extra private/status fields
+remain unconfirmed. Those projections are not a posted capability, and parsing does not establish
+authorization or provenance. The actual authorized canonical read owner and completed-state storage
+are still missing. New pure regressions are authored but unrun; prior 101-test evidence applies only
+to the earlier source. No endpoint, read transport, submission, retry or provider call is added.
+
 ### Privacy, allowance and Control Tower boundaries
 
 The minimum proposed intent envelope contains the selected IDs, date/duration and user-authored

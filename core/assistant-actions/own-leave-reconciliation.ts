@@ -3,13 +3,28 @@
 import {
   OwnLeaveConfirmation, OwnLeaveFinalReceipt, type OwnLeaveClientOutcome,
 } from '../../lib/assistant-actions/own-leave-contract';
-import { checkOwnLeaveConfirmation } from './own-leave-review';
+import { z } from 'zod';
+import { checkOwnLeaveConfirmation, OwnLeaveBinding } from './own-leave-review';
+
+/** Minimal server-only projections, not a posted capability or a replacement authorization policy.
+ * The eventual read owner must obtain these from the current canonical leave reader and actual
+ * event row under the caller's authority. Parsing cannot establish that provenance. No reason,
+ * balance, event payload, request status or approver information belongs in this evidence. */
+const uuid = z.string().uuid();
+const SubmissionReadEvidence = z.object({
+  request: z.object({ id: uuid, tenantId: uuid, employmentId: uuid, personId: uuid, companyId: uuid }).strict(),
+  event: z.object({ id: uuid, tenantId: uuid, aggregateType: z.literal('leave-request'), aggregateId: uuid,
+    eventType: z.literal('leave-request.submitted'), actorType: z.literal('user'), actorId: uuid,
+    subjectEmploymentId: uuid }).strict(),
+}).strict();
+export type OwnLeaveSubmissionReadEvidence = z.infer<typeof SubmissionReadEvidence>;
 
 /** Call after current authorization, using metadata and receipt read together for the same action.
  * Receipt validation does not establish access to the referenced leave request: reopening must use
  * the canonical leave reader. Missing/corrupt/conflicting evidence never proves failure or success. */
 export function reconcileOwnLeaveConfirmation(
   metadata: unknown, receiptValue: unknown, confirmationValue: unknown, binding: unknown, now: Date,
+  sourceEvidenceValue?: unknown,
 ): OwnLeaveClientOutcome | { status: 'unavailable' } {
   const confirmation = OwnLeaveConfirmation.safeParse(confirmationValue);
   if (!confirmation.success) return { status: 'unavailable' };
@@ -26,8 +41,22 @@ export function reconcileOwnLeaveConfirmation(
     return { status: 'checking_submission', actionId };
   }
   switch (receipt.data.state) {
-    case 'completed':
+    case 'completed': {
+      // UUID-shaped references in a detached receipt do not establish that the request is still
+      // readable or that its submitted event belongs to this actor/subject. Fail closed when the
+      // future read owner omits, substitutes or cannot obtain the canonical source projections.
+      const source = SubmissionReadEvidence.safeParse(sourceEvidenceValue);
+      const current = OwnLeaveBinding.safeParse(binding);
+      if (!source.success || !current.success) return { status: 'checking_submission', actionId };
+      const {request, event} = source.data, owner = current.data;
+      if (request.id !== receipt.data.leaveRequestId || request.tenantId !== owner.tenantId
+        || request.employmentId !== owner.employmentId || request.personId !== owner.personId
+        || request.companyId !== owner.companyId || event.id !== receipt.data.submissionEventId
+        || event.tenantId !== owner.tenantId || event.aggregateId !== request.id
+        || event.actorId !== owner.userId || event.subjectEmploymentId !== owner.employmentId)
+        return { status: 'checking_submission', actionId };
       return { status: 'submission_recorded', actionId, leaveRequestId: receipt.data.leaveRequestId };
+    }
     case 'refused':
       return { status: 'refused', actionId, code: receipt.data.code };
     case 'discarded':
