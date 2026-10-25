@@ -80,7 +80,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   requireProof(baselineRules.readyProductionBaseline(current())===P.baseline,'staging baseline moved');
   const args={candidatePath,runDirectory,counterRoot},evidence={...await collectOwnerCounterAcceptance(args),controller};checkBranches(evidence.candidate);
   const verifyLedger=()=>{
-    const command="cd /opt/ai-hr && set -a && . ./.env.production && set +a && PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' psql \"$MIGRATION_DATABASE_URL\" -XAt -v ON_ERROR_STOP=1 -c "+shellQuote("SELECT coalesce(json_agg(json_build_object('id', id, 'hash', hash, 'created_at', created_at::text) ORDER BY id), '[]'::json) FROM drizzle.__drizzle_migrations");
+    const command="cd /opt/ai-hr && set -a && . ./.env.production && set +a && PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' psql \"${MIGRATION_DATABASE_URL:-$DATABASE_URL}\" -XAt -v ON_ERROR_STOP=1 -c "+shellQuote("SELECT coalesce(json_agg(json_build_object('id', id, 'hash', hash, 'created_at', created_at::text) ORDER BY id), '[]'::json) FROM drizzle.__drizzle_migrations");
     validateMergedLedger(JSON.parse(ssh(command)),evidence.migrationLedger);
   };
   verifyLedger();

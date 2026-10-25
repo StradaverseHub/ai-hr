@@ -20,6 +20,7 @@ export const MERGED_EXCEPTION=Object.freeze({
   common:'1a45bbe0ee2dc68fd4ac62a0c362b6d189b7ef7c',peerRun:40211894222,
   migrationBase:'c98bfed60f6330b57f5a67d959ce6e3757df3b53',
   buildId:'WTZfAR4DhZ-wiLGGNG7Mm',manifest:'23bd34ec834a5a9098648c9d576d2efa3ce8da24323eb6716fc11089d99de333',
+  ledgerSha256:'090e850e75e631f3cfc2ffa9bcb43e3f81dee29a92179cd1fbbe5e9f11f2885f',
 });
 export const ACCEPTANCE_TIER='owner-counter-login-composition-v3';
 export const HISTORICAL_SOURCE='/Users/zenlam/Projects/ai-hr/.claude/worktrees/h-counter-origin-4d89-20261026';
@@ -31,6 +32,12 @@ const gh=path=>JSON.parse(execFileSync('gh',['api','repos/'+P.repository+'/'+pat
 export function verifyFreshMergedResult(result,files,cwd,expectedCases){
   need((result.numPendingTests??0)===0&&(result.numPendingTestSuites??0)===0&&(result.numTodoTests??0)===0,'pending/todo merged result');
   need(verifyFocusedResult(result,files,cwd)===expectedCases,'merged assertion inventory differs');return expectedCases;
+}
+export function verifyPinnedMergedLedger(ledger){
+  need(Array.isArray(ledger)&&ledger.length===496&&ledger.every((row,i)=>Number.isSafeInteger(row.id)&&row.id>0
+    &&(i===0||ledger[i-1].id<row.id)&&/^[a-f0-9]{64}$/.test(row.hash)&&/^\d+$/.test(row.created_at)),'historical ledger shape differs');
+  const normalized=ledger.map(({id,hash,created_at})=>({id,hash,created_at}));
+  need(sha256(JSON.stringify(normalized))===P.ledgerSha256,'independently observed historical ledger changed');return true;
 }
 const leaves=(value,prefix='',out=new Map())=>{if(value&&typeof value==='object'&&!Array.isArray(value))for(const [k,v]of Object.entries(value))leaves(v,prefix?prefix+'.'+k:k,out);else out.set(prefix,JSON.stringify(value));return out;};
 /** Preserve both parents' disjoint locale edits, including deletions; reject collisions. */
@@ -107,7 +114,8 @@ async function collectPeerEvidence(candidatePath,artifacts){
   const origins=[];for(const name of expected.jobs){const pool=attempts.flat().filter(j=>j.name===name&&j.status==='completed'&&j.conclusion==='success');need(pool.length>0,'missing historical job '+name);const j=pool[0];origins.push({name,id:j.id,attempt:j.run_attempt,startedAt:j.started_at,completedAt:j.completed_at});}
   const approval=json('owner-exception.json');need(approval.candidate===P.baseline&&approval.controller===P.common&&approval.runId===P.peerRun&&approval.runAttempt===2&&approval.humanApproval==='Yes approve','peer exception identity differs');
   need(attempts[0].find(j=>j.name==='browser (webkit)')?.conclusion==='cancelled'&&attempts[0].find(j=>j.name==='verify')?.conclusion==='failure','historical failed attempt changed');
-  const ledger=json('migration-ledger-after.json').ledger;need(Array.isArray(ledger)&&ledger.length===496,'historical ledger missing');
+  const ledger=json('migration-ledger-after.json').ledger;verifyPinnedMergedLedger(ledger);
+  const before=json('migration-ledger-before.json').ledger;need(before.length===495&&equal(before,ledger.slice(0,-1))&&ledger.at(-1).hash===sha256(git(candidatePath,'show',P.baseline+':db/migrations/0600_login_presentation.sql')),'historical migration addition differs');
   return {observedSource:P.baseline,controller:P.common,runId:P.peerRun,runAttempt:2,rawReports:23,suiteFiles:1948,browserFiles:16,tests:27869,origins,attemptHistory:attempts.map(jobs=>jobs.map(j=>({name:j.name,id:j.id,attempt:j.run_attempt,result:j.conclusion,startedAt:j.started_at,completedAt:j.completed_at}))),originalAttemptReclassified:false,artifacts:items.map(a=>({id:a.id,name:a.name,digest:a.digest})),ledger,exceptionAppliesOnlyToHistoricalRelease:true};
 }
 
