@@ -237,7 +237,7 @@ describe('5c65367d · the preview', () => {
     await openWithFile(user);
     expect(commitMock).not.toHaveBeenCalled();
 
-    const confirm = screen.getByRole('button', { name: 'Import 1 valid record' });
+    const confirm = await screen.findByRole('button', { name: 'Import 1 valid record' });
     await user.click(confirm);
     expect(commitMock).toHaveBeenCalledTimes(1);
     expect(commitMock.mock.calls[0][1]).toBe('fixed');
@@ -250,7 +250,11 @@ describe('5c65367d · the preview', () => {
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
     await screen.findByText('3 records');
-    expect(screen.getByRole('button', { name: 'Import 0 valid records' })).toBeDisabled();
+    // The preview can render while the upload transition still shows its busy action label.
+    const confirm = await screen.findByRole('button', { name: 'Import 0 valid records' });
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(commitMock).not.toHaveBeenCalled();
   });
 
   it('a whole-FILE refusal replaces the table rather than listing three hundred identical rows', async () => {

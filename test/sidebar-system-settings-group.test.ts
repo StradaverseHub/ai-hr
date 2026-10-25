@@ -74,6 +74,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // and who approves. DECLARED here rather than tolerated, which is the whole point of asserting the
   // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
   '/admin/settings/profile-requests',
+  '/admin/settings/login',
   '/admin/settings/email',
   // 3f44a539 / 4a8a4fff — relocated existing rows; AI remains a flat Administration destination.
   '/admin/settings/notifications',

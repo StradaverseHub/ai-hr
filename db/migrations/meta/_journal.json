@@ -3466,6 +3466,13 @@
       "when": 1791900000086,
       "tag": "0599_board3_company_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 607,
+      "version": "7",
+      "when": 1792941214167,
+      "tag": "0600_login_presentation",
+      "breakpoints": true
     }
   ]
 }

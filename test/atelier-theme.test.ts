@@ -31,10 +31,10 @@ const contrast = (a: string, b: string) => {
 };
 
 describe('Atelier theme value', () => {
-  it('is a selectable theme and the default is unchanged', () => {
+  it('is the default for a browser without a saved theme', () => {
     expect(UI_THEMES).toContain('atelier');
     expect(resolveUiTheme('atelier')).toBe('atelier');
-    expect(resolveUiTheme(undefined)).toBe('monolith');
+    expect(resolveUiTheme(undefined)).toBe('atelier');
   });
 });
 

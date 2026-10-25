@@ -435,7 +435,7 @@
     "onboardingModuleAccess": "Module access",
     "controlTowerOpportunities": "Opportunities",
     "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
+    "workspaceStrata": "Strat",
     "workspaceSwitch": "Navigation workspace",
     "modulePeople": "People",
     "moduleOnboarding": "Onboarding & IT",
@@ -462,7 +462,8 @@
     "myTp3": "My Form TP3",
     "jobDescriptions": "Job Description",
     "rewardsAccess": "Rewards Access",
-    "peopleGeneral": "General"
+    "peopleGeneral": "General",
+    "loginPresentation": "Login & browser appearance"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -10158,7 +10159,8 @@
         "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
-        "workforceRecords": "Requires effective Workforce view permission for the selected company. Does not grant payroll or approval access."
+        "workforceRecords": "Requires effective Workforce view permission for the selected company. Does not grant payroll or approval access.",
+        "loginPresentation": "Group administrators only. Settings affect only their own organization; the installation chooses its default login organization."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -16380,7 +16382,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Checking records…",
-      "runFailed": "The last automation pass needs attention. Review the execution history.",
+      "runFailed": "The latest recorded automation run needs attention. Open the run details below.",
       "navigation": "Control Tower navigation",
       "overview": "Overview",
       "readiness": "Employee data",
@@ -16411,7 +16413,31 @@
       "shown": "Showing {shown} of {total} issues.",
       "verificationNote": "Closure means the information is present or no longer required at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
       "quality": "Payroll and AI quality",
-      "opportunities": "Opportunities"
+      "opportunities": "Opportunities",
+      "runDetails": {
+        "incomplete": "Some run details were not recorded or could not be read.",
+        "receiptNote": "Attempts whose results could not be recorded may be missing from this history.",
+        "steps": {
+          "readiness": "Readiness reminders",
+          "claims": "Claims triage",
+          "observe": "Check source records",
+          "verify": "Recheck source records"
+        },
+        "recorded": "Recorded: {date}",
+        "outcomes": {
+          "succeeded": "Completed",
+          "unknown": "Completion unconfirmed",
+          "failed": "Failed"
+        },
+        "title": "Latest recorded automation run",
+        "evidenceNote": "A step that finishes normally may have been switched off or had no work. HR outcomes require source evidence.",
+        "states": {
+          "succeeded": "Finished normally",
+          "unknown": "Not recorded",
+          "failed": "Failed"
+        },
+        "version": "Harness: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Complete your record",
@@ -23651,5 +23677,49 @@
       "processed": "Processed",
       "closed": "Closed"
     }
+  },
+  "loginPresentation": {
+    "headline": "Your people. Your work. One place.",
+    "description": "People, leave, attendance and payroll — together in AIHR.",
+    "people": "People & organization",
+    "work": "Leave & attendance",
+    "growth": "Performance & development",
+    "topicsLabel": "Your HR workspace",
+    "footer": "AIHR · A workspace for your people",
+    "welcome": "Welcome back",
+    "signInSubtitle": "Sign in to AIHR",
+    "mediaAlt": "AIHR welcome media",
+    "pauseMedia": "Pause media",
+    "playMedia": "Play video",
+    "playAnimation": "Play animation",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "firstTime": "First time signing in?",
+    "firstTimeHelp": "Open the invitation sent to your email to activate your account. If you have not received one, contact your HR administrator.",
+    "getHelp": "Trouble signing in? Get help",
+    "getHelpBody": "Contact your HR administrator for your organization code and username. Use “Forgot your password?” to recover an existing account.",
+    "settingsTitle": "Login & browser appearance",
+    "settingsDescription": "Choose the image, GIF or video shown on the left side of the sign-in page.",
+    "mediaType": "Welcome media",
+    "none": "Default welcome",
+    "image": "Image",
+    "gif": "Animated GIF",
+    "video": "Video",
+    "mediaUrl": "Public media URL",
+    "urlHelp": "Use a direct HTTPS link to an image, GIF, MP4 or WebM file. This media is visible before sign-in. Videos and animations start when the visitor chooses to play them.",
+    "altLabel": "Media description",
+    "save": "Save appearance",
+    "saving": "Saving…",
+    "activeOrganization": "This organization supplies the welcome media for this installation. Changes appear on the next visit to the sign-in page.",
+    "otherOrganization": "These settings belong to your organization. The installation administrator must select this organization as the default login organization before its media appears on the public sign-in page.",
+    "result": {
+      "saved": "Login appearance saved.",
+      "invalid": "Choose a media type, a valid HTTPS URL and a description.",
+      "conflict": "Someone changed these settings. Reload the page before saving again.",
+      "forbidden": "Only a group administrator can change login appearance.",
+      "unavailable": "The settings could not be saved. Try again."
+    },
+    "iconUrl": "Browser icon URL",
+    "iconHelp": "Use a direct HTTPS link to a square PNG or ICO file, ideally 32×32 or 48×48 pixels. Leave blank to use the AIHR icon. Browsers may cache their tab icon until the page is reloaded."
   }
 }
