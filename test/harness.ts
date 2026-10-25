@@ -1,3 +1,4 @@
+import {profileTestPhase} from './profile';
 import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
 import type { OrgCriteria } from '../core/org-criteria';
@@ -250,7 +251,9 @@ async function truncateAllTables(): Promise<void> {
   }
 }
 
-export async function resetDb() {
+export async function resetDb() { return profileTestPhase('reset', resetDbImpl); }
+
+async function resetDbImpl() {
   // Overrides are per-test state; leaking them across files is the ADR-0071 isolation bug in a new coat.
   clearHarnessEntitlementOverrides();
   await truncateAllTables();
@@ -264,7 +267,9 @@ export async function resetDb() {
   );
 }
 
-export async function closeAll() {
+export async function closeAll() { return profileTestPhase('close', closeAllImpl); }
+
+async function closeAllImpl() {
   await appClient.end({ timeout: 5 });
   await owner.client.end({ timeout: 5 });
 }
@@ -280,7 +285,9 @@ export type Base = {
   adminUserId: string;
 };
 
-export async function seedBase(): Promise<Base> {
+export async function seedBase(): Promise<Base> { return profileTestPhase('seed', seedBaseImpl); }
+
+async function seedBaseImpl(): Promise<Base> {
   const [t] = await owner.db
     .insert(schema.tenant)
     .values({ workosOrgId: `org_${randomUUID()}`, name: 'Acme Group' })
