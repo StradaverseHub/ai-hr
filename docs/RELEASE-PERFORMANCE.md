@@ -79,6 +79,10 @@ Historical assessment results:
 
 These are analyses of authenticated historical evidence, not permission to deploy failed attempts. **Reuse after a code repair remains unfinished**: a changed commit is refused by the current assessment. It requires independently validated impact/input provenance, not substitution of a new SHA into old reports.
 
+The review branch also has `.github/ci/resume-source.mjs`, an offline source-integrity check. It binds the expected company repository, workflow, controller, first run attempt, complete job inventory, artifact ownership/times and raw ZIP digests before bounded JSON-only extraction. The archived plan must equal coverage independently reconstructed from source. Missing/red/skipped/unhealthy units remain fresh; a failed producing job cannot be overridden by a green payload. It preserves the failed run and each job observation. API snapshots are inputs, so this tool explicitly does **not** authenticate them, inspect the latest cross-run failure history or authorize release.
+
+Twenty-nine integrity/refusal checks passed, including bad identities, stale attempts, digest corruption, unsafe archives, omitted jobs, wrong-unit payloads, skips and PostgreSQL OOM. Historical run 401887 was checked again against all 24 saved raw archives and source-derived coverage: 21 units / 25,905 assertions remained potentially reusable, both failed units remained required fresh, and the original whole run remained FAILURE. No test bodies, application/database runtime or GitHub jobs ran for this assessment.
+
 Before activation, implement and validate a versioned resume workflow and independent operator revalidation binding repository/run/attempt/job/controller identities, archive digests, complete coverage, environment and freshness. Preserve original red observations and the full attempt history; never select an older green to hide a newer failure. Final assembly must revalidate every carried unit and fresh prerequisite. Existing unmerged ADR-0133/local checkpoint code is design context, not current GitHub v2 authority.
 
 ## Rejected shortcuts and diagnostic limits
