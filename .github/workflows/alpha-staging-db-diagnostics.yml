@@ -17,6 +17,12 @@ on:
         default: 'on'
         type: choice
         options: ['on', 'off']
+      slow_suite:
+        description: One unchanged slow suite for controlled performance comparison
+        required: false
+        default: none
+        type: choice
+        options: [none, r395, attendance]
       repaired_focus:
         description: Exact resolved repaired candidate; three original DB regression files, development only
         required: false
@@ -39,7 +45,7 @@ on:
         type: boolean
 permissions: {contents: read, actions: read}
 concurrency:
-  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}-${{ inputs.repaired_focus }}
+  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}-${{ inputs.repaired_focus }}-${{ inputs.slow_suite }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -69,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        probe: ${{ fromJSON(inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
+        probe: ${{ fromJSON(inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
     defaults: {run: {working-directory: source}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
