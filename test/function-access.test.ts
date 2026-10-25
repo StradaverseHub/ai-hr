@@ -29,7 +29,8 @@ import {
 import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
-const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
+// ADR-0141: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
+const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
 
 /**
  * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.
