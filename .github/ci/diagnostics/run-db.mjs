@@ -15,7 +15,7 @@ const name=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMP
 const out=join(process.env.RUNNER_TEMP,'diagnostic-db-'+mode);mkdirSync(out,{recursive:true});
 const postgres=fileURLToPath(new URL('../postgres.sh',import.meta.url));
 const invoke=(cmd,args,opts={})=>spawnSync(cmd,args,{encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,...opts});
-const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,sourceRole:mode.endsWith('-baseline')?'released-staging-baseline':'original-failed-candidate',migrationJournalEntries:JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')).entries.length,files,postgresMemoryBytes:1073741824*Number(process.env.AIHR_CI_PG_MEMORY_GIB??1),workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
+const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,sourceRole:mode.endsWith('-baseline')?'released-staging-baseline':'original-failed-candidate',migrationJournalEntries:JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')).entries.length,files,postgresMemoryBytes:1073741824*Number(process.env.AIHR_CI_PG_MEMORY_GIB??1),jitRequested:process.env.AIHR_CI_PG_JIT??'postgres-default',workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
 let logger,fd,sampler;
 function snapshot(label){
  const state=invoke('docker',['inspect','--format','{{json .State}}',name]);
@@ -29,6 +29,10 @@ try{
  if(!report.healthBefore.ok)throw Error('Insufficient runner headroom');
  const reset=invoke('bash',[postgres,'reset'],{stdio:'inherit',timeout:180000});if(reset.status!==0)throw Error('Owned PostgreSQL reset failed');
  fd=openSync(join(out,'postgres-server.log'),'wx',0o600);logger=spawn('docker',['logs','--follow','--timestamps',name],{stdio:['ignore',fd,fd]});
+ const settings=invoke('docker',['exec',name,'psql','-U','postgres','-p','5433','-d','postgres','-Atc',"SELECT json_build_object('version',version(),'jit',current_setting('jit'),'jit_available',pg_jit_available(),'jit_above_cost',current_setting('jit_above_cost'),'jit_inline_above_cost',current_setting('jit_inline_above_cost'),'jit_optimize_above_cost',current_setting('jit_optimize_above_cost'))"]);
+ const config=invoke('docker',['exec',name,'pg_config','--configure']);
+ writeFileSync(join(out,'postgres-jit-environment.json'),JSON.stringify({settingsExit:settings.status,settings:settings.stdout,settingsError:settings.stderr,configureExit:config.status,configure:config.stdout},null,2)+'\n',{flag:'wx'});
+ if(settings.status!==0||config.status!==0)throw Error('Cannot record actual PostgreSQL JIT environment');
  snapshot('before-migrations');
  const migrate=invoke('pnpm',['db:migrate'],{stdio:'inherit',timeout:300000});if(migrate.status!==0)throw Error('Migration failed');
  snapshot('before-vitest');sampler=setInterval(()=>snapshot('during-vitest'),10000);

@@ -6,6 +6,11 @@ set -euo pipefail
 [[ "${1:-}" == reset || "${1:-}" == stop || "${1:-}" == stats ]] || exit 2
 memory_gib="${AIHR_CI_PG_MEMORY_GIB:-1}"
 [[ "$memory_gib" == 1 || "$memory_gib" == 2 ]] || exit 2
+jit_args=()
+if [[ -n "${AIHR_CI_PG_JIT:-}" ]]; then
+  [[ "$AIHR_CI_PG_JIT" == on || "$AIHR_CI_PG_JIT" == off ]] || exit 2
+  jit_args=(-c "jit=$AIHR_CI_PG_JIT")
+fi
 name="aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}"
 if docker container inspect "$name" >/dev/null 2>&1; then
   [[ "$(docker inspect --format '{{index .Config.Labels "aihr-owner"}}' "$name")" == "$name" ]] || { echo 'Container ownership mismatch' >&2; exit 2; }
@@ -21,6 +26,7 @@ docker run -d --name "$name" --label "aihr-owner=$name" --network host \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e TZ=Asia/Kuala_Lumpur postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 \
   -c listen_addresses=127.0.0.1 -c port=5433 -c fsync=off -c synchronous_commit=off \
   -c full_page_writes=off -c wal_level=minimal -c max_wal_senders=0 \
+  "${jit_args[@]}" \
   -c shared_buffers=128MB -c max_connections=100 -c max_locks_per_transaction=256 >/dev/null
 ready=0
 for attempt in $(seq 1 60); do
