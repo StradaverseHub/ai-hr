@@ -61,6 +61,18 @@ REVOKE ALL ON FUNCTION app.onehr_partner_company_ids() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_partner_company_ids() TO ai_hr_app;
 --> statement-breakpoint
 
+-- Panel-request scope for the partner (used by the peer_feedback_request policies in §3).
+CREATE FUNCTION app.onehr_partner_panel_request(wanted_review uuid, wanted_subject uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT cardinality(app.onehr_partner_company_ids()) > 0 AND EXISTS(
+  SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  WHERE r.review_id=wanted_review AND r.employment_id=wanted_subject AND r.tenant_id=app.current_tenant_id()
+   AND e.company_id = ANY(app.onehr_partner_company_ids()) AND app.onehr_partner_for(r.company_id)
+   AND NOT app.is_self_person(e.person_id))
+$$;
+REVOKE ALL ON FUNCTION app.onehr_partner_panel_request(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_partner_panel_request(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+
 -- ── 3. Kernel reads: SELECT-only, partner scope only ──────────────────────────────────────────────────
 -- Additional PERMISSIVE policies OR with the existing FOR ALL policies for SELECT only. INSERT / UPDATE /
 -- DELETE still evaluate only employment_rls / assignment_rls / performance_review_rls (0099/0515), which this
@@ -69,7 +81,7 @@ CREATE POLICY employment_onehr_partner_read ON employment FOR SELECT
  USING (tenant_id = app.current_tenant_id() AND company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[]));
 --> statement-breakpoint
 CREATE POLICY assignment_onehr_partner_read ON assignment FOR SELECT
- USING (tenant_id = app.current_tenant_id() AND EXISTS (SELECT 1 FROM employment e
+ USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND EXISTS (SELECT 1 FROM employment e
   WHERE e.id = assignment.employment_id AND e.tenant_id = assignment.tenant_id
    AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])));
 --> statement-breakpoint
@@ -77,9 +89,27 @@ CREATE POLICY assignment_onehr_partner_read ON assignment FOR SELECT
 -- (ADR-0049 §3), which is exactly what this role must never read.
 CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SELECT
  USING (tenant_id = app.current_tenant_id()
+  AND cardinality((SELECT app.onehr_partner_company_ids())) > 0
   AND EXISTS (SELECT 1 FROM performance_onehr_cycle oc WHERE oc.cycle_id = performance_review.cycle_id AND oc.tenant_id = performance_review.tenant_id)
   AND EXISTS (SELECT 1 FROM employment e WHERE e.id = performance_review.employment_id AND e.tenant_id = performance_review.tenant_id
    AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])));
+--> statement-breakpoint
+
+-- peer_feedback_request is a performance-pack satellite (packs/performance/index.ts) that OneHR panel
+-- administration writes beside performance_onehr_panel (assignOnehrPanelTx, changeAssessmentPanelStateTx).
+-- ADR-0141's verification contract has the partner administer panels, and §4 does not exclude this table,
+-- so it gets the OneHR-scoped rows HR already reaches: OneHR-native reviews whose subject is employed in a
+-- partner company, never the partner's OWN panel (0054's anonymity rule). SELECT, INSERT and UPDATE only;
+-- no DELETE. The row carries the subject/peer/cycle names and a status, no rating or pay.
+CREATE POLICY peer_feedback_request_onehr_partner_read ON peer_feedback_request FOR SELECT
+ USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
+--> statement-breakpoint
+CREATE POLICY peer_feedback_request_onehr_partner_insert ON peer_feedback_request FOR INSERT
+ WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
+--> statement-breakpoint
+CREATE POLICY peer_feedback_request_onehr_partner_update ON peer_feedback_request FOR UPDATE
+ USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id))
+ WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
 --> statement-breakpoint
 
 -- ── 4. review_cycle: lockable, never writable ─────────────────────────────────────────────────────────
