@@ -456,6 +456,90 @@ describe('the box can say which of the three things happened to it', () => {
 // exit code, which is the only thing that would have caught it.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+describe('deployment status reads coherent records during publication', () => {
+  function snapshotBox(): Box {
+    const box = makeBox();
+    fs.mkdirSync(path.join(box.dir, '.next'));
+    fs.writeFileSync(path.join(box.dir, '.next', 'BUILD_ID'), 'buildA\n');
+    const old = 'ref=aaaaaaa\nphase=restart\npid=99999999\nresult=ok\nexit_code=0\nbuild_id=buildA\n';
+    const next = 'ref=bbbbbbb\nphase=build\npid=99999999\n';
+    for (const name of ['current', 'last-ok', 'record-a']) fs.writeFileSync(path.join(box.stateDir, name), old);
+    fs.writeFileSync(path.join(box.stateDir, 'record-b'), next);
+    return box;
+  }
+
+  function stateCommand(box: Box, args: string[], extra: Record<string, string> = {}) {
+    const run = spawnSync('/bin/bash', [path.join(box.dir, 'deploy', 'deploy-state.sh'), ...args], {
+      cwd: box.dir, encoding: 'utf8', timeout: 10_000, env: boxEnv(box, extra),
+    });
+    expect(run.status, run.stderr).toBe(0);
+    return parseDeployStatus(run.stdout);
+  }
+
+  function interleaveReads(box: Box) {
+    // Both paths serve the real bytes first, then atomically replace current. The sed path also
+    // exercises the old field-at-a-time reader, so the regression fails before the snapshot repair.
+    const publish = `
+if [ "$reading_current" = 1 ]; then
+  if [ "\${AIHR_TEST_FLAP:-0}" = 1 ]; then
+    if /usr/bin/grep -q '^ref=aaaaaaa$' "$AIHR_DEPLOY_STATE_DIR/current"; then next=record-b; else next=record-a; fi
+  elif [ ! -f "$AIHR_DEPLOY_STATE_DIR/swapped" ]; then next=record-b
+  else exit 0
+  fi
+  /bin/cp "$AIHR_DEPLOY_STATE_DIR/$next" "$AIHR_DEPLOY_STATE_DIR/current.next"
+  /bin/mv "$AIHR_DEPLOY_STATE_DIR/current.next" "$AIHR_DEPLOY_STATE_DIR/current"
+  : > "$AIHR_DEPLOY_STATE_DIR/swapped"
+fi
+`;
+    for (const command of ['cat', 'sed']) {
+      const detect = command === 'cat'
+        ? '[ "\${1:-}" = "$AIHR_DEPLOY_STATE_DIR/current" ] && reading_current=1'
+        : '[ "\${3:-}" = "$AIHR_DEPLOY_STATE_DIR/current" ] && reading_current=1';
+      const actual = command === 'cat' ? '/bin/cat' : '/usr/bin/sed';
+      const shim = path.join(box.bin, command);
+      fs.writeFileSync(shim, `#!/bin/sh\nreading_current=0\n${detect}\n${actual} "$@"\n${publish}`);
+      fs.chmodSync(shim, 0o755);
+    }
+  }
+
+  it('cannot combine an old successful ref with a newly dead deployment', () => {
+    const box = snapshotBox();
+    interleaveReads(box);
+    const state = stateCommand(box, ['status']);
+    expect(state.state).toBe('died');
+    expect(state.phase).toBe('build');
+    expect(state.ref).toBe('bbbbbbb');
+    expect(state.built_ref).toBe('aaaaaaa');
+    expect(state.stale_build).toBe('1');
+  });
+
+  it('bounds retries and reports incomplete while records keep changing', () => {
+    const box = snapshotBox();
+    interleaveReads(box);
+    const state = stateCommand(box, ['status'], { AIHR_TEST_FLAP: '1' });
+    expect(state.state).toBe('incomplete');
+    expect(state.phase).toBe('snapshot-changing');
+    expect(state.stale_build).toBe('1');
+  });
+
+  it.each([true, false])('clears pending only after current publication succeeds (failure=%s)', (fail) => {
+    const box = snapshotBox();
+    fs.writeFileSync(path.join(box.stateDir, 'pending'), 'ref=bbbbbbb\nat=1\n');
+    const shim = path.join(box.bin, 'mv');
+    fs.writeFileSync(shim, `#!/bin/bash
+if [[ "\${AIHR_TEST_FAIL_PUBLISH:-0}" == 1 && "\${@: -1}" == "$AIHR_DEPLOY_STATE_DIR/current" ]]; then exit 1; fi
+exec /bin/mv "$@"
+`);
+    fs.chmodSync(shim, 0o755);
+    stateCommand(box, ['begin', 'bbbbbbb', '99999999', ''], { AIHR_TEST_FAIL_PUBLISH: fail ? '1' : '0' });
+    expect(fs.existsSync(path.join(box.stateDir, 'pending'))).toBe(fail);
+    const state = stateCommand(box, ['status']);
+    expect(state.state).toBe(fail ? 'incomplete' : 'died');
+    expect(state.ref).toBe('bbbbbbb');
+    expect(state.stale_build).toBe('1');
+  });
+});
+
 describe('a refused deploy still exits non-zero (the trap must not eat the status)', () => {
   function withoutLine(prefix: string): string {
     return DEMO_ENV.split('\n').filter((l) => !l.startsWith(prefix)).join('\n');
