@@ -398,6 +398,23 @@ The inspected adjustment and import services do not explicitly join that approva
 These findings do not establish an exhaustive transitive writer inventory or current database behavior.
 They rule out treating the approval mutex as an already universal reservation barrier.
 
+A bounded static inventory at the same runtime source base found 62 direct Drizzle writes to the
+named `leaveLedger`, `leaveRequest`, `leaveRequestDate` and `leaveType` bindings across 17 files in
+`core`, `packs`, `db` and `scripts`. This includes cancellation/edit and encashment paths as well as
+submission, approval, imports, adjustments, hiring, grants and source-type configuration. It is a
+starting set, not a complete dependency graph: aliases, raw SQL, stored procedures, historical
+migrations, external writers and transitive lock acquisition are outside that syntactic query.
+Finding a lock literal anywhere in an enclosing function does not prove that a particular branch
+acquires it; not finding one does not rule out a callee doing so.
+
+FACT (source only) — [`commitLeaveHistoryImport`](../../core/leave-history-import.ts) and
+[`commitLeaveBfImport`](../../core/leave-bf-import.ts) deliberately open a separate `withTenant`
+transaction per accepted row, then append their batch summary in another transaction. A barrier on
+an outer import wrapper or its final summary would not cover the actual row writes. Any participant
+integration must join the real per-row write transaction before that row's protected reads/effects;
+it must preserve the existing row-level failure isolation. Runtime interleaving and rollback behavior
+remain unverified.
+
 DECISION — settle and enforce the dependency barrier at the existing source owners before exposing
 confirmation, covering pending reservation inserts/status changes, ledger movements and source-type
 mapping changes. Do not add an Assistant-only mutex and call it protection from legacy writers.
