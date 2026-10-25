@@ -1,10 +1,11 @@
 import { count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { domainEvent, employment, holiday, leaveLedger, leaveRequest, leaveType } from '../db/schema';
+import { domainEvent, employment, holiday, leaveApprovalStep, leaveLedger, leaveRequest, leaveType } from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { LeaveReviewedEffectError, previewLeaveDeduction, requestLeave, type ReviewedOwnLeaveEffect } from '../packs/leave/service';
 import { setAttendancePolicy } from '../packs/attendance/service';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -107,6 +108,41 @@ describe('reviewed own-leave precondition at the canonical write', () => {
     expect(await owner.db.select({ reason: leaveRequest.reason, remark: leaveRequest.employeeRemark })
       .from(leaveRequest).where(eq(leaveRequest.id, result.leaveRequestId)).orderBy(leaveRequest.id))
       .toEqual([{ reason: '  Exact reason\n', remark: 'Ordinary remark' }]);
+  });
+
+  it('rolls back generated approval steps and late holiday-warning events with the enclosing command', async () => {
+    await setLeaveApprovalPolicy(adminCtx(base), { companyId: base.companyId, levels: ['hr_admin', 'payroll'] });
+    await setAttendancePolicy(adminCtx(base), { companyId: base.companyId,
+      workStart: '09:00', workEnd: '18:00', breakMinutes: 60, lateAfter: '09:15', halfDayBefore: '13:00',
+      workingDays: [1, 2, 3, 4, 5, 6, 7] });
+    await owner.db.update(leaveType).set({ counting: 'working_days' }).where(eq(leaveType.id, base.annualLeaveTypeId));
+    let requestId = '';
+    const rollback = new Error('fictional final receipt could not be recorded');
+    await expect(withTenant(ctx, async tx => {
+      const preview = await previewLeaveDeduction(ctx,
+        { ...args, includeAvailableBalance: true, includeHolidayWarnings: true }, tx);
+      expect(preview.holidayWarnings).toHaveLength(1);
+      const result = await requestLeave(ctx, args, tx, { ...reviewed, days: preview.days,
+        availableBalance: preview.availableBalance!, holidayWarnings: preview.holidayWarnings! });
+      requestId = result.leaveRequestId;
+      // Assert the real late effects exist before throwing. An empty fixture or early service
+      // refusal cannot accidentally supply rollback evidence for work it never performed.
+      expect(await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep)
+        .where(eq(leaveApprovalStep.leaveRequestId, requestId))).toHaveLength(2);
+      const events = await tx.select({ id: domainEvent.id, type: domainEvent.eventType }).from(domainEvent)
+        .where(eq(domainEvent.aggregateId, requestId)).orderBy(domainEvent.sequence);
+      expect(events.filter(event => event.type === 'leave-request.submitted'))
+        .toEqual([{ id: result.submittedEventId, type: 'leave-request.submitted' }]);
+      expect(events.filter(event => event.type === 'holiday.completeness.warned')).toHaveLength(1);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(requestId).not.toBe('');
+    expect(await owner.db.select({ id: leaveRequest.id }).from(leaveRequest)
+      .where(eq(leaveRequest.id, requestId))).toEqual([]);
+    expect(await owner.db.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep)
+      .where(eq(leaveApprovalStep.leaveRequestId, requestId))).toEqual([]);
+    expect(await owner.db.select({ id: domainEvent.id }).from(domainEvent)
+      .where(eq(domainEvent.aggregateId, requestId))).toEqual([]);
   });
 
   it('records unchanged human text when canonical remark normalization is already satisfied', async () => {

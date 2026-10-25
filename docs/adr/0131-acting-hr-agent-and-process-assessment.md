@@ -451,6 +451,12 @@ must remain inside the eventual protected dependency interval. The earlier appro
 pre-insertion holiday comparison cannot stand in for their protection. The review deliberately says
 `approvalRouting: unknown`; a submitted receipt must not claim a particular approver or approval.
 Runtime rollback/event/step atomicity and the remaining read dependencies are still unverified.
+A regression is now authored in `test/leave-reviewed-own-effect.test.ts` for that late-effect boundary:
+it configures a real two-level approval policy and working-day warning, submits through the existing
+guarded service inside a supplied transaction, first requires both actual approval steps plus submitted
+and warning events to exist, then throws an enclosing-command error and requires all request/step/event
+rows to be absent outside that transaction. It has not run. It checks rollback of those real callees,
+not savepoint recovery, concurrent-writer fencing, or a completed action receipt.
 
 If a dependency or effect changed, refuse the old confirmation and offer a freshly reviewed proposal.
 If the service refuses, a savepoint may roll back its writes while the outer transaction records a
