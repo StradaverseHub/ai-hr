@@ -31,6 +31,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { withTenant } from '../db/client';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { createLeaveType } from '../core/admin';
 import {
   LEAVE_BF_ENTRY_TYPE,
@@ -734,5 +736,42 @@ describe('db55d08a — the run log, and the rollback the reporter asked for', ()
       .from(schema.leaveBfImportRun)
       .where(eq(schema.leaveBfImportRun.tenantId, b.tenantId));
     expect(Number(n)).toBe(1);
+  });
+});
+
+
+describe('participating B/F row transactions — new acceptance remains unrun', () => {
+  it('refuses a busy real employee row, imports another row and releases the first for retry', async () => {
+    const ctx = adminCtx(b);
+    const other = await hireEmployee(ctx, { person: { fullName: 'Fictional Independent BF Row',
+      primaryEmail: `bf-other-${randomUUID()}@acme.test` }, companyId: b.companyId,
+      departmentId: b.deptA, employmentType: 'full_time', hiredOn: addDays(TODAY, -1200) });
+    const [otherRow] = await owner.db.select({ code: schema.employment.employeeCode }).from(schema.employment)
+      .where(eq(schema.employment.id, other.employmentId));
+    const records = recs([good(), good({ employee_id: otherRow.code! })]);
+    expect((await validateLeaveBfImport(ctx, { records })).validCount).toBe(2);
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned BF lock handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      await lockLeaveDependenciesTx(tx, b.tenantId, [emp.employmentId]); ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      const result = await commitLeaveBfImport(ctx, { records });
+      expect(result.total).toBe(2); expect(result.imported).toBe(1); expect(result.failed).toBe(1);
+      const [run] = await owner.db.select({ ledgerRows: schema.leaveBfImportRun.ledgerRows })
+        .from(schema.leaveBfImportRun).where(eq(schema.leaveBfImportRun.id, result.runId));
+      expect(run.ledgerRows).toBe(1);
+      expect(result.errors).toHaveLength(1); expect(result.errors[0].rowNum).toBe(1);
+      expect(result.errors[0].employeeId).toBe(emp.code);
+      const written = await owner.db.select({ employmentId: schema.leaveLedger.employmentId }).from(schema.leaveLedger)
+        .where(eq(schema.leaveLedger.bfImportRunId, result.runId));
+      expect(written).toEqual([{ employmentId: other.employmentId }]);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    const retry = await commitLeaveBfImport(ctx, { records: recs([good()]) });
+    expect(retry.imported).toBe(1); expect(retry.failed).toBe(0);
   });
 });

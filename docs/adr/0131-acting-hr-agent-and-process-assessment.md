@@ -1414,3 +1414,23 @@ DB cases cover same/different employment, both directions of configuration confl
 foreign/malformed carriers with bounded owned handshakes. They remain UNRUN. Random subject UUIDs
 in these lock-mode tests intentionally prove only advisory-key behavior, not real employee access,
 canonical writer participation or business interleavings. Those remain separate release blockers.
+
+
+### First actual participant: B/F import row writes (unreleased, unrun)
+
+B/F commit now captures submitted records before awaiting, joins the participating configuration/
+employment barrier inside each real row transaction, and resolves that same row again under the
+barrier before touching its ledger. The scoped read selects only the nominated employment rather
+than rescanning all employments for every row. A changed identity/type/source/cycle/effective date
+or newly invalid row is refused for another review; no silent retargeting occurs. The original
+one-based row number identifies the submitted record and any failure. Successful ledger-row counts
+advance after transaction completion, keeping aborted rows out of the summary. File rows, run header
+and summary retain their separate transactions.
+
+An authored real-employee two-connection regression holds one subject barrier, requires that row to
+fail without ledger writes while another employee row commits, and then retries the first after
+release. This and all affected B/F regressions remain UNRUN. Source syntax/diff checks do not prove
+concurrency or preserved import behavior. This first participant does not fence nonparticipating
+configuration/ledger/form/approval/history/reversal owners. Their integration, lock-order review and
+actual DB/security/rollback proof remain mandatory before universal protection or Assistant effect
+exposure can be claimed. No migration, provider call or staging change accompanies this source work.

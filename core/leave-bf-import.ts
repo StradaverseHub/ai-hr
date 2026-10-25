@@ -174,6 +174,7 @@ import {
 import { carryAllowanceFrom, carryEnabled } from './leave-compute';
 import { earnedCycleStart, resolveLeaveYearCycle } from './leave';
 import { listLeaveTypes } from './read';
+import { lockLeaveDependenciesTx } from './leave-dependency-lock';
 
 export {
   LEAVE_BF_COLUMNS,
@@ -279,6 +280,7 @@ async function analyze(
   rawRecords: LeaveBfRecord[],
   opts?: LeaveBfImportOptions,
   outerTx?: Tx,
+  employmentScope?: string,
 ): Promise<{
   preview: LeaveBfImportPreview;
   resolved: ResolvedRow[];
@@ -344,7 +346,8 @@ async function analyze(
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .innerJoin(person, eq(person.id, employment.personId));
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(employmentScope ? eq(employment.id, employmentScope) : undefined);
   });
 
   const byCode = new Map<
@@ -711,11 +714,12 @@ async function bfImpactOf(
 /** Server-only transaction-local resolution prerequisite for future per-row dependency fencing.
  * Joins the supplied caller transaction for catalogue, employment, calendar and balance reads.
  * This neither acquires a dependency barrier nor authorizes/writes an import. Do not serialize the
- * resolved identities as an AI tool result. Existing public preview/commit paths remain unchanged. */
+ * resolved identities as an AI tool result. Existing callers retain ownership of their individual transactions. */
 export function resolveLeaveBfImportTx(
   tx: Tx, ctx: SessionContext, records: LeaveBfRecord[], options?: LeaveBfImportOptions,
+  employmentScope?: string,
 ) {
-  return analyze(ctx, records, options, tx);
+  return analyze(ctx, records, options, tx, employmentScope);
 }
 
 /**
@@ -745,6 +749,10 @@ export async function commitLeaveBfImport(
   ctx: SessionContext,
   p: { records: LeaveBfRecord[]; source?: LeaveBfImportSource } & LeaveBfImportOptions,
 ): Promise<LeaveBfImportResult> {
+  // Capture the submitted file before the first await; later source re-resolution uses these same bytes.
+  p = { ...p, records: p.records.map(record => ({ ...record })) };
+  // Import rowNum is one-based data-row numbering (analyze owns the same index + 1 contract).
+  const recordsByRow = new Map(p.records.map((record, index) => [index + 1, record]));
   const { preview, resolved, options } = await analyze(ctx, p.records, p);
   const writable = resolved.filter((r) => r.result.status === 'valid');
 
@@ -783,9 +791,21 @@ export async function commitLeaveBfImport(
   // A REPLACE LINE'S TWO ROWS SHARE ITS TRANSACTION. The negation without the new figure would leave the
   // employee's brought-forward figure at zero rather than at the number in the file, which is worse than
   // not having run the line at all.
-  for (const r of writable) {
+  for (const nominated of writable) {
     try {
-      await withTenant(ctx, async (tx) => {
+      const wrote = await withTenant(ctx, async (tx) => {
+        // This is the actual row write transaction, not the preview or summary transaction. Nonparticipants
+        // remain outside this barrier until the remaining canonical owners are integrated.
+        await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+        const sourceRecord = recordsByRow.get(nominated.result.rowNum);
+        if (!sourceRecord) throw new Error('Leave source changed; validate this row again.');
+        const fresh = await resolveLeaveBfImportTx(tx, ctx, [sourceRecord], options, nominated.employmentId);
+        const r = fresh.resolved[0];
+        if (fresh.resolved.length !== 1 || !r || r.result.status !== 'valid'
+          || r.employmentId !== nominated.employmentId || r.leaveTypeId !== nominated.leaveTypeId
+          || r.balanceTypeId !== nominated.balanceTypeId || r.cycleStart !== nominated.cycleStart
+          || r.effectiveOn !== nominated.effectiveOn)
+          throw new Error('Leave source changed; validate this row again.');
         let wrote = 0;
         if (options.mode === 'replace') {
           /**
@@ -851,15 +871,16 @@ export async function commitLeaveBfImport(
           });
           wrote += 1;
         }
-        ledgerRows += wrote;
+        return wrote;
       });
+      ledgerRows += wrote;
       imported += 1;
     } catch (e) {
       writeFailures.push({
-        rowNum: r.result.rowNum,
-        employeeId: r.result.employeeId,
-        leaveCode: r.result.leaveCode,
-        entitlementYear: r.result.entitlementYear,
+        rowNum: nominated.result.rowNum,
+        employeeId: nominated.result.employeeId,
+        leaveCode: nominated.result.leaveCode,
+        entitlementYear: nominated.result.entitlementYear,
         errors: [(e as Error).message],
       });
     }
