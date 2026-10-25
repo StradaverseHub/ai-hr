@@ -775,3 +775,39 @@ describe('participating B/F row transactions — new acceptance remains unrun', 
     expect(retry.imported).toBe(1); expect(retry.failed).toBe(0);
   });
 });
+
+
+describe('participating B/F reversal run ownership — authored acceptance', () => {
+  it('refuses a held real run without compensation, then reverses once after release', async () => {
+    const ctx = adminCtx(b), imported = await commitLeaveBfImport(ctx, { records: recs([good()]) });
+    expect(imported.imported).toBe(1);
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned run handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      const held = await tx.select({ id: schema.leaveBfImportRun.id }).from(schema.leaveBfImportRun)
+        .where(eq(schema.leaveBfImportRun.id, imported.runId)).for('update');
+      expect(held).toHaveLength(1); ready(); await finish;
+    });
+    void holder.catch(failed);
+    const rowsForRun = () => owner.db.select({ days: schema.leaveLedger.days }).from(schema.leaveLedger)
+      .where(eq(schema.leaveLedger.bfImportRunId, imported.runId)).orderBy(schema.leaveLedger.id);
+    const before = await rowsForRun();
+    try {
+      await started;
+      await expect(reverseLeaveBfImportRun(ctx, { runId: imported.runId }))
+        .rejects.toThrow('That import is busy; review it again.');
+      expect(await rowsForRun()).toEqual(before);
+      const [run] = await owner.db.select({ reversedAt: schema.leaveBfImportRun.reversedAt })
+        .from(schema.leaveBfImportRun).where(eq(schema.leaveBfImportRun.id, imported.runId));
+      expect(run.reversedAt).toBeNull();
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    expect((await reverseLeaveBfImportRun(ctx, { runId: imported.runId })).reversed).toBe(before.length);
+    const reversed = await rowsForRun();
+    expect(reversed).toHaveLength(before.length * 2);
+    expect(reversed.reduce((total, row) => total + Number(row.days), 0)).toBe(0);
+    await expect(reverseLeaveBfImportRun(ctx, { runId: imported.runId })).rejects.toThrow('already been rolled back');
+    expect(await rowsForRun()).toEqual(reversed);
+  });
+});

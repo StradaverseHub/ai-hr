@@ -1434,3 +1434,20 @@ concurrency or preserved import behavior. This first participant does not fence 
 configuration/ledger/form/approval/history/reversal owners. Their integration, lock-order review and
 actual DB/security/rollback proof remain mandatory before universal protection or Assistant effect
 exposure can be claimed. No migration, provider call or staging change accompanies this source work.
+
+
+### B/F reversal joins source barriers and run ownership (unrun)
+
+Source review found reversal read `reversedAt` without a run-row lock before compensation. The
+unreleased owner now discovers subject IDs under a shared configuration phase, acquires ordered
+employment barriers, then locks the run `FOR UPDATE NOWAIT` before rereading its flag and original
+ledger rows. Newly discovered unprotected subjects cause refusal rather than a late reverse-order
+lock. Each loading row takes `FOR SHARE NOWAIT` on that same run after its subject barrier and refuses
+a reversed run. This avoids introducing a subject→run / run→subject wait cycle and keeps waiting
+bounded; it does not prove other canonical owners participate.
+
+An authored real-run two-connection regression holds the run, requires a bounded refusal with no
+compensation/flag change, releases it, reverses exactly once and checks a repeated refusal leaves
+ledger rows unchanged. It is UNRUN, as are affected import, lock-order, business-concurrency and
+security checks. The source change is unreleased and establishes no current staging defect or
+runtime guarantee. Historical rows are compensated on their original dates, never deleted.
