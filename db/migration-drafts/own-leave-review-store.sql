@@ -15,6 +15,8 @@ CREATE TABLE app.assistant_own_leave_review (
 --> statement-breakpoint
 CREATE INDEX assistant_own_leave_review_owner ON app.assistant_own_leave_review(tenant_id,user_id,expires_at,id);
 --> statement-breakpoint
+CREATE INDEX assistant_own_leave_review_admission ON app.assistant_own_leave_review(tenant_id,user_id,created_at,id);
+--> statement-breakpoint
 CREATE TABLE app.assistant_own_leave_review_content (
  action_id uuid PRIMARY KEY REFERENCES app.assistant_own_leave_review(id) ON DELETE CASCADE,
  kid text NOT NULL CHECK(kid ~ '^[a-f0-9]{16}$'),
@@ -91,6 +93,15 @@ BEGIN
   OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='22023';END IF;
  at_time:=clock_timestamp();
+ -- Private review admission is separate from model quota. The identity owner already holds the
+ -- tenant Access lock, serializing competing preparations and privacy/custody transitions. Bounds
+ -- apply to this login only: at most five unexpired pending reviews and twenty preparations per
+ -- rolling ten minutes. Discard/expiry cannot reset the creation-rate budget. SQL owns every time.
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND state='awaiting_confirmation' AND expires_at>at_time)>=5
+  OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND created_at>at_time-interval '10 minutes')>=20 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='54000';END IF;
  INSERT INTO app.assistant_own_leave_review VALUES(p_id,t,u,p_person,p_employment,p_company,
   p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;

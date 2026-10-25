@@ -630,8 +630,16 @@ the holidays service.
   only the narrow custody functions are callable. No `completed` state/writer is exposed by this store.
 - A bounded group-administrator expiry primitive retires at most 1,000 expired reviews per call. No
   scheduled caller is wired yet. Validity expiry therefore does **not** establish that unaccessed
-  ciphertext is automatically deleted on schedule. Scheduled cleanup and preparation admission/rate
-  bounds must be integrated and observed before exposing a production preparation endpoint.
+  ciphertext is automatically deleted on schedule. Scheduled cleanup must be integrated and observed
+  before exposing a production preparation endpoint.
+- Private preparation has its own deterministic storage admission, separate from provider/model
+  allowances: at most five unexpired pending reviews and twenty newly prepared reviews per login and
+  tenant in a rolling ten-minute window. These are technical storage/abuse limits, not HR policy or
+  consent. The existing tenant Access lock serializes the count and insertion; SQL owns creation and
+  expiry times. Retiring a review frees outstanding capacity but does not reset its creation-rate
+  budget. Other logins do not share that budget. A private owner/time index bounds the rolling lookup.
+  Pending/rate refusal uses the same non-content store error and changes no model accounting.
+  Runtime proof of concurrent admission ordering and endpoint request-rate control remain required.
 
 These are source contracts, not measured security guarantees. No KMS/HSM upgrade, irreversible
 deletion from retained backups/WAL/old exports or JavaScript-memory erasure is claimed.
@@ -667,6 +675,11 @@ save/reopen/discard/expiry; hidden balances/public-field exclusions; same-person
 tenant refusal; no model accounting or leave writes; private-table/helper ACLs; enclosing rollback;
 bounded cleanup; cross-employment person erasure and forged/unfinished erasure audits. All new tests,
 SQL application, types, builds and app journeys remain **UNRUN** under the resource restriction.
+
+Additional authored storage-admission cases distinguish the five-pending limit from a twenty-created
+rolling window, cover retired-review budget consumption, old-window release and separate-login
+capacity, and require zero model/request writes. They remain UNRUN; no concurrent capacity guarantee
+or deployed rate-control claim follows from source review.
 
 Before wiring, demonstrate these cases on the actual restricted-owner/app-role database, forced
 constraint and concurrent erasure/prepare orderings, revocation/transfer/snapshot boundaries, scheduled

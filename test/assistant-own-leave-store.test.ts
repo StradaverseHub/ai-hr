@@ -122,6 +122,43 @@ describe('pending own-leave review custody', () => {
     expect(await counts()).toMatchObject({ model_runs: 0, requests: 0 });
   });
 
+  it('bounds pending reviews per login and frees pending capacity only when a review retires', async () => {
+    const reviews = [];
+    for (let index = 0; index < 5; index++) reviews.push(await prepare());
+    const before = await counts();
+    expect(before).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    await expect(prepare()).rejects.toThrow(OwnLeaveContentUnavailable);
+    expect(await counts()).toEqual(before);
+    // Other logins have their own custody and budget, even when linked to the same person.
+    const secondId = await createAppUser(base.tenantId, subject.personId, 'employee');
+    await grantAssistant(adminCtx(base), { appUserId: secondId });
+    await prepare({ ...ctx, userId: secondId });
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(reviews[0])));
+    await prepare();
+    expect(await counts()).toMatchObject({ bodies: 6, pending: 6, model_runs: 0, requests: 0 });
+  });
+
+  it('does not let retirement bypass the rolling preparation budget or count old reviews forever', async () => {
+    const review = await prepare();
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    // Historical, already retired fixtures exhaust only the creation budget. No ciphertext or
+    // pending row exists, so a refusal cannot accidentally pin only the outstanding-review cap.
+    await owner.db.execute(sql`insert into app.assistant_own_leave_review
+      select gen_random_uuid(),tenant_id,user_id,person_id,employment_id,company_id,intent_digest,
+       reviewed_digest,'discarded',created_at,expires_at
+      from app.assistant_own_leave_review cross join generate_series(1,19)
+      where id=${review.actionId}::uuid`);
+    const before = await counts();
+    expect(before).toMatchObject({ bodies: 0, pending: 0 });
+    await expect(prepare()).rejects.toThrow(OwnLeaveContentUnavailable);
+    expect(await counts()).toEqual(before);
+    await owner.db.execute(sql`update app.assistant_own_leave_review
+      set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute'
+      where tenant_id=${base.tenantId}::uuid and user_id=${ctx.userId}::uuid`);
+    await prepare();
+    expect(await counts()).toMatchObject({ bodies: 1, pending: 1, model_runs: 0, requests: 0 });
+  });
+
   it('refuses another login of the same person, foreign tenants and altered discard digests', async () => {
     const review = await prepare();
     const secondId = await createAppUser(base.tenantId, subject.personId, 'employee');
