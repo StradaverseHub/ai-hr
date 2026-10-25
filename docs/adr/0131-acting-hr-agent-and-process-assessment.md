@@ -457,6 +457,10 @@ guarded service inside a supplied transaction, first requires both actual approv
 and warning events to exist, then throws an enclosing-command error and requires all request/step/event
 rows to be absent outside that transaction. It has not run. It checks rollback of those real callees,
 not savepoint recovery, concurrent-writer fencing, or a completed action receipt.
+A second unrun regression uses the actual `applyLeaveAdjustmentBatch` owner to subtract one Annual
+day after review, requires its canonical adjustment event and fresh balance change, and then requires
+the old reviewed expectation to refuse without adding requests/events in the still-open transaction.
+This covers a sequential HR adjustment, not an interleaving or participation in a shared lock.
 
 If a dependency or effect changed, refuse the old confirmation and offer a freshly reviewed proposal.
 If the service refuses, a savepoint may roll back its writes while the outer transaction records a

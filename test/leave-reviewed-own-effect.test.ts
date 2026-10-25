@@ -6,6 +6,7 @@ import { hireEmployee } from '../core/org';
 import { LeaveReviewedEffectError, previewLeaveDeduction, requestLeave, type ReviewedOwnLeaveEffect } from '../packs/leave/service';
 import { setAttendancePolicy } from '../packs/attendance/service';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
+import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -180,6 +181,30 @@ describe('reviewed own-leave precondition at the canonical write', () => {
 
   it('requires an enclosing command transaction', async () => {
     await expect(requestLeave(ctx, args, undefined, reviewed)).rejects.toThrow(LeaveReviewedEffectError);
+  });
+
+  it('refuses a stale review after a canonical HR negative adjustment changes its available balance', async () => {
+    const atReview = await previewLeaveDeduction(ctx, { ...args, includeAvailableBalance: true });
+    expect(atReview.days).toBe(1); expect(atReview.availableBalance).toBe(10);
+    const adjustment = await applyLeaveAdjustmentBatch(adminCtx(base), {
+      leaveTypeIds: [base.annualLeaveTypeId], days: -1, effectiveOn: reviewed.date,
+      reason: 'Fictional source correction after review', targetMode: 'individual',
+      employmentIds: [args.employmentId],
+    });
+    expect(adjustment).toMatchObject({ targeted: 1, written: 1, skipped: 0 });
+    expect(await owner.db.select({ type: domainEvent.eventType }).from(domainEvent)
+      .where(eq(domainEvent.aggregateId, adjustment.batchId))).toEqual([{ type: 'leave.adjustment.applied' }]);
+    await withTenant(ctx, async tx => {
+      const fresh = await previewLeaveDeduction(ctx, { ...args, includeAvailableBalance: true }, tx);
+      expect(fresh.days).toBe(atReview.days);
+      expect(fresh.balanceAvailable).toBe(9); expect(fresh.availableBalance).toBe(9);
+      const before = await counts(tx);
+      await expect(requestLeave(ctx, args, tx, { ...reviewed,
+        days: atReview.days, availableBalance: atReview.availableBalance! }))
+        .rejects.toMatchObject({ name: 'LeaveReviewedEffectError', reason: 'changed' });
+      // Refusal must precede any new request or event in this still-open transaction.
+      expect(await counts(tx)).toEqual(before);
+    });
   });
 
   it('refuses a stale review after an ordinary borrower request reserves the Annual source balance', async () => {
