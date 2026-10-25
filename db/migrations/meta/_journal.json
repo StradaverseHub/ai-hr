@@ -3424,6 +3424,20 @@
       "when": 1791900000080,
       "tag": "0590_attendance_policy_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 610,
+      "version": "7",
+      "when": 1791900000090,
+      "tag": "0610_performance_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 611,
+      "version": "7",
+      "when": 1791900000091,
+      "tag": "0611_performance_partner_access",
+      "breakpoints": true
     }
   ]
 }
