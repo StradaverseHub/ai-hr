@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { inputCls } from '@/components/ui';
 
 /**
@@ -74,9 +75,9 @@ function profileOptionChoices(
           {current} {legacySuffix}
         </option>
       )}
-      {options.map((o) => (
+      {organisationChoiceLabels(options).map((o) => (
         <option key={o.id ?? o.value} value={o.value}>
-          {o.label}
+          {o.displayLabel}
         </option>
       ))}
     </>

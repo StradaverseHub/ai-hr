@@ -145,12 +145,12 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
       employmentType: 'part_time',
       hiredOn: '2026-03-01',
     });
-    await setStatutory(multi.personId, 'pr', 'IC-MULTI');
+    await setStatutory(multi.personId, 'pr', '900101011234');
     // No-statutory-row person → Unknown (not dropped, not defaulted to citizen).
     await hire('Nobody Stat');
     // A real citizen with a statutory row.
     const cit = await hire('Cit Izen');
-    await setStatutory(cit.personId, 'citizen', 'IC-CIT');
+    await setStatutory(cit.personId, 'citizen', '910202021235');
 
     const rows = await demographicsByNationality(a, undefined, { asOf: ASOF });
     expect(rows).not.toBeNull();

@@ -229,7 +229,7 @@ describe('drift guard — slimmed Employment Dates card (d27961e3)', () => {
 
   // 89ea527b — hiredOn (Group Join Date) and joinDate LEFT this list: both are movement-only now, rendered
   // read-only on the card and not submitted by it. The guard below pins that they are gone; the rest of the
-  // Employment Dates group (probation / notice / resignation) stays editable here as before.
+  // Employment Dates group retains probation and general notice terms; resignation dates use Movement.
   it('no longer submits either join date', () => {
     const block = datesFormBlock();
     expect(block).not.toContain('name="hiredOn"');
@@ -249,12 +249,10 @@ describe('drift guard — slimmed Employment Dates card (d27961e3)', () => {
       'probationValue',
       'noticeBeforeConfirmationValue',
       'noticeAfterConfirmationValue',
-      'tenderResignationDate',
-      'resignationDate',
-      'lastWorkingDate',
     ]) {
       expect(postsFieldNamed(block, name), `${name} must remain on the Employment Dates card`).toBe(true);
     }
+    for(const name of ['tenderResignationDate','resignationDate','lastWorkingDate'])expect(postsFieldNamed(block,name),name+' is Movement-owned').toBe(false);
   });
 
   it('setEmploymentInfoAction no longer reads the extended date from the form', () => {

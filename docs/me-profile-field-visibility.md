@@ -8,6 +8,7 @@ The shared field registry currently populates ten tabs. Administrative Personnel
 tab: audit fields are recorded under Profile, leave-request fields under Leave, and the nine protected
 review fields under Employment. Their stable IDs are retained. The separate ESS Others tab remains,
 including its existing My Performance destination; it does not require its own registered field descriptors.
+Administrative Personnel no longer mounts the duplicated Change history or Employment review panels; Audit Trail and the separate review workflows retain their records. Stable field IDs and ESS dispositions remain.
 Dated Holiday Calendar controls are HR-only specialist inputs under Attendance, with no ESS mutation binding.
 
 Each stable Personnel descriptor below has an explicit ESS disposition. Import/report eligibility does
@@ -34,7 +35,12 @@ not allocate migrations or grant employee rights.
 
 | Stable Personnel field | Tab | ESS visibility | Update route | Reason |
 | --- | --- | --- | --- | --- |
-| `employment.data_classification.istestrecord` | Employment | Protected | specialist | HR-only data classification; never an employee input. |
+| `employment.data_classification.istestrecord` | Employment | Protected | specialist | Internal safety classification; Personnel and generic imports cannot edit it. |
+| `employment.cost_center_allocation.effective_date` | Employment | Protected | specialist | HR-only dated cost distribution; no employee self-service mutation. |
+| `employment.cost_center_allocation.cost_center_id` | Employment | Protected | specialist | HR-only dated cost distribution; no employee self-service mutation. |
+| `employment.cost_center_allocation.percentage` | Employment | Protected | specialist | HR-only dated cost distribution; no employee self-service mutation. |
+| `employment.cost_center_allocation.total_percentage` | Employment | Protected | specialist | HR-only dated cost distribution; no employee self-service mutation. |
+| `employment.cost_center_allocation.unallocated_percentage` | Employment | Protected | specialist | HR-only dated cost distribution; no employee self-service mutation. |
 | `profile.personal_details.employeecode` | Profile | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `profile.personal_details.salutation` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `profile.personal_details.fullname` | Profile | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
@@ -170,6 +176,8 @@ not allocate migrations or grant employee rights.
 | `employment_history.event_information.terminationreason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.event_information.terminationtype` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.event_information.resignationdate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.tenderresignationdate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
+| `employment_history.event_information.resignationeffectivedate` | Employment History | Visible | viewOnly | Recorded own employment event; private reasons and actors are withheld. |
 | `employment_history.event_information.noticeserveddays` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.event_information.blacklisted` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment_history.event_information.correctionreason` | Employment History | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |

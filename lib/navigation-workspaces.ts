@@ -27,7 +27,7 @@ const system = new Set(['/admin/holidays','/admin/settings/system-labels','/admi
   '/admin/settings/email','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
   '/admin/ai','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
 const peopleConfig = new Set(['/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
-  '/admin/settings/movement','/admin/settings/profile-requests']);
+  '/admin/settings/movement','/admin/settings/profile-requests','/admin/settings/people-general']);
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
   '/admin/leave-config/generate','/admin/leave-config/earned-accrual','/admin/leave-config/balance-health',
   '/admin/leave-config/leave-credit','/leave/employee-balances']);
@@ -43,7 +43,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(peopleConfig.has(path))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
   if(path==='/manage/my-team')return modulePlacement('people','team');
-  if(path.startsWith('/admin/personnel')||path==='/admin/notice-board')return modulePlacement('people','hr');
+  if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');

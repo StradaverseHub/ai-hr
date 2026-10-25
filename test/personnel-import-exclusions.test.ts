@@ -7,14 +7,17 @@ describe('registry-owned import exclusions',()=>{
   it('accounts for every actual exclusion with a localized explanation, never an unknown fallback',()=>{
     const exclusions=personnelImportExclusions('full');
     expect(exclusions.length).toBeGreaterThan(50);
+    // Each catalog is immutable for this test; read it once while retaining every field/locale assertion.
+    const catalogs=['en','ms','zh','ta','th','vi'].map(locale=>({
+      locale,messages:JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')),
+    }));
     for(const field of exclusions){
       expect(field.import.column,field.id).toBeUndefined();
       expect(field.import.register,field.id).toBeUndefined();
       expect(field.import.disabledReason,field.id).toBeTruthy();
       const key=personnelImportExclusionReasonKey(field);
       expect(key,field.id+': '+field.import.disabledReason).toBeTruthy();
-      for(const locale of ['en','ms','zh','ta','th','vi']){
-        const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+      for(const {locale,messages} of catalogs){
         expect(messages.people.import.exclusionReasons[key!],locale+': '+field.id).toBeTruthy();
       }
     }
@@ -27,6 +30,33 @@ describe('registry-owned import exclusions',()=>{
     expect(ids).not.toContain('family.family_and_dependents.icorpassport_8');
     const unsupported=PERSONNEL_FIELDS.find(field=>field.id==='profile.personal_details.age')!;
     expect(personnelImportExclusionReasonKey({...unsupported,import:{...unsupported.import,disabledReason:'A new owner restriction needs translation.'}})).toBeUndefined();
+  });
+  it('explains protected classification, Movement dates and grouped allocations through the same page/workbook translations',()=>{
+    const expected = new Map([
+      ['employment.data_classification.istestrecord', 'testRecord'],
+      ['employment.employment_dates_and_service.tenderresignationdate', 'resignationDates'],
+      ['employment.employment_dates_and_service.resignationdate', 'resignationDates'],
+      ['employment.employment_dates_and_service.lastworkingdate', 'resignationDates'],
+      ['employment.cost_center_allocation.percentage', 'costAllocation'],
+    ]);
+    for(const locale of ['en','ms','zh','ta','th','vi']){
+      const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+      const resolve=(key:string,fallback:string):string=>{
+        const value=key.split('.').reduce((node,part)=>node?.[part],messages);
+        return typeof value==='string'?value:fallback;
+      };
+      const entries=personnelImportExclusionEntries('full',resolve);
+      const workbook=personnelImportExclusionRows('full',resolve);
+      for(const [id,key] of expected){
+        const entry=entries.find(row=>row.id===id);
+        expect(entry,id).toBeDefined();
+        expect(entry!.reason,locale+': '+id).toBe(messages.people.import.exclusionReasons[key]);
+        expect(workbook,locale+': '+id).toContainEqual([entry!.tab,entry!.label,entry!.reason]);
+      }
+      expect(messages.people.import.exclusionReasons.resignationDates,locale).toContain(messages.people.import.movement.choice);
+      expect(messages.people.import.exclusionReasons.costAllocation,locale).toContain(messages.costAllocations.title);
+    }
+    expect(JSON.parse(readFileSync(new URL('../messages/en.json',import.meta.url),'utf8')).people.import.exclusionReasons.testRecord).not.toContain('HR manages');
   });
   it('guides all three dated-calendar inputs to their authorized editor in the page and workbook, in every locale',()=>{
     const ids=['attendance.dated_holiday_calendar.calendar','attendance.dated_holiday_calendar.startdate','attendance.dated_holiday_calendar.enddate'];

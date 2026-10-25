@@ -1,0 +1,63 @@
+name: alpha-staging-loaded-diagnostics
+run-name: Loaded unit diagnostic only · ${{ inputs.candidate_ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref: {description: Original frozen branch, required: true, type: string}
+      expected_sha: {description: Exact original candidate SHA, required: true, type: string}
+permissions: {contents: read, actions: read}
+concurrency:
+  group: alpha-loaded-diagnostic-${{ inputs.candidate_ref }}
+  cancel-in-progress: false
+env:
+  TZ: Asia/Kuala_Lumpur
+  DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+        run: node .github/ci/resolve.mjs
+  loaded-unit:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: {unit: [nodb-3, nodb-4]}
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Match original full-suite PDF dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils python3-venv
+          python3 -m venv "$RUNNER_TEMP/pdf-tools"
+          "$RUNNER_TEMP/pdf-tools/bin/pip" install --quiet pymupdf
+          echo "$RUNNER_TEMP/pdf-tools/bin" >> "$GITHUB_PATH"
+      - run: node ../automation/.github/ci/diagnostics/instrument-nodb.mjs
+      - name: Measure original loaded unit with one labelled instrumented target
+        run: node ../automation/.github/ci/diagnostics/run-loaded-nodb.mjs "$UNIT"
+        env: {UNIT: '${{ matrix.unit }}'}
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-loaded-${{ matrix.unit }}
+          path: ${{ runner.temp }}/diagnostic-loaded-*/
+          if-no-files-found: error
+          retention-days: 14

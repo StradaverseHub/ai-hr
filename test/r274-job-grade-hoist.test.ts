@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { buildOrgCriteriaSections } from '../core/org-criteria-form';
 
 /**
  * r274 (d8fa582b) — THE JOB GRADE PICKER IS WHERE THE READER LOOKS.
@@ -27,7 +28,15 @@ const builder = read(BUILDER);
 
 describe('§A · the options were always live — this round did not change that', () => {
   it('the builder feeds gradeIds from the grade list it is handed, with no literal grades anywhere', () => {
-    expect(builder).toContain("{ name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: c.grades.map(");
+    const criteria = {
+      companies: [], departments: [], positions: [], costCenters: [], businessUnits: [], profileOptions: {},
+      grades: [{ id: 'configured-grade', code: 'GRADE-CODE', name: 'Configured grade label', description: 'Internal detail' }],
+    };
+    const labels = { crit: (key: string) => key, org: (key: string) => key, employmentType: (key: string) => key };
+    const options = () => buildOrgCriteriaSections(criteria, labels).flatMap(section => section.fields).find(field => field.name === 'gradeIds')?.options;
+    expect(options()).toEqual([{ value: 'configured-grade', label: 'Configured grade label' }]);
+    criteria.grades[0].name = 'Renamed live grade';
+    expect(options()).toEqual([{ value: 'configured-grade', label: 'Renamed live grade' }]);
     // A hard-coded grade would be the actual defect the reporter believed in. There is none, and this is
     // what stops one appearing later.
     expect(builder).not.toMatch(/options:\s*\[\s*\{\s*value:\s*'G\d/i);

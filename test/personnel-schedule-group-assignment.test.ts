@@ -181,7 +181,7 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     const page = PAGE();
     const from = page.indexOf('const scheduleGroupCard');
     expect(from, 'the card exists').toBeGreaterThan(-1);
-    const end = page.indexOf('const reviewCard', from);
+    const end = page.indexOf('const panels =', from);
     expect(end, 'the following card bounds this assertion').toBeGreaterThan(from);
     const card = page.slice(from, end);
     expect(card.length).toBeGreaterThan(100);

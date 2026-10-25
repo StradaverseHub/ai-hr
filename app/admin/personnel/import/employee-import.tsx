@@ -1,11 +1,16 @@
 'use client';
+import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
+import { useNricPolicyMessage } from '@/components/nric-policy-message';
+import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
+import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
+import {allocationWorkbookReferencesAction} from './cost-allocation-actions';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { useRef, useState, useTransition } from 'react';
+import { Fragment, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -16,7 +21,7 @@ import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
-import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField } from '@/lib/personnel-import-contract';
 import {
   buildPersonnelInstructionRows,
   personnelTemplateColumnWidths,
@@ -24,10 +29,8 @@ import {
   buildReferenceRows,
   dependentTextColumnIndexes,
   employeeTextColumnIndexes,
-  DEPENDENT_ENUM_VALUES,
   DEPENDENT_SAMPLE_ROWS,
   DEPENDENT_XLSX_COLUMNS,
-  EMPLOYEE_ENUM_VALUES,
   EMPLOYEE_XLSX_FILENAME,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
@@ -41,7 +44,10 @@ Siti Aminah,siti@demo.test,Operations,,2026-06-15,contract,950909093456,4100,0,,
 type Phase = 'idle' | 'previewed' | 'done';
 
 export type ImportReference = {
+  allowDuplicatedNric?:boolean;
   organisationByCompany?:Record<string,Record<string,string[]>>;
+  organisationOptionsByCompany?:Record<string,Record<string,PersonnelReferenceOption[]>>;
+  catalogOptions?:Record<string,PersonnelReferenceOption[]>;
   departments: string[];
   positions: string[];
   costCenters: string[];
@@ -73,10 +79,16 @@ export function EmployeeImport({
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
+  const nricTexts = useTranslations('peopleGeneral');
+  const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
+  const ta=useTranslations('costAllocations');
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
-  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
-  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
+  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>[key==='ic_number'?nricGuidance:'',personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')})].filter(Boolean).join(' · ');
+  const resolveReferenceLabel=(key:string,fallback:string)=>personnelLabels.has(key)?personnelLabels(key):fallback;
+  const employeeChoices=personnelTemplateReferenceLists('employee',employeeTemplate.columns.map(column=>column.key),reference,employeeColumnLabel,resolveReferenceLabel);
+  const familyChoices=personnelTemplateReferenceLists('family',DEPENDENT_XLSX_COLUMNS,reference,key=>descriptorColumnLabel(key,'family',resolveReferenceLabel),resolveReferenceLabel);
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
@@ -84,6 +96,7 @@ export function EmployeeImport({
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
   const [dependentsCsv, setDependentsCsv] = useState('');
+  const [allocationsCsv,setAllocationsCsv]=useState('');
   const [registerTexts,setRegisterTexts]=useState<PersonnelRegisterTexts>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -117,14 +130,14 @@ export function EmployeeImport({
 
   // Validate an explicit string rather than the `csv` state: after a file read the state update
   // has not flushed yet, so passing the text through avoids validating the previous contents.
-  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts) => {
+  const runValidate = (text: string, family = dependentsCsv,registers=registerTexts,allocations=allocationsCsv) => {
     if (commitPending.current) return;
     reset();
     const revision = inputRevision.current;
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateImportAction(text, companyId, family,registers);
+        const p = await validateImportAction(text, companyId, family,registers,allocations);
         if (revision !== inputRevision.current) return;
         setPreview(p);
         setResult(null);
@@ -149,27 +162,28 @@ export function EmployeeImport({
     setFileName(null);
     setReading(true);
     try {
-      // Item 2983802f — ask the reader for the Family sheet too. A file without one decodes exactly as
-      // it always did; `dependentsText` simply comes back empty.
+      // The reader maps the first requested companion to dependentsText, so Family must stay first.
+      // A workbook without Family returns empty dependentsText, even when allocations are present.
       const { name, text, dependentsText,extraTexts } = await readImportFile(file, {
-        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],
-        allowedSheets:[EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
+        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
+        allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       if (revision !== inputRevision.current) return;
       setCsv(text);
       setDependentsCsv(dependentsText);
+      const allocations=extraTexts?.[ALLOCATION_SHEET]??'';setAllocationsCsv(allocations);
       const registers=Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,extraTexts?.[PERSONNEL_REGISTER_SHEETS[kind]]??'']));
       setRegisterTexts(registers);
       setFileName(name);
       setResult(null);
-      runValidate(text, dependentsText,registers);
+      runValidate(text, dependentsText,registers,allocations);
     } catch (e) {
       if (revision !== inputRevision.current) return;
       // Drop the file label and any earlier preview so a rejected pick can never leave a stale
       // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
       // alone — the user must press Validate again to get a preview back.
       setFileName(null);
-      setDependentsCsv('');setRegisterTexts({});
+      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -192,7 +206,7 @@ export function EmployeeImport({
   };
   const registerLabel=(kind:PersonnelRegisterKind)=>kind==='qualification'?t('sectionQualification'):t('sectionEmergency');
   const registerColumnLabel=(kind:PersonnelRegisterKind,key:string)=>descriptorColumnLabel(key,kind,(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
-  const registerChoices=(kind:PersonnelRegisterKind)=>personnelImportFields(kind).filter(field=>field.import.catalog||personnelFieldChoices(field).length).map(field=>({label:registerColumnLabel(kind,field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(choice=>personnelLabels.has(choice.labelKey)?personnelLabels(choice.labelKey):choice.value)}));
+  const registerChoices=(kind:PersonnelRegisterKind)=>personnelTemplateReferenceLists(kind,personnelRegisterColumns(kind),reference,key=>registerColumnLabel(kind,key),resolveReferenceLabel);
   const downloadRegisterCsv=(kind:PersonnelRegisterKind)=>{
     const url=URL.createObjectURL(new Blob([buildPersonnelCsv(kind,[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))])],{type:'text/csv;charset=utf-8;'}));
     const a=document.createElement('a');a.href=url;a.download=`${kind}-update-template.csv`;a.click();URL.revokeObjectURL(url);
@@ -201,10 +215,9 @@ export function EmployeeImport({
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
-      const enumList = (key: keyof typeof EMPLOYEE_ENUM_VALUES) => ({
-        label: employeeColumnLabel(key),
-        values: [...EMPLOYEE_ENUM_VALUES[key]],
-      });
+      const allocationReferenceResult=await allocationWorkbookReferencesAction(companies.map(c=>c.id),companyId);
+      if(!allocationReferenceResult.ok){setError(ta(`errors.${allocationReferenceResult.error}`));return;}
+      const allocationReferences=allocationReferenceResult.rows;
       const bytes = await buildXlsx(
         employeeTemplate.columns.map(column=>employeeColumnLabel(column.key)),
         employeeTemplate.sampleRows.map(row=>employeeTemplate.columns.map((_,i)=>row[i]??'')),
@@ -214,8 +227,10 @@ export function EmployeeImport({
           columnWidths:personnelTemplateColumnWidths(employeeTemplate.columns.map(column=>employeeColumnLabel(column.key))),
           wrapText:true,
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
-          validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];})],
+          validationListFallbackNote:t('instructionLargeLists'),
+          validationLists:[...Object.entries(organisationGuidance).map(([key,values])=>({column:employeeTemplate.columns.findIndex(column=>column.key===key),values})).filter(list=>list.column>=0),...employeeChoices.map(list=>({column:employeeTemplate.columns.findIndex(column=>column.key===list.column),values:list.values})),{column:employeeTemplate.columns.findIndex(column=>column.key==='company'),values:companies.map(company=>company.name)}].filter(list=>list.column>=0),
           extraSheets: [
+            ...allocationWorkbookSheets(allocationReferences,ta('instructions')).map(sheet=>({...sheet,validationListFallbackNote:t('instructionLargeLists')})),
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
             {
@@ -225,7 +240,8 @@ export function EmployeeImport({
               columnWidths:personnelTemplateColumnWidths(DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback))),
               wrapText:true,
               headerNotes: DEPENDENT_XLSX_COLUMNS.map(key=>guidance(key,'family','create')),
-              validationLists:personnelImportFields('family').flatMap(field=>{const column=DEPENDENT_XLSX_COLUMNS.indexOf(field.import.column!);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
+              validationListFallbackNote:t('instructionLargeLists'),
+              validationLists:familyChoices.map(list=>({column:DEPENDENT_XLSX_COLUMNS.indexOf(list.column),values:list.values})),
             },
             ...PERSONNEL_REGISTER_KINDS.map(kind=>({name:PERSONNEL_REGISTER_SHEETS[kind],
               rows:[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))],
@@ -233,26 +249,19 @@ export function EmployeeImport({
               columnWidths:personnelTemplateColumnWidths(personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))),
               wrapText:true,
               headerNotes:personnelRegisterColumns(kind).map(key=>guidance(key,kind,'create')),
-              validationLists:registerChoices(kind).map(list=>({column:personnelRegisterColumns(kind).findIndex(key=>registerColumnLabel(kind,key)===list.label),values:list.values})),
+              validationListFallbackNote:t('instructionLargeLists'),
+              validationLists:registerChoices(kind).map(list=>({column:personnelRegisterColumns(kind).indexOf(list.column),values:list.values})),
             })),
             {
               name: EMPLOYEE_XLSX_SHEETS.reference,
-              columnWidths:[80],wrapText:true,
+              columnWidths:[38,80],wrapText:true,
               rows: buildReferenceRows(t('referenceHeading'), [
-                { label: employeeColumnLabel('company'), values: companies.map((c) => c.name) },
-                ...Object.entries(organisationGuidance).map(([column,values])=>({label:`${employeeColumnLabel(column)} — ${companies.find(company=>company.id===companyId)?.name??''}`,values})),
-                ...personnelImportFields('employee').filter(field=>field.import.catalog || personnelFieldChoices(field).length).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)})),
-                {label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities},
+                { label: employeeColumnLabel('company'), values: companies.map((c) => c.name), entries:companies.map(company=>({value:company.name,label:company.name})) },
+                ...Object.entries(organisationGuidance).map(([column,values])=>({label:`${employeeColumnLabel(column)} — ${companies.find(company=>company.id===companyId)?.name??''}`,values,entries:reference.organisationOptionsByCompany?.[companyId]?.[column]})),
+                ...employeeChoices,
                 ...familyChoices,
                 ...PERSONNEL_REGISTER_KINDS.flatMap(registerChoices),
-                {label:t('familyRelationshipLabel'),values:reference.familyRelationships},
-                enumList('employment_type'),
-                enumList('pay_mode'),
-                enumList('payment_term'),
-                enumList('epf_citizenship'),
-                enumList('tax_category'),
-                enumList('eis_eligible'),
-              ]),
+              ],{code:personnelLabels('admin.systemLabels.col.code'),label:personnelLabels('admin.systemLabels.col.label')}),
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.instructions,
@@ -261,8 +270,11 @@ export function EmployeeImport({
                 t('instructionRequired', { columns: IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ') }),
                 t('instructionDates'),
                 t('instructionIdentityText'),
+                nricGuidance,
                 t('instructionCompany'),
                 t('instructionReference'),
+                t('instructionImportCodes'),
+                t('instructionLargeLists'),
                 t('instructionPassport'),
                 t('instructionAddress'),
                 t('instructionProbation'),
@@ -303,7 +315,7 @@ export function EmployeeImport({
   const downloadErrors = (rows: { rowNum: number; fullName: string; email: string; errors: string[] }[]) => {
     const csvOut = toCsv([
       [t('colRow'), t('colName'), t('colEmail'), t('colResult')],
-      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.join('; ')]),
+      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.map(nricMessage).join('; ')]),
     ]);
     const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -323,7 +335,7 @@ export function EmployeeImport({
       try {
         // cf43c909 — the file's NAME rides along as the history row's label. The file itself never leaves
         // the browser: `csv` is still the only thing sent, so the write path is unchanged.
-        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts);
+        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts,allocationsCsv,preview.allocations?.token);
         setResult(r);
         setPhase('done');
         router.refresh();
@@ -364,6 +376,8 @@ export function EmployeeImport({
 
   return (
     <div className="space-y-6">
+      {allocationsCsv.trim()&&<p className="rounded-md border p-3 text-sm">{ta('companion',{count:preview?.allocations?.groups.length??0})}</p>}
+      {preview?.allocations&&<section className="space-y-3 rounded-md border p-4" aria-label={ta('confirmTitle')}>{preview.allocations.groups.map(group=><div key={group.key} className="border-b pb-3 text-sm last:border-0"><p className="font-medium">{group.employeeCode} · {group.effectiveDate}</p><p className="text-xs text-muted-foreground">{group.companyId} · {ta('sourceRows')}: {group.rowNums.join(', ')}</p><ul>{group.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul>{group.operation==='clear'&&<p>{ta('clearHelp')}</p>}{group.errors.map((message,i)=><p key={i} className="text-destructive">{message}</p>)}</div>)}</section>}
       <StepRail current={currentStep} />
       <Card className="space-y-4 p-5">
         <fieldset disabled={committing} className="min-w-0 space-y-4">
@@ -503,7 +517,7 @@ export function EmployeeImport({
             onClick={() => {
               if (commitPending.current) return;
               setCsv(SAMPLE);
-              setDependentsCsv('');setRegisterTexts({});
+              setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
             }}
@@ -557,7 +571,7 @@ export function EmployeeImport({
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
+          {nricMessage(error)}
         </div>
       )}
 
@@ -600,7 +614,7 @@ export function EmployeeImport({
               <ul className="list-disc space-y-0.5 pl-5">
                 {result.superiorFailed.map((f) => (
                   <li key={f.rowNum}>
-                    {t('row', { num: f.rowNum })} · {f.email} — {f.message}
+                    {t('row', { num: f.rowNum })} · {f.email} — {nricMessage(f.message)}
                   </li>
                 ))}
               </ul>
@@ -611,7 +625,7 @@ export function EmployeeImport({
               {result.failed.map((f) => (
                 <li key={f.rowNum} className="px-4 py-2">
                   <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> ·{' '}
-                  {f.email} — <span className="text-red-600 dark:text-red-400">{f.message}</span>
+                  {f.email} — <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
                 </li>
               ))}
             </ul>
@@ -625,7 +639,7 @@ export function EmployeeImport({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setCsv('');
-                setDependentsCsv('');setRegisterTexts({});
+                setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();
               }}
@@ -717,6 +731,7 @@ function PreviewTable({
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const invalid = preview.total - preview.validCount;
   return (
     <Card className="overflow-hidden">
@@ -798,9 +813,9 @@ function PreviewTable({
         </thead>
         <tbody className="divide-y divide-border">
           {preview.rows.map((r) => (
-            <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+            <Fragment key={r.rowNum}><tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
               <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
-              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}<PersonnelImportValues values={r.proposed} sheet="employee" /></td>
+              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.email || '—'}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.company || '—'}</td>
               <td className="px-4 py-2">
@@ -812,10 +827,16 @@ function PreviewTable({
                     )}
                   </span>
                 ) : (
-                  <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                  <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                 )}
               </td>
             </tr>
+            {!!r.proposed?.length && <tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
+              <td colSpan={5} className="px-4 pb-3">
+                <PersonnelImportValues values={r.proposed} sheet="employee" />
+              </td>
+            </tr>}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -858,7 +879,7 @@ function PreviewTable({
                     {r.ok ? (
                       <span className="text-emerald-600 dark:text-emerald-400">{t('ready')}</span>
                     ) : (
-                      <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                      <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                     )}
                   </td>
                 </tr>
@@ -871,7 +892,7 @@ function PreviewTable({
       {preview.registers?.filter(register=>register.total>0).map(register=><div key={register.kind} className="overflow-x-auto border-t border-border">
         <h3 className="bg-muted/30 px-4 py-2 text-sm font-semibold">{register.kind==='qualification'?t('sectionQualification'):t('sectionEmergency')} · {register.total}</h3>
         <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs"><tr><th className="px-4 py-2">#</th><th>{t('colEmployeeCode')}</th><th>{t('colName')}</th><th>{t('colResult')}</th></tr></thead>
-          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2">{row.rowNum}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):row.errors.join('; ')}</td></tr>)}</tbody>
+          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2">{row.rowNum}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):row.errors.map(nricMessage).join('; ')}</td></tr>)}</tbody>
         </table>
       </div>)}
 

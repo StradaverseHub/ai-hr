@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
@@ -74,11 +75,11 @@ export async function LeaveCreditRulesTab({
     // being configured — narrowing it would silently drop another company from the criterion on the next save.
     companyIds: visible.map((c) => ({ id: c.id, name: c.name })),
     employmentTypes: employmentTypeOptions,
-    departmentIds: departments.map((d) => ({ id: d.id, name: d.name })),
-    divisions: (profileOptions.division ?? []).map((o) => ({ id: o.value, name: o.label })),
-    positionIds: positions.map((p) => ({ id: p.id, name: p.title })),
+    departmentIds: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
+    divisions: organisationChoiceLabels(profileOptions.division ?? []).map((o) => ({ id: o.value, name: o.displayLabel })),
+    positionIds: organisationChoiceLabels(positions).map((p) => ({ id: p.id, name: p.displayLabel })),
     gradeIds: grades.map((g) => ({ id: g.id, name: g.name || g.code })),
-    employmentCategories: (profileOptions.category ?? []).map((o) => ({ id: o.value, name: o.label })),
+    employmentCategories: organisationChoiceLabels(profileOptions.category ?? []).map((o) => ({ id: o.value, name: o.displayLabel })),
     employmentIds: employees.map((e) => ({ id: e.employmentId, name: e.name })),
   };
   const criteria = REPLACEMENT_ELIGIBILITY_CRITERIA.map((c) => ({ key: c.key, label: tr(c.labelKey) }));

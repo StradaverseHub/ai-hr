@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -262,7 +263,7 @@ export default async function PeoplePage({
       label: t('department'),
       ariaLabel: t('filterDepartment'),
       allLabel: t('allDepartments'),
-      options: departments.map((d) => ({ value: d.id, label: d.name })),
+      options: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
       removeAriaLabel: t('removeFilter', { label: t('department') }),
     },
     {

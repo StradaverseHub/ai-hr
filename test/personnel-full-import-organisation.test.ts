@@ -8,28 +8,30 @@ import {personnelImportField} from '../lib/personnel-import-contract';
 import {personnelOrganisationRepairInventory} from '../lib/personnel-organisation-repair-inventory';
 
 describe('full hire organisation contract',()=>{
- it('prefers trimmed case-insensitive labels over a different record code, without changing the default contract',()=>{
+ it('prefers canonical codes over another record label regardless of catalogue order',()=>{
   for(const reversed of [false,true]){
    const rows=[{id:'label-owner',code:'DP0001',label:'Green integrated base stabiliser'},{id:'code-owner',code:'GREEN INTEGRATED BASE STABILISER',label:'Other'}];
-   const explicit=new PersonnelImportLookup<string>('label-first');const unchanged=new PersonnelImportLookup<string>();
-   for(const row of reversed?[...rows].reverse():rows)for(const lookup of [explicit,unchanged])lookup.add(row.id,row.id,{codes:[row.code],names:[row.label]});
-   expect(explicit.get('  GREEN INTEGRATED BASE STABILISER  ')).toBe('label-owner');
-   expect(explicit.get(' dp0001 ')).toBe('label-owner');
-   expect(unchanged.get('Green integrated base stabiliser')).toBe('code-owner');
+   const lookup=new PersonnelImportLookup<string>();
+   for(const row of reversed?[...rows].reverse():rows)lookup.add(row.id,row.id,{codes:[row.code],names:[row.label]});
+   expect(lookup.get('  GREEN INTEGRATED BASE STABILISER  ')).toBe('code-owner');
+   expect(lookup.get(' dp0001 ')).toBe('label-owner');
   }
  });
- it('refuses ambiguous labels even where the submitted text matches an exact code',()=>{
-  const lookup=new PersonnelImportLookup<string>('label-first');
+ it('accepts an exact code despite ambiguous legacy labels but refuses duplicate codes',()=>{
+  const lookup=new PersonnelImportLookup<string>();
   lookup.add('a','a',{codes:['SHARED'],names:['Shared']}).add('b','b',{codes:['B'],names:[' shared ']});
+  expect(lookup.get('SHARED')).toBe('a');expect(lookup.isAmbiguous('Shared')).toBe(false);
+  lookup.add('c','c',{codes:[' shared '],names:['Distinct']});
   expect(lookup.get('SHARED')).toBeUndefined();expect(lookup.isAmbiguous('Shared')).toBe(true);
-  const blank=new PersonnelImportLookup<string>('label-first');blank.add('c','c',{codes:['Customer Service'],names:['  ']});
+  const blank=new PersonnelImportLookup<string>();blank.add('c','c',{codes:['Customer Service'],names:['  ']});
   expect(blank.get(' customer service ')).toBe('c');
  });
- it('keeps organisation profile values as canonical codes and only opts the full-import categories into label-first',()=>{
-  const catalog=new PersonnelImportCatalog(new Set(['division']));
+ it('keeps organisation profile values as canonical codes with unambiguous label fallback',()=>{
+  const catalog=new PersonnelImportCatalog();
   catalog.addOption({category:'division',value:'DIV-A',label:'Shared'});catalog.addOption({category:'division',value:'Shared',label:'Other'});
   catalog.addOption({category:'division',value:'OLD',label:'Retired',isActive:false});
-  expect(normalizePersonnelCatalogRecord({org_division:' shared '},'employee',catalog).record.org_division).toBe('DIV-A');
+  expect(normalizePersonnelCatalogRecord({org_division:' shared '},'employee',catalog).record.org_division).toBe('Shared');
+  expect(normalizePersonnelCatalogRecord({org_division:'Other'},'employee',catalog).record.org_division).toBe('Shared');
   expect(catalog.resolve('division','Retired').value).toBeUndefined();
   expect(catalog.display('division','DIV-A')).toBe('Shared (DIV-A)');
  });

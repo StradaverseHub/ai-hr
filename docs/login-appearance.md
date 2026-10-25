@@ -12,6 +12,6 @@ The installation selects which tenant supplies the public appearance:
 - `LOGIN_PRESENTATION_TENANT_ID` explicitly selects a tenant and takes precedence. This also supports deployments using a different identity provider.
 - If neither selects a tenant, the built-in welcome and AIHR icon remain in use. Other tenants' stored presentation settings cannot select themselves or change the installation's default.
 
-Only the configured media type, media URL, description and icon URL are available through the public projection. No employee or identity fields are included. Migration `0591_login_presentation` must be applied before settings can be saved. A failed artwork read must leave authentication available.
+Only the configured media type, media URL, description and icon URL are available through the public projection. No employee or identity fields are included. Migration `0600_login_presentation` must be applied before settings can be saved. A failed artwork read must leave authentication available.
 
 Atelier is the UI default when the `ui_theme` cookie is absent, empty or unsupported. A supported saved choice continues to win; users can change it through the account menu after signing in. Ops/Strat labels are presentation only: internal workspace IDs and route ownership stay stable. Atelier submenu sections use non-interactive headings, separated from the links by type, space and a rule.

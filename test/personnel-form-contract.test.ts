@@ -33,13 +33,12 @@ describe('Personnel shared form contract',()=>{
     // Other numeric/date widgets retain their existing metadata and never borrow this context.
     expect(personnelInput(birth,'edit',{employmentStartDate:'2024-02-29'})).not.toHaveProperty('min');
   });
-  it('supports an explicitly declared true/false choice presentation without changing the canonical boolean fact',()=>{
+  it('retains the classification safety fact without a Personnel form or generic writer',()=>{
     const id='employment.data_classification.istestrecord',field=PERSONNEL_FIELDS.find(f=>f.id===id)!;
-    expect(field).toMatchObject({type:'boolean',owner:'employment',ownerField:'isTestRecord',form:{name:'isTestRecord',widget:'choice'}});
-    expect(personnelFormMetadataIssue(field)).toBeNull();expect(personnelFormWidget(id)).toBe('choice');
-    expect(personnelControl(id,'edit')).toEqual({'data-personnel-field':id,name:'isTestRecord',required:false});
-    expect(()=>personnelInput(id,'edit')).toThrow(/specialized/); // Never silently turn the select into a checkbox.
-    const changed=structuredClone(field);changed.type='number';expect(personnelFormMetadataIssue(changed)).toContain('canonical type');
+    expect(field).toMatchObject({type:'boolean',owner:'employment',ownerField:'isTestRecord'});
+    expect(field.form).toBeUndefined();
+    expect(()=>personnelControl(id,'edit')).toThrow(/form binding is missing/);
+    expect(()=>personnelInput(id,'edit')).toThrow(/form binding is missing/);
     expect(field.import.column).toBeUndefined();expect(field.import.writer).toBeUndefined();expect(field.ess.binding).toBeUndefined();
   });
   it('resolves the mounted read-only employment values without exposing a writable join-date field',()=>{

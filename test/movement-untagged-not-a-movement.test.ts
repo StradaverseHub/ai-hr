@@ -135,7 +135,7 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     expect(audit.map((r) => r.eventType)).toContain('employment.info.updated');
   });
 
-  it('the OTHER inferred kinds are gone too — probation extension and resignation dates', async () => {
+  it('probation edits stay untagged and the retired generic resignation writer refuses', async () => {
     const probation = await hireOne();
     await setEmploymentInfo(adminCtx(b), {
       employmentId: probation.employmentId,
@@ -145,11 +145,16 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     expect(await kinds(probation.employmentId)).toEqual(['hired']);
 
     const resigning = await hireOne();
-    await setEmploymentInfo(adminCtx(b), {
+    await expect(setEmploymentInfo(adminCtx(b), {
       employmentId: resigning.employmentId,
       tenderResignationDate: '2026-05-01',
       lastWorkingDate: '2026-06-01',
-    });
+    })).rejects.toThrow('Nothing to change.');
+    const [saved] = await owner.db.select({
+      tender: schema.employment.tenderResignationDate,
+      lastWorking: schema.employment.lastWorkingDate,
+    }).from(schema.employment).where(eq(schema.employment.id, resigning.employmentId));
+    expect(saved).toEqual({ tender: null, lastWorking: null });
     expect(await kinds(resigning.employmentId)).toEqual(['hired']);
   });
 
