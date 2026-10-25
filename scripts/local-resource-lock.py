@@ -74,7 +74,13 @@ class Reservation:
             raise Refused("Admission lock must be a regular file")
 
     def _all_paths(self):
-        return [self.test / "slot.1", self.test / "slot.2", self.db / "slot.1"]
+        return list(self.test.glob("slot.*")) + list(self.db.glob("slot.*"))
+
+    def _has_unmanaged_slots(self):
+        expected = {self.test / "slot.1", self.test / "slot.2", self.db / "slot.1"}
+        # Legacy callers may override capacity. Their extra reservations still consume
+        # memory/DB resources; never interpret them as permission to exceed this budget.
+        return any(path not in expected for path in self._all_paths())
 
     def _check_nested(self):
         for path in self._all_paths():
@@ -93,6 +99,8 @@ class Reservation:
             return False
         try:
             self._check_nested()
+            if self._has_unmanaged_slots():
+                return False
             choices = itertools.combinations([self.test / "slot.1", self.test / "slot.2"], self.slots)
             for test_paths in choices:
                 paths = list(test_paths) + ([self.db / "slot.1"] if self.database else [])
@@ -111,6 +119,9 @@ class Reservation:
                         # Publish pid last and atomically: legacy reapers must never observe an
                         # empty pid file and mistake this live reservation for a dead owner.
                         atomic_text(path / "pid", str(os.getpid()) + "\n", self.token)
+                    if self._has_unmanaged_slots():
+                        self.release()
+                        return False
                     return True
                 except FileExistsError:
                     self.release()

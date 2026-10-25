@@ -122,6 +122,22 @@ print(json.dumps({{'end':time.monotonic()}}),flush=True)
         self.assertEqual({p.name: p.read_bytes() for p in foreign.iterdir()}, saved)
         self.assertFalse((self.root / "locks/slot.2").exists())
 
+    def test_out_of_capacity_legacy_slots_block_without_new_leases(self):
+        for group, number in [("locks", 3), ("devdb-locks", 2)]:
+            with self.subTest(group=group):
+                foreign = self.foreign_slot(group, number)
+                saved = {p.name: p.read_bytes() for p in foreign.iterdir()}
+                child = self.start(self.command("unexpected-capacity", "print('must not run')", database=True, wait=.1))
+                code, (out, err) = self.collect(child)
+                self.assertEqual(code, 75, err)
+                self.assertEqual(out, "")
+                self.assertEqual({p.name: p.read_bytes() for p in foreign.iterdir()}, saved)
+                self.assertFalse((self.root / "locks/slot.1").exists())
+                self.assertFalse((self.root / "devdb-locks/slot.1").exists())
+                # These are this test's private fixture files, never shared leases.
+                for file in foreign.iterdir(): file.unlink()
+                foreign.rmdir()
+
     def test_missing_pid_legacy_reservation_is_preserved(self):
         path = self.root / "locks/slot.1"
         path.mkdir(parents=True)

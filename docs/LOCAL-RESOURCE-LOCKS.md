@@ -22,7 +22,7 @@ The command inherits `AIHR_LOCK_DIR` for the selected state root. Both memory-sl
 
 ## Ownership and cancellation
 
-Existing legacy slot directories block admission and are preserved, including incomplete metadata or apparently dead owners. This tool never automatically reaps them, kills another job or deletes foreign files. Unknown ownership requires the coordinating owner's existing recovery procedure.
+Existing legacy slot directories block admission and are preserved, including incomplete metadata or apparently dead owners. Extra legacy reservations outside the fixed capacity (for example `locks/slot.3` or `devdb-locks/slot.2`) also block admission without acquiring any new leases. An environment override used by another caller does not increase this launcher’s resource budget. This tool never automatically reaps them, kills another job or deletes foreign files. Unknown ownership requires the coordinating owner's existing recovery procedure.
 
 Each new reservation has a private token and directory identity. PID publication is atomic, avoiding the empty-file window in legacy stale-owner checks. Cleanup verifies ownership and uses individual unlink/rmdir operations. A changed token/PID or unexpected directory content refuses cleanup and cannot become a successful result.
 
