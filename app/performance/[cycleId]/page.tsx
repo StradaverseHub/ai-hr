@@ -4,7 +4,7 @@ import { enableOnehrAction } from '../onehr-actions';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { requirePerfCompAccess } from '@/lib/authz';
+import { isOnehrOnlyPerformanceAdmin, requireOnehrAdminAccess } from '@/lib/authz';
 import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -41,13 +41,17 @@ export default async function CyclePage({
   params: Promise<{ cycleId: string }>;
   searchParams: Promise<{ error?: string; progressModule?:string;progressKind?:string;progressGroup?:string;progressCompany?:string }>;
 }) {
-  const s = await requirePerfCompAccess();
+  // ADR-0141 — admits the OneHR performance partner too, for OneHR-native cycles ONLY (below).
+  const s = await requireOnehrAdminAccess();
   const t = await getTranslations('performance.cycle');
   const tl = await getTranslations('performance.lifecycle');
   const { cycleId } = await params;
   const { error,...initialProgress } = await searchParams;
   const onehr = await getOnehrCycle(s, cycleId);
   if (onehr) return <OnehrCycleView v={onehr} error={error} initialProgress={initialProgress}/>;
+  // A generic cycle's roster carries merit, bonus and current basic salary: a session whose only performance
+  // authority is the OneHR performance partner gets the same answer as a cycle that does not exist.
+  if (isOnehrOnlyPerformanceAdmin(s)) notFound();
   const onehrText = await getTranslations('onehr');
   const data = await cycleDetail(s, cycleId);
   if (!data) notFound();

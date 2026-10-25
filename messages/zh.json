@@ -3643,7 +3643,8 @@
         "super_admin": "超级管理员",
         "payroll_partner": "薪资合作伙伴",
         "performance_comp_partner": "绩效与薪酬合作伙伴",
-        "operator": "运营方"
+        "operator": "运营方",
+        "performance_partner": "绩效合作伙伴"
       },
       "scope": {
         "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。",
@@ -21606,7 +21607,8 @@
       "super_admin": "超级管理员",
       "payroll_partner": "薪资合作伙伴",
       "performance_comp_partner": "绩效/薪酬合作伙伴",
-      "operator": "运营方"
+      "operator": "运营方",
+      "performance_partner": "绩效合作伙伴"
     }
   },
   "review": {

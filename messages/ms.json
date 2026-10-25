@@ -3643,7 +3643,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Rakan Penggajian",
         "performance_comp_partner": "Rakan Prestasi & Pampasan",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Rakan Prestasi"
       },
       "scope": {
         "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses.",
@@ -21606,7 +21607,8 @@
       "super_admin": "Pentadbir Super",
       "payroll_partner": "Rakan Gaji",
       "performance_comp_partner": "Rakan Prestasi/Pampasan",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Rakan Prestasi"
     }
   },
   "review": {

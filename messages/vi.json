@@ -3643,7 +3643,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Đối tác Bảng lương",
         "performance_comp_partner": "Đối tác Hiệu suất & Lương thưởng",
-        "operator": "Người vận hành"
+        "operator": "Người vận hành",
+        "performance_partner": "Đối tác Hiệu suất"
       },
       "scope": {
         "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này.",
@@ -21606,7 +21607,8 @@
       "super_admin": "Quản trị viên cấp cao",
       "payroll_partner": "Đối tác Lương",
       "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng",
-      "operator": "Người vận hành"
+      "operator": "Người vận hành",
+      "performance_partner": "Đối tác Hiệu suất"
     }
   },
   "review": {

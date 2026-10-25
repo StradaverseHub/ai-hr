@@ -547,6 +547,7 @@ export function Sidebar({
   hasAssignedApproval = false,
   canReviewProfileChanges = false,
   canAccessTeam = false,
+  canAdministerOnehr = false,
   approvalCount = 0,
   taskCount = 0,
   onboardingAccess = false,
@@ -573,6 +574,11 @@ export function Sidebar({
   canReviewProfileChanges?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
+  /**
+   * ADR-0141 — OneHR performance administration (admins, perf-comp partners, OneHR performance partners).
+   * Shows ONLY the manager-up Performance row; it never opens the admin rail, approvals or My Team.
+   */
+  canAdministerOnehr?: boolean;
   /**
    * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
    * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
@@ -668,7 +674,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

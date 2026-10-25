@@ -3643,7 +3643,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Payroll Partner",
         "performance_comp_partner": "Performance & Comp Partner",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Performance Partner"
       },
       "scope": {
         "accessConfiguration": "Opens only with the current effective Manage security and permissions grant. A role alone never grants this screen.",
@@ -21606,7 +21607,8 @@
       "super_admin": "Super Admin",
       "payroll_partner": "Payroll Partner",
       "performance_comp_partner": "Perf/Comp Partner",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Performance Partner"
     }
   },
   "review": {

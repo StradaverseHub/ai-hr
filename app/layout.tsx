@@ -30,7 +30,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin } from '@/lib/authz';
+import { canAdminOnehr, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
@@ -233,6 +233,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
+              // ADR-0141 — the OneHR performance partner gets the Performance row only, NOT the admin rail:
+              // it is deliberately absent from isAdmin above, because it can enter no admin screen.
+              canAdministerOnehr={canAdminOnehr(session)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
