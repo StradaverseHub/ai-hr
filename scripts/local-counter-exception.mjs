@@ -4,12 +4,15 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 
 export const COUNTER_EXCEPTION = Object.freeze({
-  version: 1, kind: 'OWNER_EXCEPTION_REPORT_EVIDENCE_NOT_GATE_RECEIPT',
+  version: 2, kind: 'OWNER_EXCEPTION_REPORT_EVIDENCE_NOT_GATE_RECEIPT',
   repository: 'StradaverseHub/ai-hr',
   candidate: '3c51317ea43ded103e782c37b55eccf9fdeae05c',
   baseline: 'f20275ffa150ecc41b745f625f085308ea283379',
   run: 'ai-local-20261026-final-02', chunks: 16,
   wrapperSha256: 'db5c7196b056990304618c2d45aec195ab6da6aee283fe07048353d963ecebd3',
+  resume: 'ai-local-20261026-resume-03', resumeFrom: 9,
+  resumeWrapperSha256: '461549318c26e17af8af871e2fb9da85c859cc5ff2af08ec803587d0884a43c5',
+  cancelledReceiptSha256: 'b235501838c0581bf932904d1eac877d64823b95df9663a388f7777cceb87bc2',
   authorizationThread: '01a16f03-759a-7630-ab49-3fe0c7d69699',
   authorizationTurn: '01a17427-5b92-7513-8d5e-6c2a175bb83a',
   authorization: 'And only repair and retest those that fail, dont need to rerun. I give full permission for the exception',
@@ -82,4 +85,38 @@ export function reviewCounterController(raw, inventory) {
   for (let i = 1; i <= P.chunks; i++) one(text, new RegExp('^\\s*chunk ' + i + ': exit=1 <no summary>[ \\t]*$', 'gm'), 'wrong DB terminal summary');
   requireEvidence(text.includes('GATE RED — read the logs') && text.includes('receipt: .gate-receipt.json  result=FAIL tier=full'), 'original failure not preserved');
   return {canonicalResult: 'FAIL', phases: 17, rawVitestExit: 'UNKNOWN_NOT_SEPARATELY_RECORDED', releaseAuthorized: false};
+}
+
+/** One observed interrupted prefix plus its exact remaining slice; never a full gate PASS. */
+export function reviewComposedControllers(prefixRaw, resumeRaw, inventory) {
+  const P=COUNTER_EXCEPTION, all=exactInventory(inventory.all),db=exactInventory(inventory.db),nodb=exactInventory(inventory.nodb);
+  requireEvidence(all.length===1944&&db.length===981&&nodb.length===963&&isDeepStrictEqual([...db,...nodb].sort(),all),'composition inventory differs');
+  const original=plainReport(prefixRaw), resumed=plainReport(resumeRaw);
+  for(const text of [original,resumed])requireEvidence(text.includes('head: '+P.candidate.slice(0,9))&&text.includes('▸ test lock: both slots held')&&!text.includes('GATE GREEN')&&!text.includes('PROOF GREEN')&&!text.includes('result=PASS'),'composition source/admission/relabelled result');
+  const headers=text=>[...text.matchAll(/^════ part \(b\) chunk (\d+)\/16 — (\d+) DB files ════$/gm)];
+  const first=headers(original),last=headers(resumed);
+  requireEvidence(first.length===9&&last.length===8&&!original.includes('════ FINAL ════')&&!original.includes('PARTIAL RUN'),'cancelled prefix must end during batch9');
+  one(resumed,/^▸ PARTIAL RUN — chunks 9\.\.16 of 16 only$/gm,'remaining slice range differs');
+  const nodbStart=one(original,/^════ part \(a\) — 963 no-DB files, one run, 2 workers, no cluster, DB URLs on a closed port ════$/gm,'prefix NODB invocation differs');
+  requireEvidence(!resumed.includes('════ part (a)'),'NODB duplicated in slice');
+  const phase=(text,count,database)=>{
+    one(text,new RegExp('ASKED FOR '+count+' FILES, VITEST COUNTED NOTHING','g'),'composition counter failure differs');
+    one(text,/^\s*exit=1\s+(?:peak-disk=\S+\s+)?wall=\d+s(?: \(rebuild\+migrate\+vitest\))?[ \t]*$/gm,'composition phase exit differs');
+    requireEvidence(!text.includes('cluster rebuild FAILED')&&!text.includes('migrate FAILED'),'composition setup failure');
+  };
+  phase(original.slice(nodbStart.index,first[0].index),963,false);
+  first.forEach((h,i)=>{
+    requireEvidence(+h[1]===i+1&&+h[2]===db.filter((_,n)=>n%16===i).length,'prefix partition differs');
+    if(i<8)phase(original.slice(h.index,first[i+1].index),+h[2],true);
+    else requireEvidence(original.slice(h.index+h[0].length).trim()==='','partial ninth batch gained terminal evidence');
+  });
+  const final=one(resumed,/^════ FINAL ════$/gm,'remaining slice not terminal');
+  last.forEach((h,i)=>{
+    requireEvidence(+h[1]===i+9&&+h[2]===db.filter((_,n)=>n%16===i+8).length,'remaining partition differs');
+    phase(resumed.slice(h.index,last[i+1]?.index??final.index),+h[2],true);
+    one(resumed,new RegExp('^\\s*chunk '+(i+9)+': exit=1 <no summary>[ \\t]*$','gm'),'remaining terminal phase missing');
+  });
+  one(resumed,/^\s*runs: 8\s+files counted: 0 of 1944 in the suite \(963 no-DB \+ 981 DB\)[ \t]*$/gm,'remaining terminal count differs');
+  requireEvidence(resumed.includes('GATE RED — read the logs')&&resumed.includes('receipt: none written (a slice or a proof run is not a gate)')&&!resumed.includes('receipt: .gate-receipt.json'),'slice receipt relabelled');
+  return {canonicalResult:'INCOMPLETE_CANCELLED',remainingSliceResult:'COUNTER_FAIL_NOT_FULL_GATE',phases:17,originalCompletedDbBatches:8,resumedDbBatches:8,partialOriginalBatch9Excluded:true,rawVitestExit:'UNKNOWN_NOT_SEPARATELY_RECORDED',releaseAuthorized:false};
 }

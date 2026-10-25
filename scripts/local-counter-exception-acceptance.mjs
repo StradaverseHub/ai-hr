@@ -6,7 +6,7 @@ import {join, resolve} from 'node:path';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {COUNTER_EXCEPTION as P, sha256} from './local-counter-exception.mjs';
 import {collectCounterException, boundedReader, COUNTER_REPAIR} from './local-counter-exception-evidence.mjs';
-export const ACCEPTANCE_TIER = 'owner-counter-exception-v1';
+export const ACCEPTANCE_TIER = 'owner-counter-exception-v2';
 const requireProof = (v, why) => assert(v, 'Owner counter exception refused: ' + why);
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding:'utf8', timeout:30000, maxBuffer:16*1024*1024}).trim();
 const BUILD_SOURCE = 'fdc1e59866328280a16bb19d7e26da097a49ddf2';

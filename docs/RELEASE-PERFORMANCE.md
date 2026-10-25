@@ -22,6 +22,12 @@ The actual r395 security suite passed 88/88 in 154.219 seconds and reset-error c
 
 The supplied upgrade-rehearsal proposal addresses existing-data correctness but estimates an additional eight to fifteen minutes per deployment. Its estimated cost is not measured or activated. See [the design review](UPGRADE-REHEARSAL-REVIEW.md) for recommended corrections and a separately calibrated, impact-aware policy. Required rehearsal time must count toward the same complete release target.
 
+## H local resume composition checkpoint
+
+A proposed execution handoff was superseded by the owner's direct instruction to keep AI dev 2 local. Its original `final-02` was gracefully cancelled during DB batch 9; no-DB plus DB1–8 are retained, and the partial original ninth batch is excluded. The first cleanup failure remains recorded; a separately verified recovery retry restored the original shared state and removed the private data. The unchanged candidate now runs only DB9–16 in `resume-03`. This adds interruption/recovery time to the actual critical path; it is not a performance success.
+
+The version-2 bounded exception policy now requires both actual run histories and all original raw membership, preserves the original FAIL/impact/in-progress receipt and INCOMPLETE_CANCELLED outcome, and refuses an active or unrestored resume. Independent source review found no further blocker. Five new private boundary groups plus two affected operator guards passed across recorded runs; one new variable-shadowing refusal error was corrected and only its failed check rerun. Actual collection/acceptance/deployment remains unexecuted and ineligible until the remaining reports, restoration and counter-only source boundary are verified. No cloud performance result can substitute for H release evidence.
+
 ## Failed-only repair during the H pilot
 
 On 26 October MYT, the human explicitly authorized retaining completed passing checks and repairing/retesting failures only for AI dev 2's current H release. Every unexecuted required check still runs. The timing-dependent original attendance fixture was legitimately redesigned and passed all 100 cases at the early hour on `3c51317ea43ded103e782c37b55eccf9fdeae05c`; root independently checked the raw result, cleanup and exact committed diff. This fix has not yet been adopted into this branch's split fixture.

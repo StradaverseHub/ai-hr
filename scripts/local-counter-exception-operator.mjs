@@ -17,7 +17,7 @@ const cleanHead=cwd=>{const head=git(cwd,'rev-parse','HEAD');requireProof(/^[a-f
 const load=async(root,path)=>{const value=await import(pathToFileURL(join(root,path)).href);return {...(value.default??{}),...value};};
 function privateConfig(path){path=resolve(path);const stat=lstatSync(path);requireProof(realpathSync(path)===path&&stat.isFile()&&!stat.isSymbolicLink()&&(stat.mode&0o077)===0,'SSH config must be a private canonical regular file');return path;}
 export function counterExceptionFlow({evidence,official,testingBuild,stableTestingJson,revalidate,assertBuildFrozen,transport,save}) {
-  requireProof(evidence.tier===ACCEPTANCE_TIER&&evidence.result==='ACCEPTED_WITH_OWNER_EXCEPTION'&&evidence.stagingBuildAuthorized===true&&evidence.canonicalResult==='FAIL'
+  requireProof(evidence.tier===ACCEPTANCE_TIER&&evidence.result==='ACCEPTED_WITH_OWNER_EXCEPTION'&&evidence.stagingBuildAuthorized===true&&(evidence.canonicalResult==='FAIL'||evidence.canonicalResult==='INCOMPLETE_CANCELLED'&&evidence.composedFromCancelledPrefix===true&&evidence.controller?.partialOriginalBatch9Excluded===true)
     &&evidence.originalCandidate===P.candidate&&evidence.rawVitestExit==='UNKNOWN_NOT_SEPARATELY_RECORDED'&&evidence.sourceBoundary.counterRepairApplied===true,'unvalidated exception');
   revalidate('baseline');assertBuildFrozen();
   transport.ssh(official.buildPendingCommand(evidence.candidate),{stdio:'inherit'});
@@ -79,7 +79,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   const prepared=testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:evidence.candidate,buildRecordId:randomUUID()});
   const buildDirectory=testing.systemTestingBuildDirectory('local');testing.ensurePrivateReleaseDirectory(buildDirectory);testing.publishSystemTestingBuild(prepared,buildDirectory);
   requireProof(equal({...await collectOwnerCounterAcceptance(args),controller},evidence),'evidence changed after preparation');
-  const roots={run:runDirectory,source:candidatePath,runtime:join(candidatePath,'scratchpad'),counter:counterRoot,counterProof:join(counterRoot,'scratchpad/ai-counter-repair-20261026')};
+  const roots={run:runDirectory,...(evidence.resumeDirectory?{resume:evidence.resumeDirectory}:{}),source:candidatePath,runtime:join(candidatePath,'scratchpad'),counter:counterRoot,counterProof:join(counterRoot,'scratchpad/ai-counter-repair-20261026')};
   const revalidate=phase=>{
     assertTransportFrozen();
     requireProof(cleanHead(candidatePath)===evidence.candidate&&cleanHead(controllerDirectory)===controller,'candidate/controller changed');
@@ -92,7 +92,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   const assertBuildFrozen=()=>requireProof(stableTestingJson(testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:evidence.candidate,buildRecordId:prepared.identity.buildRecordId}))===stableTestingJson(prepared),'System Testing source changed');
   const status=counterExceptionFlow({evidence,official,testingBuild:prepared,stableTestingJson,revalidate,assertBuildFrozen,transport,save});
   requireProof(cleanHead(candidatePath)===evidence.candidate&&cleanHead(controllerDirectory)===controller,'source changed during remote build');assertBuildFrozen();
-  const envelope=JSON.stringify({kind:'OWNER_COUNTER_EXCEPTION_RELEASE_EVIDENCE',policyVersion:1,evidence,remoteBuild:status,testingBuildRecordId:prepared.identity.buildRecordId})+'\n';
+  const envelope=JSON.stringify({kind:'OWNER_COUNTER_EXCEPTION_RELEASE_EVIDENCE',policyVersion:2,evidence,remoteBuild:status,testingBuildRecordId:prepared.identity.buildRecordId})+'\n';
   requireProof(Buffer.byteLength(envelope)<=8*1024*1024,'release mirror budget');
   save('exception-envelope.json',JSON.parse(envelope));
   try { assertTransportFrozen();ssh(counterMirrorCommand(),{input:envelope}); }
