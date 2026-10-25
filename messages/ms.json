@@ -23052,5 +23052,27 @@
         "withdrawn": "Ditarik balik"
       }
     }
+  },
+  "ownLeaveReview": {
+    "title": "Semakan cuti yang disimpan",
+    "company": "Syarikat",
+    "employeeCode": "ID pekerja",
+    "leaveType": "Jenis cuti",
+    "date": "Tarikh",
+    "duration": "Tempoh yang dimohon",
+    "fullDay": "Sehari penuh",
+    "deduction": "Hari yang akan ditolak",
+    "available": "Anggaran baki hari",
+    "after": "Anggaran baki selepas permohonan",
+    "estimateNote": "Anggaran ini disimpan bersama semakan ini. Baki dan kelayakan semasa anda mungkin berubah.",
+    "reason": "Sebab anda",
+    "remark": "Catatan pekerja anda",
+    "approval": "Laluan kelulusan",
+    "approvalUnknown": "Belum ditentukan",
+    "expires": "Semakan tamat: {when}",
+    "holidayWarning": "Maklumat kalendar tidak lengkap untuk {place}, {year} ({loaded}/{required}).",
+    "openForm": "Teruskan dalam borang Cuti",
+    "formNote": "Hanya tarikh dibawa ke borang Cuti. Semak syarikat, jenis cuti dan teks anda di sana. Menghantar borang itu memulakan proses kelulusan biasa.",
+    "unavailable": "Semakan yang disimpan ini tidak tersedia. Buka Cuti untuk menyemak permohonan anda."
   }
 }

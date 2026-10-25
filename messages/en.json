@@ -23052,5 +23052,27 @@
         "withdrawn": "Withdrawn"
       }
     }
+  },
+  "ownLeaveReview": {
+    "title": "Saved leave review",
+    "company": "Company",
+    "employeeCode": "Employee ID",
+    "leaveType": "Leave type",
+    "date": "Date",
+    "duration": "Requested duration",
+    "fullDay": "Full day",
+    "deduction": "Days to deduct",
+    "available": "Estimated available days",
+    "after": "Estimated days after request",
+    "estimateNote": "These estimates were saved with this review. Your current balance and eligibility may change.",
+    "reason": "Your reason",
+    "remark": "Your employee remark",
+    "approval": "Approval route",
+    "approvalUnknown": "Not yet determined",
+    "expires": "Review expires: {when}",
+    "holidayWarning": "Calendar information is incomplete for {place}, {year} ({loaded}/{required}).",
+    "openForm": "Continue in Leave form",
+    "formNote": "Only the date is carried into the Leave form. Check the company, leave type and your text there. Submitting that form starts the normal approval process.",
+    "unavailable": "This saved review is unavailable. Open Leave to review your request."
   }
 }

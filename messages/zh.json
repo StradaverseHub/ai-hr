@@ -23052,5 +23052,27 @@
         "withdrawn": "已撤回"
       }
     }
+  },
+  "ownLeaveReview": {
+    "title": "已保存的休假预览",
+    "company": "公司",
+    "employeeCode": "员工编号",
+    "leaveType": "假期类型",
+    "date": "日期",
+    "duration": "申请时长",
+    "fullDay": "全天",
+    "deduction": "将扣除的天数",
+    "available": "预计可用天数",
+    "after": "申请后的预计天数",
+    "estimateNote": "这些估算随预览一起保存。您当前的余额和申请资格可能发生变化。",
+    "reason": "您的原因",
+    "remark": "您的员工备注",
+    "approval": "审批流程",
+    "approvalUnknown": "尚未确定",
+    "expires": "预览到期时间：{when}",
+    "holidayWarning": "{place} 的 {year} 年日历信息不完整（{loaded}/{required}）。",
+    "openForm": "前往休假申请表",
+    "formNote": "仅日期会带入休假申请表。请在表中核对公司、假期类型和您填写的文字。提交该表后将开始正常审批流程。",
+    "unavailable": "此已保存的预览不可用。请打开休假页面查看您的申请。"
   }
 }

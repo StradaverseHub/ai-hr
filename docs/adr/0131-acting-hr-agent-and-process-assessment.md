@@ -671,3 +671,19 @@ The atomic confirmation command is still absent. It must protect legacy leave-wr
 recheck the exact reviewed effect at the canonical write, commit the request/exact submitted event
 and completed action receipt together, and reconcile uncertain transport outcomes. It must not
 mistake this pending store or its digests for that missing authority, concurrency or execution proof.
+
+### Source-only representative display
+
+`components/assistant/own-leave-review-card.tsx` consumes only the strict public card shape and is not
+mounted on any route. It renders exact source labels, selected KL date, requested full-day duration,
+canonical deduction (which can differ from one day), visible-only balance estimates, warnings and
+plain human text. Unknown approval routing and the saved estimate/expiry are explicit. There is no
+submit handler, form action, hidden command payload, local persistence or model/client/database import.
+The only navigation is the existing date-only Leave-form fallback; its copy explicitly asks the person
+to check the company, type and text in that governed form.
+
+The six catalogues contain matching new display keys/placeholders and existing keys are preserved.
+Authored DOM cases cover text escaping, hidden balances, malformed/private props, exact date/deduction,
+date-only fallback and each locale's warning. They remain UNRUN. No visual quality, translation review,
+keyboard/screen-reader behavior or real viewport/render evidence is claimed. Review the representative
+screen in the actual app before mounting/propagating the component or adding confirmed submission.

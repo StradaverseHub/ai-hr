@@ -23052,5 +23052,27 @@
         "withdrawn": "Đã rút lại"
       }
     }
+  },
+  "ownLeaveReview": {
+    "title": "Bản xem lại đơn nghỉ đã lưu",
+    "company": "Công ty",
+    "employeeCode": "Mã nhân viên",
+    "leaveType": "Loại nghỉ phép",
+    "date": "Ngày",
+    "duration": "Thời lượng yêu cầu",
+    "fullDay": "Cả ngày",
+    "deduction": "Số ngày sẽ trừ",
+    "available": "Số ngày còn lại ước tính",
+    "after": "Số ngày ước tính sau yêu cầu",
+    "estimateNote": "Các ước tính này được lưu cùng bản xem lại. Số dư và điều kiện hiện tại của bạn có thể thay đổi.",
+    "reason": "Lý do của bạn",
+    "remark": "Ghi chú nhân viên của bạn",
+    "approval": "Quy trình phê duyệt",
+    "approvalUnknown": "Chưa xác định",
+    "expires": "Bản xem lại hết hạn: {when}",
+    "holidayWarning": "Thông tin lịch cho {place}, {year} chưa đầy đủ ({loaded}/{required}).",
+    "openForm": "Tiếp tục trong biểu mẫu Nghỉ phép",
+    "formNote": "Chỉ ngày được chuyển sang biểu mẫu Nghỉ phép. Hãy kiểm tra công ty, loại nghỉ và nội dung của bạn tại đó. Gửi biểu mẫu sẽ bắt đầu quy trình phê duyệt thông thường.",
+    "unavailable": "Bản xem lại đã lưu này không khả dụng. Mở Nghỉ phép để xem lại yêu cầu của bạn."
   }
 }
