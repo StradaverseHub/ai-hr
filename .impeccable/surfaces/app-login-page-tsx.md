@@ -18,3 +18,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Boundaries
 Preserve login, MFA, invitations, recovery, safe redirects and demo chooser semantics. No authentication rules change. Saved theme choices survive; Atelier is the default only when no supported choice exists. Media is public presentation data and has no access to employee data.
+
+## Finish review resolution
+The shipped finish review found no material visual defects. Its seed-format gate conflicts with the applicable new-work.md §3 exemption: “Never run the script for a local extension or a precisely specified narrow request; shape those directly.” This user-supplied composition uses that exemption. No concept roll ran; the FORM entry records that fact rather than asserting unavailable roll evidence. The governing exemption resolves this process-only finding without changing the approved composition. The shipped default icon is a code-authored AI monogram; the unchanged legacy ICO remains available under its former URL.
