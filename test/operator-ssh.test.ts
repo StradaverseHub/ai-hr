@@ -1,3 +1,4 @@
+/// <reference types="next" />
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync, readFileSync } from 'node:fs';
@@ -6,9 +7,9 @@ import { join, resolve } from 'node:path';
 import { operatorSsh, operatorRsyncShell, operatorSshCommand } from '../scripts/operator-ssh.mjs';
 
 const bashConfig = resolve('scripts/operator-ssh.sh');
-const shell = (env: NodeJS.ProcessEnv = {}, cwd = tmpdir()) => execFileSync('bash', ['-c',
+const shell = (env: Partial<NodeJS.ProcessEnv> = {}, cwd = tmpdir()) => execFileSync('bash', ['-c',
   '. "$1" || exit $?; printf "%s\\n" "$AIHR_OPERATOR_TARGET" "${AIHR_OPERATOR_SSH_OPTS[@]}"', '_', bashConfig],
-  { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } }).trim().split('\n');
+  { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, ...env, NODE_ENV: 'test' } }).trim().split('\n');
 
 describe('private operator SSH configuration', () => {
   it('uses the alias without overriding the OpenSSH username or port', () => {

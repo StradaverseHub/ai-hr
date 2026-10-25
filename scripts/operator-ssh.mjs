@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-/** @param {NodeJS.ProcessEnv} env @param {string} cwd */
+/** @param {Partial<NodeJS.ProcessEnv>} env @param {string} cwd */
 export function operatorSsh(env = process.env, cwd = process.cwd()) {
   const host = env.IMPROVE_SSH_HOST || 'aihr-staging';
   const user = env.IMPROVE_SSH_USER || '';
