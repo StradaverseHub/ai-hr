@@ -11,6 +11,11 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      plan_probe:
+        description: Dependency-free native classifier parity against the authenticated full plan
+        required: false
+        default: false
+        type: boolean
       statutory_probe:
         description: Original statutory DOM file and labelled 5000ms stage/style measurement copy
         required: false
@@ -48,6 +53,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
+      base: ${{ steps.candidate.outputs.base }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
@@ -154,5 +160,33 @@ jobs:
         with:
           name: statutory-diagnostic
           path: ${{ runner.temp }}/statutory-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
+
+  fast-plan:
+    if: ${{ inputs.plan_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
+      - name: Reconstruct complete plan without package installation and authenticate parity
+        run: node ../automation/.github/ci/diagnostics/fast-plan.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-fast-plan
+          path: ${{ runner.temp }}/diagnostic-fast-plan/
           if-no-files-found: error
           retention-days: 14

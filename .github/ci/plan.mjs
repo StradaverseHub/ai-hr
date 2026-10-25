@@ -13,7 +13,12 @@ export function createPlan(cwd = process.cwd()) {
   const tracked = git('ls-files', 'test').split('\n');
   const suite = tracked.filter(f => /\.test\.ts$|\.dom\.test\.tsx$/.test(f)).sort();
   if (!suite.length) throw Error('Empty test inventory');
-  const classified = execFileSync(process.execPath, ['--import', 'tsx', 'scripts/gate-db-classify.ts', 'explain'], {
+  const classifierRuntime=process.env.AIHR_CI_CLASSIFIER_RUNTIME??'tsx';
+  if(!['tsx','native'].includes(classifierRuntime))throw Error('Unknown classifier runtime');
+  const [major,minor]=process.versions.node.split('.').map(Number);
+  if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
+  const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
+  const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
     cwd, input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
