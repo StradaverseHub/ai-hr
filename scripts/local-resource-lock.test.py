@@ -214,6 +214,38 @@ while True:time.sleep(.01)
         self.assertEqual(code, 0, err)
         self.assertTrue(self.no_slots())
 
+    def gate_entry_fixture(self):
+        home = self.root / "home"
+        state = home / ".aihr-gate-state"
+        state.mkdir(parents=True)
+        (state / "testlock.sh").write_text("# private fixture marker, never executed\n")
+        helper = LAUNCHER.with_name("gate-lib.sh")
+        entry = self.root / "entry.sh"
+        entry.write_text('#!/usr/bin/env bash\nset -uo pipefail\nsource "$1"\nhelper="$1"; shift\ngate_hold_both_slots "$0" "$helper" "$@"\ntest "$(AIHR_LOCK_DIR="$HOME/.aihr-gate-state/locks" gate_slots_held_by_ancestors)" = 2\ntest "$(AIHR_LOCK_DIR="$HOME/.aihr-gate-state/devdb-locks" gate_slots_held_by_ancestors)" = 1\ntest "$1" = "argument with spaces"\necho ACTUAL_GATE_ADMISSION_ENTERED\nexit 42\n')
+        return home, state, ["bash", str(entry), str(helper), "argument with spaces"]
+
+    def test_actual_gate_entry_reserves_complete_set_and_propagates_exit(self):
+        home, state, command = self.gate_entry_fixture()
+        child = subprocess.Popen(command, env={**os.environ, "HOME": str(home)}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.processes.append(child)
+        code, (out, err) = self.collect(child)
+        self.assertEqual(code, 42, err)
+        self.assertEqual(out.count("ACTUAL_GATE_ADMISSION_ENTERED"), 1)
+        self.assertFalse(list(state.glob("locks/slot.*")))
+        self.assertFalse(list(state.glob("devdb-locks/slot.*")))
+
+    def test_actual_gate_entry_refuses_partial_outer_upgrade_and_releases(self):
+        home, state, entry = self.gate_entry_fixture()
+        command = [sys.executable, str(LAUNCHER), "--state-root", str(state), "--test-slots", "1", "partial-outer", "--", *entry]
+        child = subprocess.Popen(command, env={**os.environ, "HOME": str(home)}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.processes.append(child)
+        code, (out, err) = self.collect(child)
+        self.assertEqual(code, 78, err)
+        self.assertNotIn("ACTUAL_GATE_ADMISSION_ENTERED", out)
+        self.assertIn("resource upgrade refused", err)
+        self.assertFalse(list(state.glob("locks/slot.*")))
+        self.assertFalse(list(state.glob("devdb-locks/slot.*")))
+
     def test_missing_command_releases_owned_leases_and_refuses_success(self):
         args = self.command("missing-command", "unused")
         args = args[:args.index("--") + 1] + [str(self.root / "not-an-executable")]

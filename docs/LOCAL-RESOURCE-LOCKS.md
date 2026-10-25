@@ -6,7 +6,9 @@ A real circular wait was observed on 25 October 2026 after Board 3's complete ve
 
 `scripts/local-resource-lock.py` reserves the entire requested set before starting the command. It can request zero, one or both of the existing two memory slots, plus the one shared database slot. It never raises capacity above those existing limits. While any required member is unavailable, it holds none of them. A local advisory admission lock serializes reservation attempts; it is not held while waiting or running the job.
 
-For an exclusive gate that rebuilds the shared test cluster:
+The repository gate entry points now call complete-set admission through `gate_hold_both_slots` when this workstation’s host test-lock script exists. Call `bash scripts/gate.sh --full BASE` directly; it reserves both test slots and the database in one request. Existing callers already holding the complete set remain compatible. Partial outer leases refuse with exit 78 instead of upgrading. Isolated environments without the host lock retain the existing explicit unlocked warning.
+
+For an explicitly reserved multi-phase operation that includes a gate rebuilding the shared test cluster:
 
 ```bash
 python3 scripts/local-resource-lock.py --test-slots 2 --database final-gate -- bash scripts/gate.sh --full BASE
@@ -32,6 +34,6 @@ The spawned command runs in its own process group. Cancellation is forwarded to 
 
 The subprocess tests use only private temporary state roots and tiny owned fixture processes. They cover competing exclusive requests, allowed single-slot overlap, database contention while holding no memory slots, preserved legacy/unknown leases, rejected nested upgrades, exit-code propagation, cancellation through cleanup, changed ownership, nonexistent commands, symlink refusal and recognition by the actual gate helper. They run no application tests, builds or databases.
 
-This is prepared in the isolated performance branch. It is not installed in the shared runtime or enabled in Board 3's frozen release. It cannot resolve a cycle between already-running legacy nested wrappers. After the release owner hands back resources, migrate outer entry points to complete requests and validate their real integration before replacing shared host scripts. Preserve all active/queued ownership during that handoff; do not silently substitute this tool into another chat's frozen command.
+This is connected to the repository gate helper in the isolated performance branch. Seventeen private checks pass, including actual helper re-entry with complete ancestor reservations, argument/exit preservation, partial-upgrade refusal and cleanup. These fixture commands do not execute application tests or a real gate. It is not installed in the shared runtime and was not enabled in Board 3's completed frozen release. It cannot resolve a cycle between already-running legacy nested wrappers. Validate real compiler/database/gate integration in a coordinated resource window before adopting this branch; no shared host script replacement is performed. Preserve all active/queued ownership during that handoff; do not silently substitute this tool into another chat's frozen command.
 
 The admission fix removes a demonstrated queue failure. It does not establish a ten-minute release or guarantee fairness against an unlimited stream of legacy callers; queue and execution time still count toward the performance target.
