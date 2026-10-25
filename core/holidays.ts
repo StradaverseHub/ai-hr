@@ -52,7 +52,7 @@
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {holidayCalendarOnTx, holidayCalendarPeriodsByEmploymentTx, holidayCalendarWindows, type HolidayCalendarPeriod} from './holiday-calendar-read';
-import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
+import {replacementHolidayDatesByEmployment,replacementHolidayCalendarProjectionsTx,type ReplacementHolidayCalendarProjection} from './holiday-replacement-read';
 import type {OriginalHoliday} from '../lib/holiday-replacement';
 import {companySegmentsForPeriod,companySegmentsForPeriodBulk,type CompanySegment} from './employment-company';
 // 0e276da0 — the calendar-coverage read at the foot of this file is SESSION-scoped (a screen asks it),
@@ -323,6 +323,21 @@ export async function holidayDatesFor(tx:Tx,p:HolidayWindow):Promise<Set<string>
  const originals=await originalHolidayDatesFor(tx,p);
  const replacements=await replacementHolidayDatesByEmployment(tx,{employmentIds:[p.employmentId],startDate:p.startDate,endDate:p.endDate});
  return new Set([...originals,...replacements.get(p.employmentId)??[]]);
+}
+
+export type HolidayCalendarProvenance={
+ originals:Pick<OriginalHoliday,'id'|'companyId'|'date'|'holidayType'>[];
+ replacements:ReplacementHolidayCalendarProjection[];
+};
+/** Evidence for consumers that must distinguish an original holiday from its retained replacement.
+ * Reuse both canonical owners under the caller's transaction/RLS; do not infer designation from
+ * a generic holiday money label or allocate a new replacement during a read. */
+export async function holidayCalendarProvenanceFor(tx:Tx,p:HolidayWindow):Promise<HolidayCalendarProvenance>{
+ const [originals,replacements]=await Promise.all([
+  originalHolidayCalendarFor(tx,p),
+  replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[p.employmentId],startDate:p.startDate,endDate:p.endDate}),
+ ]);
+ return {originals:originals.map(({id,companyId,date,holidayType})=>({id,companyId,date,holidayType})),replacements};
 }
 
 async function originalCalendarForYear(

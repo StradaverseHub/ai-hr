@@ -12,6 +12,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { getSession } from '@/lib/session';
+import {listPendingTasks} from '@/core/approvals-inbox';
 import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
@@ -54,7 +55,7 @@ function revalidateShell(): void {
   revalidatePath('/', 'layout');
 }
 /** After the last request-bound task, keep feedback on an allowed neutral destination. */
-async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
   const neutralDestination = () => {
     const query = new URLSearchParams();
     if (feedback.toast) query.set('toast', feedback.toast);
@@ -66,8 +67,11 @@ async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSessi
       const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
       if (!hasNextAssignment) {
         const { scopeIds } = await scopedSession();
-        const rewards = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
-        if (!rewards.length) return neutralDestination();
+        const [tasks,rewards]=await Promise.all([
+          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims')}),
+          isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
+        ]);
+        if (!tasks.length&&!rewards.length) return neutralDestination();
       }
     } catch {
       // Navigation reads cannot turn an already-committed decision into a failed action.
@@ -77,12 +81,12 @@ async function attendanceDecisionReturnUrl(s: Awaited<ReturnType<typeof getSessi
   }
   return approvalsReturnUrl({ ...nav, ...feedback });
 }
-function done(toast: string, nav: Nav = {}): never {
+async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
   revalidateShell();
-  redirect(approvalsReturnUrl({ ...nav, toast }));
+  redirect(await decisionReturnUrl(s,nav,{toast}));
 }
-function fail(e: unknown, nav: Nav = {}): never {
-  redirect(approvalsReturnUrl({ ...nav, error: publicErrorMessage(e) }));
+async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
+  redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}));
 }
 
 export async function approveLeaveAction(formData: FormData) {
@@ -97,9 +101,9 @@ export async function approveLeaveAction(formData: FormData) {
   } catch (e) {
     // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
-    fail(new Error(await localizeLeaveError(e)), nav);
+    await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  done(`Leave ${decision}`, nav);
+  await done(`Leave ${decision}`, nav, s);
 }
 
 // Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
@@ -119,9 +123,9 @@ export async function decideLeaveDateAction(formData: FormData) {
       rejectReason,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)), nav);
+    await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  done(`Date ${decision}`, nav);
+  await done(`Date ${decision}`, nav, s);
 }
 
 // Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
@@ -144,7 +148,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
       };
     });
   } catch (e) {
-    fail(e, nav);
+    await fail(e, nav, s);
   }
   try {
     const me = await myEmployment(s);
@@ -154,9 +158,9 @@ export async function decideLeaveDatesAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)), nav);
+    await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  done('Leave decided', nav);
+  await done('Leave decided', nav, s);
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a
@@ -174,9 +178,9 @@ export async function decideLeaveCancellationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)), nav);
+    await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  done(`Cancellation ${decision}`, nav);
+  await done(`Cancellation ${decision}`, nav, s);
 }
 
 export async function approveCorrectionAction(formData: FormData) {
@@ -189,11 +193,11 @@ export async function approveCorrectionAction(formData: FormData) {
     outcomeStatus = outcome.status;
   } catch (e) {
     const error = e instanceof AttendanceLevelError ? await attendanceWorkflowErrorMessage(e) : e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e);
-    redirect(await attendanceDecisionReturnUrl(s, nav, { error }));
+    redirect(await decisionReturnUrl(s, nav, { error }));
   }
   const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
   revalidateShell();
-  redirect(await attendanceDecisionReturnUrl(s, nav, { toast }));
+  redirect(await decisionReturnUrl(s, nav, { toast }));
 }
 
 /**
@@ -222,9 +226,9 @@ export async function decideResignationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(e, nav);
+    await fail(e, nav, s);
   }
-  done(`Resignation ${accepted ? 'accepted' : 'rejected'}`, nav);
+  await done(`Resignation ${accepted ? 'accepted' : 'rejected'}`, nav, s);
 }
 
 export async function submitManagerEvaluationAction(formData: FormData) {
@@ -237,9 +241,9 @@ export async function submitManagerEvaluationAction(formData: FormData) {
       comments: String(formData.get('comments') || '') || null,
     });
   } catch (e) {
-    fail(e, nav);
+    await fail(e, nav, s);
   }
-  done('Evaluation submitted', nav);
+  await done('Evaluation submitted', nav, s);
 }
 
 export async function decideReviewAction(formData: FormData) {
@@ -256,9 +260,9 @@ export async function decideReviewAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId ?? null,
     });
   } catch (e) {
-    fail(e, nav);
+    await fail(e, nav, s);
   }
-  done('Decision recorded', nav);
+  await done('Decision recorded', nav, s);
 }
 
 // Bulk approve/reject (feedback fb99474b). Accepts a JSON `items` list of {type,id} the approver selected
@@ -329,7 +333,7 @@ export async function bulkDecideAction(formData: FormData) {
       : skipped > 0
         ? t('bulkApprovedPartial', { done: approved, skipped })
         : t('bulkApprovedAll', { done: approved });
-  redirect(items.every(item => item.type === 'attendance') ? await attendanceDecisionReturnUrl(s, nav, { toast: summary }) : approvalsReturnUrl({ ...nav, toast: summary }));
+  redirect(await decisionReturnUrl(s, nav, { toast: summary }));
 }
 
 export async function approveClaimAction(formData: FormData) {
@@ -344,7 +348,7 @@ export async function approveClaimAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId ?? null,
     });
   } catch (e) {
-    fail(e, nav);
+    await fail(e, nav, s);
   }
-  done(`Claim ${approved ? 'approved' : 'rejected'}`, nav);
+  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s);
 }

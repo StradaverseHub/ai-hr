@@ -1,3 +1,4 @@
+import {leaveCreditClaimReviewTx} from './toil';
 /**
  * 296fc027 · THE EMPLOYEE REPLACEMENT-LEAVE REQUEST — submit, decide, and grant on approval.
  *
@@ -605,6 +606,12 @@ export async function submitReplacementLeaveRequest(
     if (aWindowLines.length > 0) {
       const tiers = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
       for (const l of aWindowLines) {
+        const review=await leaveCreditClaimReviewTx(tx,ctx,{employmentId:p.employmentId,workedDate:l.workedDate,claimStart:l.fromTime!,claimEnd:l.toTime!});
+        if(review.basis==='formula'&&review.datedClassScope){
+          if(review.status!=='ready'||review.creditDays===null||review.eligibleMinutes===null)throw new ReplacementRequestInvalidError('Review the current dated Leave Credit eligibility before submitting.');
+          aDerived.push({workedDate:l.workedDate,claimStart:l.fromTime!,claimEnd:l.toTime!,days:review.creditDays,eligibleMinutes:review.eligibleMinutes});continue;
+        }
+
         // r406 — through `leaveCreditWindowCredit`, the one window → days step HR's grant shares. A Section A
         // line is a non-working day by definition (a working day is refused below), so no floor applies.
         const { countedMinutes, days } = leaveCreditWindowCredit({
@@ -631,6 +638,12 @@ export async function submitReplacementLeaveRequest(
       if (!extended.extendedHoursEnabled)
         throw new ReplacementRequestDisabledError('Extended hours on an ordinary working day are not switched on for this company.');
       for (const l of bLines) {
+        const review=await leaveCreditClaimReviewTx(tx,ctx,{employmentId:p.employmentId,workedDate:l.workedDate,claimStart:l.fromTime!,claimEnd:l.toTime!});
+        if(review.basis==='formula'&&review.datedClassScope){
+          if(review.status!=='ready'||review.creditDays===null||review.eligibleMinutes===null)throw new ReplacementRequestInvalidError('Review the current dated Leave Credit eligibility before submitting.');
+          bDerived.push({workedDate:l.workedDate,claimStart:l.fromTime!,claimEnd:l.toTime!,days:review.creditDays,eligibleMinutes:review.eligibleMinutes,shiftEnd:null,actualClockOut:null});continue;
+        }
+
         const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate,ctx);
         // A rest day, off day or public holiday belongs in Section A, and the message says which.
         if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [l.workedDate]);
@@ -950,7 +963,12 @@ export async function decideReplacementLeaveRequest(
       // approval back — a request is approved as a unit, and a half-granted one would leave the employee
       // unable to tell what they had been given.
       const extendedLine = line.sourceType === 'extended_hours';
-      const banked = extendedLine
+      const review=await leaveCreditClaimReviewTx(tx,ctx,{employmentId:req.employmentId,workedDate:line.workedDate,
+        claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined});
+      // Mixed classes retain their own dated credit rules regardless of the form's
+      // source-date section label. The bank re-reads the whole source and window.
+      const datedLine=review.basis==='formula'&&review.datedClassScope!==undefined;
+      const banked = extendedLine||datedLine
         ? await accrueExtendedWorkdayToilTx(tx, ctx, {
             employmentId: req.employmentId,
             workedDate: line.workedDate,

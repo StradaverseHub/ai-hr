@@ -81,7 +81,7 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
 
   it('the shift window depends on the existing engine schedule resolver', () => {
     const reader = codeOnly(read('/core/attendance-clock-read.ts'));
-    expect(reader).toContain('const schedule = await clockScheduleForTx(tx, me.employmentId, date)');
+    expect(reader).toContain('const schedule = await clockScheduleForTx(tx, employmentId, date)');
     expect(reader).toContain('shift:{code:schedule.code,start:schedule.start,end:schedule.end}');
     expect(read('/core/attendance.ts')).toContain('const schedule = await scheduleFor(tx, employmentId, date)');
   });
@@ -108,8 +108,11 @@ describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhot
     expect(command).toContain('decodeClockPhoto(p.photo, p.mime');
     expect(command).toContain("photoSetting !== 'not_required' && p.photo");
     expect(command).toContain("if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError()");
-    // Web retains its original subject resolver; native selects only an owned active employment.
-    expect(command).toContain('native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await myEmployment(ctx)');
+    // Native retains its existing owner. Web repeats own eligibility for explicit selections.
+    expect(command).toContain('native?(await myEmployments(ctx)).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId)');
+    const subject=codeOnly(read('/core/attendance-clock-subject.ts'));
+    expect(subject).toContain('myOwnEmploymentSubjects(ctx,{profileEdit:true})');
+    expect(subject).toContain('const legacy=await myEmployment(ctx)');
     expect(command).toContain('clockCaptureId: captureId');
     const migration = read('/db/migrations/0500_attendance_clock_evidence.sql');
     expect(migration).toContain('ENABLE ROW LEVEL SECURITY');

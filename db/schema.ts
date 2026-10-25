@@ -1,9 +1,14 @@
+import type {PayrollComparisonDefinition} from '../lib/payroll-period-comparison';
 import type { TestingCatalogueAppliedResult } from '../lib/system-testing/updates';
 import type { InstructionDefinition, PublishedInstruction, ExecutionStatus } from '../lib/system-testing/model';
 import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
+import type {AttendanceGroupPolicy,AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+import type {AttendancePolicyInterval} from '../lib/attendance-policy-intervals';
+import type {PolicyMoneyDay} from '../lib/attendance-policy-calendar';
+import type {EmployeeHomeConfiguration} from '../lib/employee-home';
 /**
  * Slice 0 schema — "the spine".
  *
@@ -21,7 +26,7 @@ import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows 
 import { sql } from 'drizzle-orm';
 // TYPE-ONLY, and the only core/ import in this file. core/attendance-trace.ts is a deliberate LEAF with
 // no imports of its own, so this cannot close a cycle; `import type` is erased at runtime regardless.
-import type { AttendanceTraceV1 } from '../core/attendance-trace';
+import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/attendance-trace';
 import {
   pgTable,
   foreignKey,
@@ -53,6 +58,9 @@ const bytea = customType<{ data: Buffer; driver: Buffer }>({
     return 'bytea';
   },
 });
+
+/** Database-owned range text; applications never supply reservation coverage. */
+const int8multirange=customType<{data:string;driver:string}>({dataType(){return 'int8multirange';}});
 
 // ───────────────────────────── Enums ─────────────────────────────
 
@@ -3132,6 +3140,31 @@ export const dashboardCardConfig = pgTable(
 );
 
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
+/** Immutable company/role presentation versions for employee Home. Business facts remain with their
+ * module owners; a configuration version cannot retrieve data or grant authority. */
+export const employeeHomeConfigurationRevision=pgTable('employee_home_configuration_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ audienceRole:text('audience_role').notNull(),ordinal:integer('ordinal').notNull(),
+ configuration:jsonb('configuration').$type<EmployeeHomeConfiguration>().notNull(),
+ reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ uniqueIndex('employee_home_configuration_ordinal_uq').on(t.tenantId,t.companyId,t.audienceRole,t.ordinal),
+ check('employee_home_configuration_role_check',sql`${t.audienceRole} IN ('employee','manager','hr_admin')`),
+ check('employee_home_configuration_ordinal_check',sql`${t.ordinal}>0`),
+ check('employee_home_configuration_shape_check',sql`jsonb_typeof(${t.configuration})='object' AND ${t.configuration}->'version'='1'::jsonb AND octet_length(${t.configuration}::text)<=262144`),
+]);
+
+/** A person's explicit celebration opt-outs span every login and employment. Immutable revisions
+ * retain disclosure choices; hiding/resetting a cosmetic Home card cannot alter them. */
+export const employeeHomePersonPrivacyRevision=pgTable('employee_home_person_privacy_revision',{
+ id:id(),tenantId:tenantId(),personId:uuid('person_id').notNull().references(()=>person.id,{onDelete:'cascade'}),
+ ordinal:integer('ordinal').notNull(),hideBirthday:boolean('hide_birthday').notNull(),hideAnniversary:boolean('hide_anniversary').notNull(),
+ createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ uniqueIndex('employee_home_person_privacy_ordinal_uq').on(t.tenantId,t.personId,t.ordinal),
+ check('employee_home_person_privacy_ordinal_check',sql`${t.ordinal}>0`),
+]);
+
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 
 export const domainEvent = pgTable(
@@ -3884,6 +3917,9 @@ export const attendance = pgTable(
       .notNull()
       .references(() => employment.id),
     attendanceDate: date('attendance_date').notNull(),
+    /** Separate HR-work identity link; never a captured-clock or raw-trace substitute. */
+    attestedWorkCorrectionId:uuid('attested_work_correction_id').references(():AnyPgColumn=>attendanceCorrection.id,{onDelete:'restrict'}),
+    attestedWorkContext:jsonb('attested_work_context').$type<Record<string,unknown>>(),
     checkInAt: time('check_in_at'),
     checkOutAt: time('check_out_at'),
     status: attendanceStatusEnum('status').notNull().default('present'),
@@ -4501,7 +4537,8 @@ export const attendanceCorrection = pgTable(
     clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
-      originalCheckOut: string | null; capturedAt: string;
+      originalCheckOut: string | null; capturedAt: string; executionPolicy?: TraceAttendancePolicyBinding;
+      unclockedWork?:import('../lib/attendance-policy-unclocked-work').AttendancePolicyUnclockedWork;
     }>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
@@ -5207,6 +5244,7 @@ export const toilAccrual = pgTable(
     //  • reversedAt / reversalReason / reversalLedgerEntryId — a reversal: the offsetting leave_ledger debit.
     //  • settledLedgerEntryId — the debit the expiry sweep wrote when it expired or paid out this credit.
     workedDayKind: toilWorkedDayKindEnum('worked_day_kind'),
+    datedCredit: jsonb('dated_credit').$type<import('../lib/toil-dated-credit').DatedToilCreditEvidence>(),
     note: text('note'),
     remarks: text('remarks'),
     reversedAt: timestamp('reversed_at', { withTimezone: true }),
@@ -5491,10 +5529,18 @@ export const notice = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    /** Stable authoring boundary; null is group ownership, including retained legacy notices. */
+    ownerCompanyId: uuid('owner_company_id').references(() => company.id),
     title: text('title').notNull(),
     /** Markdown, rendered through components/markdown.tsx — the SAME renderer the Knowledge Base uses,
      *  which passes no raw HTML through (no rehype-raw) and therefore cannot carry stored XSS. */
     body: text('body').notNull(),
+    summary: text('summary').notNull().default(''),
+    category: text('category'),
+    pinned: boolean('pinned').notNull().default(false),
+    requiresAcknowledgement: boolean('requires_acknowledgement').notNull().default(false),
+    contentVersion: integer('content_version').notNull().default(0),
+    attachmentIds: uuid('attachment_ids').array().notNull().default(sql`'{}'::uuid[]`),
     /** Visibility window. Both required: an announcement with no end date is a permanent fixture nobody
      *  removes. `show_end_date` decides whether the employee is TOLD the end date, not whether one exists. */
     startOn: date('start_on').notNull(),
@@ -5535,9 +5581,8 @@ export const notice = pgTable(
  * The audience snapshot. One row per (notice, employment), written when the notice is PUBLISHED.
  *
  * `firstViewedAt` is a VIEW marker, not an acknowledgement — it is what makes the dashboard card's "3 new"
- * badge possible. `popupDismissedAt` is popup-frequency state and nothing else. Acknowledgement, when it
- * ships, is its own row with its own evidence (name typed, agreement text, timestamp); it must not be
- * conflated with either of these.
+ * badge possible. `popupDismissedAt` is popup-frequency state and nothing else. Explicit acknowledgement
+ * is an immutable receipt against a retained content revision; it must not be conflated with either.
  */
 export const noticeRecipient = pgTable(
   'notice_recipient',
@@ -5559,6 +5604,33 @@ export const noticeRecipient = pgTable(
     index('notice_recipient_employment_idx').on(t.tenantId, t.employmentId),
   ],
 );
+
+/** Exact retained published content; no acknowledgement or original editor is invented at rollout. */
+export const noticeRevision=pgTable('notice_revision',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id),
+ ordinal:integer('ordinal').notNull(),title:text('title').notNull(),body:text('body').notNull(),summary:text('summary').notNull(),
+ startOn:date('start_on').notNull(),endOn:date('end_on').notNull(),showEndDate:boolean('show_end_date').notNull(),
+ requiresAcknowledgement:boolean('requires_acknowledgement').notNull(),attachmentIds:uuid('attachment_ids').array().notNull(),
+ origin:text('origin').notNull(),authorUserId:uuid('author_user_id').references(()=>appUser.id),retainedAt:timestamp('retained_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('notice_revision_ordinal_uq').on(t.tenantId,t.noticeId,t.ordinal)]);
+
+/** Bytes are never part of Notice list/Home DTOs. Published revisions retain their attachment IDs. */
+export const noticeAttachment=pgTable('notice_attachment',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id,{onDelete:'cascade'}),
+ uploadKey:uuid('upload_key').notNull().defaultRandom(),fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),byteLength:integer('byte_length').notNull(),
+ content:bytea('content').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[index('notice_attachment_parent_idx').on(t.tenantId,t.noticeId),uniqueIndex('notice_attachment_upload_once_uq').on(t.tenantId,t.noticeId,t.createdByUserId,t.uploadKey)]);
+
+/** Only the purpose-bound database acknowledgement command may insert; every receipt is immutable. */
+export const noticeAcknowledgement=pgTable('notice_acknowledgement',{
+ id:id(),tenantId:tenantId(),noticeId:uuid('notice_id').notNull().references(()=>notice.id),
+ revisionId:uuid('revision_id').notNull().references(()=>noticeRevision.id),contentVersion:integer('content_version').notNull(),
+ recipientId:uuid('recipient_id').notNull().references(()=>noticeRecipient.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+ acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}).notNull().defaultNow(),
+ sourceEventId:uuid('source_event_id').notNull().unique().references(()=>domainEvent.id),requestContext:jsonb('request_context').notNull().default({}),
+},t=>[uniqueIndex('notice_acknowledgement_once_uq').on(t.revisionId,t.recipientId),index('notice_acknowledgement_parent_idx').on(t.tenantId,t.noticeId)]);
 
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'pending',
@@ -7891,6 +7963,7 @@ export const aiProviderConfig = pgTable(
 // the spec only names dataset/field ids the registry exposes, and every underlying read enforces
 // tenant RLS + company scope. RLS + grants live in migration 0163.
 export type CustomReportSpec = {
+  payrollComparison?: PayrollComparisonDefinition;
   employeeMaster?: EmployeeMasterSpec;
   datasetId: string;
   columns: string[];
@@ -10476,6 +10549,54 @@ export const attendanceExceptionRevision = pgTable('attendance_exception_revisio
  effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);
 
+/** Company execution policies do not split the tenant-wide Schedule Group/shift catalogue.
+ * Append-only starts partition the timeline; before the first version the group remains legacy. */
+export const attendanceGroupPolicyRevision=pgTable('attendance_group_policy_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),ordinal:integer('ordinal').notNull(),
+ effectiveFrom:date('effective_from').notNull(),policy:jsonb('policy').$type<AttendanceGroupPolicy>().notNull(),
+ activationEpoch:bigint('activation_epoch',{mode:'number'}).notNull().default(0),
+ reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_group_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
+ uniqueIndex('attendance_group_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom)]);
+
+/** Owner-issued policy visibility at submission; it is not an approval or final-effect capability. */
+export const attendancePolicyRequestContract=pgTable('attendance_policy_request_contract',{
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),companyId:uuid('company_id').references(()=>company.id,{onDelete:'restrict'}),
+ kind:text('kind').notNull().$type<'epoch'|'unavailable'>(),visibleEpoch:bigint('visible_epoch',{mode:'number'}),
+ plannedWindow:jsonb('planned_window').$type<Record<string,unknown>>(),
+ attestedWork:jsonb('attested_work').$type<Record<string,unknown>>(),
+ manualApprovalMethod:text('manual_approval_method').$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
+ policyBinding:jsonb('policy_binding').$type<TraceAttendancePolicyBinding>(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
+
+/** Separate current-work testimony effect; never a punch, capture, raw scalar or payment. */
+export const attendancePolicyAttestedEffect=pgTable('attendance_policy_attested_effect',{
+ attendanceId:uuid('attendance_id').notNull().references(()=>attendance.id,{onDelete:'restrict'}),
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ attendanceDate:date('attendance_date').notNull(),workflowRequestId:uuid('workflow_request_id').notNull(),actorUserId:text('actor_user_id').notNull(),
+ authority:text('authority').notNull().$type<'attestedActualWorkOnly'>().default('attestedActualWorkOnly'),
+ requestedMinutes:integer('requested_minutes').notNull(),approvedMinutes:integer('approved_minutes').notNull(),
+ manualMethod:text('manual_method').notNull().$type<'requested'|'system_calculated'|'smaller_of'|'greater_of'>(),
+ contextEvidence:jsonb('context_evidence').notNull().$type<Record<string,unknown>>(),
+ attestedWork:jsonb('attested_work').notNull().$type<Record<string,unknown>>(),policyBinding:jsonb('policy_binding').notNull().$type<TraceAttendancePolicyBinding>(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
+
+/** Minted by the real final workflow transition with its distinct scoped effect; never payment or clock evidence. */
+export const attendancePolicyFinalReceipt=pgTable('attendance_policy_final_receipt',{
+ correctionId:uuid('correction_id').primaryKey().references(()=>attendanceCorrection.id,{onDelete:'cascade'}),
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),attendanceDate:date('attendance_date').notNull(),
+ companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),workflowRequestId:uuid('workflow_request_id').notNull(),
+ actorUserId:text('actor_user_id').notNull(),authority:text('authority').notNull().$type<'finalWorkflowDecisionOnly'>().default('finalWorkflowDecisionOnly'),
+ submissionEpoch:bigint('submission_epoch',{mode:'number'}).notNull(),requestEvidence:jsonb('request_evidence').notNull().$type<Record<string,unknown>>(),
+ workflowEvidence:jsonb('workflow_evidence').notNull().$type<Record<string,unknown>>(),rawEvidence:jsonb('raw_evidence').$type<Record<string,unknown>>(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+});
+
 // ADR-0120: original holidays and employee-specific replacement allocations remain separate.
 export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
@@ -10565,16 +10686,36 @@ export const attendanceOvertimeSource = pgTable('attendance_overtime_source', {
 export const attendanceOvertimeCalculation = pgTable('attendance_overtime_calculation', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
   versionId:uuid('version_id').references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),assignmentId:uuid('assignment_id').references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),
+  bindingKind:text('binding_kind').notNull().default('assignedPattern').$type<'assignedPattern'|'attendanceGroupPolicy'>(),
+  policyRevisionId:uuid('policy_revision_id').references(()=>attendanceGroupPolicyRevision.id,{onDelete:'restrict'}),
+  policyPartCount:integer('policy_part_count').notNull().default(0),
   ordinal:integer('ordinal').notNull(),inputDigest:text('input_digest').notNull(),approvalDigest:text('approval_digest').notNull(),referenceDigest:text('reference_digest').notNull(),
   outcome:text('outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),currency:text('currency').notNull(),minorScale:integer('minor_scale').notNull(),
   durationInputDigest:text('duration_input_digest'),durationOutcome:text('duration_outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),approvalStatus:text('approval_status').notNull(),transferable:boolean('transferable').notNull(),payableNumerator:text('payable_numerator'),payableDenominator:text('payable_denominator'),reason:text('reason').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_overtime_calculation_ordinal_uq').on(t.sourceId,t.ordinal),index('attendance_overtime_calculation_source_idx').on(t.tenantId,t.sourceId)]);
+/** Immutable dated policy parts beneath the SAME parent. allocatedPayableMinutes retains
+ * physical count placement; any extra rounded quantity has a separate dated source/count
+ * contract in durationEvidence. SQL0590 validates both without extending source intervals. */
+export const attendanceOvertimePolicyPart = pgTable('attendance_overtime_policy_part', {
+  calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),
+  sequence:integer('sequence').notNull(),calendarDate:date('calendar_date').notNull(),
+  dayClass:text('day_class').notNull().$type<AttendancePolicyDayClass>(),moneyDay:text('money_day').notNull().$type<PolicyMoneyDay>(),
+  versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),inputDigest:text('input_digest').notNull(),
+  rawMinutes:integer('raw_minutes').notNull(),allocatedPayableMinutes:integer('allocated_payable_minutes').notNull(),
+  sourceIntervals:jsonb('source_intervals').notNull().$type<AttendancePolicyInterval[]>(),calendarReferences:jsonb('calendar_references').notNull().$type<string[]>(),
+  durationEvidence:jsonb('duration_evidence').notNull().$type<Record<string,unknown>&{authority:'proposalOnly'}>(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.calculationId,t.sequence]}),uniqueIndex('attendance_ot_policy_part_date_uq').on(t.calculationId,t.calendarDate),
+  index('attendance_overtime_policy_part_scope_idx').on(t.tenantId,t.companyId,t.calculationId)]);
 export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   lineKey:text('line_key').notNull(),sequence:integer('sequence').notNull(),componentId:uuid('component_id').notNull().references(()=>payComponent.id,{onDelete:'restrict'}),
   amountMinorUnits:text('amount_minor_units').notNull(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_overtime_line_key_uq').on(t.calculationId,t.lineKey)]);
 export const overtimeSourceSettlement = pgTable('overtime_source_settlement', {
+  coverageEmploymentId:uuid('coverage_employment_id').references(()=>employment.id,{onDelete:'restrict'}),
+  coverageCalculationId:uuid('coverage_calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  coverageKind:text('coverage_kind').$type<'legacyUnknown'|'policyPhysical'>(),reservationCoverage:int8multirange('reservation_coverage'),
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
   ownerReference:jsonb('owner_reference').notNull().$type<{type:'payroll_batch'|'toil_accrual';id:string}>(),mode:text('mode').notNull().$type<'cash'|'toil'>(),calculationId:uuid('calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   payrollBatchId:uuid('payroll_batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),toilAccrualId:uuid('toil_accrual_id').references(()=>toilAccrual.id,{onDelete:'set null'}),

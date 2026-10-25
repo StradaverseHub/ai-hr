@@ -40,6 +40,16 @@ const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[
 // The Kingdee mark was removed and the app is branded "AIHR" alone (owner decision 2026-10-20): the sidebar
 // badge goes back to a plain primary lettered tile. An approved Classic change, mapped like the notification
 // panel above. Same mapping as the branding branch (claude/app-branding-ai-hr-802edd), which spelled it "AI HR".
+// Phone controls retain the verified 44px targets; every other Classic class remains pinned.
+const CLASSIC_TOUCH_TARGET_REPAIRS:Record<string,Record<string,string>> = {
+  "components/company-switcher.tsx": {
+    "flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]": "flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+  },
+  "components/notification-center.tsx": {
+    "relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground": "relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+  }
+};
+
 const KINGDEE_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]';
 const KINGDEE_MARK_SIZE = 'size-full';
 const HR_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]';
@@ -88,6 +98,7 @@ describe('Classic shell baseline, with the approved mobile notification position
         expect(cnStrings(onMain(file)).some((c) => c.includes('rounded-[1.25rem]'))).toBe(true);
       }
       const now = read(file);
+      for(const oldClass of Object.keys(CLASSIC_TOUCH_TARGET_REPAIRS[file]??{}))expect(before.filter(cls=>cls===oldClass)).toHaveLength(1);
       if (file === 'components/notification-center.tsx') {
         expect(before.filter(cls => cls === CLASSIC_NOTIFICATION_PANEL)).toHaveLength(1);
         expect(classNames(now).filter(cls => cls === RESPONSIVE_NOTIFICATION_PANEL)).toHaveLength(1);
@@ -109,7 +120,7 @@ describe('Classic shell baseline, with the approved mobile notification position
         if (file === 'components/sidebar.tsx' && cls === KINGDEE_MARK_SIZE) continue;
         const expected = file === 'components/notification-center.tsx' && cls === CLASSIC_NOTIFICATION_PANEL
           ? RESPONSIVE_NOTIFICATION_PANEL
-          : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : cls;
+          : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : CLASSIC_TOUCH_TARGET_REPAIRS[file]?.[cls]??cls;
         // Either the exact attribute is still there, or the same string with `monolith:` utilities appended.
         const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`);
         expect(kept, `Classic class string changed in ${file}: "${cls}"`).toBe(true);

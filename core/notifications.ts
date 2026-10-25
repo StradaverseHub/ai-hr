@@ -19,6 +19,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
  */
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
+import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -30,7 +31,6 @@ import {
   leaveRequest,
   notification,
   notificationCursor,
-  noticeRecipient,
   payslip,
   peerFeedbackRequest,
   reportingLine,
@@ -211,14 +211,14 @@ type Rendered = { severity: NotificationSeverity; title: string; body: string; l
 type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
 type Spec = {
   kind: string;
-  category: NotificationEmailCategory;
+  category: NotificationEmailCategory|null;
   /** `ev` is optional context (6522d26a) — most renders are payload-only; a spec may use the event ref
    *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
   render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
   /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
    *  batch) instead of the event's single subjectEmploymentId. `payload` (R51 722904dc) is the event's
    *  payload — a two-parameter resolver is still assignable, so existing resolvers compile unchanged. */
-  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
+  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
 };
 
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
@@ -226,6 +226,13 @@ type Spec = {
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
+  // event or a commit without that exact projection; the global cursor must not project it twice.
+  'employee-home.greeting.sent': {
+    kind:'employee-home.greeting',category:null,recipients:async()=>[],
+    render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
+      body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
+  },
   'onboarding.digest': {
     kind:'onboarding.digest',category:'onboarding',
     recipients:async(tx,ev,payload)=>{
@@ -819,26 +826,23 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   'notice.published': {
     kind: 'notice.published',
     category: 'notice',
-    // 'info', not 'action': release one has no acknowledgement, so there is nothing the employee must DO.
-    // Severity 'action' would put it in the bell's Task tab and count toward a to-do list it cannot clear.
+    // Delivery stays informational. Required current-version acknowledgements are live assigned work
+    // from the Notice owner in the canonical inbox, so a historical notification cannot duplicate or
+    // outlive the actual acknowledgement task after completion, withdrawal or a content revision.
     render: (p, ev) => ({
       severity: 'info',
       title: 'New notice',
       body: String(p?.title ?? 'A new notice has been published.'),
       linkPath: `/notices/${ev.aggregateId}`,
     }),
-    recipients: async (tx, ev, payload) => {
+    recipients: async (tx, ev, payload,noticeReader) => {
       // The publisher's `notifyOnPublish` choice, snapshotted into the event. That checkbox reads "Notify
       // recipients when it is published" (`notices.fNotify`, components/notice/notice-form.tsx) — it is NOT
       // an unconditional email switch. Category permission and recipient consent still apply. Read from the PAYLOAD
       // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
       // and re-reading the row would make it look as though it had.
       if (payload?.notify !== true) return [];
-      const rows = await tx
-        .select({ e: noticeRecipient.employmentId })
-        .from(noticeRecipient)
-        .where(eq(noticeRecipient.noticeId, ev.aggregateId));
-      return [...new Set(rows.map((r) => r.e))];
+      return noticeReader?noticeReader(ev.aggregateId):noticeNotificationRecipientsTx(tx,ev.aggregateId);
     },
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
@@ -855,17 +859,36 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
 
 export type DispatchResult = { processed: number; created: number };
 
-/**
- * Project new domain events into notifications (admin/system context — reads the whole tenant event log and
- * inserts for any recipient, both RLS-gated to is_admin). Keyset-paginated by (created_at, id) via the
- * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
- */
-export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number } = {}): Promise<DispatchResult> {
+/** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
+ * A company-scoped web request cannot consume a partially visible global event stream. */
+export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
-  const scopedReminders=(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));
-  if(!allCategories&&!scopedReminders)return {processed:0,created:0};
-  const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
-  return withTenant(ctx, async (tx) => {
+  if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
+  return withTenant(ctx,async tx=>{
+    if(allCategories){
+      const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+      if(!scope?.allowed)return {processed:0,created:0};
+    }
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit));
+  });
+}
+
+/** Cron already holds this explicit owner connection. Keep projection and cursor in one transaction;
+ * all registry reads and business writes are downgraded to APP before projection. */
+export async function dispatchNotificationsFromSweep(ctx:SessionContext,connection:NotificationSweepConnection,opts:{limit?:number}={}):Promise<DispatchResult>{
+  if(ctx.userId)throw Error('Notification sweep requires a maintenance context.');
+  const allCategories=enabled(ctx);
+  if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
+  return connection.withTenant(ctx,async tx=>{
+    const priorRole=await assertNotificationSweepConnection(tx);
+    const [scope]=await tx.execute(sql`select app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+    if(!scope?.allowed)throw Error('Notification sweep requires the complete tenant scope.');
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),priorRole);
+  });
+}
+function hasScopedReminders(ctx:SessionContext){return (ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));}
+function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),5000);}
+async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
     const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
@@ -880,10 +903,24 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(and(after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
+      .where(and(eq(domainEvent.tenantId,ctx.tenantId),after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
       .orderBy(asc(domainEvent.sequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
+
+    let noticeReader:NoticeRecipientReader|undefined;
+    if(priorRole!==undefined){
+      const audiences=new Map<string,string[]>();
+      for(const ev of rows){
+        if(ev.eventType==='notice.published'&&(ev.payload as Record<string,unknown>|null)?.notify===true&&!audiences.has(ev.aggregateId)){
+          audiences.set(ev.aggregateId,await noticeSnapshotIdsTx(tx,ctx.tenantId,ev.aggregateId));
+        }
+      }
+      noticeReader=async id=>{const ids=audiences.get(id);if(!ids)throw Error('Complete Notice projection snapshot is unavailable.');return ids;};
+      // Every canonical resolver and notification/outbox write retains APP RLS. Only the bounded event
+      // batch, immutable Notice snapshots and final cursor use this explicit maintenance connection.
+      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+    }
 
     let created = 0;
     for (const ev of rows) {
@@ -893,7 +930,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       for (const spec of Array.isArray(entry) ? entry : [entry]) {
         // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
         const recipients = spec.recipients
-          ? await spec.recipients(tx, evRef, (ev.payload as Record<string, unknown> | null) ?? null)
+          ? await spec.recipients(tx, evRef, (ev.payload as Record<string, unknown> | null) ?? null,noticeReader)
           : ev.subjectEmploymentId
             ? [ev.subjectEmploymentId]
             : [];
@@ -915,12 +952,15 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
             severity: r.severity,
             sourceEventId: ev.id,
           });
-          await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
+          if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
           created += 1;
         }
       }
     }
 
+    // On an error the transaction rolls back both writes and SET LOCAL ROLE. Do not attempt a role
+    // restore inside a failed transaction and obscure the original error. Restore only on success.
+    if(priorRole!==undefined)await tx.execute(sql`select set_config('role',${priorRole},true)`);
     const last = rows[rows.length - 1];
     if (cur) {
       await tx
@@ -931,24 +971,42 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
     }
     return { processed: rows.length, created };
-  });
 }
 
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
-export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string): Promise<boolean> {
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
-  const [ev] = await tx.select().from(domainEvent).where(eq(domainEvent.id,eventId)).limit(1);
+  const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
+    .from(domainEvent).where(and(eq(domainEvent.id,eventId),sql`${domainEvent.tenantId}=app.current_tenant_id()`)).limit(1);
+  let ev:Awaited<ReturnType<NoticeEventReader>>=visible;
+  if(!ev&&category==='notice'){
+    if(!noticeEventReader)throw Error('Notice projection requires the complete authorized audience and source event.');
+    ev=await noticeEventReader(eventId);
+    if(!ev)throw Error('Notice source event is unavailable; retain the queued delivery for investigation.');
+  }
   if (!ev) return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;
   const ref: EventRef = {aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};
   for (const spec of Array.isArray(entry) ? entry : [entry]) {
     if (spec.kind !== kind || spec.category !== category) continue;
-    const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null)
+    const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null,noticeReader)
       : ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [];
     if (recipients.includes(recipient)) return true;
   }
   return false;
+}
+
+/** Explicit Home delivery uses the same registry/render owner, inside the originating command's
+ * transaction. A posted recipient/event cannot choose the projection target. No email is enqueued. */
+export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<void>{
+ const [target]=await tx.execute<{source_event_id:string;recipient_employment_id:string}>(sql`SELECT * FROM app.home_greeting_projection_target(${greetingId}::uuid)`);
+ if(!target)return; // Already committed nonce: SQL supplied no new projection admission.
+ const spec=REGISTRY['employee-home.greeting.sent'];
+ if(!spec||Array.isArray(spec)||spec.category!==null)throw Error('Greeting projection unavailable');
+ const rendered=spec.render(null,{aggregateId:greetingId,subjectEmploymentId:target.recipient_employment_id});
+ await tx.insert(notification).values({id:randomUUID(),tenantId:sql`app.current_tenant_id()`,recipientEmploymentId:target.recipient_employment_id,
+  kind:spec.kind,title:rendered.title,body:rendered.body,linkPath:rendered.linkPath,severity:rendered.severity,sourceEventId:target.source_event_id});
 }
 
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's

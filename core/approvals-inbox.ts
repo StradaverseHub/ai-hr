@@ -20,9 +20,10 @@ import type {SessionContext} from '../db/client';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {pendingClaimTaskMetadata} from '../packs/claims/service';
-import {pendingAttendanceTaskMetadata} from './attendance';
+import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationTaskMetadata} from './offboarding';
+import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewTaskMetadata} from './employment-review';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
@@ -35,7 +36,8 @@ export type PendingTaskKind =
   | 'claim'
   | 'resignation'
   | 'managerReview'
-  | 'hrReview';
+  | 'hrReview'
+  | 'noticeAcknowledgement';
 
 /** One item awaiting the viewer's decision — serializable (ISO date) so the client bell can render it. */
 export type PendingTaskItem = {
@@ -70,25 +72,33 @@ export type PendingTaskItem = {
  */
 export type InboxModules = { attendance: boolean; claims: boolean };
 
+type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options?:{noticeAcknowledgements?:boolean}):Promise<PendingTaskItem[]>;
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
   modules: InboxModules,
+  options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews]=await Promise.all([
+  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements]=await Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
     modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+    options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
   ]);
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
   const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
     rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
-  const items=[
+  const items:PendingTaskItem[]=[
+    ...noticeAcknowledgements.map(row=>({id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`})),
     ...project(leave,'leave'),
     ...project(cancellations,'leaveCancellation'),
     ...project(replacement,'replacementLeave'),
@@ -105,5 +115,5 @@ export async function pendingApprovalsCount(
   scopeIds: string[] | undefined,
   modules: InboxModules,
 ): Promise<number> {
-  return (await listPendingTasks(ctx, scopeIds, modules)).length;
+  return (await listPendingTasks(ctx, scopeIds, modules,{noticeAcknowledgements:false})).length;
 }

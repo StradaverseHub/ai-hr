@@ -54,9 +54,9 @@ export async function erasePersonPii(
   p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
 ): Promise<ErasureReport> {
   return withTenant(ctx, async (tx) => {
-    // Independent privacy authority prepares only exact nullable erasure effects. It cannot grant
-    // Workforce maintenance or lend its authority to an arbitrary value write.
-    const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.access_privacy_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
+    // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
+    // wrapper adds only private greeting content and binds even an otherwise empty erasure to its audit.
+    const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.home_greeting_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
     if(!admission?.at)throw new Error('Privacy erasure admission unavailable.');
     const erasureAt=new Date(admission.at);
     if(!Number.isFinite(erasureAt.getTime()))throw new Error('Privacy erasure admission unavailable.');
@@ -171,6 +171,10 @@ export async function erasePersonPii(
       const [consent] = await tx.execute(sql`select app.notification_email_revoke_contact(${p.subjectEmploymentId}::uuid) as revoked`) as unknown as {revoked:number}[];
       if (consent?.revoked) erased.push('workflowEmailConsent');
     }
+
+    const [greetings]=await tx.execute<{cleared:number}>(sql`select app.home_greeting_redact(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) as cleared`);
+    if(!greetings||!Number.isSafeInteger(greetings.cleared)||greetings.cleared<0)throw new Error('Greeting erasure result unavailable.');
+    if(greetings.cleared>0)erased.push('homeGreetingMessages');
 
     // (5) audit record — no PII payload
     await appendEvent(tx, {

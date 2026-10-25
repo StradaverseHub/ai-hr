@@ -195,9 +195,10 @@ describe('post-decision refresh', () => {
     // type 'page' and would leave both stale after a decision.
     expect(actions).toContain("revalidatePath('/', 'layout')");
     // Both decrement paths go through the shared helper: the row-level actions via done(), and bulk.
-    expect(actions).toContain('function done(toast: string, nav: Nav = {}): never {\n  revalidateShell();');
+    expect(actions).toContain('async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{\n  revalidateShell();');
+    expect(actions).toContain('redirect(await decisionReturnUrl(s,nav,{toast}))');
     expect(actions).toContain('revalidateShell();\n  const summary =');
     // fail() changes no state, so it must NOT pay for a shell revalidation.
-    expect(actions).toContain('function fail(e: unknown, nav: Nav = {}): never {\n  redirect(');
+    expect(actions).toContain('async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{\n  redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}))');
   });
 });

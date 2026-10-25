@@ -13,7 +13,7 @@ import { hireEmployee, setReportingLine, transferEmploymentCompanyTx } from '../
 import { createPolicy, assignPolicy } from '../core/payroll-policy';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendancePunchesForRange, attendancePunchesForDays } from '../core/attendance';
 import { attendanceClockData } from '../core/attendance-clock-data';
-import { ClockDataChangedError, AttendancePayrollClosedError, validateClockEntries } from '../core/attendance-punch-change';
+import { ClockDataChangedError, AttendancePayrollClosedError, lockAttendancePayrollTx, markAttendancePayrollTx, validateClockEntries } from '../core/attendance-punch-change';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { withTenant } from '../db/client';
 import { setCompensation } from '../core/comp';
@@ -109,6 +109,32 @@ describe('approved attendance clock-data corrections', () => {
     await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
     await expect(save(a, employmentId, [])).rejects.toBeInstanceOf(AttendancePayrollClosedError);
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
+  });
+  it.each(['processed','closed'] as const)('protects a later-month %s run through one union of physical dates',async status=>{
+    const {a,employmentId}=await fixture();
+    await setCompensation(a,{employmentId,basicSalary:4000,monthlyAllowance:0,effectiveFrom:'2020-01-01'});
+    const policy=await createPolicy(a,{companyId:b.companyId,name:'Calendar-month withdrawal protection',policyType:'monthly',config:{}});
+    await assignPolicy(a,{employmentId,policyId:policy.id});
+    await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,attendanceCutOffDay:null})
+      .onConflictDoUpdate({target:schema.companyPayrollConfig.companyId,set:{attendanceCutOffDay:null}});
+    const {batchId}=await createBatch(a,{companyId:b.companyId,payPeriod:'2026-08'});
+    await generatePayslips(a,{batchId});
+    expect(await owner.db.select({id:schema.payslip.id}).from(schema.payslip)
+      .where(and(eq(schema.payslip.batchId,batchId),eq(schema.payslip.employmentId,employmentId)))).toHaveLength(1);
+    if(status==='closed')await owner.db.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId));
+    // Source-day-only protection misses August; the complete retained statement must not.
+    expect(await withTenant(a,tx=>lockAttendancePayrollTx(tx,employmentId,'2026-07-31'))).toEqual([]);
+    const protect=()=>withTenant(a,async tx=>{
+      const batches=await lockAttendancePayrollTx(tx,employmentId,['2026-08-01','2026-07-31','2026-08-01']);
+      expect(batches).toEqual([{batchId,status}]);
+      await markAttendancePayrollTx(tx,a,batches,employmentId);
+    });
+    if(status==='closed')await expect(protect()).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+    else{
+      await protect();
+      const [run]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
+      expect(run.needsRecalcAt).not.toBeNull();
+    }
   });
   it('ordinary employees cannot read raw evidence or submit administrative punch sets', async () => {
     const { a, employmentId, personId } = await fixture();

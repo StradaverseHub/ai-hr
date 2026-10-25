@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * R7 Multi-Shift — PHASE 1 (shift template). Covers: auto normal-hours from the SHARED core/attendance.ts
  * helpers (shiftSpan / netScheduledMinutes — proving the math is not forked into roster.ts); the manual
@@ -19,15 +20,10 @@ let b: Base;
 let employmentId: string;
 
 async function makeEmployment() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Worker', primaryEmail: `w_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'Worker', primaryEmail: `w_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 beforeAll(async () => {

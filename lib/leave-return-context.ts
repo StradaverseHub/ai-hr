@@ -1,4 +1,9 @@
 /** Return navigation is an allowlisted UI context, never an arbitrary client URL. */
+export function withLeaveEmploymentContext(href:string,employmentId:string|undefined):string{
+  if(!employmentId)return href;
+  if(!/^\/leave(?:\/history)?\?/.test(href)||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(employmentId))throw Error('Invalid own leave return context.');
+  return href+'&employmentId='+encodeURIComponent(employmentId);
+}
 export function leaveSelfReturnUrl(formData: FormData, key: 'error' | 'toast', value: string): string {
   const history = formData.get('leaveOrigin') === 'history';
   const query = new URLSearchParams();

@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { hireEmployee } from '../core/org';
-import { createNotice, getNotice } from '../core/notice';
+import { createNotice, getNotice,noticeAudiencePreview } from '../core/notice';
 import { previewLeaveGeneration } from '../core/leave-generation';
 import { listEmployeePickOptions } from '../core/read';
 import {
@@ -343,10 +343,9 @@ describe('r289 §C · Notice Board: a mixed paste cannot produce a draft that ov
     expect(stored).toEqual([irwin, nadia, 'EMP-9999']);
     expect(stored.length, 'the OLD reach rule counted strings, and would say three').toBe(3);
 
-    // …and the draft screen's rule now counts people. `visibleEmploymentIds` is the function
-    // app/admin/notice-board/[id]/page.tsx computes `reach` with, over the list it has already read for
-    // the picker — so this is the number the reach box prints and the number the publish confirmation
-    // repeats, not a re-derivation of it.
+    // The picker resolver still counts recognized identities. The canonical notice preview now also
+    // applies the actual authoring boundary and keeps an unresolved draft explicitly incomplete.
+    expect(await noticeAudiencePreview(adminCtx(b),created.id)).toEqual({count:2,incomplete:true,unrestricted:false});
     const reach = visibleEmploymentIds(stored, audience).length;
     expect(reach, 'a string that names nobody is not an employee').toBe(2);
     expect(visibleEmploymentIds(stored, audience)).toEqual([irwin, nadia]);
@@ -359,10 +358,11 @@ describe('r289 §C · Notice Board: a mixed paste cannot produce a draft that ov
     expect(visibleEmploymentIds(ids, audience).length).toBe(2);
   });
 
-  it('the draft page computes its reach through that function, not through a length', () => {
+  it('the draft page uses the canonical notice preview and blocks an incomplete audience', () => {
     const page = read('app/admin/notice-board/[id]/page.tsx');
-    expect(page).toContain("import { visibleEmploymentIds } from '@/lib/employment-selection'");
-    expect(page).toContain('visibleEmploymentIds(n.criteria.employmentIds ?? [], vocab.employees).length');
+    expect(page).toContain('await noticeAudiencePreview(s,n.id)');
+    expect(page).toContain('published?n.recipientCount:(projected?.count??0)');
+    expect(page).toContain('disabled={Boolean(projected?.incomplete)||reach===0}');
     // The rule it replaces must be GONE, or the honest count would sit beside the over-claiming one and a
     // later edit would pick whichever looked shorter.
     expect(page, 'the string count must not survive anywhere on this page').not.toContain(

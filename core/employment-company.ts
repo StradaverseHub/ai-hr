@@ -376,30 +376,17 @@ export async function provenCompanyDatesTx(
 ): Promise<Map<string, ProvenCompanyDate>> {
   const out = new Map<string, ProvenCompanyDate>();
   if (!requested.length) return out;
-  const ids = [...new Set(requested.map(row => row.employmentId))];
-  const from = requested.reduce((date, row) => row.date < date ? row.date : date, requested[0].date);
-  const to = requested.reduce((date, row) => row.date > date ? row.date : date, requested[0].date);
-  const [people, versions] = await Promise.all([
-    tx.select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
-      .from(employment).where(inArray(employment.id, ids)),
-    tx.select({ employmentId: assignment.employmentId, companyId: assignment.companyId, from: assignment.validFrom, to: assignment.validTo })
-      .from(assignment).where(and(inArray(assignment.employmentId, ids), isNull(assignment.supersededAt),
-        lte(assignment.validFrom, to), or(isNull(assignment.validTo), gt(assignment.validTo, from))))
-      .orderBy(asc(assignment.employmentId), asc(assignment.validFrom), asc(assignment.id)),
-  ]);
-  const byEmployee = new Map(people.map(row => [row.id, row]));
-  const versionsByEmployee = new Map<string, typeof versions>();
-  for (const version of versions) { const list=versionsByEmployee.get(version.employmentId)??[];list.push(version);versionsByEmployee.set(version.employmentId,list); }
-  for (const row of requested) {
-    const employee = byEmployee.get(row.employmentId);
-    const applicable = (versionsByEmployee.get(row.employmentId)??[]).filter(version => version.from <= row.date && (!version.to || version.to > row.date));
-    const proof: ProvenCompanyDate = !employee ? { companyId: null, reason: 'employment_unavailable' }
-      : row.date < employee.hiredOn || employee.terminatedOn && row.date > employee.terminatedOn
-        ? { companyId: null, reason: 'outside_tenure' }
-        : applicable.length > 1 ? { companyId: null, reason: 'assignment_ambiguous' }
-          : applicable.length !== 1 || !applicable[0].companyId ? { companyId: null, reason: 'assignment_missing' }
-            : { companyId: applicable[0].companyId, reason: null };
-    out.set(`${row.employmentId}|${row.date}`, proof);
+  // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
+  // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
+  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
+   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${JSON.stringify(requested)}::jsonb)
+   ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
+  const byPoint=new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
+  // Preserve the caller's requested insertion order, including the established duplicate-key behaviour.
+  for(const point of requested){
+   const key=`${point.employmentId}|${point.date}`,proof=byPoint.get(key);
+   if(!proof)throw Error('Dated company proof is incomplete.');
+   out.set(key,proof);
   }
   return out;
 }

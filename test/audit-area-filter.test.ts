@@ -27,6 +27,8 @@ import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from 
 import { withTenant } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { auditEvents, auditEventsCount } from '../core/read';
+import {createNotice} from '../core/notice';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {
   MAPPED_AGGREGATE_TYPES,
   MODULE_KEYS,
@@ -47,8 +49,15 @@ const INITIAL = 'access-configuration';
 const SEEDED = [...MAPPED_AGGREGATE_TYPES, ...UNMAPPED];
 
 async function seedOneEventPerAggregateType(ctx: ReturnType<typeof adminCtx>) {
+  // Notice events require their real parent and author. Its public writer supplies exactly one
+  // canonical notice.created event; keep that aggregate in the same area/count assertions below.
+  expect(SEEDED.filter(type=>type==='notice')).toHaveLength(1);
+  const on=todayInKualaLumpur();
+  await createNotice(ctx,{companyId:b.companyId,title:'Fictional audit filter notice',body:'Fictional audit fixture.',
+    startOn:on,endOn:on,targetMode:'criteria',criteria:{},notifyOnPublish:false});
   await withTenant(ctx, async (tx) => {
     for (const aggregateType of SEEDED) {
+      if(aggregateType==='notice')continue;
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType,

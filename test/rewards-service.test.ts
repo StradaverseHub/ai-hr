@@ -8,7 +8,7 @@ import { createBatch, setPayrollInput } from '../packs/payroll/service';
 import { getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
-import { dispatchNotifications } from '../core/notifications';
+import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
@@ -196,13 +196,13 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await decideRewardUnit(actors.bu!, unitId, rev, 'submit', 'Reviewed recommendations');
     const enabled = await entitledCtx(b);
     const system: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: enabled.entitlements };
-    await dispatchNotifications(system);
+    await dispatchNotificationsFromSweep(system,owner);
     const notices = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'rewards.review'));
     expect(notices).toHaveLength(1);
     expect(notices[0].recipientEmploymentId).toBe(employee.employmentId);
     expect(notices[0].linkPath).toBe(`/rewards/${unitId}?view=approvals`);
     expect(notices[0].body).not.toMatch(/5000|5225|10055/);
-    expect((await dispatchNotifications(system)).created).toBe(0);
+    expect((await dispatchNotificationsFromSweep(system,owner)).created).toBe(0);
     expect(await withTenant(actors.bu!, tx => rewardNotificationRecipients(tx, unitId, 'bg'))).toEqual([]);
     expect(await withTenant(system, tx => rewardNotificationRecipients(tx, unitId, 'ctro'))).toEqual([]);
   });

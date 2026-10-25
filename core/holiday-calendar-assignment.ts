@@ -103,8 +103,8 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
     let updated=0;const reviewDates:string[]=[];
     for(const day of days.filter(day=>changedDates.includes(day.attendanceDate))){
       if(!day.checkInAt||!day.checkOutAt||day.status==='absent'){reviewDates.push(day.attendanceDate);continue;}
-      const approved=await attendanceDayCalculationTx(tx,p.employmentId,day.attendanceDate);
-      const result=await recomputeDayFigures(tx,{employmentId:p.employmentId,date:day.attendanceDate,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt,approvedOtMinutes:approved.approvedOtMinutes});
+      const approved=await attendanceDayCalculationTx(tx,ctx,p.employmentId,day.attendanceDate);
+      const result=await recomputeDayFigures(tx,ctx,{employmentId:p.employmentId,date:day.attendanceDate,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt,approvedOtMinutes:approved.approvedOtMinutes});
       await tx.update(attendance).set(result.columns).where(eq(attendance.id,day.id));
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:day.attendanceDate,reason:'Dated holiday calendar assignment'});
       await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance',aggregateId:day.id,eventType:'attendance.calendar-recomputed',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{calendarAssignmentId:saved.id,date:day.attendanceDate,before:{dayType:day.dayType,workedMinutes:day.workedMinutes,otMinutes:day.otMinutes},after:result.columns}});updated++;

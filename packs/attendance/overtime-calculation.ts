@@ -1,3 +1,5 @@
+import {attendancePolicyStoredPartCount} from './policy-count-attribution';
+import type {PolicyFinancialContract,PolicyFinancialDurationContract} from './policy-financial-contract';
 /** Bind canonical input authority once. Public previews never mint actual recording handles. */
 import type {SessionContext, Tx} from '../../db/client';
 import {actorOf, appendEvent} from '../../db/events';
@@ -33,7 +35,10 @@ async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutco
     await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
     return;
   }
-  const marker = {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
+  // A selected policy alone cannot establish coverage. Complete independently replayed duration
+  // can mark its stored source as recorded even if the separate cash contract is unavailable.
+  const marker = result.policyRevisionId&&result.policyFinancialDurationContract?.state!=='prepared'?{status:'refused',reason:'sourceUnavailable'} as const:
+    {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
   await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,dayId));
 }
 /** Automatic OT stage after the canonical raw day/approval writer. Legacy quantities stay under
@@ -79,7 +84,7 @@ export async function overtimeSourceRevisionTx(tx: Tx, ctx: SessionContext, p: {
   return row ?? null;
 }
 
-export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null};
+export type OvertimePatternCalculationReview = {sourceId: string; sourceRevision: number; calculationId: string | null; status: 'ready' | 'ineligible' | 'refused' | null; durationStatus: 'ready' | 'ineligible' | 'refused' | null; approvalStatus: string | null; evaluation: OvertimeEvaluation | null; duration: OvertimeDurationEvaluation | null; recordedAt: string | null;policyFinancial?:PolicyFinancialContract;policyDuration?:PolicyFinancialDurationContract;policyPayableParts?:{sequence:number;calendarDate:string;minutes:number}[]};
 /** Immutable evidence is validated structurally and bound to actual stored identities, never replayed
  * against a current definition merely to explain an old amount. */
 export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string; revisionId?: string}): Promise<OvertimePatternCalculationReview | null> {
@@ -89,6 +94,26 @@ export async function readOvertimePatternCalculationTx(tx: Tx, ctx: SessionConte
   if (!calculation) return {sourceId: source.id, sourceRevision: source.revision, calculationId: null, status: null, durationStatus: null, approvalStatus: null, evaluation: null, duration: null, recordedAt: null};
   const stored = evidence?.evidence;
   const wrapper = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored as Record<string, unknown> : null;
+  if(calculation.bindingKind==='attendanceGroupPolicy'){
+    // readOvertimeCalculationTx already independently validated the entire historical policy
+    // parent, duration/cash contracts, every dated part and every persisted line.
+    const policyDuration=wrapper?.policyFinancialDurationContract as PolicyFinancialDurationContract|undefined;
+    const policyPayableParts:{sequence:number;calendarDate:string;minutes:number}[]=[];
+    if(policyDuration?.state==='prepared'){
+      for(const part of policyDuration.parts){
+        const minutes=attendancePolicyStoredPartCount(part);
+        if(minutes===null)throw new OvertimeOwnerError('unavailable','The recorded dated payable count is unavailable.');
+        policyPayableParts.push({sequence:part.sequence,calendarDate:part.calendarDate,minutes});
+      }
+      if(policyPayableParts.reduce((sum,part)=>sum+part.minutes,0)!==policyDuration.minutes)
+        throw new OvertimeOwnerError('unavailable','The recorded dated payable count does not match its parent.');
+    }
+    return {sourceId:source.id,sourceRevision:source.revision,calculationId:calculation.id,
+      status:calculation.outcome,durationStatus:calculation.durationOutcome,approvalStatus:calculation.approvalStatus,
+      evaluation:null,duration:null,recordedAt:calculation.createdAt.toISOString(),
+      policyFinancial:wrapper?.policyFinancialContract as PolicyFinancialContract|undefined,
+      policyDuration,...(policyDuration?.state==='prepared'?{policyPayableParts}:{})};
+  }
   const evaluation = parseRecordedOvertimeEvaluation(wrapper?.evaluation);
   const duration = parseRecordedOvertimeDurationEvaluation(wrapper?.duration);
   // An unresolved assignment has a recorded refusal/resolution but no selected formula evaluation.

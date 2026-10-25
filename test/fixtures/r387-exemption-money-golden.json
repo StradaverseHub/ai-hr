@@ -281,7 +281,23 @@
           ]
         }
       ],
-      "pcbNormalPreZakat": 1578.75
+      "pcbNormalPreZakat": 1578.75,
+      "reportContext": {
+        "version": 1,
+        "payingCompanyId": "paying-company-owner",
+        "currency": "MYR",
+        "itemization": "complete",
+        "proration": {
+          "payMode": "monthly",
+          "from": "2025-01-01",
+          "to": null,
+          "factor": 1,
+          "window": {
+            "from": "YEAR-01-01",
+            "to": "YEAR-01-31"
+          }
+        }
+      }
     },
     "otherDeductions": "0.00",
     "totalDeductions": "2731.40",
@@ -566,7 +582,23 @@
           ]
         }
       ],
-      "pcbNormalPreZakat": 1590.8
+      "pcbNormalPreZakat": 1590.8,
+      "reportContext": {
+        "version": 1,
+        "payingCompanyId": "paying-company-owner",
+        "currency": "MYR",
+        "itemization": "complete",
+        "proration": {
+          "payMode": "monthly",
+          "from": "2025-01-01",
+          "to": null,
+          "factor": 1,
+          "window": {
+            "from": "YEAR-02-01",
+            "to": "YEAR-02-28"
+          }
+        }
+      }
     },
     "otherDeductions": "0.00",
     "totalDeductions": "2754.45",
@@ -777,7 +809,13 @@
           ]
         }
       ],
-      "pcbNormalPreZakat": 1591.25
+      "pcbNormalPreZakat": 1591.25,
+      "reportContext": {
+        "version": 1,
+        "payingCompanyId": "paying-company-owner",
+        "currency": "MYR",
+        "itemization": "complete"
+      }
     },
     "otherDeductions": "0.00",
     "totalDeductions": "360.00",

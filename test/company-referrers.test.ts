@@ -855,3 +855,23 @@ describe('§5 the action answers every refusal in words, never with the driver m
     expect(ORG_EN.deleteRefusedPayroll.startsWith('This company cannot be deleted because payroll records exist for this company.')).toBe(true);
   });
 });
+
+
+describe('retained policy company metadata',()=>{
+ it('blocks company deletion without exposing private epoch rows or another company retention fact',async()=>{
+  const id=await bare(),other=await bare();
+  await owner.db.execute(sql`insert into app.attendance_policy_company_epoch(tenant_id,company_id,epoch) values(${b.tenantId}::uuid,${id}::uuid,0)`);
+  const retained=async(ctx:SessionContext,companyId:string)=>withTenant(ctx,async tx=>{
+   const rows=await tx.execute(sql`select app.retained_company_history_in_use(${companyId}::uuid) as retained`) as unknown as {retained:boolean}[];
+   return rows[0].retained;
+  });
+  expect(await retained(scopedAdmin(id),id)).toBe(true);
+  expect(await retained(scopedAdmin(other),id)).toBe(false);
+  expect(await retained(member(),id)).toBe(false);
+  expect(await retained({...ADMIN(),tenantId:randomUUID()},id)).toBe(false);
+  expect(await verdict(ADMIN(),id)).toBe('other');
+  expect(await attempt(ADMIN(),id)).toBe('other');
+  expect(await exists(id)).toBe(true);
+  expect(await sqlStateOf(withTenant(ADMIN(),tx=>tx.execute(sql`select * from app.attendance_policy_company_epoch`)))).toBe('42501');
+ });
+});

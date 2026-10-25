@@ -1,6 +1,7 @@
 'use server';
 import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attendance-workflow-v3';
 
+import {attendancePolicyLocalWorkInstant} from '@/lib/attendance-policy-unclocked-work';
 import { publicErrorMessage } from '@/lib/public-error';
 import type { AttendanceDayKindOverride } from '@/lib/attendance-day-adjustment';
 import { saveAttendanceDayEdit, amendExistingAttendanceApplication } from '@/packs/attendance/service';
@@ -96,4 +97,26 @@ export async function rejectAttendanceDayApplicationAction(formData:FormData){
     await decideAttendanceCorrection(s,{correctionId:id,decision:'rejected',rejectReason:reason,remarks:reason,expectedStageIndex:stage===''?undefined:Number(stage)});
     refreshAttendanceDay();return {ok:true as const,pending:false};
   }catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
+}
+
+/** Submit explicit complete actual work for the configured workflow; this action never approves it. */
+export async function submitUnclockedAttendanceWorkAction(formData:FormData){
+ const {s,scopeIds}=await scopedAdmin();
+ const employmentId=String(formData.get('employmentId')??''),date=String(formData.get('date')??'');
+ const employees=await listEmployees(s,scopeIds);
+ if(!employees.some(row=>row.employmentId===employmentId))return {ok:false as const,message:'The employee is outside your current company scope.'};
+ try{
+  const starts=formData.getAll('workStart'),ends=formData.getAll('workEnd');
+  if(starts.length!==ends.length||starts.length<1||starts.length>16||formData.get('completeWorkedDay')!=='on')
+   throw Error('Confirm the complete work date and enter every actual work interval.');
+  const intervals=starts.map((start,index)=>({fromEpochMillisecond:attendancePolicyLocalWorkInstant(String(start)),toEpochMillisecond:attendancePolicyLocalWorkInstant(String(ends[index]))}));
+  const requestedStarts=formData.getAll('requestedStart'),requestedEnds=formData.getAll('requestedEnd'),positioned=formData.get('useRequestedPositions')==='on';
+  if(positioned?(requestedStarts.length<1||requestedStarts.length>16||requestedStarts.length!==requestedEnds.length):(requestedStarts.length>0||requestedEnds.length>0))
+   throw Error('Record every interval covered by the requested overtime count.');
+  const requestedIntervals=positioned?requestedStarts.map((start,index)=>({fromEpochMillisecond:attendancePolicyLocalWorkInstant(String(start)),
+   toEpochMillisecond:attendancePolicyLocalWorkInstant(String(requestedEnds[index]))})):undefined;
+  const result=await requestAttendanceCorrection(s,{employmentId,date,reason:String(formData.get('reason')??''),
+   requestedOtMinutes:Number(formData.get('requestedOtMinutes')),unclockedWork:{completeWorkedDay:true,intervals,...(requestedIntervals?{requestedIntervals}:{})}});
+  refreshAttendanceDay();return {ok:true as const,correctionId:result.correctionId};
+ }catch(error){return {ok:false as const,message:publicErrorMessage(error)};}
 }

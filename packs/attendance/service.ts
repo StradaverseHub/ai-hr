@@ -15,6 +15,7 @@ export * from '../../core/attendance';
 export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
+export * from '../../core/attendance-group-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';
@@ -29,6 +30,7 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
@@ -53,10 +55,10 @@ export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculate
 export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx, canonicalOvertimeToilInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';
-export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, overtimePatternSetup, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
-export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOvertimeCashDefinitionTx, readOvertimeDurationsTx, readOvertimeDurationDefinitionTx, hasOvertimePatternForDayTx, lockOvertimeDayForAttendanceWriteTx,
+export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, overtimePatternSetup, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
+export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOvertimeToilSettlementDatesTx, readOvertimeCashDefinitionTx, readOvertimeDurationsTx, readOvertimeDurationDefinitionTx, hasOvertimePatternForDayTx, lockOvertimeDayForAttendanceWriteTx,
   type OvertimePatternVersionView, type OvertimeDurationRead, type CanonicalOvertimeInput, type CanonicalOvertimeSnapshot } from './overtime-patterns';
-export {resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
+export {resolveOvertimePolicyDatedToilQualificationTx, resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
 
 export {formulaOvertimeForRowsTx, formulaOvertimeCashForRowsTx, type FormulaOvertimeCashRecord} from './overtime-records';
 
@@ -66,4 +68,35 @@ export {shiftArrangementHistory} from '../../core/shift-arrangement';
 export { previewCardImport, commitCardImport, cardImportExisting, assertCardImportAccess } from '../../core/attendance-card-import';
 export { setEmploymentCardId } from '../../core/attendance-card';
 
+// Shared dated-policy arithmetic; proposals do not authorize approval, pricing or settlement.
+export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurationProposal,type PolicyDurationProposalInput,type PolicyDurationProposal,type PolicyClockDurationProposalInput,type PolicyClockDurationProposal} from './policy-duration';
+
+// Internal raw-writer routing; this detector never establishes final-effect authority.
+export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
+// Prospective source seam for the canonical raw writer; no figure, approval or settlement write.
+export {attendancePolicyRawInputTx} from './policy-raw-input';
+export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-figures';
+
+export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-raw-day';
+export {lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from './policy-import-input';
+
+export {attendancePolicyTraceBinding} from './policy-trace-binding';
+
+export {attendancePolicySystemEligibleMinutes} from './policy-execution-proposal';
+
+// Internal parent contract; callers retain current financial scope, replay and settlement owners.
+export {attendancePolicyFinancialContract,type PolicyFinancialContract,type PolicyFinancialLine} from './policy-financial-contract';
+
+export {lockOvertimePayrollBatchContextTx} from './overtime-patterns';
+
+export {attendancePolicyStoredPartCount} from './policy-count-attribution';
+
+export {attendancePolicyUnclockedWorkComparison} from './policy-work-input';
+
+export {canSubmitUnclockedAttendanceWork} from './unclocked-work-setup';
+
+export {retainedAttestedPolicyCancellationTx} from './policy-attested-work-source';
+
 export * from '../../core/attendance-allowance-selection';
+
+export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';

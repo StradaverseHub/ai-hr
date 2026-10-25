@@ -381,22 +381,6 @@ export async function requestProfileChange(
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
-/**
- * Decide a profile change. Admin-only (bank/tax data is not a manager's call) and never self —
- * approval applies the proposed patch, rejection applies NOTHING.
- *
- * ── THE SAFETY PROPERTY OF THE WHOLE OF STAGE TWO ───────────────────────────────────────────────────
- * A pending request must never reach the master record without a decision, and a rejected one must never
- * be applied at all. Structurally: the write set is built inside `if (p.decision === 'approved')` and
- * there is no other writer in this function — the only thing a rejection touches is the request row's
- * own status, decider, timestamp and reason. `test/me-profile-change-requests.test.ts` pins it by
- * reading the master columns byte-for-byte either side of a rejection.
- *
- * ── AND A REJECTION MUST SAY WHY ────────────────────────────────────────────────────────────────────
- * `reason` is REQUIRED when rejecting (ProfileChangeReasonRequiredError, thrown before the transaction
- * opens) and optional when approving. It is stored on the request and shown to the EMPLOYEE on their own
- * screen — which is the point of it, and the one thing in stage two the schema did not already have.
- */
 export async function decideProfileChange(
   ctx: SessionContext,
   p: {

@@ -15,12 +15,15 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  // Person-wide disclosure choices survive cosmetic resets, but never a test-fixture reset.
+  'employee_home_person_privacy_revision',
   // ESS pending photo bytes must not survive a fixture reset.
   'profile_photo_proposal',
   'lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_notice','lc_onboarding_config','lc_onboarding_config_history','lc_onboarding_case','lc_onboarding_private','lc_onboarding_note','lc_onboarding_seen',
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
-  'attendance_overtime_source','attendance_overtime_personnel_context','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_line','overtime_source_settlement',
+  'app.attendance_policy_company_epoch','attendance_policy_request_contract',
+  'attendance_overtime_policy_part','attendance_overtime_source','attendance_overtime_personnel_context','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_line','overtime_source_settlement',
   'custom_report_occurrence','custom_report_schedule','custom_report_run',
   'ai_model_run', 'ai_control_policy',
   'performance_assessment_guide_use',
@@ -84,7 +87,7 @@ const ALL_TABLES = [
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later
   // file's dashboard card or popup read a notice whose recipients belong to a deleted tenant.
-  'notice', 'notice_recipient',
+  'notice', 'notice_recipient', 'notice_revision','notice_attachment','notice_acknowledgement',
   // 6e9a126e — the entitlement redesign's three tables. Listed explicitly per the convention above: a
   // leaked template would trip the (tenant, leave_type, lower(name)) partial-unique index in a later test
   // file, and a leaked archive row would be counted by the listing/CSV assertions.

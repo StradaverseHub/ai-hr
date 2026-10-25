@@ -122,6 +122,11 @@ describe('r395 — per-row visibility functions are gone from every policy USING
 // In particular, workflow-v2 participants can retain a request without Personnel visibility,
 // and payroll administrators have a separate overtime-assignment read arm.
 const boardPolicies = [
+  {table:'attendance_group_policy_revision',policy:'attendance_group_policy_read',oldQual:
+   'tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND (app.is_admin_for(company_id) OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=attendance_group_policy_revision.tenant_id AND e.company_id=attendance_group_policy_revision.company_id AND app.can_see_employment(e.id)) OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=attendance_group_policy_revision.tenant_id AND a.company_id=attendance_group_policy_revision.company_id AND a.superseded_at IS NULL AND app.can_see_employment(a.employment_id)))'},
+  {table:'attendance_policy_final_receipt',policy:'attendance_policy_final_receipt_read',oldQual:
+   'tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND(app.can_see_employment(employment_id) OR app.can_admin_payroll_for(company_id))'},
+
   { table: 'employment_holiday_calendar', policy: 'employment_holiday_calendar_read', oldQual:
     'tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)' },
   { table: 'replacement_holiday', policy: 'replacement_holiday_read', oldQual:
@@ -140,7 +145,7 @@ describe('0558 — board policies retain every read arm and statement-scoped vis
     expect(live, key(p.table, p.policy)).toBeTruthy();
     expect(live.cmd).toBe('SELECT');
     expect(live.with_check).toBeNull();
-    expect([...p.oldQual.matchAll(/app\.can_see_employment\(([a-z_.]+)\)/g)]).toHaveLength(1);
+    expect([...p.oldQual.matchAll(/app\.can_see_employment\(([a-z_.]+)\)/g)]).toHaveLength(p.table==='attendance_group_policy_revision'?2:1);
     const expected = p.oldQual.replace(/app\.can_see_employment\(([a-z_.]+)\)/g,
       '$1=ANY((SELECT app.visible_employment_ids())::uuid[])');
     // Let PostgreSQL normalize both expressions. Compare the complete qual, including the tenant

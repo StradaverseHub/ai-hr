@@ -122,7 +122,7 @@ export function CommandBar() {
         <button
           type="button"
           aria-label={t('placeholder')}
-          className="inline-flex h-10 w-auto min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground sm:w-full"
+          className="inline-flex h-11 w-auto min-w-0 items-center max-sm:min-w-11 gap-2 rounded-md border border-input bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground sm:w-full"
         >
           <Search className="size-4 shrink-0" />
           <span className="hidden truncate sm:inline">{t('placeholder')}</span>

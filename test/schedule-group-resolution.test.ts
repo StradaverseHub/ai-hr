@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * 870b79e2 (r277) — the Schedule Group: `employment.attendance_rule_id` (migration 0464).
  *
@@ -66,15 +67,10 @@ const workdayShift = (over: Record<string, unknown> = {}) => ({
 });
 
 async function makeEmp(): Promise<string> {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Group Member', primaryEmail: `grp_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'Group Member', primaryEmail: `grp_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 /** Put an employment in a Schedule Group (or take it out). Written as the migration role on purpose: the

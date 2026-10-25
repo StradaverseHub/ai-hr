@@ -46,7 +46,7 @@ export function validateClockEntries(entries: ClockEntry[]): ClockEntry[] {
 export function punchesForCorrectionTx(tx: Tx, employmentId: string, date: string) {
   return tx.select().from(attendancePunch).where(and(eq(attendancePunch.employmentId, employmentId), eq(attendancePunch.attendanceDate, date))).orderBy(asc(attendancePunch.punchAt), asc(attendancePunch.id));
 }
-export async function lockAttendancePayrollTx(tx: Tx, employmentId: string, date: string) {
+export async function lockAttendancePayrollTx(tx: Tx, employmentId: string, date: string|readonly string[]) {
   const batches = await lockPayrollForAttendanceChange(tx, employmentId, date);
   if (batches.some(batch => batch.status === 'closed')) throw new AttendancePayrollClosedError();
   return batches;

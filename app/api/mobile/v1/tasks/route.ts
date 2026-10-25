@@ -4,7 +4,7 @@ import { TasksResponse } from '@/lib/mobile-api/contract';
 import { mobileRoute } from '@/lib/mobile-api/handler';
 /** The existing approval inbox owns visibility; no caller-supplied tenant, company or person selector. */
 export const GET = mobileRoute(TasksResponse, async s => {
-  const tasks = await listPendingTasks(s, undefined, { attendance: isModuleEnabled(s, 'attendance'), claims: isModuleEnabled(s, 'claims') });
+  const tasks = await listPendingTasks(s, undefined, { attendance: isModuleEnabled(s, 'attendance'), claims: isModuleEnabled(s, 'claims') },{noticeAcknowledgements:false});
   // Existing v1 clients validate a closed task-kind enum. Keep that published
   // vocabulary until a versioned mobile contract supports replacement leave.
   const items = tasks.flatMap(item => item.kind === 'replacementLeave' ? [] : [{ id: item.id, kind: item.kind, subject: item.subjectName }]);

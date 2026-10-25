@@ -3,6 +3,7 @@ import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
+import {payrollPublicationState} from '../lib/payroll-publication';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import {
   and,
@@ -6046,9 +6047,10 @@ export function employeeAudit(ctx: SessionContext, employmentId: string, limit =
 // Own-person proof is independent of RLS: an HR login also has wider general visibility.
 
 /** The current principal's active employment + profile (resolved from their linked person). */
-export function myEmployment(ctx: SessionContext) {
+export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}) {
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId) return null;
+    if(selected&&(!ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.employmentId)))return null;
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -6074,7 +6076,7 @@ export function myEmployment(ctx: SessionContext) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), selected?and(eq(employment.id,selected.employmentId),profileEditEmploymentPredicate(ctx)):isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn)
       .limit(1);
     return row ?? null;
@@ -6325,10 +6327,10 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.
-    const now = Date.now();
+    const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
+      released: payrollPublicationState(r,now)==='published',
     }));
   });
 }

@@ -488,10 +488,14 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       expect(src).toContain('redirect(attendanceCalendarHref(');
       expect(src).toContain("await requireModule('attendance')");
       const calendar = read('app/attendance/my-roster/page.tsx');
-      expect(calendar).toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to })');
+      expect(calendar).toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to,...(state.employmentId?{employmentId:state.employmentId}:{}) })');
       expect(calendar).toContain('<AttendanceRecordList s={s} state={state} query={sp}/>');
       const list = read('app/attendance/my-roster/record-list.tsx');
-      expect(list).toMatch(/myEmployment\(\s*s\s*\)/);
+      expect(list).toContain('ownAttendanceRecordSubject(s,state.employmentId)');
+      const subject=read('app/attendance/my-records/subject.ts');
+      expect(subject).toContain('myOwnEmploymentSubjects(ctx,{profileEdit:true})');
+      expect(subject).toContain('row.employmentId===selector');
+      expect(subject).toContain('if(selector===undefined)');
       expect(list).toMatch(/attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/);
       expect(src, `${href} is still an authenticated page`).toContain('await scopedSession()');
     }

@@ -45,7 +45,7 @@ import { leaveCreditOfferForEmployment, listReplacementLeaveRequests, replacemen
 import { loadOwnUpcomingLeave, type HistorySearch } from '@/components/leave/own-leave-history';
 import { isReplacementLeaveType } from '@/core/ess-view';
 
-type Me = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+type Me = Pick<NonNullable<Awaited<ReturnType<typeof myEmployment>>>,'employmentId'>;
 
 /** The page's own expression (app/leave/page.tsx before r397), kept as one function so both uses agree. */
 function leaveYearAsOfFor(dashboard: { selectedYear: number; currentYear: number }, today: string): string {

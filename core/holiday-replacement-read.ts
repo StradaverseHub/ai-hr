@@ -4,6 +4,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {provenCompanyDatesTx} from './employment-company';
 import {replacementHoliday,replacementHolidayRevision,replacementHolidayQueue,employment,person,holiday} from '../db/schema';
 type HolidayProjection=Pick<typeof replacementHoliday.$inferSelect,'id'|'employmentId'|'companyId'|'sourceDate'|'replacementDate'>;
+export type ReplacementHolidayCalendarProjection=Omit<HolidayProjection,'replacementDate'>&{replacementDate:string};
 /** One proof for both calendar overlays and HR review; a retained ledger date is not permission to
  * attach it to a different company or extend employment tenure. No history is changed by this read. */
 export async function replacementHolidayProjectionCoverageTx(tx:Tx,rows:readonly HolidayProjection[]){
@@ -14,12 +15,20 @@ export async function replacementHolidayProjectionCoverageTx(tx:Tx,rows:readonly
   return [row.id,reason] as const;
  }));
 }
+/** The same retained, company-covered projection used by the calendar, with its evidence identities.
+ * No schedules or replacement allocation are evaluated by this reader. */
+export async function replacementHolidayCalendarProjectionsTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}):Promise<ReplacementHolidayCalendarProjection[]>{
+ if(!p.employmentIds.length)return [];
+ const rows=await tx.select({id:replacementHoliday.id,employmentId:replacementHoliday.employmentId,companyId:replacementHoliday.companyId,sourceDate:replacementHoliday.sourceDate,replacementDate:replacementHoliday.replacementDate}).from(replacementHoliday).where(and(inArray(replacementHoliday.employmentId,[...p.employmentIds]),isNotNull(replacementHoliday.replacementDate),gte(replacementHoliday.replacementDate,p.startDate),lte(replacementHoliday.replacementDate,p.endDate))).orderBy(asc(replacementHoliday.employmentId),asc(replacementHoliday.replacementDate),asc(replacementHoliday.id));
+ const coverage=await replacementHolidayProjectionCoverageTx(tx,rows);
+ return rows.flatMap(row=>!coverage.get(row.id)&&row.replacementDate?[{...row,replacementDate:row.replacementDate}]:[]);
+}
 export async function replacementHolidayDatesByEmployment(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}){
  const out=new Map<string,Set<string>>();
- if(!p.employmentIds.length)return out;
- const rows=await tx.select({id:replacementHoliday.id,employmentId:replacementHoliday.employmentId,companyId:replacementHoliday.companyId,sourceDate:replacementHoliday.sourceDate,replacementDate:replacementHoliday.replacementDate}).from(replacementHoliday).where(and(inArray(replacementHoliday.employmentId,[...p.employmentIds]),isNotNull(replacementHoliday.replacementDate),gte(replacementHoliday.replacementDate,p.startDate),lte(replacementHoliday.replacementDate,p.endDate))).orderBy(asc(replacementHoliday.employmentId),asc(replacementHoliday.replacementDate));
- const coverage=await replacementHolidayProjectionCoverageTx(tx,rows);
- for(const row of rows)if(!coverage.get(row.id)){const dates=out.get(row.employmentId)??new Set<string>();if(row.replacementDate)dates.add(row.replacementDate);out.set(row.employmentId,dates);}return out;
+ for(const row of await replacementHolidayCalendarProjectionsTx(tx,p)){
+  const dates=out.get(row.employmentId)??new Set<string>();dates.add(row.replacementDate);out.set(row.employmentId,dates);
+ }
+ return out;
 }
 export function listReplacementHolidays(ctx:SessionContext,p:{companyIds?:readonly string[];employmentId?:string;from?:string;to?:string}={}){
  return withTenant(ctx,tx=>tx.select().from(replacementHoliday).where(and(p.companyIds?inArray(replacementHoliday.companyId,[...p.companyIds]):undefined,p.employmentId?eq(replacementHoliday.employmentId,p.employmentId):undefined,p.from?gte(replacementHoliday.sourceDate,p.from):undefined,p.to?lte(replacementHoliday.sourceDate,p.to):undefined)).orderBy(asc(replacementHoliday.sourceDate),asc(replacementHoliday.employmentId),asc(replacementHoliday.id)));

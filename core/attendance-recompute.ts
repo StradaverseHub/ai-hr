@@ -351,7 +351,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
         flags.push({ ...idOf(id), date: r.date, checkInAt: r.checkInAt, checkOutAt: null, reason: 'missing-clock-out' });
         continue;
       }
-      const d = await recomputeDayFigures(tx, {
+      const d = await recomputeDayFigures(tx, ctx, {
         employmentId: r.employmentId,
         date: r.date,
         checkInAt: r.checkInAt,

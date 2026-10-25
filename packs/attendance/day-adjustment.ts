@@ -26,7 +26,7 @@ async function readTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string) 
   const employee=await subject(tx,ctx,employmentId);if(!employee)return null;
   const [adjustments,calculation,applications,leave,shifts,punches,processed,closed,events]=await Promise.all([
     tx.select().from(s.attendanceDayAdjustment).where(and(eq(s.attendanceDayAdjustment.employmentId,employmentId),eq(s.attendanceDayAdjustment.attendanceDate,date))).limit(1),
-    attendanceDayCalculationTx(tx,employmentId,date),
+    attendanceDayCalculationTx(tx,ctx,employmentId,date),
     tx.select().from(s.attendanceCorrection).where(and(eq(s.attendanceCorrection.employmentId,employmentId),eq(s.attendanceCorrection.attendanceDate,date)))
       .orderBy(asc(s.attendanceCorrection.createdAt),asc(s.attendanceCorrection.id)),
     tx.select({id:s.leaveRequest.id,name:s.leaveType.name,code:s.leaveType.code,duration:s.leaveRequest.durationType})
@@ -51,7 +51,7 @@ async function readTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string) 
     calculatedMinutes:0,effectiveMinutes:value.minutes,autoEffectiveMinutes:0,manual:value,orphan:true});
   const baseline=hash([employee,adjustment,calculation,applications,[...workflows],leave,shifts,clockFingerprint(punches),processed.map(b=>b.batchId),closed.map(b=>b.batchId)]);
   return {baseline,shiftId:adjustment?.shiftId??null,dayKind:adjustment?.dayKind??null,schedule:calculation.schedule,shifts,leave,
-    rows,complete:!!calculation.day?.checkInAt&&!!calculation.day?.checkOutAt,approvedOtMinutes:calculation.approvedOtMinutes,
+    rows,complete:!calculation.policyRaw&&!!calculation.day?.checkInAt&&!!calculation.day?.checkOutAt,approvedOtMinutes:calculation.approvedOtMinutes,
     closed:closed.length>0,processed:processed.length>0,self:employee.self,applications:irregularities,
     history:events.map(e=>({...e,at:e.at.toISOString()})),adjustment};
 }
@@ -101,9 +101,9 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
     const values={shiftId,dayKind,manualOtRows:manual,reason,updatedBy:ctx.userId??'system',updatedAt:new Date(),version:(current.adjustment?.version??0)+1};
     const [saved]=await tx.insert(s.attendanceDayAdjustment).values({tenantId:ctx.tenantId,employmentId:p.employmentId,attendanceDate:p.date,...values})
       .onConflictDoUpdate({target:[s.attendanceDayAdjustment.tenantId,s.attendanceDayAdjustment.employmentId,s.attendanceDayAdjustment.attendanceDate],set:values}).returning();
-    const calculated=await attendanceDayCalculationTx(tx,p.employmentId,p.date);
+    const calculated=await attendanceDayCalculationTx(tx,ctx,p.employmentId,p.date);
     if(calculated.day?.checkInAt){
-      const figures=await recomputeDayFigures(tx,{employmentId:p.employmentId,date:p.date,checkInAt:calculated.day.checkInAt,
+      const figures=await recomputeDayFigures(tx,ctx,{employmentId:p.employmentId,date:p.date,checkInAt:calculated.day.checkInAt,
         checkOutAt:calculated.day.checkOutAt,approvedOtMinutes:calculated.approvedOtMinutes});
       await tx.update(s.attendance).set(figures.columns).where(eq(s.attendance.id,calculated.day.id));
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Corrected attendance day'});

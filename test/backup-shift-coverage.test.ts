@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * Item b8aa3466 — the BACKUP SHIFT (the profile's `default_shift_id`) and its coverage gate.
  *
@@ -44,21 +45,10 @@ const THU = '2026-07-02';
 let b: Base;
 
 async function makeEmp(name: string, code: string | null = null): Promise<string> {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: name, primaryEmail: `bs_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({
-      tenantId: b.tenantId,
-      personId: p.id,
-      companyId: b.companyId,
-      hiredOn: '2020-01-01',
-      employeeCode: code,
-    })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  const hired=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn:'2020-01-01',...(code?{employeeCode:code}:{}),
+    person:{fullName:name,primaryEmail:`bs_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const stored = async (employmentId: string) => {

@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * R17 3e8350db — Shift Settings enhancement. Covers the three genuinely-new behaviours:
  *   1. Per-shift late grace + early-leave grace override the company-policy defaults in scheduleFor (proved
@@ -41,15 +42,10 @@ let b: Base;
 let empId: string;
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'R17', primaryEmail: `r17_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'R17', primaryEmail: `r17_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const storedEmployment = async (id: string) => {
