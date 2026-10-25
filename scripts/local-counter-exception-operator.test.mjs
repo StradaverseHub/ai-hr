@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
 import {spawnSync} from 'node:child_process';
-import {counterExceptionFlow,COUNTER_MIRROR_SCRIPT,counterMirrorCommand,bindCounterTransfer} from './local-counter-exception-operator.mjs';
+import {counterExceptionFlow,COUNTER_MIRROR_SCRIPT,counterMirrorCommand,bindCounterTransfer,counterTransport,COUNTER_TRANSFER_TIMEOUT_MS} from './local-counter-exception-operator.mjs';
 import {COUNTER_EXCEPTION as P} from './local-counter-exception.mjs';
 import {ACCEPTANCE_TIER} from './local-counter-exception-acceptance.mjs';
 const head='c'.repeat(40);
@@ -57,4 +57,11 @@ test('exception mirror retry accepts identical immutable evidence and refuses co
  const value={kind:'OWNER_COUNTER_EXCEPTION_RELEASE_EVIDENCE',evidence:{candidate:head}},text=JSON.stringify(value)+'\n';let existing=text;
  const fs={readFileSync:p=>p===0?JSON.stringify(value):existing,mkdirSync:()=>{},writeFileSync:()=>{throw Object.assign(Error('exists'),{code:'EEXIST'});}};
  runInNewContext(COUNTER_MIRROR_SCRIPT,{require:()=>fs});existing='other';assert.throws(()=>runInNewContext(COUNTER_MIRROR_SCRIPT,{require:()=>fs}));
+});
+
+test('source transfer has an explicit finite timeout and a failed transfer propagates',()=>{
+ const args=['official-filter','same-source','aihr-staging:/opt/ai-hr/'];let called;
+ const transport=counterTransport(args,()=>{},(command,actual,options)=>{called={command,actual,options};throw Object.assign(Error('partial transfer timed out'),{code:'ETIMEDOUT'});});
+ assert.throws(()=>transport.transfer(),/timed out/);assert.equal(called.command,'rsync');assert.equal(called.actual,args);
+ assert.equal(called.options.timeout,COUNTER_TRANSFER_TIMEOUT_MS);assert.equal(COUNTER_TRANSFER_TIMEOUT_MS,300000);assert.equal(called.options.killSignal,'SIGTERM');
 });

@@ -41,6 +41,8 @@ export function bindCounterTransfer(native,address,sshConfig,candidatePath) {
   const bound=[...native];bound[at+1]='ssh -F '+shellQuote(sshConfig)+' -o BatchMode=yes -o ConnectTimeout=12';
   bound[bound.length-1]=TARGET.alias+':'+TARGET.directory+'/';return bound;
 }
+export const COUNTER_TRANSFER_TIMEOUT_MS=300000;
+export const counterTransport=(args,ssh,run=execFileSync)=>({ssh,transfer:()=>run('rsync',args,{stdio:'inherit',timeout:COUNTER_TRANSFER_TIMEOUT_MS,killSignal:'SIGTERM'})});
 export async function operatorCounterException({candidatePath,runDirectory,counterRoot,sshConfig,execute=false}) {
   candidatePath=resolve(candidatePath);runDirectory=resolve(runDirectory);counterRoot=resolve(counterRoot);sshConfig=privateConfig(sshConfig);
   const controller=cleanHead(controllerDirectory);
@@ -59,7 +61,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
   const configHash=sha256(readFileSync(sshConfig));
   const assertTransportFrozen=()=>{requireProof(sha256(readFileSync(privateConfig(sshConfig)))===configHash,'private SSH configuration changed');const fresh=execFileSync('ssh',['-G','-F',sshConfig,TARGET.alias],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024});requireProof(fresh===settings,'effective SSH route changed');};
   const ssh=(command,options={})=>execFileSync('ssh',['-F',sshConfig,'-o','BatchMode=yes','-o','ConnectTimeout=12',TARGET.alias,command],{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
-  const transport={ssh,transfer:()=>execFileSync('rsync',rsync,{stdio:'inherit'})};
+  const transport=counterTransport(rsync,ssh);
   const gh=(path)=>JSON.parse(execFileSync('gh',['api',path],{encoding:'utf8',timeout:30000,maxBuffer:2*1024*1024}));
   requireProof(gh('repos/'+P.repository).id===1333414856,'unexpected company repository');
   const checkBranches=head=>{
@@ -67,6 +69,7 @@ export async function operatorCounterException({candidatePath,runDirectory,count
     requireProof(main===alpha&&[ALIGNED_BASE,head].includes(alpha),'main/alpha alignment changed outside bounded release');
   };
   const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
+  assertTransportFrozen();
   requireProof(baselineRules.readyProductionBaseline(current())===P.baseline,'staging baseline moved');
   const args={candidatePath,runDirectory,counterRoot},evidence={...await collectOwnerCounterAcceptance(args),controller};checkBranches(evidence.candidate);
   const dir=join(controllerDirectory,'scratchpad','owner-counter-exception-'+randomUUID());mkdirSync(dir,{recursive:true,mode:0o700});
