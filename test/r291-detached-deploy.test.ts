@@ -522,6 +522,26 @@ fi
     expect(state.stale_build).toBe('1');
   });
 
+  it('retains pending when a failed record write leaves an older temporary record', () => {
+    const box = snapshotBox();
+    fs.writeFileSync(path.join(box.stateDir, 'pending'), 'ref=bbbbbbb\nat=1\n');
+    // exec preserves the shell pid used in current.tmp.$$. A stale read-only temporary record can
+    // still be renamed because the containing directory is writable; publishing it would lose B.
+    const run = spawnSync('/bin/bash', ['-c', `
+set -eu
+tmp="$AIHR_DEPLOY_STATE_DIR/current.tmp.$$"
+/bin/cp "$AIHR_DEPLOY_STATE_DIR/current" "$tmp"
+/bin/chmod 444 "$tmp"
+exec /bin/bash ./deploy/deploy-state.sh begin bbbbbbb 99999999 ''
+`], { cwd: box.dir, encoding: 'utf8', timeout: 10_000, env: boxEnv(box) });
+    expect(run.status, run.stderr).toBe(0);
+    expect(fs.existsSync(path.join(box.stateDir, 'pending'))).toBe(true);
+    const state = stateCommand(box, ['status']);
+    expect(state.state).toBe('incomplete');
+    expect(state.ref).toBe('bbbbbbb');
+    expect(state.stale_build).toBe('1');
+  });
+
   it.each([true, false])('clears pending only after current publication succeeds (failure=%s)', (fail) => {
     const box = snapshotBox();
     fs.writeFileSync(path.join(box.stateDir, 'pending'), 'ref=bbbbbbb\nat=1\n');

@@ -150,7 +150,7 @@ case "$cmd" in
   # record or this whole one.
   begin)
     tmp="$CUR.tmp.$$"
-    {
+    if {
       printf 'ref=%s\n'        "$(san "${1:-unknown}")"
       printf 'pid=%s\n'        "$(san "${2:-}")"
       printf 'log=%s\n'        "$(san "${3:-}")"
@@ -159,9 +159,8 @@ case "$cmd" in
       printf 'result=\n'
       printf 'exit_code=\n'
       printf 'build_id=\n'
-    } > "$tmp" 2>/dev/null
-    # Preserve the pending source until its complete current record has actually been published.
-    if mv -f "$tmp" "$CUR" 2>/dev/null; then
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$CUR" 2>/dev/null; then
+      # Clear pending only after both writing and publishing the complete record succeeded.
       rm -f "$PENDING" 2>/dev/null || true
     fi
     ;;
