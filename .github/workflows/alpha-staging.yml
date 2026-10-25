@@ -12,6 +12,11 @@ on:
         description: Exact 40-character candidate SHA (refuse if the branch moved)
         required: true
         type: string
+      test_parallelism:
+        description: Standard runner concurrency; complete test coverage stays unchanged
+        type: choice
+        default: '16'
+        options: ['4', '8', '16', '20']
       diagnostics_only:
         description: Measure disposable runner resources without the full CI gate
         required: false
@@ -27,7 +32,7 @@ permissions:
   actions: read
 concurrency:
   group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.diagnostics_only && 'diagnostics' || 'gate' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
   LANG: en_US.UTF-8
@@ -47,7 +52,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: CI integrity regression checks
-        run: node --test .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/manifest.test.mjs
       - name: Resolve frozen candidate
         id: candidate
         env:
@@ -167,6 +172,8 @@ jobs:
       - name: Exercise actual official detached-deploy helpers with shim transport
         run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs
   plan:
+    outputs:
+      test_matrix: ${{ steps.matrix.outputs.test_matrix }}
     if: ${{ !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
@@ -191,6 +198,15 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
       - run: node ../automation/.github/ci/plan.mjs > "$RUNNER_TEMP/ci-plan.json"
+      - name: Derive execution matrix from complete trusted manifest
+        id: matrix
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/ci-plan.json","utf8"));
+            const unit=p.units.filter(u=>u.kind!=="browser").map(u=>u.id);
+            if(!unit.length || unit.length>256 || new Set(unit).size!==unit.length)throw Error("Invalid test matrix");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,"test_matrix="+JSON.stringify({unit})+"\n");'
       - name: Publish complete partition counts
         run: |
           node --input-type=module -e '
@@ -244,8 +260,8 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        unit: [nodb-1, nodb-2, nodb-3, nodb-4, db-1, db-2, db-3, db-4]
+      max-parallel: ${{ fromJSON(inputs.test_parallelism || '16') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:

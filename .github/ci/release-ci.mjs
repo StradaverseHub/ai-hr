@@ -5,7 +5,7 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
-import {REPOSITORY,UNITS,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
+import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
 export const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024*1024}).trim();
 export function cleanHead(cwd){const sha=git(cwd,'rev-parse','HEAD');if(!/^[0-9a-f]{40}$/.test(sha)||git(cwd,'status','--porcelain'))throw Error('CI release requires exact clean source: '+cwd);return sha;}
@@ -18,8 +18,9 @@ export function verifyCi({candidatePath,runId,baseline}){
  if(git(candidatePath,'remote','get-url','origin').toLowerCase()!=='https://github.com/stradaversehub/ai-hr.git')throw Error('Unexpected repository origin');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
  const run=api(`actions/runs/${runId}`);validateRun(run,p);p.controllerBranch=run.head_branch;
- const jobs=pages(`actions/runs/${runId}/jobs?filter=all`,'jobs');validateJobs(jobs);
- const artifacts=pages(`actions/runs/${runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p);
+ const local=createPlan(candidatePath);
+ const jobs=pages(`actions/runs/${runId}/jobs?filter=all`,'jobs');validateJobs(jobs,local);
+ const artifacts=pages(`actions/runs/${runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
  const dir=join(controllerRoot,'scratchpad',`validated-ci-${runId}-${randomUUID()}`);mkdirSync(dir,{recursive:true,mode:0o700});
  const save=(name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
  save('run.json',run);save('jobs.json',jobs);save('artifacts.json',artifacts);
@@ -31,14 +32,13 @@ export function verifyCi({candidatePath,runId,baseline}){
  }
  const json=(name,file)=>JSON.parse(readFileSync(join(dir,name,file),'utf8'));
  const plan=json('gate-plan','ci-plan.json'),receipt=json('gate-evidence','ci-receipt.json');
- const reports=UNITS.map(id=>json(`unit-${id}`,`unit-${id}.json`));
- const local=createPlan(candidatePath);
+ const reports=local.units.map(({id})=>json(`unit-${id}`,`unit-${id}.json`));
  const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime};
  const expectedPlan={...body,fingerprint:hash(body)};
  const verified=validateProof({plan,reports,receipt,expectedPlan,p});
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
  const alpha=api('git/ref/heads/alpha');if(![baseline,candidate].includes(alpha.object?.sha))throw Error('Alpha no longer matches the deployed staging baseline');
- const result={...verified,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...verified,candidatePath,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save('verification.json',result);
  return result;
 }
@@ -48,10 +48,12 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
 }
 
 export function revalidateCi(evidence){
+ const local=createPlan(evidence.candidatePath);
+ if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};
  validateRun(api(`actions/runs/${p.runId}`),p);
- validateJobs(pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs'));
- const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p);
+ validateJobs(pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs'),local);
+ const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
  const identity=a=>JSON.stringify(a.map(x=>({id:x.id,name:x.name,digest:x.digest})).sort((a,b)=>a.name.localeCompare(b.name)));
  if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  return true;

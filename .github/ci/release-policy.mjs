@@ -8,9 +8,7 @@ export const REPOSITORY='StradaverseHub/ai-hr';
 export const REPOSITORY_ID=1333414856;
 export const WORKFLOW_ID=395777276;
 export const WORKFLOW_PATH='.github/workflows/alpha-staging.yml';
-export const UNITS=[...['nodb','db'].flatMap(k=>[1,2,3,4].map(n=>`${k}-${n}`)),...['chromium','firefox','webkit'].map(k=>`browser-${k}`)];
-export const REQUIRED_JOBS=['resolve','plan','controller-tests','migrations','typecheck','build',...['nodb','db'].flatMap(k=>[1,2,3,4].map(n=>`test (${k}-${n})`)),...['chromium','firefox','webkit'].map(k=>`browser (${k})`),'verify','deployment-hold'];
-export const REQUIRED_ARTIFACTS=['gate-plan','gate-evidence',...UNITS.map(id=>`unit-${id}`)];
+import {requiredEvidence} from './manifest.mjs';
 const sha=value=>typeof value==='string'&&/^[0-9a-f]{40}$/.test(value);
 const reject=message=>{throw Error('CI release refused: '+message);};
 export const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
@@ -24,7 +22,8 @@ export function validateRun(run,p){
  if(!Number.isFinite(age)||age< -60000||age>24*60*60*1000)reject('expired or invalid run time');
  return true;
 }
-export function validateJobs(jobs){
+export function validateJobs(jobs,expectedPlan){
+ const REQUIRED_JOBS=requiredEvidence(expectedPlan).jobs;
  if(!Array.isArray(jobs))reject('missing job inventory');
  const found=new Map();
  for(const job of jobs){
@@ -35,7 +34,8 @@ export function validateJobs(jobs){
  for(const name of REQUIRED_JOBS){const j=found.get(name);if(!j||j.status!=='completed'||j.conclusion!=='success'||j.run_attempt!==1)reject('missing, skipped, failed or rerun job '+name);}
  return true;
 }
-export function validateArtifacts(artifacts,p){
+export function validateArtifacts(artifacts,p,expectedPlan){
+ const REQUIRED_ARTIFACTS=requiredEvidence(expectedPlan).artifacts;
  if(!Array.isArray(artifacts)||artifacts.length!==REQUIRED_ARTIFACTS.length)reject('artifact set is incomplete or unexpected');
  const names=new Set();
  for(const a of artifacts){
@@ -51,7 +51,7 @@ export function validateProof({plan,reports,receipt,expectedPlan,p}){
  if(plan.policyVersion!==CI_POLICY||plan.sha!==p.candidate||plan.controller!==p.controller||plan.migrationBase!==p.baseline)reject('plan policy/candidate/controller/baseline mismatch');
  if(plan.runtime?.platform!=='linux'||plan.runtime?.arch!=='x64'||!/^22\./.test(plan.runtime?.node??''))reject('unexpected verification environment');
  if(!isDeepStrictEqual(plan,expectedPlan))reject('candidate classifier/manifest changed');
- if(plan.units.length!==UNITS.length||!UNITS.every(id=>plan.units.some(u=>u.id===id)))reject('incomplete unit inventory');
+ requiredEvidence(expectedPlan);
  const verified=verifyReports(plan,reports);
  if(!isDeepStrictEqual(verified,receipt)||receipt.policyVersion!==CI_POLICY||receipt.migrationBase!==p.baseline)reject('receipt differs from complete executed evidence');
  return {policyVersion:CI_POLICY,tier:'ci',result:'PASS',sha:p.candidate,controller:p.controller,baseline:p.baseline,runId:p.runId,suiteFiles:receipt.suiteFiles,browserFiles:receipt.browserFiles,tests:receipt.tests,fingerprint:receipt.fingerprint};

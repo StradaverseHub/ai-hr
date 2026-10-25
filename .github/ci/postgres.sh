@@ -2,7 +2,7 @@
 # Job-owned disposable containers only: no Homebrew, shared PGDATA or production access.
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${CI:-}" == true ]] || { echo 'GitHub CI only' >&2; exit 2; }
-[[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${AIHR_CI_UNIT:-}" =~ ^db-[1-4]$ ]] || exit 2
+[[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${AIHR_CI_UNIT:-}" =~ ^db-([1-4]|[0-9a-f]{16})$ ]] || exit 2
 [[ "${1:-}" == reset || "${1:-}" == stop || "${1:-}" == stats ]] || exit 2
 memory_gib="${AIHR_CI_PG_MEMORY_GIB:-1}"
 [[ "$memory_gib" == 1 || "$memory_gib" == 2 ]] || exit 2
