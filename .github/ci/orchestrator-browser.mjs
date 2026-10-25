@@ -301,6 +301,10 @@ async function main() {
               checkpoint('visit-start', {actor: actor.key, locale, route, viewport: viewport.name});
               await page.goto(base + route); const t = catalogues[locale];
               if (actor.key.endsWith('-employee')) {
+                // A streamed server redirect can complete after goto's load event. Require the
+                // actual canonical refusal destination before assessing access; never accept
+                // an arbitrary non-administrative URL (including login or an error page).
+                await page.waitForURL(url => url.origin === base && url.pathname === '/', {timeout: 15_000});
                 assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
                 assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
               } else {

@@ -62,9 +62,22 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           path: source
           persist-credentials: false
-      - uses: ./automation/.github/actions/setup-alpha
+      # Web renderer, seed and fixture imports were audited at the pinned source. Keep the
+      # shared toolchain's runner, Node and root dependencies; no native SDK is used here.
+      - name: Prepare the isolated web runner
+        run: bash ../automation/.github/ci/prepare-runner.sh
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
-          node: '20'
+          version: 10.33.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: source/pnpm-lock.yaml
+      - name: Install frozen web dependencies and fictional environment
+        run: |
+          pnpm install --frozen-lockfile
+          cp .env.example .env.local
       - run: pnpm exec playwright install --with-deps chromium
       - name: Build and walk through the actual production renderer on fresh fictional data
         run: node ../automation/.github/ci/orchestrator-browser.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
