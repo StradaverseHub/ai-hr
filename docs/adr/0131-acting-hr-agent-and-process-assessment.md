@@ -1487,3 +1487,27 @@ review/syntax checks are not runtime proof. Only participating writers are fence
 assignment, entitlement, frozen-snapshot and other dependency writers still require integration and
 fresh Access/authority validation before Assistant effects can be exposed. Additional audience reads
 have no measured latency claim. No migration or provider/staging operation is part of this checkpoint.
+
+
+### History import joins each actual row transaction (unrun)
+
+The history importer now captures file records/source options before awaiting, nominates writable
+rows through its existing whole-file analysis, then acquires configuration/employment barriers inside
+each accepted row's own transaction. It re-resolves that exact raw row against the nominated employee
+and refuses invalid/duplicate rows or changed employee, filed type, balance source, entitlement year,
+span, days or duration. A fresh calendar warning remains nonblocking and the historical file figure
+remains authoritative, matching the existing import contract. The re-resolution uses the supplied
+transaction; employment lookup is restricted to the nominated ID and references stay tenant-scoped.
+
+Request, optional debit and existing Payroll effect owner remain in the same row transaction. The
+Payroll path retains its ordered NOWAIT coverage locks and existing closed-run policy; no Payroll SQL
+or arithmetic changed. Run-log and summary-event boundaries remain separate and later rows still run
+after a row refusal. Newly discovered duplicates during this interval remain write failures, matching
+the existing post-preview uniqueness race behavior rather than relabeling original coverage.
+
+Two authored real-employee two-connection cases cover record-only and charged modes: hold the first
+employee, require no first-row request while another row and its correct debit behavior commit,
+check run counts, release and retry only the refused row. These cases and affected history, reference,
+calendar, authorization and Payroll consumers are UNRUN. No runtime/security/latency or universal
+protection claim follows from static checks. Other request/form/approval/cancellation/configuration
+writers still need participation and full lock-order/Access review before Assistant effects.

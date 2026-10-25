@@ -25,7 +25,8 @@ import {
 } from '../core/leave-history-import';
 import { listLeaveRequests } from '../core/read';
 import { parseCsvRecords } from '../lib/csv';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { buildTemplateCsv, leaveHistoryImportTemplate, LEAVE_HISTORY_XLSX_HEADERS } from '../lib/import-template';
 import { buildXlsx, workbookToCsvTexts } from '../lib/spreadsheet';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -632,5 +633,63 @@ describe('a second leave type does not bleed into the first', () => {
       .orderBy(schema.leaveRequest.externalReference);
     expect(rows[0]).toMatchObject({ ref: `LV/${YEAR}/T1`, typeId: b.annualLeaveTypeId });
     expect(rows[1]).toMatchObject({ ref: `LV/${YEAR}/T2`, typeId: mcId });
+  });
+});
+
+
+describe('participating history row transactions — authored, unrun acceptance', () => {
+  it.each([true, false])('preserves independent rows when one employment is busy (net=%s)', async openingBalancesAreNet => {
+    const ctx = adminCtx(b);
+    const other = await hireEmployee(ctx, { person: { fullName: 'Fictional Independent History Row',
+      primaryEmail: `history-other-${randomUUID()}@t.local` }, companyId: b.companyId,
+      departmentId: b.deptA, employmentType: 'full_time', hiredOn: addDays(TODAY, -800),
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }] });
+    const [otherRow] = await owner.db.select({ code: schema.employment.employeeCode }).from(schema.employment)
+      .where(eq(schema.employment.id, other.employmentId));
+    const first = good(), second = good({ employee_no: otherRow.code! });
+    const records = recs([first, second]);
+    expect((await validateLeaveHistoryImport(ctx, { records, openingBalancesAreNet })).validCount).toBe(2);
+    const stateFor = async (reference: string) => {
+      const requests = await owner.db.select({ id: schema.leaveRequest.id, employmentId: schema.leaveRequest.employmentId })
+        .from(schema.leaveRequest).where(eq(schema.leaveRequest.externalReference, reference));
+      const ledger = requests.length ? await owner.db.select({ days: schema.leaveLedger.days })
+        .from(schema.leaveLedger).where(eq(schema.leaveLedger.sourceRequestId, requests[0].id)) : [];
+      return { requests, ledger };
+    };
+    const subjectLedger = () => owner.db.select({ id: schema.leaveLedger.id, days: schema.leaveLedger.days })
+      .from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, emp.employmentId)).orderBy(schema.leaveLedger.id);
+    const beforeSubject = await subjectLedger();
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned history lock handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      await lockLeaveDependenciesTx(tx, b.tenantId, [emp.employmentId]); ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      const result = await commitLeaveHistoryImport(ctx, { records, openingBalancesAreNet });
+      expect(result.total).toBe(2); expect(result.imported).toBe(1); expect(result.failed).toBe(1); expect(result.duplicates).toBe(0);
+      expect(result.errors).toHaveLength(1); expect(result.errors[0].rowNum).toBe(1);
+      expect(result.errors[0].leaveReference).toBe(first.leave_reference);
+      expect((await stateFor(first.leave_reference!)).requests).toHaveLength(0);
+      expect(await subjectLedger()).toEqual(beforeSubject);
+      const committed = await stateFor(second.leave_reference!);
+      expect(committed.requests).toHaveLength(1); expect(committed.requests[0].employmentId).toBe(other.employmentId);
+      expect(committed.ledger).toHaveLength(openingBalancesAreNet ? 0 : 1);
+      if (!openingBalancesAreNet) expect(Number(committed.ledger[0].days)).toBe(-3);
+      expect(result.runId).not.toBeNull();
+      const [run] = await owner.db.select({ imported: schema.leaveHistoryImportRun.importedRows,
+        failed: schema.leaveHistoryImportRun.failedRows }).from(schema.leaveHistoryImportRun)
+        .where(eq(schema.leaveHistoryImportRun.id, result.runId!));
+      expect(run).toEqual({ imported: 1, failed: 1 });
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    const retry = await commitLeaveHistoryImport(ctx, { records: recs([first]), openingBalancesAreNet });
+    expect(retry.imported).toBe(1); expect(retry.failed).toBe(0);
+    const retried = await stateFor(first.leave_reference!);
+    expect(retried.requests).toHaveLength(1); expect(retried.requests[0].employmentId).toBe(emp.employmentId);
+    expect(retried.ledger).toHaveLength(openingBalancesAreNet ? 0 : 1);
+    if (!openingBalancesAreNet) expect(Number(retried.ledger[0].days)).toBe(-3);
   });
 });
