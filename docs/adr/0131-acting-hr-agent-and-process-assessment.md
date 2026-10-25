@@ -1305,3 +1305,17 @@ settle an allowance; the eventual governed adapter must bind the actual response
 SOURCE ONLY: `lib/ai/providers/openrouter-accounting.ts` and authored regressions are unregistered and
 UNRUN. Static syntax/diff checks do not establish correct live-provider behavior or cost improvement.
 No app tests/compiler/build/DB or provider connection ran during Mobile's verification priority.
+
+
+### OpenRouter completion protocol: source-only boundary
+
+The official [API response reference](https://openrouter.ai/docs/api_reference/overview) documents
+normalized terminal labels and function calls. The [error guide](https://openrouter.ai/docs/api_reference/errors-and-debugging)
+requires inspecting body/choice errors as well as HTTP status. DECISION: the unregistered parser
+rejects either error location, duplicate call IDs, unsupported tool kinds, multiple choices and
+oversized fields with generic errors. Refusal, truncation and unknown terminal labels carry no
+executable calls. Invalid argument JSON remains explicitly invalid for the existing local validator,
+never repaired or guessed by this parser. Missing accounting retains `usageReported=false`; neutral
+placeholder zeros cannot settle actual usage. No provider registration, tool execution or fresh-access
+proof is established here. Authored regressions remain UNRUN during Mobile's runtime priority; only
+source syntax/diff checks have run.
