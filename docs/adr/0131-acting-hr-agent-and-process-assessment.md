@@ -1396,3 +1396,21 @@ an uncommitted catalogue with committed-read controls, and change a ledger with 
 controls. They are UNRUN while Mobile owns verification priority. Static syntax/diff review alone
 does not prove transaction isolation, concurrency, authority or current import correctness. Universal
 writer/configuration participation and atomic confirmation/receipt still remain before enablement.
+
+
+### Participating dependency-lock primitive: source only, not universal protection
+
+`core/leave-dependency-lock.ts` now supplies an unmounted shared configuration/exclusive employment
+lock primitive and an exclusive configuration-writer primitive. Acquisition binds the transaction's
+tenant and Read Committed/write mode. Nonblocking advisory attempts refuse a busy source; there is
+no hidden retry or indefinite lock wait. Subject keys are captured, deduplicated and ordered before
+awaiting; all borrowing leave types share the employment barrier. A refusal requires the caller's
+whole transaction rollback, including partially acquired locks. These helpers neither authorize the
+subject nor establish protection against a nonparticipant.
+
+Actual legacy writer integration and consistent Access/annual-role/payroll/credit/row lock order are
+still required. No existing owner or Assistant effect calls the primitive yet. Authored two-connection
+DB cases cover same/different employment, both directions of configuration conflict, release and
+foreign/malformed carriers with bounded owned handshakes. They remain UNRUN. Random subject UUIDs
+in these lock-mode tests intentionally prove only advisory-key behavior, not real employee access,
+canonical writer participation or business interleavings. Those remain separate release blockers.
