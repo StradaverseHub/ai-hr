@@ -278,19 +278,22 @@ async function analyze(
   ctx: SessionContext,
   rawRecords: LeaveBfRecord[],
   opts?: LeaveBfImportOptions,
+  outerTx?: Tx,
 ): Promise<{
   preview: LeaveBfImportPreview;
   resolved: ResolvedRow[];
   /** The ONE resolution of the run's options, shared by the preview and the write. */
   options: { mode: LeaveBfImportMode };
 }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   const records = rawRecords.map(canonicalise);
   const options = resolveLeaveBfImportOptions(opts);
   const effective = withEffectiveGrants(ctx);
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types by code, case-insensitive, non-archived (listLeaveTypes excludes archived by default).
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx, {}, outerTx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
   const typeById = new Map(types.map((t) => [t.id, t]));
   const codeById = new Map(types.map((t) => [t.id, t.code]));
@@ -323,7 +326,7 @@ async function analyze(
     };
   };
 
-  const emps = await withTenant(ctx, async (tx) => {
+  const emps = await read(async (tx) => {
     // Every employment the caller may see (RLS-scoped). NOT active-only: a migration's opening figures are
     // partly about people who have since left, and "resigned or inactive" is a WARNING in the reporter's
     // own list rather than a rejection.
@@ -511,6 +514,7 @@ async function analyze(
     codeById,
     carryRuleOf,
     options.mode,
+    outerTx,
   );
 
   /**
@@ -578,7 +582,10 @@ async function bfImpactOf(
   codeById: Map<string, string>,
   carryRuleOf: (id: string) => { carryMax: number; carryPercent: number | null; enabled: boolean },
   mode: LeaveBfImportMode,
+  outerTx?: Tx,
 ): Promise<{ impact: LeaveBfBalanceImpact[]; beforeByKey: Map<string, number> }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   if (writable.length === 0) return { impact: [], beforeByKey: new Map() };
 
   type Bucket = {
@@ -619,7 +626,7 @@ async function bfImpactOf(
 
   const employmentIds = [...new Set([...buckets.values()].map((b) => b.employmentId))];
   const typeIds = [...new Set([...buckets.values()].map((b) => b.balanceTypeId))];
-  const ledger = await withTenant(ctx, async (tx) => {
+  const ledger = await read(async (tx) => {
     const rows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -699,6 +706,16 @@ async function bfImpactOf(
       x.entitlementYear.localeCompare(y.entitlementYear),
   );
   return { impact, beforeByKey };
+}
+
+/** Server-only transaction-local resolution prerequisite for future per-row dependency fencing.
+ * Joins the supplied caller transaction for catalogue, employment, calendar and balance reads.
+ * This neither acquires a dependency barrier nor authorizes/writes an import. Do not serialize the
+ * resolved identities as an AI tool result. Existing public preview/commit paths remain unchanged. */
+export function resolveLeaveBfImportTx(
+  tx: Tx, ctx: SessionContext, records: LeaveBfRecord[], options?: LeaveBfImportOptions,
+) {
+  return analyze(ctx, records, options, tx);
 }
 
 /**

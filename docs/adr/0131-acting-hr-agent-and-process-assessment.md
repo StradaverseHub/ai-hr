@@ -1378,3 +1378,21 @@ borrower submit, cancel/edit/approval, negative adjustment and B/F/history impor
 calendar/roster and authority changes; rollback/timeout/deadlock and retry-without-duplicate effects.
 Check meaningful current app-role behavior and actual lock waits, not elapsed sleeps or model ratings.
 No DB run, new lock, migration reservation or effect exposure is claimed by this design note.
+
+
+### Transaction-local canonical import resolution prerequisite
+
+SOURCE IMPLEMENTATION — B/F and history import analysis now accepts an existing transaction through
+server-only `resolveLeaveBfImportTx` / `resolveLeaveHistoryImportTx`. Catalogue, employment/reference,
+calendar/roster and balance-impact reads join that transaction through their existing canonical
+readers. Existing public preview and commit callers keep their original transaction behavior; no
+barrier, new import effect, whole-file transaction or Assistant exposure is wired. The future row
+command can now resolve authoritative source data inside its own protected interval rather than
+opening detached reads. Supplied context/transaction provenance remains the authenticated caller's
+responsibility; these helpers are not a posted or model-callable capability.
+
+Authored real-DB regressions compare the ordinary preview with transaction-local resolution, change
+an uncommitted catalogue with committed-read controls, and change a ledger with exact impact/rollback
+controls. They are UNRUN while Mobile owns verification priority. Static syntax/diff review alone
+does not prove transaction isolation, concurrency, authority or current import correctness. Universal
+writer/configuration participation and atomic confirmation/receipt still remain before enablement.

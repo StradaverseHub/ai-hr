@@ -279,12 +279,15 @@ async function analyze(
   ctx: SessionContext,
   rawRecords: LeaveHistoryRecord[],
   opts?: LeaveHistoryImportOptions,
+  outerTx?: Tx,
 ): Promise<{
   preview: LeaveHistoryImportPreview;
   resolved: ResolvedRow[];
   /** r367 - the ONE resolution of the run's options, shared by the preview and the write. */
   options: { openingBalancesAreNet: boolean };
 }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   const records = rawRecords.map(canonicalise);
   const options = resolveLeaveHistoryImportOptions(opts);
   const deducts = !options.openingBalancesAreNet;
@@ -292,7 +295,7 @@ async function analyze(
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types by code, case-insensitive, non-archived (listLeaveTypes excludes archived by default).
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx, {}, outerTx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
   /**
    * r367 - the two things a row needs BESIDE the id, off the read that already ran:
@@ -307,7 +310,7 @@ async function analyze(
   const balanceTypeOf = (leaveTypeId: string): string =>
     typeById.get(leaveTypeId)?.balanceSourceTypeId ?? leaveTypeId;
 
-  const { emps, existingRefs } = await withTenant(ctx, async (tx) => {
+  const { emps, existingRefs } = await read(async (tx) => {
     // Every employment the caller may see (RLS-scoped). NOT active-only: a migration's history is
     // mostly about people who were here then, including some who have since left.
     const rows = await tx
@@ -546,7 +549,7 @@ async function analyze(
   if (dayCheck.length > 0) {
     const minStart = dayCheck.reduce((a, r) => (r.start < a ? r.start : a), dayCheck[0].start);
     const maxEnd = dayCheck.reduce((a, r) => (r.end > a ? r.end : a), dayCheck[0].end);
-    await withTenant(ctx, async (tx) => {
+    await read(async (tx) => {
       const holidays = await holidayDatesByEmployment(tx, {
         employmentIds: dayCheck.map((r) => r.employmentId),
         startDate: minStart,
@@ -571,7 +574,7 @@ async function analyze(
 
   const rows = resolved.map((r) => r.result);
   const balanceImpact = deducts
-    ? await balanceImpactOf(ctx, resolved.filter((r) => r.result.status === 'valid'), codeById)
+    ? await balanceImpactOf(ctx, resolved.filter((r) => r.result.status === 'valid'), codeById, outerTx)
     : [];
   const preview: LeaveHistoryImportPreview = {
     total: records.length,
@@ -611,7 +614,10 @@ async function balanceImpactOf(
   ctx: SessionContext,
   writable: ResolvedRow[],
   codeById: Map<string, string>,
+  outerTx?: Tx,
 ): Promise<LeaveHistoryBalanceImpact[]> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   if (writable.length === 0) return [];
 
   type Bucket = {
@@ -649,7 +655,7 @@ async function balanceImpactOf(
 
   const employmentIds = [...new Set([...buckets.values()].map((b) => b.employmentId))];
   const typeIds = [...new Set([...buckets.values()].map((b) => b.balanceTypeId))];
-  const balances = await withTenant(ctx, async (tx) => {
+  const balances = await read(async (tx) => {
     const rows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -692,6 +698,16 @@ async function balanceImpactOf(
   return out.sort(
     (x, y) => x.employeeNo.localeCompare(y.employeeNo) || x.leaveCode.localeCompare(y.leaveCode),
   );
+}
+
+/** Server-only transaction-local resolution prerequisite for future per-row dependency fencing.
+ * Joins the supplied caller transaction for catalogue, employment, calendar and balance reads.
+ * This neither acquires a dependency barrier nor authorizes/writes an import. Do not serialize the
+ * resolved identities as an AI tool result. Existing public preview/commit paths remain unchanged. */
+export function resolveLeaveHistoryImportTx(
+  tx: Tx, ctx: SessionContext, records: LeaveHistoryRecord[], options?: LeaveHistoryImportOptions,
+) {
+  return analyze(ctx, records, options, tx);
 }
 
 /**
