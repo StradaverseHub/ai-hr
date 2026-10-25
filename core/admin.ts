@@ -7,6 +7,7 @@ import { tenantMutation } from '../db/tenant-mutation';
 import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0077 slice 5 — the per-company install hook (see createCompany).
 import { companyInstallersFor } from './module-activation';
@@ -769,6 +770,9 @@ export async function createLeaveType(
   // same trade-off as archiving an existing type; acceptable.
   const active = p.active !== false;
   return withTenant(ctx, async (tx) => {
+    // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
+    // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
     // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
     // existing tenant data may already hold duplicate names. Gives the friendly warning the ticket asks for.
@@ -3861,6 +3865,9 @@ export async function updateLeaveType(
     : {};
 
   return withTenant(ctx, async (tx) => {
+    // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
+    // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
         name: leaveType.name,
@@ -4592,6 +4599,9 @@ export async function setLeaveTypeRules(
   if (Object.keys(set).length === 0 && p.isAnnualLeave === undefined) return { unconfiguredCleared: false };
 
   return withTenant(ctx, async (tx) => {
+    // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
+    // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — WHAT THIS TYPE IS, read apart from the rule row below so the rules event keeps
     // exactly the shape it always had. `role` + `code` are what `isEarnedAccrualType` reads.
     const [identity] = await tx
@@ -4715,6 +4725,9 @@ export async function setLeaveTypeRules(
 
 export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
+    // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — RESTORING MUST NOT MAKE A SECOND ACTIVE ANNUAL LEAVE. The switch refuses to create
     // one; unarchiving is the other door to the same state (production holds an ARCHIVED "Annual Leave" that
     // migration 0387 classified by name, beside the active "*Annual Leave" the reporter will switch on). Two
@@ -4789,6 +4802,9 @@ export class LeaveTypeHasHistoryError extends Error {
  */
 export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
+    // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // 1. REFUSE on history. Counted from the shared declaration, so this can never count a different set
     //    of tables from the predicate that decided to show the button.
     //    The table and column come from the declaration and go through sql.identifier (quoted, never

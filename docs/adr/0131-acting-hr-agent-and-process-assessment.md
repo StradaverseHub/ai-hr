@@ -1511,3 +1511,22 @@ check run counts, release and retry only the refused row. These cases and affect
 calendar, authorization and Payroll consumers are UNRUN. No runtime/security/latency or universal
 protection claim follows from static checks. Other request/form/approval/cancellation/configuration
 writers still need participation and full lock-order/Access review before Assistant effects.
+
+
+### Canonical catalogue mutation entry points join exclusively (unrun)
+
+The five leave-type mutation entry points in core/admin.ts — create, update, rule save, archive/restore
+and delete/cascade — now acquire exclusive dependency configuration ownership as the first operation
+inside their actual transaction. Source reads, annual-role checks/locks, existing ordered NOWAIT
+Payroll coverage, row writes/cascades and canonical events remain after that phase and otherwise
+unchanged. Participating imports/adjustments hold shared configuration ownership, so these catalogue
+commands refuse rather than modifying their configuration mid-interval. Pure request validation
+outside the transaction remains outside it; this is not a new authority check.
+
+Five authored real-employee two-connection cases hold a participating employee interval, require each
+catalogue command to refuse with identical catalogue/event state, release it and verify the original
+canonical operation succeeds. They and affected catalogue/role/rules/deletion/Payroll consumers remain
+UNRUN. Static source comparison only proves the bounded edit, not lock order under runtime, app-role
+permissions or security. Other direct catalogue writers, templates, policies, tenant module state,
+Access, assignments, calendar/roster, snapshot and request owners still need integration. No universal
+barrier, provider/Assistant activation, migration or deployment is established by this checkpoint.
