@@ -10,12 +10,11 @@ import {isDeepStrictEqual as equal} from 'node:util';
 import {COUNTER_EXCEPTION as P, sha256, plainReport, reviewPassingReport, reviewCounterController, reviewComposedControllers} from './local-counter-exception.mjs';
 const requireEvidence = (ok, why) => assert(ok, 'Counter exception collection refused: ' + why);
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024}).trim();
-export function boundedReader(root, group, artifacts, {maxFileBytes=64*1024*1024,maxTotalBytes=512*1024*1024}={}) {
+function boundedPathReader(root, group, artifacts, validPath, {maxFileBytes=64*1024*1024,maxTotalBytes=512*1024*1024}={}) {
   root = resolve(root); requireEvidence(realpathSync(root) === root && lstatSync(root).isDirectory(), 'noncanonical archive root');
   let total = 0;
   return relative => {
-    requireEvidence(typeof relative === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(relative)
-      && !relative.split('/').some(x => x === '.' || x === '..'), 'unsafe artifact path');
+    requireEvidence(validPath(relative), 'unsafe artifact path');
     const path = join(root, relative), stat = lstatSync(path);
     requireEvidence(stat.isFile() && !stat.isSymbolicLink() && realpathSync(path) === path, 'nonregular artifact');
     requireEvidence(stat.size <= maxFileBytes && (total += stat.size) <= maxTotalBytes, 'artifact budget');
@@ -27,6 +26,31 @@ export function boundedReader(root, group, artifacts, {maxFileBytes=64*1024*1024
       const current = lstatSync(path); requireEvidence(current.dev === after.dev && current.ino === after.ino && current.size === after.size && realpathSync(path) === path, 'artifact path changed');
     } finally { closeSync(fd); }
     artifacts.push({group, path: relative, bytes: bytes.length, sha256: sha256(bytes)}); return bytes.toString('utf8');
+  };
+}
+/** Private evidence keeps its original narrow filename grammar. */
+export function boundedReader(root, group, artifacts, limits={}) {
+  return boundedPathReader(root,group,artifacts,relative=>typeof relative==='string'
+    && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(relative)
+    && !relative.split('/').some(x=>x==='.'||x==='..'),limits);
+}
+/** Classifier source is authorized by the real regular stage-zero Git inventory. */
+export function trackedSourceReader(root, artifacts, limits={}) {
+  root=resolve(root);
+  requireEvidence(realpathSync(root)===root&&git(root,'rev-parse','--show-toplevel')===root,'noncanonical source checkout');
+  const entries=new Map(git(root,'ls-files','--stage','-z').split('\0').filter(Boolean).map(row=>{
+    const match=row.match(/^([0-7]{6}) ([a-f0-9]{40}) ([0-3])\t([\s\S]+)$/);
+    requireEvidence(match,'invalid tracked source inventory');return [match[4],{mode:match[1],stage:match[3]}];
+  }));
+  const canonical=relative=>typeof relative==='string'&&relative.length>0
+    && !/[\\\x00-\x1f\x7f]/.test(relative)
+    && relative.split('/').every(segment=>segment!==''&&segment!=='.'&&segment!=='..');
+  const read=boundedPathReader(root,'source',artifacts,relative=>canonical(relative)&&entries.has(relative),limits);
+  return relative=>{
+    requireEvidence(canonical(relative),'unsafe tracked source path');
+    const entry=entries.get(relative);if(!entry)return null;
+    requireEvidence(entry.stage==='0'&&['100644','100755'].includes(entry.mode),'nonregular or conflicted tracked source');
+    return read(relative);
   };
 }
 export const COUNTER_REPAIR = Object.freeze({
@@ -110,10 +134,10 @@ export async function collectCounterException({candidatePath, runDirectory, now 
   const recorded = {all: list(read('fullgate/all-files.txt')), db: list(read('fullgate/db-files.txt')), nodb: list(read('fullgate/nodb-files.txt'))};
   const tracked = git(candidatePath, 'ls-files', '-z').split('\0').filter(Boolean);
   const all = tracked.filter(p => /^test\/.+\.(?:test\.ts|dom\.test\.tsx)$/.test(p)).sort();
-  const trackedSet = new Set(tracked), cache = new Map();
+  const trackedSet = new Set(tracked), cache = new Map(), readTracked = trackedSourceReader(candidatePath, artifacts);
   const readSource = path => {
     if (!trackedSet.has(path)) return null;
-    if (!cache.has(path)) cache.set(path, source(path)); return cache.get(path);
+    if (!cache.has(path)) cache.set(path, readTracked(path)); return cache.get(path);
   };
   source('scripts/gate-db-classify.ts'); source('scripts/gate-chunked.sh');
   // This frozen classifier only reads supplied text. It imports no application or DB module.
