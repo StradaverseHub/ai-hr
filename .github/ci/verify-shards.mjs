@@ -13,6 +13,7 @@ export function verifyReports(plan, reports) {
     seen.add(report.id);
     if (report.schemaVersion !== 1 || report.sha !== plan.sha || report.fingerprint !== plan.fingerprint
       || JSON.stringify(report.files) !== JSON.stringify(unit.files) || report.exitCode !== 0 || !Array.isArray(report.batches)) throw Error('Stale, failed or altered CI unit');
+    if(unit.kind==='db')validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);
     const files = [];
     for (const batch of report.batches) {
       if(unit.kind==='db')validatePostgresEvidence(batch.databaseEvidence,plan.execution);

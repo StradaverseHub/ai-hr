@@ -57,7 +57,7 @@ try {
 } finally {
   report.healthAfter = hostHealth();
   if (unit.kind === 'db') {
-    try{report.databaseTerminalEvidence=capturePostgresEvidence(id);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
+    try{report.databaseTerminalEvidence=capturePostgresEvidence(id);validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
     const cleanup = spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
     if (cleanup.status !== 0) report.exitCode = 1;
   }

@@ -16,12 +16,13 @@ const expected={candidate,controller,baseline,runId,now};
 function run(){return {id:runId,repository:{id:REPOSITORY_ID,full_name:REPOSITORY},head_repository:{id:REPOSITORY_ID},workflow_id:WORKFLOW_ID,path:WORKFLOW_PATH,event:'workflow_dispatch',head_branch:'main',head_sha:controller,status:'completed',conclusion:'success',run_attempt:1,created_at:new Date(now).toISOString()};}
 function jobs(){return requiredEvidence(proof().expectedPlan).jobs.map(name=>({name,status:'completed',conclusion:'success',run_attempt:1}));}
 function artifacts(){return requiredEvidence(proof().expectedPlan).artifacts.map((name,n)=>({id:n+1,name,size_in_bytes:2,digest:digest(Buffer.from('{}')),expired:false,workflow_run:{id:runId,repository_id:REPOSITORY_ID,head_repository_id:REPOSITORY_ID,head_sha:controller,head_branch:'main'}}));}
+function databaseEvidence(){return {schemaVersion:1,memoryLimit:2*1024**3,memoryMax:2*1024**3,memoryPeak:500000000,memoryEvents:{oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}};}
 function proof(){
  const suite=Array.from({length:8},(_,n)=>`test/example-${n}.test.ts`);
  const units=buildUnits(suite,{nodb:suite.slice(0,4),db:suite.slice(4)},['test/layout.browser.test.tsx']);
  const body={schemaVersion:2,policyVersion:CI_POLICY,sha:candidate,controller,migrationBase:baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite,units};
  const plan={...body,fingerprint:hash(body)};
- const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:{schemaVersion:1,memoryLimit:2*1024**3,memoryMax:2*1024**3,memoryPeak:500000000,memoryEvents:{oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}}}:{}),result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
+ const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,...(u.kind==='db'?{databaseTerminalEvidence:databaseEvidence()}:{}),batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:databaseEvidence()}:{}),result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
  return {plan,reports,receipt:verifyReports(plan,reports),expectedPlan:structuredClone(plan),p:expected};
 }
 test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);});
@@ -54,3 +55,15 @@ test('A self-consistent reduced manifest cannot authorize omission from independ
  assert.throws(()=>validateArtifacts(artifacts().filter(a=>!a.name.startsWith('unit-db-')),expected,p.expectedPlan));
 });
 test('A v1 witness cannot be relabelled as v2 by topology or receipt edits',()=>{const p=proof();p.plan.policyVersion='aihr-staging-ci/v1';assert.throws(()=>validateProof(p));});
+
+for(const [name,change] of [
+ ['missing terminal',r=>{delete r.databaseTerminalEvidence;}],
+ ['null terminal',r=>{r.databaseTerminalEvidence=null;}],
+ ['unhealthy terminal',r=>{r.databaseTerminalEvidence.state.Running=false;}],
+ ['terminal OOM',r=>{r.databaseTerminalEvidence.memoryEvents.oom_kill=1;}],
+ ['terminal settings mismatch',r=>{r.databaseTerminalEvidence.settings.jit='off';}],
+ ['terminal missing cgroup peak',r=>{r.databaseTerminalEvidence.memoryPeak=null;}],
+])test('Independent release verification refuses '+name+' even with passing batch evidence',()=>{
+ const p=proof(),r=p.reports.find(r=>r.id.startsWith('db-'));change(r);
+ assert.throws(()=>verifyReports(p.plan,p.reports));assert.throws(()=>validateProof(p));
+});
