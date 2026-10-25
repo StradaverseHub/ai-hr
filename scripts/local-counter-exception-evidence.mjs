@@ -1,6 +1,8 @@
 /** Independent read-only collection. No receipt writes, network, application or deployment. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {platform,arch} from 'node:os';
 import {openSync, closeSync, fstatSync, readFileSync, realpathSync, lstatSync} from 'node:fs';
 import {resolve, join, basename} from 'node:path';
 import {pathToFileURL, fileURLToPath} from 'node:url';
@@ -27,6 +29,23 @@ export function boundedReader(root, group, artifacts) {
     artifacts.push({group, path: relative, bytes: bytes.length, sha256: sha256(bytes)}); return bytes.toString('utf8');
   };
 }
+export const COUNTER_REPAIR = Object.freeze({
+  source: '29ee93b38c3647d2c066e53189f15e106bd5049c',
+  files: Object.freeze({
+    'scripts/gate-chunked.sh': '8f7e564816175e2f6eec1065ac117196c798ab41d7ee575b657dd69bf563103e',
+    'scripts/gate-counted-output.test.mjs': 'f4ada427793f069d820383d4962d2e2b3d72d9b8acb8705ec0a04088e9e60d3d',
+  }),
+});
+export function counterSourceBoundary(candidatePath) {
+  const head = git(candidatePath, 'rev-parse', 'HEAD');
+  requireEvidence(!git(candidatePath, 'status', '--porcelain'), 'dirty candidate');
+  if (head === P.candidate) return {original: P.candidate, final: head, counterRepairApplied: false};
+  requireEvidence(git(candidatePath, 'show', '-s', '--format=%P', head) === P.candidate, 'repair must be the single normal child of the observed candidate');
+  const paths = git(candidatePath, 'diff', '--name-only', P.candidate, head).split('\n').sort();
+  requireEvidence(equal(paths, Object.keys(COUNTER_REPAIR.files).sort()), 'repair changed unrelated source');
+  for (const [path, hash] of Object.entries(COUNTER_REPAIR.files)) requireEvidence(sha256(readFileSync(join(candidatePath, path))) === hash, 'counter repair bytes differ');
+  return {original: P.candidate, final: head, counterRepairApplied: true, repairSource: COUNTER_REPAIR.source, changedPaths: paths};
+}
 const list = text => {requireEvidence(text.endsWith('\n'), 'unterminated inventory'); return text.slice(0, -1).split('\n');};
 export async function collectCounterException({candidatePath, runDirectory, now = Date.now()}) {
   candidatePath = resolve(candidatePath); runDirectory = resolve(runDirectory);
@@ -35,12 +54,21 @@ export async function collectCounterException({candidatePath, runDirectory, now 
   // Refuse active/incomplete runs before any source classification or report scan.
   const cleanup = json('cleanup.json');
   requireEvidence(cleanup.sharedRestoredAndContentsVerified === true && cleanup.privateDirectoryRemoved === true && cleanup.gateExit === 1 && cleanup.interrupted === 0 && equal(cleanup.errors, []), 'run incomplete, interrupted or restoration failed');
-  requireEvidence(realpathSync(candidatePath) === candidatePath && git(candidatePath, 'rev-parse', 'HEAD') === P.candidate && !git(candidatePath, 'status', '--porcelain'), 'wrong or dirty candidate');
+  requireEvidence(realpathSync(candidatePath) === candidatePath, 'noncanonical candidate');
+  const sourceBoundary = counterSourceBoundary(candidatePath);
   requireEvidence(git(candidatePath, 'remote', 'get-url', 'origin').toLowerCase() === 'https://github.com/stradaversehub/ai-hr.git', 'wrong repository');
   execFileSync('git', ['merge-base', '--is-ancestor', P.baseline, P.candidate], {cwd: candidatePath, stdio: 'ignore'});
   const source = boundedReader(candidatePath, 'source', artifacts);
   const receipt = JSON.parse(source('.gate-receipt.json'));
   requireEvidence(receipt.sha === P.candidate && receipt.result === 'FAIL' && receipt.tier === 'full', 'original failure relabelled or changed');
+  const learning=json('fullgate/learning.json');
+  requireEvidence(learning.sha===P.candidate && learning.base===P.baseline && learning.result==='FAIL' && learning.tier==='full'
+    && equal(learning.fullReceipt,receipt), 'original learning/receipt provenance differs');
+  const envHash=createHash('sha256').update(JSON.stringify([process.versions.node,platform(),arch()]));
+  for(const path of ['.env.local','pnpm-lock.yaml','tsconfig.json','tsconfig.build.json','next.config.ts','vitest.config.ts','vitest.nodb.config.ts','vitest.browser.config.ts','test/env.ts','test/global-setup.ts','test/dom-setup.ts','test/db-names.ts']) {
+    envHash.update(path);envHash.update(source(path));
+  }
+  requireEvidence(learning.environmentHash===envHash.digest('hex'),'runtime/configuration environment changed');
   const at = Date.parse(receipt.at);
   requireEvidence(Number.isFinite(at) && at <= now + 60000 && now - at <= 24 * 60 * 60 * 1000, 'receipt outside one-day exception window');
   const sourceRecord = json('controller-source.json');
@@ -74,8 +102,8 @@ export async function collectCounterException({candidatePath, runDirectory, now 
     read('fullgate/rebuild' + (i + 1) + '.log'); read('fullgate/migrate' + (i + 1) + '.log');
     phases.push({name: 'db-' + (i + 1), ...reviewPassingReport(read('fullgate/chunk' + (i + 1) + '.log'), db.filter((_, n) => n % P.chunks === i))});
   }
-  requireEvidence(git(candidatePath, 'rev-parse', 'HEAD') === P.candidate && !git(candidatePath, 'status', '--porcelain'), 'source changed during collection');
-  return {kind: P.kind, policyVersion: P.version, candidate: P.candidate, baseline: P.baseline, candidatePath, runDirectory,
+  requireEvidence(equal(counterSourceBoundary(candidatePath), sourceBoundary), 'source changed during collection');
+  return {kind: P.kind, policyVersion: P.version, candidate: sourceBoundary.final, originalCandidate: P.candidate, sourceBoundary, baseline: P.baseline, candidatePath, runDirectory,
     ownerAuthorization: {thread: P.authorizationThread, turn: P.authorizationTurn, text: P.authorization},
     canonicalResult: 'FAIL', rawVitestExit: 'UNKNOWN_NOT_SEPARATELY_RECORDED', controller, phases,
     filesWithPassingReports: phases.reduce((n, p) => n + p.files, 0), casesWithPassingReports: phases.reduce((n, p) => n + p.cases, 0),
