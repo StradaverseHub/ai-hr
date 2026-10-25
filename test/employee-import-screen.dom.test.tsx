@@ -24,6 +24,7 @@ vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocation
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as XLSX from 'xlsx';
+import { File as NodeFile } from 'node:buffer';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
@@ -66,6 +67,47 @@ const screenUnderTest = () =>
       }}
     />,
   );
+
+describe('allocation companion upload stays separate from Family rows', () => {
+  it.each([
+    { allocation: true, family: false },
+    { allocation: true, family: true },
+    { allocation: false, family: true },
+  ])('routes real workbook sheets independently: %j', async ({ allocation, family }) => {
+    validateMock.mockClear();
+    validateMock.mockResolvedValue({ ...basePreview, fileErrors: [] });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['full_name', 'email', 'department', 'hired_on', 'employee_code'],
+      ['Fictional Hire', 'hire@example.invalid', 'Finance', '2026-01-01', '00017'],
+    ]), 'Employee Import');
+    // Allocation is physically before Family, as in the generated full template.
+    if (allocation) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['company_id', 'employee_code', 'effective_date', 'operation', 'cost_center_code', 'percentage'],
+      ['c1', '00017', '2026-01-01', 'replace', 'CC1', '50.00'],
+    ]), 'Cost Center Allocations');
+    if (family) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['employee_code', 'relationship', 'name'],
+      ['00017', 'child', 'Fictional Child'],
+    ]), 'Family');
+    const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const file = new NodeFile([bytes], 'companion.xlsx');
+    const { container } = screenUnderTest();
+    const input = container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { files: [file] } });
+    await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
+    const [employeeCsv, companyId, familyCsv, , allocationCsv] = validateMock.mock.calls[0];
+    expect(employeeCsv).toContain('00017');
+    expect(companyId).toBe('c1');
+    if (family) expect(familyCsv).toContain('Fictional Child');
+    else expect(familyCsv).toBe('');
+    expect(familyCsv).not.toContain('cost_center_code');
+    if (allocation) expect(allocationCsv).toContain('CC1,50.00');
+    else expect(allocationCsv).toBe('');
+    expect(allocationCsv).not.toContain('Fictional Child');
+  });
+});
 
 describe('2983802f · the import screen names its six steps', () => {
   it('renders every step label with its number', () => {
