@@ -237,8 +237,11 @@ describe('own-leave read-only candidate', () => {
       .where(eq(leaveType.id, base.annualLeaveTypeId));
     const outcome = await read();
     expect(outcome.kind).toBe('candidate');
-    if (outcome.kind === 'candidate') expect(outcome.candidate)
-      .toMatchObject({ availableBalance: null, estimatedAvailableAfter: null });
+    if (outcome.kind === 'candidate') {
+      expect(outcome.candidate).toMatchObject({ availableBalance: null, estimatedAvailableAfter: null });
+      expect(outcome.privateAvailableBalance).toBe(10);
+      expect(outcome.candidate).not.toHaveProperty('privateAvailableBalance');
+    }
   });
 
   it('requests required human remarks rather than inventing them', async () => {

@@ -582,3 +582,92 @@ Admission must still enforce zero quotas and retain pending reservations. Also r
 concurrent pause/confirmation ordering, source actor freshness, valid and invalid tenant contexts,
 unchanged allowance/accounting consumers, restricted-owner upgrade rehearsal and the final release
 gate. These cases are authored or specified, **not runtime-verified** by this source checkpoint.
+
+## Source amendment, 2026-10-25: private pending-review lifecycle
+
+The owner explicitly reaffirmed continuing the remaining AI **source changes** while waiting, with
+no shared runtime until handback. The own-leave branch now integrates the already-released main
+`573c01ff3`, including its Home/privacy wrapper; no unpublished Board 3 source is adopted. The
+current harness release candidate remains separate from this Phase 2 source.
+
+### Authoritative ownership and graph
+
+`human input + canonical read-only candidate → pending review metadata + private envelope → reopen |
+discard | expiry | canonical person erasure`. This increment creates no leave request, completion
+receipt, approval, model tool, route or submission executor. A stored review is not human confirmation
+or proof that current eligibility/dependencies still match.
+
+`app.assistant_own_leave_review` owns only the pending review's identity, immutable input/review
+digests, server creation/expiry and retirement state. Its companion private content row owns the
+encrypted nomination, exact human text, displayed review and hidden pending-aware balance expectation.
+The existing HR engine remains the owner of every source fact. No metadata, event or public card
+contains the hidden balance, encryption envelope, key custody or copied source records.
+
+The candidate now retains its private availability expectation separately from its display review.
+The public card uses one strict schema and explicitly maps its fields; it never serializes the
+server-only candidate result. Both displayed estimates remain null when ESS hides availability.
+The candidate/digest and card share one warning evidence shape; gazette thresholds remain owned by
+the holidays service.
+
+### Custody and lifecycle decisions
+
+- One random DEK per pending action, using the existing envelope primitives and master-key owner.
+  Authenticated bindings include action/version, tenant, login, person, company, employment and both
+  intent/review digests. This does not widen `pii_key` access or use the statutory subject key table.
+  The private row holds the wrapped action key and ciphertext together. Errors carrying encrypted
+  query parameters are replaced with a bounded error without their cause before leaving the store.
+- SQL owns creation and a ten-minute review lifetime. This is the lifetime of a confirmation review,
+  not an HR policy or a substitute for revalidation. The cipher binds immutable identity/digests;
+  provisional application timestamps are not trusted as persisted expiry.
+- Prepare and reopen refresh Assistant access through its owner and check the non-admitting AI pause
+  prerequisite in the caller transaction. No model run, provider call or quota reservation occurs.
+  Existing module/grant/dependency barriers are still required at eventual execution.
+- Discard requires current same-login/person/source custody and the exact reviewed digest. It remains
+  possible after an AI pause or removed Assistant grant, because it only removes private intent and
+  can never submit leave. Repeated discard returns the same terminal reference.
+- Read expiry and discard remove both private body and wrapped key in the same transaction as the
+  metadata transition. The private tables and full-record helpers have no application-role grants;
+  only the narrow custody functions are callable. No `completed` state/writer is exposed by this store.
+- A bounded group-administrator expiry primitive retires at most 1,000 expired reviews per call. No
+  scheduled caller is wired yet. Validity expiry therefore does **not** establish that unaccessed
+  ciphertext is automatically deleted on schedule. Scheduled cleanup and preparation admission/rate
+  bounds must be integrated and observed before exposing a production preparation endpoint.
+
+These are source contracts, not measured security guarantees. No KMS/HSM upgrade, irreversible
+deletion from retained backups/WAL/old exports or JavaScript-memory erasure is claimed.
+
+### Canonical person erasure
+
+The privacy service composes `assistant_own_leave_reviews_redact` after its existing Home/Access
+erasure admission, within the same transaction. The admission already owns the current subject,
+administrator scope, Access/privacy barriers and final canonical audit. Review erasure follows the
+**person**, across all their employments and logins, and clears untyped review content for every
+valid erasure scope, matching the existing private-message/vault treatment. It does not change the
+existing statutory retention rules.
+
+The new owner records an ephemeral transaction-bound erasure intent, removes action keys/bodies,
+retires pending reviews as unavailable and requires the real `pii.erased` event to report
+`assistantPreparedReviews` exactly when content was removed. Missing admission, forged/mismatched
+audit or unfinished effects refuse the transaction. The current-transaction marker survives forced
+early deferred-constraint evaluation, so a later preparation cannot recreate uncaptured private text
+in that erasure transaction. A later authorized custody call prunes completed older markers under
+the shared Access lock. No raw reason, review or key is copied to this erasure marker/audit.
+
+### Acceptance and remaining boundary
+
+New authored cases cover envelope round-trip/tamper/transplant/oversize/missing-key failures; actual
+save/reopen/discard/expiry; hidden balances/public-field exclusions; same-person different logins and
+tenant refusal; no model accounting or leave writes; private-table/helper ACLs; enclosing rollback;
+bounded cleanup; cross-employment person erasure and forged/unfinished erasure audits. All new tests,
+SQL application, types, builds and app journeys remain **UNRUN** under the resource restriction.
+
+Before wiring, demonstrate these cases on the actual restricted-owner/app-role database, forced
+constraint and concurrent erasure/prepare orderings, revocation/transfer/snapshot boundaries, scheduled
+cleanup and retained-backup limits, plus existing privacy/Assistant/leave consumers. Resolve any
+source-integration findings in the final released baseline. The two SQL drafts remain outside the
+migration journal without numbers; central allocation and ascending release order come later.
+
+The atomic confirmation command is still absent. It must protect legacy leave-writer dependencies,
+recheck the exact reviewed effect at the canonical write, commit the request/exact submitted event
+and completed action receipt together, and reconcile uncertain transport outcomes. It must not
+mistake this pending store or its digests for that missing authority, concurrency or execution proof.

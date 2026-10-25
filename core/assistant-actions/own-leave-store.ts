@@ -2,7 +2,7 @@
  * Requires the coordinated review-store and non-admitting-control migrations before runtime use.
  * One caller transaction owns authority, pause check, private row and retirement. No nested commit. */
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { assertAiActionUnpausedTx } from '../ai-governance';
@@ -26,19 +26,30 @@ function captureContext(ctx: SessionContext): SessionContext {
   return { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) };
 }
 
+/** Drizzle errors can retain query parameters. Never propagate an envelope/key-bearing query error
+ * into telemetry; throw a bounded error without its cause and let the outer transaction abort. */
+async function storedReviewTx(tx: Tx, query: SQL): Promise<StoredReview> {
+  try {
+    const [row] = await tx.execute<{ review: unknown }>(query);
+    return StoredReview.parse(row?.review);
+  } catch { throw new OwnLeaveContentUnavailable(); }
+}
+
 /** Map every public field explicitly. A spread of the encrypted content's server-side object would
  * reveal its private balance and identity bindings even when ESS intentionally hides those values. */
 function publicReview(stored: StoredReview): PendingResult {
   const { metadata } = stored;
   const { review } = unsealOwnLeaveReview(metadata, stored.sealed);
-  return { kind: 'prepared', review: OwnLeavePreparedReview.parse({
+  const card = OwnLeavePreparedReview.safeParse({
     actionId: metadata.actionId, contractVersion: metadata.contractVersion,
     reviewedDigest: metadata.reviewedDigest, createdAt: metadata.createdAt, expiresAt: metadata.expiresAt,
     companyName: review.companyName, employeeCode: review.employeeCode, leaveTypeName: review.leaveTypeName,
     date: review.nomination.date, durationType: review.nomination.durationType, deductionDays: review.deductionDays,
     availableBalance: review.availableBalance, estimatedAvailableAfter: review.estimatedAvailableAfter,
     holidayWarnings: review.holidayWarnings, approvalRouting: review.approvalRouting, humanText: review.humanText,
-  }) };
+  });
+  if (!card.success) throw new OwnLeaveContentUnavailable();
+  return { kind: 'prepared', review: card.data };
 }
 
 function retired(stored: StoredReview): RetiredResult {
@@ -67,13 +78,12 @@ export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
     binding: candidate.binding, intentDigest: candidate.intentDigest, reviewedDigest: ownLeaveReviewedDigest(candidate),
     state: 'awaiting_confirmation', createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 600_000).toISOString() });
   const sealed = sealOwnLeaveReview(metadata, { review: candidate, availableBalance: outcome.privateAvailableBalance });
-  const [row] = await tx.execute<{ review: unknown }>(sql`select app.assistant_own_leave_review_prepare(
+  const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_prepare(
     ${metadata.actionId}::uuid,${candidate.binding.personId}::uuid,${candidate.binding.employmentId}::uuid,
     ${candidate.binding.companyId}::uuid,${metadata.intentDigest},${metadata.reviewedDigest},
     ${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);
-  const stored = StoredReview.safeParse(row?.review);
-  if (!stored.success || stored.data.metadata.actionId !== metadata.actionId) throw new OwnLeaveContentUnavailable();
-  return publicReview(stored.data);
+  if (stored.metadata.actionId !== metadata.actionId) throw new OwnLeaveContentUnavailable();
+  return publicReview(stored);
 }
 
 /** Fresh Assistant/source access before reopening; no new model admission. This is a frozen saved
@@ -85,12 +95,11 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) throw new OwnLeaveContentUnavailable();
   await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
-  const [row] = await tx.execute<{ review: unknown }>(sql`select app.assistant_own_leave_review_read(${actionId.data}::uuid) as review`);
-  const stored = StoredReview.safeParse(row?.review);
-  if (!stored.success || stored.data.metadata.actionId !== actionId.data
-    || stored.data.metadata.binding.tenantId !== actor.tenantId || stored.data.metadata.binding.userId !== actor.userId
-    || stored.data.metadata.binding.personId !== actor.personId) throw new OwnLeaveContentUnavailable();
-  return stored.data.metadata.state === 'awaiting_confirmation' ? publicReview(stored.data) : retired(stored.data);
+  const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(${actionId.data}::uuid) as review`);
+  if (stored.metadata.actionId !== actionId.data
+    || stored.metadata.binding.tenantId !== actor.tenantId || stored.metadata.binding.userId !== actor.userId
+    || stored.metadata.binding.personId !== actor.personId) throw new OwnLeaveContentUnavailable();
+  return stored.metadata.state === 'awaiting_confirmation' ? publicReview(stored) : retired(stored);
 }
 
 /** Discard is private-content retirement, not an HR effect. It remains available when AI is paused
@@ -99,10 +108,19 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
 export async function discardOwnLeaveReviewTx(tx: Tx, confirmationValue: unknown): Promise<RetiredResult> {
   const confirmation = OwnLeaveConfirmation.safeParse(confirmationValue);
   if (!confirmation.success) throw new OwnLeaveContentUnavailable();
-  const [row] = await tx.execute<{ review: unknown }>(sql`select app.assistant_own_leave_review_read(
+  const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(
     ${confirmation.data.actionId}::uuid,true,${confirmation.data.reviewedDigest}) as review`);
-  const stored = StoredReview.safeParse(row?.review);
-  if (!stored.success || stored.data.metadata.actionId !== confirmation.data.actionId
-    || stored.data.metadata.reviewedDigest !== confirmation.data.reviewedDigest) throw new OwnLeaveContentUnavailable();
-  return retired(stored.data);
+  if (stored.metadata.actionId !== confirmation.data.actionId
+    || stored.metadata.reviewedDigest !== confirmation.data.reviewedDigest) throw new OwnLeaveContentUnavailable();
+  return retired(stored);
+}
+
+/** Bounded administrative retention primitive; no scheduled caller is wired yet. It retires only
+ * expired pending reviews and returns a count, never employee identities or protected content. */
+export async function expireOwnLeaveReviewsTx(tx: Tx, limit = 100): Promise<number> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new OwnLeaveContentUnavailable();
+  const [row] = await tx.execute<{ expired: number }>(sql`select app.assistant_own_leave_reviews_expire(${limit}) as expired`);
+  if (!row || !Number.isSafeInteger(row.expired) || row.expired < 0 || row.expired > limit)
+    throw new OwnLeaveContentUnavailable();
+  return row.expired;
 }

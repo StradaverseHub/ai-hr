@@ -85,7 +85,7 @@ export const OwnLeaveReviewWarning = z.object({
   required: z.number().int().positive(),
 }).strict().refine(value => value.loaded < value.required);
 
-/** The sole public card shape. It deliberately excludes private balances, key custody, model output
+/** The sole public card shape. It deliberately excludes hidden balances, key custody, model output
  * and login/person/tenant bindings. Confirmation still posts only ID/version/reviewed digest. */
 export const OwnLeavePreparedReview = z.object({
   actionId: z.string().uuid(), contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),

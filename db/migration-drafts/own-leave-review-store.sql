@@ -41,6 +41,9 @@ BEGIN
   WHERE a.id=u AND a.tenant_id=t AND a.person_id=p_person AND a.archived_at IS NULL
    AND NOT app.login_blocked(a.id) AND e.id=p_employment AND e.company_id=p_company AND app.can_see_employment(e.id)) THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ -- Retain the current transaction's erasure barrier even if a caller forces deferred constraints
+ -- early. Older completed markers are only transient receipts and can be pruned under this lock.
+ DELETE FROM app.assistant_review_erasure_intent WHERE tenant_id=t AND xact_id<>pg_current_xact_id() AND event_id IS NOT NULL;
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_own_leave_review_identity(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -67,7 +70,9 @@ BEGIN
  PERFORM app._assistant_own_leave_review_identity(p_person,p_employment,p_company);
  -- A preparation in the same privacy-erasure transaction must not create new uncaptured private text.
  IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
-  AND i.tenant_id=t AND i.person_id=p_person) THEN
+  AND i.tenant_id=t AND i.person_id=p_person)
+  OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+   AND i.tenant_id=t AND i.person_id=p_person) THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$'
   OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$'
@@ -112,11 +117,36 @@ END $$;
 REVOKE ALL ON FUNCTION app.assistant_own_leave_review_read(uuid,boolean,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_own_leave_review_read(uuid,boolean,text) TO ai_hr_app;
 --> statement-breakpoint
+-- Validity expiry is not a claim of scheduled physical deletion. This bounded primitive must be
+-- wired and observed before any production endpoint promises automatic retention cleanup.
+CREATE FUNCTION app.assistant_own_leave_reviews_expire(p_limit integer DEFAULT 100) RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();ids uuid[];
+BEGIN
+ IF t IS NULL OR app.current_user_id() IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
+  RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(d.id),'{}') INTO ids FROM (
+  SELECT id FROM app.assistant_own_leave_review WHERE tenant_id=t AND state='awaiting_confirmation'
+   AND expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT p_limit FOR UPDATE) d;
+ UPDATE app.assistant_own_leave_review SET state='expired' WHERE id=ANY(ids) AND tenant_id=t;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
+ RETURN cardinality(ids);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_expire(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_expire(integer) TO ai_hr_app;
+--> statement-breakpoint
 -- Untyped private review content follows the canonical person's erasure, across every employment.
 -- The existing erasure owner admits/locks the person and requires its real audit at commit.
 CREATE TABLE app.assistant_review_erasure_intent (
- xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,person_id uuid NOT NULL,
- employment_id uuid NOT NULL,cleared integer NOT NULL CHECK(cleared>=0),event_id uuid REFERENCES public.domain_event(id),
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
+ person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
+ employment_id uuid NOT NULL REFERENCES public.employment(id) ON DELETE CASCADE,
+ cleared integer NOT NULL CHECK(cleared>=0),event_id uuid REFERENCES public.domain_event(id),
  PRIMARY KEY(xact_id,tenant_id,user_id,person_id)
 );
 ALTER TABLE app.assistant_review_erasure_intent ENABLE ROW LEVEL SECURITY;
@@ -160,9 +190,10 @@ BEGIN
  END IF;
  SELECT * INTO h FROM app.home_greeting_erasure_intent WHERE xact_id=i.xact_id AND tenant_id=i.tenant_id
   AND user_id=i.user_id AND person_id=i.person_id;
- IF NOT FOUND OR NEW.actor_type<>'user' OR NEW.actor_id IS DISTINCT FROM app.current_user_id()
+ IF NOT FOUND OR i.event_id IS NOT NULL OR NEW.actor_type<>'user' OR NEW.actor_id IS DISTINCT FROM app.current_user_id()
   OR i.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE
   OR app.can_admin_employment(i.employment_id) IS NOT TRUE OR NEW.subject_employment_id IS DISTINCT FROM i.employment_id
+  OR jsonb_typeof(NEW.payload->'erasedFields') IS DISTINCT FROM 'array'
   OR NEW.payload->>'scope' IS DISTINCT FROM h.scope
   OR encode(sha256(convert_to(NEW.payload->>'requestRef','UTF8')),'hex') IS DISTINCT FROM h.request_ref_hash
   OR encode(sha256(convert_to(NEW.payload->>'reason','UTF8')),'hex') IS DISTINCT FROM h.reason_hash
@@ -188,8 +219,8 @@ BEGIN
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
    WHERE r.tenant_id=i.tenant_id AND r.person_id=i.person_id) THEN
   RAISE EXCEPTION 'Review erasure incomplete' USING ERRCODE='42501';END IF;
- DELETE FROM app.assistant_review_erasure_intent WHERE xact_id=i.xact_id AND tenant_id=i.tenant_id
-  AND user_id=i.user_id AND person_id=i.person_id;
+ -- Do not remove the current-xact barrier here: SET CONSTRAINTS IMMEDIATE must not permit a later
+ -- preparation in the same transaction. A later authorized custody call prunes the completed marker.
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_review_erasure_complete() FROM PUBLIC,ai_hr_app;
