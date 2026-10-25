@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {assertBuildRuntime,assertBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
 test('Only the observed staging tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
@@ -28,4 +28,10 @@ test('Matching actual-observation structure binds source identity, preparation b
 });
 test('Stale, future, reversed and invalid observation times refuse',()=>{
  for(const [key,value]of [['buildStartedAt',new Date(start-1).toISOString()],['observedAt',new Date(end+1).toISOString()],['observedAt',new Date(start-1).toISOString()],['observedAt','invalid'],['buildStartedAt','invalid']])assert.throws(()=>check({...successful,[key]:value}),/observation time/);
+});
+
+test('diagnostic producer uses its actual manual workflow identity and cannot satisfy managed release invocation',()=>{
+ const e={...environment,AIHR_CI_HEAD:environment.AIHR_CI_CONTROL_HEAD,CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_EVENT_NAME:'workflow_dispatch',AIHR_BUILD_DIAGNOSTIC:'transport-producer',RUNNER_NAME:'GitHub Actions fixture',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'};
+ assert.equal(assertDiagnosticBuildInvocation(e),true);assert.throws(()=>assertBuildInvocation(e));assert.throws(()=>assertDiagnosticBuildInvocation(environment));
+ for(const [key,value]of Object.entries({CI:'false',RUNNER_ENVIRONMENT:'self-hosted',GITHUB_EVENT_NAME:'push',AIHR_CI_HEAD:'c'.repeat(40),AIHR_BUILD_DIAGNOSTIC:'other',RUNNER_NAME:'',GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('review-20261025','other')}))assert.throws(()=>assertDiagnosticBuildInvocation({...e,[key]:value}));
 });

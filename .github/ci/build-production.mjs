@@ -20,12 +20,23 @@ export function assertBuildRuntime(runtime,environment){
  return true;
 }
 
-export function assertBuildInvocation(environment){
+function assertBuildIdentity(environment){
  if(environment.GITHUB_ACTIONS!=='true'||environment.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||environment.GITHUB_REPOSITORY_ID!=='1333414856'
   ||!SHA.test(environment.AIHR_CI_HEAD??'')||!SHA.test(environment.AIHR_CI_CONTROL_HEAD??'')
   ||environment.GITHUB_SHA!==environment.AIHR_CI_CONTROL_HEAD||environment.GITHUB_RUN_ATTEMPT!=='1'
-  ||!/^\d{1,16}$/.test(environment.GITHUB_RUN_ID??'')||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ID))||Number(environment.GITHUB_RUN_ID)<1
-  ||!/^StradaverseHub\/ai-hr\/\.github\/workflows\/alpha-staging\.yml@refs\/heads\/(main|alpha)$/.test(environment.GITHUB_WORKFLOW_REF??''))fail('workflow/candidate/controller identity');
+  ||!/^\d{1,16}$/.test(environment.GITHUB_RUN_ID??'')||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ID))||Number(environment.GITHUB_RUN_ID)<1)fail('workflow/candidate/controller identity');
+}
+export function assertBuildInvocation(environment){
+ assertBuildIdentity(environment);
+ if(!/^StradaverseHub\/ai-hr\/\.github\/workflows\/alpha-staging\.yml@refs\/heads\/(main|alpha)$/.test(environment.GITHUB_WORKFLOW_REF??''))fail('workflow/candidate/controller identity');
+ return true;
+}
+export function assertDiagnosticBuildInvocation(environment){
+ assertBuildIdentity(environment);
+ if(environment.CI!=='true'||environment.RUNNER_ENVIRONMENT!=='github-hosted'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
+  ||environment.AIHR_CI_HEAD!==environment.AIHR_CI_CONTROL_HEAD||environment.AIHR_BUILD_DIAGNOSTIC!=='transport-producer'
+  ||typeof environment.RUNNER_NAME!=='string'||!environment.RUNNER_NAME.length||environment.RUNNER_NAME.length>200
+  ||environment.GITHUB_WORKFLOW_REF!=='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025')fail('manual diagnostic producer identity');
  return true;
 }
 
@@ -61,9 +72,11 @@ function assertDotenvCompileKeys(source){
 }
 
 /** Invoke with the candidate's installed tsx loader; imports resolve from the real candidate. */
-export async function produceBuild({source=process.cwd(),output}){
+export async function produceBuild({source=process.cwd(),output,purpose='release'}){
  const environment=process.env;
- source=resolve(source);output=resolve(output);assertBuildInvocation(environment);
+ source=resolve(source);output=resolve(output);
+ if(!['release','diagnostic'].includes(purpose))fail('unknown build purpose');
+ if(purpose==='release')assertBuildInvocation(environment);else assertDiagnosticBuildInvocation(environment);
  if(realpathSync(source)!==source)fail('source must be a real checkout');
  const load=async relative=>{const raw=await import(pathToFileURL(join(source,relative)).href);return {...(raw.default??{}),...raw};};
  const next=JSON.parse(readFileSync(join(source,'node_modules/next/package.json'),'utf8')).version;
@@ -99,16 +112,18 @@ export async function produceBuild({source=process.cwd(),output}){
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD
   ||!testing.readPublishedTestingBuild(directory,{sourceRef:environment.AIHR_CI_HEAD,buildRecordId}).bytes.equals(preparedBytes)
   ||!bytes(observationPath,1024*1024).equals(observationBytes))fail('source or build evidence changed during packaging');
- const provenance={format:1,kind:'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
+ const provenance={format:1,kind:purpose==='release'?'ci-system-testing-build-candidate':'diagnostic-system-testing-build-not-release',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
   repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:Number(environment.GITHUB_RUN_ID),runAttempt:1,
   workflowRef:environment.GITHUB_WORKFLOW_REF,runtime,buildRecordId,nextBuildId:buildId,
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),
   preparedSha256:hash(preparedBytes),successfulObservationSha256:hash(observationBytes),manifestSha256:hash(manifestBytes),
   archiveSha256:manifest.archiveSha256,archiveBytes:manifest.archiveBytes,releaseAuthorized:false};
+ if(purpose==='diagnostic')provenance.diagnosticRunner={name:environment.RUNNER_NAME,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
  for(const [name,data]of [['system-testing.json',preparedBytes],['successful-build.json',observationBytes],['build-provenance.json',Buffer.from(JSON.stringify(provenance)+'\n')]])writeFileSync(join(output,name),data,{flag:'wx',mode:0o600});
  return provenance;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- if(process.argv.length!==3)throw Error('Usage: pnpm exec tsx build-production.mjs NEW_OUTPUT_DIRECTORY');
- produceBuild({output:process.argv[2]}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error);process.exitCode=1;});
+ const diagnostic=process.argv[2]==='--diagnostic';
+ if(process.argv.length!==(diagnostic?4:3))throw Error('Usage: pnpm exec tsx build-production.mjs [--diagnostic] NEW_OUTPUT_DIRECTORY');
+ produceBuild({output:process.argv[diagnostic?3:2],purpose:diagnostic?'diagnostic':'release'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error);process.exitCode=1;});
 }
