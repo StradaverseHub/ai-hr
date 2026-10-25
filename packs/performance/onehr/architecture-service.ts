@@ -10,6 +10,7 @@ import { loadAssessmentAdminCycleTx as load, auditAssessmentAdminTx as event } f
 import { importArchitecture, type architectureSheets } from './architecture-model';
 import { resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { careerSchema, policySchema, type Policy } from './model';
+import { onehrLabel } from './person-labels';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stableId=(cycleId:string,key:string)=>{const h=digest([cycleId,key]);return `${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
@@ -59,7 +60,8 @@ export async function setAssessmentCareerRoute(ctx:SessionContext,cycleId:string
 export async function generateAssessmentProfiles(ctx:SessionContext,cycleId:string,token?:string){
  return withPerformanceTenant(ctx,async tx=>{
   const v=await load(tx,cycleId);if(!v.policy.modules.tm)throw Error('Competency assessment is disabled.');
-  const reviews=await tx.select({row:onehrReview,name:person.fullName}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).innerJoin(person,eq(person.id,employment.personId)).where(eq(onehrReview.cycleId,cycleId)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
+  // ADR-0141: person row when readable (HR), else the label projection (performance partner).
+  const reviews=await tx.select({row:onehrReview,name:onehrLabel.labelOrPerson(person.fullName,employment.id)}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).leftJoin(person,eq(person.id,employment.personId)).where(and(eq(onehrReview.cycleId,cycleId),sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
   const report:{reviewId:string;name:string;profile:string|null;status:'assign'|'started'|'manual'|'empty'|'unmapped'|'not_part';count:number}[]=[],plans=new Map<string,{profileId:string;profileMatch:string;competencies:ReturnType<typeof technicalProfilePlan>}>();
   for(const {row:r,name} of reviews){
    const [guards]=await tx.execute<{self:boolean;participates:boolean;started:boolean}>(sql`select exists(select 1 from employment e where e.id=${r.employmentId}::uuid and app.is_self_person(e.person_id)) as self, app.assessment_review_participates(${r.reviewId}::uuid) as participates,app.assessment_competency_started(${r.reviewId}::uuid) as started`);

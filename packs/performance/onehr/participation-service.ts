@@ -2,11 +2,12 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { assessmentParticipationSnapshot, employment, onehrCycle, onehrResult, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
+import { assessmentParticipationSnapshot, employment, onehrCycle, onehrResult, onehrReview, performanceReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { ensureAssessmentCycleReviewTx, initializeOnehrCycleTx } from '../service';
 import { assessmentParticipation, serviceBeyondYear, type ParticipationOverride, type ParticipationReason } from './participation-model';
+import { onehrLabel } from './person-labels';
 
 function defaultParticipation(e:{hiredOn:string;confirmationDate:string|null;terminatedOn:string|null},openedOn:string){
  return assessmentParticipation({left:!!e.terminatedOn&&e.terminatedOn<=todayInKualaLumpur(),yearsOfService:serviceBeyondYear(e.hiredOn,openedOn)?2:0,confirmationDate:e.confirmationDate},openedOn);
@@ -38,9 +39,10 @@ export async function snapshotAssessmentParticipantsTx(tx:Tx,ctx:SessionContext,
 export async function assessmentParticipantsTx(tx:Tx,cycleId:string){
  const [cycle]=await tx.select({companyId:reviewCycle.companyId,status:reviewCycle.status,openedOn:onehrCycle.participationOpenedOn}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(eq(reviewCycle.id,cycleId));
  if(!cycle)return [];
- const rows=await tx.select({employmentId:employment.id,name:person.fullName,companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})
-  .from(employment).innerJoin(person,eq(person.id,employment.personId)).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,employment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
-  .where(and(cycle.companyId?eq(employment.companyId,cycle.companyId):undefined,isNull(employment.terminatedOn),sql`app.onehr_admin(${employment.companyId})`)).orderBy(asc(person.fullName),asc(employment.id));
+ // ADR-0141: names come from the label projection (same companies as the onehr_admin filter below), not person.
+ const rows=await tx.select({employmentId:employment.id,name:onehrLabel.fullName(employment.id),companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})
+  .from(employment).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,employment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
+  .where(and(cycle.companyId?eq(employment.companyId,cycle.companyId):undefined,isNull(employment.terminatedOn),sql`app.onehr_admin(${employment.companyId})`,onehrLabel.visible(employment.id))).orderBy(asc(onehrLabel.fullName(employment.id)),asc(employment.id));
  return rows.map(({snapshot,...e})=>{
   const original=snapshot?{takingPart:snapshot.eligibleAtOpen,reason:snapshot.reason as ParticipationReason}:defaultParticipation(e,cycle.openedOn??todayInKualaLumpur());
   const override=snapshot?.override as ParticipationOverride;

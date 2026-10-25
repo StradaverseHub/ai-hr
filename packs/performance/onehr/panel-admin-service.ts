@@ -8,6 +8,7 @@ import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { loadAssessmentAdminCycleTx, auditAssessmentAdminTx } from './admin-context';
 import { additivePanelPlan, buildPanelCandidates, panelImportRows, type PanelPerson, type PanelRelationship } from './panel-build-model';
 import { assignOnehrPanelTx, changeAssessmentPanelStateTx } from './service';
+import { onehrLabel } from './person-labels';
 
 async function applyOrValidate(tx:Tx,apply:boolean,write:(tx:Tx)=>Promise<void>){
  if(apply){await write(tx);return;}
@@ -17,12 +18,14 @@ async function applyOrValidate(tx:Tx,apply:boolean,write:(tx:Tx)=>Promise<void>)
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 async function population(tx:Tx,cycleId:string){
  const today=todayInKualaLumpur();
- const rows=await tx.select({id:employment.id,personId:employment.personId,code:employment.employeeCode,name:person.fullName,companyId:employment.companyId,groupId:sql<string>`coalesce(${company.parentCompanyId},${company.id})`,grade:jobGrade.code,joinedOn:employment.hiredOn,
+ const rows=await tx.select({id:employment.id,personId:employment.personId,code:employment.employeeCode,name:onehrLabel.labelOrPerson(person.fullName,employment.id),companyId:employment.companyId,groupId:sql<string>`coalesce(${company.parentCompanyId},${company.id})`,grade:jobGrade.code,joinedOn:employment.hiredOn,
   department:sql<string>`coalesce((select d.name from assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=${employment.id} and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`,
   managerId:sql<string|null>`coalesce((select pr.reviewer_employment_id from performance_review pr where pr.employment_id=${employment.id} and pr.cycle_id=${cycleId}::uuid),(select l.manager_employment_id from reporting_line l where l.subordinate_employment_id=${employment.id} and l.line_type='administrative' and l.superseded_at is null and l.valid_from<=${today}::date and (l.valid_to is null or l.valid_to>${today}::date) order by l.valid_from desc,l.id limit 1))`,
   participates:sql<boolean>`exists(select 1 from performance_onehr_review r where r.employment_id=${employment.id} and r.cycle_id=${cycleId}::uuid and app.assessment_review_participates(r.review_id))`,
   canAssess:sql<boolean>`exists(select 1 from app_user u where u.tenant_id=${employment.tenantId} and u.person_id=${employment.personId} and u.archived_at is null and not app.login_blocked(u.id))`,
- }).from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(sql`${employment.employeeCode} is not null and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${today}::date)`).orderBy(asc(employment.employeeCode),asc(employment.id));
+ // ADR-0141: a person row the caller can read (HR) keeps its old meaning; a performance partner, who cannot
+ // read person, gets the label projection instead. Same row set as the former INNER JOIN for HR.
+ }).from(employment).leftJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(sql`${employment.employeeCode} is not null and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${today}::date) and (${person.id} is not null or ${onehrLabel.visible(employment.id)})`).orderBy(asc(employment.employeeCode),asc(employment.id));
  return rows.map(r=>({...r,code:r.code!,grade:/^\d+$/.test((r.grade??'').replace(/^JG\s*/i,''))?Number(r.grade!.replace(/^JG\s*/i,'')):null,service:Math.max(0,(Date.parse(today)-Date.parse(r.joinedOn))/(365.25*86400000))})) satisfies PanelPerson[];
 }
 async function state(tx:Tx,cycleId:string){

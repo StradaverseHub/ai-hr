@@ -24,6 +24,7 @@ import { talentContext, writeTalentAction } from './talent-service';
 import { careerRoutes, careerDirections, careerGap, careerSkillEvidence, resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { anonymousFeedbackReport } from './feedback-report';
 import { assertOverallRemark } from './journey-model';
+import { onehrLabel } from './person-labels';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -374,12 +375,13 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
     const prior=await tx.select().from(onehrPanel).where(eq(onehrPanel.reviewId,reviewId));
     const omitted=prior.filter(p=>!p.archivedAt&&!inputs.some(i=>i.employmentId===p.peerEmploymentId));
     if(omitted.some(p=>p.submittedAt))throw Error('Submitted reviewers must remain on the panel.');
-    const [subject]=await tx.select({name:person.fullName,personId:person.id}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,r.row.employmentId));
+    // ADR-0141: the person row the caller can read (manager, HR) wins; a performance partner gets the label projection.
+    const [subject]=await tx.select({name:onehrLabel.labelOrPerson(person.fullName,employment.id),personId:employment.personId}).from(employment).leftJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,r.row.employmentId),sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`));
     if(!subject)throw Error('Subject not available.');
     if(!admin&&(/^[a-z]+$/i.test(r.row.grade)?inputs.length!==1:inputs.length<r.cycle.policy.minValid))throw Error('The panel is smaller than the required valid response count.');
     const peerPeople=new Set<string>();
     for(const input of inputs){
-      const [peer]=await tx.select({id:employment.id,personId:employment.personId,name:person.fullName,grade:jobGrade.code}).from(employment).innerJoin(person,eq(person.id,employment.personId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(and(eq(employment.id,input.employmentId),sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`));
+      const [peer]=await tx.select({id:employment.id,personId:employment.personId,name:onehrLabel.labelOrPerson(person.fullName,employment.id),grade:jobGrade.code}).from(employment).leftJoin(person,eq(person.id,employment.personId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(and(eq(employment.id,input.employmentId),sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`,sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`));
       if(!peer||peer.personId===subject.personId||peerPeople.has(peer.personId)||!/^\d+$/.test((peer.grade??'').replace(/^JG\s*/i,'')))throw Error('Choose distinct active reviewers with numeric job grades, other than the subject.');
       peerPeople.add(peer.personId);
       if(input.relationship==='line_manager'&&peer.id!==r.native.reviewerEmploymentId)throw Error('The line manager must be the assigned manager.');
@@ -687,7 +689,7 @@ async function finalBandQueueTx(tx:Tx,ctx:SessionContext,sessionId:string) {
   const bg=resolveBand(r.input.performance,r.rows.filter(d=>['hod','bu','bg'].includes(d.tier)).map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band;
   const groupLocked=!!(entry.performanceLockedAt||session.performanceLockedAt),group=groupLocked?z.enum(pmBands).nullable().parse(entry.performance):null;
   const [final]=await tx.select({entry:onehrCalibrationEntry,session:onehrCalibration}).from(onehrCalibrationEntry).innerJoin(onehrCalibration,eq(onehrCalibration.id,onehrCalibrationEntry.sessionId)).where(and(eq(onehrCalibrationEntry.reviewId,entry.reviewId),eq(onehrCalibration.tier,'final')));
-  const [decision]=final?.entry.performance?await tx.execute<{name:string;at:string}>(sql`select coalesce(p.full_name,u.id::text,d.actor_id::text,'') as name,d.occurred_at::text as at from domain_event d left join app_user u on u.id=d.actor_id and u.tenant_id=d.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_id=${final.session.id}::uuid and d.event_type='onehr.calibration-recorded' and d.payload->>'reviewId'=${entry.reviewId} order by d.occurred_at desc,d.id desc limit 1`):[];
+  const [decision]=final?.entry.performance?await tx.execute<{name:string;at:string}>(sql`select coalesce(p.full_name,${onehrLabel.fullNameForPerson(sql`u.person_id`)},u.id::text,d.actor_id::text,'') as name,d.occurred_at::text as at from domain_event d left join app_user u on u.id=d.actor_id and u.tenant_id=d.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_id=${final.session.id}::uuid and d.event_type='onehr.calibration-recorded' and d.payload->>'reviewId'=${entry.reviewId} order by d.occurred_at desc,d.id desc limit 1`):[];
   const ready=!!r.input.performance,suggestion=ready&&groupLocked?suggestFinalBand(bg,group,session.mode as GroupMode,session.bgWeight):null;
   rows.push({reviewId:entry.reviewId,employmentId:entry.employmentId,name:r.input.name,department:r.input.department,companyId:r.input.companyId,businessGroup:r.input.businessGroup,
    ready,finalized:r.input.finalized,bg,group,draft:groupLocked?null:entry.performance,groupLockedAt:entry.performanceLockedAt??session.performanceLockedAt,
@@ -951,7 +953,11 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const [released]=await tx.select().from(assessmentRelease).where(eq(assessmentRelease.reviewId,reviewId));
     const [frozen]=await tx.insert(onehrResult).values({tenantId:ctx.tenantId,reviewId,cycleId:r.row.cycleId,employmentId:r.row.employmentId,result,digest:hash({reviewId,policy:r.cycle.policy,result}),performanceReleasedAt:released?.performanceReleasedAt,potentialReleasedAt:released?.potentialReleasedAt,talentReleasedAt:released?.talentReleasedAt,feedbackReleasedAt:released?.feedbackReleasedAt}).returning();
     // Legacy ratings stay null: OneHR's frozen record is the sole authoritative final assessment.
-    await tx.update(performanceReview).set({closedAt:new Date(),status:'submitted'}).where(eq(performanceReview.id,reviewId));await audit(tx,ctx,reviewId,'assessment-frozen',{resultId:frozen.id,digest:frozen.digest});return frozen.id;
+    // ADR-0141: performance_review stays an HR write. RLS turns a refused UPDATE into zero rows, so refuse
+    // loudly instead of leaving a frozen OneHR result over an open kernel review (rolls the freeze back).
+    const closed=await tx.update(performanceReview).set({closedAt:new Date(),status:'submitted'}).where(eq(performanceReview.id,reviewId)).returning({id:performanceReview.id});
+    if(!closed.length)throw Error('Only an HR administrator can finalize this assessment.');
+    await audit(tx,ctx,reviewId,'assessment-frozen',{resultId:frozen.id,digest:frozen.digest});return frozen.id;
   });
 }
 export async function releaseOnehrResult(ctx:SessionContext,reviewId:string,component:'performance'|'potential'|'talent'|'feedback',release:boolean) {
@@ -1227,7 +1233,7 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
     const plans=self?storedPlans.map(p=>personalPlan(p,activePlanningYear)):storedPlans;
     const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
     const feedbackReport=result&&(!self||record!.feedbackReleasedAt)?result.feedback:[];
-    const choices=manager||admin?await tx.select({id:employment.id,name:person.fullName,code:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(sql`not exists(select 1 from employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${person.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`)):[];
+    const choices=manager||admin?await tx.select({id:employment.id,name:onehrLabel.labelOrPerson(person.fullName,employment.id),code:employment.employeeCode}).from(employment).leftJoin(person,eq(person.id,employment.personId)).where(and(sql`not exists(select 1 from employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${employment.personId})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`,sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`)):[];
     const evidence=r.cycle.policy.modules.evidence?await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),sql`${onehrEvidence.state}<>'retracted'`)).orderBy(desc(onehrEvidence.occurredOn),desc(onehrEvidence.id)):[];
     const [evidencePeople]=evidence.length?await tx.execute<{names:Record<string,string>}>(sql`select app.assessment_evidence_people(array[${sql.join(evidence.map(e=>sql`${e.id}::uuid`),sql`, `)}]::uuid[]) as names`):[];
     const attachmentLinks=await assessmentKpiFilesTx(tx,reviewId);
@@ -1251,8 +1257,8 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
 }
 export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
   return withPerformanceTenant(ctx,async tx=>{uuid.parse(cycleId);const [config]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));if(!config)return null;await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId);
-    const reviews=await tx.select({reviewId:onehrReview.reviewId,employmentId:onehrReview.employmentId,revision:onehrReview.revision,kpis:onehrReview.kpis,grade:onehrReview.grade,name:person.fullName,managerPerformance:onehrReview.managerPerformance,frozenId:sql<string|null>`case when ${performanceReview.closedAt} is not null then ${performanceReview.id} end`}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).innerJoin(person,eq(person.id,employment.personId)).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(eq(onehrReview.cycleId,cycleId));
-    const users=await tx.select({id:appUser.id,name:person.fullName,email:person.primaryEmail}).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).where(and(isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
+    const reviews=await tx.select({reviewId:onehrReview.reviewId,employmentId:onehrReview.employmentId,revision:onehrReview.revision,kpis:onehrReview.kpis,grade:onehrReview.grade,name:onehrLabel.labelOrPerson(person.fullName,employment.id),managerPerformance:onehrReview.managerPerformance,frozenId:sql<string|null>`case when ${performanceReview.closedAt} is not null then ${performanceReview.id} end`}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).leftJoin(person,eq(person.id,employment.personId)).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(and(eq(onehrReview.cycleId,cycleId),sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`));
+    const users=await tx.select({id:appUser.id,name:sql<string|null>`coalesce(${person.fullName},${onehrLabel.fullNameForPerson(appUser.personId)})`,email:person.primaryEmail}).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).where(and(isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
     const companies=await tx.select({id:company.id,name:company.legalName,profitEligible:cycle.native.companyId?sql<boolean>`(${company.id}=${cycle.native.companyId}::uuid or app.is_company_descendant(${company.id},${cycle.native.companyId}::uuid) or app.is_company_descendant(${cycle.native.companyId}::uuid,${company.id}))`:sql<boolean>`true`}).from(company).where(sql`app.onehr_admin(${company.id})`);
     return {profitAchievements:await profitAchievementsTx(tx,cycleId),cycle:cycle.native,policy:cycle.policy,revision:config.revision,participants:await assessmentParticipantsTx(tx,cycleId),kpiNames:[...new Set(reviews.flatMap(r=>kpiSchema.array().parse(r.kpis).map(k=>k.title)))].sort(),reviews:reviews.map(({kpis,...r})=>r),users,companies,sessions:await tx.select().from(onehrCalibration).where(eq(onehrCalibration.cycleId,cycleId))};});
 }
@@ -1298,7 +1304,10 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
   const [nativeScope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) or app.heads_department_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) as ok`);
   if(!reviewer||!subject||reviewer.personId===subject.personId||!nativeScope?.ok||reviewer.terminatedOn&&reviewer.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active reviewer other than the subject.');
   const [frozen]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(frozen||r.native.closedAt||r.cycle.native.status==='closed')throw Error('Assessment is finalized.');
-  await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId));await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>({...k,moderatorEmploymentId:k.moderatorEmploymentId===r.native.reviewerEmploymentId?reviewerEmploymentId:k.moderatorEmploymentId,approvalChain:k.approvalChain?.map(step=>step.employmentId===r.native.reviewerEmploymentId?{...step,employmentId:reviewerEmploymentId}:step)}))});await audit(tx,ctx,reviewId,'reviewer-reassigned',{reviewerEmploymentId});
+  // ADR-0141: the reviewer lives on the kernel review, an HR write; refuse instead of a silent zero-row update.
+  const moved=await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId)).returning({id:performanceReview.id});
+  if(!moved.length)throw Error('Only an HR administrator can reassign the reviewer.');
+  await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>({...k,moderatorEmploymentId:k.moderatorEmploymentId===r.native.reviewerEmploymentId?reviewerEmploymentId:k.moderatorEmploymentId,approvalChain:k.approvalChain?.map(step=>step.employmentId===r.native.reviewerEmploymentId?{...step,employmentId:reviewerEmploymentId}:step)}))});await audit(tx,ctx,reviewId,'reviewer-reassigned',{reviewerEmploymentId});
  });
 }
 
