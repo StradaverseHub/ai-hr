@@ -8,6 +8,8 @@ import {join, relative, resolve, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {hostHealth} from './host-health.mjs';
+import {CI_EXECUTION} from './manifest.mjs';
+import {capturePostgresEvidence, validatePostgresEvidence} from './postgres-evidence.mjs';
 
 const base = 'http://127.0.0.1:3174';
 const tenant = '11111111-1111-1111-1111-111111111111';
@@ -55,6 +57,8 @@ async function main() {
   assert.equal(process.env.GITHUB_ACTIONS, 'true'); assert.equal(process.env.CI, 'true');
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted'); assert.equal(process.platform, 'linux');
   assert.equal(process.env.GITHUB_REPOSITORY, 'StradaverseHub/ai-hr');
+  assert.equal(process.env.AIHR_CI_PG_MEMORY_GIB, String(CI_EXECUTION.postgres.memoryBytes / 1024 ** 3));
+  assert.equal(process.env.AIHR_CI_PG_JIT, CI_EXECUTION.postgres.jit);
   assert(/^\d+$/.test(process.env.GITHUB_RUN_ID ?? '') && /^\d+$/.test(process.env.GITHUB_RUN_ATTEMPT ?? ''));
   const sha = git('rev-parse', 'HEAD'), controller = process.env.AIHR_CI_CONTROL_HEAD;
   assert.equal(sha, process.env.AIHR_CI_HEAD); assert(/^[a-f0-9]{40}$/.test(controller ?? ''));
@@ -222,7 +226,13 @@ async function main() {
     if (app && app.exitCode === null && app.signalCode === null) {
       app.kill('SIGTERM');
       for (let i = 0; i < 50 && app.exitCode === null && app.signalCode === null; i++) await sleep(100);
-      if (app.exitCode === null && app.signalCode === null) { app.kill('SIGKILL'); report.exitCode = 1; }
+      if (app.exitCode === null && app.signalCode === null) {
+        app.kill('SIGKILL'); report.exitCode = 1;
+        for (let i = 0; i < 50 && app.exitCode === null && app.signalCode === null; i++) await sleep(100);
+      }
+      if (app.exitCode === null && app.signalCode === null) {
+        report.serverShutdownError = 'Owned server did not exit within the bounded termination wait'; report.exitCode = 1;
+      }
     }
     if (existsSync(join(out, 'server.log'))) {
       const text = scrub(readFileSync(join(out, 'server.log'), 'utf8'));
@@ -235,21 +245,17 @@ async function main() {
     if (databaseStarted) {
       const stats = spawnSync('bash', [postgres, 'stats'], {env: pgEnv, encoding: 'utf8'});
       writeFileSync(join(out, 'postgres-stats.txt'), (stats.stdout ?? '') + (stats.stderr ?? ''), {flag: 'wx', mode: 0o600});
-      // The shared helper validates the exact run-owned container label before these read-only diagnostics.
-      // Record cgroup counters as well as container state: a killed backend need not kill its container.
-      if (stats.status === 0) {
-        for (const [name, args] of [
-          ['postgres-state.json', ['inspect', '--format', '{{json .State}}', container]],
-          ['postgres.log', ['logs', '--tail', '5000', container]],
-          ['postgres-memory.txt', ['exec', container, 'sh', '-c',
-            'for f in memory.events memory.current memory.peak memory.max; do echo "$f"; cat "/sys/fs/cgroup/$f" || exit 1; done']],
-        ]) {
-          const result = spawnSync('docker', args, {env: pgEnv, encoding: 'utf8', timeout: 15_000, maxBuffer: 16 * 1024 * 1024});
-          writeFileSync(join(out, name), scrub((result.stdout ?? '') + (result.stderr ?? '')), {flag: 'wx', mode: 0o600});
-          report.phases.push({label: name, exit: result.status, signal: result.signal});
-          if (result.error || result.status !== 0) report.exitCode = 1;
-        }
-      } else report.exitCode = 1;
+      if (stats.status !== 0) report.exitCode = 1;
+      try {
+        const snapshot = capturePostgresEvidence('db-1');
+        writeFileSync(join(out, 'postgres-evidence.json'), scrub(JSON.stringify(snapshot, null, 2)) + '\n', {flag: 'wx', mode: 0o600});
+        validatePostgresEvidence(snapshot, CI_EXECUTION);
+        report.databaseEvidenceValid = true;
+      } catch (error) {
+        report.databaseEvidenceValid = false;
+        report.databaseEvidenceError = scrub(error instanceof Error ? error.message : 'Database evidence unavailable').slice(0, 3000);
+        report.exitCode = 1;
+      }
       if (spawnSync('bash', [postgres, 'stop'], {env: pgEnv, stdio: 'inherit'}).status !== 0) report.exitCode = 1;
     }
     report.healthAfter = hostHealth();
