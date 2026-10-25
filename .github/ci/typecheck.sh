@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted && "$(uname -s)" == Linux ]] || exit 2
+case "${1:-}" in ""|--incremental-diagnostic) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac
 swapfile="$RUNNER_TEMP/aihr-tsc-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.swap"
 owned_swap=0
 owned_file=0
@@ -27,4 +28,8 @@ fi
 free -b
 export NODE_OPTIONS=--max-old-space-size=8192
 # Whole repository, same strict config; no file exclusions or ignored build errors.
-/usr/bin/time -v pnpm exec tsc --noEmit
+if [[ "${1:-}" == --incremental-diagnostic ]]; then
+  node "$(dirname "$0")/diagnostics/compiler-incremental.mjs"
+else
+  /usr/bin/time -v pnpm exec tsc --noEmit
+fi
