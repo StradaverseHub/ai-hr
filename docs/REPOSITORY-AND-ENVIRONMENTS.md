@@ -40,3 +40,7 @@ git ls-remote --symref origin HEAD refs/heads/alpha refs/heads/main
 ```
 
 For the existing server, its `deploy/deploy-state.sh status`, active service and verified source/build arrival determine what is actually running. A branch head or a Markdown note alone is not deployment proof. The new live environment remains pending until its installation and successful deployment are independently verified.
+
+## GitHub Actions rollout
+
+Read [Alpha/staging Actions](ALPHA-STAGING-ACTIONS.md) for exact-commit CI dispatch, coverage and the explicit staging deployment hold during Board 3. Main deployment remains disabled.
