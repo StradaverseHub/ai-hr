@@ -1288,3 +1288,20 @@ duplicate/wildcard/URL provider identifiers and captures an immutable approved s
 cover default constraints, bounded fallback, policy-expansion attempts and mutation. Tests are UNRUN
 while Mobile owns the runtime window; static syntax and diff checks alone are not runtime/security
 proof. Own-leave remains the next effect capability and its dependency/atomicity work is unchanged.
+
+
+### OpenRouter accounting: distinguish actual usage from unknown metadata
+
+The current official [usage-accounting guide](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+reports native token counts and account cost in credits; upstream inference cost is a different measure.
+Cache reads and writes have separate fields. The [API response reference](https://openrouter.ai/docs/api_reference/overview)
+marks breakdowns/cost optional and includes reasoning within completion usage. DECISION: the unregistered
+accounting reader subtracts reported cache reads from prompt tokens once, does not add reasoning or
+cache writes again, checks safe-integer totals and retains missing/malformed values as unknown. No
+price lookup, extra generation API call or assumed zero charge is introduced. Reported credits are
+not labeled USD. Accounting validation is not provenance, billing reconciliation or permission to
+settle an allowance; the eventual governed adapter must bind the actual response to its admitted run.
+
+SOURCE ONLY: `lib/ai/providers/openrouter-accounting.ts` and authored regressions are unregistered and
+UNRUN. Static syntax/diff checks do not establish correct live-provider behavior or cost improvement.
+No app tests/compiler/build/DB or provider connection ran during Mobile's verification priority.
