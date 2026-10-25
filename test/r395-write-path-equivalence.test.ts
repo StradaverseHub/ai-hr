@@ -82,7 +82,10 @@ async function attempt(tx: typeof pg, sql: string): Promise<Outcome> {
     // ids in messages are deterministic (same statement text both sides), so the full message is compared.
     return `err:${err.code}:${err.message}`;
   } finally {
-    await tx.unsafe(`rollback to savepoint w`);
+    // ROLLBACK TO retains the named savepoint. Release it after restoring the row state so
+    // thousands of comparisons do not accumulate nested subtransactions. No parameters:
+    // postgres-js unsafe uses one simple-protocol round trip for both cleanup commands.
+    await tx.unsafe(`rollback to savepoint w; release savepoint w`);
   }
 }
 
