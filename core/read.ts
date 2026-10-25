@@ -746,6 +746,9 @@ export function companyDeleteStatus(
   companyId: string,
 ): Promise<{ blockedBy: CompanyDeleteBlock | null; canDelete: boolean } | null> {
   return withTenant(ctx, async (tx) => {
+    // This one-row retention predicate expands many RLS checks. LLVM compilation cost dominates its
+    // execution on PostgreSQL 16; interpret it within this transaction without changing any guard.
+    await tx.execute(sql`SET LOCAL jit = off`);
     const [row] = await tx
       .select({
         blockedBy: sql<string | null>`(${sql.raw(companyDeleteBlockSqlText('company.id'))})`,

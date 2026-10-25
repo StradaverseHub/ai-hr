@@ -5231,6 +5231,8 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     if (!row) throw new CompanyNotFoundError();
     if (!row.canDelete) throw new CompanyDeleteForbiddenError();
 
+    // Match the panel's retention-query execution. LOCAL restores the caller's JIT setting at transaction end.
+    await tx.execute(sql`SET LOCAL jit = off`);
     const [blocked] = (await tx.execute(
       sql`select (${sql.raw(companyDeleteBlockSqlText('company.id'))}) as "reason" from company where company.id = ${p.id}::uuid`,
     )) as unknown as { reason: string | null }[];
