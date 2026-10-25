@@ -15,6 +15,7 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'login_presentation',
   // Person-wide disclosure choices survive cosmetic resets, but never a test-fixture reset.
   'employee_home_person_privacy_revision',
   // ESS pending photo bytes must not survive a fixture reset.

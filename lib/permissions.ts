@@ -119,6 +119,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myHomePreferences',href:'/me/home',labelKey:'employeeHome.preferences.title',guard:'scopedSession',routes:['/me/home']},
   {screenKey:'myHomeGreetings',href:'/me/greetings/[id]',labelKey:'employeeHome.greetingDetail.title',guard:'scopedSession',routes:['/me/greetings/[id]']},
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
+  { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },

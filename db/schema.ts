@@ -10838,3 +10838,11 @@ export const accessUserOverride = pgTable('access_user_override', {
   uniqueIndex('access_user_override_company_uq').on(t.tenantId,t.userId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
   index('access_user_override_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
 ]);
+
+/** Tenant-owned, intentionally public login artwork. The default organization selects the landing page. */
+export const loginPresentation = pgTable('login_presentation', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenant.id),
+  presentation: jsonb('presentation').$type<import('../lib/login-presentation').LoginPresentation>().notNull(),
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

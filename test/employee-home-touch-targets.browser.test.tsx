@@ -50,7 +50,7 @@ for (const width of [320, 390, 1280]) {
     document.documentElement.setAttribute('data-ui-theme', 'atelier');
     render(<NextIntlClientProvider locale="en" messages={en}>
       <header data-app-header style={{width: '100%'}}>
-        <div className="flex min-w-0 items-center gap-2.5"><span className="atelier-crumb">My HR</span><CompanySwitcher companies={[{id:'fictional-company',name:'Fictional company'}]} selected={['fictional-company']}/></div>
+        <div className="flex min-w-0 items-center gap-2.5"><nav className="atelier-crumb"><span className="contents">System Configuration<i>/</i></span><b>Login &amp; browser appearance</b></nav><CompanySwitcher companies={[{id:'fictional-company',name:'Fictional company'}]} selected={['fictional-company']}/></div>
         <div className="atelier:hidden" />
         <div className="flex min-w-0 items-center justify-end gap-2">
           {['Notifications','Language','Theme'].map(name=><button key={name} aria-label={name} className="inline-flex size-9 min-h-11 max-sm:min-w-11 shrink-0">{name.slice(0,1)}</button>)}

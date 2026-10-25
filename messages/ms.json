@@ -3681,7 +3681,8 @@
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
-        "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan."
+        "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
+        "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -11280,7 +11281,7 @@
     "onboardingModuleAccess": "Akses modul",
     "controlTowerOpportunities": "Peluang",
     "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
+    "workspaceStrata": "Strat",
     "workspaceSwitch": "Ruang navigasi",
     "modulePeople": "Kakitangan",
     "moduleOnboarding": "Penyertaan & IT",
@@ -11304,7 +11305,8 @@
     "leaveSettings": "Tetapan",
     "attendanceCalendar": "Kalendar Kehadiran",
     "myEa": "EA Saya",
-    "myTp3": "Borang TP3 Saya"
+    "myTp3": "Borang TP3 Saya",
+    "loginPresentation": "Paparan log masuk & pelayar"
   },
   "notices": {
     "ownEmployment": "Pekerjaan",
@@ -23028,5 +23030,49 @@
         "withdrawn": "Ditarik balik"
       }
     }
+  },
+  "loginPresentation": {
+    "headline": "Warga anda. Kerja anda. Satu tempat.",
+    "description": "Kakitangan, cuti, kehadiran dan gaji — bersama dalam AIHR.",
+    "people": "Kakitangan & organisasi",
+    "work": "Cuti & kehadiran",
+    "growth": "Prestasi & pembangunan",
+    "topicsLabel": "Ruang kerja HR anda",
+    "footer": "AIHR · Ruang kerja untuk warga anda",
+    "welcome": "Selamat kembali",
+    "signInSubtitle": "Log masuk ke AIHR",
+    "mediaAlt": "Media alu-aluan AIHR",
+    "pauseMedia": "Jeda media",
+    "playMedia": "Mainkan video",
+    "playAnimation": "Mainkan animasi",
+    "showPassword": "Tunjukkan kata laluan",
+    "hidePassword": "Sembunyikan kata laluan",
+    "firstTime": "Pertama kali log masuk?",
+    "firstTimeHelp": "Buka jemputan dalam e-mel untuk mengaktifkan akaun. Jika belum menerimanya, hubungi pentadbir HR anda.",
+    "getHelp": "Masalah log masuk? Dapatkan bantuan",
+    "getHelpBody": "Hubungi pentadbir HR untuk kod organisasi dan nama pengguna. Gunakan “Terlupa kata laluan?” untuk memulihkan akaun sedia ada.",
+    "settingsTitle": "Paparan log masuk & pelayar",
+    "settingsDescription": "Pilih imej, GIF atau video untuk bahagian kiri halaman log masuk.",
+    "mediaType": "Media alu-aluan",
+    "none": "Alu-aluan lalai",
+    "image": "Imej",
+    "gif": "GIF animasi",
+    "video": "Video",
+    "mediaUrl": "URL media awam",
+    "urlHelp": "Gunakan pautan HTTPS terus ke fail imej, GIF, MP4 atau WebM. Media ini kelihatan sebelum log masuk. Pelawat memilih bila video dan animasi dimainkan.",
+    "altLabel": "Penerangan media",
+    "save": "Simpan paparan",
+    "saving": "Menyimpan…",
+    "activeOrganization": "Organisasi ini membekalkan media alu-aluan pemasangan ini. Perubahan muncul pada lawatan seterusnya ke halaman log masuk.",
+    "otherOrganization": "Tetapan ini milik organisasi anda. Pentadbir pemasangan mesti memilih organisasi ini sebagai organisasi log masuk lalai sebelum medianya dipaparkan.",
+    "result": {
+      "saved": "Paparan log masuk disimpan.",
+      "invalid": "Pilih jenis media, URL HTTPS yang sah dan penerangan.",
+      "conflict": "Tetapan telah berubah. Muat semula halaman sebelum menyimpan.",
+      "forbidden": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk.",
+      "unavailable": "Tetapan tidak dapat disimpan. Cuba lagi."
+    },
+    "iconUrl": "URL ikon pelayar",
+    "iconHelp": "Gunakan pautan HTTPS terus ke PNG atau ICO segi empat sama, sebaiknya 32×32 atau 48×48 piksel. Kosongkan untuk ikon AIHR. Muat semula halaman untuk mengemas kini ikon yang dicache."
   }
 }
