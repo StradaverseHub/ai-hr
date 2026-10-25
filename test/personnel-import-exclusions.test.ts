@@ -7,14 +7,17 @@ describe('registry-owned import exclusions',()=>{
   it('accounts for every actual exclusion with a localized explanation, never an unknown fallback',()=>{
     const exclusions=personnelImportExclusions('full');
     expect(exclusions.length).toBeGreaterThan(50);
+    // Each catalog is immutable for this test; read it once while retaining every field/locale assertion.
+    const catalogs=['en','ms','zh','ta','th','vi'].map(locale=>({
+      locale,messages:JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')),
+    }));
     for(const field of exclusions){
       expect(field.import.column,field.id).toBeUndefined();
       expect(field.import.register,field.id).toBeUndefined();
       expect(field.import.disabledReason,field.id).toBeTruthy();
       const key=personnelImportExclusionReasonKey(field);
       expect(key,field.id+': '+field.import.disabledReason).toBeTruthy();
-      for(const locale of ['en','ms','zh','ta','th','vi']){
-        const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+      for(const {locale,messages} of catalogs){
         expect(messages.people.import.exclusionReasons[key!],locale+': '+field.id).toBeTruthy();
       }
     }

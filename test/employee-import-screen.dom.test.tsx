@@ -151,16 +151,17 @@ describe('2983802f · the rail reports only the steps the screen has evidence fo
    * that is what "current" means — and the rail only leaves step 4 when a preview actually comes back.
    * Both halves are asserted below.
    */
-  let captured: Blob | null = null;
+  let download: Promise<Blob>;
+  let captureDownload: (blob: Blob) => void;
   beforeEach(() => {
     // jsdom implements no object URLs at all, so the download path has nowhere to put its Blob.
     // Stubbing createObjectURL is also how the workbook is captured — this IS the interception point.
-    captured = null;
+    download = new Promise<Blob>(resolve => { captureDownload = resolve; });
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
       writable: true,
       value: (blob: Blob) => {
-        captured = blob;
+        captureDownload(blob);
         return 'blob:employee-template';
       },
     });
@@ -212,8 +213,11 @@ describe('2983802f · the rail reports only the steps the screen has evidence fo
     // Passport card's picker offers. A `country` list here would print spellings the importer refuses.
     screenUnderTest();
     screen.getByRole('button', { name: 'Download Excel template' }).click();
-    await waitFor(() => expect(captured, 'the button must hand a Blob to the browser').not.toBeNull());
-    const wb = XLSX.read(await (captured as unknown as Blob).arrayBuffer(), { type: 'array' });
+    // Workbook generation is asynchronous. Await its real browser handoff under the test timeout,
+    // rather than applying waitFor's unrelated one-second DOM polling deadline to serialization.
+    const blob = await download;
+    expect(blob.size, 'the button must hand a nonempty workbook Blob to the browser').toBeGreaterThan(0);
+    const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
     const reference = XLSX.utils
       .sheet_to_json<string[]>(wb.Sheets.Reference, { header: 1, blankrows: true })
       .map((r) => (r[0] ?? '').toString());
