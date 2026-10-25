@@ -1468,3 +1468,22 @@ refusal to preserve history. These cases and the affected adjustment suite remai
 and source comparison are not concurrency, app-role, security or runtime evidence. The apply-adjustment
 function is byte-identical; it and other remaining legacy writers still need participation. There is
 no universal barrier, new Assistant effect, migration or staging change in this source checkpoint.
+
+
+### Adjustment creation joins the participating interval (unrun)
+
+Adjustment creation captures its scalar/list criteria and selected employments before awaiting. It
+joins the shared configuration phase before reading types or nominating an audience, takes ordered
+employment barriers, and resolves the visible audience again in the same transaction. Any membership
+change refuses the whole command; it never silently retargets or acquires extra subjects after the
+ordered phase. Existing replacement-register refusal and frozen-snapshot skipping remain canonical.
+The batch, cross-product ledger rows and application event still share one transaction.
+
+Two authored real-employee two-connection cases hold configuration or the last sorted employment.
+They require no batch/ledger/application-event effects on refusal, verify the earlier subject lock
+was released after partial acquisition, then apply after release. They remain UNRUN, including all
+changed adjustment, criteria, entitlement, snapshot, authority and concurrency consumers. Source
+review/syntax checks are not runtime proof. Only participating writers are fenced: catalogue,
+assignment, entitlement, frozen-snapshot and other dependency writers still require integration and
+fresh Access/authority validation before Assistant effects can be exposed. Additional audience reads
+have no measured latency claim. No migration or provider/staging operation is part of this checkpoint.

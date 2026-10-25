@@ -110,6 +110,12 @@ export async function applyLeaveAdjustmentBatch(
   ctx: SessionContext,
   p: ApplyAdjustmentInput,
 ): Promise<{ batchId: string; targeted: number; written: number; skipped: number }> {
+  // Capture the request before the first asynchronous boundary. OrgCriteria contains scalars and
+  // arrays; cloning those arrays keeps the nominated set and saved criteria tied to the same input.
+  const { effectiveOn, targetMode } = p;
+  const criteria: AdjustmentCriteria = Object.fromEntries(Object.entries(p.criteria ?? {})
+    .map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
+  const employmentIds = Array.from(new Set((p.employmentIds ?? []).filter(Boolean)));
   const days = round2(Number(p.days));
   if (!Number.isFinite(days) || days === 0) {
     throw new LeaveAdjustmentError('Days must be a number other than zero — an adjustment of nothing is not an adjustment.');
@@ -125,11 +131,12 @@ export async function applyLeaveAdjustmentBatch(
   if (reason.startsWith('sys:')) {
     throw new LeaveAdjustmentError('A reason may not start with "sys:" — that prefix is reserved for automatic entries.');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) throw new LeaveAdjustmentError('A valid effective date is required.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveOn)) throw new LeaveAdjustmentError('A valid effective date is required.');
   const leaveTypeIds = Array.from(new Set((p.leaveTypeIds ?? []).filter(Boolean)));
   if (!leaveTypeIds.length) throw new LeaveAdjustmentError('Choose at least one leave type.');
 
   return withTenant(ctx, async (tx) => {
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // Leave types must exist and be visible to this session — RLS scopes the read, so an id from another
     // tenant simply does not come back and is refused here rather than silently skipped.
     const types = await tx
@@ -157,19 +164,23 @@ export async function applyLeaveAdjustmentBatch(
       );
     }
 
-    const targets =
-      p.targetMode === 'individual'
-        ? Array.from(new Set((p.employmentIds ?? []).filter(Boolean)))
-        : await resolveAdjustmentTargets(tx, { criteria: p.criteria ?? {}, effectiveOn: p.effectiveOn });
-    if (!targets.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
-
-    // An explicitly-listed employment must still be one this session can see; RLS decides that.
-    const visible = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(inArray(employment.id, targets));
-    const targetIds = visible.map((v) => v.id);
-    if (!targetIds.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
+    const resolveVisibleTargets = async (): Promise<string[]> => {
+      const targets = targetMode === 'individual' ? employmentIds
+        : await resolveAdjustmentTargets(tx, { criteria, effectiveOn });
+      if (!targets.length) return [];
+      // Preserve the existing RLS filtering of explicitly nominated employments.
+      const visible = await tx.select({ id: employment.id }).from(employment)
+        .where(inArray(employment.id, targets)).orderBy(employment.id);
+      return visible.map(row => row.id);
+    };
+    const nominated = await resolveVisibleTargets();
+    if (!nominated.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, nominated);
+    const targetIds = await resolveVisibleTargets();
+    if (targetIds.length !== nominated.length || targetIds.some((id, index) => id !== nominated[index])) {
+      // Refuse a changed audience; do not silently retarget or take additional locks out of order.
+      throw new LeaveAdjustmentError('The adjustment targets changed; review them again.');
+    }
 
     const [batch] = await tx
       .insert(leaveAdjustmentBatch)
@@ -177,10 +188,10 @@ export async function applyLeaveAdjustmentBatch(
         tenantId: ctx.tenantId,
         actorUserId: ctx.userId ?? null,
         days: days.toFixed(2),
-        effectiveOn: p.effectiveOn,
+        effectiveOn,
         reason,
-        targetMode: p.targetMode,
-        criteria: p.targetMode === 'criteria' ? ((p.criteria ?? {}) as unknown) : null,
+        targetMode,
+        criteria: targetMode === 'criteria' ? (criteria as unknown) : null,
         targetedCount: targetIds.length * leaveTypeIds.length,
       })
       .returning({ id: leaveAdjustmentBatch.id });
@@ -207,7 +218,7 @@ export async function applyLeaveAdjustmentBatch(
           leaveTypeId: r.leaveTypeId,
           entryType: 'adjustment' as const,
           days: days.toFixed(2),
-          effectiveOn: p.effectiveOn,
+          effectiveOn,
           reason,
           adjustmentBatchId: batch.id,
         })),
@@ -230,9 +241,9 @@ export async function applyLeaveAdjustmentBatch(
       payload: {
         leaveTypeIds,
         days,
-        effectiveOn: p.effectiveOn,
+        effectiveOn,
         reason,
-        targetMode: p.targetMode,
+        targetMode,
         targeted: targetIds.length * leaveTypeIds.length,
         written: rows.length,
       },
