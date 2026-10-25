@@ -11,6 +11,21 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      nodb_probe:
+        description: Measure the three original Node/DOM failure files
+        required: false
+        default: true
+        type: boolean
+      instrument_copies:
+        description: Run old-source labelled measurement copies; disable for repaired tests
+        required: false
+        default: true
+        type: boolean
+      layout_probe:
+        description: Measure browser replicas and actual compiled fonts
+        required: false
+        default: true
+        type: boolean
 permissions: {contents: read, actions: read}
 concurrency:
   group: alpha-diagnostic-${{ inputs.candidate_ref }}
@@ -37,6 +52,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
         run: node .github/ci/resolve.mjs
   nodb-timing:
+    if: ${{ inputs.nodb_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -55,8 +71,10 @@ jobs:
       - name: Run each original failing file separately, retaining assertions and timeouts
         run: node ../automation/.github/ci/diagnostics/run-unchanged-nodb.mjs
       - name: Generate explicitly labelled ignored measurement copies
+        if: ${{ inputs.instrument_copies }}
         run: node ../automation/.github/ci/diagnostics/instrument-nodb.mjs
       - name: Run measured copies; results remain diagnostic only
+        if: ${{ inputs.instrument_copies }}
         run: node ../automation/.github/ci/diagnostics/run-unchanged-nodb.mjs --instrumented
       - name: Prove tracked candidate remained unchanged
         run: test -z "$(git status --porcelain)"
@@ -70,6 +88,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   layout:
+    if: ${{ inputs.layout_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
