@@ -38,6 +38,7 @@ import {
 import { countOrgCriteriaTargets, resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 
 export class LeaveAdjustmentError extends Error {
   constructor(message: string) {
@@ -261,17 +262,36 @@ export async function reverseLeaveAdjustmentBatch(
   ctx: SessionContext,
   p: { batchId: string; reversedOn?: string },
 ): Promise<{ reversed: number }> {
+  const { batchId, reversedOn: requestedReversedOn } = p;
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx
-      .select({
-        id: leaveAdjustmentBatch.id,
-        reversedAt: leaveAdjustmentBatch.reversedAt,
-        reason: leaveAdjustmentBatch.reason,
-        effectiveOn: leaveAdjustmentBatch.effectiveOn,
-      })
-      .from(leaveAdjustmentBatch)
-      .where(eq(leaveAdjustmentBatch.id, p.batchId))
-      .limit(1);
+    // Participating order: shared configuration -> ordered employments -> batch row. The first
+    // ledger read nominates subjects only; rows and reversal state are reread after ownership.
+    // This does not protect against writers which have not joined the dependency protocol.
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    const nominated = await tx.selectDistinct({ employmentId: leaveLedger.employmentId })
+      .from(leaveLedger).where(eq(leaveLedger.adjustmentBatchId, batchId))
+      .orderBy(leaveLedger.employmentId);
+    const protectedSubjects = new Set(nominated.map(row => row.employmentId));
+    if (protectedSubjects.size) await lockLeaveDependenciesTx(tx, ctx.tenantId, [...protectedSubjects]);
+    const batch = await (async () => {
+      try {
+        const [row] = await tx
+          .select({
+            id: leaveAdjustmentBatch.id,
+            reversedAt: leaveAdjustmentBatch.reversedAt,
+            reason: leaveAdjustmentBatch.reason,
+            effectiveOn: leaveAdjustmentBatch.effectiveOn,
+          })
+          .from(leaveAdjustmentBatch)
+          .where(eq(leaveAdjustmentBatch.id, batchId))
+          .limit(1).for('update', { noWait: true });
+        return row;
+      } catch {
+        // A NOWAIT refusal aborts the whole caller transaction, releasing any earlier advisory locks.
+        // Do not expose a raw database error or continue with a partially owned transaction.
+        throw new LeaveAdjustmentError('That adjustment is busy; review it again.');
+      }
+    })();
     if (!batch) throw new LeaveAdjustmentError('That adjustment could not be found.');
     if (batch.reversedAt) throw new LeaveAdjustmentError('That adjustment has already been reversed.');
 
@@ -288,12 +308,16 @@ export async function reverseLeaveAdjustmentBatch(
       .from(leaveLedger)
       .where(
         and(
-          eq(leaveLedger.adjustmentBatchId, p.batchId),
+          eq(leaveLedger.adjustmentBatchId, batchId),
           sql`${leaveLedger.reason} = ${batch.reason}`,
         ),
-      );
+      ).orderBy(leaveLedger.employmentId, leaveLedger.id);
+    if (original.some(row => !protectedSubjects.has(row.employmentId))) {
+      // Never acquire a newly discovered subject after taking the batch row: refuse and re-review.
+      throw new LeaveAdjustmentError('That adjustment changed; review it again.');
+    }
 
-    const reversedOn = p.reversedOn && /^\d{4}-\d{2}-\d{2}$/.test(p.reversedOn) ? p.reversedOn : batch.effectiveOn;
+    const reversedOn = requestedReversedOn && /^\d{4}-\d{2}-\d{2}$/.test(requestedReversedOn) ? requestedReversedOn : batch.effectiveOn;
     if (original.length) {
       await tx.insert(leaveLedger).values(
         original.map((r) => ({
@@ -306,7 +330,7 @@ export async function reverseLeaveAdjustmentBatch(
           // A HUMAN reason, not a sys: code — this was a person undoing a person's action, and
           // classifyLedgerAdjustment must keep counting it as a config adjustment like its original.
           reason: `Reversal of: ${batch.reason}`,
-          adjustmentBatchId: p.batchId,
+          adjustmentBatchId: batchId,
         })),
       );
     }
@@ -314,12 +338,12 @@ export async function reverseLeaveAdjustmentBatch(
     await tx
       .update(leaveAdjustmentBatch)
       .set({ reversedAt: sql`now()`, reversedByUserId: ctx.userId ?? null })
-      .where(eq(leaveAdjustmentBatch.id, p.batchId));
+      .where(eq(leaveAdjustmentBatch.id, batchId));
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-adjustment-batch',
-      aggregateId: p.batchId,
+      aggregateId: batchId,
       eventType: 'leave.adjustment.reversed',
       actor: actorOf(ctx),
       payload: { reversed: original.length, reversedOn },

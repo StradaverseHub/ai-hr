@@ -26,6 +26,7 @@ import {
   LeaveAdjustmentError,
 } from '../core/leave-adjustment';
 import { withTenant } from '../db/client';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -321,5 +322,51 @@ describe('491c499f · reversing a batch as a unit', () => {
     const reasons = rows.map((r) => r.reason ?? '');
     expect(reasons.some((r) => r.startsWith('Reversal of:'))).toBe(true);
     expect(reasons.every((r) => !r.startsWith('sys:')), 'no reversal wears a system prefix').toBe(true);
+  });
+});
+
+
+describe('participating adjustment reversal ownership — authored, unrun acceptance', () => {
+  it.each(['employment', 'batch'] as const)('refuses a held %s, leaves history intact, then reverses once', async heldKind => {
+    const ctx = adminCtx(b), employeeId = await hire('Fictional Reversal Ownership');
+    const typeId = await makeType('OWNED_ADJ');
+    const applied = await applyLeaveAdjustmentBatch(ctx, { leaveTypeIds: [typeId], days: 2,
+      effectiveOn: '2026-06-01', reason: 'Ownership acceptance', targetMode: 'individual',
+      employmentIds: [employeeId] });
+    const rowsForBatch = () => owner.db.select({ id: schema.leaveLedger.id, days: schema.leaveLedger.days })
+      .from(schema.leaveLedger).where(eq(schema.leaveLedger.adjustmentBatchId, applied.batchId))
+      .orderBy(schema.leaveLedger.id);
+    const before = await rowsForBatch();
+    expect(before).toHaveLength(1);
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned adjustment handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      if (heldKind === 'employment') await lockLeaveDependenciesTx(tx, b.tenantId, [employeeId]);
+      else {
+        const held = await tx.select({ id: schema.leaveAdjustmentBatch.id }).from(schema.leaveAdjustmentBatch)
+          .where(eq(schema.leaveAdjustmentBatch.id, applied.batchId)).for('update');
+        expect(held).toHaveLength(1);
+      }
+      ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      await expect(reverseLeaveAdjustmentBatch(ctx, { batchId: applied.batchId }))
+        .rejects.toThrow(heldKind === 'batch' ? 'That adjustment is busy; review it again.' : 'Leave source is unavailable');
+      expect(await rowsForBatch()).toEqual(before);
+      const [batch] = await owner.db.select({ reversedAt: schema.leaveAdjustmentBatch.reversedAt })
+        .from(schema.leaveAdjustmentBatch).where(eq(schema.leaveAdjustmentBatch.id, applied.batchId));
+      expect(batch.reversedAt).toBeNull();
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    // Also proves the failed transaction released its earlier advisory locks, including on NOWAIT.
+    expect((await reverseLeaveAdjustmentBatch(ctx, { batchId: applied.batchId })).reversed).toBe(1);
+    const reversed = await rowsForBatch();
+    expect(reversed).toHaveLength(2);
+    expect(reversed.reduce((total, row) => total + Number(row.days), 0)).toBe(0);
+    await expect(reverseLeaveAdjustmentBatch(ctx, { batchId: applied.batchId })).rejects.toThrow('already been reversed');
+    expect(await rowsForBatch()).toEqual(reversed);
   });
 });

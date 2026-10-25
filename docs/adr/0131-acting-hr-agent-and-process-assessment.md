@@ -1451,3 +1451,20 @@ compensation/flag change, releases it, reverses exactly once and checks a repeat
 ledger rows unchanged. It is UNRUN, as are affected import, lock-order, business-concurrency and
 security checks. The source change is unreleased and establishes no current staging defect or
 runtime guarantee. Historical rows are compensated on their original dates, never deleted.
+
+
+### Adjustment reversal joins employment barriers and batch ownership (unrun)
+
+The existing adjustment reversal now captures its input before awaiting, nominates subjects under a
+shared configuration phase, acquires ordered employment barriers, then locks the adjustment batch
+`FOR UPDATE NOWAIT`. It rereads the reversal flag and original ledger rows under that ownership and
+refuses a newly discovered unprotected subject rather than taking locks in reverse order. Compensation,
+flag and canonical event remain in the same transaction. Query failures are bounded generic refusals;
+the whole caller transaction rolls back and releases any earlier locks.
+
+Two authored two-connection cases hold either a real employee barrier or the actual batch row. They
+require refusal without ledger/flag changes, release the holder, reverse once, and require a repeated
+refusal to preserve history. These cases and the affected adjustment suite remain UNRUN. Static syntax
+and source comparison are not concurrency, app-role, security or runtime evidence. The apply-adjustment
+function is byte-identical; it and other remaining legacy writers still need participation. There is
+no universal barrier, new Assistant effect, migration or staging change in this source checkpoint.
