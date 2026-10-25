@@ -46,6 +46,11 @@ on:
         required: false
         default: false
         type: boolean
+      compiler_compatible_probe:
+        description: Reuse authenticated ancestor compiler state on the changed candidate with actual first-restore error refusal and bounded capacity
+        required: false
+        default: false
+        type: boolean
       compiler_origin_run:
         description: Consumer-only repair original run ID
         required: false
@@ -124,9 +129,27 @@ jobs:
           python3 .github/ci/build-shim-paths.test.py
           python3 .github/ci/build-bundle.test.py
           python3 .github/ci/build-helper-cleanliness.test.py
+      - name: Pin typed compiler-cache controller runtime
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Validate compatible compiler probe selection
+        if: ${{ inputs.compiler_compatible_probe }}
+        env:
+          ORIGINAL_RUN: ${{ inputs.compiler_origin_run }}
+          ORIGINAL_SHA: ${{ inputs.compiler_origin_sha }}
+          ORIGINAL_ARTIFACT: ${{ inputs.compiler_origin_artifact }}
+          ORIGINAL_DIGEST: ${{ inputs.compiler_origin_digest }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          for(const key of ['ORIGINAL_RUN','ORIGINAL_ARTIFACT'])assert(/^[1-9][0-9]{0,15}$/.test(process.env[key]??''));
+          assert(/^[a-f0-9]{40}$/.test(process.env.ORIGINAL_SHA??''));
+          assert(/^[a-f0-9]{64}$/.test(process.env.ORIGINAL_DIGEST??''));
+          NODE
       - name: Compiler transport controller checks
         if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' }}
-        run: node --test .github/ci/diagnostics/compiler-state.test.mjs .github/ci/diagnostics/compiler-transport.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs
+        run: node --experimental-strip-types --test .github/ci/diagnostics/compiler-state.test.mjs .github/ci/diagnostics/compiler-transport.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -398,7 +421,7 @@ jobs:
           retention-days: 3
 
   compiler-state-producer:
-    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' }}
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -448,7 +471,7 @@ jobs:
           retention-days: 3
 
   compiler-state-consumer:
-    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' }}
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
     needs: [resolve, compiler-state-producer]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -485,7 +508,7 @@ jobs:
           retention-days: 3
 
   compiler-state-consumer-repair:
-    if: ${{ inputs.compiler_origin_run != '' }}
+    if: ${{ inputs.compiler_origin_run != '' && !inputs.compiler_compatible_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -507,6 +530,47 @@ jobs:
         with: {node: '22.23.3'}
       - run: pnpm exec next typegen
       - name: Retest consumer only against the authenticated retained compiler-state producer
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-compatible-consumer:
+    if: ${{ inputs.compiler_compatible_probe && inputs.compiler_origin_run != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_COMPATIBLE_CHILD: 'true'
+      AIHR_CI_CAPACITY_PROFILE: bounded-compiler-diagnostic
+      AIHR_COMPILER_ORIGIN_RUN_ID: ${{ inputs.compiler_origin_run }}
+      AIHR_COMPILER_ORIGIN_CONTROLLER: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_ARTIFACT_ID: ${{ inputs.compiler_origin_artifact }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ inputs.compiler_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', capacity_profile: bounded-compiler-diagnostic}
+      - run: pnpm exec next typegen
+      - name: Original state on changed candidate, immediate error refusal and complete compiler controls
         run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
       - name: Retain compiler resource cleanup
         if: always()

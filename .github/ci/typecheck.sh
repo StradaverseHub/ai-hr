@@ -38,13 +38,20 @@ cleanup() {
   if [[ "$owned_file" == 1 ]]; then sudo rm -f -- "$swapfile"; fi
 }
 trap cleanup EXIT
+minimum_swap_kib=20971520
+if [[ "${AIHR_CI_CAPACITY_PROFILE:-legacy}" == bounded-compiler-diagnostic ]]; then
+  [[ "$compiler_mode" == --state-transport-consumer ]] || exit 2
+  minimum_swap_kib=$(node "$(dirname "$0")/runner-capacity.mjs" compiler-swap-floor bounded-compiler-diagnostic)
+fi
+echo "Compiler storage floor before owned swap: ${minimum_swap_kib} KiB"
+df -Pk "$RUNNER_TEMP"
 free -b
 cat /proc/swaps
 physical_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
 swap_kib=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
 if (( physical_kib < 12582912 && swap_kib < 4194304 )); then
   available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'END {print $4}')
-  (( available_kib >= 20971520 )) || { echo 'Need20GiBheadroom before bounded4GiBswap' >&2; exit 2; }
+  (( available_kib >= minimum_swap_kib )) || { echo "Need ${minimum_swap_kib} KiB free before bounded4GiBswap" >&2; exit 2; }
   [[ ! -e "$swapfile" ]] || exit 2
   owned_file=1
   sudo fallocate -l 4G "$swapfile"
@@ -53,6 +60,7 @@ if (( physical_kib < 12582912 && swap_kib < 4194304 )); then
   sudo swapon "$swapfile"
   owned_swap=1
 fi
+df -Pk "$RUNNER_TEMP"
 free -b
 export NODE_OPTIONS=--max-old-space-size=8192
 # Whole repository, same strict config; no file exclusions or ignored build errors.

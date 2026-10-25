@@ -43,3 +43,13 @@ test('state reuse must be on a fresh VM at the same compiler path, never a claim
  for(const change of [{name:producer.name},{bootSha256:producer.bootSha256},{sourcePath:'/other/source'}])
   assert.throws(()=>assertIndependentCompilerVm(producer,{...current,...change}));
 });
+
+test('compatible child mode binds actual new source/controller and authenticated old producer separately',()=>{
+ const current='c'.repeat(40),e={...env,AIHR_COMPILER_TRANSPORT:'consumer',GITHUB_RUN_ID:'999',GITHUB_SHA:current,AIHR_CI_HEAD:current,AIHR_CI_CONTROL_HEAD:current,
+ AIHR_COMPILER_ORIGIN_RUN_ID:'123',AIHR_COMPILER_ORIGIN_CONTROLLER:s,AIHR_COMPILER_COMPATIBLE_CHILD:'true'};
+ assert.equal(assertCompilerTransportInvocation(e,'consumer'),true);
+ assert.equal(validateCompilerArtifact({run,jobs:[job],artifact},e),job);
+ for(const [key,value]of Object.entries({AIHR_COMPILER_COMPATIBLE_CHILD:'false',AIHR_CI_HEAD:s,AIHR_CI_CONTROL_HEAD:s,AIHR_COMPILER_ORIGIN_CONTROLLER:current}))
+  assert.throws(()=>assertCompilerTransportInvocation({...e,[key]:value},'consumer'));
+ assert.throws(()=>assertCompilerTransportInvocation({...env,AIHR_COMPILER_COMPATIBLE_CHILD:'true'},'producer'));
+});

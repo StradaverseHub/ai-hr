@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync,lstatSync,realpathSync,existsSync,readdirSync,rmSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,lstatSync,realpathSync,existsSync,readdirSync,rmSync,statfsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {compilerStateIdentity,publishCompilerState,readCompilerState} from './compiler-state.mjs';
 import {measuredCommand,validateCompilerPhase} from './compiler-incremental.mjs';
+import {compatibleCompilerState} from '../../../scripts/ci-compiler-cache-policy.ts';
 
 const REPO='StradaverseHub/ai-hr',WORKFLOW='.github/workflows/alpha-staging-diagnostics.yml';
 const REF=REPO+'/'+WORKFLOW+'@refs/heads/codex/test-suite-efficiency-review-20261025';
@@ -29,17 +30,20 @@ export function assertCompilerTransportInvocation(e,mode){
   &&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF===REF
   &&e.GITHUB_RUN_ATTEMPT==='1'&&id(e.GITHUB_RUN_ID)&&sha(e.AIHR_CI_HEAD)&&sha(e.AIHR_CI_CONTROL_HEAD)
   &&e.GITHUB_SHA===e.AIHR_CI_CONTROL_HEAD&&typeof e.RUNNER_NAME==='string'&&e.RUNNER_NAME.length>0,'Managed manual compiler context required');
- const origin=e.AIHR_COMPILER_ORIGIN_RUN_ID;
+ const origin=e.AIHR_COMPILER_ORIGIN_RUN_ID,child=e.AIHR_COMPILER_COMPATIBLE_CHILD==='true';
+ assert([undefined,'false','true'].includes(e.AIHR_COMPILER_COMPATIBLE_CHILD),'Unknown compiler applicability mode');
  if(origin){
-  assert(mode==='consumer'&&id(origin)&&origin!==e.GITHUB_RUN_ID&&e.AIHR_COMPILER_ORIGIN_CONTROLLER===e.AIHR_CI_HEAD,'Explicit retained compiler origin required');
- }else assert(e.AIHR_CI_HEAD===e.AIHR_CI_CONTROL_HEAD,'Initial producer/source/controller must match');
+  assert(mode==='consumer'&&id(origin)&&origin!==e.GITHUB_RUN_ID&&sha(e.AIHR_COMPILER_ORIGIN_CONTROLLER),'Explicit retained compiler origin required');
+  if(child)assert(e.AIHR_CI_HEAD===e.AIHR_CI_CONTROL_HEAD&&e.AIHR_CI_HEAD!==e.AIHR_COMPILER_ORIGIN_CONTROLLER,'Actual distinct child candidate/controller required');
+  else assert(e.AIHR_COMPILER_ORIGIN_CONTROLLER===e.AIHR_CI_HEAD,'Retained source differs outside compatible-child mode');
+ }else assert(!child&&e.AIHR_CI_HEAD===e.AIHR_CI_CONTROL_HEAD,'Initial producer/source/controller must match');
  return true;
 }
 const originRun=e=>e.AIHR_COMPILER_ORIGIN_RUN_ID||e.GITHUB_RUN_ID;
 const originController=e=>e.AIHR_COMPILER_ORIGIN_CONTROLLER||e.AIHR_CI_CONTROL_HEAD;
 export function validateCompilerArtifact({run,jobs,artifact},e){
  assert(id(e.AIHR_COMPILER_ARTIFACT_ID),'Exact compiler artifact ID required');
- assert(run.id===Number(originRun(e))&&run.run_attempt===1&&run.event==='workflow_dispatch'&&run.head_sha===e.AIHR_CI_HEAD
+ assert(run.id===Number(originRun(e))&&run.run_attempt===1&&run.event==='workflow_dispatch'&&run.head_sha===originController(e)
   &&run.path===WORKFLOW&&run.head_branch==='codex/test-suite-efficiency-review-20261025'&&run.repository?.full_name===REPO&&run.repository.id===1333414856,'Authenticated compiler origin differs');
  const selected=jobs.filter(j=>j.name==='compiler-state-producer');assert.equal(selected.length,1,'Unique compiler producer required');
  const job=selected[0];assert(job.run_id===run.id&&job.run_attempt===1&&job.head_sha===run.head_sha&&job.status==='completed'&&job.conclusion==='success','Completed compiler producer required');
@@ -97,12 +101,20 @@ function createCache(source){
  return {dir,file:join(source,CACHE_RELATIVE),remove(){const now=directory(dir);assert(now.ino===pinned.ino&&now.dev===pinned.dev,'Owned compiler cache replaced');rmSync(dir,{recursive:true});}};
 }
 const runner=source=>({name:process.env.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))});
+function diskSample(source,report,phase){
+ const st=statfsSync(source),availableBytes=st.bavail*st.bsize;
+ assert(Number.isSafeInteger(availableBytes)&&availableBytes>=0,'Actual compiler disk capacity unavailable');
+ report.diskSamples.push({phase,at:new Date().toISOString(),availableBytes,totalBytes:st.blocks*st.bsize});
+ if(process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-compiler-diagnostic')assert(availableBytes>=2*1024**3,'Bounded compiler requires2GiB remaining after swap reservation');
+}
 async function compile(source,cache,out,report,name,expectedErrorPath=null){
+ diskSample(source,report,name+'-before');
  const row={name,startedAt:new Date().toISOString(),expectedErrorPath,processExitCode:null};report.phases.push(row);
  const log=join(out,name+'.log');
  const args=['-v',process.execPath,join(source,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache.file];
  const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=8192'},log});
  Object.assign(row,result,{processExitCode:result.code,endedAt:new Date().toISOString()});
+ diskSample(source,report,name+'-after');
  const text=regular(log,MAX_LOG).toString('utf8');Object.assign(row,validateCompilerPhase(result,text,expectedErrorPath));
  const bytes=regular(cache.file,64*1024*1024);row.cache={bytes:bytes.length,sha256:hash(bytes)};
  return {row,bytes,text};
@@ -111,7 +123,7 @@ function validateCurrentRun(run,e){
  assert(run.id===Number(e.GITHUB_RUN_ID)&&run.run_attempt===1&&run.event==='workflow_dispatch'&&run.head_sha===e.AIHR_CI_CONTROL_HEAD
   &&run.path===WORKFLOW&&run.head_branch==='codex/test-suite-efficiency-review-20261025'&&run.repository?.full_name===REPO&&run.repository.id===1333414856,'Authenticated executing controller differs');
 }
-async function receive(source,out,identity,e,currentRunner){
+async function receive(source,out,identity,invoked,e,currentRunner){
  const run=api('actions/runs/'+originRun(e)),jobs=api('actions/runs/'+originRun(e)+'/attempts/1/jobs?per_page=100');
  assert(jobs.total_count===jobs.jobs.length&&jobs.jobs.length<100,'Complete bounded compiler jobs inventory required');
  const artifact=api('actions/artifacts/'+e.AIHR_COMPILER_ARTIFACT_ID),job=validateCompilerArtifact({run,jobs:jobs.jobs,artifact},e);
@@ -126,9 +138,19 @@ async function receive(source,out,identity,e,currentRunner){
  const swap=JSON.parse(regular(join(packet,'swap-cleanup.json'),16*1024));
  assert(swap.kind==='OWNED_COMPILER_SWAP_CLEANUP'&&swap.runId===originRun(e)&&swap.attempt==='1'&&swap.mode==='--state-transport-producer'&&swap.swapAbsent===true&&swap.fileAbsent===true&&swap.originalCommandExit===0&&swap.cleanupExit===0,'Original compiler swap cleanup not verified');
  assert(producer.kind==='WHOLE_PROJECT_COMPILER_STATE_PRODUCER_NOT_RELEASE'&&producer.releaseAuthorized===false&&producer.exitCode===0
-  &&producer.source===e.AIHR_CI_HEAD&&producer.controller===originController(e)&&producer.runId===originRun(e)&&producer.attempt==='1'
-  &&producer.cacheRelative===CACHE_RELATIVE&&isDeepStrictEqual(producer.identity,identity)&&producer.phases.length===1
+  &&producer.source===originController(e)&&producer.controller===originController(e)&&producer.runId===originRun(e)&&producer.attempt==='1'
+  &&producer.cacheRelative===CACHE_RELATIVE&&producer.phases.length===1
   &&producer.sourceRestored&&producer.controllerRestored&&producer.cacheRemoved,'Producer compiler evidence differs');
+ const originalIdentity=compilerStateIdentity(producer.identity);
+ assert(originalIdentity.source===producer.source&&originalIdentity.controller===producer.controller&&originalIdentity.runId===producer.runId&&originalIdentity.attempt==='1','Original identity relabelled');
+ let compatibility=null;
+ if(e.AIHR_COMPILER_COMPATIBLE_CHILD==='true'){
+  const comparison=api('compare/'+producer.source+'...'+e.AIHR_CI_HEAD+'?per_page=100');
+  save(join(out,'comparison-source.json'),comparison);
+  compatibility=compatibleCompilerState({...originalIdentity,invoked:producer.invoked},{...identity,invoked},comparison);
+  const added=compatibility.changedFiles.filter(row=>row.status==='added'&&/\.(?:ts|tsx|mts)$/.test(row.path)).map(row=>row.path);
+  assert(isDeepStrictEqual(added,['scripts/ci-compiler-cache-policy.ts']),'This bounded trial requires exactly its new typed cache policy root');
+ }else assert(isDeepStrictEqual(originalIdentity,identity),'Same-candidate compiler identity differs');
  assertIndependentCompilerVm(producer.runner,currentRunner);
  assert(log.kind==='RAW_WHOLE_PROJECT_COMPILER_OUTPUT'&&typeof log.text==='string'&&Buffer.byteLength(log.text)<=MAX_LOG
   &&hash(Buffer.from(log.text))===producer.compilerLogSha256,'Raw compiler log binding differs');
@@ -137,28 +159,48 @@ async function receive(source,out,identity,e,currentRunner){
  const snapshot=join(out,'snapshot');mkdirSync(snapshot,{mode:0o700});
  writeFileSync(join(snapshot,'provenance.json'),JSON.stringify(envelope)+'\n',{flag:'wx',mode:0o600});
  writeFileSync(join(snapshot,'whole-project.tsbuildinfo'),bytes,{flag:'wx',mode:0o600});
- const verified=readCompilerState(snapshot,identity);
- return {bytes:verified.bytes,envelope,producer,artifact:{id:artifact.id,digest:artifact.digest},snapshot};
+ const verified=readCompilerState(snapshot,originalIdentity);
+ return {bytes:verified.bytes,envelope,producer,compatibility,artifact:{id:artifact.id,digest:artifact.digest},snapshot};
 }
 export async function compilerTransport(mode){
  const e=process.env;assertCompilerTransportInvocation(e,mode);
  const source=realpathSync(process.cwd());sourceClean(source,e);
  const out=join(realpathSync(e.RUNNER_TEMP),'diagnostic-compiler-transport-'+mode);mkdirSync(out,{mode:0o700});
  const {identity,invoked}=context(source,e),currentRunner=runner(source),cache=createCache(source);
- const report={kind:mode==='producer'?'WHOLE_PROJECT_COMPILER_STATE_PRODUCER_NOT_RELEASE':'WHOLE_PROJECT_CROSS_VM_COMPILER_STATE_NOT_RELEASE',
+ const report={kind:mode==='producer'?'WHOLE_PROJECT_COMPILER_STATE_PRODUCER_NOT_RELEASE':e.AIHR_COMPILER_COMPATIBLE_CHILD==='true'?'WHOLE_PROJECT_COMPATIBLE_CANDIDATE_COMPILER_STATE_NOT_RELEASE':'WHOLE_PROJECT_CROSS_VM_COMPILER_STATE_NOT_RELEASE',
   source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD,runId:e.GITHUB_RUN_ID,attempt:'1',identity,invoked,runner:currentRunner,cacheRelative:CACHE_RELATIVE,
-  startedAt:new Date().toISOString(),cacheWasAbsent:!existsSync(cache.file),phases:[],exitCode:1,releaseAuthorized:false};
- let fixture=null,produced;
+  startedAt:new Date().toISOString(),cacheWasAbsent:!existsSync(cache.file),phases:[],diskSamples:[],capacityProfile:e.AIHR_CI_CAPACITY_PROFILE||'legacy',exitCode:1,releaseAuthorized:false};
+ let fixture=null,produced,trackedControl=null;
+ const restoreTrackedControl=()=>{
+  if(!trackedControl)return;
+  const now=lstatSync(trackedControl.path);
+  assert(now.dev===trackedControl.dev&&now.ino===trackedControl.ino&&hash(regular(trackedControl.path,256*1024))===trackedControl.mutatedSha256,'Owned tracked control was replaced');
+  writeFileSync(trackedControl.path,trackedControl.bytes);
+  assert(hash(regular(trackedControl.path,256*1024))===report.firstRestoreControl.originalSha256,'Original candidate root not restored');
+  report.firstRestoreControl.restored=true;trackedControl=null;
+ };
  try{
   assert(report.cacheWasAbsent,'Never merge an existing compiler state');
   if(mode==='producer'){
    produced=await compile(source,cache,out,report,'cold');report.compilerLogSha256=hash(Buffer.from(produced.text));
    sourceClean(source,e);
   }else{
-   const started=Date.now(),origin=await receive(source,out,identity,e,currentRunner);report.restoreMs=Date.now()-started;
-   report.originalArtifact=origin.artifact;report.producerRunner=origin.producer.runner;report.producerSource=identity.source;report.producerController=identity.controller;report.producerRunId=identity.runId;
+   const started=Date.now(),origin=await receive(source,out,identity,invoked,e,currentRunner);report.restoreMs=Date.now()-started;
+   report.originalArtifact=origin.artifact;report.producerRunner=origin.producer.runner;report.producerSource=origin.envelope.identity.source;report.producerController=origin.envelope.identity.controller;report.producerRunId=origin.envelope.identity.runId;
+   report.originalStateIdentity=origin.envelope.identity;report.compatibility=origin.compatibility;
    writeFileSync(cache.file,origin.bytes,{flag:'wx',mode:0o600});report.restoredStateSha256=hash(origin.bytes);
-   const base=await compile(source,cache,out,report,'restored-on-fresh-vm');assert.equal(base.row.files,origin.envelope.completed.files,'Restored compiler omitted original files');
+   const expectedFiles=origin.envelope.completed.files+(origin.compatibility?1:0);
+   if(origin.compatibility){
+    const relative='scripts/ci-compiler-cache-policy.ts',path=join(source,relative),bytes=regular(path,256*1024),pin=lstatSync(path);
+    assert(Buffer.compare(bytes,execFileSync('git',['show',e.AIHR_CI_HEAD+':'+relative],{cwd:source,maxBuffer:256*1024}))===0,'Candidate typed root must match frozen source');
+    const mutated=Buffer.concat([bytes,Buffer.from('\nconst __aihrCacheFirstRestore'+randomUUID().replaceAll('-','')+': string = 1;\n')]);
+    report.firstRestoreControl={path:relative,originalSha256:hash(bytes),mutatedSha256:hash(mutated),restored:false};
+    trackedControl={path,bytes,dev:pin.dev,ino:pin.ino,mutatedSha256:hash(mutated)};writeFileSync(path,mutated);
+    try{const refused=await compile(source,cache,out,report,'first-restored-new-candidate-refused',relative);assert.equal(refused.row.files,expectedFiles);}
+    finally{restoreTrackedControl();}
+    sourceClean(source,e);
+   }
+   const base=await compile(source,cache,out,report,'restored-on-fresh-vm');assert.equal(base.row.files,expectedFiles,'Restored compiler omitted required candidate files');
    sourceClean(source,e);
    const relative='aihr-compiler-transport-'+randomUUID();fixture=join(source,relative);mkdirSync(fixture,{mode:0o700});
    const contract=join(fixture,'contract.ts'),consumer=join(fixture,'consumer.ts'),valid='export const value: string = "fixture";\n',consumerBytes='import {value} from "./contract";\nexport const consumed: string = value;\n';
@@ -175,6 +217,7 @@ export async function compilerTransport(mode){
   report.exitCode=0;
  }catch(error){report.error=String(error);throw error;}
  finally{
+  restoreTrackedControl();
   if(fixture){rmSync(fixture,{recursive:true});fixture=null;}
   report.fixtureRemoved=true;
   cache.remove();report.cacheRemoved=!existsSync(cache.dir);

@@ -31,6 +31,25 @@ test('real shell skips all SDK operations with enough capacity and fails closed 
   const env={...process.env,PATH:dir+':/usr/bin:/bin',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-db-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_WORKSPACE:dir,RUNNER_TEMP:dir,AIHR_CI_CAPACITY_PROFILE:'bounded-db-diagnostic',AIHR_SUDO_TRACE:trace};
   const script=fileURLToPath(new URL('./prepare-runner.sh',import.meta.url));
   const ok=spawnSync('/bin/bash',[script],{env,encoding:'utf8'});assert.equal(ok.status,0,ok.stderr);assert(ok.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
+  const compilerEnv={...env,AIHR_CI_CAPACITY_PROFILE:'bounded-compiler-diagnostic',AIHR_COMPILER_TRANSPORT:'consumer',AIHR_COMPILER_COMPATIBLE_CHILD:'true',GITHUB_WORKFLOW_REF:env.GITHUB_WORKFLOW_REF.replace('alpha-staging-db-diagnostics.yml','alpha-staging-diagnostics.yml'),...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+  const compilerOk=spawnSync('/bin/bash',[script],{env:compilerEnv,encoding:'utf8'});assert.equal(compilerOk.status,0,compilerOk.stderr);assert(compilerOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
   for(const [changes,expected] of [[{AIHR_DF_FAIL:'1'},1],[{GITHUB_WORKFLOW_REF:'other'},2],[{AIHR_CI_CAPACITY_PROFILE:'unknown'},2]]){const r=spawnSync('/bin/bash',[script],{env:{...env,...changes},encoding:'utf8'});assert.equal(r.status,expected,r.stderr);assert(!existsSync(trace));}
  }finally{rmSync(dir,{recursive:true});}
+});
+
+test('bounded compiler consumer retains12GiB setup and8GiB before swap; ordinary compiler stays20GiB',async()=>{
+ const {BOUNDED_COMPILER_SETUP_KIB,compilerSwapFloorKiB}=await import('./runner-capacity.mjs');
+ const e={GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',
+ GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',
+ AIHR_COMPILER_TRANSPORT:'consumer',AIHR_COMPILER_COMPATIBLE_CHILD:'true',
+ ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ assert.equal(BOUNDED_COMPILER_SETUP_KIB,12*1024**2);
+ assert.equal(capacityDecision('bounded-compiler-diagnostic',BOUNDED_COMPILER_SETUP_KIB-1).decision,'clean');
+ assert.equal(capacityDecision('bounded-compiler-diagnostic',12861104).decision,'enough');
+ assert.equal(compilerSwapFloorKiB('bounded-compiler-diagnostic',e),8*1024**2);
+ assert.equal(compilerSwapFloorKiB('legacy',{}),20*1024**2);
+ for(const [key,value]of Object.entries({AIHR_COMPILER_TRANSPORT:'producer',AIHR_COMPILER_COMPATIBLE_CHILD:'false',GITHUB_REPOSITORY_ID:'1',GITHUB_EVENT_NAME:'push',
+ GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('diagnostics.yml','alpha-staging.yml'),DATABASE_URL:'postgres://live',MIGRATION_DATABASE_URL:'postgres://live'}))
+  assert.throws(()=>compilerSwapFloorKiB('bounded-compiler-diagnostic',{...e,[key]:value}));
+ assert.throws(()=>compilerSwapFloorKiB('bounded-db-diagnostic',e));
 });
