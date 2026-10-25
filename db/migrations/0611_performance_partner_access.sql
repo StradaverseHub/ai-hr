@@ -161,8 +161,9 @@ CREATE POLICY onehr_cycle_create_authority ON performance_onehr_cycle AS RESTRIC
 -- Returns ONLY full_name, preferred_name and employee_code (plus the ids that key them) for the requested
 -- employments in the current tenant whose company the caller administers for OneHR (app.onehr_admin — HR
 -- administrators, perf-comp partners and performance partners alike, live grant). Never DOB, address,
--- gender, marital status, contact details or anything else on person. Every OneHR administration read uses
--- it, so an HR administrator sees exactly the labels the person join used to give them.
+-- gender, marital status, contact details or anything else on person. OneHR administration readers use it
+-- wherever the caller cannot read the person row (packs/performance/onehr/person-labels.ts); where the caller
+-- can (HR), both sources are the same person row, so HR sees exactly the labels it saw before.
 CREATE FUNCTION app.onehr_person_labels(employment_ids uuid[]) RETURNS TABLE(employment_id uuid, person_id uuid, full_name text, preferred_name text, employee_code text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT e.id, p.id, p.full_name, p.preferred_name, e.employee_code
