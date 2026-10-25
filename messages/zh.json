@@ -3678,7 +3678,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
-        "performance": "经理及以上；显示内容取决于你实际的汇报线。",
+        "performance": "经理及以上，以及绩效合作伙伴（仅限其公司的 OneHR 周期）；显示内容取决于你实际的汇报线和权限范围。",
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
