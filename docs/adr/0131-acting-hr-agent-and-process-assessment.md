@@ -844,3 +844,164 @@ Authored DOM cases cover text escaping, hidden balances, malformed/private props
 date-only fallback and each locale's warning. They remain UNRUN. No visual quality, translation review,
 keyboard/screen-reader behavior or real viewport/render evidence is claimed. Review the representative
 screen in the actual app before mounting/propagating the component or adding confirmed submission.
+
+
+## Owner expansion: AI workspace, providers and governed domain agents (2026-10-26 KL)
+
+**Decision:** After the current harness release, deliver a complete AI product plan covering
+provider/router configuration (OpenRouter as the first candidate), an AI home/workspace and chatbot,
+orchestration, and Import, Payroll, Leave and Attendance agents. The purpose includes measuring
+capability and improvement during real production imports. Access-right enforcement is a release
+condition, not a model instruction. This extends the earlier roadmap; it does not claim these agents
+are implemented or authorize unreviewed production data transfer. Current H release remains separate.
+The coordinated Mobile window still follows H; own-leave verification uses its later agreed window.
+
+### Existing surfaces and honest gaps
+
+Source inspection of the H candidate finds `/assistant` (question form, own recent exchanges, visible
+stop states/tool-use disclosure, module/grant checks), `/admin/ai` (admin tenant provider settings),
+`/control-tower/agents` and the orchestrator section of `/control-tower` (operations/agent management).
+`/me/home` is the employee home; do not silently replace it or expose HR operations there. The current
+Assistant is a basic ask/history screen, not the proposed complete conversational workspace. Source
+presence does not establish that a particular production user has the module, grant or configured
+provider. Confirm production entitlement and navigation through the authorized user's actual UI
+without publishing private grants or keys. Existing canonical tools include own leave balances and
+requests; extending that registry must preserve its explicit field projections and refusal semantics.
+
+Use the existing Assistant entry as the user AI workspace rather than create competing chat histories.
+The workspace should offer permitted tasks, a conversational thread, source links the caller can open,
+review cards, pending confirmations, run progress and honest terminal receipts. Show active company/
+employment when relevant, but never let a client selector grant access. Denied, unavailable, incomplete,
+stale and cancelled outcomes need distinct actionable messages. Keep admin provider controls and
+cross-workforce queues in their existing guarded operations surfaces. Review desktop/mobile and all
+six locales before propagating the final representative interface. Discoverability, grant denial and
+empty/unconfigured states are acceptance items, not merely route existence.
+
+### Delivery sequence and entry/exit conditions
+
+| Order | Deliverable | Required exit evidence |
+| --- | --- | --- |
+| 0 — current | Release the existing reviewed harness | Exact-candidate required local gate, outcome walkthrough, official deployment and arrival; preserve current baseline and peer changes. |
+| 1 | Human-confirmed own-leave Assistant | Complete the existing atomicity, legacy-writer fencing, current authority, receipt/reconciliation, CSRF, retention and DB security/concurrency work. Real submit/reopen and uncertain-response recovery must not duplicate requests. |
+| 2 | AI workspace and provider configuration | Extend existing surfaces/gateway; first provider adapter contract tests and fake-server security tests, then explicitly configured live connection verification. No production HR payload required for connection tests. |
+| 3 | Governed orchestration and first Import agent | Bounded planner/tool runner through the harness, reviewed dry-run import suggestions, canonical validation and human commit; demonstrate scope/privacy and actual measurement capture. |
+| 4 | Payroll, Leave and Attendance agent expansion | Domain-specific canonical tools and approval boundaries, security matrix, actual UI outcomes and fresh candidate release evidence for each increment. |
+| 5 | Controlled production-import evaluation | Approved exact dataset/module/provider/data policy, recorded baseline and assisted comparison, canonical commits and reconciliation; report measured outcomes and limitations. |
+
+Planning/source preparation may overlap these phases. Provider and additional agent execution does
+not bypass unfinished own-leave correctness or the coordinated release/resource order. Do not invent
+calendar delivery dates or classify an unrun adapter as ready.
+
+### Provider/router configuration
+
+Extend the tenant BYOK/configuration/gateway owners; do not create agent-specific key stores. Admin
+configuration covers provider, approved endpoint, model, supported tool/structured-output capabilities,
+privacy/routing policy, bounded timeout/retry, token/run/concurrency budgets and usage visibility.
+Store encrypted secrets server-side; return masked presence only. Rotate/revoke without exposing keys
+in the browser, tools, events, diagnostic errors or exports. Connection testing is explicit and uses a
+non-HR payload. Validate supported capabilities per selected model and fail visibly on incompatibility.
+
+An OpenAI-compatible URL is not evidence that every tool/stream/usage/error behavior is interchangeable.
+Implement a normalized provider contract and test malformed tool arguments, partial streams, refusal,
+truncation, cancellation, rate limits, timeout, usage reporting and provider failure. Tool writes are
+never replayed merely because the provider timed out. Bind receipts to the actual provider/model and
+policy version, not a silently substituted model.
+
+Allow only approved HTTPS endpoints; reject private/loopback/link-local/metadata destinations,
+redirect escape and DNS rebinding. Custom enterprise endpoints require deliberate allowlisting and
+must not convert provider configuration into an SSRF route. Routing/model fallback cannot loosen
+privacy, region, capability or cost constraints; refuse if no eligible endpoint remains. No automatic
+external search/plugins/subagent tools receiving HR data. An application agent can only invoke our
+registered, authorized tools. Provider credentials do not grant data access.
+
+Primary documentation checked 2026-10-26: [OpenRouter provider routing](https://github.com/OpenRouterTeam/docs/blob/main/guides/routing/provider-selection.mdx),
+[ZDR guidance](https://github.com/OpenRouterTeam/docs/blob/main/guides/features/zdr.mdx),
+and [retention boundaries](https://openrouter.ai/blog/insights/zero-data-retention/).
+Routing preferences, required parameters and retention filters need explicit adapter enforcement.
+Provider inference retention controls do not cover our logs or external tool services; audit those
+separately. Recheck current documentation, selected endpoint terms and account capabilities before
+implementation/live enablement. No pricing, residency or universal no-retention guarantee is assumed.
+
+### Agent boundaries
+
+| Agent | Allowed job within current user scope | Human/canonical boundary |
+| --- | --- | --- |
+| Import | Suggest column mappings, normalize proposed formats, explain validation errors, flag ambiguity/duplicates and assemble a reviewable correction plan. | Never invent missing HR facts. Existing module preview and fresh validation own admissibility; a human reviews exact rows/mappings and invokes canonical commit. |
+| Payroll | Explain authorized canonical payroll results, locate exceptions and propose investigation/correction steps. | Canonical payroll engine computes every amount. No model calculation, pay change, batch close, payment, export or sensitive-document disclosure without the real permissions and governed human action. |
+| Leave | Explain visible balances/policy and prepare an own-leave request; expand scoped HR assistance only through separate authorized tools. | Exact human confirmation for submission; canonical leave validation/approval routing remains authoritative. An employee cannot query another employee's balance by name or guessed ID. |
+| Attendance | Explain visible attendance/exceptions and prepare correction or import proposals. | Actual clock/evidence ownership, manager/HR attestations and approval workflows remain unchanged; no fabricated work times or autonomous overtime approval. |
+
+Agent names are task configurations over one governed harness, not new authority-bearing accounts.
+Adding more agents never enlarges the caller's tool set. For multi-step work, display the proposed
+plan, affected records and review checkpoints; bind each step to explicit typed tool contracts.
+Bound steps, wall time, tokens, concurrency, cost and result size. Pause/cancel must stop further
+admissions and reconcile in-flight canonical effects. Retries use domain-supported idempotency and
+stored receipts; no generic repeat-write loop. Record proposed/running/awaiting-human/completed/
+refused/failed/cancelled/uncertain states accurately. A model saying success is never a receipt.
+
+### Access and privacy invariants — release blocking
+
+Authenticate fresh on the server and derive tenant/user/person/employment, roles, grants, delegations
+and company scope there. Never accept these as authority from prompt, tool arguments or browser state.
+Each retrieval, tool call, download and eventual write rechecks current authorization through the
+canonical read/write owner and RLS. Filter before retrieval/provider dispatch: do not send broad rows
+to the model and ask it to hide unauthorized fields afterward. Use explicit allowlisted projections,
+field-level sensitive-data rules and least-data result limits.
+
+A manager sees only currently delegated/direct-report information allowed by the product; ordinary
+employees receive their own authorized records only. HR/admin labels alone do not mean unrestricted
+salary, medical, discipline or tenant access. Multi-employment/company selection preserves the exact
+underlying authorization. Unknown scope denies. Identifiers, names, file cells and model instructions
+cannot grant access. Refusals should not reveal whether an inaccessible employee or document exists.
+
+Conversation/run/attachment storage, source links, audit views, exports and background continuations
+must enforce their own current permissions. Permission revocation must invalidate queued work and
+prevent retained conversation or cached/RAG snippets from leaking now-inaccessible data. Cache/vector
+indexes must carry tenant, subject/field scope, authorization version and retention/deletion metadata;
+recheck source permission before reuse. Establish tenant/user isolation before introducing retrieval
+augmentation or long-lived memory. Logs should retain minimal operational metadata, not raw salary,
+identity documents, prompts or imported personal rows by default. Define retention, erasure and
+provider-dispatch records with the existing privacy owners.
+
+Imported documents, CSV cells, retrieved text and tool results are untrusted data, including embedded
+instructions to reveal records or call tools. Tool selection, strict schemas, authorization, egress
+policy and write confirmation remain deterministic. No free-form SQL, shell, generic HTTP, privileged
+service credential, credential-reading tool or cross-agent authority transfer is exposed to the model.
+
+Security acceptance covers own/other employee, manager in/out of reporting scope, delegated/expired
+scope, HR restricted company, group roles, foreign company/tenant, suspended/revoked user, guessed IDs,
+conversation/attachment replay, poisoned cache/RAG, malicious import cells, tool argument injection,
+indirect prompt injection, provider fallback, background retry and export/source links. Test result
+content AND absence of unauthorized database reads/provider payloads/cache hits/log entries. Exercise
+both direct endpoints and the actual chatbot UI; a prompt-only refusal is insufficient. Any proven
+unauthorized disclosure blocks release and requires fixing the canonical boundary and regression.
+
+### Production-import capability and improvement evaluation
+
+First identify the actual import module, supported formats, dataset ownership/size, sensitive columns,
+canonical validator and commit/reversal semantics. Start synthetic/redacted, then approved production
+samples in preview-only mode. Exact raw HR payload dispatch requires explicit tenant-authorized policy
+and provider approval; the roadmap itself is not that approval. Compare equivalent datasets/tasks and
+scope under the same canonical validation. Keep the baseline and AI-assisted attempt records separate;
+use fresh isolated evaluation copies where necessary so a prior commit cannot contaminate comparison.
+
+Record elapsed preview-to-success time, actual human handling time (separately from model/server wait),
+interventions, accepted/rejected suggestions, reviewed mapping accuracy, unresolved ambiguity,
+validation errors, duplicates, rework, successfully committed/reconciled rows, input/output tokens,
+cost and latency. Publish denominators, dataset/version, model/prompt/tool versions, failed attempts
+and quality tradeoffs. Calculate improvement only from comparable measured values; no guessed time
+savings or headcount claims. Acceptance requires no unauthorized disclosure, no invented accepted facts,
+canonical validation and exact commit reconciliation, then an owner-agreed quality/cost/time target
+based on the real baseline. Faster invalid imports do not count as improvement.
+
+### Implementation ownership and release discipline
+
+Existing AI configuration/gateway, Assistant registry, harness, canonical module services and privacy
+owners remain authoritative. Start with a source inventory and acceptance/security matrix for each
+increment; update the graph for identity, permission, tool, event, run, receipt and dependency edges.
+Allocate migrations centrally and preserve applied hashes. Validate representative desktop/mobile,
+localization, keyboard access, populated/empty/error/refusal/stale/uncertain states and actual save/reopen.
+Local verification is required in this session under the user's no-GitHub-Actions instruction.
+Run the classifier-selected exact-candidate release gate after outcome evidence; only then use the
+canonical release and verify service/build/source/ledger arrival. Keep main/alpha at the same VERIFIED
+commit per standing owner policy. These remain planned acceptance requirements, not current PASS claims.
