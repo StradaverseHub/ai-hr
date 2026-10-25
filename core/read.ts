@@ -1555,7 +1555,9 @@ export async function readOwnLeaveSubmissionReferenceTx(
       eq(domainEvent.aggregateType, 'leave-request'), eq(domainEvent.eventType, 'leave-request.submitted'),
       eq(domainEvent.actorType, 'user'), eq(domainEvent.actorId, ctx.userId),
       eq(domainEvent.subjectEmploymentId, leaveRequest.employmentId)))
-    .where(and(eq(leaveRequest.id, requestId), eq(leaveRequest.tenantId, ctx.tenantId),
+    .where(and(ownPersonPredicate(ctx), sql`app.current_user_id()=${ctx.userId}::uuid`,
+      sql`app.current_tenant_id()=${ctx.tenantId}::uuid`,
+      eq(leaveRequest.id, requestId), eq(leaveRequest.tenantId, ctx.tenantId),
       eq(employment.personId, ctx.personId))).limit(1);
   const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, row => row.request.employmentId);
   return scoped[0] ?? null;

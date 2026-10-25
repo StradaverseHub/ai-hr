@@ -815,6 +815,11 @@ regression uses a real employee submission and fresh read, refuses another real 
 person even with an HR role, and refuses a mismatched event reference. A second authored case creates
 another person's real submission, proves that the HR caller can read its canonical request, and
 requires the own-submission projection to refuse it and a cross-linked real event reference.
+Source review then found that comparing only the supplied context did not itself bind that context
+to the transaction login. The draft now composes the existing `ownPersonPredicate` and explicit
+current transaction user/tenant checks. Authored cases also borrow a different real context inside
+the HR caller's transaction, including another login for the same person; both must refuse. These
+cases remain unrun and do not establish the future adapter's complete freshness/authorization proof.
 
 This is **UNRUN** source preparation. Syntax parsing and diff checks are not database/RLS proof.
 The helper neither establishes fresh Assistant authority nor reads completed action storage; a

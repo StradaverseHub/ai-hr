@@ -103,6 +103,9 @@ describe('reviewed own-leave precondition at the canonical write', () => {
     // HR role and own-person row visibility must not substitute for that submitted-event binding.
     expect(await withTenant(ctx, tx => readOwnLeaveSubmissionReferenceTx(
       tx, ctx, result.leaveRequestId, result.submittedEventId!))).toBeNull();
+    // A borrowed same-person context must not change the real transaction's login/receipt actor.
+    expect(await withTenant(ctx, tx => readOwnLeaveSubmissionReferenceTx(
+      tx, employeeCtx, result.leaveRequestId, result.submittedEventId!))).toBeNull();
     expect(await withTenant(employeeCtx, tx => readOwnLeaveSubmissionReferenceTx(
       tx, employeeCtx, result.leaveRequestId, result.leaveRequestId))).toBeNull();
   });
@@ -125,6 +128,9 @@ describe('reviewed own-leave precondition at the canonical write', () => {
       expect(await tx.select({ id: leaveRequest.id }).from(leaveRequest)
         .where(eq(leaveRequest.id, result.leaveRequestId))).toEqual([{ id: result.leaveRequestId }]);
       expect(await readOwnLeaveSubmissionReferenceTx(tx, ctx, result.leaveRequestId,
+        result.submittedEventId!)).toBeNull();
+      // Passing the other person's real context object does not rebind this HR transaction.
+      expect(await readOwnLeaveSubmissionReferenceTx(tx, otherCtx, result.leaveRequestId,
         result.submittedEventId!)).toBeNull();
     });
     const own = await withTenant(ctx, tx => requestLeave(ctx, args, tx, reviewed));
