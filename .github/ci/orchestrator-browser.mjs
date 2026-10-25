@@ -194,6 +194,12 @@ async function main() {
                 assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
                 assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
               } else {
+                if (route === '/control-tower/agents') {
+                  const panel = page.locator('details#orchestrator');
+                  const summary = panel.locator(':scope > summary');
+                  await summary.focus(); await page.keyboard.press('Enter');
+                  assert.notEqual(await panel.getAttribute('open'), null, 'Keyboard could not open the orchestrator panel');
+                }
                 const card = cardFor(page, t); await card.waitFor({state: 'visible'});
                 const text = await card.innerText();
                 if (actor.key === 'A-hr') { assert(text.includes('Orchestration fictional employee A')); assert(!text.includes('Orchestration fictional employee B')); }
