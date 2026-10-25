@@ -1,11 +1,9 @@
 /**
  * 6e122302 — the Notice Board. HR publishes an announcement to a resolved set of employees.
  *
- * RELEASE ONE OF TWO. This module carries creating, targeting, publishing, archiving and the employee-side
- * reads (dashboard card, listing, reading page, login popup). ACKNOWLEDGEMENT TRACKING IS NOT HERE and is
- * not half-here: there is no acknowledgement row, no agreement text, no "require acknowledgement" flag and
- * no HR acknowledgement report. The approved plan splits the item that way on purpose — publishing is
- * useful on day one, and acknowledgement is EVIDENCE, which is worth getting right rather than fast.
+ * Published content retains immutable revisions. Viewing, popup dismissal and explicit version-bound
+ * acknowledgement are separate facts. The database command commits a receipt with its real actor and
+ * audit event atomically; an old page cannot acknowledge newer content.
  *
  * ── THREE DECISIONS, ALL LOAD-BEARING ─────────────────────────────────────────────────────────────────
  *
@@ -25,11 +23,15 @@
  *
  * The targeting engine is `core/org-criteria.ts`, shared with bulk leave adjustments rather than copied.
  */
+import {createHash} from 'node:crypto';
+import {NOTICE_ATTACHMENT_MAX_BYTES} from '../lib/notice-upload-policy';
+export {NOTICE_ATTACHMENT_MAX_BYTES};
+import {resolveDocumentUpload} from './employee-documents';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, notice, noticeRecipient } from '../db/schema';
+import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   isUnrestrictedOrgCriteria,
@@ -88,8 +90,16 @@ export function isNoticeLive(
 }
 
 export type NoticeInput = {
+  /** Stable authoring boundary. Null/absent requires group-wide administrator authority. */
+  companyId?: string | null;
   title: string;
   body: string;
+  summary?:string;
+  category?:string|null;
+  pinned?:boolean;
+  requiresAcknowledgement?:boolean;
+  attachmentIds?:string[];
+  expectedContentVersion?:number;
   startOn: string;
   endOn: string;
   showEndDate?: boolean;
@@ -102,6 +112,7 @@ export type NoticeInput = {
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const uuidNotice=(id:string)=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id);
 
 /**
  * Publishing and archiving both record WHO did it, and the `notice_publish_pair_check` /
@@ -126,11 +137,12 @@ function requireActor(ctx: SessionContext, verb: string): string {
  * never produce a notice a create would have refused — the asymmetry that lets bad rows in through the
  * back door.
  */
-function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'employmentIds'>> & {
+function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'employmentIds' | 'expectedContentVersion'>> & {
   criteria: OrgCriteria;
   employmentIds: string[];
 } {
   const title = (p.title ?? '').trim();
+  if(p.companyId!=null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.companyId))throw new NoticeError('Choose an available authoring company.');
   if (!title) throw new NoticeError('A notice needs a title — it is what people see in the listing.');
   if (title.length > 200) throw new NoticeError('The title is too long (200 characters maximum).');
   const body = (p.body ?? '').trim();
@@ -144,10 +156,17 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
   if (targetMode === 'individual' && employmentIds.length === 0) {
     throw new NoticeError('Choose at least one employee, or target by criteria instead.');
   }
+  const summary=(p.summary?.trim()||body.replace(/<[^>]*>/g,'').replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[#*_`~>]/g,'')).replace(/\s+/g,' ').trim().slice(0,240);
+  const category=p.category?.trim()||null;
+  if(category&&category.length>80)throw new NoticeError('A notice category must be at most 80 characters.');
+  const attachmentIds=p.attachmentIds??[];
+  if(attachmentIds.length>5||new Set(attachmentIds).size!==attachmentIds.length||attachmentIds.some(id=>!uuidNotice(id)))throw new NoticeError('Choose at most five available notice attachments.');
   const popupFrequency: NoticePopupFrequency =
     p.popupFrequency === 'until_acknowledged' ? 'until_acknowledged' : 'once';
 
   return {
+    companyId: p.companyId ?? null,
+    summary,category,pinned:p.pinned===true,requiresAcknowledgement:p.requiresAcknowledgement===true,attachmentIds,
     title,
     body,
     startOn: p.startOn,
@@ -169,6 +188,56 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
  */
 type StoredCriteria = OrgCriteria & { employmentIds?: string[] };
 
+/** Being a recipient does not authorize the administrator editor or its writes. */
+const authoringNotice=(id:string)=>and(eq(notice.id,id),sql`app.can_manage_notice(${notice.id})`);
+function requireNoticeWrite(rows:readonly {id:string}[]){if(rows.length!==1)throw new NoticeError('That notice is no longer available in your authoring scope.');}
+
+export function noticeAuthoringScope(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  const [group]=await tx.execute(sql`SELECT app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+  const companies=await tx.select({id:company.id,name:company.legalName}).from(company)
+   .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() AND app.is_admin_for(${company.id})`))
+   .orderBy(asc(company.legalName),asc(company.id));
+  return {groupAllowed:group?.allowed===true,companies};
+ });
+}
+
+/** The preview and publisher use the same audience resolver and authoring boundary. Unresolved tokens
+ * stay in the draft; only real, authorized employments count, and an incomplete audience cannot publish.
+ * Resolution is as at publication/preview time, never a scheduled notice's future start date. */
+async function resolveNoticeAudienceTx(tx:Tx,ctx:SessionContext,row:Pick<typeof notice.$inferSelect,'criteria'|'targetMode'|'ownerCompanyId'>,asOf:string){
+ const stored=(row.criteria??{}) as StoredCriteria,criteria:OrgCriteria={...stored};delete (criteria as StoredCriteria).employmentIds;
+ let targets:string[],scopeMismatch=false;
+ if(row.targetMode==='individual')targets=Array.from(new Set((stored.employmentIds??[]).filter(Boolean).map(value=>/^[0-9a-f-]{36}$/i.test(value)?value.toLowerCase():value)));
+ else{
+  const companies=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`,
+   row.ownerCompanyId?sql`(${company.id}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${company.id},${row.ownerCompanyId}::uuid))`:undefined));
+  const allowed=new Set(companies.map(item=>item.id));
+  const requested=(criteria.companyIds??[]).filter(Boolean).map(value=>value.toLowerCase());
+  scopeMismatch=requested.some(id=>!allowed.has(id));
+  const bounded=requested.length?requested.filter(id=>allowed.has(id)):[...allowed];
+  // An empty company restriction means "all" to the shared criteria owner, so do not call it when
+  // the authoring intersection is empty. Other dated/active/department rules remain with that owner.
+  targets=bounded.length?await resolveOrgCriteriaTargets(tx,{criteria:{...criteria,companyIds:bounded},asOf}):[];
+ }
+ const valid=targets.filter(target=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(target));
+ const visible=valid.length?await tx.select({id:employment.id}).from(employment)
+  .where(and(inArray(employment.id,valid),eq(employment.tenantId,ctx.tenantId),sql`app.is_admin_for(${employment.companyId})`,
+   row.ownerCompanyId?sql`(${employment.companyId}=${row.ownerCompanyId}::uuid OR app.is_company_descendant(${employment.companyId},${row.ownerCompanyId}::uuid))`:undefined))
+  .orderBy(asc(employment.id)):[];
+ return {ids:visible.map(item=>item.id),invalid:valid.length!==targets.length,incomplete:scopeMismatch||visible.length!==targets.length,
+  unrestricted:row.ownerCompanyId===null&&row.targetMode==='criteria'&&isUnrestrictedOrgCriteria(criteria)};
+}
+
+export function noticeAudiencePreview(ctx:SessionContext,id:string){
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select().from(notice).where(authoringNotice(id)).limit(1);
+  if(!row||row.publishedAt)throw new NoticeError('Choose an available draft notice to preview its audience.');
+  const result=await resolveNoticeAudienceTx(tx,ctx,row,todayInKualaLumpur());
+  return {count:result.ids.length,incomplete:result.incomplete,unrestricted:result.unrestricted};
+ });
+}
+
 export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise<{ id: string }> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
@@ -178,8 +247,10 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
       .insert(notice)
       .values({
         tenantId: ctx.tenantId,
+        ownerCompanyId: c.companyId,
         title: c.title,
         body: c.body,
+        summary:c.summary,category:c.category,pinned:c.pinned,requiresAcknowledgement:c.requiresAcknowledgement,attachmentIds:c.attachmentIds,
         startOn: c.startOn,
         endOn: c.endOn,
         showEndDate: c.showEndDate,
@@ -213,19 +284,22 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
 export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInput): Promise<void> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
-    const [before] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [before] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!before) throw new NoticeError('That notice could not be found.');
     if (before.archivedAt) throw new NoticeError('An archived notice cannot be edited — restore it first.');
+    if(p.expectedContentVersion!==undefined&&p.expectedContentVersion!==before.contentVersion)throw new NoticeError('Notice content changed; reload before saving.');
+    if(p.companyId!==undefined&&c.companyId!==before.ownerCompanyId)throw new NoticeError('The authoring company is fixed. Create another notice for a different company.');
 
     const published = before.publishedAt != null;
     const stored: StoredCriteria =
       c.targetMode === 'individual' ? { employmentIds: c.employmentIds } : c.criteria;
 
-    await tx
+    const written=await tx
       .update(notice)
       .set({
         title: c.title,
         body: c.body,
+        summary:c.summary,category:c.category,pinned:c.pinned,requiresAcknowledgement:c.requiresAcknowledgement,attachmentIds:c.attachmentIds,
         startOn: c.startOn,
         endOn: c.endOn,
         showEndDate: c.showEndDate,
@@ -239,7 +313,8 @@ export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInp
         popupFrequency: c.popupFrequency,
         updatedAt: sql`now()`,
       })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -248,6 +323,7 @@ export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInp
       eventType: 'notice.updated',
       actor: actorOf(ctx),
       payload: {
+        presentation:{category:c.category,pinned:c.pinned},
         before: { title: before.title, startOn: before.startOn, endOn: before.endOn },
         after: { title: c.title, startOn: c.startOn, endOn: c.endOn },
         targetingFrozen: published,
@@ -271,41 +347,16 @@ export async function publishNotice(
   const asOf = opts.asOf && ISO_DATE.test(opts.asOf) ? opts.asOf : todayInKualaLumpur();
   const actorUserId = requireActor(ctx, 'published');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('An archived notice cannot be published.');
     if (row.publishedAt) throw new NoticeError('That notice has already been published.');
 
-    const stored = (row.criteria ?? {}) as StoredCriteria;
-    let targets: string[];
-    if (row.targetMode === 'individual') {
-      targets = Array.from(new Set((stored.employmentIds ?? []).filter(Boolean)));
-    } else {
-      // ⚠️ The audience is resolved AS AT the publish date, not the notice's start date. A notice
-      // scheduled to open next month reaches the people who are here NOW, which is what an administrator
-      // pressing Publish today means — and it is the only reading under which the count they were shown
-      // before pressing the button is the count they get.
-      // Strip the reserved individual-targeting key before handing the object to the resolver: it lives on
-      // the same blob (one place for "who was asked for") and is not a criteria axis.
-      const criteria: OrgCriteria = { ...stored };
-      delete (criteria as StoredCriteria).employmentIds;
-      targets = await resolveOrgCriteriaTargets(tx, { criteria, asOf });
-    }
-    if (targets.length === 0) {
-      throw new NoticeError('No employees matched — this notice would reach nobody.');
-    }
-
-    // Every target must be one this session can actually see. RLS decides that: an id from another tenant,
-    // or one an admin's company scope excludes, simply does not come back and is dropped here rather than
-    // being written into a snapshot the reader could never have produced.
-    const visible = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(inArray(employment.id, targets));
-    const recipientIds = visible.map((v) => v.id);
-    if (recipientIds.length === 0) {
-      throw new NoticeError('No employees matched — this notice would reach nobody.');
-    }
+    const audience=await resolveNoticeAudienceTx(tx,ctx,row,asOf);
+    if(audience.invalid)throw new NoticeError('Some employee references are unavailable. Review the audience before publishing.');
+    if(audience.incomplete)throw new NoticeError('Some employees are outside this notice’s authoring scope. Review the audience before publishing.');
+    const recipientIds=audience.ids;
+    if(!recipientIds.length)throw new NoticeError('No employees matched — this notice would reach nobody.');
 
     await tx
       .insert(noticeRecipient)
@@ -318,10 +369,11 @@ export async function publishNotice(
       )
       .onConflictDoNothing();
 
-    await tx
+    const written=await tx
       .update(notice)
       .set({ publishedAt: sql`now()`, publishedByUserId: actorUserId, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
 
     // The event core/notifications.ts turns into notifications for the snapshot audience. `notify` rides
     // in the payload so the registry can decide WITHOUT a second query, and so switching the flag off
@@ -336,6 +388,7 @@ export async function publishNotice(
         title: row.title,
         recipients: recipientIds.length,
         notify: row.notifyOnPublish === true,
+        requiresAcknowledgement:row.requiresAcknowledgement,
         asOf,
       },
     });
@@ -348,13 +401,14 @@ export async function publishNotice(
 export async function archiveNotice(ctx: SessionContext, id: string): Promise<void> {
   const actorUserId = requireActor(ctx, 'archived');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('That notice is already archived.');
-    await tx
+    const written=await tx
       .update(notice)
       .set({ archivedAt: sql`now()`, archivedByUserId: actorUserId, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -368,13 +422,14 @@ export async function archiveNotice(ctx: SessionContext, id: string): Promise<vo
 
 export async function restoreNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (!row.archivedAt) throw new NoticeError('That notice is not archived.');
-    await tx
+    const written=await tx
       .update(notice)
       .set({ archivedAt: null, archivedByUserId: null, updatedAt: sql`now()` })
-      .where(eq(notice.id, id));
+      .where(eq(notice.id, id)).returning({id:notice.id});
+    requireNoticeWrite(written);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -395,12 +450,11 @@ export async function restoreNotice(ctx: SessionContext, id: string): Promise<vo
  */
 export async function deleteNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select({ publishedAt: notice.publishedAt }).from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select({ publishedAt: notice.publishedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.publishedAt) {
       throw new NoticeError('A published notice cannot be deleted — archive it instead, so the record of what was announced survives.');
     }
-    await tx.delete(notice).where(eq(notice.id, id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
@@ -409,6 +463,7 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
       actor: actorOf(ctx),
       payload: {},
     });
+    requireNoticeWrite(await tx.delete(notice).where(eq(notice.id,id)).returning({id:notice.id}));
   });
 }
 
@@ -416,15 +471,20 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
  *  never the publication: a copy that arrived pre-published would broadcast on the click of a button
  *  labelled Duplicate. */
 export async function duplicateNotice(ctx: SessionContext, id: string): Promise<{ id: string }> {
+  const actor=requireActor(ctx,'duplicated');
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx.select().from(notice).where(eq(notice.id, id)).limit(1);
+    const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     const [copy] = await tx
       .insert(notice)
       .values({
         tenantId: ctx.tenantId,
+        ownerCompanyId: row.ownerCompanyId,
         title: `${row.title} (copy)`.slice(0, 200),
         body: row.body,
+        summary:row.summary,category:row.category,pinned:row.pinned,requiresAcknowledgement:row.requiresAcknowledgement,
+        // Copied bytes receive new IDs owned by the new draft; source history remains unchanged.
+        attachmentIds:[],
         startOn: row.startOn,
         endOn: row.endOn,
         showEndDate: row.showEndDate,
@@ -433,16 +493,31 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
         notifyOnPublish: row.notifyOnPublish,
         popupEnabled: row.popupEnabled,
         popupFrequency: row.popupFrequency,
-        createdByUserId: ctx.userId ?? null,
+        createdByUserId: actor,
       })
       .returning({ id: notice.id });
+
+    const copiedAttachments:string[]=[];
+    for(const sourceId of row.attachmentIds){
+      // Bound to at most five immutable source files. INSERT SELECT copies bytes inside PostgreSQL,
+      // without materializing up to50MiB in the web process or borrowing source ownership.
+      const [asset]=await tx.execute(sql`INSERT INTO public.notice_attachment
+        (tenant_id,notice_id,file_name,mime_type,byte_length,content,created_by_user_id)
+        SELECT ${ctx.tenantId}::uuid,${copy.id}::uuid,f.file_name,f.mime_type,f.byte_length,f.content,${actor}::uuid
+        FROM public.notice_attachment f WHERE f.id=${sourceId}::uuid AND f.notice_id=${row.id}::uuid AND f.tenant_id=${ctx.tenantId}::uuid
+        RETURNING id`) as unknown as {id:string}[];
+      if(!asset)throw new NoticeError('An attachment is no longer available; reload before duplicating.');
+      copiedAttachments.push(asset.id);
+    }
+    if(copiedAttachments.length)requireNoticeWrite(await tx.update(notice).set({attachmentIds:copiedAttachments})
+      .where(authoringNotice(copy.id)).returning({id:notice.id}));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'notice',
       aggregateId: copy.id,
       eventType: 'notice.created',
       actor: actorOf(ctx),
-      payload: { title: row.title, duplicatedFrom: id },
+      payload: { title: row.title, duplicatedFrom: id,attachments:copiedAttachments.length },
     });
     return { id: copy.id };
   });
@@ -452,6 +527,9 @@ export async function duplicateNotice(ctx: SessionContext, id: string): Promise<
 
 export type NoticeRow = {
   id: string;
+  ownerCompanyId: string | null;
+  ownerCompanyName: string | null;
+  summary:string;category:string|null;pinned:boolean;requiresAcknowledgement:boolean;contentVersion:number;attachmentIds:string[];
   title: string;
   body: string;
   startOn: string;
@@ -488,6 +566,9 @@ export async function listNotices(
     const rows = await tx
       .select({
         id: notice.id,
+        summary:notice.summary,category:notice.category,pinned:notice.pinned,requiresAcknowledgement:notice.requiresAcknowledgement,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,
+        ownerCompanyId: notice.ownerCompanyId,
+        ownerCompanyName:sql<string|null>`(SELECT c.legal_name FROM public.company c WHERE c.id=notice.owner_company_id AND c.tenant_id=notice.tenant_id)`,
         title: notice.title,
         body: notice.body,
         startOn: notice.startOn,
@@ -509,17 +590,14 @@ export async function listNotices(
         // answers a different question. (`"published_by_user_id"` happened to work only because app_user
         // and person have no such column, so Postgres fell back to the outer scope; one column rename away
         // from the same silent wrong.) Fully qualified, both are unambiguous.
-        publishedBy: sql<string | null>`(
-          select p.full_name from app_user au join person p on p.id = au.person_id
-          where au.id = notice.published_by_user_id
-        )`,
+        publishedBy: sql<string | null>`app.notice_sender_display_name(notice.id)`,
         recipientCount: sql<number>`(
           select count(*)::int from notice_recipient nr where nr.notice_id = notice.id
         )`,
       })
       .from(notice)
-      .where(opts.includeArchived ? undefined : isNull(notice.archivedAt))
-      .orderBy(desc(notice.createdAt));
+      .where(and(sql`app.can_manage_notice(${notice.id})`,opts.includeArchived ? undefined : isNull(notice.archivedAt)))
+      .orderBy(desc(notice.createdAt),asc(notice.id));
     return rows.map((r) => ({
       ...r,
       targetMode: r.targetMode as NoticeTargetMode,
@@ -538,6 +616,8 @@ export async function getNotice(ctx: SessionContext, id: string): Promise<Notice
 // ───────────────────────────── Employee reads ─────────────────────────────
 
 export type EmployeeNoticeRow = {
+  summary:string;category:string|null;pinned:boolean;requiresAcknowledgement:boolean;contentVersion:number;attachmentIds:string[];
+  acknowledgedAt:Date|null;
   id: string;
   title: string;
   body: string;
@@ -551,6 +631,83 @@ export type EmployeeNoticeRow = {
   popupEnabled: boolean;
   popupFrequency: NoticePopupFrequency;
 };
+
+/** One live recipient rule for lists, detail and Home. Authoring authority never creates a recipient. */
+function liveEmployeeNotice(employmentId:string,today:string,ownOnly=false){
+ return and(eq(noticeRecipient.employmentId,employmentId),eq(noticeRecipient.tenantId,notice.tenantId),
+  isNotNull(notice.publishedAt),isNull(notice.archivedAt),lte(notice.startOn,today),gte(notice.endOn,today),
+  ownOnly?sql`EXISTS(SELECT 1 FROM public.employment self_employment
+   WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
+    AND app.is_self_person(self_employment.person_id))`:undefined);
+}
+function employeeNoticeFields(){return {
+ id:notice.id,title:notice.title,body:notice.body,summary:notice.summary,category:notice.category,pinned:notice.pinned,
+ requiresAcknowledgement:notice.requiresAcknowledgement,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,
+ startOn:notice.startOn,endOn:notice.endOn,showEndDate:notice.showEndDate,publishedAt:notice.publishedAt,
+ popupEnabled:notice.popupEnabled,popupFrequency:notice.popupFrequency,
+ acknowledgedAt:sql<Date|null>`(SELECT a.acknowledged_at FROM public.notice_acknowledgement a
+  WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version LIMIT 1)`.mapWith(noticeAcknowledgement.acknowledgedAt),
+ firstViewedAt:noticeRecipient.firstViewedAt,popupDismissedAt:noticeRecipient.popupDismissedAt,
+ publishedBy:sql<string|null>`app.notice_sender_display_name(notice.id)`,
+};}
+
+/** Detail reads load one authorized body, rather than materializing every announcement. */
+export function employeeNoticeById(ctx:SessionContext,employmentId:string,id:string){
+ if(!uuidNotice(id)||!uuidNotice(employmentId))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select(employeeNoticeFields()).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+   .where(and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),eq(notice.id,id))).limit(1);
+  return row?{...row,popupFrequency:row.popupFrequency as NoticePopupFrequency}:null;
+ });
+}
+
+export type EmployeeNoticeSummary=Omit<EmployeeNoticeRow,'body'|'attachmentIds'|'popupEnabled'|'popupFrequency'|'popupDismissedAt'|'startOn'|'endOn'|'showEndDate'>;
+export type EmployeeNoticePage={items:EmployeeNoticeSummary[];total:number;unread:number;acknowledgementRequired:number;page:number;pageSize:number;pages:number};
+/** Bounded metadata transport; counts are aggregates over the full matching audience, never a slice.
+ * Search executes inside the authorized live-recipient query. It does not transport body text.
+ * Counts and the following page are independent current reads; concurrent edits may change the list.
+ */
+export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:{query?:string;category?:string;page?:number;pageSize?:number}={}):Promise<EmployeeNoticePage>{
+ const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
+ const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
+ const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
+ return withTenant(ctx,async tx=>{
+  const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),
+   query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
+   category?eq(notice.category,category):undefined);
+  const fields=employeeNoticeFields();
+  const [counts]=await tx.select({total:sql<number>`count(*)::integer`,
+   unread:sql<number>`count(*) FILTER (WHERE ${noticeRecipient.firstViewedAt} IS NULL)::integer`,
+   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`})
+   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
+  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
+  const {body:_body,attachmentIds:_files,popupEnabled:_popup,popupFrequency:_frequency,popupDismissedAt:_dismissed,
+   startOn:_start,endOn:_end,showEndDate:_show,...summaryFields}=fields;
+  const items=await tx.select(summaryFields).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+   .where(eligible).orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)).limit(size).offset((page-1)*size);
+  return {items,total,unread:counts?.unread??0,acknowledgementRequired:counts?.acknowledgementRequired??0,page,pageSize:size,pages};
+ });
+}
+
+/** Canonical assigned work, across the actual login's own recipient employments. Read/dismissed and
+ * notification delivery do not complete this work. No body, file, personnel or private request data.
+ * A Notice task's source time is its recorded update time, not an invented acknowledgement deadline.
+ */
+export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
+ const today=todayInKualaLumpur();
+ return withTenant(ctx,tx=>tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
+  title:notice.title,contentVersion:notice.contentVersion,sourceUpdatedAt:notice.updatedAt})
+  .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
+  .where(and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
+   sql`app.principal_snapshot_current()`,isNotNull(notice.publishedAt),isNull(notice.archivedAt),
+   lte(notice.startOn,today),gte(notice.endOn,today),eq(notice.requiresAcknowledgement,true),
+   sql`EXISTS(SELECT 1 FROM public.employment self_employment
+    WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
+     AND app.is_self_person(self_employment.person_id))`,
+   sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a
+    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
+  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+}
 
 /**
  * The notices ONE employment may currently see: published, unarchived, inside the window, and in this
@@ -570,38 +727,11 @@ export async function noticesForEmployment(
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select({
-        id: notice.id,
-        title: notice.title,
-        body: notice.body,
-        startOn: notice.startOn,
-        endOn: notice.endOn,
-        showEndDate: notice.showEndDate,
-        publishedAt: notice.publishedAt,
-        popupEnabled: notice.popupEnabled,
-        popupFrequency: notice.popupFrequency,
-        firstViewedAt: noticeRecipient.firstViewedAt,
-        popupDismissedAt: noticeRecipient.popupDismissedAt,
-        // Fully qualified for the reason spelled out in `listNotices` above: Drizzle renders an
-        // interpolated column BARE inside a raw sql template, which a correlated subquery then resolves
-        // against its own scope.
-        publishedBy: sql<string | null>`(
-          select p.full_name from app_user au join person p on p.id = au.person_id
-          where au.id = notice.published_by_user_id
-        )`,
-      })
+      .select(employeeNoticeFields())
       .from(noticeRecipient)
       .innerJoin(notice, eq(notice.id, noticeRecipient.noticeId))
-      .where(
-        and(
-          eq(noticeRecipient.employmentId, employmentId),
-          isNotNull(notice.publishedAt),
-          isNull(notice.archivedAt),
-          lte(notice.startOn, today),
-          gte(notice.endOn, today),
-        ),
-      )
-      .orderBy(desc(notice.publishedAt), asc(notice.title));
+      .where(liveEmployeeNotice(employmentId,today))
+      .orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id));
     return rows.map((r) => ({ ...r, popupFrequency: r.popupFrequency as NoticePopupFrequency }));
   });
 }
@@ -620,17 +750,13 @@ export function unreadNoticeCount(rows: readonly EmployeeNoticeRow[]): number {
  *
  * The frequency rule:
  *   • 'once'                — show until the employee dismisses it, then never again.
- *   • 'until_acknowledged'  — show every time, while the notice is live.
- *
- * ⚠️ RELEASE ONE HONESTY: with no acknowledgement record yet, "until acknowledged" cannot end, so it
- * behaves as "every login until the end date". That is exactly the reporter's third option ("Display every
- * login until the End Date or acknowledgement is completed"), so the behaviour is right today and release
- * two only has to add the acknowledgement term to this one predicate.
+ *   • 'until_acknowledged' — show while live until the current required content version is acknowledged.
+ *     Without an acknowledgement requirement, retain the existing every-login-through-expiry behavior.
  */
 export function popupNoticeFor(rows: readonly EmployeeNoticeRow[]): EmployeeNoticeRow | null {
   const due = rows.filter((r) => {
     if (!r.popupEnabled) return false;
-    if (r.popupFrequency === 'until_acknowledged') return true;
+    if (r.popupFrequency === 'until_acknowledged') return !r.requiresAcknowledgement||r.acknowledgedAt==null;
     return r.popupDismissedAt == null;
   });
   return due[0] ?? null;
@@ -681,4 +807,89 @@ export async function countNoticeAudience(
     (await resolveOrgCriteriaTargets(tx, { criteria: p.criteria ?? {}, asOf })).length,
   );
   return { count, unrestricted: isUnrestrictedOrgCriteria(p.criteria) };
+}
+
+
+/** Retained HR history is scoped by the immutable parent owner. */
+export function noticeContentHistory(ctx:SessionContext,id:string){
+ return withTenant(ctx,tx=>tx.select().from(noticeRevision).where(and(eq(noticeRevision.noticeId,id),eq(noticeRevision.tenantId,ctx.tenantId))).orderBy(desc(noticeRevision.ordinal),asc(noticeRevision.id)));
+}
+export type NoticeAcknowledgementReceipt={id:string;contentVersion:number;acknowledgedAt:Date};
+/** A deliberate action, not a page-load or popup marker. The purpose-bound database command owns the
+ * actual principal, immutable timestamp, same-transaction audit and replay/stale-version contract. */
+export async function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:string,contentVersion:number,context:{reportedChannel?:string;reportedUserAgent?:string}={}):Promise<NoticeAcknowledgementReceipt>{
+ if(!uuidNotice(id)||!uuidNotice(employmentId)||!Number.isSafeInteger(contentVersion)||contentVersion<1)throw new NoticeError('Notice acknowledgement is unavailable.');
+ const requestContext={...(context.reportedChannel?{reportedChannel:context.reportedChannel.slice(0,32)}:{}),...(context.reportedUserAgent?{reportedUserAgent:context.reportedUserAgent.slice(0,256)}:{})};
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.execute(sql`SELECT * FROM app.acknowledge_notice(${id}::uuid,${contentVersion}::integer,${employmentId}::uuid,${JSON.stringify(requestContext)}::jsonb)`) as unknown as {receipt_id:string;content_version:number;acknowledged_at:Date|string}[];
+  if(!row)throw new NoticeError('Notice acknowledgement is unavailable.');
+  return {id:row.receipt_id,contentVersion:row.content_version,acknowledgedAt:new Date(row.acknowledged_at)};
+ });
+}
+export function noticeAcknowledgementHistory(ctx:SessionContext,id:string){
+ return withTenant(ctx,tx=>tx.select({id:noticeAcknowledgement.id,revisionId:noticeAcknowledgement.revisionId,contentVersion:noticeAcknowledgement.contentVersion,employmentId:noticeAcknowledgement.employmentId,actorUserId:noticeAcknowledgement.actorUserId,acknowledgedAt:noticeAcknowledgement.acknowledgedAt})
+  .from(noticeAcknowledgement).where(and(eq(noticeAcknowledgement.noticeId,id),eq(noticeAcknowledgement.tenantId,ctx.tenantId))).orderBy(asc(noticeAcknowledgement.acknowledgedAt),asc(noticeAcknowledgement.id)));
+}
+
+
+export class NoticeAttachmentError extends NoticeError {
+ constructor(readonly reason:'file'|'changed'|'limit'|'unavailable',message:string){super(message);this.name='NoticeAttachmentError';}
+}
+const noticeAttachmentMime=new Set(['application/pdf','image/png','image/jpeg','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.openxmlformats-officedocument.presentationml.presentation']);
+/** Adds and selects immutable bytes in the same transaction as the content revision and audit event.
+ * An intent key belongs to this author/Notice; a successful retry cannot manufacture another revision. */
+export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedContentVersion:number,p:{uploadKey:string;fileName:string;content:Buffer},options:{attach?:boolean}={}):Promise<{id:string;contentVersion:number;attachment:{id:string;fileName:string;mimeType:string;byteLength:number}}>{
+ const actor=requireActor(ctx,'updated');
+ if(!uuidNotice(id)||!uuidNotice(p.uploadKey)||!Number.isSafeInteger(expectedContentVersion)||expectedContentVersion<0)throw new NoticeAttachmentError('changed','Reload the notice before uploading.');
+ const fileName=p.fileName.trim();
+ if(!fileName||fileName.length>180||/[\x00-\x1f\x7f/\\]/.test(fileName))throw new NoticeAttachmentError('file','Choose a file with a safe name of at most 180 characters.');
+ if(!Buffer.isBuffer(p.content)||!p.content.length||p.content.length>NOTICE_ATTACHMENT_MAX_BYTES)throw new NoticeAttachmentError('file','Choose a non-empty file of at most 10 MiB.');
+ const content=Buffer.from(p.content);let mimeType:string;
+ try{mimeType=resolveDocumentUpload(fileName,content).mimeType;}catch{throw new NoticeAttachmentError('file','The file contents or file type are not supported.');}
+ if(!noticeAttachmentMime.has(mimeType))throw new NoticeAttachmentError('file','The file type is not supported for notices.');
+ const digest=createHash('sha256').update(content).digest('hex');
+ return withTenant(ctx,async tx=>{
+  const [parent]=await tx.select({id:notice.id,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,archivedAt:notice.archivedAt}).from(notice).where(authoringNotice(id)).limit(1).for('update');
+  if(!parent||parent.archivedAt)throw new NoticeAttachmentError('unavailable','That notice is no longer available for editing.');
+  const [prior]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,digest:sql<string>`encode(sha256(${noticeAttachment.content}),'hex')`})
+   .from(noticeAttachment).where(and(eq(noticeAttachment.noticeId,id),eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.createdByUserId,actor),eq(noticeAttachment.uploadKey,p.uploadKey))).limit(1);
+  if(prior){
+   if(options.attach===false&&parent.contentVersion!==expectedContentVersion)throw new NoticeAttachmentError('changed','Notice content changed; reload before uploading.');
+   if(prior.fileName!==fileName||prior.mimeType!==mimeType||prior.digest!==digest||(options.attach!==false&&!parent.attachmentIds.includes(prior.id)))throw new NoticeAttachmentError('changed','This upload changed; reload before choosing the file again.');
+   return {id:prior.id,contentVersion:parent.contentVersion,attachment:{id:prior.id,fileName,mimeType,byteLength:content.byteLength}};
+  }
+  if(parent.contentVersion!==expectedContentVersion)throw new NoticeAttachmentError('changed','Notice content changed; reload before uploading.');
+  if(options.attach!==false&&parent.attachmentIds.length>=5)throw new NoticeAttachmentError('limit','A notice can contain at most five attachments.');
+  const [asset]=await tx.insert(noticeAttachment).values({tenantId:ctx.tenantId,noticeId:id,uploadKey:p.uploadKey,fileName,mimeType,byteLength:content.byteLength,content,createdByUserId:actor}).returning({id:noticeAttachment.id});
+  if(options.attach===false){
+   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-uploaded',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType}});
+   return {id:asset.id,contentVersion:parent.contentVersion,attachment:{id:asset.id,fileName,mimeType,byteLength:content.byteLength}};
+  }
+  const changed=await tx.update(notice).set({attachmentIds:[...parent.attachmentIds,asset.id],updatedAt:sql`now()`}).where(authoringNotice(id)).returning({id:notice.id,contentVersion:notice.contentVersion});requireNoticeWrite(changed);
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'notice',aggregateId:id,eventType:'notice.attachment-added',actor:actorOf(ctx),payload:{attachmentId:asset.id,byteLength:content.byteLength,mimeType,contentVersion:changed[0].contentVersion}});
+  return {id:asset.id,contentVersion:changed[0].contentVersion,attachment:{id:asset.id,fileName,mimeType,byteLength:content.byteLength}};
+ });
+}
+/** Only this by-ID read touches bytes. RLS admits actual authors or live snapshot recipients of a
+ * currently referenced attachment; a URL never enlarges a Knowledge Base document's audience. */
+export function getNoticeAttachment(ctx:SessionContext,id:string,attachmentId:string){
+ if(!uuidNotice(id)||!uuidNotice(attachmentId))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [asset]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,byteLength:noticeAttachment.byteLength,content:noticeAttachment.content}).from(noticeAttachment)
+   .where(and(eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.noticeId,id),eq(noticeAttachment.id,attachmentId))).limit(1);return asset??null;
+ });
+}
+export function noticeAttachmentMetadata(ctx:SessionContext,id:string){
+ return withTenant(ctx,tx=>tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,byteLength:noticeAttachment.byteLength}).from(noticeAttachment)
+  .where(and(eq(noticeAttachment.tenantId,ctx.tenantId),eq(noticeAttachment.noticeId,id),sql`${noticeAttachment.id}=ANY((SELECT n.attachment_ids FROM public.notice n WHERE n.id=${id}::uuid AND n.tenant_id=${ctx.tenantId}::uuid)::uuid[])`))
+  .orderBy(asc(noticeAttachment.createdAt),asc(noticeAttachment.id)).limit(5));
+}
+
+/** The uploader admits only actual current authors before consuming a request body; the writer checks
+ * again under the parent lock after upload. No notice body or audience is needed for admission. */
+export function noticeAttachmentUploadState(ctx:SessionContext,id:string){
+ if(!uuidNotice(id))return Promise.resolve(null);
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select({id:notice.id,contentVersion:notice.contentVersion}).from(notice).where(and(authoringNotice(id),isNull(notice.archivedAt))).limit(1);return row??null;
+ });
 }

@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
 import { scopedSession } from '@/lib/scope';
@@ -437,7 +438,7 @@ export default async function LeaveConfigApprovalChainsPage({
               }))}
               companies={companies.map((c) => ({ id: c.id, label: c.name }))}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
-              grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
+              grades={organisationChoiceLabels(gradesAll.map(x=>({...x,label:x.name}))).map((x) => ({ id: x.id, label: x.displayLabel }))}
               eligibilityRules={eligibilityRulesAll
                 /* A rule naming only companies this admin cannot see is not theirs to assign. `companyIds`
                    itself is passed through UNTRIMMED — trimming it to the visible set would turn such a

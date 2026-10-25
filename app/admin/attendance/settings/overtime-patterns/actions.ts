@@ -4,7 +4,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
 import {
-  saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation,
+  saveOvertimePatternDraft, ensureOvertimePatternStarters, forkOvertimePatternDraft, validateOvertimePatternActivation,
   activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern,
   saveOvertimePatternAssignment, closeOvertimePatternAssignment, overtimePatternSetup,
   OvertimeOwnerError, previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, readOvertimePatternCalculation,
@@ -32,6 +32,13 @@ async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActi
     console.error('[overtime-pattern action]',reference,error);
     return {ok:false,code:'system',reference};
   }
+}
+/** Company selection comes from the current server session, never a posted company list. */
+export async function initializeOvertimeStartersAction() {
+  const {s,scopeIds}=await scopedAdmin();
+  const result=await run(()=>ensureOvertimePatternStarters(s,{companyIds:scopeIds}),false);
+  if(result.ok&&result.value.created>0)revalidatePath(PAGE);
+  return result;
 }
 export async function saveOvertimeDraftAction(input:Parameters<typeof saveOvertimePatternDraft>[1]) {
   const {s}=await scopedAdmin();

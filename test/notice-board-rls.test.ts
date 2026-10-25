@@ -210,6 +210,45 @@ describe('6e122302 · notice RLS — who can READ a notice', () => {
 });
 
 describe('6e122302 · notice_recipient RLS — the snapshot is per person', () => {
+  it('an employee cannot redirect an existing own recipient row to gain access to another notice', async () => {
+    const mine = await employeeSession('Mine', b.deptA);
+    await employeeSession('Intended', b.deptB);
+    const original = await liveNoticeFor(b.deptA, 'Mine only');
+    const privateNotice = await liveNoticeFor(b.deptB, 'Other audience only');
+    expect((await withTenant(mine.ctx, tx => tx.select({ id: schema.notice.id }).from(schema.notice))).map(row => row.id)).toEqual([original]);
+
+    const err = await withTenant(mine.ctx, tx => tx.update(schema.noticeRecipient)
+      .set({ noticeId: privateNotice })
+      .where(eq(schema.noticeRecipient.noticeId, original))).catch(error => error);
+    expect(err).toBeInstanceOf(Error);
+    expect(pgText(err)).toContain('notice_recipient_identity_immutable');
+    const rows = await owner.db.select({ noticeId: schema.noticeRecipient.noticeId })
+      .from(schema.noticeRecipient).where(eq(schema.noticeRecipient.employmentId, mine.employmentId));
+    expect(rows).toEqual([{ noticeId: original }]);
+    expect(await withTenant(mine.ctx, tx => tx.select({ id: schema.notice.id }).from(schema.notice)
+      .where(eq(schema.notice.id, privateNotice)))).toEqual([]);
+  });
+
+  it('audience snapshot identity is immutable for administrators too, while view and popup markers remain writable', async () => {
+    const mine = await employeeSession('Mine', b.deptA);
+    const id = await liveNoticeFor(b.deptA);
+    const [original] = await owner.db.select().from(schema.noticeRecipient)
+      .where(eq(schema.noticeRecipient.noticeId, id));
+    const err = await withTenant(adminCtx(b), tx => tx.update(schema.noticeRecipient)
+      .set({ createdAt: new Date(original.createdAt.getTime() + 1000) })
+      .where(eq(schema.noticeRecipient.id, original.id))).catch(error => error);
+    expect(err).toBeInstanceOf(Error);
+    expect(pgText(err)).toContain('notice_recipient_identity_immutable');
+    await withTenant(mine.ctx, tx => tx.update(schema.noticeRecipient)
+      .set({ firstViewedAt: new Date(), popupDismissedAt: new Date() })
+      .where(eq(schema.noticeRecipient.id, original.id)));
+    const [after] = await owner.db.select().from(schema.noticeRecipient)
+      .where(eq(schema.noticeRecipient.id, original.id));
+    expect(after.createdAt).toEqual(original.createdAt);
+    expect(after.firstViewedAt).not.toBeNull();
+    expect(after.popupDismissedAt).not.toBeNull();
+  });
+
   it("an employee sees their OWN recipient row and not a colleague's", async () => {
     const mine = await employeeSession('Mine', b.deptA);
     const theirs = await employeeSession('Theirs', b.deptA);

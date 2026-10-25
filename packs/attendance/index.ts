@@ -57,9 +57,10 @@
  *   (packs/contracts.ts) with claims as the first implementor (packs/claims/payroll.ts). This
  *   attendance path deliberately did NOT migrate at rung 3 (one seam per rung) — it stays
  *   allowlisted until a later rung registers an attendance contributor, no later than Payroll (7).
- * - `app/approvals/{page,actions}.ts` + `core/approvals-inbox.ts` — the approvals inbox lists and
+ * - `app/approvals/{page,actions}.ts` — the approvals workspace lists and
  *   decides attendance corrections. Cross-module approvals substrate is KERNEL (ADR-0080 open
  *   decision 6); needs an approvals contract, not the pack facade.
+ *   The shared assigned-work inbox now consumes metadata through the public service facade.
  * - `core/reporting.ts` + `core/read.ts` — reporting/analytics read attendance rows and
  *   `evaluateAllowancesForPeriod`. Cross-module readers stay kernel (open decision 6); they should
  *   consume pack report descriptors/contracts, defined when the reporting seam is cut.

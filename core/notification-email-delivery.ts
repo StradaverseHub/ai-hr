@@ -7,6 +7,7 @@ import { notificationEmailIpc } from '../lib/notification-email-ipc';
 import type { NotificationEmailRequest, NotificationEmailStatus } from '../lib/notification-email-model';
 import { isModuleEnabled } from './entitlements';
 import { notificationStillTargets } from './notifications';
+import {noticeSweepReader,noticeSweepEventReader,type NoticeSweepAccess} from './notice-projection';
 
 export type NotificationEmailTransport = <T>(request:NotificationEmailRequest)=>Promise<T>;
 export async function readNotificationEmailTransport(transport:NotificationEmailTransport=notificationEmailIpc):Promise<NotificationEmailStatus|null> {
@@ -23,7 +24,8 @@ async function failUnstartedDelivery(ctx:SessionContext,id:string,leaseToken:str
   });
 }
 /** Short atomic leases permit multiple schedulers without duplicate sends. No traffic or tenant uses a fake entitlement snapshot. */
-export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc) {
+export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc,options:{noticeSweep?:NoticeSweepAccess}={}) {
+  const noticeReader=noticeSweepReader(ctx,options.noticeSweep),noticeEventReader=noticeSweepEventReader(ctx,options.noticeSweep);
   if (!isAdmin(ctx)) throw new Error('Notification dispatcher required');
   const allCategories=isModuleEnabled(ctx,'notifications');
   if(!allCategories&&!(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))return {attempted:0,skipped:0,unavailable:false};
@@ -35,7 +37,7 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
     if(status?.ready&&job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();
     const claimed=await withTenant(ctx,async tx=>{
-      if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id)) {
+      if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id,noticeReader,noticeEventReader)) {
         await tx.update(notificationDelivery).set({status:'skipped',lastError:'notEligible',updatedAt:sql`now()`}).where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`)));
         return 'skipped';
       }

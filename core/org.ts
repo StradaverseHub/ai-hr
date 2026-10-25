@@ -1,3 +1,5 @@
+import { hasExitDateAuthorityTx } from './exit-date-authority';
+import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
@@ -1215,6 +1217,18 @@ export async function setReportingLine(
   return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
+/** Bounded dated assignment facts for caller-held report snapshots. Uses the same exclusive end and
+ * supersession rule as getAssignmentAsOf; callers never substitute today's placement. */
+export async function assignmentVersionsForReportTx(tx:Tx,employmentIds:readonly string[],from:string,to:string){
+  if(!employmentIds.length)return [];
+  if(employmentIds.length>10000)throw new Error('Assignment report scope exceeds 10000 employments.');
+  const rows=await tx.select().from(assignment).where(and(inArray(assignment.employmentId,[...employmentIds]),
+    isNull(assignment.supersededAt),lte(assignment.validFrom,to),or(isNull(assignment.validTo),gt(assignment.validTo,from))))
+    .orderBy(assignment.employmentId,assignment.validFrom,assignment.id).limit(20001);
+  if(rows.length>20000)throw new Error('Assignment report history exceeds 20000 revisions. Narrow the scope.');
+  return rows;
+}
+
 /** Reconstruct the assignment in force for an employment as of `asOf` (ADR-0001). */
 export async function getAssignmentAsOf(ctx: SessionContext, employmentId: string, asOf: string) {
   return withTenant(ctx, async (tx) => {
@@ -2069,6 +2083,7 @@ export async function changeEmploymentCompany(
   return withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+    await lockLabelCriteriaTx(tx,ctx.tenantId);
     await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [emp] = await tx
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
@@ -2079,6 +2094,7 @@ export async function changeEmploymentCompany(
     if (!emp) throw new Error('Employment not found');
     // No-op guard: moving to the same company is not a change.
     if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    await assertCostAllocationTransferTx(tx,p.employmentId,emp.hiredOn);
     // Destination must be a live (non-archived) company in this tenant.
     const [dest] = await tx
       .select({ id: company.id, country: company.country })
@@ -2279,6 +2295,7 @@ export async function transferEmploymentCompanyTx(
 ) {
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
     .select({ companyId: employment.companyId })
@@ -2288,6 +2305,7 @@ export async function transferEmploymentCompanyTx(
     .for('no key update');
   if (!emp) throw new Error('Employment not found');
   if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    await assertCostAllocationTransferTx(tx,p.employmentId,p.effectiveDate);
 
   // Destination must be a live (non-archived) company in this tenant.
   const [dest] = await tx
@@ -2628,12 +2646,9 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   // `joinDateChange` movement tag), so the Employment Dates form can no longer set it. hiredOn was never in
   // this list (it is NOT NULL and has its own block, likewise now movement-gated).
   'confirmationDate',
-  'resignationDate',
   // 955c7de4 — new lifecycle dates. finalConfirmationDate is DERIVED (not in this list; computed on save).
   // d27961e3 — extendedConfirmationDate is NOT in this list either: it is movement-only (accepted below
   // solely under the probationExtension movement tag), so the Employment Dates form can no longer set it.
-  'tenderResignationDate',
-  'lastWorkingDate',
   // 8590615a — the contract period. contractEndDate is the pre-existing employment-review column (0110);
   // it is accepted here so the Employment tab's Contract Information block and the Others tab's Employment
   // Review row write the SAME date rather than two copies of it.
@@ -2748,6 +2763,9 @@ export async function setEmploymentInfo(
     throw new Error('Only an admin can edit employment information.');
   }
 
+  const exitAuthority=hasExitDateAuthorityTx(outerTx,p.employmentId);
+  const movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
+
   // Build the write set: only columns the caller actually provided. `undefined` = untouched; a period/text
   // field passed as '' or null clears to NULL. Validate + normalise as we go.
   const set: Record<string, string | number | null> = {};
@@ -2760,7 +2778,7 @@ export async function setEmploymentInfo(
   // under the `groupJoinDateCorrection` movement tag means every move of that date carries an effective date,
   // a reason and a history row. An untagged save posting it is silently IGNORED (forge-proof, as with
   // extendedConfirmationDate) rather than rejected, so a stale/tampered form cannot mutate it either.
-  if (p.hiredOn !== undefined && p.movement?.type === 'groupJoinDateCorrection') {
+  if (p.hiredOn !== undefined && movement?.type === 'groupJoinDateCorrection') {
     const v = String(p.hiredOn).trim();
     if (!isCalendarDate(v)) throw new Error('Hire date is required and must be a valid date.');
     set.hiredOn = v;
@@ -2779,7 +2797,7 @@ export async function setEmploymentInfo(
   // An untagged save posting joinDate is still silently ignored.
   if (
     p.joinDate !== undefined &&
-    (p.movement?.type === 'joinDateChange' || p.movement?.type === 'entityTransfer')
+    (movement?.type === 'joinDateChange' || movement?.type === 'entityTransfer')
   ) {
     const v = p.joinDate == null ? null : String(p.joinDate).trim();
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
@@ -2792,11 +2810,20 @@ export async function setEmploymentInfo(
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set[f] = v || null;
   }
+  // Exit dates are a Movement-owned effect. An arbitrary movement tag or a stale
+  // general form cannot manufacture the transaction-bound authority held by apply/reverse.
+  if (exitAuthority) {
+    for (const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const) {
+      const raw=p[field];if(raw===undefined)continue;const value=raw?.trim()||null;
+      if(value&&!isCalendarDate(value))throw new Error('Enter a valid date (YYYY-MM-DD).');
+      set[field]=value;
+    }
+  }
   // d27961e3 — Extended Confirmation Date left the Employment Dates form: probation extensions are managed
   // EXCLUSIVELY through the Movement module (createMovementEvent 'probationExtension' delegates here with the
   // movement tag). Without that tag the field is silently IGNORED — a forged form submission cannot mutate it —
   // so the movement writer stays the single mutator. Derivation + ordering guards below are unchanged.
-  if (p.extendedConfirmationDate !== undefined && p.movement?.type === 'probationExtension') {
+  if (p.extendedConfirmationDate !== undefined && movement?.type === 'probationExtension') {
     const v = p.extendedConfirmationDate == null ? null : String(p.extendedConfirmationDate).trim();
     if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.extendedConfirmationDate = v || null;
@@ -3012,7 +3039,7 @@ export async function setEmploymentInfo(
     // the periods named, for any payslip — draft, processed or closed — between the old and the new date.
     // A Group Join Date Correction that carries the Join Date with it (the synchronised case above) moves
     // the same days, so asking about hired_on covers both.
-    if (p.movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
+    if (movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
       const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, before.hiredOn, set.hiredOn as string);
       if (periods.length) {
         throw new Error(
@@ -3020,7 +3047,7 @@ export async function setEmploymentInfo(
         );
       }
     }
-    if (p.movement?.type === 'joinDateChange' && 'joinDate' in set) {
+    if (movement?.type === 'joinDateChange' && 'joinDate' in set) {
       const oldJoin = before.joinDate ?? before.hiredOn;
       const newJoin = set.joinDate as string | null;
       if (newJoin && newJoin !== oldJoin) {
@@ -3037,7 +3064,7 @@ export async function setEmploymentInfo(
     // comment above EMPLOYMENT_INFO_DATE_FLOOR carries the whole reasoning and the per-field evidence.
     // Runs last, on the RESULTING values, so it asks the only question that matters: does the answer this
     // employment gives for some day inside a closed payroll month change because of this save?
-    if (!p.movement) {
+    if (!movement) {
       const windows: { from: string; to: string | null }[] = [];
 
       // 1. The probation threshold, compared as the value its readers actually read
@@ -3095,7 +3122,7 @@ export async function setEmploymentInfo(
       eventType: 'employment.info.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { fields: Object.keys(set), before, after, ...(p.movement ? { movement: p.movement } : {}) },
+      payload: { fields: Object.keys(set), before, after, ...(movement ? { movement: movement } : {}) },
     });
     return { id: p.employmentId };
   };

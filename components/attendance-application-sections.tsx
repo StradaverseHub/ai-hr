@@ -1,3 +1,4 @@
+import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
 import type { attendanceApplicationDetail } from '@/packs/attendance/service';
 import { originalAttendanceReview } from '@/lib/attendance-review-evidence';
 import { attendanceHistoryDate } from '@/lib/attendance-history-filter';
@@ -59,6 +60,7 @@ export function AttendanceApplicationSections({ detail, locale, t }: { detail: D
       <section className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-medium">{t('reportedDetails')}</h3>
         {a.proposedCheckIn || a.proposedCheckOut ? fields([[t('checkIn'), clock(a.proposedCheckIn)], [t('checkOut'), clock(a.proposedCheckOut)]]) : !a.clockChanges && a.requestedOtMinutes == null && <p className="text-sm text-muted-foreground">{t('notRecorded')}</p>}
         {a.clockChanges && (a.clockChanges.entries.length ? <ul className="space-y-2 text-sm">{a.clockChanges.entries.map((entry, i) => <li key={entry.id ?? i}>{entry.punchAt} · {t(entry.direction)}</li>)}</ul> : <p className="text-sm">{t('removeAll')}</p>)}
+        <AttendanceUnclockedEvidence work={a.originalClockSnapshot?.unclockedWork}/>
         {a.requestedOtMinutes != null && fields([[t('requestedOt'), duration(a.requestedOtMinutes)], [t('approvedOt'), duration(a.approvedOtMinutes)]])}
         {(a.plannedStartTime || a.plannedEndTime) && fields([[t('plannedWindow'), `${clock(a.plannedStartTime)} → ${clock(a.plannedEndTime)}`]])}
         {a.adminAmendment && <div className="space-y-1 rounded-md bg-muted p-3 text-sm"><p>{t('administratorAmendment')}: {clock(a.adminAmendment.checkIn)} → {clock(a.adminAmendment.checkOut)}</p><p>{a.adminAmendment.reason}</p></div>}

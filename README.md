@@ -1,5 +1,7 @@
 # AI HR
 
+> **Repository and environments:** [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr) is the sole repository. `alpha` targets the existing staging server; `main` is reserved for the new live installation. Read [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md) before building deployment automation.
+
 A modern, AI-assisted Human Resource Management System (HRMS).
 
 > **Status:** Active development — the Malaysia payroll/compliance core is **built and tested**.
@@ -115,3 +117,33 @@ core/      org.ts (hire/transfer/terminate/reporting), leave.ts (request/approve
 test/      harness.ts + slice0.test.ts (UC2/4/6/8/9 acceptance tests)
 docs/      ADRs, domain model, Slice 0 spec, threat model, North Star
 ```
+
+### Payroll period comparison reports
+
+In Reports → Payroll → New report, choose Period comparison. The default compares saved paid BASIC
+for the previous calendar month against the selected current month. Use **Create BASIC example** to
+create a private Payroll Basic Variance definition for the signed-in, authorised user. Repeating this
+explicit action reopens that user's existing definition with the same dataset and name; it does not
+replace saved settings or create a report for another user. No report is seeded on a page read or deploy.
+
+To add an Allowance comparison, create another Period comparison and change the selected pay item to
+its recorded code. BASIC uses saved paid basic, regardless of today's display classification. Other
+items require recorded component lines. An absent code is zero only with a saved complete-itemization
+stamp; a legacy or partial array cannot prove absence. Missing provenance is unavailable. Previous runs must be closed; current runs may be processed and
+provisional or closed. Stale and uncalculated runs must be resolved before comparison. The report
+reads results and applied Movement evidence; it does not calculate pay or approve payroll.
+
+Historical result currency stays with the paying employer. Missing historical currency is shown
+separately by employer with no asserted variance; today's currency is not substituted. Totals precede
+reason/minimum filters and pagination. Employer-owned coverage is distinct from paid tenure: only a
+recorded monthly Basic proration snapshot, including its actual salary cutoff window, supports a Prorated label; historical ownership dates alone do not. A different selected item needs its own item-level evidence before this report can assert proration. The saved salary window may cross calendar months; the report does not reconstruct it from current settings.
+Prorated hires remain New hire explanations and also appear in
+the Prorated filter; Increment / Promotion groups those two evidence-backed explanations.
+
+PDF and native Excel exports use the same validated filters and include all matching rows, not just
+the screen page. Company scope is limited to 100 companies, result reads to 20,000 saved rows, and
+historical evidence reads have explicit bounds. Exceeding a bound refuses the report rather than
+truncating it. Excel additionally refuses amounts beyond exact 15-digit precision and text beyond
+32,767 UTF-16 characters per cell. PDF uses continuation bands/pages for selected columns and wrapped
+rows, with a 1,000-page limit; unsupported characters are refused rather than replaced. Exports retain
+provisional, unavailable and provenance warnings and do not constitute payroll sign-off.

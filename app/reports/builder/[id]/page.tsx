@@ -39,12 +39,14 @@ export default async function ReportBuilderPage({
   let dataset: ReportDataset | undefined;
 
   if (id === 'new') {
+    if(sp.dataset==='payroll_period_comparison')redirect('/reports?cat=payroll');
     if(sp.dataset==='master')redirect('/reports/employee-master/new');
     dataset = getDataset(sp.dataset ?? '');
     if (!dataset) redirect('/reports');
   } else {
     const r = await getCustomReport(s, id);
     if (!r) notFound();
+    if(r.spec.payrollComparison)redirect('/reports/payroll-comparison/'+r.id);
     if(r.datasetId==='master')redirect('/reports/employee-master/'+r.id);
     // Opening a saved report in the builder serves both reading and editing it — allowed when the acting
     // role holds 'view' OR 'edit' on the report's permission grid (empty grid ⇒ admin route-guard only).
@@ -60,7 +62,7 @@ export default async function ReportBuilderPage({
   }
 
   const aiEnabled = await isAiConfigured(s);
-  const peers = datasetsForCategory(dataset.category).map(serialiseDataset);
+  const peers = datasetsForCategory(dataset.category).filter(peer=>peer.id!=='payroll_period_comparison').map(serialiseDataset);
   const roles = MATRIX_ROLES.map((r) => ({ id: r, label: t(`permRole.${r}`) }));
   const verbs = REPORT_PERMISSION_VERBS.map((v) => ({ id: v, label: t(`permVerb.${v}`) }));
 

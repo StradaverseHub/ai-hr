@@ -1,0 +1,523 @@
+import {attendancePolicyIndependentSource} from '../packs/attendance/policy-duration-replay';
+import {attendancePolicyFinancialDurationContract,attendancePolicyFinancialContract} from '../packs/attendance/policy-financial-contract';
+import {randomUUID} from 'node:crypto';
+import {and,asc,eq,sql} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext} from '../db/client';
+import * as s from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {createCompany} from '../core/admin';
+import {createShift,assignDefaultShift,updateShift} from '../core/roster';
+import {ensureStandardRule} from '../core/attendance-rule';
+import {attendanceDayCalculationTx,recomputeDayFigures,attendancePolicyExecutionContextTx,scheduleAttendanceGroupPolicy,checkIn,checkOut,checkInTx,checkOutTx,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,readOvertimeCalculationTx,createOvertimeCalculationOwner,calculateOvertimePatternDay,
+ hasOvertimePatternForDayTx,hasRecordedAttendanceGroupPolicyTx,listCoveredOvertimeDaysTx,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication} from '../packs/attendance/service';
+import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
+import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,entitledCtx,type Base} from './harness';
+import {attendancePolicyRawInputTx,lockAttendancePolicyImportTx,attendancePolicyImportRoutesTx} from '../packs/attendance/service';
+import {addImportedPunchesBatchTx} from '../core/attendance';
+let b:Base,ctx:SessionContext;
+const day=(n=0)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+function policy():AttendanceGroupPolicy{return {version:1,clock:{pairing:'auto',minimumIntervalMinutes:5,lateGraceMinutes:10,earlyGraceMinutes:15,skipLatenessIfIncomplete:true},
+  overtime:{enabled:false,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
+    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}};}
+beforeAll(migrateTestDb);afterAll(closeAll);
+beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+async function fixture(){
+  const ruleId=(await ensureStandardRule(ctx)).id;
+  const e=await hireEmployee(ctx,{person:{fullName:'Fictional policy context',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-20)});
+  const shiftInput={code:'CTX_'+randomUUID().slice(0,6),name:'Fictional policy context shift '+randomUUID().slice(0,8),startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7],ruleId};
+  const sh=await createShift(ctx,shiftInput);await assignDefaultShift(ctx,{employmentId:e.employmentId,shiftId:sh.id});
+  const save=(value=policy(),expectedOrdinal=0,effectiveFrom=day(1))=>scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal,effectiveFrom,reason:'Fictional forward policy selection',policy:value});
+  return {...e,ruleId,shiftId:sh.id,shiftInput,save};
+}
+const read=(employmentId:string,date:string,actor=ctx)=>withTenant(actor,tx=>attendancePolicyExecutionContextTx(tx,actor,{employmentId,date}));
+describe('canonical execution-policy selection',()=>{
+  it('keeps uncovered dates explicitly legacy and selects the exact immutable dated company/group revision',async()=>{
+    const f=await fixture();expect(await read(f.employmentId,day(1))).toEqual({state:'legacy',reason:'noDatedPolicy'});
+    const first=await f.save();const secondPolicy=policy();secondPolicy.clock.pairing='firstInLastOut';
+    const second=await f.save(secondPolicy,1,day(2));
+    const [firstStored]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,first.id));
+    expect(await read(f.employmentId,day())).toEqual({state:'legacy',reason:'noDatedPolicy'});
+    expect(await read(f.employmentId,day(1))).toMatchObject({state:'policy',employmentId:f.employmentId,date:day(1),companyId:b.companyId,timeZone:HR_LOCAL_TZ,
+      selected:{id:first.id,ruleId:f.ruleId,ordinal:1,policy:policy(),activation:{actorUserId:ctx.userId,recordedAt:firstStored.createdAt.toISOString(),reason:'Fictional forward policy selection'}},resolvedClock:{pairing:'auto',lateGraceMinutes:10,earlyGraceMinutes:15},
+      schedule:{source:'default-shift',shiftId:f.shiftId,ruleId:f.ruleId,normalMinutes:480,durationOnly:false},calendar:[{date:day(1),state:'known',dayClass:'normal'}]});
+    expect(await read(f.employmentId,day(2))).toMatchObject({state:'policy',selected:{id:second.id,ordinal:2},resolvedClock:{pairing:'firstInLastOut'}});
+    // Selecting live inputs neither creates an attendance result nor approves an application.
+    expect(await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId))).toEqual([]);
+    expect(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.employmentId,f.employmentId))).toEqual([]);
+  });
+  it('retains explicit shift grace above the new group values and uses group values only when overrides are absent',async()=>{
+    const f=await fixture();await f.save();
+    await updateShift(ctx,{shiftId:f.shiftId,...f.shiftInput,lateGraceMinutes:3,earlyLeaveGraceMinutes:4});
+    expect(await read(f.employmentId,day(1))).toMatchObject({state:'policy',selected:{policy:{clock:{lateGraceMinutes:10,earlyGraceMinutes:15}}},resolvedClock:{lateGraceMinutes:3,earlyGraceMinutes:4}});
+    await updateShift(ctx,{shiftId:f.shiftId,...f.shiftInput,lateGraceMinutes:null,earlyLeaveGraceMinutes:null});
+    expect(await read(f.employmentId,day(1))).toMatchObject({state:'policy',resolvedClock:{lateGraceMinutes:10,earlyGraceMinutes:15}});
+  });
+  it('reads all bounded actual-date calendar facts only when splitting is enabled',async()=>{
+    const f=await fixture(),configured=policy();configured.overtime.splitAtMidnight=true;await f.save(configured);
+    const result=await read(f.employmentId,day(1));expect(result.state).toBe('policy');
+    if(result.state!=='policy')throw Error('Expected canonical policy selection');
+    expect(result.calendar.map(fact=>fact.date)).toEqual([day(1),day(2),day(3)]);
+  });
+  it('refuses missing employer proof and foreign subjects, never labelling an unreadable policy as legacy',async()=>{
+    const f=await fixture();await f.save();
+    expect(await read(f.employmentId,day(1),adminCtx(await seedBase()))).toEqual({state:'unavailable',reason:'subjectUnavailable'});
+    await owner.db.delete(s.assignment).where(eq(s.assignment.employmentId,f.employmentId));
+    expect(await read(f.employmentId,day(1))).toEqual({state:'unavailable',reason:'companyUnavailable'});
+  });
+  it('refuses stale or forged principal claims before exposing policy identities',async()=>{
+    const f=await fixture();await f.save();
+    await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+    expect(await read(f.employmentId,day(1))).toEqual({state:'unavailable',reason:'principalUnavailable'});
+  });
+});
+
+/** Safety staging only: these probes must not be counted as complete policy execution or Payroll
+ * acceptance. The routing fence must be replaced by canonical receipts/parts before feature release. */
+describe('dated-policy raw writer routing',()=>{
+ it('writes fixed-shift scalar break raw counts while preserving unavailable positioned OT',async()=>{
+  const f=await fixture();await f.save();
+  for(const [direction,time] of [['in','09:30:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:450,underMinutes:30,status:'late',lateMinutes:20,earlyOutMinutes:0,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:510,workedMinutes:450,workBasis:'fixedBreakCountOwner'});
+  const input=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('routes batch-imported labels to unknown policy figures and preserves uncovered legacy days',async()=>{
+  const f=await fixture();await f.save();
+  await withTenant(ctx,tx=>addImportedPunchesBatchTx(tx,ctx,{runId:randomUUID(),days:[
+   {employmentId:f.employmentId,day:day(0),punches:[{time:'09:00:00',direction:'in'},{time:'18:00:00',direction:'out'}]},
+   {employmentId:f.employmentId,day:day(1),punches:[{time:'09:30:00',direction:'in'},{time:'18:00:00',direction:'out'}]}]}));
+  const rows=await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,f.employmentId)).orderBy(asc(s.attendance.attendanceDate));
+  const legacy=rows.find(row=>row.attendanceDate===day(0)),policyDay=rows.find(row=>row.attendanceDate===day(1));
+  expect(legacy?.workedMinutes).toBe(480);
+  expect(policyDay).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,otMinutes:null,
+   lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,
+   calcTrace:{overtimePattern:{status:'refused',reason:'sourceUnavailable'}}});
+  expect(await owner.db.select().from(s.attendanceClockCapture)).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('keeps frozen pre-policy application selection on the same batched import route',async()=>{
+  const f=await fixture();
+  await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),reason:'Fictional frozen request',requestedOtMinutes:60});
+  await f.save();
+  const route=await withTenant(ctx,async tx=>{
+   expect(await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}])).toBe(true);
+   return attendancePolicyImportRoutesTx(tx,ctx,[{employmentId:f.employmentId,date:day(1),ruleId:f.ruleId,scheduleSource:'default-shift'}]);
+  });
+  expect(route.get(f.employmentId+'|'+day(1))).toBe('legacy');
+ });
+ it('initializes only a zero-revision import barrier when no policy lock row exists',async()=>{
+  const f=await fixture();
+  await owner.db.delete(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  expect(await withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}]))).toBe(false);
+  const [epoch]=await owner.db.select().from(s.overtimePatternEpoch).where(eq(s.overtimePatternEpoch.tenantId,b.tenantId));
+  expect(epoch.revision).toBe(0);
+  expect(await owner.db.select().from(s.attendanceGroupPolicyRevision)).toEqual([]);
+ });
+ it('refuses missing import subjects or a revoked principal before initializing an epoch',async()=>{
+  const f=await fixture();
+  await expect(withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:randomUUID(),date:day(1)}]))).rejects.toThrow();
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(withTenant(ctx,tx=>lockAttendancePolicyImportTx(tx,ctx,[{employmentId:f.employmentId,date:day(1)}]))).rejects.toThrow();
+ });
+ it('stores captured mixed-break raw counts without payable coverage or settlement',async()=>{
+  const f=await fixture();
+  await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:45,breakPeriods:[
+   {start:'13:00',end:'14:00',flexible:true,flexibleMinutes:30},{start:'15:00',end:'15:15'}]});
+  await f.save();
+  for(const [direction,time] of [['in','09:00:00'],['out','12:00:00'],['in','14:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:375,otMinutes:null,lateMinutes:0,earlyOutMinutes:0});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:420,workedMinutes:375,workBasis:'fixedBreakCountOwner',
+   calculationIntervals:[{inAbs:540,outAbs:720},{inAbs:840,outAbs:1080}]});
+  const input=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(input.policyWorkInput).toMatchObject({state:'unavailable',reason:'positionedScheduleUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('retains Semi Flexi duration, allowance and half-day owners without fixed-clock penalties',async()=>{
+  const f=await fixture();const sh=await createShift(ctx,{...f.shiftInput,code:'SEMI_'+randomUUID().slice(0,6),name:f.shiftInput.name+' Semi',type:'semi_flexi',
+   startTime:'07:00',endTime:'20:00',normalMinutesOverride:480,breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
+  await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
+  for(const [direction,time] of [['in','09:00:00'],['out','10:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:30,underMinutes:450,status:'half_day',lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({workedMinutes:30,workBasis:'semiFlexiDurationOwner'});
+ });
+ it('uses the existing Full Flexi raw duration owner with captured pairs and retains no fixed-clock penalties',async()=>{
+  const f=await fixture();
+  const sh=await createShift(ctx,{...f.shiftInput,code:'FULL_'+randomUUID().slice(0,6),name:f.shiftInput.name+' Full',type:'full_flexi',normalMinutesOverride:480,
+   breakMinutes:30,flexibleBreakEnabled:true,flexibleBreakMinutes:30});
+  await assignDefaultShift(ctx,{employmentId:f.employmentId,shiftId:sh.id});await f.save();
+  // Fictional stored-capture runtime fixture, not an actual-app or production receipt.
+  for(const [direction,time] of [['in','09:00:00'],['out','12:00:00'],['in','13:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({workedMinutes:450,underMinutes:30,status:'present',lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  expect(saved.calcTrace?.punch).toMatchObject({spanMinutes:480,workedMinutes:450,workBasis:'fullFlexiDurationOwner',
+   calculationIntervals:[{inAbs:540,outAbs:720},{inAbs:780,outAbs:1080}]});
+  expect(saved.calcTrace?.overtime).toBeNull();
+ });
+ it('uses the same policy unknowns for range/calendar recompute and editor previews without mutating labels',async()=>{
+  const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
+  await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
+  const read=async()=>{const [row]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));return row;};
+  const before=await read();
+  const result=await withTenant(ctx,tx=>recomputeDayFigures(tx,ctx,{employmentId:f.employmentId,date:day(1),checkInAt:before.checkInAt!,
+   checkOutAt:before.checkOutAt,approvedOtMinutes:120}));
+  expect(result.columns).toMatchObject({workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,lateDeductMinutes:null,otMinutes:null});
+  expect(result.otPreserved).toBe(false);expect(result.columns).not.toHaveProperty('checkInAt');expect(result.columns).not.toHaveProperty('checkOutAt');
+  const editor=await withTenant(ctx,tx=>attendanceDayCalculationTx(tx,ctx,f.employmentId,day(1)));
+  expect(editor).toMatchObject({policyRaw:true,approvedOtMinutes:null,rows:[],effectiveBaseRows:[],automatic:{workedMinutes:null,otMinutes:null}});
+  expect(await read()).toEqual(before);
+ });
+ it('reconciles proposed-pair correction labels before storing its actual effect and event figures',async()=>{
+  const f=await fixture();await f.save();const target=day(1);
+  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(target+'T12:00:00+08:00'));
+  try{
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:target,checkIn:'09:30',checkOut:'18:00',
+   reason:'Fictional proposed-pair correction without captured instants'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,target)));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,lateDeductMinutes:null,otMinutes:null});
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
+  expect(punches.filter(row=>!row.voidedAt).map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);
+  const effects=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,request.correctionId),eq(s.domainEvent.eventType,'attendance-correction.effect.recorded'))).orderBy(asc(s.domainEvent.id));
+  expect(effects).toHaveLength(1);expect(effects[0].payload).toMatchObject({after:{workedMinutes:null,otMinutes:null}});
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,saved.id),eq(s.domainEvent.eventType,'attendance.amended'))).orderBy(asc(s.domainEvent.id));
+  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({workedMinutes:null,otMinutes:null});
+  }finally{vi.useRealTimers();}
+ });
+ it('writes the sum of captured physical pairs and matching raw trace, without legacy OT or scalar approval',async()=>{
+  const f=await fixture();await updateShift(ctx,{...f.shiftInput,shiftId:f.shiftId,breakMinutes:0});await f.save();
+  // Fictional stored receipt fixtures exercise the real writer. These are not real-app capture evidence.
+  for(const [direction,time] of [['in','09:30:00'],['out','12:00:00'],['in','14:00:00'],['out','18:00:00']] as const){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId:f.employmentId,
+    attendanceDate:day(1),direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(day(1)+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId:f.employmentId,date:day(1),time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',status:'late',workedMinutes:390,lateMinutes:20,
+   earlyOutMinutes:0,otMinutes:null,otFlatMinutes:null,lateDeductMinutes:0});
+  expect(saved.calcTrace?.punch).toMatchObject({inAbs:570,outAbs:1080,spanMinutes:390,workedMinutes:390,
+   calculationIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}],intervalSource:'closedPunchPairs'});
+  expect(saved.calcTrace?.lateness).toMatchObject({minutes:20,graceMinutes:10});expect(saved.calcTrace?.overtime).toBeNull();
+  const current=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(current.policyClockReview).toMatchObject({state:'known',evidence:{complete:true,requiresReview:false,
+   minuteIntervals:[{inAbs:570,outAbs:720},{inAbs:840,outAbs:1080}]}});
+  expect(current.policyWorkInput).toMatchObject({state:'known',workedIntervals:[{from:570,to:720},{from:840,to:1080}]});
+  expect(current.input.facts.actualWorkingMinutes).toMatchObject({state:'known',value:'390'});
+  await withTenant(ctx,tx=>tx.update(s.attendance).set({workedMinutes:510}).where(eq(s.attendance.id,saved.id)));
+  const changed=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(changed.policyClockReview).toMatchObject({state:'unavailable',reason:'rawSourceMismatch'});
+  expect(changed.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('keeps manual labels visible in the raw log but clears unproved durations and deductions',async()=>{
+  const f=await fixture();await f.save();await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:30'});
+  await checkOut(ctx,{employmentId:f.employmentId,date:day(1),time:'18:00'});
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,earlyOutMinutes:null,
+   lateDeductMinutes:null,earlyOutDeductMinutes:null,otMinutes:null});
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
+  expect(punches.map(row=>row.punchAt).sort()).toEqual(['09:30:00','18:00:00']);
+ });
+ it('admits only a real current raw subject/day before first-trace configuration serialization',async()=>{
+  const f=await fixture();await f.save();
+  const lock=(employmentId:string,date:string)=>withTenant(ctx,tx=>tx.execute(sql`select app.lock_attendance_policy_raw_context(${employmentId}::uuid,${date}::date)`));
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({cause:{code:'23514'}});
+  await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:00'});
+  await owner.db.update(s.attendance).set({calcTrace:null}).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  await expect(lock(f.employmentId,day(1))).resolves.toBeDefined();
+  await expect(lock(randomUUID(),day(1))).rejects.toMatchObject({cause:{code:'42501'}});
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(lock(f.employmentId,day(1))).rejects.toMatchObject({cause:{code:'42501'}});
+ });
+ it('resolves prospective raw policy inputs without requiring an already-derived trace, and never guesses captures',async()=>{
+  const f=await fixture(),saved=await f.save();
+  const read=()=>withTenant(ctx,tx=>attendancePolicyRawInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(await read()).toEqual({state:'unavailable',reason:'rawDayUnavailable'});
+  await checkIn(ctx,{employmentId:f.employmentId,date:day(1),time:'09:00'});
+  // Fictional pre-derivation state: source selection cannot depend on the trace it must produce.
+  await owner.db.update(s.attendance).set({calcTrace:null}).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(await read()).toMatchObject({state:'policy',context:{selected:{id:saved.id}},source:{state:'unavailable',reason:'missingCapture'},work:{state:'unavailable'}});
+  const [retained]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,day(1))));
+  expect(retained.calcTrace).toBeNull();
+ });
+ const row=async(employmentId:string,date:string)=>{
+  const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,employmentId),eq(s.attendance.attendanceDate,date))).limit(1);
+  return saved;
+ };
+ const covered=(employmentId:string,date:string)=>withTenant(ctx,tx=>listCoveredOvertimeDaysTx(tx,ctx,{employmentIds:[employmentId],from:date,to:date}));
+ const detected=(employmentId:string,date:string,actor=ctx)=>withTenant(actor,tx=>hasRecordedAttendanceGroupPolicyTx(tx,actor,{employmentId,date}));
+ async function clock(employmentId:string,date:string){
+  await checkIn(ctx,{employmentId,date,time:'09:00'});await checkOut(ctx,{employmentId,date,time:'20:00'});
+ }
+ async function capturedClock(employmentId:string,date:string,pairs:readonly (readonly ['in'|'out',string])[]=[['in','09:00:00'],['out','20:00:00']]){
+  for(const [direction,time] of pairs){
+   const [capture]=await owner.db.insert(s.attendanceClockCapture).values({tenantId:b.tenantId,employmentId,attendanceDate:date,
+    direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(date+'T'+time+'+08:00')}).returning();
+   await (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
+  }
+ }
+ it('keeps an uncovered date legacy but fences a dated policy without losing its actual punches',async()=>{
+  const f=await fixture(),configured=await f.save();
+  await capturedClock(f.employmentId,day());
+  expect(await detected(f.employmentId,day())).toBe(false);
+  expect((await row(f.employmentId,day())).calcTrace?.overtimePattern).toBeUndefined();
+  expect(await covered(f.employmentId,day())).toEqual([]);
+  await capturedClock(f.employmentId,day(1));
+  const saved=await row(f.employmentId,day(1));
+  expect(saved).toMatchObject({checkInAt:'09:00:00',checkOutAt:'20:00:00'});
+  expect(saved.calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id)).orderBy(asc(s.attendancePunch.punchAt),asc(s.attendancePunch.id));
+  expect(punches.map(punch=>({time:punch.punchAt,direction:punch.direction}))).toEqual([{time:'09:00:00',direction:'in'},{time:'20:00:00',direction:'out'}]);
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  expect(await withTenant(ctx,tx=>hasOvertimePatternForDayTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}))).toBe(true);
+  expect(await covered(f.employmentId,day(1))).toMatchObject([{employmentId:f.employmentId,date:day(1),coverage:'calculation',outcome:'refused',calculationId:expect.any(String)}]);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.attendanceGroupPolicy).toMatchObject({id:configured.id,companyId:b.companyId,ruleId:f.ruleId,ordinal:1});
+  expect(snapshot.policyExecutionContext).toMatchObject({state:'policy',selected:{id:configured.id},resolvedClock:{lateGraceMinutes:10,earlyGraceMinutes:15},
+   schedule:{shiftId:f.shiftId,normalMinutes:480,breakMinutes:60,durationOnly:false},calendar:[{date:day(1),state:'known',dayClass:'normal'}]});
+  // Genuine capture proves clocks; the scalar break still cannot establish positioned financial work.
+  expect(snapshot.policyClockSource).toMatchObject({state:'known',authority:'sourceOnly'});
+  expect(snapshot.policyClockReview).toMatchObject({state:'known',authority:'proposalOnly'});
+  expect(snapshot.policyClockMeasurements).toMatchObject({state:'measured',lateIn:{state:'known',minutes:0},earlyOut:{state:'known',minutes:0}});
+  expect(snapshot.policyWorkInput).toEqual({state:'unavailable',authority:'sourceOnly',reason:'positionedScheduleUnavailable'});
+  expect(snapshot.input.facts.actualWorkingMinutes).toMatchObject({state:'unknown'});
+  expect(snapshot.input.facts.lateMinutes).toMatchObject({state:'known',value:'0'});
+  expect(snapshot.policyFormulaInput).toEqual({state:'disabled',authority:'sourceOnly',references:[]});
+  const current=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(current?.calculation).toMatchObject({bindingKind:'attendanceGroupPolicy',policyRevisionId:configured.id,policyPartCount:0,
+   versionId:null,assignmentId:null,outcome:'refused',durationOutcome:'refused',transferable:false,payableNumerator:null,payableDenominator:null});
+  expect(current?.evidence?.evidence).toMatchObject({attendanceGroupPolicy:snapshot.attendanceGroupPolicy,policyClockMeasurements:snapshot.policyClockMeasurements,evaluation:null,duration:null,
+   resolution:{status:'policy',policyRevisionId:configured.id},policyExecutionProposal:{state:'unavailable',reason:'workUnavailable'}});
+  const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.sourceId,current!.source.id))
+   .orderBy(asc(s.attendanceOvertimeCalculation.ordinal));
+  expect(calculations.map(calculation=>calculation.ordinal)).toEqual([1,2]);
+  expect(current?.source.revision).toBe(2);expect(current?.source.currentCalculationId).toBe(current?.calculation?.id);
+  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
+  // These readers retain unknown source facts for review. Financial admission belongs to
+  // the explicit contract owner, which must refuse even when the raw snapshot is readable.
+  for(const reader of [canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx]){
+   const financial=await withTenant(ctx,tx=>reader(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+   expect(financial.policyWorkInput).toMatchObject({state:'unavailable'});
+   const identity={tenantId:b.tenantId,companyId:b.companyId,employmentId:f.employmentId,sourceId:current!.source.id,
+    calculationId:current!.calculation!.id,date:day(1)};
+   expect(attendancePolicyFinancialContract(identity,financial).state).toBe('unavailable');
+   const independent=attendancePolicyIndependentSource(financial);expect(independent).not.toBeNull();
+   if(!independent)throw Error('Expected independently refused duration source');
+   expect(attendancePolicyFinancialDurationContract(identity,independent).state).toBe('unavailable');
+  }
+  expect(await owner.db.select().from(s.attendanceOvertimeLine)).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('rejects a newly superseded prepared policy, then retains both immutable versions after a fresh recalculation',async()=>{
+  const f=await fixture(),first=await f.save();await capturedClock(f.employmentId,day(3));
+  const before=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(before?.calculation?.policyRevisionId).toBe(first.id);
+  let secondId='';const api=createOvertimeCalculationOwner(canonicalOvertimeInputTx);
+  await withTenant(ctx,async tx=>{
+   const prepared=await api.prepareTx(tx,ctx,{employmentId:f.employmentId,date:day(3)});
+   const next=policy();next.clock.pairing='firstInLastOut';
+   // The handle is transaction-bound and holds the shared epoch. Exercise a guarded same-tx
+   // supersession; opening a second policy writer and awaiting it here would wait on ourselves.
+   const [scheduled]=await tx.insert(s.attendanceGroupPolicyRevision).values({tenantId:b.tenantId,companyId:b.companyId,
+    ruleId:f.ruleId,ordinal:2,effectiveFrom:day(2),policy:next,reason:'Fictional same-transaction stale handle probe',createdByUserId:ctx.userId!}).returning();
+   secondId=scheduled.id;
+   await expect(api.recordTx(tx,ctx,{prepared,expectedCurrentRevision:before!.source.revision,reason:'Fictional stale preparation probe'}))
+    .rejects.toMatchObject({code:'stale'});
+  });
+  const unchanged=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(unchanged).toEqual(before);
+  const replacement=await calculateOvertimePatternDay(ctx,{employmentId:f.employmentId,date:day(3),expectedCurrentRevision:before!.source.revision,
+   reason:'Fictional explicit refresh after policy change'});
+  expect(replacement).toMatchObject({status:'recorded',policyRevisionId:secondId,evaluation:null,duration:null});
+  const after=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(after?.calculation).toMatchObject({policyRevisionId:secondId,outcome:'refused',transferable:false});
+  const retained=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(3),revisionId:before!.calculation!.id}));
+  expect(retained?.calculation).toEqual(before?.calculation);expect(retained?.evidence).toEqual(before?.evidence);
+  expect(await owner.db.select().from(s.attendanceOvertimeLine)).toEqual([]);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('refuses a changed live schedule context instead of attaching its new windows to the recorded raw result',async()=>{
+  const f=await fixture();await f.save();await capturedClock(f.employmentId,day(1));
+  const before=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(before.policyExecutionContext?.state).toBe('policy');const rawBefore=await row(f.employmentId,day(1));
+  await updateShift(ctx,{shiftId:f.shiftId,...f.shiftInput,startTime:'10:00',endTime:'19:00'});
+  const after=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(after.policyExecutionContext).toEqual({state:'unavailable',reason:'scheduleUnavailable'});
+  expect(after.input.source.inputDigest).not.toBe(before.input.source.inputDigest);
+  const stored=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(stored?.evidence?.evidence).toMatchObject({policyExecutionContext:before.policyExecutionContext,policyWorkInput:before.policyWorkInput});
+  expect(await row(f.employmentId,day(1))).toEqual(rawBefore);
+ });
+ it('does not apply another employer policy merely because both employers share a Schedule Group',async()=>{
+  const f=await fixture(),other=await createCompany(ctx,{legalName:'Fictional other policy employer',country:'MY',currency:'MYR'});
+  await scheduleAttendanceGroupPolicy(ctx,{companyId:other.id,ruleId:f.ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional other employer policy',policy:policy()});
+  await clock(f.employmentId,day(1));
+  expect(await detected(f.employmentId,day(1))).toBe(false);
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toBeUndefined();
+  expect(await covered(f.employmentId,day(1))).toEqual([]);
+ });
+ it('does not treat missing dated employer proof as proof that the configured group has no policy',async()=>{
+  const f=await fixture();await f.save();await clock(f.employmentId,day(1));
+  await owner.db.delete(s.assignment).where(eq(s.assignment.employmentId,f.employmentId));
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  await expect(withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}))).rejects.toMatchObject({code:'unavailable'});
+ });
+ it('records an owner-issued company policy epoch and exposes no application write privilege',async()=>{
+  const f=await fixture();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,reason:'Fictional policy epoch receipt'});
+  const [receipt]=await withTenant(ctx,tx=>tx.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)));
+  expect(receipt).toMatchObject({tenantId:b.tenantId,employmentId:f.employmentId,attendanceDate:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:0});
+  const [privileges]=await owner.db.execute(sql`select
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','SELECT') as readable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','INSERT') as insertable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','UPDATE') as updateable,
+   has_table_privilege('ai_hr_app','public.attendance_policy_request_contract','DELETE') as deleteable,
+   has_table_privilege('ai_hr_app','app.attendance_policy_company_epoch','SELECT') as epoch_readable,
+   has_function_privilege('ai_hr_app','app.lock_attendance_policy_epoch(uuid,uuid)','EXECUTE') as epoch_callable`);
+  expect(privileges).toEqual({readable:true,insertable:false,updateable:false,deleteable:false,epoch_readable:false,epoch_callable:false});
+  await expect(withTenant(ctx,tx=>tx.update(s.attendancePolicyRequestContract).set({visibleEpoch:99})
+   .where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)))).rejects.toThrow();
+  expect(await withTenant(adminCtx(await seedBase()),tx=>tx.select().from(s.attendancePolicyRequestContract)
+   .where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId)))).toEqual([]);
+ });
+ it('does not admit a post-policy application to legacy mode through a backdated createdAt field',async()=>{
+  const f=await fixture(),revision=await f.save();
+  const [request]=await withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId:f.employmentId,
+   attendanceDate:day(1),requestedOtMinutes:120,plannedStartTime:'18:00',plannedEndTime:'20:00',
+   reason:'Fictional untrusted timestamp',createdAt:new Date('2000-01-01T00:00:00Z')}).returning());
+  const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.id));
+  const [storedPolicy]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
+  expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,companyId:b.companyId});expect(receipt.visibleEpoch).toBeGreaterThan(0);
+  await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await capturedClock(f.employmentId,day(1));
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.policyApprovalInput?.requests.find(row=>row.id===request.id)?.submissionContract).toMatchObject({state:'recorded',correctionId:request.id,
+   tenantId:b.tenantId,employmentId:f.employmentId,date:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,recordedAt:receipt.recordedAt.toISOString()});
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+ });
+ it('serializes a concurrent submission after the actual policy commit instead of inferring from timestamps',async()=>{
+  const f=await fixture();let release!:()=>void,inserted!:()=>void,rejected!:(error:unknown)=>void;
+  const hold=new Promise<void>(resolve=>{release=resolve;});const reached=new Promise<void>((resolve,reject)=>{inserted=resolve;rejected=reject;});
+  let policyPid=0;
+  const writing=withTenant(ctx,async tx=>{
+   const [pid]=await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as {pid:number}[];policyPid=pid.pid;
+   await tx.insert(s.attendanceGroupPolicyRevision).values({tenantId:b.tenantId,companyId:b.companyId,ruleId:f.ruleId,ordinal:1,effectiveFrom:day(1),policy:policy(),
+    reason:'Fictional concurrent policy activation',createdByUserId:ctx.userId!});inserted();await hold;
+  }).catch(error=>{rejected(error);throw error;});
+  try{await reached;}catch(error){await writing.catch(()=>{});throw error;}
+  const submitting=requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,reason:'Fictional concurrent application'});
+  void submitting.catch(()=>{});
+  let observed=false;
+  try{
+   const until=Date.now()+5000;
+   while(Date.now()<until){
+    const [waiting]=await owner.db.execute(sql`select exists(select 1 from pg_stat_activity where datname=current_database()
+     and ${policyPid}::integer=any(pg_blocking_pids(pid))) as blocked`) as unknown as {blocked:boolean}[];
+    if(waiting.blocked){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+   }
+  }finally{release();}
+  const [,request]=await Promise.all([writing,submitting]);expect(observed).toBe(true);
+  const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.correctionId));
+  expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:1,companyId:b.companyId});
+ });
+ it('preserves a plan approved before policy activation under its original owner and frozen method',async()=>{
+  const f=await fixture();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
+   reason:'Fictional pre-policy approved plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const [before]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  await f.save();await clock(f.employmentId,day(1));
+  const [after]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  expect(after).toMatchObject({status:'approved',otApprovalMethod:before.otApprovalMethod,decidedAt:before.decidedAt,decidedByEmploymentId:before.decidedByEmploymentId});
+  expect(after.appliedAt).not.toBeNull();expect(await detected(f.employmentId,day(1))).toBe(false);
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toBeUndefined();
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.attendanceGroupPolicy).toBeUndefined();expect(snapshot.input.approval.status).toBe('approved');
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation)).toEqual([]);
+ });
+ it('requires withdrawing the existing plan before a new policy application and preserves its approval history',async()=>{
+  const f=await fixture();
+  const old=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
+   reason:'Fictional original legacy plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:old.correctionId,decision:'approved'});
+  const revision=await f.save();
+  await expect(requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
+   reason:'Fictional duplicate approved plan refusal',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'})).rejects.toThrow('approved overtime plan');
+  const [originalDecision]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
+  await cancelAttendanceApplication(ctx,{correctionId:old.correctionId,kind:'withdrawn',reason:'Fictional explicit replacement after policy activation'});
+  const next=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
+   reason:'Fictional new policy application',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:next.correctionId,decision:'approved'});
+  await capturedClock(f.employmentId,day(1));
+  expect(await detected(f.employmentId,day(1))).toBe(true);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.attendanceGroupPolicy?.id).toBe(revision.id);
+  const [original]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,old.correctionId));
+  expect(original).toMatchObject({status:'cancelled',cancellationKind:'withdrawn',appliedAt:null,
+   approvedOtMinutes:originalDecision.approvedOtMinutes,decidedAt:originalDecision.decidedAt,decidedByEmploymentId:originalDecision.decidedByEmploymentId});
+ });
+ it('does not downgrade an application under an earlier new-policy revision into legacy mode',async()=>{
+  const f=await fixture();await f.save();
+  const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(3),requestedOtMinutes:120,
+   reason:'Fictional existing new-policy application',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  const changed=policy();changed.clock.pairing='firstInLastOut';const next=await f.save(changed,1,day(2));
+  await capturedClock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
+  expect(snapshot.attendanceGroupPolicy?.id).toBe(next.id);
+  expect((await row(f.employmentId,day(3))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('reasserts an already approved scalar plan without turning it into policy execution evidence',async()=>{
+  const f=await fixture();await f.save();
+  const requested=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
+   reason:'Fictional policy routing plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
+  await decideAttendanceCorrection(ctx,{correctionId:requested.correctionId,decision:'approved'});
+  await capturedClock(f.employmentId,day(1));
+  const [first]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
+  expect(first.appliedAt).toBeNull();
+  await capturedClock(f.employmentId,day(1),[['in','21:00:00'],['out','22:00:00']]);
+  const [again]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
+  expect(again.appliedAt).toEqual(first.appliedAt);expect(again.approvedOtMinutes).toBe(first.approvedOtMinutes);
+  const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
+  expect(snapshot.policyApprovalInput).toMatchObject({authority:'sourceOnly',mode:'manual',requests:[{id:requested.correctionId,
+   createdAt:again.createdAt.toISOString(),decidedAt:again.decidedAt!.toISOString(),appliedAt:null,
+   method:again.otApprovalMethod,decidedByEmploymentId:again.decidedByEmploymentId,
+   plannedWindow:{authority:'auditOnly',startLabel:'18:00:00',endLabel:'20:00:00'}}]});
+  expect((await row(f.employmentId,day(1))).calcTrace?.overtimePattern).toEqual({status:'refused',reason:'sourceUnavailable'});
+  expect(await covered(f.employmentId,day(1))).toMatchObject([{coverage:'calculation',outcome:'refused'}]);
+  const calculations=await owner.db.select().from(s.attendanceOvertimeCalculation).orderBy(asc(s.attendanceOvertimeCalculation.sourceId),asc(s.attendanceOvertimeCalculation.ordinal));
+  expect(calculations.length).toBeGreaterThan(1);
+  expect(calculations.every(calculation=>calculation.bindingKind==='attendanceGroupPolicy'&&calculation.outcome==='refused'&&!calculation.transferable)).toBe(true);
+  expect(await owner.db.select().from(s.overtimeSourceSettlement)).toEqual([]);
+ });
+ it('rejects a revoked actual principal before labelling an unreadable policy legacy',async()=>{
+  const f=await fixture();await f.save();await clock(f.employmentId,day(1));
+  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
+  await expect(detected(f.employmentId,day(1))).rejects.toThrow('Current Attendance principal required');
+ });
+});

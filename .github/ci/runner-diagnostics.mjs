@@ -1,0 +1,9 @@
+import {statfsSync,existsSync,writeFileSync,appendFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+if(process.env.GITHUB_ACTIONS!=='true'||process.platform!=='linux')throw Error('Disposable GitHub runner only');
+const snapshots=[process.cwd(),process.env.RUNNER_TEMP,'/var/lib/docker'].map(path=>{const s=statfsSync(path);return {path,totalBytes:s.blocks*s.bsize,availableBytes:s.bavail*s.bsize};});
+const sdkPaths=['/usr/share/dotnet','/usr/local/lib/android','/opt/ghc','/usr/local/.ghcup'];
+const unusedSDKs=sdkPaths.filter(existsSync).map(path=>({path,bytes:Number(execFileSync('sudo',['du','-sx','-B1',path],{encoding:'utf8'}).trim().split(/\s+/)[0])}));
+const report={at:new Date().toISOString(),runner:process.env.RUNNER_NAME,controller:process.env.GITHUB_SHA,candidate:process.env.AIHR_CI_HEAD,snapshots,unusedSDKs};
+writeFileSync(process.env.RUNNER_TEMP+'/runner-resources.json',JSON.stringify(report,null,2)+'\n');
+console.log(JSON.stringify(report,null,2));appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Measured runner resources\n```json\n'+JSON.stringify(report,null,2)+'\n```\n');

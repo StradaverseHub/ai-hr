@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback,useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -8,7 +8,7 @@ import { useIsMonolith } from '@/components/ui-theme-context';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
-type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>;
+type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
 export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding';createdAt?:undefined});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
@@ -81,6 +81,10 @@ export function NotificationCenter({
 }) {
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
+  const tGreeting=useTranslations('employeeHome.greetingNotification');
+  const notificationText=useCallback((item:NotificationRow)=>item.kind==='employee-home.greeting'
+    &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
+    ?{title:tGreeting('title'),body:tGreeting('body')}:{title:item.title,body:item.body},[tGreeting]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
@@ -106,7 +110,7 @@ export function NotificationCenter({
       ...readItems.map((item) => ({
         type: 'notif' as const,
         at: new Date(item.createdAt).getTime(),
-        text: `${item.title} ${item.body}`.toLowerCase(),
+        text: `${notificationText(item).title} ${notificationText(item).body}`.toLowerCase(),
         item,
       })),
       ...history.map((item) => ({
@@ -118,9 +122,10 @@ export function NotificationCenter({
     ];
     const q = query.trim().toLowerCase();
     return entries.filter((e) => (q ? e.text.includes(q) : true)).sort((a, b) => b.at - a.at);
-  }, [readItems, history, query]);
+  }, [readItems, history, query,notificationText]);
 
   const notifRow = (n: NotificationRow) => {
+    const copy=notificationText(n);
     const onClick = () => {
       if (!n.readAt) markRead(n.id);
       setOpen(false);
@@ -130,10 +135,10 @@ export function NotificationCenter({
         <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : (sevDot[n.severity] ?? 'bg-sky-500')}`} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className={`truncate text-sm ${n.readAt ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>{n.title}</span>
+            <span className={`truncate text-sm ${n.readAt ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>{copy.title}</span>
             <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(n.createdAt))}</span>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{n.body}</p>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{copy.body}</p>
         </div>
       </div>
     );
@@ -228,7 +233,7 @@ export function NotificationCenter({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
-        className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
+        className="relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
         {monolith ? (
           // The button's aria-label carries the full count; this text is its visible form.

@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * 88e94371 — "Lateness, Early Out & Overtime Settings" rule library. Golden tests:
  *   1. applyOtRuleRows (pure): OT-band rounding + early-OT inclusion; Standard/no-rows leaves OT untouched.
@@ -40,15 +41,10 @@ const addDaysIso = (iso: string, n: number): string => {
 let b: Base;
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Rule', primaryEmail: `rule_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'Rule', primaryEmail: `rule_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const workdayShift = (over: Record<string, unknown> = {}) => ({

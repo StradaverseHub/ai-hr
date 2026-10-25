@@ -40,7 +40,9 @@ describe('r387 complete monetary parity against original calculation',()=>{
   const snapshots=[];
   const comp=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,e.employmentId));
   expect(comp).toHaveLength(1);expect(Number(comp[0].basicSalary)).toBe(10000);
-  const ids=new Map([[comp[0].id,'selected-salary-owner'],[bonus.id,'item:SYNTH_TAXABLE_BONUS']]);
+  const [payingCompany]=await owner.db.select().from(schema.company).where(eq(schema.company.id,base.companyId));
+  expect(payingCompany).toMatchObject({tenantId:base.tenantId,currency:'MYR'});
+  const ids=new Map([[payingCompany.id,'paying-company-owner'],[comp[0].id,'selected-salary-owner'],[bonus.id,'item:SYNTH_TAXABLE_BONUS']]);
   const bonusSources=await owner.db.select().from(schema.payrollBatchComponent).where(eq(schema.payrollBatchComponent.batchId,extra.batchId));
   const ownedBonus=bonusSources.filter(x=>x.employmentId===e.employmentId&&x.componentId===bonus.id);expect(ownedBonus).toHaveLength(1);ids.set(ownedBonus[0].id,'batch-item:SYNTH_TAXABLE_BONUS');
   const taxSelections=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));

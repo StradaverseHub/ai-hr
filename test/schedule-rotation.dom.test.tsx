@@ -15,6 +15,23 @@ function mount(other=false){return render(<NextIntlClientProvider locale="en" me
   initial={{unit:'day',length:2,effectiveFrom:date,anchorDate:date,days:[{kind:'full',shiftId:'a'},{kind:'rest',shiftId:null}]}}
   shifts={['a','b'].map(id=>({id,name:id==='a'?'Morning':'Night',code:id,startTime:'08:00',endTime:'17:00',halfEnd:'12:30',fullMinutes:480,halfMinutes:240,archived:false,available:true,selected:id==='a'}))}/>{other&&<form id="other-form" method="post"><input name="other" aria-label="Other form" defaultValue="Original"/></form>}</NextIntlClientProvider>);}
 describe('integrated allowed-shift and cycle editor',()=>{
+  it('does not treat a shift search as an unsaved business edit',()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);mount();
+    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
+    const link=screen.getByRole('link',{name:'Back to settings'});let intercepted:boolean|null=null;
+    link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
+    fireEvent.click(link);
+    expect(confirm).not.toHaveBeenCalled();expect(intercepted).toBe(false);
+    expect(link).toHaveAttribute('href','/admin/attendance/settings');expect(router.push).not.toHaveBeenCalled();
+  });
+  it('protects bulk-selected filtered shifts as unsaved edits and submits the complete hidden pool',()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(false),{container}=mount();
+    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
+    fireEvent.click(screen.getByRole('button',{name:'Select all search results'}));
+    const values=new FormData(container.querySelector('#attendance-rotation-group') as HTMLFormElement).getAll('allowedShiftIds');
+    expect(values).toEqual(['a','b']);
+    fireEvent.click(screen.getByRole('link',{name:'Back to settings'}));expect(confirm).toHaveBeenCalled();expect(router.push).not.toHaveBeenCalled();
+  });
   it('makes an unsaved allowed shift immediately available in cycle selectors',()=>{
     const {container}=mount();
     fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));

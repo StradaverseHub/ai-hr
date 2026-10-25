@@ -8,6 +8,9 @@ export type {PersonnelImportChoice} from './import-sections';
  * Unknown reasons remain visible verbatim; the exact coverage test requires their translation.
  */
 const REASON_KEYS:Readonly<Record<string,string>>={
+  'Classification metadata is retained for safety rules; Personnel and generic import do not maintain this flag.':'testRecord',
+  'Resignation dates are controlled by applicable Movement events; use the Movement import or lifecycle workflow.':'resignationDates',
+  'Use the grouped Cost Center Allocations worksheet or dedicated allocation import; scalar employee rows cannot replace a dated set.':'costAllocation',
   'Dated calendar changes use the authorized assignment workflow; scalar employee imports cannot replace its history.':'datedCalendar',
   'HR-only guarded Personnel classification action; workbook and generic imports cannot change this metadata.':'testRecord',
   'The displayed name follows the Direct Superior selected through the supported Employee ID or work email import; it is not a separate name entry.':'superiorName',

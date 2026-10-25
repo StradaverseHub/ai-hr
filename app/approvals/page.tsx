@@ -1,3 +1,4 @@
+import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
@@ -183,7 +184,7 @@ export default async function ApprovalsPage({
   const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
-    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn}):Promise.resolve([]),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}):Promise.resolve([]),
   ]);
   if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
   const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
@@ -1024,6 +1025,11 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {(c.proposedCheckIn || c.clockChanges) && <p className="text-xs text-muted-foreground">{t('originalTimes')}: {c.originalClockSnapshot == null ? t('originalNotRecorded') : c.originalClockSnapshot.attendanceId == null ? t('originalNoRecord') : `${c.originalClockSnapshot.originalCheckIn ?? '—'} → ${c.originalClockSnapshot.originalCheckOut ?? '—'}`}</p>}
+                    <AttendanceUnclockedEvidence work={c.originalClockSnapshot?.unclockedWork}/>
+                    {(c.plannedStartTime || c.plannedEndTime) && <p className="text-xs text-muted-foreground">
+                      {tHistory('plannedWindow')}: {c.plannedStartTime?.slice(0,5) ?? tHistory('notRecorded')} → {c.plannedEndTime?.slice(0,5) ?? tHistory('notRecorded')}
+                      {c.plannedStartTime && c.plannedEndTime && c.plannedEndTime <= c.plannedStartTime ? ` (${tHistory('nextDay')})` : ''}
+                    </p>}
                     {c.clockChanges && <div><p className="font-medium">{tClock('proposed')}</p>{c.clockChanges.entries.length ? <ul>{c.clockChanges.entries.map((entry,i)=><li key={i}>{entry.punchAt} · {tClock(entry.direction)}</li>)}</ul> : <p>{tClock('empty')}</p>}</div>}
                     {c.proposedCheckIn
                       ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`

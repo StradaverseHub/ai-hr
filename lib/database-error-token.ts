@@ -15,6 +15,7 @@ export const DATABASE_ERROR_KINDS = {
   V: 'invalidValue',
   R: 'rule',
   B: 'busy',
+  N: 'nricDuplicate',
 } as const;
 
 export type DatabaseErrorKind = (typeof DATABASE_ERROR_KINDS)[keyof typeof DATABASE_ERROR_KINDS];
@@ -27,7 +28,7 @@ export function formatDatabaseErrorRef(kind: DatabaseErrorKind, id: string): str
   return `DB-${LETTER_OF[kind]}-${id}`;
 }
 
-const REF = /\bDB-([SPDLVRB])-([0-9A-F]{6})\b/;
+const REF = /\bDB-([SPDLVRBN])-([0-9A-F]{6})\b/;
 
 /** The kind and full reference inside a message, or null when the message is not a redacted database error. */
 export function parseDatabaseErrorRef(message: string | null | undefined): { kind: DatabaseErrorKind; ref: string } | null {

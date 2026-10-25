@@ -1,3 +1,6 @@
+import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
+import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
+import {notFound} from 'next/navigation';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -145,11 +148,12 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ moduleUnavailable?: string | string[] }>;
+  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[] }>;
 }) {
   const t = await getTranslations('dashboard');
   const tModule = await getTranslations('moduleUnavailable');
-  const rawUnavailable = (await searchParams)?.moduleUnavailable;
+  const homeQuery=await searchParams;
+  const rawUnavailable = homeQuery?.moduleUnavailable;
   const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
   const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
   // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
@@ -158,6 +162,25 @@ export default async function DashboardPage({
   const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds, allowedCount } = await scopedSession();
+  const admin = isAdmin(s);
+  const personalLanding=()=><>
+    {unavailableModule&&<Card className="mb-5 border-warning/30 p-4"><h2 className="text-sm font-semibold">{tModule('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{tModule('body',{module:unavailableModule.name})}</p></Card>}
+    <EmployeePersonalHome session={s} greetingsEnabled={isModuleEnabledOrFalse(s,'notifications')} employmentId={Array.isArray(homeQuery?.employmentId)?undefined:homeQuery?.employmentId}/>
+  </>;
+  let teamEmploymentId:string|null=null;
+  if(!admin){
+    if(Array.isArray(homeQuery?.employmentId))notFound();
+    // Personal landing never needs the legacy first-employment read, which includes compensation.
+    // Only an explicit workbench request resolves management authority here; its selected own
+    // identity is salary-free and cannot be replaced by a query-string role or company scope.
+    if(homeQuery?.workspace!=='team')return personalLanding();
+    const identity=await readEmployeeHomeIdentity(s,homeQuery.employmentId).catch(error=>{
+      if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
+      throw error;
+    });
+    if(identity.role!=='manager')return personalLanding();
+    teamEmploymentId=identity.selectedEmploymentId;
+  }
   const now = new Date();
   const nowMs = now.getTime();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -168,8 +191,7 @@ export default async function DashboardPage({
   // employment + reporting edges), then fetch only what the resolved role's cards render. Every read
   // below is an existing scope-fenced read; the role only selects WHICH fenced reads run — it never
   // widens access.
-  const me = await myEmployment(s);
-  const admin = isAdmin(s);
+  const me = admin?await myEmployment(s):teamEmploymentId?{employmentId:teamEmploymentId}:null;
   const managerRole = (s.roles ?? []).includes('manager');
   // The viewer's reporting edges decide the dashboard ROLE (a Direct Manager by reporting_line edge may
   // hold no `manager` platform role). a00c4f64: this used to also feed the Leave Calendar's person scope

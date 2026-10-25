@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * f513ec02 (r281) — PUTTING A PERSON IN A SCHEDULE GROUP, and the reverse of the allowed-shift refusal.
  *
@@ -118,15 +119,10 @@ const workdayShift = (name: string, over: Record<string, unknown> = {}) => ({
 });
 
 async function makeEmp(): Promise<string> {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Group Member', primaryEmail: `grp_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'Group Member', primaryEmail: `grp_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const storedGroup = async (employmentId: string): Promise<string | null> => {
@@ -185,7 +181,7 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     const page = PAGE();
     const from = page.indexOf('const scheduleGroupCard');
     expect(from, 'the card exists').toBeGreaterThan(-1);
-    const end = page.indexOf('const reviewCard', from);
+    const end = page.indexOf('const panels =', from);
     expect(end, 'the following card bounds this assertion').toBeGreaterThan(from);
     const card = page.slice(from, end);
     expect(card.length).toBeGreaterThan(100);

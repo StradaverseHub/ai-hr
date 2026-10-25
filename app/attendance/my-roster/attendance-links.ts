@@ -3,15 +3,15 @@ import { parsePageQuery } from '@/lib/pagination';
 import { isMyRosterDate, isMyRosterView, myRosterQuery, resolveMyRosterWindow, type MyRosterWindow } from './view';
 
 export type AttendanceCalendarQuery = {
-  listSaved?: string; tab?: string; view?: string; month?: string; date?: string; selected?: string;
+  employmentId?:string|string[]; listSaved?: string; tab?: string; view?: string; month?: string; date?: string; selected?: string;
   from?: string; to?: string; page?: string; size?: string;
 };
 export type AttendanceCalendarState = {
-  listSaved: boolean; tab: 'calendar' | 'list'; window: MyRosterWindow; selected: string;
+  employmentId?:string; listSaved: boolean; tab: 'calendar' | 'list'; window: MyRosterWindow; selected: string;
   from: string; to: string; page: string; size: string;
 };
 
-/** Two independent view coordinates, both retained in the URL. No subject/redirect parameter exists. */
+/** Retained view coordinates and an optional own-employment selector; the server proves its subject. */
 export function resolveAttendanceCalendarState(input: AttendanceCalendarQuery, today: string): AttendanceCalendarState {
   const anchor = isMyRosterDate(input.from) ? input.from : today;
   const window = resolveMyRosterWindow({
@@ -20,6 +20,7 @@ export function resolveAttendanceCalendarState(input: AttendanceCalendarQuery, t
   const paging = parsePageQuery(input);
   const listSaved = input.tab === 'list' || input.listSaved === '1';
   return {
+    ...(typeof input.employmentId==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.employmentId)?{employmentId:input.employmentId}:{}),
     listSaved, tab: input.tab === 'list' ? 'list' : 'calendar', window,
     selected: isMyRosterDate(input.selected) && input.selected >= window.from && input.selected <= window.to ? input.selected : window.focus ?? (today >= window.from && today <= window.to ? today : window.from),
     from: listSaved && isMyRosterDate(input.from) ? input.from : window.from,
@@ -28,7 +29,7 @@ export function resolveAttendanceCalendarState(input: AttendanceCalendarQuery, t
   };
 }
 export function attendanceCalendarQuery(state: AttendanceCalendarState): Record<string,string> {
-  return { listSaved:state.listSaved || state.tab === 'list' ? '1' : '0', tab:state.tab, ...myRosterQuery(state.window), selected:state.selected,
+  return { ...(state.employmentId?{employmentId:state.employmentId}:{}),listSaved:state.listSaved || state.tab === 'list' ? '1' : '0', tab:state.tab, ...myRosterQuery(state.window), selected:state.selected,
     from:state.from, to:state.to, page:state.page, size:state.size };
 }
 export function attendanceCalendarHref(state: AttendanceCalendarState): string {
@@ -36,7 +37,7 @@ export function attendanceCalendarHref(state: AttendanceCalendarState): string {
 }
 
 export type AttendanceCalendarReturn = {
-  calendar?: string; calendarView?: string; calendarMonth?: string; calendarDate?: string;
+  employmentId?:string|string[]; calendar?: string; calendarView?: string; calendarMonth?: string; calendarDate?: string;
   calendarListSaved?: string; calendarTab?: string; calendarSelected?: string; calendarFrom?: string; calendarTo?: string;
   calendarPage?: string; calendarSize?: string;
 };
@@ -47,6 +48,7 @@ export function calendarReturnParams(input: AttendanceCalendarReturn): Record<st
   if (input.calendar !== '1') return {};
   const paging = parsePageQuery({page:input.calendarPage,size:input.calendarSize});
   return {
+    ...(typeof input.employmentId==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.employmentId)?{employmentId:input.employmentId}:{}),
     calendar:'1',
     ...(input.calendarListSaved === '1' || input.calendarListSaved === '0' ? {calendarListSaved:input.calendarListSaved} : {}),
     ...(isMyRosterView(input.calendarView) ? {calendarView:input.calendarView} : {}),
@@ -62,7 +64,7 @@ export function calendarReturnParams(input: AttendanceCalendarReturn): Record<st
 }
 export function attendanceCalendarDetailHref(date:string, window:MyRosterWindow, state?:AttendanceCalendarState) {
   return `/attendance/my-records/${encodeURIComponent(date)}?${new URLSearchParams(calendarReturnParams({
-    calendar:'1',calendarView:window.view,calendarMonth:window.month,calendarDate:window.focus ?? window.from,
+    employmentId:state?.employmentId,calendar:'1',calendarView:window.view,calendarMonth:window.month,calendarDate:window.focus ?? window.from,
     calendarSelected:state?.selected ?? date,
     ...(state ? {calendarListSaved:state.listSaved || state.tab === 'list' ? '1' : '0',calendarTab:state.tab,calendarFrom:state.from,calendarTo:state.to,calendarPage:state.page,calendarSize:state.size} : {}),
   }))}`;
@@ -70,7 +72,7 @@ export function attendanceCalendarDetailHref(date:string, window:MyRosterWindow,
 export function attendanceCalendarBackHref(input:AttendanceCalendarReturn, date:string) {
   const safe=calendarReturnParams(input);
   return attendanceCalendarHref(resolveAttendanceCalendarState({
-    listSaved:safe.calendarListSaved,tab:safe.calendarTab,view:safe.calendarView,month:safe.calendarMonth ?? date.slice(0,7),
+    employmentId:safe.employmentId,listSaved:safe.calendarListSaved,tab:safe.calendarTab,view:safe.calendarView,month:safe.calendarMonth ?? date.slice(0,7),
     date:safe.calendarDate ?? date,selected:safe.calendarSelected ?? date,
     from:safe.calendarFrom,to:safe.calendarTo,page:safe.calendarPage,size:safe.calendarSize,
   },date));

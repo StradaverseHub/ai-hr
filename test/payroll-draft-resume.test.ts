@@ -407,6 +407,8 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
       const [selection]=await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(eq(schema.employmentTaxSelectionMy.tenantId,ps.tenantId),eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId),eq(schema.employmentTaxSelectionMy.companyId,batch.companyId)));
       expect(selection).toBeDefined();expect(batch.tenantId).toBe(ps.tenantId);expect(selection.transitionState).toBe('resolved');
       const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
+      const report=statutory.reportContext as Record<string,unknown>;
+      expect(report.payingCompanyId).toBe(batch.companyId);
       expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
       // Resolve each independent fixture's salary owner before resetDb removes it. The stamp
       // cannot choose its own owner; fixed inputs and the exclusive applicability range are checked.
@@ -427,7 +429,7 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
         compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
         basicSalary: '4321.00', payMode: 'monthly' });
       // Independent fixtures have different owner UUIDs. Every other saved field remains exact.
-      return {...statutory,salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+      return {...statutory,reportContext:{...report,payingCompanyId:'validated-paying-company'},salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
         pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
     };
     // Path A — plain create + generate (the pre-feature direct path).

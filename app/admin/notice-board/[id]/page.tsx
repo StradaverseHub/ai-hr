@@ -1,12 +1,11 @@
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations,getLocale } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { countNoticeAudience, getNotice } from '@/core/notice';
+import { noticeAudiencePreview, getNotice,noticeAuthoringScope,noticeAttachmentMetadata } from '@/core/notice';
 import { Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, btnGhost } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { NoticeForm } from '@/components/notice/notice-form';
-import { visibleEmploymentIds } from '@/lib/employment-selection';
 import { criteriaVocabulary } from '../criteria-options';
 import {
   archiveNoticeAction,
@@ -42,6 +41,7 @@ export default async function NoticeDetailPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('notices');
+  const locale=await getLocale();
   const { id } = await params;
   const { error } = await searchParams;
 
@@ -49,31 +49,17 @@ export default async function NoticeDetailPage({
   if (!n) notFound();
 
   const vocab = await criteriaVocabulary(s);
+  const authoring=await noticeAuthoringScope(s);
   const published = n.publishedAt != null;
+  const attachments=await noticeAttachmentMetadata(s,n.id);
   // Only a draft needs a projection — a published notice HAS an audience, and re-resolving it would answer
   // a different question from the one the reader is asking.
   const projected = published
     ? null
-    : await countNoticeAudience(s, { criteria: n.targetMode === 'individual' ? {} : n.criteria });
-  /**
-   * r289 — AN INDIVIDUAL DRAFT'S REACH IS A COUNT OF PEOPLE, NOT A COUNT OF STRINGS.
-   *
-   * It used to be the LENGTH of the stored list. `notice.criteria` is a jsonb column and `cleanNotice`
-   * only checks the list is non-empty, so a reference nothing resolves SAVES — and then a paste of ten good
-   * Employee IDs and two typos read as "reaches 12 employees", the publish confirmation repeated 12, and
-   * `publishNotice` was where it finally went wrong. `vocab.employees` is the list this page has ALREADY
-   * read for the picker below, so this costs no query.
-   *
-   * IT DROPS NOTHING. The stored list is untouched: the unresolved tokens are still on the notice, still in
-   * the paste box when it is reopened, and still named there as unrecognised. Only the SENTENCE stops
-   * over-claiming. `publishNotice` remains the authority — it re-reads these ids under RLS and drops
-   * whatever this session could not have produced, which is the same narrowing, one step later.
-   */
-  const reach = published
-    ? n.recipientCount
-    : n.targetMode === 'individual'
-      ? visibleEmploymentIds(n.criteria.employmentIds ?? [], vocab.employees).length
-      : (projected?.count ?? 0);
+    : await noticeAudiencePreview(s,n.id);
+  // The canonical owner previews both criteria and individual audiences under the same boundary
+  // as publication. A published notice instead reports its retained snapshot.
+  const reach=published?n.recipientCount:(projected?.count??0);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -91,6 +77,7 @@ export default async function NoticeDetailPage({
           <p className="text-sm">
             {published ? t('reachPublished', { count: reach }) : t('reachDraft', { count: reach })}
           </p>
+          {!published&&projected?.incomplete&&<p role="alert" className="text-sm text-destructive">{t('audienceIncomplete')}</p>}
           {!published && projected?.unrestricted && n.targetMode === 'criteria' && (
             <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{t('everyoneWarning')}</p>
           )}
@@ -103,6 +90,7 @@ export default async function NoticeDetailPage({
                     the number. */}
                 <ConfirmSubmit
                   size="sm"
+                  disabled={Boolean(projected?.incomplete)||reach===0}
                   title={t('publishConfirmTitle')}
                   description={t('publishConfirmDescription', { count: reach })}
                 >
@@ -161,10 +149,12 @@ export default async function NoticeDetailPage({
       <Card>
         <SectionHeader title={t('setupTitle')} />
         <div className="px-4 pb-4 pt-3">
-          <NoticeForm
+          <NoticeForm key={n.contentVersion}
+            authoring={{groupAllowed:authoring.groupAllowed,companies:authoring.companies.map(c=>({value:c.id,label:c.name})),owner:{companyId:n.ownerCompanyId,label:n.ownerCompanyId?(n.ownerCompanyName??t('authoringCompanyUnavailable')):t('groupAuthoring')}}}
             action={updateNoticeAction}
             values={{
               title: n.title,
+              category:n.category,summary:n.summary,pinned:n.pinned,requiresAcknowledgement:n.requiresAcknowledgement,contentVersion:n.contentVersion,attachmentIds:n.attachmentIds,attachments,
               body: n.body,
               startOn: n.startOn,
               endOn: n.endOn,
@@ -186,6 +176,10 @@ export default async function NoticeDetailPage({
             employees={vocab.employees}
             targetingFrozen={published}
             labels={{
+              attachmentLocale:locale,
+              attachments:{title:t('attachmentTitle'),help:t('attachmentHelp'),choose:t('attachmentChoose'),add:t('attachmentAdd'),pending:t('attachmentPending'),remove:t('attachmentRemove'),saveFirst:t('attachmentSaveFirst'),saveHint:t('attachmentSaveHint'),file:t('attachmentFile'),tooLarge:t('attachmentTooLarge'),changed:t('attachmentChanged'),limit:t('attachmentLimit'),unavailable:t('attachmentUnavailable'),failed:t('attachmentFailed')},
+              category:t('category'),summary:t('summary'),pinned:t('pinned'),requiresAcknowledgement:t('requiresAcknowledgement'),acknowledgementHelp:t('acknowledgementHelp'),
+              authoringCompany:t('authoringCompany'),chooseAuthoringCompany:t('chooseAuthoringCompany'),groupAuthoring:t('groupAuthoring'),authoringCompanyHelp:t('authoringCompanyHelp'),noAuthoringScope:t('noAuthoringScope'),
               sectionBasics: t('sectionBasics'),
               sectionContent: t('sectionContent'),
               sectionAudience: t('sectionAudience'),
@@ -237,6 +231,7 @@ export default async function NoticeDetailPage({
               fPopupFrequency: t('fPopupFrequency'),
               popupOnce: t('popupOnce'),
               popupUntilAcknowledged: t('popupUntilAcknowledged'),
+              popupUntilRevisionAcknowledged:t('popupUntilRevisionAcknowledged'),
               submit: t('save'),
             }}
           />

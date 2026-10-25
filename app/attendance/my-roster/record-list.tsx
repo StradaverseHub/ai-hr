@@ -3,7 +3,7 @@ import {personalCalendarHolidayContext} from './holiday-context';
 import {personalHolidayContext} from '@/lib/personal-holiday-context';
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
-import { myEmployment } from '@/core/read';
+import {ownAttendanceRecordSubject} from '../my-records/subject';
 import { ATTENDANCE_RANGE_MAX_DAYS, attendanceForEmploymentRange, flagOf, personalAttendanceStatus } from '@/packs/attendance/service';
 import { Button, Card, ErrorBanner, SectionHeader, inputCls } from '@/components/ui';
 import { PersonalAttendanceStatus } from '@/components/personal-attendance-status';
@@ -22,7 +22,7 @@ export async function AttendanceRecordList({ s, state, query }: {
 }) {
   const holidayT=await getTranslations('replacementHoliday');
   const t=await getTranslations('attendance'), locale=await getLocale(), today=todayInKualaLumpur();
-  const me=await myEmployment(s);
+  const me=await ownAttendanceRecordSubject(s,state.employmentId);
   if(!me) return <Card className="p-8 text-sm text-muted-foreground">{t('myRecords.notLinked')}</Card>;
   const sp={from:query.from ?? state.from,to:query.to ?? state.to};
   const range=resolveMyAttendanceRange(sp,today,ATTENDANCE_RANGE_MAX_DAYS);

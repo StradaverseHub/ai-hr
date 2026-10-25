@@ -445,7 +445,15 @@ describe('g — typed pay-component path pays a daily employee identically to th
     expect(typed.basicSalary).toBe(legacy.basicSalary);
     expect(typed.grossPay).toBe(legacy.grossPay);
     expect(typed.netPay).toBe(legacy.netPay);
-    expect(typed.statutory).toEqual(legacy.statutory);
+    const typedEvidence=typed.statutory as Record<string,unknown>,legacyEvidence=legacy.statutory as Record<string,unknown>;
+    expect(typedEvidence.componentLines).toEqual([]);
+    expect(legacyEvidence.componentLines).toBeUndefined();
+    const typedContext=typedEvidence.reportContext as Record<string,unknown>,legacyContext=legacyEvidence.reportContext as Record<string,unknown>;
+    expect(typedContext.itemization).toBe('complete');expect(legacyContext.itemization).toBe('partial');
+    expect({...typedContext,itemization:'validated'}).toEqual({...legacyContext,itemization:'validated'});
+    const {componentLines,reportContext,...typedMoney}=typedEvidence;
+    const {reportContext:legacyReport,...legacyMoney}=legacyEvidence;
+    expect(typedMoney).toEqual(legacyMoney);
   });
 });
 

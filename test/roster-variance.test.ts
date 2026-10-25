@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * ADR-0032 C4 — roster vs actual. For each rostered shift the variance read classifies a no-show, late
  * check-in, short hours, or on-track; on-leave and future shifts are not no-shows; a worked rest day is
@@ -18,15 +19,10 @@ let emp2: string;
 let shiftId: string;
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: `W ${randomUUID().slice(0, 8)}`, primaryEmail: `w_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: `W ${randomUUID().slice(0, 8)}`, primaryEmail: `w_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const TODAY = '2026-07-15';

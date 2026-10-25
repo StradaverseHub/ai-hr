@@ -33,15 +33,17 @@ export function ReportRowActions({
   isFavourite,
   shared,
   labels,
+  periodComparison=false,
 }: {
   id: string;
   isFavourite: boolean;
   shared: boolean;
   labels: Labels;
+  periodComparison?:boolean;
 }) {
   const [open, setOpen] = useState(false);
   const item = 'block w-full px-3 py-1.5 text-left text-sm hover:bg-accent/60';
-  const exportHref = (fmt: string) => `/reports/export?id=${encodeURIComponent(id)}&format=${fmt}`;
+  const exportHref = (fmt: string) => `${periodComparison?'/reports/payroll-comparison/export':'/reports/export'}?id=${encodeURIComponent(id)}&format=${fmt}`;
 
   return (
     <div className="relative shrink-0">
@@ -78,10 +80,10 @@ export function ReportRowActions({
               </button>
             </form>
             <div className="border-t border-border" />
-            <a className={item} href={exportHref('csv')}>{labels.exportCsv}</a>
+            {!periodComparison&&<a className={item} href={exportHref('csv')}>{labels.exportCsv}</a>}
             <a className={item} href={exportHref('xlsx')}>{labels.exportXlsx}</a>
             <a className={item} href={exportHref('pdf')}>{labels.exportPdf}</a>
-            <a className={item} href={exportHref('docx')}>{labels.exportDocx}</a>
+            {!periodComparison&&<a className={item} href={exportHref('docx')}>{labels.exportDocx}</a>}
             <div className="border-t border-border" />
             <form
               action={deleteReportAction}

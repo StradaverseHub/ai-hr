@@ -1,3 +1,4 @@
+import {overtimeAssignmentBinding,overtimePolicyBinding,type OvertimeBinding,type OvertimePolicyBinding,type OvertimeBindingAdapter} from './overtime-pattern-binding';
 /** Structural reader for immutable evidence, never a replay using today's configuration or facts.
  * Passing this parser proves shape/arithmetic consistency only. The server must bind all source,
  * calculation/version/assignment/digest and persisted line identities under its real read authority. */
@@ -139,19 +140,22 @@ function issue(raw: unknown): OvertimeIssue {
         fail('invalid', 'issue', 'Unknown recorded refusal.');
     return { code: r.code as OvertimeIssue['code'], path: text(r.path, 'path'), severity: r.severity as OvertimeIssue['severity'], detail: text(r.detail, 'detail', 2048) };
 }
-export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluation | null {
+export function parseRecordedOvertimeEvaluation(raw:unknown):OvertimeEvaluation|null{return recordedEvaluation(raw,overtimeAssignmentBinding);}
+/** Shape/arithmetic only. The policy owner must bind the real revision and complete parent partition. */
+export function parseRecordedOvertimePolicyEvaluation(raw:unknown):OvertimeEvaluation<OvertimePolicyBinding>|null{return recordedEvaluation(raw,overtimePolicyBinding);}
+function recordedEvaluation<B extends OvertimeBinding>(raw:unknown,adapter:OvertimeBindingAdapter<B>):OvertimeEvaluation<B>|null{
     try {
-        const r = overtimeObject(jsonClone(raw), 'result'), src = source(r.source), patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId'), assignmentId = overtimeUuid(r.assignmentId, 'assignmentId'), evidence = trace(r.trace);
+        const r = overtimeObject(jsonClone(raw), 'result'), src = source(r.source), patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId'), binding=adapter.read(r,src.date), evidence = trace(r.trace);
         if (r.status === 'refused') {
-            overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'issues', 'trace'], 'result');
+            overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'issues', 'trace',...adapter.keys], 'result');
             if (r.transferable !== false)
                 fail('invalid', 'transferable', 'A refusal is never transferable.');
             const issues = overtimeList(r.issues, 32, 'issues').map(issue);
             if (!issues.length)
                 fail('invalid', 'issues', 'A refusal needs an issue.');
-            return { status: 'refused', source: src, patternVersionId, assignmentId, transferable: false, issues, trace: evidence };
+            return { status: 'refused', source: src, patternVersionId,...binding, transferable: false, issues, trace: evidence };
         }
-        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'currency', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'amountMinorUnits', 'lines', 'trace'], 'result');
+        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'currency', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'amountMinorUnits', 'lines', 'trace',...adapter.keys], 'result');
         if (!['ready', 'ineligible'].includes(r.status as string) || typeof r.transferable !== 'boolean')
             fail('invalid', 'status', 'Unknown recorded evaluation status.');
         const currency = overtimeCurrency(r.currency, 'currency'), rawMinutes = value(r.rawMinutes, 'rawMinutes'), eligibleMinutes = value(r.eligibleMinutes, 'eligibleMinutes'), approvedMinutes = value(r.approvedMinutes, 'approvedMinutes'), payableMinutes = exact(r.payableMinutes, 'payableMinutes', 'minutes'), amount = integer(r.amountMinorUnits, 'amountMinorUnits');
@@ -206,7 +210,7 @@ export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluatio
             fail('invalid', 'status', 'Ineligible results cannot carry a payable contribution.');
         if (r.status === 'ready' && (BigInt(payableMinutes.numerator) <= BigInt('0') || !lines.length))
             fail('invalid', 'status', 'Ready results require positive attributed duration.');
-        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, transferable: r.transferable, currency, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, amountMinorUnits: amount.toString(), lines, trace: evidence };
+        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId,...binding, transferable: r.transferable, currency, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, amountMinorUnits: amount.toString(), lines, trace: evidence };
     }
     catch {
         return null;
@@ -238,19 +242,21 @@ function durationAllocation(raw: unknown): OvertimeDurationAllocation {
     return {segmentId,sessionId,payableMinutes,rawClock,attribution};
 }
 /** Structural immutable duration reader. No rate calculation, salary read, authorization or current rule replay. */
-export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeDurationEvaluation | null {
+export function parseRecordedOvertimeDurationEvaluation(raw:unknown):OvertimeDurationEvaluation|null{return recordedDuration(raw,overtimeAssignmentBinding);}
+export function parseRecordedOvertimePolicyDurationEvaluation(raw:unknown):OvertimeDurationEvaluation<OvertimePolicyBinding>|null{return recordedDuration(raw,overtimePolicyBinding);}
+function recordedDuration<B extends OvertimeBinding>(raw:unknown,adapter:OvertimeBindingAdapter<B>):OvertimeDurationEvaluation<B>|null{
     try {
-        const r = overtimeObject(jsonClone(raw), 'duration'), src = source(r.source), patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId'), assignmentId = overtimeUuid(r.assignmentId, 'assignmentId'), evidence = trace(r.trace);
+        const r = overtimeObject(jsonClone(raw), 'duration'), src = source(r.source), patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId'), binding=adapter.read(r,src.date), evidence = trace(r.trace);
         if (r.status === 'refused') {
-            overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'issues', 'trace'], 'duration');
+            overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'issues', 'trace',...adapter.keys], 'duration');
             if (r.transferable !== false)
                 fail('invalid', 'transferable', 'A duration refusal cannot be transferred.');
             const issues = overtimeList(r.issues, 32, 'issues').map(issue);
             if (!issues.length)
                 fail('invalid', 'issues', 'A duration refusal needs an issue.');
-            return { status: 'refused', source: src, patternVersionId, assignmentId, transferable: false, issues, trace: evidence };
+            return { status: 'refused', source: src, patternVersionId,...binding, transferable: false, issues, trace: evidence };
         }
-        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'mode', 'transferable', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'allocations', 'trace'], 'duration');
+        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'mode', 'transferable', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'allocations', 'trace',...adapter.keys], 'duration');
         if (!['ready', 'ineligible'].includes(r.status as string) || !['preview', 'actual'].includes(r.mode as string) || typeof r.transferable !== 'boolean')
             fail('invalid', 'status', 'Invalid recorded duration status.');
         const rawMinutes = value(r.rawMinutes, 'rawMinutes'), eligibleMinutes = value(r.eligibleMinutes, 'eligibleMinutes'), approvedMinutes = value(r.approvedMinutes, 'approvedMinutes'), payableMinutes = exact(r.payableMinutes, 'payableMinutes', 'minutes');
@@ -262,7 +268,7 @@ export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeD
         const allocations=overtimeList(r.allocations,L.segments,'allocations').map(durationAllocation);
         if(new Set(allocations.map(a=>a.segmentId)).size!==allocations.length||compare(total(allocations.map(a=>a.payableMinutes)),fraction(payableMinutes))!==0)fail('source','allocations','Duration allocations must be unique and sum exactly.');
         let previousEnd:Fraction|null=null;for(const a of allocations){if(a.rawClock.state==='known'){const start={n:BigInt(a.rawClock.value.startEpochSeconds),d:BigInt('1')};if(previousEnd&&compare(start,previousEnd)<0)fail('source','allocations','Clock allocations must remain ordered and disjoint.');previousEnd={n:start.n+BigInt(a.rawClock.value.elapsedSeconds),d:BigInt('1')};}}
-        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, allocations, trace: evidence };
+        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId,...binding, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, allocations, trace: evidence };
     }
     catch {
         return null;

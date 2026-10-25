@@ -3,6 +3,7 @@ import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
+import {payrollPublicationState} from '../lib/payroll-publication';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import {
   and,
@@ -199,6 +200,8 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         // not an employment, so it needs this id. Additive; existing callers ignore it.
         personId: employment.personId,
         department: department.name,
+        departmentLabel: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name})`,
+        departmentCode: department.name,
         // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
         // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
         // bulk service re-checks scope membership authoritatively). Nullable, like department.
@@ -206,9 +209,12 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
         // employee card (Employee ID / Name / Department / Position). Nullable, like department.
         position: position.title,
+        positionLabel: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), nullif(trim(${position.description}), ''), ${position.title})`,
         // Current-assignment Business Unit — the Fixed / Individual Transaction screens filter Step-1 by it
         // (a UX narrowing over the already access-fenced list). Nullable, like department.
         businessUnit: businessUnit.name,
+        businessUnitLabel: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code})`,
+        businessUnitCode: businessUnit.code,
         businessUnitId: assignment.businessUnitId,
         company: company.legalName,
         companyId: employment.companyId,
@@ -740,6 +746,9 @@ export function companyDeleteStatus(
   companyId: string,
 ): Promise<{ blockedBy: CompanyDeleteBlock | null; canDelete: boolean } | null> {
   return withTenant(ctx, async (tx) => {
+    // This one-row retention predicate expands many RLS checks. LLVM compilation cost dominates its
+    // execution on PostgreSQL 16; interpret it within this transaction without changing any guard.
+    await tx.execute(sql`SET LOCAL jit = off`);
     const [row] = await tx
       .select({
         blockedBy: sql<string | null>`(${sql.raw(companyDeleteBlockSqlText('company.id'))})`,
@@ -764,6 +773,7 @@ export function listDepartments(
         name: department.name,
         code: department.name,
         label: department.label,
+        description: department.description,
         companyId: department.companyId,
         // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
         // BU dropdown. Null = unassigned (visible under every BU on the hire form).
@@ -2608,6 +2618,8 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         id: jobGrade.id,
         code: jobGrade.code,
         name: jobGrade.name,
+        // Job Grade stores its configured Label in name; description is secondary detail.
+        label: jobGrade.name,
         // e3c733df — MUST be projected or the Description cell renders empty on every reload, the same
         // trap the leave-type projection documents field by field.
         description: jobGrade.description,
@@ -5743,6 +5755,8 @@ export type AuditRow = {
 };
 
 export type AuditFilters = {
+  /** One authorized Personnel subject, including its canonical related aggregates and tagged events. */
+  employmentId?: string;
   aggregateType?: string;
   // f1b994e3 — `aggregateTypes?: string[]` STOOD HERE and is deliberately gone. It existed for ONE
   // caller, the retired Leave Audit page, which hand-listed the leave module's aggregate types — and
@@ -5781,6 +5795,18 @@ function auditWhere(f: AuditFilters) {
   return and(
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.employmentId ? sql`exists (
+      select 1 from employment audit_subject
+      where audit_subject.id=${f.employmentId}::uuid
+        and audit_subject.tenant_id=app.current_tenant_id()
+        and app.access_workforce_employment(audit_subject.id,'workforce.view')
+        and (
+          ${domainEvent.subjectEmploymentId}=audit_subject.id
+          or ${domainEvent.aggregateId} in (audit_subject.id,audit_subject.person_id)
+          or ${domainEvent.aggregateId} in (select id from employee_statutory_my where person_id=audit_subject.person_id and tenant_id=audit_subject.tenant_id)
+          or ${domainEvent.aggregateId} in (select id from compensation where employment_id=audit_subject.id and tenant_id=audit_subject.tenant_id)
+        )
+    )` : undefined,
     // f1b994e3 — Area (module). Derived from AGGREGATE_MODULE, so a row this clause returns chips the
     // area that found it. `other` is the RESIDUAL bucket — it owns no aggregate types of its own, so it
     // is expressed as the COMPLEMENT of the mapped set rather than as an empty IN-list (which would
@@ -6001,53 +6027,17 @@ export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilt
 /** Change history for one employee — every event touching their employment, person, statutory
  *  profile, and compensation rows (the aggregates that carry their record). RLS-scoped. */
 export function employeeAudit(ctx: SessionContext, employmentId: string, limit = 50): Promise<AuditRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const [emp] = await tx
-      .select({ personId: employment.personId })
-      .from(employment)
-      .where(eq(employment.id, employmentId))
-      .limit(1);
-    if (!emp) return [];
-    const ids = new Set<string>([employmentId, emp.personId]);
-    const [stat] = await tx
-      .select({ id: employeeStatutoryMy.id })
-      .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, emp.personId))
-      .limit(1);
-    if (stat) ids.add(stat.id);
-    const comps = await tx
-      .select({ id: compensation.id })
-      .from(compensation)
-      .where(eq(compensation.employmentId, employmentId));
-    comps.forEach((c) => ids.add(c.id));
-    return tx
-      .select({
-        id: domainEvent.id,
-        aggregateType: domainEvent.aggregateType,
-        aggregateId: domainEvent.aggregateId,
-        eventType: domainEvent.eventType,
-        actorType: domainEvent.actorType,
-        actorName: person.fullName,
-        payload: domainEvent.payload,
-        occurredAt: domainEvent.occurredAt,
-        sequence: domainEvent.sequence,
-      })
-      .from(domainEvent)
-      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
-      .leftJoin(person, eq(person.id, appUser.personId))
-      .where(inArray(domainEvent.aggregateId, [...ids]))
-      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
-      .limit(limit);
-  }) as Promise<AuditRow[]>;
+  return auditEvents(ctx, { employmentId, limit });
 }
 
 // ─────────────────────────── Self-service portal (own data) ───────────────────────────
 // Own-person proof is independent of RLS: an HR login also has wider general visibility.
 
 /** The current principal's active employment + profile (resolved from their linked person). */
-export function myEmployment(ctx: SessionContext) {
+export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}) {
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId) return null;
+    if(selected&&(!ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.employmentId)))return null;
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -6073,7 +6063,7 @@ export function myEmployment(ctx: SessionContext) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), selected?and(eq(employment.id,selected.employmentId),profileEditEmploymentPredicate(ctx)):isNull(employment.terminatedOn)))
       .orderBy(employment.hiredOn)
       .limit(1);
     return row ?? null;
@@ -6324,10 +6314,10 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
     // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
     // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
     // they stay visible. The ESS payslip section filters on `released`.
-    const now = Date.now();
+    const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
+      released: payrollPublicationState(r,now)==='published',
     }));
   });
 }

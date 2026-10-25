@@ -1,0 +1,24 @@
+import {randomUUID} from 'node:crypto';
+import {afterAll,beforeAll,expect,it} from 'vitest';
+import {withTenant} from '../db/client';
+import {person,employment} from '../db/schema';
+import {attendancePolicyExecutionContextTx,checkIn} from '../core/attendance';
+import {provenCompanyDatesTx} from '../core/employment-company';
+import {hireEmployee} from '../core/org';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
+beforeAll(migrateTestDb);
+afterAll(closeAll);
+it('requires dated company evidence even without a new policy, while a genuine hire retains legacy clocking',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),date='2026-07-01';
+ const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Missing company history',primaryEmail:`proof_${randomUUID()}@t.local`}).returning();
+ const [e]=await owner.db.insert(employment).values({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,hiredOn:'2020-01-01'}).returning();
+ const proof=await withTenant(ctx,tx=>provenCompanyDatesTx(tx,[{employmentId:e.id,date}]));
+ expect(proof.get(`${e.id}|${date}`)).toEqual({companyId:null,reason:'assignment_missing'});
+ expect(await withTenant(ctx,tx=>attendancePolicyExecutionContextTx(tx,ctx,{employmentId:e.id,date}))).toEqual({state:'unavailable',reason:'companyUnavailable'});
+ await expect(checkIn(ctx,{employmentId:e.id,date,time:'09:00:00'})).rejects.toThrow('Canonical raw Attendance inputs are unavailable');
+ const hired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',person:{fullName:'Dated hire',primaryEmail:`hired_${randomUUID()}@t.local`}});
+ const hiredProof=await withTenant(ctx,tx=>provenCompanyDatesTx(tx,[{employmentId:hired.employmentId,date}]));
+ expect(hiredProof.get(`${hired.employmentId}|${date}`)).toEqual({companyId:b.companyId,reason:null});
+ expect(await withTenant(ctx,tx=>attendancePolicyExecutionContextTx(tx,ctx,{employmentId:hired.employmentId,date}))).toEqual({state:'legacy',reason:'noDatedPolicy'});
+ await expect(checkIn(ctx,{employmentId:hired.employmentId,date,time:'09:00:00'})).resolves.toMatchObject({dayType:'workday',status:'present'});
+});

@@ -4,7 +4,7 @@ import { mkdirSync,readdirSync,readFileSync,renameSync,writeFileSync,existsSync,
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { ImpactPlan,Classification,LearnedFailure } from './gate-impact';
-export type GateObservation={schemaVersion:1;id:string;at:string;sha:string;base:string;environmentHash:string;result:'PASS'|'FAIL';tier:'full'|'impact';plan:ImpactPlan;failed:string[];wallSeconds:number;fullReceipt?:Record<string,unknown>;executed?:string[]};
+export type GateObservation={schemaVersion:1;id:string;at:string;sha:string;base:string;environmentHash:string;result:'PASS'|'FAIL';tier:'full'|'impact'|'phase-reuse';phaseReuse?:unknown;plan:ImpactPlan;failed:string[];wallSeconds:number;fullReceipt?:Record<string,unknown>;executed?:string[]};
 export type ReleaseObservation={schemaVersion:1;id:string;at:string;sha:string;buildId:string;deploymentState:'built';activeServiceVerified:false;deployedBase?:string;impactUncertainties:string[];gate:GateObservation|null;classifications:Classification[];transitions:{path:string;from:string;to:string;reason:string}[];unknowns:Classification[]};
 export const learningDirectory=()=>process.env.AIHR_IMPACT_STATE_DIR??join(homedir(),'.aihr-gate-state','impact-learning');
 const sha=(s:unknown)=>typeof s==='string'&&/^[0-9a-f]{40}$/.test(s);

@@ -31,14 +31,16 @@ for(const reason of plan.reasons)console.log('  '+reason);
 if(args.includes('--plan-only'))process.exit(0);
 // A failed/incomplete new attempt must not leave an older same-SHA PASS usable.
 writeFileSync('.gate-receipt.json',JSON.stringify({sha,result:'FAIL',tier:'impact',reason:'Verification in progress',at:new Date().toISOString()},null,2)+'\n');
-function run(command:string[],name:string,extra:Partial<NodeJS.ProcessEnv>={}){
+function run(command:string[],name:string,extra:Partial<NodeJS.ProcessEnv>={},timeoutMs=7200000){
  const fd=openSync(join(out,name),'w');console.log('START '+name);
- try{const r=spawnSync(command[0],command.slice(1),{stdio:['ignore',fd,fd],env:{...process.env,...extra},timeout:7200000});if(r.error)throw r.error;frozen();console.log('END '+name+' exit='+r.status);return r.status??1;}finally{closeSync(fd);}
+ try{const r=spawnSync(command[0],command.slice(1),{stdio:['ignore',fd,fd],env:{...process.env,...extra},timeout:timeoutMs});if(r.error)throw r.error;frozen();console.log('END '+name+' exit='+r.status);return r.status??1;}finally{closeSync(fd);}
 }
 function counted(name:string,asked:number){const s=readFileSync(join(out,name),'utf8'),line=s.match(/^\s*Test Files[^\n]*\((\d+)\)\s*$/gm)?.at(-1);const n=Number(line?.match(/\((\d+)\)\s*$/)?.[1]);if(n!==asked)throw Error(`Asked ${asked} files, counted ${n}: ${name}`);return n;}
 let failed=false,files=0,receipt:Record<string,unknown>;
 if(plan.tier==='full'){
- const result=run(['bash','scripts/gate-chunked.sh'],'full-controller.log',{CHUNKS:process.env.CHUNKS??'8',GATE_OUT:out});failed=result!==0;
+ // The full controller serializes all chunks; its combined wall time is not a per-phase limit.
+ // Keep bounded selected phases below, while allowing the complete official inventory to close.
+ const result=run(['bash','scripts/gate-chunked.sh'],'full-controller.log',{CHUNKS:process.env.CHUNKS??'8',GATE_OUT:out},0);failed=result!==0;
  if(failed){
   receipt={sha,result:'FAIL',tier:'full',at:new Date().toISOString()};
   writeFileSync('.gate-receipt.json',JSON.stringify(receipt,null,2)+'\n');

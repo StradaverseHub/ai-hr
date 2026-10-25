@@ -29,7 +29,9 @@ export default async function VisibleAttendanceApplications({ searchParams }: {
       <thead className="bg-white text-slate-900"><tr>{['employee', 'attendanceDate', 'reportedDetails', 'reason', 'actions'].map(key => <th key={key} scope="col" className="px-4 py-3 font-medium">{t(key)}</th>)}</tr></thead>
       <tbody className="divide-y divide-border">{page.rows.map(row => {
         const canAct = (s.personId == null || row.personId !== s.personId) && row.canDecide !== false;
-        const previewOt = row.requestedOtMinutes == null ? null : resolveApprovedOt(row.requestedOtMinutes, row.systemOtMinutes, row.otApprovalCalculation ?? 'system_calculated');
+        const previewOt = row.requestedOtMinutes == null || row.otApprovalCalculation == null
+          || (row.systemOtMinutes == null && row.otApprovalCalculation !== 'requested')
+          ? null : resolveApprovedOt(row.requestedOtMinutes, row.systemOtMinutes, row.otApprovalCalculation);
         return <tr key={row.id}>
           <td className="px-4 py-3"><p className="font-medium">{row.employee}</p><p className="text-xs text-muted-foreground">{row.employeeCode}</p></td>
           <td className="px-4 py-3 tabular-nums">{attendanceHistoryDate(row.attendanceDate, locale)}</td>

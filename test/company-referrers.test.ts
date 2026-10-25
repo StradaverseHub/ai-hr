@@ -855,3 +855,105 @@ describe('§5 the action answers every refusal in words, never with the driver m
     expect(ORG_EN.deleteRefusedPayroll.startsWith('This company cannot be deleted because payroll records exist for this company.')).toBe(true);
   });
 });
+
+
+describe('retained policy company metadata',()=>{
+ it('blocks company deletion without exposing private epoch rows or another company retention fact',async()=>{
+  const id=await bare(),other=await bare();
+  await owner.db.execute(sql`insert into app.attendance_policy_company_epoch(tenant_id,company_id,epoch) values(${b.tenantId}::uuid,${id}::uuid,0)`);
+  const retained=async(ctx:SessionContext,companyId:string)=>withTenant(ctx,async tx=>{
+   const rows=await tx.execute(sql`select app.retained_company_history_in_use(${companyId}::uuid) as retained`) as unknown as {retained:boolean}[];
+   return rows[0].retained;
+  });
+  expect(await retained(scopedAdmin(id),id)).toBe(true);
+  expect(await retained(scopedAdmin(other),id)).toBe(false);
+  expect(await retained(member(),id)).toBe(false);
+  expect(await retained({...ADMIN(),tenantId:randomUUID()},id)).toBe(false);
+  expect(await verdict(ADMIN(),id)).toBe('other');
+  expect(await attempt(ADMIN(),id)).toBe('other');
+  expect(await exists(id)).toBe(true);
+  expect(await sqlStateOf(withTenant(ADMIN(),tx=>tx.execute(sql`select * from app.attendance_policy_company_epoch`)))).toBe('42501');
+ });
+});
+
+// Board 3 adds retained company/org links. The ordinary app must not receive the hidden rows
+// merely because the company-deletion owner needs to know that they exist.
+describe('Board 3 retained company records', () => {
+  const used = (ctx: SessionContext, name: 'job' | 'allocation' | 'source', id: string) =>
+    withTenant(ctx, async tx => {
+      const fn = { job: 'board3_job_company_in_use', allocation: 'board3_allocation_company_in_use', source: 'board3_source_company_in_use' }[name];
+      const [row] = await tx.execute(sql`select ${sql.raw('app.' + fn)}(${id}::uuid) as used`) as unknown as { used: boolean }[];
+      return row.used;
+    });
+  async function job(companyId: string, org: Record<string,string> = {}) {
+    return withTenant(ADMIN(), async tx => {
+      const [master] = await tx.execute(sql`insert into job_document(tenant_id,company_id,job_code,normalized_code,created_by)
+        values(${b.tenantId}::uuid,${companyId}::uuid,'RETENTION','retention',${b.adminUserId}::uuid) returning id`) as unknown as {id:string}[];
+      await tx.execute(sql`insert into job_document_revision(tenant_id,job_id,version,title,definition,org,prepared_by,last_edited_by)
+        values(${b.tenantId}::uuid,${master.id}::uuid,1,'Retained job','{}'::jsonb,${JSON.stringify(org)}::jsonb,${b.adminUserId}::uuid,${b.adminUserId}::uuid)`);
+      return master.id;
+    });
+  }
+  it.each(['document','form'] as const)('refuses deletion for a retained %s and preserves it', async kind => {
+    const id = await bare();
+    if (kind === 'document') await job(id);
+    else await withTenant(ADMIN(), tx => tx.execute(sql`insert into job_document_form(tenant_id,company_id,version,definition,created_by)
+      values(${b.tenantId}::uuid,${id}::uuid,1,'{}'::jsonb,${b.adminUserId}::uuid)`));
+    expect(await used(ADMIN(),'job',id)).toBe(true);
+    expect(await verdict(ADMIN(),id)).toBe('other');
+    expect(await attempt(ADMIN(),id)).toBe('other');
+    expect(await exists(id)).toBe(true);
+    expect(await used(member(),'job',id)).toBe(false);
+    expect(await used({...ADMIN(),tenantId:randomUUID()},'job',id)).toBe(false);
+    expect(await used(scopedAdmin(b.companyId),'job',id)).toBe(false);
+    const [count] = await owner.db.execute(sql`select count(*)::int as n from ${sql.raw(kind==='document'?'job_document':'job_document_form')} where company_id=${id}::uuid`);
+    expect(count.n).toBe(1);
+  });
+  it.each(['businessUnit','department','location','position','reportsTo'] as const)('retains a hidden job revision’s %s source without widening app reads', async field => {
+    const source = await bare(), destination = await bare();
+    const table = {businessUnit:'business_unit',department:'department',location:'location',position:'position',reportsTo:'position'}[field];
+    const labelColumn = table==='position'?'title':'name';
+    const codeColumn = table==='business_unit'||table==='location' ? ',code' : '';
+    const codeValue = codeColumn ? ",'RET-SOURCE'" : '';
+    const [org] = await owner.db.execute(sql`insert into ${sql.raw(table)}(tenant_id,company_id,${sql.raw(labelColumn+codeColumn)})
+      values(${b.tenantId}::uuid,${source}::uuid,'Retained source'${sql.raw(codeValue)}) returning id`) as unknown as {id:string}[];
+    const id=await job(destination,{[field]:org.id});
+    await owner.db.update(schema.roleAssignment).set({companyId:source}).where(eq(schema.roleAssignment.appUserId,b.adminUserId));
+    const context=scopedAdmin(source);
+    expect(await withTenant(context,tx=>tx.execute(sql`select id from job_document_revision where job_id=${id}::uuid`))).toHaveLength(0);
+    expect(await used(context,'source',source)).toBe(true);
+    expect(await verdict(context,source)).toBe('other');
+    expect(await attempt(context,source)).toBe('other');
+    expect(await exists(source)).toBe(true);
+    const [retained] = await owner.db.execute(sql`select org from job_document_revision where job_id=${id}::uuid`);
+    expect(retained.org).toEqual({[field]:org.id});
+    for(const denied of [member(),scopedAdmin(destination),{...context,tenantId:randomUUID()}])
+      expect(await used(denied,'source',source)).toBe(false);
+  });
+  it('retains allocation company and cost-centre history after transfer while employee rows stay hidden',async()=>{
+    const {createCostCenter}=await import('../core/admin');
+    const {previewEmploymentCostAllocations,saveEmploymentCostAllocations}=await import('../core/employment-cost-allocations');
+    const original=await bare(),today=todayInKualaLumpur();
+    const before=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+    const department=await createDepartment(ADMIN(),{companyId:original,name:'Old department'});
+    const hired=await hireEmployee(ADMIN(),{companyId:original,departmentId:department.id,person:{fullName:'Retained allocation employee',primaryEmail:randomUUID()+'@retention.test'},employmentType:'full_time',hiredOn:before});
+    const center=await createCostCenter(ADMIN(),{companyId:original,code:'RET-COST',name:'Retained allocation cost centre'});
+    for(const [revision,date,rows] of [[0,before,[{costCenterId:center.id,percentage:'100'}]],[1,today,[]]] as const){
+      const input={employmentId:hired.employmentId,effectiveDate:date,expectedRevision:revision,operation:rows.length?'replace' as const:'clear' as const,rows:[...rows]};
+      const preview=await previewEmploymentCostAllocations(ADMIN(),input);
+      await saveEmploymentCostAllocations(ADMIN(),input,{digest:preview.digest});
+    }
+    await createMovementEvent(ADMIN(),{employmentId:hired.employmentId,kind:'entityTransfer',effectiveDate:today,companyId:b.companyId,departmentId:b.deptA});
+    const history=await owner.db.select().from(schema.employmentCostAllocationSet).where(eq(schema.employmentCostAllocationSet.employmentId,hired.employmentId));
+    await owner.db.update(schema.roleAssignment).set({companyId:original}).where(eq(schema.roleAssignment.appUserId,b.adminUserId));
+    const context=scopedAdmin(original);
+    expect(await withTenant(context,tx=>tx.select().from(schema.employmentCostAllocationSet).where(eq(schema.employmentCostAllocationSet.employmentId,hired.employmentId)))).toEqual([]);
+    for(const kind of ['allocation','source'] as const){
+      expect(await used(context,kind,original)).toBe(true);
+      for(const denied of [member(),scopedAdmin(b.companyId),{...context,tenantId:randomUUID()}])expect(await used(denied,kind,original)).toBe(false);
+    }
+    expect(await verdict(context,original)).toBe('employees');
+    expect(await attempt(context,original)).toBe('employees');
+    expect(await owner.db.select().from(schema.employmentCostAllocationSet).where(eq(schema.employmentCostAllocationSet.employmentId,hired.employmentId))).toEqual(history);
+  });
+});

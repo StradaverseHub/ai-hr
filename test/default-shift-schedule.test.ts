@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * ec4cbf63 rev-6 — per-employee DEFAULT shift ("assigned to the staff in their profile").
  *
@@ -57,15 +58,10 @@ const SAT = '2026-07-04';
 const MON = '2026-07-06';
 
 async function makeEmp() {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'DS', primaryEmail: `ds_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn: '2020-01-01',person:{fullName: 'DS', primaryEmail: `ds_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 const storedDefaultShift = async (employmentId: string) => {

@@ -5,6 +5,7 @@
  * legacy entry-point authority checks against that approved replacement.
  */
 import fs from 'node:fs';
+import {liveClockSeconds} from '../lib/clock-elapsed';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -206,8 +207,13 @@ describe('clock-client source guards (r430 — Switch removed, always-on buttons
     expect(ISLAND).toContain("fetch('/api/time',{cache:'no-store'})");
     expect(ISLAND).toContain('Date.parse(clockValue.serverNow)+(end-clockStart)/2');
     expect(ISLAND).toContain('base.current.server+performance.now()-base.current.mono');
-    expect(ISLAND).toContain('today.workedSeconds+(today.clockedIn&&now!=null?');
-    expect(ISLAND).toContain('now-Date.parse(today.serverNow)');
+    expect(ISLAND).toContain("import {liveClockSeconds} from '@/lib/clock-elapsed'");
+    expect(ISLAND).toContain('liveClockSeconds(today,now??Date.parse(today.serverNow))');
+    const snapshot={serverNow:'2026-01-01T00:00:00Z',openSince:'2026-01-01T00:00:00Z',clockedIn:true,workedSeconds:300};
+    const baseline=Date.parse(snapshot.serverNow);
+    expect(liveClockSeconds(snapshot,baseline+90000)).toBe(390);
+    expect(liveClockSeconds(snapshot,baseline-30000)).toBe(300);
+    expect(liveClockSeconds({...snapshot,clockedIn:false},baseline+90000)).toBe(300);
     expect(ISLAND).not.toContain('Date.now()');
   });
   it('renders separate accessible green IN and red OUT controls, both always clickable', () => {

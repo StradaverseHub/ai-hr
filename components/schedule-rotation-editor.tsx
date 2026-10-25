@@ -5,6 +5,7 @@ import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type Rotation
 import { saveRotationAction, type RotationActionState } from '@/app/admin/attendance/schedule/rotation-actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
+import {ScheduleShiftPicker} from '@/components/schedule-shift-picker';
 import { btnPrimary, inputCls } from '@/components/ui';
 type ShiftChoice = { id: string; name: string; code: string | null; startTime: string | null; endTime: string | null;
   fullMinutes: number; halfMinutes: number; halfEnd: string | null; archived: boolean; available: boolean; selected: boolean };
@@ -48,16 +49,11 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     {state.error&&<p role="alert" className="text-sm text-destructive">{state.error}</p>}
     {state.saved&&<p role="status" className="text-sm">{t('saved')}</p>}
     <p className="text-sm text-muted-foreground">{editing?t('futureHint'):t('viewHint')}</p>
-    <fieldset disabled={!editing||pending} className="space-y-3">
+    <fieldset disabled={!editing||pending} className="min-w-0 space-y-3">
       <legend className="text-sm font-medium">{t('pool')}</legend>
       <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {shifts.map(s=><label key={s.id} className="flex items-start gap-2 rounded border border-border p-2 text-sm">
-          <input type="checkbox" name="allowedShiftIds" value={s.id} checked={pool.includes(s.id)}
-            disabled={!s.available&&!pool.includes(s.id)} onChange={e=>{setPool(e.target.checked?[...pool,s.id]:pool.filter(id=>id!==s.id));setDirty(true);}}/>
-          <span>{s.code?`${s.code} · `:''}{s.name}<span className="block text-xs text-muted-foreground">{(s.startTime?.slice(0,5)??'—')}–{(s.endTime?.slice(0,5)??'—')}{s.archived?` · ${t('archived')}`:!s.available?` · ${t('otherGroup')}`:''}</span></span>
-        </label>)}
-      </div>
+      <ScheduleShiftPicker shifts={shifts} selected={pool} editing={editing} disabled={pending}
+        onChange={next=>{setPool(next);setDirty(true);}}/>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">{t('basedOn')}<select name="rotationUnitDraft" className={inputCls} value={unit} onChange={e=>{setUnit(e.target.value as 'week'|'day');setDirty(true);}}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
         <label className="text-sm">{t('length')}<input name="rotationLengthDraft" type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>

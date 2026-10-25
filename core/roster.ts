@@ -2571,8 +2571,12 @@ export type RosterMonthEmployee = {
   name: string;
   code: string | null;
   department: string | null;
+  departmentLabel?: string | null;
+  departmentCode?: string | null;
   departmentId: string | null;
   businessUnit: string | null;
+  businessUnitLabel?: string | null;
+  businessUnitCode?: string | null;
   businessUnitId: string | null;
   occupation: string | null;
   /** a57f0584 — whose employee this is. Carried on every row because the roster can now span companies,
@@ -2703,8 +2707,12 @@ export async function rosterWindowView(
       name: e.name,
       code: e.employeeCode,
       department: e.department,
+      departmentLabel: e.departmentLabel,
+      departmentCode: e.departmentCode,
       departmentId: e.departmentId,
       businessUnit: e.businessUnit,
+      businessUnitLabel: e.businessUnitLabel,
+      businessUnitCode: e.businessUnitCode,
       businessUnitId: e.businessUnitId,
       occupation: e.position,
       company: e.company,
@@ -3231,12 +3239,12 @@ export type MyRosterView = {
  */
 export async function myRosterWindow(
   ctx: SessionContext,
-  p: { from: string; to: string },
+  p: { from: string; to: string; employmentId?:string },
 ): Promise<MyRosterView | null> {
   // FIRST, before any query: an over-wide window must cost nothing to refuse, and the employee's address
   // bar can reach this read exactly as the operator's can (see assertRosterWindow's note).
   assertRosterWindow(p.from, p.to);
-  const me = await myEmployment(ctx);
+  const me = await myEmployment(ctx,p.employmentId===undefined?undefined:{employmentId:p.employmentId});
   if (!me) return null;
 
   const [roster, usualRows] = await Promise.all([

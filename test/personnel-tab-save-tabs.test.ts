@@ -57,7 +57,7 @@ vi.mock('../lib/authz', async (importActual) => {
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
 import * as schema from '../db/schema';
-import { hireEmployee, setEmploymentInfo } from '../core/org';
+import { hireEmployee } from '../core/org';
 import { createLocation } from '../core/location';
 import { createClockingLocation } from '../core/clocking-location';
 import { setStatutoryProfileMY, setTaxProfileMY, setBankProfileMY } from '../localization/my/statutory';
@@ -511,12 +511,9 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
 
   // ── §4 Employment ─────────────────────────────────────────────────────────────────────────────────
   describe('§4 Employment — absent is not blank, through the consolidated door', () => {
-    it('a field the card did not post is left as-is; a field it posted EMPTY is cleared', async () => {
-      await setEmploymentInfo(adminCtx(base), {
-        employmentId,
-        resignationDate: '2026-06-30',
-        tenderResignationDate: '2026-05-01',
-      });
+    it('general terms save while a forged empty resignation field leaves Movement-owned dates untouched', async () => {
+      // Historical fixture without a fabricated Movement source.
+      await owner.db.update(schema.employment).set({resignationDate:'2026-06-30',tenderResignationDate:'2026-05-01'}).where(eq(schema.employment.id,employmentId));
 
       const result = await saveJobTabAction(
         payload(
@@ -539,7 +536,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       const emp = await readEmployment(employmentId);
       expect(emp.probationValue).toBe(3);
       expect(emp.probationUnit).toBe('month');
-      expect(emp.tenderResignationDate).toBeNull();
+      expect(emp.tenderResignationDate).toBe('2026-05-01');
       // The one that would have been silently wiped by a client-side form posting every field it knows.
       expect(emp.resignationDate, 'an absent field means leave as-is, not clear to NULL').toBe('2026-06-30');
     });

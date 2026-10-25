@@ -28,6 +28,7 @@ export function RequestLeaveDialog({
   startDefault,
   defaultTypeId,
   employeeOptions,
+  ownEmploymentId,
   eligibleTypeIdsByEmployment,
   submitAction,
   previewAction,
@@ -40,6 +41,8 @@ export function RequestLeaveDialog({
   // Optional (item 69088c13): omitted for self-service employees so the Employee selector is hidden and the
   // submit binds to the signed-in viewer; passed only on the admin/manager on-behalf-of path.
   employeeOptions?: { id: string; name: string }[];
+  /** An explicit own selection from Home. The canonical writer repeats subject authorization. */
+  ownEmploymentId?:string;
   /** ad965821: which leave types each selectable employment qualifies for, so the type list re-draws when
    *  the on-behalf-of employee changes. Forwarded verbatim to LeaveDurationFields, which owns the selection
    *  state; omitted (with employeeOptions) for a plain self-service applicant. */
@@ -97,7 +100,6 @@ export function RequestLeaveDialog({
           <Dialog.Title className="text-base font-semibold">{t('requestLeave')}</Dialog.Title>
           <form
             action={submitAction}
-            encType="multipart/form-data"
             onSubmit={() => setOpen(false)}
             className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
           >
@@ -107,6 +109,7 @@ export function RequestLeaveDialog({
               defaultTypeId={defaultTypeId}
               showDocumentFields
               employeeOptions={employeeOptions}
+              ownEmploymentId={ownEmploymentId}
               eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
               action={previewAction}
               summaryAction={summaryAction}

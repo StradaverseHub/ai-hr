@@ -1,3 +1,4 @@
+import {AttendanceUnclockedWork} from '@/components/attendance-unclocked-work';
 import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { classifyDay } from '@/packs/attendance/exceptions';
@@ -14,7 +15,7 @@ import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
-import { attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
+import { canSubmitUnclockedAttendanceWork, attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceDayTypeField, DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
@@ -107,6 +108,8 @@ export default async function IndividualAttendanceDayPage({
   /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
   const admin = isAdmin(s);
   const [clockData,dayEditor,applications]=await Promise.all([admin?attendanceClockData(s,selected.employmentId,date):null,admin?attendanceDayEditor(s,selected.employmentId,date):null,attendanceIrregularitiesForDate(s,selected.employmentId,date)]);
+  const unclockedAvailable=admin?await canSubmitUnclockedAttendanceWork(s,selected.employmentId,date):false;
+  const unclockedForm=unclockedAvailable?<AttendanceUnclockedWork employmentId={selected.employmentId} date={date}/>:null;
   const applicationsSection=await AttendanceDayApplications({data:dayEditor,applications,detected:row?classifyDay(row)?.section??null:null,employmentId:selected.employmentId,date});
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
@@ -132,6 +135,7 @@ export default async function IndividualAttendanceDayPage({
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
         {applicationsSection}
+        {unclockedForm}
         {clockData && <AttendanceClockData key={selected.employmentId + date + clockData.baseline + (sp.error === 'clockDataPending' ? 'pending' : '')} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
       </div>
     );
@@ -344,6 +348,7 @@ export default async function IndividualAttendanceDayPage({
       </Card>
 
       {applicationsSection}
+      {unclockedForm}
 
     </div>
   );

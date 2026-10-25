@@ -40,7 +40,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { applyLeaveAdjustmentBatch, previewLeaveAdjustmentBatch } from '../core/leave-adjustment';
-import { createNotice, getNotice, publishNotice } from '../core/notice';
+import { createNotice, getNotice, publishNotice, NoticeError } from '../core/notice';
 import { mergeEmploymentSelection } from '../lib/employment-selection';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -171,7 +171,7 @@ describe('r288 §A · the premise, on both screens, against a real database', ()
     // claim about the reach box. When this was written the draft page reported the stored list's LENGTH,
     // so it promised ONE EMPLOYEE for a string that is not an employee at all; r289 routes that count
     // through `visibleEmploymentIds` and it now reads zero. Nothing is dropped from the notice either way
-    // — the publish still fails on the uuid cast below, which is what the rest of this case pins.
+    // — publication now refuses the unresolved reference at the service boundary, before a UUID query.
     expect((stored?.criteria.employmentIds ?? []).length).toBe(1);
 
     const err = await publishNotice(adminCtx(b), created.id).then(
@@ -179,8 +179,10 @@ describe('r288 §A · the premise, on both screens, against a real database', ()
       (e: unknown) => e as Error & { cause?: { message?: string } },
     );
     expect(err, 'publish is where it actually dies').not.toBeNull();
-    expect(err!.message).toMatch(/"employment"\."id" in \(/);
-    expect(String(err!.cause?.message ?? '')).toMatch(/uuid/i);
+    expect(err).toBeInstanceOf(NoticeError);
+    expect(err!.message).toBe('Some employee references are unavailable. Review the audience before publishing.');
+    expect(err!.cause).toBeUndefined();
+    expect((await getNotice(adminCtx(b),created.id))?.publishedAt).toBeNull();
   });
 
   it('NOTICE BOARD: the same notice built from REAL ids publishes — so the uuid cast is the whole difference', async () => {

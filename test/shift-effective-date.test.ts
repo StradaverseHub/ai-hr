@@ -1,3 +1,4 @@
+import {hireEmployee} from '../core/org';
 /**
  * 18504ca6 — EFFECTIVE DATE ON THE SHIFT ARRANGEMENT CARD.
  *
@@ -85,15 +86,10 @@ const newShift = () =>
   });
 
 async function makeEmp(hiredOn = HIRED) {
-  const [p] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: 'Shifty', primaryEmail: `sh_${randomUUID()}@t.local` })
-    .returning({ id: schema.person.id });
-  const [e] = await owner.db
-    .insert(schema.employment)
-    .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn })
-    .returning({ id: schema.employment.id });
-  return e.id;
+  // Use the public hire so this fictional worker has genuine dated company evidence.
+  const hired = await hireEmployee(adminCtx(b), {companyId:b.companyId,departmentId:b.deptA,
+    employmentType:'full_time',hiredOn,person:{fullName: 'Shifty', primaryEmail: `sh_${randomUUID()}@t.local`}});
+  return hired.employmentId;
 }
 
 /** Every LIVE period of the employment, oldest first — the ladder as the DB holds it. */

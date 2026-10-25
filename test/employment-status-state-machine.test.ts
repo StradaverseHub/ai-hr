@@ -1,3 +1,5 @@
+import {createMovementEvent} from '../core/movement';
+import {todayInKualaLumpur} from '../lib/hr-date';
 /**
  * Employee Status STATE MACHINE (feedback 9cbf5e0d, r81b) — the reporter's full rule set, pinned.
  *
@@ -219,7 +221,7 @@ describe('§3 no manual editing — there is no writer, no column, and no parame
 
   it('recording a resignation — an event, not a label — is what produces Serving Notice then Resigned', async () => {
     const h = await hire('Resign One');
-    await setEmploymentInfo(adminCtx(b), { employmentId: h.employmentId, resignationDate: '2026-12-31' });
+    await createMovementEvent(adminCtx(b),{employmentId:h.employmentId,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-12-01',resignationEffectiveDate:'2026-12-31'});
     const d = await employeeDetail(adminCtx(b), h.employmentId);
     expect(deriveEmploymentStatus(d!, TODAY)).toBe('active_serving_notice');
     expect(deriveEmploymentStatus(d!, '2027-01-01')).toBe('resigned');

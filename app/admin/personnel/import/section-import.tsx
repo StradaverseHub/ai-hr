@@ -1,4 +1,6 @@
 'use client';
+import { personnelTemplateReferenceLists } from '@/lib/personnel-template-reference';
+import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel-register-import';
@@ -13,14 +15,12 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
-import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
   buildPersonnelInstructionRows,
   personnelTemplateColumnWidths,
   PERSONNEL_INSTRUCTION_COLUMN_WIDTHS,
   buildReferenceRows,
-  EMPLOYEE_ENUM_VALUES,
-  DEPENDENT_ENUM_VALUES,
 } from '@/lib/import-template-xlsx';
 import {
   sectionColumns, sectionTemplateColumns,
@@ -51,10 +51,13 @@ import { commitSectionAction, validateSectionAction,registerRecordsAction } from
  */
 export function SectionImport({ section, reference, onCommitPendingChange }: { section: ImportSection; reference: ImportReference; onCommitPendingChange?: (pending: boolean) => void }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
+  const nricTexts = useTranslations('peopleGeneral');
+  const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
-  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
-  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
+  const guidance=(key:string,sheet:PersonnelImportSheet,mode:'create'|'update')=>[key==='ic_number'?nricGuidance:'',personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')})].filter(Boolean).join(' · ');
+
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [existingEmployeeCode,setExistingEmployeeCode]=useState('');
@@ -164,17 +167,14 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
       const sheet=isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee';
-      const referenceLists=personnelImportFields(sheet).filter(field=>columns.includes(field.import.column!) && (field.import.catalog || personnelFieldChoices(field).length)).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
-      if(section==='profile')referenceLists.push({label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities});
-      if(section==='family')referenceLists.push({label:t('familyRelationshipLabel'),values:reference.familyRelationships});
-      if(section==='bank_statutory')referenceLists.push({label:employeeColumnLabel('tax_category'),values:[...EMPLOYEE_ENUM_VALUES.tax_category]});
+      const referenceLists=personnelTemplateReferenceLists(sheet,columns,reference,employeeColumnLabel,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback);
       const extraSheets: NonNullable<import('@/lib/spreadsheet').BuildXlsxOptions['extraSheets']> = [];
       // Registry-owned choices and fresh catalogs follow the selected section.
       if (referenceLists.length > 0) {
         extraSheets.push({
           name: 'Reference',
-          columnWidths:[80],wrapText:true,
-          rows: buildReferenceRows(t('referenceHeading'), referenceLists),
+          columnWidths:[38,80],wrapText:true,
+          rows: buildReferenceRows(t('referenceHeading'), referenceLists,{code:personnelLabels('admin.systemLabels.col.code'),label:personnelLabels('admin.systemLabels.col.label')}),
         });
       }
       extraSheets.push({
@@ -187,6 +187,9 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
           t('sectionInstructionFence'),
           t('instructionDates'),
           t('instructionIdentityText'),
+          t('instructionImportCodes'),
+          t('instructionLargeLists'),
+                nricGuidance,
         ]),[],...personnelImportExclusionRows(section,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
       });
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
@@ -196,7 +199,8 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
         wrapText:true,
         headerNotes:columns.map(key=>[guidance(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee','update'),isPersonnelRegisterKind(section)&&personnelImportFields(section).find(field=>field.import.column===key)?.import.requiredCreate?t('registerRequiredCreate'):null].filter(Boolean).join(' · ')),
         extraSheets,
-        validationLists:referenceLists.flatMap(list=>{const column=columns.findIndex(key=>employeeColumnLabel(key)===list.label);return column>=0?[{column,values:list.values}]:[];}),
+        validationListFallbackNote:t('instructionLargeLists'),
+        validationLists:referenceLists.flatMap(list=>{const column=columns.indexOf(list.column);return column>=0?[{column,values:list.values}]:[];}),
       });
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], {
@@ -219,7 +223,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     const rows = (preview?.rows ?? []).filter((r) => r.errors.length > 0);
     const csvOut = toCsv([
       [t('colRow'), t('colEmployeeCode'), t('colEmployee'), t('colResult')],
-      ...rows.map((r) => [r.rowNum, r.employeeCode, r.employeeName, r.errors.join('; ')]),
+      ...rows.map((r) => [r.rowNum, r.employeeCode, r.employeeName, r.errors.map(nricMessage).join('; ')]),
     ]);
     const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -371,7 +375,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
+          {nricMessage(error)}
         </div>
       )}
 
@@ -404,7 +408,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
               {result.failed.map((f) => (
                 <li key={f.rowNum} className="px-4 py-2">
                   <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> · {f.employeeCode} —{' '}
-                  <span className="text-red-600 dark:text-red-400">{f.message}</span>
+                  <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
                 </li>
               ))}
             </ul>
@@ -436,6 +440,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 /** The same numbering the wide importer uses over the control that performs each step. */
 function StepHeading({ num, label }: { num: number; label: string }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   return (
     <div className="flex items-baseline gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('stepNum', { num })}</span>
@@ -456,6 +461,7 @@ function SectionPreview({
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const labels = useTranslations();
   const sheet = isPersonnelRegisterKind(preview.section) ? preview.section : preview.section === 'family' ? 'family' : 'employee';
   const fieldLabel = (column: string) => descriptorColumnLabel(column, sheet, (key, fallback) => labels.has(key) ? labels(key) : fallback);
@@ -559,7 +565,7 @@ function SectionPreview({
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {r.errors.length > 0 ? (
-                    <span className="text-red-600 dark:text-red-400">{r.errors.join('; ')}</span>
+                    <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
                   ) : r.warnings.length > 0 ? (
                     <span className="text-amber-600 dark:text-amber-400">{r.warnings.join('; ')}</span>
                   ) : (

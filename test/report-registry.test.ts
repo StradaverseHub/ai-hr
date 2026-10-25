@@ -131,11 +131,11 @@ describe('validateReportSpec', () => {
     for (const f of ds!.filters) expect(byId.has(f.id)).toBe(true);
   });
 
-  it('Payroll offers the register FIRST so "New report" seeds it, with history still selectable', () => {
+  it('retains Payroll list seed order while registering the separately edited comparison', () => {
     const list = datasetsForCategory('payroll');
-    // Order is the assertion, not incidental: datasetsForCategory()[0] is what the Reports page's
-    // "New report" button seeds, so adding the register must NOT displace what that button already did.
-    expect(list.map((d) => d.id)).toEqual(['payroll_history', 'payroll_register']);
+    // The generic list path retains its existing first choice. The Payroll dialog and guarded builder
+    // route send the typed comparison to its own editor rather than treating it as a list dataset.
+    expect(list.map((d) => d.id)).toEqual(['payroll_history', 'payroll_register', 'payroll_period_comparison']);
   });
 
   it('default alignment follows the reporter rule (names left, dates/status center, numbers/currency right)', async () => {

@@ -1,5 +1,6 @@
 import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
 import { InternalAuthForm } from '../login/internal-form';
+import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { getTranslations } from 'next-intl/server';
 import { requestPasswordResetAction } from '../auth-actions';
 
@@ -9,7 +10,7 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: Promise<{ sent?: string }>;
 }) {
-  if (internalSelected()) return <InternalAuthForm mode="recovery" organization={internalConfig().organization}/>;
+  if (internalSelected()) return <InternalAuthForm mode="recovery" organization={internalConfig().organization} presentation={await publicLoginPresentation()}/>;
   // The app records the request even without SMTP; the selected provider still owns the secure
   // one-time action and password change. Confirmation never reveals account existence or delivery.
   const t = await getTranslations('auth');

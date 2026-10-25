@@ -1,4 +1,4 @@
-import { readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
+import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
@@ -3554,6 +3554,7 @@ export async function generatePayslips(
 }
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const subset = p.reprocessSubset ?? null;
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
     if (!batch) throw new Error('batch not found');
@@ -3604,7 +3605,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     }
 
     const [co] = await tx
-      .select({ country: company.country })
+      .select({ country: company.country, currency: company.currency })
       .from(company)
       .where(eq(company.id, batch.companyId))
       .limit(1);
@@ -7012,8 +7013,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // Feedback 862ed0ad — the per-component detail behind the summarised earnings/deduction figures.
         // Written from THIS run onward only: the detail was never stored before, so the runs already
         // completed cannot be itemised retrospectively and Transaction View says so on screen rather than
-        // rendering an empty breakdown. Key absent when there is nothing to say, which keeps payslips from
-        // the flag-off path (and every historical slip) byte-identical.
+        // rendering an empty breakdown. New typed-component results record even an empty array, so a
+        // report can distinguish proven item absence from unrecorded historical itemization. The
+        // flag-off path and untouched historical results retain their absent-key meaning.
         //
         // 6b134681 — AND ON AN ADDITIONAL RUN TOO, restricted to what that run pays. This was regular-run
         // only, on the same ground recordLines still is (an additional run re-folds the same recurring
@@ -7023,7 +7025,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // screen to fall back on the name of the box, which reads "Bonus". Measured before the fix: 19 of 19
         // production bonus payslips carried no stamp at all, which is why 6b134681's read-side work was
         // structurally inert there.
-        ...(stampComponentLines.length ? { componentLines: stampComponentLines } : {}),
+        ...(typedComponents || stampComponentLines.length ? { componentLines: stampComponentLines } : {}),
         // Display-only evidence, captured from this exact calculation. Consumers never recompute it
         // from today's catalogue and replay continues to read exemptionUsed unchanged.
         pcbExemptions: {version:1,payPeriod:batch.payPeriod,taxYear:pYear,basis:'selected_calculation',rows:en.exemptionInformation},
@@ -7352,6 +7354,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // Saved selection input, before existing proration. Back-pay reads this new contract rather
           // than pricing a new period-effective slip from a future revision visible at processing.
           // No stamp is inferred or backfilled on any untouched historical payslip.
+          // Recorded employer currency for comparisons. Old results remain explicitly unknown.
+          reportContext: { version: 1, payingCompanyId: batch.companyId, currency: co?.currency ?? null,
+            itemization:typedComponents?'complete':'partial',
+            // These are inputs/evidence from this calculation, not a reconstruction from later master data.
+            ...(!isAdditionalRun ? {proration:{payMode:e.payMode,from:segHiredOn(e),to:segTerminatedOn(e),factor,
+              window:{from:prorationOptsByEmp.get(e.employmentId)?.window?.start??periodStart,to:prorationOptsByEmp.get(e.employmentId)?.window?.end??periodEnd}}} : {}),
+          },
           salaryBasis: {
             version: 1,
             referenceDate: periodEnd,
@@ -8080,6 +8089,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -8966,6 +8976,7 @@ export async function reprocessSelectedEmployees(
         if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
           throw new Error('Stored payroll employee outcomes are invalid.');
         if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
+        await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
         const [currentBatch] = await tx.select().from(payrollBatch)
           .where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
         if (!currentBatch) throw new Error('batch not found');

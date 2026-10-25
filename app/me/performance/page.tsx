@@ -236,7 +236,7 @@ export default async function MyPerformancePage({
           <p className="px-4 pt-3 text-xs text-muted-foreground">{t('feedbackIntro')}</p>
           <ul className="divide-y divide-border">
             {standardFeedbackRequests.map((fr) => (
-              <li key={fr.requestId} className="px-4 py-4">
+              <li key={fr.requestId} id={`feedback-${fr.requestId}`} className="scroll-mt-24 px-4 py-4">
                 <div className="text-sm font-medium">
                   {t('feedbackOn', { name: fr.subject })}
                   {fr.cycleName && <span className="ml-2 text-xs text-muted-foreground">{fr.cycleName}</span>}

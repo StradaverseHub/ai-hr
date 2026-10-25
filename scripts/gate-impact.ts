@@ -7,7 +7,7 @@ import { classifyFile,TEST_SETUP_FILES } from './gate-tier';
 import { guardFiles,isTestFile } from './gate-affected-plan';
 import { resolveSpecifier } from './gate-db-classify';
 
-export const IMPACT_POLICY_VERSION=1;
+export const IMPACT_POLICY_VERSION=3;
 export type Risk='low'|'moderate'|'high'|'unknown';
 export type Classification={path:string;risk:Risk;reason:string;dependencies:string[];sourceHash:string|null;uncertainties:string[]};
 export type ImpactPlan={policyVersion:number;tier:'impact'|'full';risk:Risk;classifications:Classification[];reasons:string[];changed:string[];run:string[];selection:Record<string,string[]>;browser:boolean;barrelMode:'module'|'diagnostic-symbols';fingerprint:string};
@@ -83,6 +83,47 @@ function inspect(path:string,text:string,files:Map<string,string>):Module{
   }
   ts.forEachChild(node,walk);
  };walk(sf);return out;
+}
+
+/** A process RSS monitor does not read repository bytes. This deliberately small proof rejects
+ * aliases escaping as values, shadowed PID producers, other fs APIs and every unknown path. */
+export function readsOnlyProcessStatus(path:string,text:string):boolean{
+ const sf=syntax(path,text),readers=new Set<string>(),spawns=new Set<string>();let safe=true,reads=0;
+ for(const statement of sf.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteralLike(statement.moduleSpecifier)){
+  const spec=statement.moduleSpecifier.text,b=statement.importClause?.namedBindings;
+  if(/^(node:)?fs(?:\/promises)?$/.test(spec)){
+   if(!b||!ts.isNamedImports(b)||statement.importClause?.name){safe=false;continue;}
+   for(const item of b.elements){if((item.propertyName??item.name).text!=='readFile'){safe=false;continue;}readers.add(item.name.text);}
+  }
+  if(/^(node:)?child_process$/.test(spec)&&b&&ts.isNamedImports(b))for(const item of b.elements)if((item.propertyName??item.name).text==='spawn')spawns.add(item.name.text);
+ }
+ const bindings=new Map<string,{count:number;spawn:boolean}>();
+ const bind=(name:ts.BindingName|ts.PropertyName|undefined,spawn=false)=>{if(name&&ts.isIdentifier(name)){const old=bindings.get(name.text);bindings.set(name.text,{count:(old?.count??0)+1,spawn:spawn||old?.spawn===true});}};
+ const scan=(n:ts.Node)=>{if(ts.isVariableDeclaration(n))bind(n.name,!!n.initializer&&ts.isVariableDeclarationList(n.parent)&&!!(n.parent.flags&ts.NodeFlags.Const)&&ts.isCallExpression(n.initializer)&&ts.isIdentifier(n.initializer.expression)&&spawns.has(n.initializer.expression.text));else if(ts.isParameter(n)||ts.isFunctionDeclaration(n)||ts.isClassDeclaration(n))bind(n.name);ts.forEachChild(n,scan);};scan(sf);
+ if([...spawns].some(name=>bindings.has(name)))safe=false;
+ const producers=new Set([...bindings].filter(([,v])=>v.spawn&&v.count===1).map(([name])=>name));
+ const pid=(n:ts.Expression)=>ts.isPropertyAccessExpression(n)&&n.name.text==='pid'&&ts.isIdentifier(n.expression)&&bindings.get(n.expression.text)?.spawn===true&&bindings.get(n.expression.text)?.count===1;
+ const external=(n:ts.Expression|undefined)=>!!n&&(ts.isStringLiteralLike(n)?/^\/proc\/(?:[1-9]\d*|self)\/status$/.test(n.text):ts.isTemplateExpression(n)&&n.head.text==='/proc/'&&n.templateSpans.length===1&&pid(n.templateSpans[0].expression)&&n.templateSpans[0].literal.text==='/status');
+ const walk=(n:ts.Node)=>{
+  if(ts.isExportDeclaration(n)&&n.moduleSpecifier&&ts.isStringLiteralLike(n.moduleSpecifier)&&/^(node:)?fs(?:\/promises)?$/.test(n.moduleSpecifier.text))safe=false;
+  if(ts.isCallExpression(n)){
+   const callee=ts.isIdentifier(n.expression)?n.expression.text:ts.isPropertyAccessExpression(n.expression)?n.expression.name.text:'';
+   if((callee==='require'||n.expression.kind===ts.SyntaxKind.ImportKeyword)&&n.arguments[0]&&ts.isStringLiteralLike(n.arguments[0])&&/^(node:)?fs(?:\/promises)?$/.test(n.arguments[0].text))safe=false;
+   if(/^(readFile|readFileSync|readdir|readdirSync|glob|globSync)$/.test(callee)&&(!ts.isIdentifier(n.expression)||!readers.has(callee)))safe=false;
+  }
+  if(ts.isIdentifier(n)&&producers.has(n.text)&&!(ts.isVariableDeclaration(n.parent)&&n.parent.name===n)){
+   if(!ts.isPropertyAccessExpression(n.parent)||n.parent.expression!==n)safe=false;
+   else if(n.parent.name.text==='pid'){
+    const access=n.parent,parent=access.parent;
+    if(ts.isBinaryExpression(parent)&&parent.left===access&&parent.operatorToken.kind>=ts.SyntaxKind.FirstAssignment&&parent.operatorToken.kind<=ts.SyntaxKind.LastAssignment||ts.isDeleteExpression(parent)||ts.isPrefixUnaryExpression(parent)&&(parent.operator===ts.SyntaxKind.PlusPlusToken||parent.operator===ts.SyntaxKind.MinusMinusToken)||ts.isPostfixUnaryExpression(parent))safe=false;
+   }
+  }
+  if(ts.isIdentifier(n)&&readers.has(n.text)){
+   if(ts.isImportSpecifier(n.parent))return;
+   if(!ts.isCallExpression(n.parent)||n.parent.expression!==n||!external(n.parent.arguments[0]))safe=false;else reads++;
+  }
+  ts.forEachChild(n,walk);
+ };walk(sf);return safe&&readers.size>0&&reads>0;
 }
 
 /** Diagnostic strings cannot change module initialization. Only this proven case may bypass the
@@ -203,7 +244,7 @@ function diagnosticEdges(files:Map<string,string>,raw:Map<string,Module>):Map<st
 }
 
 /** Both old and new import edges matter for deletions, renames and removed dependencies. */
-export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void):ImpactPlan{
+export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void,unchangedProcReads=false):ImpactPlan{
  const files=new Map(current);
  for(const c of changes)if(c.baseText!==null&&!files.has(c.path))files.set(c.path,c.baseText);
  const modules=new Map<string,Module>();
@@ -238,7 +279,7 @@ export function planImpact(changes:ChangedFile[],current:Map<string,string>,hist
  });
  // A source-reading or computed-load test cannot be excluded merely because its dependency is absent
  // from a static import graph. Include it and all of its test consumers, regardless of filename.
- for(const [path,m]of modules)if(m.readsSource||m.uncertainties.length)for(const t of consumers(path,rawReverse))select(t,'source reading or uncertain module reach through '+path);
+ for(const [path,m]of modules)if((m.readsSource&&!(unchangedProcReads&&!changes.some(c=>c.path===path)&&readsOnlyProcessStatus(path,files.get(path)??'')))||m.uncertainties.length)for(const t of consumers(path,rawReverse))select(t,'source reading or uncertain module reach through '+path);
  for(const t of guardFiles(all))select(t,'mandatory repository invariant');
  for(const t of all)if(/(?:rls|scope|tenant|permission|authz|privesc|invitation)/i.test(posix.basename(t)))select(t,'mandatory access/tenant invariant');
  for(const observation of history)if(observation.changed.some(p=>changes.some(c=>c.path===p)))for(const t of observation.failed)select(t,'failure observed for a changed module in prior verification');

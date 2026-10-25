@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
 import { listCompanies, listDepartments, listEmployees } from '@/core/read';
@@ -75,7 +76,7 @@ export async function criteriaVocabulary(s: SessionContext): Promise<CriteriaVoc
   return {
     employees: employees.map((e) => ({ id: e.employmentId, name: e.name, employeeCode: e.employeeCode })),
     companies: companies.map((c) => ({ value: c.id, label: c.name })),
-    departments: departments.map((d) => ({ value: d.id, label: d.name })),
+    departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
     employmentTypes: EMPLOYMENT_TYPE_VALUES.map((v) => ({ value: v, label: tEmploymentType(v) })),
     // The eight org axes come from the same profile-option catalogue the leave-type Condition step and the
     // Leave Adjustments screen read, so all three offer the same vocabulary rather than three lists that
@@ -84,9 +85,8 @@ export async function criteriaVocabulary(s: SessionContext): Promise<CriteriaVoc
     orgCriteria: ORG_ASSIGNMENT_CRITERIA.map((c) => ({
       key: c.key as string,
       label: tOrg(c.labelKey),
-      options: (profileOptions[c.category] ?? [])
-        .filter((o) => o.isActive)
-        .map((o) => ({ value: o.value, label: o.label })),
+      options: organisationChoiceLabels((profileOptions[c.category] ?? []).filter((o) => o.isActive))
+        .map((o) => ({ value: o.value, label: o.displayLabel })),
     })),
   };
 }

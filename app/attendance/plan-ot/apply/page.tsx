@@ -257,6 +257,7 @@ export default async function ApplyOtPlanPage({
               <Stat label={tr('recordedDuration')} value={cap.recorded.complete?tr('minutes',{value:exactOvertimeMinutesText(cap.recorded.knownMinutes)}):tr('unavailable')} />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">{t('otCalSummaryHelp')}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{t('otPolicyPlanTotalsHelp')}</p>
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               <span>{t('otCalCountPending', { n: counts.pending })}</span>
               <span>{t('otCalCountApproved', { n: counts.approved })}</span>

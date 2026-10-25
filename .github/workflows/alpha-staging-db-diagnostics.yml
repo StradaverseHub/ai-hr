@@ -1,0 +1,89 @@
+name: alpha-staging-db-diagnostics
+run-name: DB diagnostic only · ${{ inputs.candidate_ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref: {description: Original frozen candidate branch, required: true, type: string}
+      expected_sha: {description: Exact original source commit, required: true, type: string}
+      memory_gib:
+        description: PostgreSQL memory cap for measured A/B comparison
+        required: false
+        default: '1'
+        type: choice
+        options: ['1', '2']
+      jit_mode:
+        description: Explicit JIT setting for controlled comparison only
+        required: false
+        default: 'on'
+        type: choice
+        options: ['on', 'off']
+      repaired_focus:
+        description: Exact resolved repaired candidate; three original DB regression files, development only
+        required: false
+        default: false
+        type: boolean
+      organization_only:
+        description: Only the unchanged original organization file
+        required: false
+        default: false
+        type: boolean
+      baseline_only:
+        description: Explicit released-c98 original organization-file comparison
+        required: false
+        default: false
+        type: boolean
+      isolated_only:
+        description: Skip the original batch; compare only the two original isolated files
+        required: false
+        default: false
+        type: boolean
+permissions: {contents: read, actions: read}
+concurrency:
+  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}-${{ inputs.repaired_focus }}
+  cancel-in-progress: false
+env:
+  TZ: Asia/Kuala_Lumpur
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_CI_PG_JIT: ${{ inputs.jit_mode }}
+  AIHR_CI_PG_MEMORY_GIB: ${{ inputs.memory_gib }}
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+        run: node .github/ci/resolve.mjs
+  db-observation:
+    needs: resolve
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        probe: ${{ fromJSON(inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Record original workload and PostgreSQL crash/recovery/resource evidence
+        run: node ../automation/.github/ci/diagnostics/run-db.mjs "$PROBE"
+        env: {PROBE: '${{ matrix.probe }}'}
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-db-${{ matrix.probe }}
+          path: ${{ runner.temp }}/diagnostic-db-*/
+          if-no-files-found: error
+          retention-days: 14

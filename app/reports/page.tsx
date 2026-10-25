@@ -1,3 +1,7 @@
+import {todayInKualaLumpur} from '@/lib/hr-date';
+import {PayrollNewReportDialog} from './payroll-comparison/PayrollComparisonEditor';
+import {payrollComparisonOptions} from '@/core/report-payroll-comparison';
+import {MasterReportAccessError} from '@/core/employee-master-access';
 /**
  * Reports hub (ADR-0074, c440b365) — the single "Report" surface. Groups every reporting destination by
  * the six reporter categories (Master / Attendance / Leave / Payroll / Claim / Performance): the existing
@@ -55,7 +59,9 @@ export default async function ReportsPage({
   const only = sp.cat as ReportCategory | undefined;
   const categories = only && REPORT_CATEGORIES.includes(only) ? [only] : REPORT_CATEGORIES;
 
-  const saved = await listCustomReports(s);
+  const saved = await listCustomReports(s,{companyIds:scopeIds});
+  const pt=await getTranslations('payrollComparison');
+  const payrollOptions=categories.includes('payroll')?await payrollComparisonOptions(s,scopeIds).catch(error=>{if(error instanceof MasterReportAccessError)return null;throw error;}):null;
 
   return (
     <div data-tour="intelligence-reports" className="space-y-6">
@@ -80,7 +86,7 @@ export default async function ReportsPage({
                   <h2 className="text-base font-semibold tracking-tight">{t(`category.${cat}`)}</h2>
                   <p className="mt-0.5 text-sm text-muted-foreground">{t(`categoryDesc.${cat}`)}</p>
                 </div>
-                {datasets.length > 0 && (
+                {cat==='payroll'&&payrollOptions?<PayrollNewReportDialog payItems={payrollOptions.payItems}/>:datasets.length > 0 && (
                   <Link
                     href={`/reports/builder/new?dataset=${encodeURIComponent(datasets[0].id)}`}
                     className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
@@ -135,9 +141,9 @@ export default async function ReportsPage({
                       >
                         {/* Same click-through affordance as the predefined rows above (feedback 622e12eb):
                             label on the left, → on the right; the row actions menu keeps its own slot. */}
-                        <Link href={`/reports/builder/${r.id}`} className="flex min-w-0 flex-1 items-center gap-2">
+                        <Link href={r.spec.payrollComparison?`/reports/payroll-comparison/${r.id}`:`/reports/builder/${r.id}`} className="flex min-w-0 flex-1 items-center gap-2">
                           {r.isFavourite && <span aria-hidden className="text-amber-500">★</span>}
-                          <span className="truncate hover:underline">{r.name}</span>
+                          <span className="min-w-0"><span className="block truncate hover:underline">{r.name}</span>{r.spec.payrollComparison&&<span className="mt-1 block text-xs text-muted-foreground">{pt('periodComparison')} · {r.spec.payrollComparison.payItemCode} · {pt('previousVsCurrent')} · {r.creatorName??pt('creatorUnavailable')} · {r.createdAt?todayInKualaLumpur(new Date(r.createdAt)):''}</span>}</span>
                           {r.shared && (
                             <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                               {t('shared')}
@@ -147,6 +153,7 @@ export default async function ReportsPage({
                         </Link>
                         <ReportRowActions
                           id={r.id}
+                          periodComparison={!!r.spec.payrollComparison}
                           isFavourite={r.isFavourite}
                           shared={r.shared}
                           labels={{

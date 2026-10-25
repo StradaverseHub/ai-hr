@@ -21,7 +21,7 @@ export function LanguageSwitcher() {
         aria-expanded={open}
         aria-label="Change language"
         title={localeNames[activeLocale]}
-        className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <Languages className="size-5" />
       </button>
@@ -47,7 +47,7 @@ export function LanguageSwitcher() {
             value={loc}
             onClick={() => setOpen(false)}
             className={cn(
-              'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted',
+              'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted',
               loc === activeLocale && 'font-medium text-foreground',
             )}
           >
