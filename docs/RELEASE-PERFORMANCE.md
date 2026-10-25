@@ -16,6 +16,16 @@ The actual r395 security suite passed 88/88 in 154.219 seconds and reset-error c
 
 The supplied upgrade-rehearsal proposal addresses existing-data correctness but estimates an additional eight to fifteen minutes per deployment. Its estimated cost is not measured or activated. See [the design review](UPGRADE-REHEARSAL-REVIEW.md) for recommended corrections and a separately calibrated, impact-aware policy. Required rehearsal time must count toward the same complete release target.
 
+## Failed-only repair during the H pilot
+
+On 26 October MYT, the human explicitly authorized retaining completed passing checks and repairing/retesting failures only for AI dev 2's current H release. Every unexecuted required check still runs. The timing-dependent original attendance fixture was legitimately redesigned and passed all 100 cases at the early hour on `3c51317ea43ded103e782c37b55eccf9fdeae05c`; root independently checked the raw result, cleanup and exact committed diff. This fix has not yet been adopted into this branch's split fixture.
+
+The current full H gate then exposed an ANSI-sensitive counter defect. The original no-DB raw report has 963 unique passing files and 12,620 passing cases; the counter failed to read the coloured footer and overwrote the actual process status. That original status remains UNKNOWN and the canonical result remains FAIL. The reviewed counter repair `29ee93b3` passed 21 small checks. No passing application tests were rerun to repair the counter.
+
+A separate [bounded exception controller](LOCAL-COUNTER-EXCEPTION.md) is prepared in this isolated branch. It independently reconstructs complete report membership/counts, binds the exact counter-only final source transition, retained compiler/build/browser origins and actual restoration, and uses a fresh canonical staging build. Independent source review found no further blocking issue after correcting private SSH/rsync route consistency, receipt-image binding, the exact healthy DB teardown tail and a finite transfer timeout. This is source review, not an executed collector, exception acceptance, deployment or arrival proof. All 16 DB batches were still running at this checkpoint; any genuine failure needs its own reviewed failed-only repair evidence.
+
+The exceptional path leaves the original failed receipt untouched and cannot establish a new full PASS baseline. It does not enable generic cross-commit reuse, the build-once pipeline, main/live deployment or a ten-minute release. All original failed/cancelled attempts, repair work, evidence processing and deployment time still count toward the goal.
+
 ## Measured complete attempts
 
 These are failed verification attempts, with no eligible release receipt or deployment. Times below end at the last workflow job; deployment has not been measured.
