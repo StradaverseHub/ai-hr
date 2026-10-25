@@ -1072,3 +1072,61 @@ candidate must demonstrate improved outcomes without lowering security or silent
 Until that loop is implemented and proven for a component, label it learning-capable/planned rather
 than claiming it is already self-improving. The current H release does not acquire these capabilities
 merely because this roadmap records them.
+
+
+### Owner clarification: one governed self-improving agent for every module
+
+**Decision (2026-10-26 KL):** Import, Payroll, Leave and Attendance are initial examples, not the
+complete agent scope. Every system module must have a self-improving module agent. Each agent talks
+to its own canonical module engine/service through registered typed adapters. The Assistant-linked
+orchestrator routes and coordinates these agents; it does not become a second business engine.
+
+Use `packs/catalog.ts`'s `MODULE_CATALOG`, the pack registry and actual canonical service owners to
+build the coverage matrix. Include core, HR, payroll and platform modules, submodule capabilities,
+and future additions. Do not infer that an entitlement flag already has a separate engine; identify
+its real owning service and explicitly map that capability. Non-pack-backed modules still need a
+named canonical owner. No omitted module may silently count as complete because it lacks a pack.
+Country/jurisdiction capabilities use their established country-pack rules, not model-derived law.
+
+For every module record: module/agent identity; canonical engine owner and public service boundary;
+permitted read/explain/prepare/confirm capabilities; input/output schemas and minimal projections;
+tenant/module entitlement and current user/scope checks; human approval requirements; audit/event/
+receipt ownership; idempotency and reconciliation behavior; dependency/version compatibility;
+provider/privacy/budget constraints; evaluation dataset and improvement version; pause/rollback
+control; implementation status and acceptance evidence. A coverage invariant must flag a new module
+or changed engine contract that has no matching declared agent capability/evaluation coverage.
+Unimplemented entries remain explicitly pending and unavailable, never generic unrestricted tools.
+
+An agent is a logical module capability on the shared harness, not a mandatory permanently running
+model process. It may be invoked on demand, conserving cost while preserving one accountable agent
+identity per module. Submodule agents can reuse their parent engine adapters only with explicit
+capability/entitlement mapping and their own relevant evaluation coverage. Reuse shared orchestration,
+provider and improvement machinery; do not duplicate records, balance calculations, workflows or
+policy rules into prompts or agent memory.
+
+The invocation path is: authenticated Assistant request → authorized orchestrator plan → permitted
+module-agent capability → typed canonical service/engine → source-derived result/receipt → scoped
+Assistant response. The server constructs the actor/scope at every boundary; a model cannot supply an
+admin context, arbitrary service name or SQL. Reads and effects must satisfy the same engine rules
+as the module UI. Permission revocation and scope changes are rechecked before handoffs and effects.
+
+Cross-module work composes independently authorized capabilities and canonical receipts. Permission
+to use one module never grants another module's records, sensitive fields or actions. Cross-agent
+messages contain only the minimum authorized references/results and do not transfer credentials or
+accumulate the union of service privileges. A Payroll→Attendance→Leave task must refuse any denied
+step without exposing denied facts; resume or reconciliation must not duplicate already committed
+work. Persistent/background work requires an explicit scoped delegation lifecycle and revocation
+checks, not an unbounded service-account identity.
+
+Every module agent participates in the versioned self-improvement loop above. The module's actual
+engine and deterministic business rules stay authoritative. Learned orchestration strategies and
+agent improvements must preserve ALL module permission, financial, workflow and privacy invariants.
+Platform agents cannot grant access, change security policy, send arbitrary notifications or mark
+release tests passed merely because those are platform functions. Their tools remain narrowly
+scoped and their high-impact actions stay under the established human/governed workflows.
+
+Deliver in measurable waves beginning with the existing own-leave and production-import goals, then
+expand through the complete module matrix. The final scope is system-wide; staged delivery changes
+sequence, not that requirement. A module agent is done only after its real engine integration, UI
+journey, denied-access/prompt-injection tests, audited effects where allowed, measured improvement
+loop and rollback are demonstrated. An empty registry entry or chatbot persona is not completion.
