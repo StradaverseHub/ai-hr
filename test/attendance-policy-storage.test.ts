@@ -1,5 +1,5 @@
 import {updateLeaveType} from '../core/admin';
-import {requestLeave,decideLeave} from '../core/leave';
+import {requestLeave,decideLeave,workingDatesForSpan} from '../core/leave';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {recordedAttestedPolicyWorkTx} from '../packs/attendance/policy-attested-work-source';
 import {attendancePolicyAttestedWorkInput} from '../packs/attendance/policy-attested-work-input';
@@ -99,22 +99,37 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
   overtime:{enabled:true,beforeShift:true,afterShift:true,allowBackdatedWithoutClock:unclocked,splitAtMidnight:true,offsetLateness:false,approval,autoMethod,rounding,
    days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:mixedCompatible&&key==='rest'?compatibleVersionId:draft.versionId}])) as AttendanceGroupPolicy['overtime']['days']}};
  const revision=await scheduleAttendanceGroupPolicy(ctx,{companyId:b.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(1),reason:'Fictional storage fixture',policy});
+ const historicalUnclockedDate=currentManual&&unclocked&&sourceDateOverride&&sourceDateOverride<day(0)?sourceDateOverride:null;
  if(currentManual){
   // Declared historical fixture restoration ONLY: the genuine scheduling API above issued
   // this positive epoch prospectively. Restore a pre-existing active baseline before any
   // clock/request/decision so present-day Manual effects can be exercised without time travel.
   // This does not prove a historical scheduling/activation command, and enables no payment.
+  // Completed historical work also needs a restored formula lifecycle date; the real
+  // activation API above still ran prospectively. Only this private fixture is restored.
   const [issued]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
   expect(issued.activationEpoch).toBeGreaterThan(0);
   await owner.db.transaction(async tx=>{
    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision DISABLE TRIGGER attendance_group_policy_revision_guard`);
-   await tx.update(s.attendanceGroupPolicyRevision).set({effectiveFrom:day(-1)})
+   await tx.update(s.attendanceGroupPolicyRevision).set({effectiveFrom:historicalUnclockedDate??day(-1)})
     .where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision ENABLE TRIGGER attendance_group_policy_revision_guard`);
+   if(historicalUnclockedDate){
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state DISABLE TRIGGER overtime_pattern_version_state_guard`);
+    const restored=await tx.update(s.overtimePatternVersionState).set({effectiveFrom:historicalUnclockedDate})
+     .where(and(eq(s.overtimePatternVersionState.versionId,draft.versionId),eq(s.overtimePatternVersionState.sequence,1))).returning({id:s.overtimePatternVersionState.id});
+    expect(restored).toHaveLength(1);
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state ENABLE TRIGGER overtime_pattern_version_state_guard`);
+   }
   });
   const guards=await owner.db.execute(sql`select tgenabled from pg_trigger where tgrelid='attendance_group_policy_revision'::regclass
    and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
+  if(historicalUnclockedDate){
+   const lifecycleGuards=await owner.db.execute(sql`select tgenabled from pg_trigger where tgrelid='overtime_pattern_version_state'::regclass
+    and tgname='overtime_pattern_version_state_guard'`);
+   expect(Array.from(lifecycleGuards).map(row=>row.tgenabled)).toEqual(['O']);
+  }
  }
  const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  const sourceDate=sourceDateOverride??day(sourceOffset),nextDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
@@ -1099,7 +1114,9 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].datedCredit).toEqual(stored.datedCredit);
   const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
   await updateLeaveType(ctx,{id:type.id,name:type.name,durations:['full_day','half_day_am','half_day_pm']});
-  const leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
+  const leaveFrom=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
+  const [leaveDate]=await withTenant(ctx,tx=>workingDatesForSpan(tx,f.employmentId,leaveFrom,credit.expiresOn));
+  if(!leaveDate)throw Error('The fixture must provide a real working day before credit expiry');
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
   await decideLeave(ctx,{leaveRequestId:request.leaveRequestId,decision:'approved'});
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].daysTaken).toBe('0.50');
@@ -1396,10 +1413,11 @@ describe('immutable non-payable policy part storage',()=>{
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
    halfDayBefore:'00:01',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
-  // Same declared private historical GROUP baseline restoration as the four Manual probes.
-  // Formula activation is genuine and current-day. This is not a historical activation command.
+  // Restore a declared historical GROUP/formula-lifecycle fixture and attest yesterday's
+  // completed work. Never assume two hours have elapsed since local midnight. No clock
+  // is mocked; all production submission, SQL time and financial guards still execute.
   const rounding:AttendanceGroupPolicy['overtime']['rounding']=roundMode==='none'?{mode:'none',step:null}:{mode:roundMode,step:30};
-  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,undefined,true),
+  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,day(-1),true),
    p={employmentId:f.employmentId,date:f.sourceDate},midnight=Date.parse(p.date+'T00:00:00+08:00');
   const actual={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight+60000+555,toEpochMillisecond:midnight+(1+physical)*60000}],
    requestedIntervals:[{fromEpochMillisecond:midnight+(1+physical-requested)*60000+777,toEpochMillisecond:midnight+(1+physical)*60000}]};
