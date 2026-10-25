@@ -43,6 +43,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
+      - name: Match original full-suite PDF dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils python3-venv
+          python3 -m venv "$RUNNER_TEMP/pdf-tools"
+          "$RUNNER_TEMP/pdf-tools/bin/pip" install --quiet pymupdf
+          echo "$RUNNER_TEMP/pdf-tools/bin" >> "$GITHUB_PATH"
       - run: node ../automation/.github/ci/diagnostics/instrument-nodb.mjs
       - name: Measure original loaded unit with one labelled instrumented target
         run: node ../automation/.github/ci/diagnostics/run-loaded-nodb.mjs "$UNIT"
