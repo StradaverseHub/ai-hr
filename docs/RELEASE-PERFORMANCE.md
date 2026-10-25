@@ -86,6 +86,14 @@ A file-only deterministic probe reproduced a torn status record. Independent rev
 
 Publishing CURRENT successfully before clearing PENDING retained conservative `incomplete`, the new ref and `stale_build=1` on failure, while clearing pending on success. Board 3 is incorporating this guard. These are reproduced product faults, not proof of the actual CI race. The probes used private files and no application/database runtime, Vitest, build or real process signals.
 
+## Reset retry classification
+
+A separate, unfinished local performance analysis on `claude/gate-speed-analysis-37e5b1` reported a timeout followed by reset deadlocks in repeated REA gates. Independent inspection confirmed the relevant driver behavior: Drizzle 0.45 wraps the PostgreSQL exception in `cause`; its outer message contains the failed query, not the PostgreSQL error message. The harness examined only that outer message, leaving its intended retry path unreachable for normal wrapped lock errors.
+
+The review branch now has a small cause-chain classifier. It recognizes the existing intended reset conditions (`40P01`, `55P03`, `57014`), retains legacy message support, refuses unrelated structured SQL errors, ignores wrapper SQL text and bounds malformed/cyclic causes. The existing three-attempt limit, five-second lock timeout, rollback, worker-database ownership, final-attempt cleanup and original-error propagation remain unchanged. This retries fixture reset, never a failed application assertion; an earlier timed-out test remains failed.
+
+Seventeen lightweight assertions passed using the actual installed Drizzle error class, including an old-red/new-green wrapped-error case. The new Vitest regression file has not run, and no database recovery or complete compiler proof is claimed. No local heavy command was started. Board 3's active frozen local verification candidate does not include this future change; do not introduce it mid-run. PostgreSQL recommends matching [SQLSTATE codes](https://www.postgresql.org/docs/16/errcodes-appendix.html), rather than localized error text.
+
 ## Next validation sequence
 
 1. Finish the concrete release repairs with focused local verification after the foreign REA gate releases the shared Mac resources. Do not touch its processes, database or locks.

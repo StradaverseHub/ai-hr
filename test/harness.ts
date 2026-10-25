@@ -1,3 +1,4 @@
+import {isResetLockError} from './reset-lock-error';
 import {profileTestPhase} from './profile';
 import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
@@ -237,9 +238,7 @@ async function truncateAllTables(): Promise<void> {
       });
       return;
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      const lockish = /lock_timeout|deadlock detected|canceling statement/i.test(msg);
-      if (!lockish || attempt === ATTEMPTS) throw e;
+      if (!isResetLockError(e) || attempt === ATTEMPTS) throw e;
       // Last try: clear anything else still attached to this database, then go again.
       if (attempt === ATTEMPTS - 1) {
         await owner.db
