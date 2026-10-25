@@ -17,3 +17,19 @@ it('shows an unset split and unallocated remainder, validates totals and preview
 it('requires an explicit clear confirmation and never writes when the confirmation is cancelled',async()=>{
  show();fireEvent.click(screen.getByRole('button',{name:'Preview changes'}));await screen.findByRole('button',{name:'Confirm and save'});fireEvent.click(screen.getByRole('button',{name:'Confirm and save'}));await screen.findByRole('alertdialog');expect(ports.save).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(ports.save).not.toHaveBeenCalled();
 });
+
+it('shows the shared date control and formatted history/preview while retaining the ISO date for owner actions',async()=>{
+ const historical:EmploymentCostAllocationView={...value,history:[{id:'prior-set',revision:2,effectiveDate:'2025-12-01',validTo:null,companyId:'company',operation:'clear',source:'manual',superseded:false,rows:[],createdAt:'2025-12-01T00:00:00.000Z'}]};
+ const {container}=render(<NextIntlClientProvider locale="en" messages={en}><CostCenterAllocations value={historical}/></NextIntlClientProvider>);
+ const input=container.querySelector('input[name="effectiveDate"]') as HTMLInputElement;
+ expect(input.closest('[data-date-field]')).not.toBeNull();
+ expect(input.value).toBe('2026-01-01');
+ expect(screen.getByText('01-Jan-2026')).toBeTruthy();
+ expect(container.textContent).toContain('01-Dec-2025');
+ expect(container.textContent).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+ fireEvent.click(screen.getByRole('button',{name:'Preview changes'}));
+ await screen.findByRole('button',{name:'Confirm and save'});
+ expect(ports.preview).toHaveBeenCalledWith(expect.objectContaining({effectiveDate:'2026-01-01'}));
+ expect(container.textContent).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+ expect(ports.save).not.toHaveBeenCalled();
+});
