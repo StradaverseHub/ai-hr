@@ -48,7 +48,9 @@ export function validateTransportProvenance(p,env,runtime,localRunner){
  for(const k of ['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'])requireValue(/^[a-f0-9]{64}$/.test(p[k]),'provenance digest');
  requireValue(p.diagnosticRunner&&typeof p.diagnosticRunner.name==='string'&&p.diagnosticRunner.name.length
   &&/^[a-f0-9]{64}$/.test(p.diagnosticRunner.bootSha256)
-  &&p.diagnosticRunner.name!==localRunner.name&&p.diagnosticRunner.bootSha256!==localRunner.bootSha256,'fresh independent VM required');
+  &&typeof p.diagnosticRunner.sourcePath==='string'&&p.diagnosticRunner.sourcePath.startsWith('/')
+  &&typeof localRunner.sourcePath==='string'&&localRunner.sourcePath.startsWith('/')&&p.diagnosticRunner.sourcePath!==localRunner.sourcePath
+  &&p.diagnosticRunner.name!==localRunner.name&&p.diagnosticRunner.bootSha256!==localRunner.bootSha256,'fresh independent VM and different source path required');
  return true;
 }
 
@@ -155,7 +157,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   execFileSync('python3',[join(controller,'.github/ci/build-transport-extract.py'),archive,join(output,'packet'),digest],{stdio:'inherit'});
   const packet=join(output,'packet'),p=JSON.parse(readFileSync(join(packet,'build-provenance.json')));
   const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync(join(source,'node_modules/next/package.json'))).version};
-  const runner={name:env.RUNNER_NAME,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
+  const runner={name:env.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
   validateTransportProvenance(p,env,runtime,runner);
   const binding=[['pnpm-lock.yaml',p.lockSha256,source],['package.json',p.packageSha256,source],['system-testing.json',p.preparedSha256,packet],['successful-build.json',p.successfulObservationSha256,packet],['bytes/build-bundle-files.json',p.manifestSha256,packet]];
   for(const [name,digest,base]of binding)requireValue(hash(readFileSync(join(base,name)))===digest,'bound input changed: '+name);

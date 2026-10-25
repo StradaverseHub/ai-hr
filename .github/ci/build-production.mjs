@@ -121,7 +121,7 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
   preparedSha256:hash(preparedBytes),successfulObservationSha256:hash(observationBytes),manifestSha256:hash(manifestBytes),
   archiveSha256:manifest.archiveSha256,archiveBytes:manifest.archiveBytes,releaseAuthorized:false};
  if(purpose==='diagnostic'){
-  provenance.diagnosticRunner={name:environment.RUNNER_NAME,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
+  provenance.diagnosticRunner={name:environment.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
   provenance.diagnosticDurations={canonicalBuildMs:endedAt-startedAt,packMs:packEndedAt-packStartedAt};
  }
  for(const [name,data]of [['system-testing.json',preparedBytes],['successful-build.json',observationBytes],['build-provenance.json',Buffer.from(JSON.stringify(provenance)+'\n')]])writeFileSync(join(output,name),data,{flag:'wx',mode:0o600});

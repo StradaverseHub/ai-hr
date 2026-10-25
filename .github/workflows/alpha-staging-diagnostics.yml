@@ -272,7 +272,7 @@ jobs:
     needs: [resolve, build-transport-producer]
     runs-on: ubuntu-24.04
     timeout-minutes: 8
-    defaults: {run: {working-directory: source}}
+    defaults: {run: {working-directory: recipient}}
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_BUILD_DIAGNOSTIC: transport-producer
@@ -284,9 +284,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: recipient, fetch-depth: 0, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
-        with: {node: '20.20.2', mobile: 'false'}
+        with: {node: '20.20.2', mobile: 'false', path: recipient}
       - name: Install independent PDF text and raster inspection tools
         run: |
           if ! command -v pdftoppm || ! command -v pdftotext; then

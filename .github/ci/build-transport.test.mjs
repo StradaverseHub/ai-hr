@@ -13,8 +13,8 @@ test('actual run/attempt/source/controller/job/artifact binding refuses mismatch
  for(const jobs of [[],[job,job],[{...job,conclusion:'failure'}],[{...job,run_attempt:2}],[{...job,status:'in_progress'}]])assert.throws(()=>validateTransportMetadata({run,jobs,artifact},env));
  for(const [key,value]of Object.entries({id:9,name:'other',expired:true,digest:'sha256:'+'c'.repeat(64),size_in_bytes:281*1024**2,workflow_run:{id:9,head_sha:sha}}))assert.throws(()=>validateTransportMetadata({run,jobs:[job],artifact:{...artifact,[key]:value}},env));
 });
-const p={format:1,kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:false,source:sha,controller:sha,repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:123,runAttempt:1,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',diagnosticRunner:{name:'producer',bootSha256:'c'.repeat(64)},...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
-const consumer={name:'consumer',bootSha256:'d'.repeat(64)};
+const p={format:1,kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:false,source:sha,controller:sha,repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:123,runAttempt:1,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',diagnosticRunner:{name:'producer',sourcePath:'/producer/source',bootSha256:'c'.repeat(64)},...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
+const consumer={name:'consumer',sourcePath:'/consumer/recipient',bootSha256:'d'.repeat(64)};
 test('fresh VM and exact runtime/provenance are mandatory; diagnostic cannot grant release',()=>{
  assert.equal(validateTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),true);
  for(const [key,value]of Object.entries({kind:'ci-system-testing-build-candidate',releaseAuthorized:true,source:'c'.repeat(40),controller:'c'.repeat(40),runAttempt:2,runId:9,preparedSha256:'bad',diagnosticRunner:{...p.diagnosticRunner,name:consumer.name}}))assert.throws(()=>validateTransportProvenance({...p,[key]:value},env,{...STAGING_BUILD_RUNTIME},consumer));
@@ -28,4 +28,9 @@ test('Chinese raster comparison refuses blank, substituted or differently sized 
  const white={...raster,data:Buffer.alloc(7500,255)};assert.throws(()=>compareCjkRasters(white,white));
  assert.throws(()=>compareCjkRasters(raster,white));
  assert.throws(()=>compareCjkRasters(raster,{...raster,info:{...raster.info,width:51}}));
+});
+
+test('different VM with unchanged source path is not relocation proof',()=>{
+ assert.throws(()=>validateTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},{...consumer,sourcePath:p.diagnosticRunner.sourcePath}));
+ assert.throws(()=>validateTransportProvenance({...p,diagnosticRunner:{...p.diagnosticRunner,sourcePath:undefined}},env,{...STAGING_BUILD_RUNTIME},consumer));
 });
