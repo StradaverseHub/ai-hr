@@ -23,11 +23,21 @@ The Git probe took 3.857 seconds, npm connectivity probe 5.012 seconds and Ubunt
 
 The actual resource shape differs from generic plan defaults in documentation; use the observed limits when sizing this task. Eight CPUs do not imply sufficient memory for eight application workers. The separate standard-runner compiler already reached about 6.6 GiB maximum RSS; that is a different run and not Cloud compiler evidence. Native PostgreSQL, compiler concurrency, package installation and complete release timing still need validation.
 
+## Integration recheck
+
+The owner later reported “Integrated”. A read-only retry in the existing Cloud task, turn `01a17481-70b5-729a-8c7c-f210ef1666be`, still returned Git exit128 with the same authentication error (0.189s); no mounted repository, connector or environment selector was exposed there. Root independently read the underlying command output. No install, database, compiler, app test, build or deployment ran. The owner then clarified that only GitHub was connected, not a repository-backed Cloud environment published. This does not establish a broken GitHub connection globally; it establishes that this existing task still lacks repository access.
+
+Automated native inspection of `com.openai.codex` was explicitly blocked by the app's safety controls. It was not bypassed. The remaining setup is the documented environment selection/publication flow below, followed by a task started from that published environment. No further access retry or new Cloud task has been started after this clarification.
+
+## Latest connection report and actual UI observation
+
+The owner subsequently reported “cloud codex connected”. Root followed the official “Go to Cloud” link in a new Chrome tab. The resulting signed-in ChatGPT page showed Zen Lam Pro, Cloud selected, and a Choose environment picker that still said “Connect GitHub to see your environments”. Clicking Create environment produced no new setup page or tab. This is an observation of that browser/account context, not proof that the owner's other Cloud workspace lacks a connection. Root requested the connected environment URL to locate the correct workspace. No additional GitHub permission was granted, no billing setting changed and no new workload started. The old generic scratch pilot was not blindly retried.
+
 ## Required setup before retry
 
 Use the supported Cloud environment flow: **Work in → Cloud → Select environment → Create environment**, connect GitHub if prompted, and select only `StradaverseHub/ai-hr`. Configure the required Node 22, pnpm 10.33.2 and PostgreSQL 16 tools plus package-registry access during setup, review its report, then publish. The current chat tools can create a Cloud task but cannot configure that repository connection. Account authorization must go through the product's GitHub connection UI; do not paste a personal access token, Mac environment file, staging credentials or SSH keys into a task prompt.
 
-After a published environment exists, resume with an isolated exact-candidate capability check and tiny owned PostgreSQL smoke before application workloads. Preserve NOBYPASSRLS application roles, RLS isolation, rollback and explicit cleanup. Do not masquerade as GitHub Actions or bypass the GitHub-only controller guards. Do not duplicate the in-flight paired GitHub benchmark or relabel capability checks as release evidence. No automatic retry is running while access is missing.
+After a published environment exists, resume with an isolated exact-candidate capability check and tiny owned PostgreSQL smoke before application workloads. Preserve NOBYPASSRLS application roles, RLS isolation, rollback and explicit cleanup. Do not masquerade as GitHub Actions or bypass the GitHub-only controller guards. Do not duplicate the completed paired GitHub benchmark or relabel capability checks as release evidence. No automatic retry is running while access is missing.
 
 Official setup references checked on 26 October: [Codex Cloud](https://learn.chatgpt.com/docs/cloud) and [Cloud environments](https://learn.chatgpt.com/docs/environments/cloud-environments). Their environment workflow is guidance, not proof that our private repository is connected.
 

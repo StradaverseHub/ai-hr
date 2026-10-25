@@ -25,4 +25,19 @@ The result is labelled `WHOLE_PROJECT_INCREMENTAL_DIAGNOSTIC_NOT_RELEASE_EVIDENC
 
 Four tiny controller groups passed locally: actual-zero/file-inventory refusal, exact owned diagnostic/error-exit refusal, tiny owned Node success/nonzero/timeout handling, and non-runner refusal before source access. They do not execute TypeScript. Shell/YAML and isolated workflow-structure checks cover the opt-in wiring separately.
 
-Actual cold/warm results remain pending until authenticated run/job/artifact evidence exists. One VM's ordered result includes normal OS/dependency warming and cannot prove a cross-run speedup or complete release timing. Before enabling a durable compiler cache, validate restored state across actual candidates/toolchain/configuration boundaries, retain complete compiler invocation and error refusal, bound restore/save/storage overhead, and authenticate eligible cache provenance. A cached compiler state is never a PASS receipt. Build, migration, complete test coverage, authenticated deployment and verified source/build arrival remain required for the under-ten-minute goal.
+[Run 40225338537](https://github.com/StradaverseHub/ai-hr/actions/runs/40225338537) completed successfully on exact `fe9e3c1ae94c174bdc495ef5aff6017dd402724e`. Root authenticated run, candidate, workflow, attempt, complete job inventory and artifact digest, then independently validated every raw phase and configuration/lockfile hashes against the committed source. The full original project contains 7,046 compiler files and 986,602 TypeScript lines.
+
+| Phase | Elapsed | Files | Actual exit |
+| --- | --- | --- | --- |
+| Cold state | 364.240s | 7,046 | 0 |
+| Warm unchanged source | 26.643s | 7,046 | 0 |
+| Add valid dependency and consumer | 15.845s | 7,048 | 0 |
+| Change dependency; unchanged consumer refuses | 15.824s | 7,048 | 2, exact consumer TS2322 |
+| Restore dependency; new invalid root refuses | 15.990s | 7,049 | 2, exact new-root TS2322 |
+| Remove fixtures; restored original source | 15.958s | 7,046 | 0 |
+
+Warm compiler elapsed was 92.69% lower in this ordered experiment; maximum RSS fell from 6,849,064 to 2,615,700 KiB (61.81% lower). Major page faults fell from 124,835 to 860. Both introduced-error controls actually failed for the intended reason. Reported source/fixture/state cleanup passed; cache bytes were deleted, so the retained digest is metadata rather than a state file we can rehash later.
+
+Complete dispatch-to-last-job elapsed was 610s (10m10s) and summed occupied runner time was 604s (10.07 runner-minutes). The diagnostic intentionally ran six compiler phases; these numbers are not deployment timing or authoritative billing. Authenticated raw logs, independent review and cost report are retained under `scratchpad/compiler-incremental-20261026/` in the performance worktree. No durable cache was enabled and no application/build/deployment evidence was produced.
+
+ One VM's ordered result includes normal OS/dependency warming and cannot prove a cross-run speedup or complete release timing. Before enabling a durable compiler cache, validate restored state across actual candidates/toolchain/configuration boundaries, retain complete compiler invocation and error refusal, bound restore/save/storage overhead, and authenticate eligible cache provenance. A cached compiler state is never a PASS receipt. Build, migration, complete test coverage, authenticated deployment and verified source/build arrival remain required for the under-ten-minute goal.
