@@ -44,7 +44,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(state.ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible:boolean|'datedRates'=false,sourceDateOverride?:string,unclocked=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible:boolean|'datedRates'=false,sourceDateOverride?:string,unclocked=false,historicalFinancial=false){
  const ruleId=(await ensureStandardRule(state.ctx)).id;
  const worker=await hireEmployee(state.ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:state.b.companyId,
   departmentId:state.b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -79,6 +79,15 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const draft=await saveOvertimePatternDraft(state.ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:state.b.companyId,companyIds:[state.b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
+ if(historicalFinancial){
+  const eventsBefore=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,state.b.tenantId)).orderBy(asc(s.domainEvent.id));
+  // Historical seed restoration below must not turn activation into a backdating API.
+  await expect(activateOvertimePattern(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision,
+   validationDigest:validation.validationDigest!,effectiveFrom:day(-2)})).rejects.toThrow('Activation cannot backdate');
+  expect(await owner.db.select().from(s.overtimePatternVersionState).where(eq(s.overtimePatternVersionState.versionId,draft.versionId))).toEqual([]);
+  expect((await owner.db.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.id,draft.versionId)))[0].activatedAt).toBeNull();
+  expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,state.b.tenantId)).orderBy(asc(s.domainEvent.id))).toEqual(eventsBefore);
+ }
  await activateOvertimePattern(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
  let compatibleVersionId=draft.versionId;
  if(mixedCompatible){
@@ -112,6 +121,26 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
     .where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision ENABLE TRIGGER attendance_group_policy_revision_guard`);
   });
+  if(historicalFinancial){
+   // PRIVATE fixture restoration, not an activation command: represent an already active
+   // historical formula just as the GROUP baseline above. Never disable effect/contract guards.
+   // A transaction failure rolls back both the seed edit and the trigger state.
+   await owner.db.transaction(async tx=>{
+    const [original]=await tx.select().from(s.overtimePatternVersionState)
+     .where(and(eq(s.overtimePatternVersionState.versionId,draft.versionId),eq(s.overtimePatternVersionState.sequence,1)));
+    expect(original).toBeDefined();
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state DISABLE TRIGGER overtime_pattern_version_state_guard`);
+    const restored=await tx.update(s.overtimePatternVersionState).set({effectiveFrom:day(-2)})
+     .where(and(eq(s.overtimePatternVersionState.versionId,draft.versionId),eq(s.overtimePatternVersionState.sequence,1))).returning();
+    expect(restored).toHaveLength(1);expect(restored[0]).toEqual({...original,effectiveFrom:day(-2)});
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state ENABLE TRIGGER overtime_pattern_version_state_guard`);
+   });
+   const formulaGuards=await owner.db.execute(sql`select tgenabled from pg_trigger
+    where tgrelid='overtime_pattern_version_state'::regclass and tgname='overtime_pattern_version_state_guard'`);
+   expect(Array.from(formulaGuards).map(row=>row.tgenabled)).toEqual(['O']);
+   await expect(owner.db.update(s.overtimePatternVersionState).set({effectiveFrom:day(-3)})
+    .where(eq(s.overtimePatternVersionState.versionId,draft.versionId))).rejects.toThrow();
+  }
   const guards=await owner.db.execute(sql`select tgenabled from pg_trigger where tgrelid='attendance_group_policy_revision'::regclass
    and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);

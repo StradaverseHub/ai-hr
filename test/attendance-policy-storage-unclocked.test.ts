@@ -226,9 +226,10 @@ describe('immutable non-payable policy part storage',()=>{
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
    halfDayBefore:'00:01',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
   // Same declared private historical GROUP baseline restoration as the four Manual probes.
-  // Formula activation is genuine and current-day. This is not a historical activation command.
+  // Seed an already active historical formula as well; all business/database clocks remain
+  // real. This is financial integration coverage, not proof of historical API activation.
   const rounding:AttendanceGroupPolicy['overtime']['rounding']=roundMode==='none'?{mode:'none',step:null}:{mode:roundMode,step:30};
-  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,undefined,true),
+  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,day(-1),true,true),
    p={employmentId:f.employmentId,date:f.sourceDate},midnight=Date.parse(p.date+'T00:00:00+08:00');
   const actual={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight+60000+555,toEpochMillisecond:midnight+(1+physical)*60000}],
    requestedIntervals:[{fromEpochMillisecond:midnight+(1+physical-requested)*60000+777,toEpochMillisecond:midnight+(1+physical)*60000}]};
@@ -247,9 +248,25 @@ describe('immutable non-payable policy part storage',()=>{
   else await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:3,
    stages:[{name:'Review complete actual work',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const future={...actual,intervals:actual.intervals.map(span=>({fromEpochMillisecond:span.fromEpochMillisecond+2*86400000,toEpochMillisecond:span.toEpochMillisecond+2*86400000})),
+   requestedIntervals:actual.requestedIntervals.map(span=>({fromEpochMillisecond:span.fromEpochMillisecond+2*86400000,toEpochMillisecond:span.toEpochMillisecond+2*86400000}))};
+  await expect(requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional still-future work must refuse',unclockedWork:future}))
+   .rejects.toThrow('completed intervals');
   const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional complete actual-work day with original millisecond endpoints',unclockedWork:actual});
   expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p))).toBeNull();
   await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  // Bypass only the JS entry point to prove the independent, ACTIVE SQL clock guard.
+  // Same authorized actor/date/policy/interval lengths as the successful request; only instants differ.
+  const [submitted]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  const refusedId=randomUUID();let refused:unknown;
+  try{await withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({...submitted,id:refusedId,status:'pending',approvedOtMinutes:null,otApprovalMethod:null,decidedByEmploymentId:null,decidedAt:null,appliedAt:null,
+   originalClockSnapshot:{...submitted.originalClockSnapshot!,unclockedWork:{...submitted.originalClockSnapshot!.unclockedWork!,intervals:future.intervals,requestedIntervals:future.requestedIntervals}}}));}catch(error){refused=error;}
+  const sqlRefusal=refused as {cause?:{code?:string;message?:string};code?:string;message?:string};
+  expect(sqlRefusal?.cause?.code??sqlRefusal?.code).toBe('23514');
+  expect(sqlRefusal?.cause?.message??sqlRefusal?.message).toBe('Unclocked work intervals must be completed and ordered in the dated period');
+  expect(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,refusedId))).toEqual([]);
+  expect(await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,refusedId))).toEqual([]);
+  expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,refusedId))).toEqual([]);
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical attested financial parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true,payableNumerator:String(expectedMinutes),approvalStatus:'approved'});
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));

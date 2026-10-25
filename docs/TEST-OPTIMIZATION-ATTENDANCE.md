@@ -1,5 +1,13 @@
 # Attendance storage test split
 
+## Cloud validation checkpoint — 26 October MYT
+
+The owner authorized this performance chat to continue its goal in GitHub Actions; AI dev 2 remains local under the separate instruction in that chat. Only included standard runners are authorized. This branch has adopted the validated historical financial fixture from `3c51317ea43ded103e782c37b55eccf9fdeae05c` into its shared fixture and unclocked split. All 47 registration bodies, expanded 100 cases and original hooks match that repaired original exactly. The helper changes only route free `b`/`ctx` references through the existing live per-file getters. The original 135-minute work, cash/TOIL and rounding assertions and actual JavaScript/SQL future-work and backdated-activation refusal controls remain.
+
+An initial source-equality check refused equivalent weekday comments; those comments were aligned with the validated source before the source-only proof passed. No application test or fixture callback ran in that check. The four files still contain 25/28/15/32 cases. The earlier unresolved eighteen-case note below is historical for the pre-repair branch; the repaired split still requires its own runtime result.
+
+First cloud scope: execute those four files and a whole-repository TypeScript check on the exact clean performance candidate. Use two workers and an owned PostgreSQL 16 container capped at 2 GiB with default JIT on; collect actual process exits, every selected assertion and terminal cgroup/health evidence. The test job is bounded at twenty minutes. No full suite, build or deployment is implied, and no H release check is substituted. Compare measured phase and occupied runner times before deciding the next experiment. A historical monolith timing from another VM is a reference, not a causal A/B speedup claim.
+
 ## Runtime checkpoint and fixture failures on 26 October MYT
 
 The original 100-case monolith passed 81 and failed 19 in the paired baseline after Kuala Lumpur midnight. Eighteen cases require two to two-and-a-quarter hours of completed current-day work while the real day had not yet elapsed that far; one half-day leave selection landed on a weekend. The date helper already uses the Kuala Lumpur date. This is not evidence that splitting caused the failures. The comparison stopped before the split candidate phase.

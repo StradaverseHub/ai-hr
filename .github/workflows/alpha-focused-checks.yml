@@ -58,7 +58,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Focused controller regression checks
-        run: node --test .github/ci/focused-checks.test.mjs
+        run: node --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
@@ -73,7 +73,7 @@ jobs:
   selected-tests:
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: source

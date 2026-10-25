@@ -6,6 +6,12 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
+## Root cloud execution authorization — 26 October MYT
+
+The owner explicitly said in this chat, “You can continue your goal in github action”. This supersedes the older cloud-experiment hold for this chat's performance work, using included standard runners only. AI dev 2's latest direct “no you remain local” keeps its H release local; no H cloud run is dispatched. Root keeps its Mac resource handback and coordinates H before Mobile. Main/live deployment remains disabled.
+
+The next bounded cloud check is the repaired four-file attendance split plus a complete compiler check, using an exact published performance candidate. All 100 cases, actual SQL/financial guards and per-case fixture resets remain. This is development/performance evidence; it cannot issue a release receipt or establish the under-ten-minute end-to-end goal. Do not automatically launch a full matrix or duplicate already completed H checks.
+
 ## Local optimization checkpoint — 26 October MYT
 
 The finite Mac validation window is handed to AI dev 2; this work continues without reserving Mac resources. All owned private PostgreSQL clusters were stopped and deleted, the fresh process inventory found no remaining owned validation processes, and no commands targeted shared PostgreSQL 5433. A durable private handback record binds cleanup and the current source. AI dev 2 has separate direct human authorization for local verification with no Actions dispatch; its H release precedes Mobile. This is resource handback, not completion of the ten-minute goal.

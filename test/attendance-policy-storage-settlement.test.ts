@@ -293,8 +293,8 @@ describe('immutable non-payable policy part storage',()=>{
   const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
   await updateLeaveType(ctx,{id:type.id,name:type.name,durations:['full_day','half_day_am','half_day_pm']});
   let leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
-  // The fixture's replacement-leave calendar uses Monday–Friday. The source-date
-  // offset must not accidentally turn this consumption proof into a weekend refusal.
+  // This replacement-leave fixture uses Monday–Friday. Retain its real half-day consumption
+  // assertions without accidentally selecting a non-working day as the calendar advances.
   while([0,6].includes(new Date(leaveDate+'T00:00:00Z').getUTCDay()))
    leaveDate=new Date(Date.parse(leaveDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
