@@ -1,5 +1,7 @@
 # Deploying AI HR to a Linux server (gated consultant demo)
 
+> **Environment policy (25 October 2026):** This existing server is now staging, associated with `alpha`. `main` is reserved for a separate future live installation. Read [Repository and environments](../docs/REPOSITORY-AND-ENVIRONMENTS.md) before running release commands; historical production terminology in this guide does not override that policy.
+
 New customer/UAT installations must follow [CUSTOMER.md](CUSTOMER.md) and [UAT-HOSTING.md](UAT-HOSTING.md). This legacy guide contains demo-specific Node paths, service accounts and schedules. Do not use them as the customer runtime profile.
 
 A native (no-Docker) deployment for **demo/testing on a public-IP server**. The app sits behind the
