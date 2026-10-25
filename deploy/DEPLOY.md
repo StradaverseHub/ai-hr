@@ -546,7 +546,7 @@ A deploy takes minutes, and from outside the box a deploy that is RUNNING, one t
 that DIED PARTWAY all look the same: no output, a URL that still answers, a service that is still up.
 `deploy.sh` now records itself, and the box will tell you which it was:
 
-    ssh -p 8288 ubuntu@<host> 'cd /opt/ai-hr && deploy/deploy-state.sh status'
+    ssh aihr-staging 'cd /opt/ai-hr && deploy/deploy-state.sh status'
 
     state=ok | running | failed | died | incomplete | unknown
     phase=preflight|install|audit-chain|build|migrate|catalogs|seed|restart|migrate-only

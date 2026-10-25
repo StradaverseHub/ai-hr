@@ -72,9 +72,9 @@ describe('publicErrorMessage', () => {
     expect(pgSqlState(dropped)).toBeUndefined();
     expect(isDatabaseError(dropped)).toBe(true);
     expect(parseDatabaseErrorRef(publicErrorMessage(dropped))?.kind).toBe('system');
-    const refused = Object.assign(new Error('connect ECONNREFUSED 10.20.30.20:5432'), { code: 'ECONNREFUSED' });
+    const refused = Object.assign(new Error('connect ECONNREFUSED 192.0.2.10:5432'), { code: 'ECONNREFUSED' });
     const text = publicErrorMessage(refused);
-    expect(text).not.toContain('10.20.30.20');
+    expect(text).not.toContain('192.0.2.10');
     expect(parseDatabaseErrorRef(text)?.kind).toBe('system');
     const named = Object.assign(new Error('boom'), { name: 'DrizzleQueryError' });
     expect(isDatabaseError(named)).toBe(true);

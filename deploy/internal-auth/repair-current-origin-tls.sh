@@ -204,12 +204,18 @@ umask 077
 [[ "$EUID" -eq 0 && -t 0 ]] || { say "Run with sudo in an interactive terminal on the current HR server."; return 1; }
 [[ "$SHELLOPTS" != *xtrace* ]] || { say "Disable shell tracing before entering the DNS token."; return 1; }
 trap 'unset AIHR_CF_DNS_TOKEN' EXIT
-banner "Repair sfm.stradaprop.com origin TLS"
+banner "Repair the configured HR origin TLS"
 
 stage "Confirm the current installation"
-say "This helper is only for sfm.stradaprop.com. It keeps the current Nginx routing and app port."
+say "This helper keeps the selected installation's Nginx routing and app port."
+ask AIHR_TLS_HOST "Exact HR DNS hostname (without https://):"
+[[ "$AIHR_TLS_HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ && ${#AIHR_TLS_HOST} -le 253 ]] || { say "A valid DNS hostname is required."; return 1; }
+ask AIHR_TLS_NGINX_CONF "Existing Nginx site configuration (absolute path):"
+ask AIHR_TLS_CERT_DIR "Existing certificate directory under /etc/ssl (absolute path):"
+ask AIHR_TLS_CERT_NAME "Existing Certbot certificate name, or a new unique name:"
+[[ "$AIHR_TLS_NGINX_CONF" = /etc/nginx/* && "$AIHR_TLS_CERT_DIR" =~ ^/etc/ssl/[A-Za-z0-9_./-]+$ && "$AIHR_TLS_CERT_DIR" != *..* && "$AIHR_TLS_CERT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { say "The installation paths or certificate name were not accepted."; return 1; }
 say "It does not activate Keycloak or change HR authentication."
-[[ -f /etc/nginx/conf.d/aihr-sfm.conf && -f /etc/ssl/sfm.stradaprop.com/fullchain.pem && -f /etc/ssl/sfm.stradaprop.com/privkey.pem ]] || {
+[[ -f "$AIHR_TLS_NGINX_CONF" && -f "$AIHR_TLS_CERT_DIR/fullchain.pem" && -f "$AIHR_TLS_CERT_DIR/privkey.pem" ]] || {
   say "Expected current-server certificate paths were not found. Ask the installation operator to review the layout."; return 1;
 }
 nginx -t
@@ -219,7 +225,7 @@ apt-get install -y certbot python3-certbot-dns-cloudflare
 certbot plugins | grep -q dns-cloudflare || { say "Cloudflare plugin is unavailable. Nothing was activated."; return 1; }
 
 stage "Restricted Cloudflare DNS token"
-say "In Cloudflare, create an API token with Zone → DNS → Edit, restricted to the stradaprop.com zone only."
+say "In Cloudflare, create an API token with Zone → DNS → Edit, restricted to the selected hostname’s DNS zone only."
 say "Use the DNS-edit token, never the Global API Key. The token stays on this server for renewal."
 open_url "https://dash.cloudflare.com/profile/api-tokens"
 ask_secret AIHR_CF_DNS_TOKEN "Paste the restricted DNS API token here (hidden, never in chat):"
@@ -238,19 +244,21 @@ ask AIHR_CERT_EMAIL "Certificate renewal contact email:"
 stage "Issue, validate and install the certificate"
 say "Certbot will ask you to review and accept the CA terms itself if needed."
 say "DNS validation avoids the currently unavailable inbound port 80 route."
-confirm "Issue or renew the certificate for sfm.stradaprop.com using this DNS token?" || return 1
+confirm "Issue or renew the certificate for $AIHR_TLS_HOST using this DNS token?" || return 1
 certbot certonly --dns-cloudflare --dns-cloudflare-credentials "$credentials" --dns-cloudflare-propagation-seconds 60 \
-  --cert-name aihr-sfm-dns -d sfm.stradaprop.com --email "$AIHR_CERT_EMAIL" --keep-until-expiring
+  --cert-name "$AIHR_TLS_CERT_NAME" -d "$AIHR_TLS_HOST" --email "$AIHR_CERT_EMAIL" --keep-until-expiring
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
-hook=/etc/letsencrypt/renewal-hooks/deploy/aihr-sfm-copy.sh
+hook="/etc/letsencrypt/renewal-hooks/deploy/aihr-${AIHR_TLS_CERT_NAME}-copy.sh"
 if [[ -e "$hook" ]]; then cp -p "$hook" "${hook}.before-$(date -u +%Y%m%dT%H%M%SZ)-$$"; fi
-cat > "$hook" <<'AIHR_TLS_HOOK'
-#!/bin/bash
+{
+printf '#!/bin/bash\n'
+printf 'TLS_HOST=%q\nTLS_CERT_DIR=%q\nTLS_CERT_NAME=%q\n' "$AIHR_TLS_HOST" "$AIHR_TLS_CERT_DIR" "$AIHR_TLS_CERT_NAME"
+cat <<'AIHR_TLS_HOOK'
 set -euo pipefail
 [[ "$EUID" -eq 0 ]] || exit 1
-lineage=/etc/letsencrypt/live/aihr-sfm-dns
+lineage="/etc/letsencrypt/live/$TLS_CERT_NAME"
 [[ "${RENEWED_LINEAGE:-$lineage}" = "$lineage" ]] || exit 0
-openssl x509 -in "$lineage/cert.pem" -noout -checkhost sfm.stradaprop.com
+openssl x509 -in "$lineage/cert.pem" -noout -checkhost "$TLS_HOST"
 openssl x509 -in "$lineage/cert.pem" -noout -checkend 604800
 openssl verify -CApath /etc/ssl/certs -untrusted "$lineage/chain.pem" "$lineage/cert.pem"
 cert_key=$(openssl x509 -in "$lineage/cert.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum)
@@ -259,36 +267,37 @@ private_key=$(openssl pkey -in "$lineage/privkey.pem" -pubout -outform DER | sha
 nginx -t
 backup=$(mktemp -d /var/backups/aihr-tls-XXXXXXXX)
 chmod 0700 "$backup"
-cp -L /etc/ssl/sfm.stradaprop.com/fullchain.pem "$backup/fullchain.pem"
-cp -L /etc/ssl/sfm.stradaprop.com/privkey.pem "$backup/privkey.pem"
+cp -L "$TLS_CERT_DIR/fullchain.pem" "$backup/fullchain.pem"
+cp -L "$TLS_CERT_DIR/privkey.pem" "$backup/privkey.pem"
 chmod 0600 "$backup"/*
-staging=$(mktemp -d /etc/ssl/sfm.stradaprop.com/.aihr-tls-XXXXXXXX)
+staging=$(mktemp -d "$TLS_CERT_DIR/.aihr-tls-XXXXXXXX")
 trap 'rm -rf "$staging"' EXIT
 install -m 0644 "$lineage/fullchain.pem" "$staging/fullchain.pem"
 install -m 0600 "$lineage/privkey.pem" "$staging/privkey.pem"
-mv -f "$staging/fullchain.pem" /etc/ssl/sfm.stradaprop.com/fullchain.pem
-mv -f "$staging/privkey.pem" /etc/ssl/sfm.stradaprop.com/privkey.pem
+mv -f "$staging/fullchain.pem" "$TLS_CERT_DIR/fullchain.pem"
+mv -f "$staging/privkey.pem" "$TLS_CERT_DIR/privkey.pem"
 if ! nginx -t || ! systemctl reload nginx; then
-  install -m 0644 "$backup/fullchain.pem" /etc/ssl/sfm.stradaprop.com/fullchain.pem
-  install -m 0600 "$backup/privkey.pem" /etc/ssl/sfm.stradaprop.com/privkey.pem
+  install -m 0644 "$backup/fullchain.pem" "$TLS_CERT_DIR/fullchain.pem"
+  install -m 0600 "$backup/privkey.pem" "$TLS_CERT_DIR/privkey.pem"
   nginx -t && systemctl reload nginx
   echo 'Certificate install failed; previous certificate restored.' >&2
   exit 1
 fi
-curl --silent --show-error --max-time 15 --proto '=https' --resolve sfm.stradaprop.com:443:127.0.0.1 \
-  --output /dev/null https://sfm.stradaprop.com/login
-openssl x509 -in /etc/ssl/sfm.stradaprop.com/fullchain.pem -noout -dates
+curl --silent --show-error --max-time 15 --proto '=https' --resolve "$TLS_HOST:443:127.0.0.1" \
+  --output /dev/null "https://$TLS_HOST/login"
+openssl x509 -in "$TLS_CERT_DIR/fullchain.pem" -noout -dates
 AIHR_TLS_HOOK
+} > "$hook"
 chmod 0750 "$hook"; chown root:root "$hook"
 bash -n "$hook"
-RENEWED_LINEAGE=/etc/letsencrypt/live/aihr-sfm-dns "$hook"
-certbot renew --cert-name aihr-sfm-dns --dry-run
+RENEWED_LINEAGE="/etc/letsencrypt/live/$AIHR_TLS_CERT_NAME" "$hook"
+certbot renew --cert-name "$AIHR_TLS_CERT_NAME" --dry-run
 systemctl enable --now certbot.timer
 
 stage "Verify the Cloudflare origin policy"
 open_url "https://dash.cloudflare.com/"
-say "Select stradaprop.com → SSL/TLS → Overview. After this origin certificate is valid, select Full (strict)."
-say "Open https://sfm.stradaprop.com/login and confirm the existing app remains available."
+say "Select the configured DNS zone → SSL/TLS → Overview. After this origin certificate is valid, select Full (strict)."
+say "Open https://$AIHR_TLS_HOST/login and confirm the existing app remains available."
 say "Record the selected origin encryption policy with the installation operator; a browser padlock alone does not prove it."
 pause "Press Enter after checking Full (strict) and the application."
 say "The origin certificate was validated locally, Nginx reloaded without a routing change, and renewal rehearsal completed."
