@@ -162,10 +162,10 @@ export function EmployeeImport({
     setFileName(null);
     setReading(true);
     try {
-      // Item 2983802f — ask the reader for the Family sheet too. A file without one decodes exactly as
-      // it always did; `dependentsText` simply comes back empty.
+      // The reader maps the first requested companion to dependentsText, so Family must stay first.
+      // A workbook without Family returns empty dependentsText, even when allocations are present.
       const { name, text, dependentsText,extraTexts } = await readImportFile(file, {
-        extraSheets: [ALLOCATION_SHEET,EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],
+        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
         allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       if (revision !== inputRevision.current) return;
