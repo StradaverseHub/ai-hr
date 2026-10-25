@@ -41,6 +41,29 @@ export function localesForActor(key) {
   return key === 'group-admin' || key === 'Empty-hr' ? [...locales] : ['en'];
 }
 
+export function journeyPlan(journey) {
+  assert(['queue', 'correction'].includes(journey), 'Unknown walkthrough journey');
+  return {journey, plannedVisits: journey === 'queue' ? 64 : 0};
+}
+
+/** Read-only witnesses complement actual save/reopen/queue UI assertions; never drive writes. */
+export function validateCorrectionEvidence(before, closed, reopened) {
+  for (const value of [before, closed, reopened]) {
+    assert(uuid(value.id) && uuid(value.employmentId) && uuid(value.companyId));
+    assert.equal(value.gap, 'no_bank_account');
+    assert(Number.isSafeInteger(value.reopenCount) && value.reopenCount >= 0);
+    assert.equal(value.id, before.id); assert.equal(value.employmentId, before.employmentId);
+    assert.equal(value.companyId, before.companyId);
+  }
+  assert.equal(before.paymentMethod, null); assert(['needs_input', 'needs_review'].includes(before.state));
+  assert.equal(before.verifiedAt, null);
+  assert.equal(closed.paymentMethod, 'cash'); assert.equal(closed.state, 'verified');
+  assert(typeof closed.verifiedAt === 'string' && Number.isFinite(Date.parse(closed.verifiedAt)));
+  assert.equal(closed.reopenCount, before.reopenCount);
+  assert.equal(reopened.paymentMethod, null); assert.equal(reopened.state, before.state);
+  assert.equal(reopened.verifiedAt, null); assert.equal(reopened.reopenCount, before.reopenCount + 1);
+}
+
 export async function bounded(operation, label, milliseconds = 15_000) {
   assert(Number.isSafeInteger(milliseconds) && milliseconds > 0);
   let timer;
@@ -113,7 +136,7 @@ async function main() {
   mkdirSync(out, {mode: 0o700});
   const started = Date.now();
   const report = {kind: 'PRODUCTION_RENDERER_DEVELOPMENT_ONLY', releaseEligible: false, sha, controller,
-    startedAt: new Date(started).toISOString(), plannedVisits: 64,
+    startedAt: new Date(started).toISOString(), ...journeyPlan(process.env.AIHR_WALKTHROUGH_JOURNEY ?? 'queue'),
     run: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     fixtureOrigin: 'NEW_SYNTHETIC_CI_FIXTURE_NOT_RECOVERED_RAM_DATA', phases: [], visits: [], scenarios: [],
     browserErrors: [], consoleErrors: [], serverErrors: [], exitCode: 1,
@@ -290,80 +313,175 @@ async function main() {
       checkpoint('locale-complete', {actor, locale});
     };
     const noPrivateText = async page => assert(!(await page.content()).includes(second.privateSentinel), 'Private receipt text reached HTML');
-    for (const actor of second.actors) {
-      const {context, page} = await login(actor);
-      try {
-        for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'mobile', width: 375, height: 812}]) {
-          await page.setViewportSize({width: viewport.width, height: viewport.height});
-          for (const locale of localesForActor(actor.key)) {
-            await language(page, context, locale, actor.key);
-            for (const route of routes) {
-              checkpoint('visit-start', {actor: actor.key, locale, route, viewport: viewport.name});
-              await page.goto(base + route); const t = catalogues[locale];
-              if (actor.key.endsWith('-employee')) {
-                // A streamed server redirect can complete after goto's load event. Require the
-                // actual canonical refusal destination before assessing access; never accept
-                // an arbitrary non-administrative URL (including login or an error page).
-                await page.waitForURL(url => url.origin === base && url.pathname === '/', {timeout: 15_000});
-                assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
-                assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
-              } else {
-                if (route === '/control-tower/agents') {
-                  const panel = page.getByRole('main').locator('details#orchestrator:visible');
-                  await expandWithKeyboard(panel, 'Orchestrator panel');
+    if (report.journey === 'queue') {
+      for (const actor of second.actors) {
+        const {context, page} = await login(actor);
+        try {
+          for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'mobile', width: 375, height: 812}]) {
+            await page.setViewportSize({width: viewport.width, height: viewport.height});
+            for (const locale of localesForActor(actor.key)) {
+              await language(page, context, locale, actor.key);
+              for (const route of routes) {
+                checkpoint('visit-start', {actor: actor.key, locale, route, viewport: viewport.name});
+                await page.goto(base + route); const t = catalogues[locale];
+                if (actor.key.endsWith('-employee')) {
+                  // A streamed server redirect can complete after goto's load event. Require the
+                  // actual canonical refusal destination before assessing access; never accept
+                  // an arbitrary non-administrative URL (including login or an error page).
+                  await page.waitForURL(url => url.origin === base && url.pathname === '/', {timeout: 15_000});
+                  assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
+                  assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
+                } else {
+                  if (route === '/control-tower/agents') {
+                    const panel = page.getByRole('main').locator('details#orchestrator:visible');
+                    await expandWithKeyboard(panel, 'Orchestrator panel');
+                  }
+                  const card = cardFor(page, t); await card.waitFor({state: 'visible'});
+                  const text = await card.innerText();
+                  if (actor.key === 'A-hr') { assert(text.includes('Orchestration fictional employee A')); assert(!text.includes('Orchestration fictional employee B')); }
+                  if (actor.key === 'B-hr') { assert(text.includes('Orchestration fictional employee B')); assert(!text.includes('Orchestration fictional employee A')); }
+                  if (actor.key === 'Empty-hr') { assert(!text.includes('Orchestration fictional employee')); assert(text.includes(t.empty)); }
+                  assert.equal(await card.locator('a[href="/admin/scheduled-actions"]').count(), actor.key === 'group-admin' ? 1 : 0);
+                  const details = card.locator('details');
+                  await expandWithKeyboard(details, 'Recorded receipt');
+                  const summary = details.locator(':scope > summary');
+                  assert((await summary.innerText()).includes(t.runDetails.outcomes.succeeded));
                 }
-                const card = cardFor(page, t); await card.waitFor({state: 'visible'});
-                const text = await card.innerText();
-                if (actor.key === 'A-hr') { assert(text.includes('Orchestration fictional employee A')); assert(!text.includes('Orchestration fictional employee B')); }
-                if (actor.key === 'B-hr') { assert(text.includes('Orchestration fictional employee B')); assert(!text.includes('Orchestration fictional employee A')); }
-                if (actor.key === 'Empty-hr') { assert(!text.includes('Orchestration fictional employee')); assert(text.includes(t.empty)); }
-                assert.equal(await card.locator('a[href="/admin/scheduled-actions"]').count(), actor.key === 'group-admin' ? 1 : 0);
-                const details = card.locator('details');
-                await expandWithKeyboard(details, 'Recorded receipt');
-                const summary = details.locator(':scope > summary');
-                assert((await summary.innerText()).includes(t.runDetails.outcomes.succeeded));
+                await noPrivateText(page);
+                const dimensions = await page.evaluate(() => ({width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth}));
+                assert(dimensions.scroll <= dimensions.width + 1, 'Page overflows viewport');
+                const image = `${actor.key}-${locale}-${viewport.name}-${route.split('/').filter(Boolean).join('-')}.png`;
+                await page.screenshot({path: join(out, image), fullPage: true, animations: 'disabled'});
+                report.visits.push({actor: actor.key, locale, route, viewport: viewport.name, image, dimensions});
+                checkpoint('visit-complete', {actor: actor.key, locale, route, viewport: viewport.name});
               }
-              await noPrivateText(page);
-              const dimensions = await page.evaluate(() => ({width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth}));
-              assert(dimensions.scroll <= dimensions.width + 1, 'Page overflows viewport');
-              const image = `${actor.key}-${locale}-${viewport.name}-${route.split('/').filter(Boolean).join('-')}.png`;
-              await page.screenshot({path: join(out, image), fullPage: true, animations: 'disabled'});
-              report.visits.push({actor: actor.key, locale, route, viewport: viewport.name, image, dimensions});
-              checkpoint('visit-complete', {actor: actor.key, locale, route, viewport: viewport.name});
             }
           }
+        } catch (error) { await captureFailure(); throw error; }
+        finally { await bounded(context.close(), 'Browser context cleanup', 5000); }
+      }
+      const actor = second.actors.find(row => row.key === 'A-hr');
+      const {context, page} = await login(actor);
+      try {
+        const t = catalogues.en;
+        checkpoint('safe-refresh-start');
+        await page.goto(base + '/control-tower');
+        await cardFor(page, t).getByRole('button', {name: t.refresh, exact: true}).click();
+        await page.waitForURL(url => url.searchParams.get('refresh') === 'complete');
+        assert((await cardFor(page, t).innerText()).includes(t.refreshed));
+        report.safeRefresh = true;
+        checkpoint('safe-refresh-complete');
+        for (const scenario of ['legacy', 'unsupported', 'malformed', 'failed', 'current']) {
+          checkpoint('receipt-start', {scenario});
+          fixture(scenario); await page.goto(base + '/control-tower');
+          const expected = receiptExpectation(scenario), details = cardFor(page, t).locator('details');
+          await expandWithKeyboard(details, `Receipt ${scenario}`);
+          const summary = details.locator(':scope > summary');
+          assert((await summary.innerText()).includes(t.runDetails.outcomes[expected.outcome]));
+          assert.deepEqual((await details.locator('dd').allTextContents()).map(text => text.trim()), expected.steps.map(state => t.runDetails.states[state]));
+          assert.equal((await details.innerText()).includes(t.runDetails.incomplete), expected.incomplete);
+          if (expected.version) assert((await details.innerText()).includes(expected.version));
+          await noPrivateText(page);
+          await page.screenshot({path: join(out, `receipt-${scenario}.png`), fullPage: true, animations: 'disabled'});
+          report.scenarios.push({scenario, ...expected});
+          checkpoint('receipt-complete', {scenario});
         }
       } catch (error) { await captureFailure(); throw error; }
       finally { await bounded(context.close(), 'Browser context cleanup', 5000); }
     }
-    const actor = second.actors.find(row => row.key === 'A-hr');
-    const {context, page} = await login(actor);
-    try {
-      const t = catalogues.en;
-      checkpoint('safe-refresh-start');
-      await page.goto(base + '/control-tower');
-      await cardFor(page, t).getByRole('button', {name: t.refresh, exact: true}).click();
-      await page.waitForURL(url => url.searchParams.get('refresh') === 'complete');
-      assert((await cardFor(page, t).innerText()).includes(t.refreshed));
-      report.safeRefresh = true;
-      checkpoint('safe-refresh-complete');
-      for (const scenario of ['legacy', 'unsupported', 'malformed', 'failed', 'current']) {
-        checkpoint('receipt-start', {scenario});
-        fixture(scenario); await page.goto(base + '/control-tower');
-        const expected = receiptExpectation(scenario), details = cardFor(page, t).locator('details');
-        await expandWithKeyboard(details, `Receipt ${scenario}`);
-        const summary = details.locator(':scope > summary');
-        assert((await summary.innerText()).includes(t.runDetails.outcomes[expected.outcome]));
-        assert.deepEqual((await details.locator('dd').allTextContents()).map(text => text.trim()), expected.steps.map(state => t.runDetails.states[state]));
-        assert.equal((await details.innerText()).includes(t.runDetails.incomplete), expected.incomplete);
-        if (expected.version) assert((await details.innerText()).includes(expected.version));
-        await noPrivateText(page);
-        await page.screenshot({path: join(out, `receipt-${scenario}.png`), fullPage: true, animations: 'disabled'});
-        report.scenarios.push({scenario, ...expected});
-        checkpoint('receipt-complete', {scenario});
-      }
-    } catch (error) { await captureFailure(); throw error; }
-    finally { await bounded(context.close(), 'Browser context cleanup', 5000); }
+    if (report.journey === 'correction') {
+      const actor = second.actors.find(row => row.key === 'A-hr');
+      const employee = second.actors.find(row => row.key === 'A-employee');
+      const en = JSON.parse(readFileSync('messages/en.json', 'utf8'));
+      const t = catalogues.en, gapLabel = en.controlTower.readinessScreen.gap.no_bank_account;
+      const {context, page} = await login(actor);
+      try {
+        await language(page, context, 'en', actor.key);
+        await page.goto(base + '/control-tower');
+        const queue = () => cardFor(page, t);
+        const bankRow = () => queue().locator('tbody tr').filter({hasText: gapLabel});
+        await bankRow().waitFor({state: 'visible'});
+        assert.equal(await bankRow().count(), 1);
+        const href = await bankRow().getByRole('link', {name: 'Orchestration fictional employee A', exact: true}).getAttribute('href');
+        const employmentId = href?.split('/').at(-1); assert(uuid(employmentId));
+        assert.equal(href, `/admin/personnel/${employmentId}`);
+        // Every interpolated identifier is an already-validated fixture UUID. These are SELECTs
+        // only: the real HR form and refresh action own every business write below.
+        const witness = () => JSON.parse(psql(`select json_build_object('id', c.id, 'employmentId', e.id,
+          'companyId', e.company_id, 'gap', c.gap, 'state', c.state, 'verifiedAt', c.verified_at,
+          'reopenCount', c.reopen_count, 'paymentMethod', e.payment_method)
+          from hr_orchestration_case c join employment e on e.id = c.employment_id and e.tenant_id = c.tenant_id
+          where c.tenant_id = '${tenant}' and e.id = '${employmentId}' and e.person_id = '${employee.personId}'
+            and e.company_id = '${actor.companyId}' and c.gap = 'no_bank_account'`));
+        const before = witness();
+        assert.equal(before.paymentMethod, null); assert(['needs_input', 'needs_review'].includes(before.state));
+        assert(uuid(before.id));
+        const eventWatermark = psql(`select coalesce(max(sequence), 0) from domain_event where tenant_id = '${tenant}'`);
+        assert(/^\d+$/.test(eventWatermark));
+        const capture = async label => {
+          await noPrivateText(page);
+          const name = `correction-${label}.png`;
+          await page.screenshot({path: join(out, name), fullPage: true, animations: 'disabled'});
+          checkpoint('correction-' + label);
+          return name;
+        };
+        const images = [await capture('open-queue')];
+        await bankRow().getByRole('link', {name: 'Orchestration fictional employee A', exact: true}).click();
+        await page.waitForURL(url => url.pathname === href);
+        const payroll = () => page.locator('[data-tab-save-scope="payroll"]:visible');
+        const payment = () => payroll().locator('form[data-save-section="payment"] select[name="paymentMethod"]');
+        const openPayroll = async () => {
+          await page.getByRole('tab', {name: en.people.detail.tabs.payroll, exact: true}).click();
+          await payment().waitFor({state: 'visible'});
+        };
+        const saveAndReopen = async value => {
+          await openPayroll();
+          await payment().selectOption(value);
+          await payroll().getByRole('button', {name: en.components.tabSave.saveChanges, exact: true}).click();
+          await page.getByText(en.components.tabSave.savedToast, {exact: true}).waitFor({state: 'visible'});
+          await observed(() => witness().paymentMethod === (value || null), 'Canonical payment method persistence');
+          // A fresh document read proves persistence beyond the form's optimistic state.
+          await page.goto(base + href + '?tab=payroll');
+          await openPayroll(); assert.equal(await payment().inputValue(), value);
+        };
+        const refresh = async () => {
+          await page.goto(base + '/control-tower');
+          await queue().getByRole('button', {name: t.refresh, exact: true}).click();
+          await page.waitForURL(url => url.pathname === '/control-tower' && url.searchParams.get('refresh') === 'complete');
+          await queue().getByText(t.refreshed, {exact: true}).waitFor({state: 'visible'});
+        };
+        checkpoint('correction-save-cash');
+        await saveAndReopen('cash'); images.push(await capture('cash-record-reopened'));
+        await refresh(); await observed(async () => await bankRow().count() === 0, 'Closed bank case absent from queue');
+        const closed = witness(); assert.equal(closed.state, 'verified');
+        images.push(await capture('verified-queue'));
+        await page.goto(base + href + '?tab=payroll');
+        checkpoint('correction-clear-payment-method');
+        await saveAndReopen(''); images.push(await capture('cleared-record-reopened'));
+        await refresh(); await bankRow().waitFor({state: 'visible'});
+        assert.equal(await bankRow().count(), 1);
+        const reopened = witness(); validateCorrectionEvidence(before, closed, reopened);
+        assert((await bankRow().innerText()).includes(t.reopened.replace('{count}', String(reopened.reopenCount))));
+        images.push(await capture('same-case-reopened'));
+        const audit = JSON.parse(psql(`select coalesce(json_agg(row_to_json(events) order by sequence), '[]'::json) from
+          (select sequence, event_type, actor_type, actor_id, payload from domain_event
+           where tenant_id = '${tenant}' and sequence > ${eventWatermark}
+             and ((aggregate_id = '${employmentId}' and event_type = 'employment.payment-method.changed')
+               or (aggregate_id = '${before.id}' and event_type in ('orchestrator.case-verified', 'orchestrator.case-reopened')))) events`));
+        assert.deepEqual(audit.map(row => row.event_type), ['employment.payment-method.changed', 'orchestrator.case-verified',
+          'employment.payment-method.changed', 'orchestrator.case-reopened']);
+        for (const row of audit) { assert.equal(row.actor_type, 'user'); assert.equal(row.actor_id, actor.userId); }
+        assert.deepEqual(audit[0].payload, {before: null, after: 'cash'});
+        assert.deepEqual(audit[2].payload, {before: 'cash', after: null});
+        assert.equal(audit[1].payload.to, 'verified'); assert.equal(audit[3].payload.to, before.state);
+        report.correction = {complete: true, before, closed, reopened, images, audit, writes: 'ACTUAL_HR_FORM_AND_REFRESH_ACTIONS_ONLY'};
+        report.remaining = ['Separate exact-source scoped/localized/mobile queue proof',
+          'Final integrated release-candidate gate and staging arrival'];
+        checkpoint('correction-complete');
+      } catch (error) { await captureFailure(); throw error; }
+      finally { await bounded(context.close(), 'Browser context cleanup', 5000); }
+      assert.equal(report.correction?.complete, true, 'Real correction journey incomplete');
+    }
     assert.equal(report.visits.length, report.plannedVisits, 'Incomplete actor/locale/viewport/route coverage');
     report.modelRunsAfter = Number(psql('select count(*) from ai_model_run'));
     assert.equal(report.modelRunsAfter, report.modelRunsBefore, 'Walkthrough created a model admission');

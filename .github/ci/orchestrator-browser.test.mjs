@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {validateFixture, receiptExpectation, localesForActor, bounded, observed} from './orchestrator-browser.mjs';
+import {validateFixture, receiptExpectation, localesForActor, bounded, observed, journeyPlan, validateCorrectionEvidence} from './orchestrator-browser.mjs';
 
 const id = number => `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
 function manifest(reused = false) {
@@ -99,4 +99,39 @@ test('outcome observation bounds a stalled read and preserves real read errors',
   await assert.rejects(observed(() => new Promise(() => {}), 'Stalled read', 5), /Stalled read/);
   const error = new Error('Read refused');
   await assert.rejects(observed(async () => { throw error; }, 'Saved preference', 50), received => received === error);
+});
+
+test('focused correction proof is explicitly named and cannot silently replace queue coverage', () => {
+  assert.deepEqual(journeyPlan('queue'), {journey: 'queue', plannedVisits: 64});
+  assert.deepEqual(journeyPlan('correction'), {journey: 'correction', plannedVisits: 0});
+  for (const invalid of [undefined, '', 'all', 'skip', '../correction']) assert.throws(() => journeyPlan(invalid));
+});
+const correctionWitnesses = () => {
+  const before = {id: id(1), employmentId: id(2), companyId: id(3), gap: 'no_bank_account',
+    paymentMethod: null, state: 'needs_input', verifiedAt: null, reopenCount: 2};
+  return [before, {...before, paymentMethod: 'cash', state: 'verified', verifiedAt: '2026-10-25T12:00:00Z'},
+    {...before, reopenCount: 3}];
+};
+test('correction requires persisted cash closure and the same case reopened exactly once after clearing', () => {
+  validateCorrectionEvidence(...correctionWitnesses());
+  const hrOwned = correctionWitnesses(); hrOwned[0].state = hrOwned[2].state = 'needs_review';
+  validateCorrectionEvidence(...hrOwned);
+});
+for (const [label, change] of [
+  ['another case', rows => { rows[2].id = id(9); }],
+  ['another employment', rows => { rows[1].employmentId = id(9); }],
+  ['another company', rows => { rows[2].companyId = id(9); }],
+  ['another gap', rows => { rows[1].gap = 'no_tax_number'; }],
+  ['no saved cash value', rows => { rows[1].paymentMethod = null; }],
+  ['no verified closure', rows => { rows[1].state = 'needs_input'; }],
+  ['no closure timestamp', rows => { rows[1].verifiedAt = null; }],
+  ['invalid closure timestamp', rows => { rows[1].verifiedAt = 'unknown'; }],
+  ['no cleared source value', rows => { rows[2].paymentMethod = 'cash'; }],
+  ['still closed', rows => { rows[2].state = 'verified'; }],
+  ['stale closure timestamp', rows => { rows[2].verifiedAt = rows[1].verifiedAt; }],
+  ['no recorded reopening', rows => { rows[2].reopenCount = 2; }],
+  ['duplicate reopening', rows => { rows[2].reopenCount = 4; }],
+  ['counter changed at closure', rows => { rows[1].reopenCount = 3; }],
+]) test(`correction evidence refuses ${label}`, () => {
+  const rows = correctionWitnesses(); change(rows); assert.throws(() => validateCorrectionEvidence(...rows));
 });
