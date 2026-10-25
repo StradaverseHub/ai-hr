@@ -1,5 +1,9 @@
 # Performance-service test split
 
+## Runtime checkpoint on 26 October MYT
+
+The original 167-case monolith passed all cases in a paired original-suite baseline on owned PostgreSQL 16 with two workers (reported file duration 257.97 seconds). The accompanying original attendance suite failed 19 cases, so the comparison stopped before any optimized split run. All four new files together remain runtime-unverified; no speedup is established. Whole-repository TypeScript passed at `d08aa22c5`, before the later weekday-only attendance fixture change. Raw failed comparison and exact restored source bytes remain in `scratchpad/r395-savepoint-20261025/split-comparison-probe/`.
+
 This is a source-verified candidate, not a runtime pass, measured speedup or release receipt. Reconcile the actually released alpha before adopting it; do not change Board 3's frozen release.
 
 ## Purpose and preserved coverage
@@ -34,4 +38,4 @@ The five helpers read nine live per-file bindings through getters. This retains 
 - A separate mock helper check replaced fixture/administrator/manager/review bindings and verified that `hire` and `view` read the new values, rather than an early snapshot.
 - Source syntax and diff checks passed. Private evidence is retained in the owning worktree's ignored `scratchpad/onehr-split-20261025/`.
 
-Actual Vitest mock/loader behavior, all 167 database cases, complete TypeScript, timing and PostgreSQL/host resource peaks remain unverified after the split. A focused comparison must explicitly include **all four files** and count 167 cases; testing only the original filename now covers 42. Preserve the original baseline and comparable execution settings, then complete the required full candidate verification before adoption. No ten-minute release or runner-minute saving is claimed.
+All 167 split database cases, their Vitest mock/loader behavior, comparable timing and PostgreSQL/host resource peaks remain unverified. Complete TypeScript passed at the d08 checkpoint described above. A focused comparison must explicitly include **all four files** and count 167 cases; testing only the original filename now covers 42. Preserve the original baseline and comparable execution settings, then complete the required full candidate verification before adoption. No ten-minute release or runner-minute saving is claimed.

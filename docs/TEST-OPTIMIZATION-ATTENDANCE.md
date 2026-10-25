@@ -1,5 +1,13 @@
 # Attendance storage test split
 
+## Runtime checkpoint and fixture failures on 26 October MYT
+
+The original 100-case monolith passed 81 and failed 19 in the paired baseline after Kuala Lumpur midnight. Eighteen cases require two to two-and-a-quarter hours of completed current-day work while the real day had not yet elapsed that far; one half-day leave selection landed on a weekend. The date helper already uses the Kuala Lumpur date. This is not evidence that splitting caused the failures. The comparison stopped before the split candidate phase.
+
+A focused 19-case check passed the real leave-consumption case after selecting the next weekday. An attempted JavaScript-only historical clock repair failed all other 18 because the genuine database activation guard correctly refused a past activation. That attempted clock change was removed in normal commit `676fa874db0c31fdee9fe3afdbb5a0a899a7a876`; only the weekday-selection repair remains. Do not disable activation/financial guards, wait for a favorable hour and call the tests time-independent, or count the 28 deliberately unselected cases in that focused run as passes. These 18 cases still need a controlled, coherent application-and-database clock scenario or a genuine equivalent fixture design.
+
+The source-preservation claims below describe the original split checkpoint. The later weekday repair deliberately changes one fixture's date selection while retaining its leave and financial assertions. All four files and all 100 cases still need a complete passing candidate run and a comparable baseline before a performance claim. Whole TypeScript passed at `d08aa22c5`, before this later fixture repair. Raw evidence and cleanup are in `scratchpad/r395-savepoint-20261025/{split-comparison-probe,attendance-clock-focused-20261026}/`.
+
 Prepared on the future efficiency branch; **not runtime-validated or adopted into Board 3's active release**.
 
 ## Purpose
