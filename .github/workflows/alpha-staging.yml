@@ -252,11 +252,19 @@ jobs:
         with: {node: '20', mobile: 'false'}
       - name: Bind compiler cache to CI build context
         id: next-cache-context
+        continue-on-error: true
+        timeout-minutes: 1
         run: |
           cache_runtime="$(node -p '[process.platform, process.arch, process.versions.node].join("-")')"
-          printf 'prefix=aihr-next-compiler-v1-ubuntu24-%s-%s\n' "$cache_runtime" "${{ hashFiles('source/pnpm-lock.yaml', 'source/package.json', 'source/next.config.ts', 'source/tsconfig.json', 'source/tsconfig.build.json', 'source/.env.example', 'source/scripts/improve/system-testing-next-config.ts') }}" >> "$GITHUB_OUTPUT"
+          test -f deploy/css-cache-guard.sh
+          test ! -L deploy/css-cache-guard.sh
+          cache_css="$(bash -c '. deploy/css-cache-guard.sh; aihr_css_inputs_hash')"
+          test "${#cache_css}" -eq 64
+          case "$cache_css" in *[!a-f0-9]*) exit 1 ;; esac
+          printf 'prefix=aihr-next-compiler-v2-ubuntu24-%s-%s-%s\n' "$cache_runtime" "$cache_css" "${{ hashFiles('source/pnpm-lock.yaml', 'source/package.json', 'source/next.config.ts', 'source/tsconfig.json', 'source/tsconfig.build.json', 'source/.env.example', 'source/scripts/improve/system-testing-next-config.ts', 'source/deploy/css-cache-guard.sh') }}" >> "$GITHUB_OUTPUT"
       - name: Restore optional Turbopack compiler cache
         id: next-cache
+        if: ${{ steps.next-cache-context.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 1
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -272,7 +280,7 @@ jobs:
         env: {NODE_OPTIONS: --max-old-space-size=6144}
       - name: Bound optional compiler cache upload
         id: next-cache-budget
-        if: ${{ success() && steps.next-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && steps.next-cache-context.outcome == 'success' && steps.next-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
         timeout-minutes: 1
         run: |

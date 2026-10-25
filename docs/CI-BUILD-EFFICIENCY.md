@@ -1,6 +1,6 @@
 # CI build efficiency and deployment boundaries
 
-Prepared on 25 October 2026 in the isolated optimization review branch. No cache was created, cloud build dispatched, staging deployment changed or main/live deployment enabled by this work. Linux cold/warm measurements remain pending.
+Prepared on 25 October 2026 in the isolated optimization review branch. No GitHub cache was created, cloud build dispatched, staging deployment changed or main/live deployment enabled by this work. Linux cold/warm measurements remain pending.
 
 ## Verified setup
 
@@ -16,18 +16,20 @@ Only the `build` job in the review version of `.github/workflows/alpha-staging.y
 
 - Cache only `source/.next/cache/turbopack`, leaving complete output, server/static assets, runtime data, environment files and dependency installations outside this cache.
 - Pin restore/save actions to inspected official v4 commit `0057852bfaa89a56745cba8c7296529d2fc39830`.
-- Bind the cache namespace to Ubuntu 24, actual Node version/platform/architecture, dependency and build/config/template-environment hashes. Include the resolved candidate SHA in the primary key; a compatible prefix can supply earlier compiler work.
+- Bind the version-2 cache namespace to Ubuntu 24, actual Node version/platform/architecture, dependency/build/config/template-environment hashes, the exact CSS guard implementation and its current CSS-input fingerprint. The fingerprint uses the candidate’s existing `aihr_css_inputs_hash` function: CSS contents/file list under app/components plus CSS import lines in app/layout.tsx. Include the resolved candidate SHA in the primary key; compatible restore prefixes cannot cross that CSS boundary.
 - Always execute canonical `pnpm build` with its existing production type checks and heap setting. A hit never supplies PASS or bypasses a build, test, migration, source/build identity or deployment check.
 - Keep cache operations optional and individually limited to one minute. A service failure or miss falls back to building; it cannot turn a failed build green. The elapsed goal includes any cache overhead.
 - Save only after a successful build and a local size check. Skip upload for missing/symlinked directories or an allocated compiler-cache size exceeding 1 GiB. This per-entry guard does not reserve space or authorize paid storage.
+
+The existing staging CSS guard documents a real stale Turbopack import-graph failure. Restoring only the compiler directory without binding CSS would lose that protection. The proposed CI cache therefore uses the same fingerprint in its namespace and binds the guard source itself; it does not cache a separate marker or invoke the guard’s deletion function. A missing/malformed fingerprint disables optional cache operations and the canonical build still runs. The context step is also optional and bounded to one minute.
 
 Existing job names, coverage, checkout identities, triggers, permissions, verification artifacts, all actual test/compiler environments and deployment holds remain unchanged. The cache is an optimization input, never a release witness. Respect GitHub's [cache scope and access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching); do not broaden low-trust cache write access or put secrets into caches.
 
 ## Verification completed
 
-YAML and shell syntax passed. Structural comparison confirmed that only the build job changed, the production build remains unconditional, and only optional cache operations tolerate errors. A tiny private filesystem probe checked missing, small, oversized and symlinked cache directories; only the small regular directory qualified for upload. These probes did not run Next, application tests, a database or any GitHub job.
+YAML and shell syntax passed. Structural comparison confirmed that only the build job changed, the production build remains unconditional, and only optional cache operations tolerate errors. A tiny private filesystem probe checked missing, small, oversized and symlinked cache directories; only the small regular directory qualified for upload. A second tiny fixture reproduced the old cross-CSS compatibility-prefix collision and verified that the version-2 prefix changes for CSS contents, file additions/removals/renames and layout CSS imports, while unchanged CSS and markup-only edits remain compatible. Missing, malformed and symlinked guard inputs disable cache context; the existing compiler directory remains untouched. Structural comparison changed only three optional cache steps, preserving every other job, permission and unconditional production build. These probes did not run Next, application tests, a database or any GitHub job.
 
-Before adoption, measure the next independently authorized Linux candidate with equivalent source/configuration and runtime: cold build versus restored compiler cache, build/type-check results, compiled metadata, restore/save overhead, cache size and total job time. Record misses honestly. A larger compiler cache that exceeds the bound intentionally provides no saved cache. No speedup, runner-minute saving or ten-minute release result is claimed yet.
+Before adoption, measure the next independently authorized Linux candidate with equivalent source/configuration and runtime: cold build versus restored compiler cache, build/type-check results, compiled metadata and generated CSS/import equivalence, restore/save overhead, cache size and total job time. Record misses honestly. A larger compiler cache that exceeds the bound intentionally provides no saved cache. No speedup, runner-minute saving or ten-minute release result is claimed yet.
 
 ## Why generic CI output cannot simply replace the staging build
 
