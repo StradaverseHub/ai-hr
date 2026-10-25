@@ -249,6 +249,21 @@ async function main() {
       return {context, page};
     };
     const cardFor = (page, t) => page.getByRole('heading', {name: t.workTitle, exact: true}).locator('xpath=ancestor::*[@data-ui-card][1]');
+    const expandWithKeyboard = async (details, label) => {
+      const summary = details.locator(':scope > summary');
+      await summary.waitFor({state: 'visible'});
+      await summary.scrollIntoViewIfNeeded();
+      // Navigation/hydration may preserve a disclosure's prior state. Normalize through the real
+      // keyboard control, then prove its closed -> open transition. No DOM-state injection.
+      if (await details.getAttribute('open') !== null) {
+        checkpoint('keyboard-collapse', {label});
+        await summary.press('Enter');
+        await observed(async () => await details.getAttribute('open') === null, `${label} keyboard collapse`);
+      }
+      checkpoint('keyboard-expand', {label});
+      await summary.press('Enter');
+      await observed(async () => await details.getAttribute('open') !== null, `${label} keyboard expansion`);
+    };
     const language = async (page, context, locale, actor) => {
       checkpoint('locale-start', {actor, locale});
       await page.getByRole('button', {name: 'Change language', exact: true}).click();
@@ -280,9 +295,7 @@ async function main() {
               } else {
                 if (route === '/control-tower/agents') {
                   const panel = page.locator('details#orchestrator');
-                  const summary = panel.locator(':scope > summary');
-                  await summary.focus(); await page.keyboard.press('Enter');
-                  assert.notEqual(await panel.getAttribute('open'), null, 'Keyboard could not open the orchestrator panel');
+                  await expandWithKeyboard(panel, 'Orchestrator panel');
                 }
                 const card = cardFor(page, t); await card.waitFor({state: 'visible'});
                 const text = await card.innerText();
@@ -290,9 +303,9 @@ async function main() {
                 if (actor.key === 'B-hr') { assert(text.includes('Orchestration fictional employee B')); assert(!text.includes('Orchestration fictional employee A')); }
                 if (actor.key === 'Empty-hr') { assert(!text.includes('Orchestration fictional employee')); assert(text.includes(t.empty)); }
                 assert.equal(await card.locator('a[href="/admin/scheduled-actions"]').count(), actor.key === 'group-admin' ? 1 : 0);
-                const details = card.locator('details'); assert.equal(await details.getAttribute('open'), null);
-                const summary = details.locator('summary'); await summary.focus(); await page.keyboard.press('Enter');
-                assert.notEqual(await details.getAttribute('open'), null, 'Keyboard could not expand receipt');
+                const details = card.locator('details');
+                await expandWithKeyboard(details, 'Recorded receipt');
+                const summary = details.locator(':scope > summary');
                 assert((await summary.innerText()).includes(t.runDetails.outcomes.succeeded));
               }
               await noPrivateText(page);
@@ -323,8 +336,8 @@ async function main() {
         checkpoint('receipt-start', {scenario});
         fixture(scenario); await page.goto(base + '/control-tower');
         const expected = receiptExpectation(scenario), details = cardFor(page, t).locator('details');
-        const summary = details.locator('summary'); await summary.focus(); await page.keyboard.press('Enter');
-        assert.notEqual(await details.getAttribute('open'), null);
+        await expandWithKeyboard(details, `Receipt ${scenario}`);
+        const summary = details.locator(':scope > summary');
         assert((await summary.innerText()).includes(t.runDetails.outcomes[expected.outcome]));
         assert.deepEqual((await details.locator('dd').allTextContents()).map(text => text.trim()), expected.steps.map(state => t.runDetails.states[state]));
         assert.equal((await details.innerText()).includes(t.runDetails.incomplete), expected.incomplete);
