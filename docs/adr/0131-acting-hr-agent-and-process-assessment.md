@@ -42,6 +42,9 @@ orchestration and evaluate its capability and measurable improvement during prod
 This supersedes the earlier roadmap order. It is a delivery direction, not evidence that any of these
 capabilities has shipped. Preserve the current harness's release precedence while completing the
 own-leave slice; provider expansion follows both releases.
+This feature order does not change the coordinated resource handback: Mobile retains its window
+after the current harness release, and own-leave runtime/release follows later coordination. The
+current harness release excludes own-leave, new providers and import orchestration.
 
 1. **Current harness and confirmed own leave.** Finish the existing exact-candidate integration and
    acceptance, then complete the single own-leave action's confirmation, canonical effect/receipt,
