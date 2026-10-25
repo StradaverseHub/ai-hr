@@ -1,0 +1,113 @@
+name: alpha-staging-diagnostics
+run-name: Diagnostic only · ${{ inputs.candidate_ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Frozen candidate branch; diagnostic results cannot authorize release
+        required: true
+        type: string
+      expected_sha:
+        description: Exact candidate commit
+        required: true
+        type: string
+permissions: {contents: read, actions: read}
+concurrency:
+  group: alpha-diagnostic-${{ inputs.candidate_ref }}
+  cancel-in-progress: false
+env:
+  TZ: Asia/Kuala_Lumpur
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+        run: node .github/ci/resolve.mjs
+  nodb-timing:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Record runner environment
+        run: |
+          node ../automation/.github/ci/runner-diagnostics.mjs
+          free -b
+          df -Pk .
+      - name: Run each original failing file separately, retaining assertions and timeouts
+        run: node ../automation/.github/ci/diagnostics/run-unchanged-nodb.mjs
+      - name: Generate explicitly labelled ignored measurement copies
+        run: node ../automation/.github/ci/diagnostics/instrument-nodb.mjs
+      - name: Run measured copies; results remain diagnostic only
+        run: node ../automation/.github/ci/diagnostics/run-unchanged-nodb.mjs --instrumented
+      - name: Prove tracked candidate remained unchanged
+        run: test -z "$(git status --porcelain)"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-nodb-timing
+          path: |
+            ${{ runner.temp }}/diagnostic-nodb-*/
+            ${{ runner.temp }}/runner-resources.json
+          if-no-files-found: error
+          retention-days: 14
+  layout:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: {engine: [chromium, firefox, webkit]}
+    defaults: {run: {working-directory: source}}
+    env: {ENGINE: '${{ matrix.engine }}'}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - run: pnpm exec playwright install --with-deps "$ENGINE"
+      - name: Record browser and font environment
+        run: |
+          node ../automation/.github/ci/runner-diagnostics.mjs
+          fc-list > "$RUNNER_TEMP/font-list.txt"
+      - name: Generate ignored replica probe and provenance
+        run: node ../automation/.github/ci/diagnostics/generate-layout-diagnostic.mjs
+      - name: Measure replica styles and geometry; save actual PNGs
+        run: |
+          set -o pipefail
+          pnpm exec vitest run --config .vitest-attachments/layout-diagnostic.config.mts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/layout-results.json" 2>&1 | tee "$RUNNER_TEMP/layout-diagnostic.log"
+      - name: Prove tracked candidate remained unchanged
+        if: always()
+        run: test -z "$(git status --porcelain)"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-layout-${{ matrix.engine }}
+          include-hidden-files: true
+          path: |
+            source/.vitest-attachments/
+            ${{ runner.temp }}/layout-results.json
+            ${{ runner.temp }}/layout-diagnostic.log
+            ${{ runner.temp }}/font-list.txt
+            ${{ runner.temp }}/runner-resources.json
+          if-no-files-found: error
+          retention-days: 14
