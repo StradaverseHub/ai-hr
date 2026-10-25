@@ -10853,3 +10853,11 @@ export const employmentCostAllocationRow=pgTable('employment_cost_allocation_row
  setId:uuid('set_id').notNull().references(()=>employmentCostAllocationSet.id),tenantId:tenantId(),costCenterId:uuid('cost_center_id').notNull().references(()=>costCenter.id),
  hundredths:integer('hundredths').notNull(),codeSnapshot:text('code_snapshot').notNull(),labelSnapshot:text('label_snapshot').notNull(),
 },t=>[primaryKey({columns:[t.setId,t.costCenterId]})]);
+
+/** Tenant-owned, intentionally public login artwork. The default organization selects the landing page. */
+export const loginPresentation = pgTable('login_presentation', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenant.id),
+  presentation: jsonb('presentation').$type<import('../lib/login-presentation').LoginPresentation>().notNull(),
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

@@ -435,7 +435,7 @@
     "onboardingModuleAccess": "模块权限",
     "controlTowerOpportunities": "机会",
     "workspaceOps": "运营",
-    "workspaceStrata": "战略",
+    "workspaceStrata": "Strat",
     "workspaceSwitch": "导航工作区",
     "modulePeople": "人员",
     "moduleOnboarding": "入职与 IT",
@@ -462,7 +462,8 @@
     "myTp3": "我的 TP3 表格",
     "jobDescriptions": "职位说明",
     "rewardsAccess": "薪酬评审访问权限",
-    "peopleGeneral": "常规"
+    "peopleGeneral": "常规",
+    "loginPresentation": "登录页与浏览器外观"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -10158,7 +10159,8 @@
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
-        "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。"
+        "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
+        "loginPresentation": "仅集团管理员可更改登录页外观。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -23675,5 +23677,49 @@
       "processed": "已处理",
       "closed": "已关闭"
     }
+  },
+  "loginPresentation": {
+    "headline": "员工、工作，尽在一处。",
+    "description": "人员、假勤与薪资，在 AIHR 一站管理。",
+    "people": "人员与组织",
+    "work": "假期与考勤",
+    "growth": "绩效与发展",
+    "topicsLabel": "人力资源工作区",
+    "footer": "AIHR · 为员工打造的工作空间",
+    "welcome": "欢迎回来",
+    "signInSubtitle": "登录 AIHR",
+    "mediaAlt": "AIHR 欢迎媒体",
+    "pauseMedia": "暂停播放",
+    "playMedia": "播放视频",
+    "playAnimation": "播放动画",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
+    "firstTime": "首次登录？",
+    "firstTimeHelp": "请打开电子邮件中的邀请以激活账户。如未收到邀请，请联系您的人力资源管理员。",
+    "getHelp": "登录遇到问题？获取帮助",
+    "getHelpBody": "请联系人力资源管理员获取组织代码和用户名。如需恢复现有账户，请使用“忘记密码”。",
+    "settingsTitle": "登录页与浏览器外观",
+    "settingsDescription": "选择登录页左侧显示的图片、GIF 或视频。",
+    "mediaType": "欢迎媒体",
+    "none": "默认欢迎页",
+    "image": "图片",
+    "gif": "GIF 动画",
+    "video": "视频",
+    "mediaUrl": "公开媒体链接",
+    "urlHelp": "使用图片、GIF、MP4 或 WebM 文件的直接 HTTPS 链接。媒体在登录前公开显示，视频及动画由访客选择播放。",
+    "altLabel": "媒体说明",
+    "save": "保存外观",
+    "saving": "保存中…",
+    "activeOrganization": "本组织为此安装提供欢迎媒体。更改将在下次访问登录页时显示。",
+    "otherOrganization": "这些设置属于您的组织。安装管理员将本组织设为默认登录组织后，媒体才会显示在公开登录页上。",
+    "result": {
+      "saved": "登录页外观已保存。",
+      "invalid": "请选择媒体类型，并填写有效的 HTTPS 链接及说明。",
+      "conflict": "设置已被其他人更改，请刷新页面后再保存。",
+      "forbidden": "仅集团管理员可更改登录页外观。",
+      "unavailable": "无法保存设置，请重试。"
+    },
+    "iconUrl": "浏览器图标链接",
+    "iconHelp": "使用正方形 PNG 或 ICO 文件的直接 HTTPS 链接，建议尺寸为 32×32 或 48×48 像素。留空使用 AIHR 图标。刷新页面后浏览器才可能更新缓存的标签图标。"
   }
 }
