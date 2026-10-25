@@ -2571,8 +2571,12 @@ export type RosterMonthEmployee = {
   name: string;
   code: string | null;
   department: string | null;
+  departmentLabel?: string | null;
+  departmentCode?: string | null;
   departmentId: string | null;
   businessUnit: string | null;
+  businessUnitLabel?: string | null;
+  businessUnitCode?: string | null;
   businessUnitId: string | null;
   occupation: string | null;
   /** a57f0584 — whose employee this is. Carried on every row because the roster can now span companies,
@@ -2703,8 +2707,12 @@ export async function rosterWindowView(
       name: e.name,
       code: e.employeeCode,
       department: e.department,
+      departmentLabel: e.departmentLabel,
+      departmentCode: e.departmentCode,
       departmentId: e.departmentId,
       businessUnit: e.businessUnit,
+      businessUnitLabel: e.businessUnitLabel,
+      businessUnitCode: e.businessUnitCode,
       businessUnitId: e.businessUnitId,
       occupation: e.position,
       company: e.company,

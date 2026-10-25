@@ -26,6 +26,8 @@ export const MOVEMENT_FORM_IDS = {
   "effectiveDate": "employment_history.event_information.effectivefrom",
   "endDate": "employment_history.event_information.enddate",
   "terminationReasonCode": "employment_history.event_information.terminationreasoncode",
+  "tenderResignationDate": "employment_history.event_information.tenderresignationdate",
+  "resignationEffectiveDate": "employment_history.event_information.resignationeffectivedate",
   "resignationDate": "employment_history.event_information.resignationdate",
   "terminationNoticeDays": "employment_history.event_information.noticeserveddays",
   "blacklisted": "employment_history.event_information.blacklisted",
@@ -41,6 +43,7 @@ export function movementFormFields(behaviour:string,reason?:string):MovementForm
  if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'] as const));
  if(behaviour==='entityTransfer')fields.push('companyId');
  if(['probationExtension','secondment','actingPosition','resignation','termination'].includes(behaviour))fields.push('endDate');
+ if(behaviour==='resignation')fields.push('tenderResignationDate','resignationEffectiveDate');
  if(behaviour==='termination'){
   fields.push('terminationReasonCode','terminationNoticeDays');
   if(reason==='resignation')fields.push('resignationDate');

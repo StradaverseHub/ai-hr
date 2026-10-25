@@ -282,6 +282,7 @@ export function MovementNewEvent({
   // two can never be saved in contradiction (a Misconduct exit filed as "voluntary" is a real data fault,
   // and nothing in the record says which of the two the user meant).
   const isTermination = behaviour === 'termination';
+  const isResignation = behaviour === 'resignation';
   const showBlacklist = behaviour === 'blacklist';
   const showEndDate = movementFormFields(behaviour).includes('endDate');
   const showEffectiveDate = movementFormFields(behaviour).includes('effectiveDate');
@@ -524,16 +525,28 @@ export function MovementNewEvent({
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
                 column, same meaning as on a Resignation; only the label differs so it reads as what it is. */}
-            {label(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
+            {label((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             <DateField
-              {...personnelWorkflowControl(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'), 'movement', 'edit', {movementEndDate:behaviour==='probationExtension'||isTermination})}
+              {...personnelWorkflowControl((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'), 'movement', 'edit', {movementEndDate:behaviour==='probationExtension'||isTermination})}
 
               defaultValue={edit?.endDate ?? ''}
               className={inputCls}
-              label={label(isTermination ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
+              label={label((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             />
           </label>
         )}
+
+        {isResignation && <>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {label(movementField('tenderResignationDate'))}
+            <DateField {...personnelWorkflowControl(movementField('tenderResignationDate'),'movement','record')} defaultValue={saved?.tenderResignationDate ?? edit?.effectiveDate ?? ''} className={inputCls} label={label(movementField('tenderResignationDate'))} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {label(movementField('resignationEffectiveDate'))}
+            <DateField {...personnelWorkflowControl(movementField('resignationEffectiveDate'),'movement','record')} defaultValue={saved?.resignationEffectiveDate ?? ''} className={inputCls} label={label(movementField('resignationEffectiveDate'))} />
+          </label>
+          <p className="text-xs text-muted-foreground sm:col-span-2">{t('form.resignationLifecycleHint')}</p>
+        </>}
 
         {isTermination && (
           <>

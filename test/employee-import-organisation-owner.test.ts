@@ -10,24 +10,24 @@ let base:Base;
 beforeAll(async()=>{await migrateTestDb();});
 beforeEach(async()=>{await resetDb();base=await seedBase();});
 afterAll(async()=>{await closeAll();});
-it('imports labels into the first assignment and employment grade, then shows a renamed live owner label',async()=>{
+it('prefers the department code over another label, preserves legacy BU/grade labels and shows the saved owner rename',async()=>{
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'BU-ORG',name:'Unit description',label:'Readable business unit'}).returning();
  const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:base.tenantId,code:'GRADE-ORG',name:'Readable grade'}).returning();
  await owner.db.update(s.department).set({name:'DP0001',label:'GREEN INTEGRATED BASE STABILISER',businessUnitId:unit.id}).where(eq(s.department.id,base.deptA));
- // The same text is another department's CODE. A label match must win.
+ // The same text is another department's code. The exact code wins over the label alias.
  await owner.db.update(s.department).set({name:'GREEN INTEGRATED BASE STABILISER',label:'Different department'}).where(eq(s.department.id,base.deptB));
  const records=[{employee_code:'ORG-IMPORT',full_name:'Fictional org import',email:'org-import@fixture.test',department:'  green integrated base stabiliser ',business_unit:' readable business unit ',job_grade:' readable grade ',hired_on:todayInKualaLumpur(),ic_number:'910505051234',basic_salary:'3000'}];
  const ctx=adminCtx(base);
  const preview=await validateEmployeeImport(ctx,{companyId:base.companyId,records});
  expect(preview.rows[0].errors).toEqual([]);
- expect(preview.rows[0].proposed).toContainEqual({column:'department',value:'green integrated base stabiliser → GREEN INTEGRATED BASE STABILISER (DP0001)'});
+ expect(preview.rows[0].proposed).toContainEqual({column:'department',value:'green integrated base stabiliser → Different department (GREEN INTEGRATED BASE STABILISER)'});
  const result=await commitEmployeeImport(ctx,{companyId:base.companyId,records});
  expect(result.imported).toBe(1);expect(result.failed).toEqual([]);
  const [employee]=await owner.db.select().from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'ORG-IMPORT')));
  expect(employee.gradeId).toBe(grade.id);
  const placements=await owner.db.select().from(s.assignment).where(and(eq(s.assignment.employmentId,employee.id),isNull(s.assignment.supersededAt))).orderBy(s.assignment.validFrom,s.assignment.id);
- expect(placements).toHaveLength(1);expect(placements[0]).toMatchObject({departmentId:base.deptA,businessUnitId:unit.id,validFrom:records[0].hired_on});
- await owner.db.update(s.department).set({label:'Renamed department'}).where(eq(s.department.id,base.deptA));
+ expect(placements).toHaveLength(1);expect(placements[0]).toMatchObject({departmentId:base.deptB,businessUnitId:unit.id,validFrom:records[0].hired_on});
+ await owner.db.update(s.department).set({label:'Renamed department'}).where(eq(s.department.id,base.deptB));
  expect((await assignmentHistory(ctx,employee.id))[0].department).toBe('Renamed department');
 });
 it('rechecks active grade availability at confirmation rather than accepting the earlier preview',async()=>{
@@ -40,19 +40,19 @@ it('rechecks active grade availability at confirmation rather than accepting the
  expect(saved).toEqual([]);
 });
 
-it('Category label beats another code at full import and a rename retains the saved canonical code',async()=>{
+it('Category code beats another label at full import and a rename retains the saved canonical code',async()=>{
  const [labelOwner]=await owner.db.insert(s.profileOption).values({tenantId:base.tenantId,category:'category',value:'CAT-A',label:'Shared',isActive:true}).returning();
- await owner.db.insert(s.profileOption).values({tenantId:base.tenantId,category:'category',value:'Shared',label:'Other',isActive:true});
+ const [codeOwner]=await owner.db.insert(s.profileOption).values({tenantId:base.tenantId,category:'category',value:'Shared',label:'Other',isActive:true}).returning();
  const ctx=adminCtx(base),records=[{employee_code:'CATEGORY-IMPORT',full_name:'Fictional category import',email:'category-import@fixture.test',department:'Finance',employment_category:' shared ',hired_on:todayInKualaLumpur(),ic_number:'930505051234',basic_salary:'3000'}];
  const preview=await validateEmployeeImport(ctx,{companyId:base.companyId,records});
  expect(preview.rows[0].errors).toEqual([]);
- expect(preview.rows[0].proposed).toContainEqual({column:'employment_category',value:'shared → Shared (CAT-A)'});
+ expect(preview.rows[0].proposed).toContainEqual({column:'employment_category',value:'shared → Other (Shared)'});
  expect((await commitEmployeeImport(ctx,{companyId:base.companyId,records})).imported).toBe(1);
  const [saved]=await owner.db.select().from(s.employment).where(and(eq(s.employment.tenantId,base.tenantId),eq(s.employment.employeeCode,'CATEGORY-IMPORT')));
- expect(saved.employmentCategory).toBe('CAT-A');
- await owner.db.update(s.profileOption).set({label:'Renamed category'}).where(eq(s.profileOption.id,labelOwner.id));
+ expect(saved.employmentCategory).toBe('Shared');
+ await owner.db.update(s.profileOption).set({label:'Renamed category'}).where(eq(s.profileOption.id,codeOwner.id));
  const fresh=await listAllProfileOptions(ctx,{activeOnly:true});
  expect(fresh.category.find(option=>option.value===saved.employmentCategory)?.label).toBe('Renamed category');
  const [unchanged]=await owner.db.select({code:s.employment.employmentCategory}).from(s.employment).where(eq(s.employment.id,saved.id));
- expect(unchanged.code).toBe('CAT-A');
+ expect(unchanged.code).toBe('Shared');
 });

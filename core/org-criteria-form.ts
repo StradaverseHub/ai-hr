@@ -30,6 +30,7 @@
  * returned sections are serialisable, which is what lets a server page hand them to a client form without
  * crossing the r123 boundary — a translator CLOSURE must never make that trip, and none does.
  */
+import { organisationChoiceLabels } from '../lib/organisation-choice-label';
 import { CONFIRMATION_STATUSES } from './org-criteria';
 import { EMPLOYMENT_STATUSES } from './employment-status';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
@@ -53,11 +54,11 @@ export type CriteriaSection = { key: string; title: string; fields: CriteriaFiel
 /** The catalogue rows only a server component can read. Every list is already scoped by RLS. */
 export type OrgCriteriaCatalogues = {
   companies: { id: string; name: string }[];
-  departments: { id: string; name: string }[];
-  grades: { id: string; name: string }[];
-  positions: { id: string; title: string }[];
-  costCenters: { id: string; code: string; name: string }[];
-  businessUnits: { id: string; code: string; name: string }[];
+  departments: { id: string; name: string; label?: string | null; code?: string }[];
+  grades: { id: string; name: string; code?: string }[];
+  positions: { id: string; title: string; label?: string | null; code?: string }[];
+  costCenters: { id: string; code: string; name: string; label?: string | null }[];
+  businessUnits: { id: string; code: string; name: string; label?: string | null }[];
   profileOptions: Partial<Record<ProfileOptionCategory, ProfileOptionRow[]>>;
 };
 
@@ -90,7 +91,7 @@ export type OrgCriteriaLabels = {
  */
 export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteriaLabels): CriteriaSection[] {
   const active = (category: ProfileOptionCategory): CriteriaOption[] =>
-    (c.profileOptions[category] ?? []).filter((o) => o.isActive).map((o) => ({ value: o.value, label: o.label }));
+    organisationChoiceLabels((c.profileOptions[category] ?? []).filter((o) => o.isActive)).map((o) => ({ value: o.value, label: o.displayLabel }));
   // The eight org axes come from the same profile-option catalogue the leave-type Condition step reads, so
   // every screen offers the same vocabulary rather than lists that drift. The eligibility engine matches on
   // the stored VALUE, so that is what the criteria post — showing the label while posting the value is the
@@ -106,9 +107,9 @@ export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteri
       title: t.crit('sectionCompany'),
       fields: [
         { name: 'companyIds', label: t.crit('company'), kind: 'multi', options: c.companies.map((x) => ({ value: x.id, label: x.name })) },
-        { name: 'businessUnitIds', label: t.crit('businessUnit'), kind: 'multi', options: c.businessUnits.map((b) => ({ value: b.id, label: `${b.code} — ${b.name}` })) },
+        { name: 'businessUnitIds', label: t.crit('businessUnit'), kind: 'multi', options: organisationChoiceLabels(c.businessUnits).map((b) => ({ value: b.id, label: b.displayLabel })) },
         org('orgDivision'),
-        { name: 'departmentIds', label: t.crit('department'), kind: 'multi', options: c.departments.map((d) => ({ value: d.id, label: d.name })) },
+        { name: 'departmentIds', label: t.crit('department'), kind: 'multi', options: organisationChoiceLabels(c.departments).map((d) => ({ value: d.id, label: d.displayLabel })) },
         org('orgSection'),
         org('orgTeam'),
         org('orgBranch'),
@@ -134,9 +135,9 @@ export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteri
         // DERIVED, as at the effective date — core/employment-status.ts, via its SQL twin. Not a stored
         // column, which is why it can be resolved for a backdated action at all.
         { name: 'employmentStatuses', label: t.crit('employeeStatus'), kind: 'multi', options: EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: t.crit(`status_${v}`) })) },
-        { name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: c.grades.map((g) => ({ value: g.id, label: g.name })) },
-        { name: 'positionIds', label: t.crit('position'), kind: 'multi', options: c.positions.map((p) => ({ value: p.id, label: p.title })) },
-        { name: 'costCenterIds', label: t.crit('costCentre'), kind: 'multi', options: c.costCenters.map((x) => ({ value: x.id, label: `${x.code} — ${x.name}` })) },
+        { name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: organisationChoiceLabels(c.grades.map(g => ({ ...g, label: g.name }))).map((g) => ({ value: g.id, label: g.displayLabel })) },
+        { name: 'positionIds', label: t.crit('position'), kind: 'multi', options: organisationChoiceLabels(c.positions).map((p) => ({ value: p.id, label: p.displayLabel })) },
+        { name: 'costCenterIds', label: t.crit('costCentre'), kind: 'multi', options: organisationChoiceLabels(c.costCenters).map((x) => ({ value: x.id, label: x.displayLabel })) },
         // 18103ba4 (r155) — EMPLOYMENT CATEGORY MOVED HERE FROM "Employee Information", and was NOT deleted.
         //
         // The reporter's words were "remove all fields contained within it", but employmentCategory is a

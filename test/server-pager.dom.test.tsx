@@ -27,8 +27,10 @@ import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
 import { pageState, parsePageQuery } from '../lib/pagination';
+import { resolveUiTheme, type UiTheme } from '../lib/ui-theme';
 
-const current = vi.hoisted(() => ({ locale: 'en', messages: {} as Record<string, unknown> }));
+const current = vi.hoisted(() => ({ locale: 'en', messages: {} as Record<string, unknown>, theme: 'classic' as UiTheme }));
+vi.mock('../lib/ui-theme-server', () => ({ currentUiTheme: async () => current.theme }));
 
 vi.mock('next-intl/server', async () => {
   const { createTranslator } = await import('next-intl');
@@ -63,9 +65,10 @@ vi.mock('next/link', () => ({
 // Imported AFTER the mocks so the component picks them up.
 const { Pager } = await import('../components/pager');
 
-async function renderPager(locale: string, messages: Record<string, unknown>, page: number, total: number) {
+async function renderPager(locale: string, messages: Record<string, unknown>, page: number, total: number, theme: UiTheme = 'classic') {
   current.locale = locale;
   current.messages = messages;
+  current.theme = theme;
   const q = parsePageQuery({ page: String(page) });
   const shown = Math.max(0, Math.min(25, total - q.offset));
   const el = await Pager({ basePath: '/admin/pay-components', params: { q: 'lee' }, state: pageState(q, total, shown) });
@@ -123,5 +126,24 @@ describe('the server pager', () => {
     // Four steps and four reachable numbers, whatever the words are.
     expect(within(bar).getAllByRole('link')).toHaveLength(8);
     expect(container.textContent).not.toContain('pagination.');
+  });
+
+  it.each(LOCALES)('%s renders compact controls for the default Atelier theme', async (locale, messages) => {
+    const { container } = await renderPager(locale, messages as unknown as Record<string, unknown>, 6, 328, resolveUiTheme(undefined));
+    const bar = container.querySelector('[data-ui-pager-compact]')!;
+    expect(bar).toBeInTheDocument();
+    expect(within(bar as HTMLElement).getAllByRole('link')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: messages.pagination.previousPage })).toHaveAttribute('href', expect.stringContaining('page=5'));
+    expect(screen.getByRole('link', { name: messages.pagination.nextPage })).toHaveAttribute('href', expect.stringContaining('page=7'));
+    expect(screen.getByText('151–175 / 328')).toBeInTheDocument();
+    expect(bar.querySelector('[aria-current="page"]')).toBeNull();
+    expect(container.textContent).not.toContain('pagination.');
+  });
+
+  it('disables compact previous/next controls when the default theme has only one page', async () => {
+    await renderPager('en', en as unknown as Record<string, unknown>, 0, 20, resolveUiTheme(undefined));
+    expect(screen.getByRole('button', { name: en.pagination.previousPage })).toBeDisabled();
+    expect(screen.getByRole('button', { name: en.pagination.nextPage })).toBeDisabled();
+    expect(screen.getByText('1–20 / 20')).toBeInTheDocument();
   });
 });

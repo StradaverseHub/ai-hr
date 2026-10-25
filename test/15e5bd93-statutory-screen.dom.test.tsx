@@ -107,6 +107,9 @@ import type { TabSaveResult } from '../lib/tab-save-sections';
 const org = messages.admin.organization as Record<string, string>;
 const noop = () => undefined;
 const BACK_HREF = '/admin/organization/c1?tab=statutory';
+// These complete eight-card userEvent journeys exceeded the default 5s budget in full CI.
+// Allow 10s overall while retaining the normal individual save/navigation waitFor deadlines.
+const FULL_SCREEN_JOURNEY_TIMEOUT = 10_000;
 
 const SAVED_EPF = {
   id: 'sa1',
@@ -503,7 +506,7 @@ describe('§2 one Save for the whole screen, and it writes ONLY the bodies you t
     for (const a of STATUTORY_AUTHORITIES.filter((x) => x !== 'epf' && x !== 'lhdn')) {
       expect([...seen[0].keys()].filter((k) => k.startsWith(`section.${a}.`)), a).toEqual([]);
     }
-  });
+  }, FULL_SCREEN_JOURNEY_TIMEOUT);
 
   /**
    * ⚠️ THE r226 DATA-LOSS SHAPE, GENERALISED AND PINNED FOR THE WHOLE SCREEN.
@@ -830,7 +833,7 @@ describe('§5 Cancel and Back leave, and leaving with unsaved work asks first', 
     await u.click(within(dialog).getByRole('button', { name: org.statutoryUnsavedSave }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(push).toHaveBeenCalledWith(BACK_HREF));
-  });
+  }, FULL_SCREEN_JOURNEY_TIMEOUT);
 
   it('Discard & Leave navigates without writing anything', async () => {
     const u = userEvent.setup();

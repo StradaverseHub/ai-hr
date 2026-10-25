@@ -28,10 +28,8 @@ import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS 
  * Client-safe (no DB imports). The reference values are passed IN by the screen, which reads them
  * from the same catalogs `analyze()` validates against — there is no second list to drift.
  *
- * HONEST LIMIT, stated rather than hidden: these are reference LISTS, not in-cell dropdowns. Excel
- * data validation lives in a part of the file format the SheetJS community build does not write, so
- * promising a clickable dropdown would mean shipping a second xlsx writer. The Reference sheet gives
- * HR the exact accepted spellings, and `analyze()` rejects anything else by name with the reason.
+ * The existing spreadsheet writer adds named-range list validation to the XLSX package. Reference
+ * lists keep the exact code beside its readable label; labels are never selectable import values.
  */
 import { DEPENDENT_IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
@@ -88,18 +86,21 @@ export function employeeTextColumnIndexes(): number[] {
 }
 
 /** One block of accepted values on the Reference sheet. */
-export type ReferenceList = { label: string; values: string[] };
+export type ReferenceList = { label: string; values: string[]; entries?: readonly { value: string; label: string }[] };
 
 /**
  * The Reference sheet as an array-of-arrays: a title row per list, then one value per row, then a
  * blank separator. Vertical rather than side-by-side columns because the lists have wildly
  * different lengths and a ragged grid is unreadable.
  */
-export function buildReferenceRows(heading: string, lists: ReferenceList[]): string[][] {
+export function buildReferenceRows(heading: string, lists: ReferenceList[], captions?: { code: string; label: string }): string[][] {
   const rows: string[][] = [[heading], []];
   for (const list of lists) {
     rows.push([list.label]);
-    if (list.values.length === 0) rows.push(['—']);
+    if (list.entries?.length) {
+      if (captions) rows.push([captions.code, captions.label]);
+      for (const entry of list.entries) rows.push([entry.value, entry.label]);
+    } else if (list.values.length === 0) rows.push(['—']);
     else for (const v of list.values) rows.push([v]);
     rows.push([]);
   }

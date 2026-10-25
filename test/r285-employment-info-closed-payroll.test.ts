@@ -1,3 +1,4 @@
+import {todayInKualaLumpur} from '../lib/hr-date';
 /**
  * r285 (feedback a3a3acd6) — the closed-payroll gate on Employment Information.
  *
@@ -109,7 +110,7 @@ describe('setEmploymentInfo — a closed payroll month refuses the dates it reli
     // in the month the closed run priced.
     await expect(
       setEmploymentInfo(adminCtx(b), { employmentId: id, confirmationDate: '2026-04-01' }),
-    ).rejects.toThrow(/closed payroll run relied on this date/i);
+    ).rejects.toThrow(/closed payroll run relied on this (?:date|movement)/i);
 
     const row = await employmentRow(id);
     expect(row.confirmationDate).toBeNull();
@@ -130,8 +131,8 @@ describe('setEmploymentInfo — a closed payroll month refuses the dates it reli
     // Setting an end date of 2026-01-20 flips the derived status to Resigned from that day ONWARD — an
     // open-ended window, and its first day sits inside the closed month.
     await expect(
-      setEmploymentInfo(adminCtx(b), { employmentId: id, resignationDate: '2026-01-20' }),
-    ).rejects.toThrow(/closed payroll run relied on this date/i);
+      createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-20',resignationEffectiveDate:'2026-01-20'}),
+    ).rejects.toThrow(/closed payroll run relied on this (?:date|movement)/i);
     expect((await employmentRow(id)).resignationDate).toBeNull();
   });
 
@@ -139,8 +140,8 @@ describe('setEmploymentInfo — a closed payroll month refuses the dates it reli
     const id = await hire('2026-01-01');
     await closedPayrollFor(id, '2026-01');
     await expect(
-      setEmploymentInfo(adminCtx(b), { employmentId: id, lastWorkingDate: '2026-01-31' }),
-    ).rejects.toThrow(/closed payroll run relied on this date/i);
+      createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-31',endDate:'2026-01-31'}),
+    ).rejects.toThrow(/closed payroll run relied on this (?:date|movement)/i);
     expect((await employmentRow(id)).lastWorkingDate).toBeNull();
   });
 });
@@ -179,13 +180,13 @@ describe('setEmploymentInfo — the gate is scoped by FIELD, so legitimate edits
     expect(row.resignationNoticeMonths).toBe(2);
   });
 
-  it('refuses nothing when the tender resignation date moves — it is not one of the three dates least() takes', async () => {
+  it('does not admit tender dates through the retired generic path', async () => {
     const id = await hire('2026-01-01');
     await closedPayrollFor(id, '2026-01');
 
-    await setEmploymentInfo(adminCtx(b), { employmentId: id, tenderResignationDate: '2026-01-05' });
+    await expect(setEmploymentInfo(adminCtx(b), { employmentId: id, tenderResignationDate: '2026-01-05' })).rejects.toThrow('Nothing to change.');
 
-    expect((await employmentRow(id)).tenderResignationDate).toBe('2026-01-05');
+    expect((await employmentRow(id)).tenderResignationDate).toBeNull();
   });
 
   it('allows a confirmation-date correction whose whole span sits in OPEN months', async () => {
@@ -205,7 +206,7 @@ describe('setEmploymentInfo — the gate is scoped by FIELD, so legitimate edits
     const id = await hire('2026-01-01');
     await closedPayrollFor(id, '2026-01');
 
-    await setEmploymentInfo(adminCtx(b), { employmentId: id, resignationDate: '2026-06-30' });
+    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-06-30',resignationEffectiveDate:'2026-06-30'});
 
     expect((await employmentRow(id)).resignationDate).toBe('2026-06-30');
   });
@@ -218,13 +219,13 @@ describe('setEmploymentInfo — the gate is scoped by FIELD, so legitimate edits
     await setEmploymentInfo(adminCtx(b), {
       employmentId: id,
       confirmationDate: '2026-05-14',
-      resignationDate: '2026-03-01',
-      lastWorkingDate: '2026-03-31',
+
     });
 
     const row = await employmentRow(id);
     expect(row.confirmationDate).toBe('2026-05-14');
-    expect(row.resignationDate).toBe('2026-03-01');
+    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-03-01',resignationEffectiveDate:'2026-03-01',endDate:'2026-03-31'});
+    expect((await employmentRow(id)).resignationDate).toBe('2026-03-01');
   });
 });
 

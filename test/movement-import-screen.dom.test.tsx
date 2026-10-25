@@ -18,7 +18,11 @@ function mount(workbench=false){render(<NextIntlClientProvider locale="en" messa
 async function fill(){await screen.findByRole('option',{name:'Increment'});fireEvent.change(screen.getByLabelText('Movement type'),{target:{value:'increment'}});fireEvent.change(screen.getByLabelText('Or paste CSV'),{target:{value:'Employee ID,Increment Amount,Effective Date\nGOOD,25.13,2026-11-01'}});}
 beforeEach(()=>{vi.resetAllMocks();mocks.catalog.mockResolvedValue(catalog);mocks.fetch.mockResolvedValue(response({ok:true,preview}));vi.stubGlobal('fetch',mocks.fetch);vi.stubGlobal('requestAnimationFrame',(fn:()=>void)=>{fn();return 1;});Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:fixture')});Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()});vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});});afterEach(()=>vi.unstubAllGlobals());
 describe('whole-employee Movement import experience',()=>{
- it('keeps the other six section choices and replaces Employment with Movement',()=>{mount(true);expect(screen.getAllByRole('radio')).toHaveLength(7);expect(screen.queryByRole('radio',{name:/^Employment /})).toBeNull();});
+ it('retains every existing section and offers allocation imports alongside Movement',()=>{
+  mount(true);
+  expect(screen.getAllByRole('radio').map(input=>(input as HTMLInputElement).value)).toEqual(['full','profile','movement','bank_statutory','family','qualification','emergency','cost_allocations']);
+  expect(screen.queryByRole('radio',{name:/^Employment /})).toBeNull();
+ });
  it('cannot salvage a failing predecessor and explicitly acknowledges excluded whole employees',async()=>{
   mount();await fill();fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
   const checks=screen.getAllByRole('checkbox',{name:'Include employee'});expect(checks[0]).toBeDisabled();expect(checks[1]).toBeChecked();

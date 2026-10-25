@@ -1,3 +1,4 @@
+import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -190,9 +191,7 @@ export default async function TransactionViewPage({
   ]);
   // Department options for the Individual History filter — distinct current-assignment departments in scope.
   const departmentOptions = (() => {
-    const seen = new Map<string, string>();
-    for (const e of employees) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
-    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return organisationFilterChoices(employees.map(e=>({id:e.departmentId,name:e.departmentLabel??e.department,code:e.departmentCode})));
   })();
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
@@ -413,9 +412,11 @@ export default async function TransactionViewPage({
     employeeCode: e.employeeCode,
     company: e.company,
     companyId: e.companyId,
-    department: e.department,
+    department: e.departmentLabel ?? e.department,
+    departmentCode: e.departmentCode,
     departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
+    businessUnit: e.businessUnitLabel ?? e.businessUnit,
+    businessUnitCode: e.businessUnitCode,
     businessUnitId: e.businessUnitId,
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));

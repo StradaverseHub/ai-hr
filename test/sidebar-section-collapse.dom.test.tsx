@@ -12,6 +12,10 @@ const ui=(props:Partial<Parameters<typeof Sidebar>[0]>={})=><NextIntlClientProvi
  <Sidebar isAdmin canApprove canAccessTeam onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false} {...props}/>
 </NextIntlClientProvider>;
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');route.pathname='/';route.search='';});
+it('Atelier ignores the Classic collapsed preference for the Ops/Strat switch',()=>{
+ document.documentElement.setAttribute('data-ui-theme','atelier');render(ui({defaultCollapsed:true}));
+ expect(screen.getByRole('group',{name:messages.nav.workspaceSwitch})).not.toHaveClass('flex-col');
+});
 describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigation',theme=>{
  it('switches workspace without navigation and keeps module collapse keyboard-operable',async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();render(ui());
@@ -23,6 +27,11 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   const panel=screen.getByRole('navigation',{name:messages.nav.modulePeople});
   expect(within(panel).getByRole('link',{name:messages.nav.personnelAdmin})).toHaveAttribute('href','/admin/personnel');
   expect(within(panel).getByText(messages.nav.sectionHR)).toBeInTheDocument();
+  if(theme==='atelier'){
+    const heading=within(panel).getByRole('heading',{name:messages.nav.sectionHR});
+    expect(heading.tagName).toBe('H3');expect(heading).toHaveClass('atelier-subheading');
+    expect(heading.closest('a,button')).toBeNull();
+  }
   if(theme==='classic'){fireEvent.keyDown(document,{key:'Escape'});expect(people).toHaveFocus();}
   else{people.focus();await user.keyboard(' ');}
   expect(people).toHaveAttribute('aria-expanded','false');

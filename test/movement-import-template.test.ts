@@ -5,10 +5,11 @@ import {SaxesParser} from 'saxes';
 import {buildMovementWorkbook,readMovementWorkbook} from '../lib/movement-workbook.server';
 import {movementWorkbookLayout,movementWorkbookRequirements} from '../lib/movement-workbook-layout';
 import {parseMovementTypeCsv,movementTypeCsvTemplate,movementInputRecord} from '../lib/movement-type-csv';
+import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
 import type {MovementImportCatalog} from '../core/movement-import';
 import type {MovementImportRecord,MovementImportEmployee} from '../lib/movement-import-contract';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',department='33333333-3333-4333-8333-333333333333';
-const catalog:MovementImportCatalog={types:[{code:'increment',label:'Increment',behaviour:'increment'},{code:'custom_increment',label:'Increment',behaviour:'increment'},{code:'resignation',label:'Resignation',behaviour:'resignation'}],companies:[{value:a,label:'Fictional A'}],fields:{departmentId:[{value:department,label:'Finance'}]}};
+const catalog:MovementImportCatalog={types:[{code:'increment',label:'Increment',behaviour:'increment'},{code:'custom_increment',label:'Increment',behaviour:'increment'},{code:'resignation',label:'Resignation',behaviour:'resignation'}],companies:[{value:a,label:'Fictional A'}],fields:{departmentId:[{value:department,codes:['FIN'],label:'Finance'}]}};
 const resolve=(_key:string,fallback:string)=>fallback;
 const subjects=Array.from({length:5},(_,i)=>({employeeCode:'EX-00'+i,name:'Fictional '+i,current:{departmentId:'Finance',gradeId:'G2',basicSalary:'3000.00',currency:'MYR'}}));
 const make=()=>buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects,typeCode:'increment',resolve});
@@ -21,14 +22,23 @@ describe('authenticated per-type Movement workbook',()=>{
   const csv=movementTypeCsvTemplate(catalog.types[0],resolve);expect(csv).not.toMatch(/EventType|event_type/);expect(parseMovementTypeCsv('Employee ID,EventType\nEX-001,increment',catalog.types[0],resolve).fileErrors).toEqual(['wrong_type_columns']);
   expect(parseMovementTypeCsv('Employee ID,Increment Amount,EffectiveDate\nEX-001,"unclosed',catalog.types[0],resolve).fileErrors).toContain('malformed_csv');
  });
- it('opens protected grey/yellow/green scaffolding, hides references, keeps no raw UUID and skips two untouched employees',async()=>{
+ it('opens protected grey/yellow/green scaffolding, shows Reference and hides list mechanics, keeps no raw UUID and skips two untouched employees',async()=>{
   const bytes=await make(),wb=XLSX.read(bytes,{type:'buffer',cellFormula:true}),zip=await JSZip.loadAsync(bytes);
-  expect(wb.SheetNames).toEqual(['Instructions','Increment','Lists','_meta']);expect(wb.Workbook?.Sheets?.filter(s=>['Lists','_meta'].includes(s.name!)).every(s=>s.Hidden===1)).toBe(true);
+  expect(wb.SheetNames).toEqual(['Instructions','Increment','Reference','Lists','_meta']);expect(wb.Workbook?.Sheets?.find(s=>s.name==='Reference')?.Hidden??0).toBe(0);expect(wb.Workbook?.Sheets?.filter(s=>['Lists','_meta'].includes(s.name!)).every(s=>s.Hidden===1)).toBe(true);
   const xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');expect(xml).toContain('sheetProtection');expect(xml).toContain('state="frozen"');expect(xml).toContain('<f>');
   for(const entry of Object.values(zip.files).filter(f=>!f.dir&&f.name.endsWith('.xml')))expect(await entry.async('string')).not.toContain(a);
   const columns=movementWorkbookLayout(catalog.types[0],resolve),amount=columns.findIndex(c=>c.key==='incrementAmount'),date=columns.findIndex(c=>c.key==='effectiveDate');
   const edited=await edit(bytes,book=>{for(let r=5;r<8;r++){book.Sheets.Increment[XLSX.utils.encode_cell({r,c:amount})]={t:'n',v:100};book.Sheets.Increment[XLSX.utils.encode_cell({r,c:date})]={t:'s',v:'01-Nov-2026'};}});
   const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(3);expect(parsed.records.every(r=>r.incrementAmount==='100'&&r.cells.kind==='increment')).toBe(true);expect(parsed.records.map(r=>r.source?.row)).toEqual([6,7,8]);
+ });
+ it('round-trips the explicit resignation lifecycle dates including Excel numeric dates',async()=>{
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects,typeCode:'resignation',resolve});
+  const columns=movementWorkbookLayout(catalog.types.find(type=>type.code==='resignation')!,resolve);
+  const edited=await edit(bytes,book=>{
+   const sheet=book.Sheets.Resignation;
+   for(const [key,value]of Object.entries({tenderResignationDate:(Date.UTC(2026,9,1)-Date.UTC(1899,11,30))/86400000,resignationEffectiveDate:'15-Oct-2026',endDate:'20-Oct-2026',effectiveDate:'01-Nov-2026'}))sheet[XLSX.utils.encode_cell({r:5,c:columns.findIndex(column=>column.key===key)})]=typeof value==='number'?{t:'n',v:value}:{t:'s',v:value};
+  });
+  const parsed=await parse(edited);expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(1);expect(parsed.records[0].cells).toMatchObject({kind:'resignation',tenderResignationDate:'2026-10-01',resignationEffectiveDate:'15-Oct-2026',endDate:'20-Oct-2026',effectiveDate:'01-Nov-2026'});
  });
  it('serializes formula notes as initially hidden VML shapes while retaining note text and sheet protection',async()=>{
   const bytes=await make(),zip=await JSZip.loadAsync(bytes),wb=XLSX.read(bytes,{type:'buffer',cellFormula:true});
@@ -90,7 +100,7 @@ describe('authenticated per-type Movement workbook',()=>{
  });
  it('keeps all active custom tabs collision-safe and binds duplicate Excel row numbers to different normalized records',async()=>{
   const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog,subjects:[],resolve}),wb=XLSX.read(bytes,{type:'buffer'});
-  expect(wb.SheetNames).toEqual(['Instructions','Increment','Increment (2)','Resignation','Lists','_meta']);
+  expect(wb.SheetNames).toEqual(['Instructions','Increment','Increment (2)','Resignation','Reference','Lists','_meta']);
   const changed=await edit(bytes,book=>{for(const name of ['Increment','Increment (2)']){const columns=movementWorkbookLayout(catalog.types[name==='Increment'?0:1],resolve);book.Sheets[name].A6={t:'s',v:'EX-001'};for(const [key,value]of [['incrementAmount','100'],['effectiveDate','2026-11-01']])book.Sheets[name][XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)})]={t:'s',v:value};}});
   const parsed=await parse(changed);expect(parsed.records).toHaveLength(2);expect(new Set(parsed.records.map(r=>r.row)).size).toBe(2);expect(parsed.records.map(r=>r.source?.row)).toEqual([6,6]);
  });
@@ -149,10 +159,52 @@ describe('authenticated per-type Movement workbook',()=>{
   expect(row?.[1]).toBe('Employee ID · Localized: choose status OR enter remarks');expect(row?.[2].split(' · ')).toEqual(guide.requiredEither);
  });
  it('keeps native dropdowns as suggestions while accepting a supported hand-entered code for server preview',async()=>{
-  const typedCatalog={...catalog,fields:{...catalog.fields,gradeId:[{value:b,label:'G2 · Grade Two',aliases:['G2','Grade Two']}]}},bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects,typeCode:'increment',resolve}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+  const typedCatalog={...catalog,fields:{...catalog.fields,gradeId:[{value:b,codes:['G2'],label:'Grade Two',aliases:['G2','Grade Two']}]}},bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects,typeCode:'increment',resolve}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
   const validations=xml.match(/<dataValidation\b[^>]*>/g)??[];expect(validations.length).toBeGreaterThan(0);expect(validations.every(tag=>tag.includes('showErrorMessage="0"'))).toBe(true);
   const columns=movementWorkbookLayout(catalog.types[0],resolve),changed=await edit(bytes,wb=>{for(const [key,value]of [['incrementAmount','100'],['effectiveDate','2026-11-01'],['gradeId','G2']])wb.Sheets.Increment[XLSX.utils.encode_cell({r:5,c:columns.findIndex(c=>c.key===key)})]={t:'s',v:value};});
   expect((await readMovementWorkbook(changed,{tenantId:a,companyId:a,catalog:typedCatalog,resolve})).records[0]).toMatchObject({errors:[],cells:{gradeId:'G2'}});
+ });
+ it('uses only exact reference codes in every native validation and pairs them with readable Reference labels',async()=>{
+  const type={code:'promotion',label:'Promotion',behaviour:'promotion'};
+  const fields={...catalog.fields,departmentId:[{value:department,codes:['D&<001>'],label:'Shared label'}],positionId:[{value:b,codes:['P001'],label:'Shared label'}],businessUnitId:[{value:b,codes:['0007'],label:'Friendly unit'}],gradeId:[{value:b,codes:['G01'],label:'Shared label'},{value:department,codes:['G02'],label:'Shared label'}],locationId:[{value:b,codes:['LOC1'],label:'Office'}],managerEmploymentId:[{value:b,codes:['EMP0002'],label:'EMP0002 · Fictional manager',companyId:a,eligible:true,isTestRecord:false},{value:department,codes:['TEST01'],label:'Test manager',companyId:a,eligible:true,isTestRecord:true},{value:'66666666-6666-4666-8666-666666666666',label:'No assigned Employee ID',companyId:a,eligible:true,isTestRecord:false}],orgBase:[{value:'BASE001',label:'Shared label'},{value:'BASE002',label:'Shared label'}]};
+  const codeCatalog={...catalog,types:[type],fields},bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:codeCatalog,subjects:[],resolve}),wb=XLSX.read(bytes,{type:'buffer',cellNF:true}),zip=await JSZip.loadAsync(bytes),sheetXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string'),columns=movementWorkbookLayout(type,resolve);
+  const valuesFor=(field:string)=>{
+   const address=XLSX.utils.encode_col(columns.findIndex(column=>column.key===field)),tag=[...sheetXml.matchAll(/<dataValidation\b[^>]*sqref="([^"]+)"[^>]*><formula1>([^<]+)<\/formula1><\/dataValidation>/g)].find(match=>match[1]===address+'6:'+address+'205');expect(tag).toBeDefined();
+   const name=wb.Workbook?.Names?.find(name=>name.Name===tag![2]);expect(name?.Ref).toMatch(/^'Lists'!/);const range=XLSX.utils.decode_range(name!.Ref.replace(/^'Lists'!/,''));return Array.from({length:range.e.r-range.s.r+1},(_,i)=>wb.Sheets.Lists[XLSX.utils.encode_cell({r:range.s.r+i,c:range.s.c})].v);
+  };
+  for(const [field,expected]of Object.entries({departmentId:['D&<001>'],positionId:['P001'],businessUnitId:['0007'],gradeId:['G01','G02'],locationId:['LOC1'],managerEmploymentId:['EMP0002'],orgBase:['BASE001','BASE002'],employmentType:['full_time','part_time','contract','intern']})){
+   expect(columns.some(column=>column.key===field)).toBe(true);expect(valuesFor(field)).toEqual(expected);
+  }
+  const reference=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Reference,{header:1,defval:''});
+  for(const pair of [['G01','Shared label'],['G02','Shared label'],['0007','Friendly unit'],['D&<001>','Shared label'],['BASE001','Shared label'],['EMP0002','EMP0002 · Fictional manager']])expect(reference.some(row=>row.some((code,i)=>code===pair[0]&&row[i+1]===pair[1]&&row[i+2]==='Fictional A'))).toBe(true);
+  expect(JSON.stringify(reference)).not.toContain('TEST01');expect(JSON.stringify(reference)).not.toContain('66666666-6666-4666-8666-666666666666');const codeCell=Object.values(wb.Sheets.Reference).find(cell=>cell&&typeof cell==='object'&&'v'in cell&&cell.v==='0007');expect(codeCell).toMatchObject({t:'s',v:'0007',z:'@'});
+  await expect(readMovementWorkbook(bytes,{tenantId:a,companyId:a,catalog:codeCatalog,resolve})).resolves.toMatchObject({records:[],fileErrors:['no_data_rows']});
+  const selected={employeeCode:'EX-001',effectiveDate:'2026-01-01',departmentId:valuesFor('departmentId')[0],positionId:valuesFor('positionId')[0],businessUnitId:valuesFor('businessUnitId')[0],gradeId:valuesFor('gradeId')[0],locationId:valuesFor('locationId')[0],managerEmploymentId:valuesFor('managerEmploymentId')[0],orgBase:valuesFor('orgBase')[0],employmentType:valuesFor('employmentType')[0]};
+  const completed=await edit(bytes,book=>{for(const [key,value]of Object.entries(selected))book.Sheets.Promotion[XLSX.utils.encode_cell({r:5,c:columns.findIndex(column=>column.key===key)})]={t:'s',v:value};});
+  const imported=await readMovementWorkbook(completed,{tenantId:a,companyId:a,catalog:codeCatalog,resolve});expect(imported.fileErrors).toEqual([]);expect(imported.records[0]).toMatchObject({employeeCode:'EX-001',errors:[],cells:{kind:'promotion',departmentId:'D&<001>',businessUnitId:'0007',gradeId:'G01',positionId:'P001',managerEmploymentId:'EMP0002',orgBase:'BASE001',employmentType:'full_time'}});
+ });
+ it('keeps destination company guidance outside the code value and preserves per-employee manager exclusions',async()=>{
+  const type={code:'entityTransfer',label:'Entity transfer',behaviour:'entityTransfer'},companyB={value:b,label:'Fictional B'},sourceManager={value:'44444444-4444-4444-8444-444444444444',codes:['M001'],label:'Source manager',companyId:a,eligible:true},targetManager={value:'55555555-5555-4555-8555-555555555555',codes:['M002'],label:'Target manager',companyId:b,eligible:true};
+  const source={...catalog,types:[type],companies:[...catalog.companies,companyB],fields:{departmentId:[{value:department,codes:['D001'],label:'Shared department'}],managerEmploymentId:[sourceManager,targetManager]}},target={...source,fields:{departmentId:[{value:b,codes:['D001'],label:'Shared department'}],managerEmploymentId:[targetManager]}};
+  const bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:source,destinationCatalogs:{[a]:source,[b]:target},typeCode:type.code,subjects:[{...subjects[0],managerExclusions:[sourceManager.value]}],resolve}),wb=XLSX.read(bytes,{type:'buffer'}),zip=await JSZip.loadAsync(bytes),sheetXml=await zip.file('xl/worksheets/sheet2.xml')!.async('string'),columns=movementWorkbookLayout(type,resolve),managerColumn=XLSX.utils.encode_col(columns.findIndex(column=>column.key==='managerEmploymentId'));
+  const rowValidation=[...sheetXml.matchAll(/<dataValidation\b[^>]*sqref="([^"]+)"[^>]*><formula1>([^<]+)<\/formula1><\/dataValidation>/g)].find(match=>match[1]===managerColumn+'6:'+managerColumn+'6');expect(rowValidation).toBeDefined();const name=wb.Workbook?.Names?.find(name=>name.Name===rowValidation![2]),range=XLSX.utils.decode_range(name!.Ref.replace(/^'Lists'!/,''));expect(wb.Sheets.Lists[XLSX.utils.encode_cell(range.s)].v).toBe('M002');expect(range.e.r).toBe(range.s.r);
+  const refs=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Reference,{header:1,defval:''});for(const company of ['Fictional A','Fictional B'])expect(refs.some(row=>row.some((value,i)=>value==='D001'&&row[i+1]==='Shared department'&&row[i+2]===company))).toBe(true);
+  const listValues=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Lists,{header:1}).slice(1).flat();expect(listValues).toContain('D001');expect(listValues).not.toContain('Fictional B · Shared department');expect(listValues).not.toContain(a);expect(listValues).not.toContain(b);
+ });
+ it('rejects oversized reference catalogues without offering a truncated list and refuses formulas on Reference',async()=>{
+  const oversized={...catalog,fields:{...catalog.fields,orgBase:Array.from({length:10001},(_,i)=>({value:'B'+i,label:'Base '+i}))}};
+  await expect(buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:oversized,subjects:[],typeCode:'increment',resolve})).rejects.toThrow('movement_reference_catalog_too_large');
+  await expect(parse(await edit(await make(),book=>{book.Sheets.Reference.A3={t:'n',v:1,f:'1+0'};}))).rejects.toThrow('formula_input');
+ });
+ it.each(personnelImportLabelResolvers.map((resolve,index)=>({resolve,index})))('keeps codes unchanged in localized workbook $index',async({resolve})=>{
+  const typedCatalog={...catalog,fields:{...catalog.fields,orgBase:[{value:'0008&<',label:''}]}},bytes=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects:[],typeCode:'increment',resolve}),wb=XLSX.read(bytes,{type:'buffer',cellNF:true});
+  const rows=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Reference,{header:1,defval:''});expect(rows[1]).toContain(resolve('admin.systemLabels.col.code','Code'));expect(rows.some(row=>row.some((value,i)=>value==='0008&<'&&row[i+1]==='0008&<'))).toBe(true);
+  expect(XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Lists,{header:1}).slice(1).flat()).toContain('0008&<');await expect(readMovementWorkbook(bytes,{tenantId:a,companyId:a,catalog:typedCatalog,resolve})).resolves.toMatchObject({records:[]});
+ });
+ it('reserves Reference for guidance while preserving previously bound source tabs with that name',async()=>{
+  const type={code:'increment',label:'Reference',behaviour:'increment'},typedCatalog={...catalog,types:[type]},columns=movementWorkbookLayout(type,resolve),sourceBindings=[{sheet:'Reference',code:type.code,behaviour:type.behaviour,columns:columns.map(column=>column.key),captions:columns.map(column=>column.label),identities:[]}];
+  const current=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects:[],resolve});expect(XLSX.read(current,{type:'buffer'}).SheetNames).toEqual(['Instructions','Reference (2)','Reference','Lists','_meta']);
+  const annotated=await buildMovementWorkbook({tenantId:a,companyId:a,companyName:'Fictional A',catalog:typedCatalog,subjects:[],sourceBindings,resolve});expect(XLSX.read(annotated,{type:'buffer'}).SheetNames).toEqual(['Instructions','Reference','Reference (2)','Lists','_meta']);await expect(readMovementWorkbook(annotated,{tenantId:a,companyId:a,catalog:typedCatalog,resolve})).resolves.toMatchObject({records:[]});
  });
  it('retains ID-only blank Blacklist rows as incomplete, while explicit status or remarks preserve canonical intent',async()=>{
   const type={code:'blacklist',label:'Blacklist',behaviour:'blacklist'},blacklistCatalog={...catalog,types:[...catalog.types,type]},columns=movementWorkbookLayout(type,resolve);

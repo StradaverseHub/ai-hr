@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
@@ -54,7 +55,7 @@ export default async function ClaimMileagePage({
   const t = await getTranslations('admin.claims');
   const { error, gradeId: rawGradeId, vehicleClass: rawClass } = await searchParams;
   const [selectedType, grades] = await Promise.all([getMileageClaimType(s), listJobGrades(s)]);
-  const activeGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
+  const activeGrades = organisationChoiceLabels(grades.filter((g) => !g.archivedAt)).map((g) => ({ id: g.id, name: g.displayLabel }));
 
   // THE SCOPE GUARD, byte-for-byte the limits screen's: anything that is not one of THIS tenant's live
   // grades resolves to null = company-wide. listJobGrades is already tenant-scoped by RLS, so validating

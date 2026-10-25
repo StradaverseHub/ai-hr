@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { Card, ErrorBanner, Field, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { createLocationAction, updateLocationAction } from '../actions';
@@ -107,9 +108,9 @@ export function LocationForm({
               {values.branch !== '' && !branchOptions.some((o) => o.value === values.branch) && (
                 <option value={values.branch}>{values.branch}</option>
               )}
-              {branchOptions.map((o) => (
+              {organisationChoiceLabels(branchOptions).map((o) => (
                 <option key={o.id} value={o.value}>
-                  {o.label}
+                  {o.displayLabel}
                 </option>
               ))}
             </select>

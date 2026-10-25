@@ -1,4 +1,5 @@
 'use client';
+import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 
 import { useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { INQUIRY_PICKER_KEYS } from '@/lib/inquiry-picker-context';
@@ -198,8 +199,10 @@ export type ScopeEmployee = {
   company: string;
   companyId: string;
   department: string | null;
+  departmentCode?: string | null;
   departmentId: string | null;
   businessUnit: string | null;
+  businessUnitCode?: string | null;
   businessUnitId: string | null;
   status: 'active' | 'ended';
 };
@@ -343,14 +346,10 @@ export function EmployeeScopePanel({
     [employees, companyId],
   );
   const businessUnitOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const e of inCompany) if (e.businessUnitId && e.businessUnit) seen.set(e.businessUnitId, e.businessUnit);
-    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return organisationFilterChoices(inCompany.map(e=>({id:e.businessUnitId,name:e.businessUnit,code:e.businessUnitCode})));
   }, [inCompany]);
   const departmentOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const e of inCompany) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
-    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return organisationFilterChoices(inCompany.map(e=>({id:e.departmentId,name:e.department,code:e.departmentCode})));
   }, [inCompany]);
 
   const filtered = useMemo(() => {

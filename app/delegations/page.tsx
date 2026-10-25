@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -49,10 +50,10 @@ export default async function DelegationsPage({
     // f1bbc572 — the Criteria fields travel with the masters so the picker can apply the resolver's own
     // origin ∪ global rule (flag-gated, exactly as labelUsableByCompany does at save time).
     companies: companiesRaw.map((c) => ({ id: c.id, name: c.name })),
-    businessUnits: businessUnitsRaw.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal, assignedCompanyIds: b.assignedCompanyIds })),
-    departments: departmentsRaw.map((d) => ({
+    businessUnits: organisationChoiceLabels(businessUnitsRaw).map((b) => ({ id: b.id, name: b.displayLabel, companyId: b.companyId, isGlobal: b.isGlobal, assignedCompanyIds: b.assignedCompanyIds })),
+    departments: organisationChoiceLabels(departmentsRaw).map((d) => ({
       id: d.id,
-      name: d.name,
+      name: d.displayLabel,
       companyId: d.companyId,
       businessUnitId: d.businessUnitId,
       isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds,

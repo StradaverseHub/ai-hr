@@ -1,3 +1,4 @@
+import { NRIC_AMBIGUOUS_MESSAGE } from '../lib/nric-policy-message';
 /**
  * LEAVE BALANCE IMPORT ("Leave Data Import & Migration Tool") — bulk-load leave ledger transactions
  * (opening balances, carry-forward amounts, ad-hoc credits and correcting adjustments) from a
@@ -182,15 +183,20 @@ async function analyze(
     return { emps: rows, existingKeys, openedYears };
   });
 
-  const byRef = new Map<string, MatchedEmp>();
+  // Keep every candidate. Duplicated NRICs and multiple employments must never let
+  // iteration order decide whose leave balance changes. An explicit Employee ID wins.
+  const byCode = new Map<string, MatchedEmp[]>(), byEmail = new Map<string, MatchedEmp[]>(), byIc = new Map<string, MatchedEmp[]>();
+  const add=(index:Map<string,MatchedEmp[]>,key:string|undefined,employee:MatchedEmp)=>{
+    if(!key)return;const matches=index.get(key)??[];if(!matches.some(item=>item.id===employee.id))matches.push(employee);index.set(key,matches);
+  };
   for (const e of emps) {
     const m: MatchedEmp = { id: e.id, companyId: e.companyId, terminated: e.terminatedOn != null };
-    if (e.code) byRef.set(e.code.toLowerCase(), m);
-    if (e.email) byRef.set(e.email.toLowerCase(), m);
-    if (e.ic) byRef.set(onlyDigits(e.ic), m);
+    add(byCode,e.code?.toLowerCase(),m);add(byEmail,e.email?.toLowerCase(),m);add(byIc,e.ic?onlyDigits(e.ic):undefined,m);
   }
-  const matchRef = (ref: string): MatchedEmp | undefined =>
-    byRef.get(ref.toLowerCase()) ?? (onlyDigits(ref) ? byRef.get(onlyDigits(ref)) : undefined);
+  const matchRef = (ref: string): MatchedEmp | 'ambiguous' | undefined => {
+    const matches=byCode.get(ref.toLowerCase())??byEmail.get(ref.toLowerCase())??(onlyDigits(ref)?byIc.get(onlyDigits(ref)):undefined);
+    return matches && matches.length>1?'ambiguous':matches?.[0];
+  };
 
   // `openedYears` — which (employment, leave type, leave year) pairs already carry a year-open marker — is
   // built from the single ledger read above. It used to be a SECOND query with a 1-January filter; see the
@@ -219,8 +225,10 @@ async function analyze(
     if (!dateRaw) errors.push('Missing effective_date');
 
     // ── Employee resolution (active + terminated) ──
-    const emp = employeeRef ? matchRef(employeeRef) : undefined;
-    if (employeeRef && !emp) errors.push(`Employee not found: ${employeeRef}`);
+    const match = employeeRef ? matchRef(employeeRef) : undefined;
+    if(match==='ambiguous')errors.push(NRIC_AMBIGUOUS_MESSAGE);
+    const emp=match==='ambiguous'?undefined:match;
+    if (employeeRef && !emp && match!=='ambiguous') errors.push(`Employee not found: ${employeeRef}`);
     if (emp?.terminated) warnings.push('Terminated employee');
 
     // ── Authority: check the acting admin can write for the employee's company. Doing this in analyze()

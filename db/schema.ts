@@ -3494,7 +3494,7 @@ export const employeeStatutoryMy = pgTable(
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
     // null IC (identified by passport instead) don't collide.
-    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
+    index('employee_statutory_my_ic_idx').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
   ],
 );
 
@@ -10223,6 +10223,7 @@ export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
  companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
 },t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), deletedBy: uuid('deleted_by').references(() => appUser.id),
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
   offcycle: jsonb('offcycle').$type<import('../packs/rewards/offcycle').OffcycleDetails>(),
@@ -10838,3 +10839,25 @@ export const accessUserOverride = pgTable('access_user_override', {
   uniqueIndex('access_user_override_company_uq').on(t.tenantId,t.userId,t.capabilityId,t.companyId).where(sql`${t.companyId} IS NOT NULL AND ${t.retiredAt} IS NULL`),
   index('access_user_override_user_idx').on(t.tenantId,t.userId).where(sql`${t.retiredAt} IS NULL`),
 ]);
+
+// Effective-dated employment cost distribution. Independent from assignment and payroll allocation.
+export const employmentCostAllocationHead=pgTable('employment_cost_allocation_head',{
+ employmentId:uuid('employment_id').primaryKey().references(()=>employment.id),tenantId:tenantId(),revision:integer('revision').notNull().default(0),
+});
+export const employmentCostAllocationSet=pgTable('employment_cost_allocation_set',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ revision:integer('revision').notNull(),validFrom:date('valid_from').notNull(),validTo:date('valid_to'),supersededAt:timestamp('superseded_at',{withTimezone:true}),
+ operation:text('operation').$type<'replace'|'clear'>().notNull(),source:text('source').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const employmentCostAllocationRow=pgTable('employment_cost_allocation_row',{
+ setId:uuid('set_id').notNull().references(()=>employmentCostAllocationSet.id),tenantId:tenantId(),costCenterId:uuid('cost_center_id').notNull().references(()=>costCenter.id),
+ hundredths:integer('hundredths').notNull(),codeSnapshot:text('code_snapshot').notNull(),labelSnapshot:text('label_snapshot').notNull(),
+},t=>[primaryKey({columns:[t.setId,t.costCenterId]})]);
+
+/** Tenant-owned, intentionally public login artwork. The default organization selects the landing page. */
+export const loginPresentation = pgTable('login_presentation', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenant.id),
+  presentation: jsonb('presentation').$type<import('../lib/login-presentation').LoginPresentation>().notNull(),
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

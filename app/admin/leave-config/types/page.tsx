@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -147,7 +148,7 @@ export default async function LeaveConfigTypesPage({
   const orgAssignmentOptions = Object.fromEntries(
     ORG_ASSIGNMENT_CRITERIA.map((c) => [
       c.category,
-      (profileOptionsActive[c.category] ?? []).map((o) => ({ value: o.value, label: o.label })),
+      organisationChoiceLabels(profileOptionsActive[c.category] ?? []).map((o) => ({ value: o.value, label: o.displayLabel })),
     ]),
   );
   // The wording template a not-yet-configured leave type is PRE-FILLED from — the first type that

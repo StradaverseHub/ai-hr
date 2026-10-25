@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
@@ -205,25 +206,25 @@ export default async function CreateEmployeePage({
         initialStep={draft.currentStep}
         initialTab={sp.tab}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-        businessUnits={businessUnits.map((b) => ({
+        businessUnits={organisationChoiceLabels(businessUnits).map((b) => ({
           id: b.id,
-          label: `${b.code} — ${b.name}`,
+          label: b.displayLabel,
           companies: buCsv.get(b.id) ?? b.companyId,
         }))}
-        departments={departments.map((d) => ({
+        departments={organisationChoiceLabels(departments).map((d) => ({
           id: d.id,
-          label: d.name,
+          label: d.displayLabel,
           companies: deptCsv.get(d.id) ?? d.companyId,
           businessUnitId: d.businessUnitId ?? '',
           buCompanies: d.businessUnitId ? (buCsv.get(d.businessUnitId) ?? '') : '',
         }))}
-        positions={positions.map((p) => ({ id: p.id, label: p.title, companies: posCsv.get(p.id) ?? p.companyId }))}
-        costCenters={costCenters.map((c) => ({
+        positions={organisationChoiceLabels(positions).map((p) => ({ id: p.id, label: p.displayLabel, companies: posCsv.get(p.id) ?? p.companyId }))}
+        costCenters={organisationChoiceLabels(costCenters).map((c) => ({
           id: c.id,
-          label: `${c.code} — ${c.name}`,
+          label: c.displayLabel,
           companies: ccCsv.get(c.id) ?? c.companyId,
         }))}
-        grades={grades.map((g) => ({ id: g.id, label: g.name }))}
+        grades={organisationChoiceLabels(grades).map((g) => ({ id: g.id, label: g.displayLabel }))}
         // r392 — CODE then name ("EMP-0008 – John Tan"), the label the Personnel record's Direct Superior
         // Combobox uses, so typing an Employee ID or part of a name narrows the list the same way on both.
         // The candidate set itself is unchanged: `listManagerCandidates(session, { companyIds: scopeIds })`.

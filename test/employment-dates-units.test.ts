@@ -1,3 +1,5 @@
+import {createMovementEvent} from '../core/movement';
+import {todayInKualaLumpur} from '../lib/hr-date';
 /**
  * Enhance Employment Dates Management (feedback 955c7de4).
  *
@@ -52,6 +54,8 @@ const extendProbation = (employmentId: string, endDate: string) =>
     movement: { type: 'probationExtension', ...(endDate ? { endDate } : {}) },
   });
 
+const saveExit=(employmentId:string,p:{tenderResignationDate?:string;resignationDate?:string;lastWorkingDate?:string})=>createMovementEvent(adminCtx(b),{employmentId,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:p.tenderResignationDate??p.resignationDate??p.lastWorkingDate,resignationEffectiveDate:p.resignationDate,endDate:p.lastWorkingDate});
+
 beforeAll(async () => {
   await migrateTestDb();
 });
@@ -91,10 +95,9 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     await setEmploymentInfo(adminCtx(b), {
       employmentId: e.id,
       confirmationDate: '2020-04-01',
-      tenderResignationDate: '2026-01-05',
-      resignationDate: '2026-02-05',
-      lastWorkingDate: '2026-02-28',
+
     });
+    await saveExit(e.id,{tenderResignationDate:'2026-01-05',resignationDate:'2026-02-05',lastWorkingDate:'2026-02-28'});
     // d27961e3 — the extension is movement-only now; it persists via the tagged (movement-writer) path.
     await extendProbation(e.id, '2020-06-01');
     const d = await employeeDetail(adminCtx(b), e.id);
@@ -152,22 +155,14 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
   it('rejects tender resignation later than resignation', async () => {
     const e = await hire('TenderOrder');
     await expect(
-      setEmploymentInfo(adminCtx(b), {
-        employmentId: e.id,
-        tenderResignationDate: '2026-03-01',
-        resignationDate: '2026-02-01',
-      }),
+      saveExit(e.id,{tenderResignationDate:'2026-03-01',resignationDate:'2026-02-01'}),
     ).rejects.toThrow(/tender/i);
   });
 
   it('rejects resignation later than last working date', async () => {
     const e = await hire('LastWorkingOrder');
     await expect(
-      setEmploymentInfo(adminCtx(b), {
-        employmentId: e.id,
-        resignationDate: '2026-03-01',
-        lastWorkingDate: '2026-02-01',
-      }),
+      saveExit(e.id,{resignationDate:'2026-03-01',lastWorkingDate:'2026-02-01'}),
     ).rejects.toThrow(/last working/i);
   });
 
@@ -179,10 +174,10 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
 
   it('validates ordering against stored siblings across separate saves', async () => {
     const e = await hire('CrossSave');
-    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, resignationDate: '2026-02-01' });
+    await saveExit(e.id,{resignationDate:'2026-02-01'});
     // A later save of only the last working date must still be checked against the stored resignation date.
     await expect(
-      setEmploymentInfo(adminCtx(b), { employmentId: e.id, lastWorkingDate: '2026-01-01' }),
+      saveExit(e.id,{lastWorkingDate:'2026-01-01'}),
     ).rejects.toThrow(/last working/i);
   });
 

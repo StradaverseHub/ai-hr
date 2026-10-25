@@ -2,7 +2,7 @@
  * r396 — the user-selectable UI theme (Monolith | Classic), step 1 of the Monolith rollout.
  *
  * WHAT IS PINNED, and how each half is exercised rather than described:
- *   A. lib/ui-theme.ts resolves the `ui_theme` cookie: absent / empty / unknown → monolith; the two names
+ *   A. lib/ui-theme.ts resolves the `ui_theme` cookie: absent / empty / unknown → atelier; the two names
  *      → themselves. Pure function, called directly.
  *   B. app/ui-theme-actions.ts accepts ONLY the two names and sets the cookie with the agreed attributes
  *      (1 year, SameSite=Lax, path=/). Called directly with next/headers' cookie jar replaced by a spy.
@@ -24,6 +24,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
 
 // ── next/* replaced for B and C ────────────────────────────────────────────────────────────────────────
+const artwork = vi.hoisted(() => ({ iconUrl: '' }));
+vi.mock('../lib/login-presentation-server', () => ({ publicLoginPresentation: async () => artwork }));
 const jar = new Map<string, string>();
 const cookieSet = vi.fn();
 const revalidatePath = vi.fn();
@@ -64,27 +66,28 @@ beforeEach(() => {
   cookieSet.mockClear();
   revalidatePath.mockClear();
   pathname = '/login';
+  artwork.iconUrl = '';
 });
 
-describe('A. resolveUiTheme — the cookie decides, the default is Monolith', () => {
-  it('the vocabulary is exactly monolith | classic | atelier, cookie `ui_theme`, default monolith', () => {
+describe('A. resolveUiTheme — the cookie decides, the default is Atelier', () => {
+  it('the vocabulary is exactly monolith | classic | atelier, cookie `ui_theme`, default atelier', () => {
     expect(UI_THEME_COOKIE).toBe('ui_theme');
     expect([...UI_THEMES]).toEqual(['monolith', 'classic', 'atelier']);
-    expect(DEFAULT_UI_THEME).toBe('monolith');
+    expect(DEFAULT_UI_THEME).toBe('atelier');
   });
-  it('cookie absent → monolith', () => {
-    expect(resolveUiTheme(undefined)).toBe('monolith');
-    expect(resolveUiTheme(null)).toBe('monolith');
+  it('cookie absent → atelier', () => {
+    expect(resolveUiTheme(undefined)).toBe('atelier');
+    expect(resolveUiTheme(null)).toBe('atelier');
   });
   it('cookie classic → classic; cookie monolith → monolith', () => {
     expect(resolveUiTheme('classic')).toBe('classic');
-    expect(resolveUiTheme('current')).toBe('monolith');
+    expect(resolveUiTheme('current')).toBe('atelier');
     expect(resolveUiTheme('atelier')).toBe('atelier');
     expect(resolveUiTheme('monolith')).toBe('monolith');
   });
-  it('invalid value → monolith (never a third state)', () => {
+  it('invalid value → atelier (never an unsupported state)', () => {
     for (const bad of ['current', '', 'Classic', 'CLASSIC', ' classic', 'Atelier', 'atelier ', 'dark', 'light', 'indigo', 'monolith;classic']) {
-      expect(resolveUiTheme(bad), bad).toBe('monolith');
+      expect(resolveUiTheme(bad), bad).toBe('atelier');
       expect(isUiTheme(bad), bad).toBe(false);
     }
   });
@@ -118,22 +121,22 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     return (await RootLayout({ children: null })) as unknown as El;
   };
 
-  it('cookie absent → data-ui-theme="monolith"', async () => {
+  it('cookie absent → data-ui-theme="atelier"', async () => {
     const html = await renderLayout();
     expect(html.type).toBe('html');
-    expect(html.props['data-ui-theme']).toBe('monolith');
+    expect(html.props['data-ui-theme']).toBe('atelier');
   });
   it('cookie classic → data-ui-theme="classic"', async () => {
     jar.set('ui_theme', 'classic');
     expect((await renderLayout()).props['data-ui-theme']).toBe('classic');
   });
-  it('retired cookie current → data-ui-theme="monolith"', async () => {
+  it('retired cookie current → data-ui-theme="atelier"', async () => {
     jar.set('ui_theme', 'current');
-    expect((await renderLayout()).props['data-ui-theme']).toBe('monolith');
+    expect((await renderLayout()).props['data-ui-theme']).toBe('atelier');
   });
-  it('cookie invalid → data-ui-theme="monolith"', async () => {
+  it('cookie invalid → data-ui-theme="atelier"', async () => {
     jar.set('ui_theme', 'neon');
-    expect((await renderLayout()).props['data-ui-theme']).toBe('monolith');
+    expect((await renderLayout()).props['data-ui-theme']).toBe('atelier');
   });
   it('every theme\'s fonts are on <html>, and the Monolith faces are loaded as README §2 says', async () => {
     const html = await renderLayout();
@@ -256,5 +259,17 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
     expect(clean).toMatch(/:root\[data-ui-theme='monolith'\] \.mono \{[^}]*letter-spacing: 0\.12em;[^}]*text-transform: uppercase;/);
     expect(clean).toMatch(/:root\[data-ui-theme='monolith'\] \.num \{[^}]*font-variant-numeric: tabular-nums;/);
     expect(clean).not.toMatch(/^\s*\.(mono|num)\s*[{,]/m);
+  });
+});
+
+describe('browser icon metadata follows system configuration', () => {
+  it('uses the default icon when no custom icon is saved', async () => {
+    const { generateMetadata } = await import('../app/layout');
+    expect((await generateMetadata()).icons).toEqual({ icon: '/login/favicon.svg' });
+  });
+  it('uses the saved public icon without changing the app title', async () => {
+    artwork.iconUrl = 'https://example.test/approved-icon.png';
+    const { generateMetadata } = await import('../app/layout');
+    expect(await generateMetadata()).toMatchObject({ title: 'AIHR', icons: { icon: artwork.iconUrl } });
   });
 });

@@ -295,9 +295,7 @@ describe('r260 — a pending request never reaches the master record, and a reje
       employmentId: B2.employmentId,
       proposed: { icNumber: '900101010105' },
     });
-    await expect(decideProfileChange(a, { requestId, decision: 'approved' })).rejects.toThrow(
-      /already filed against another employee/i,
-    );
+    await expect(decideProfileChange(a, { requestId, decision: 'approved' })).rejects.toMatchObject({cause:{code:'PN001'}});
     // …and the refusal left both master rows alone.
     expect((await getStatutoryProfileMY(a, B2.personId))?.icNumber).toBe('900101010106');
     expect((await getStatutoryProfileMY(a, A.personId))?.icNumber).toBe('900101010105');

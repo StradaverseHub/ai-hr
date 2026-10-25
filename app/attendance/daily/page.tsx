@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { getTranslations } from 'next-intl/server';
@@ -134,9 +135,9 @@ export default async function DailyAttendancePage({
             {t('filters.department')}
             <select name="dept" defaultValue={deptFilter ?? ''} className={inputCls}>
               <option value="">{t('filters.allDepartments')}</option>
-              {departments.map((d) => (
+              {organisationChoiceLabels(departments).map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name}
+                  {d.displayLabel}
                 </option>
               ))}
             </select>

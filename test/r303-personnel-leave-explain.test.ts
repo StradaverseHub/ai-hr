@@ -32,17 +32,19 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
     expect(source).not.toContain('leaveRequestsFor(s, employmentId)');
     expect(source).not.toContain('benefitSchemeView(');
   });
-  it('keeps Grade in Leave, audit/privacy outside Profile save and reviews in Employment', () => {
-    expect(panel('profile')).toContain('{profilePanel}{changeHistoryCard}{dataPrivacyCard}');
+  it('keeps Grade and privacy while retiring the duplicated history and Employment review panels', () => {
+    expect(panel('profile')).toContain('{profilePanel}{dataPrivacyCard}');
     expect(declaration('profilePanel')?.getText(ast)).not.toMatch(/changeHistoryCard|dataPrivacyCard/);
     expect(panel('leave')).toContain('{gradeCard}');
     for (const name of ['benefitSchemeCard','leaveRequestsCard']) {
       expect(declaration(name)).toBeUndefined();
       expect(panel('leave')).not.toContain(name);
     }
-    expect(panel('job')).toContain('{reviewCard}');
-    for (const name of ['changeHistoryCard', 'dataPrivacyCard']) expect(declaration(name)?.getText(ast)).toMatch(/admin\s*\?/);
-    expect(declaration('reviewCard')?.getText(ast)).toMatch(/!emp\.terminatedOn && admin/);
+    expect(declaration('changeHistoryCard')).toBeUndefined();
+    expect(declaration('reviewCard')).toBeUndefined();
+    expect(panel('job')).not.toContain('reviewCard');
+    expect(declaration('dataPrivacyCard')?.getText(ast)).toMatch(/admin\s*\?/);
+    expect(source).toContain('/admin/audit?employment=');
     expect(source).toContain('saveProfileTabAction'); expect(source).toContain('saveJobTabAction');
   });
   it('preserves the shared self-service history tab while retiring only the admin tab', () => {

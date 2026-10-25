@@ -44,7 +44,7 @@ async function capturedClock(employmentId:string,date:string,direction:'in'|'out
   direction,requestId:randomUUID(),commandDigest:'a'.repeat(64),serverRecordedAt:new Date(Date.parse(captureDate+'T'+time+'+08:00')+millisecond)}).returning();
  return (direction==='in'?checkInTx:checkOutTx)(ctx,{employmentId,date,time,clockCaptureId:capture.id,preciseOrder:true});
 }
-async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible:boolean|'datedRates'=false,sourceDateOverride?:string,unclocked=false){
+async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string,autoMethod:'actual'|'preApproved'|'intersect'='actual',currentManual=false,moneyScope?:'cap'|'dayMapping'|'dayTier'|'sessionTier'|'dayCharge'|'sessionCharge'|'moneyResource',captureMillisecond=0,financial=false,rounding:AttendanceGroupPolicy['overtime']['rounding']={mode:'none',step:null},financialMinutes=120,direction:'earliest'|'latest'='earliest',mixedCompatible:boolean|'datedRates'=false,sourceDateOverride?:string,unclocked=false,historicalFinancial=false){
  const ruleId=(await ensureStandardRule(ctx)).id;
  const worker=await hireEmployee(ctx,{person:{fullName:'Fictional policy storage',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,
   departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-10)});
@@ -79,6 +79,15 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const draft=await saveOvertimePatternDraft(ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:b.companyId,companyIds:[b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
+ if(historicalFinancial){
+  const eventsBefore=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(asc(s.domainEvent.id));
+  // Historical seed restoration below must not turn activation into a backdating API.
+  await expect(activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,
+   validationDigest:validation.validationDigest!,effectiveFrom:day(-2)})).rejects.toThrow('Activation cannot backdate');
+  expect(await owner.db.select().from(s.overtimePatternVersionState).where(eq(s.overtimePatternVersionState.versionId,draft.versionId))).toEqual([]);
+  expect((await owner.db.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.id,draft.versionId)))[0].activatedAt).toBeNull();
+  expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(asc(s.domainEvent.id))).toEqual(eventsBefore);
+ }
  await activateOvertimePattern(ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
  let compatibleVersionId=draft.versionId;
  if(mixedCompatible){
@@ -112,6 +121,26 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
     .where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
    await tx.execute(sql`ALTER TABLE attendance_group_policy_revision ENABLE TRIGGER attendance_group_policy_revision_guard`);
   });
+  if(historicalFinancial){
+   // PRIVATE fixture restoration, not an activation command: represent an already active
+   // historical formula just as the GROUP baseline above. Never disable effect/contract guards.
+   // A transaction failure rolls back both the seed edit and the trigger state.
+   await owner.db.transaction(async tx=>{
+    const [original]=await tx.select().from(s.overtimePatternVersionState)
+     .where(and(eq(s.overtimePatternVersionState.versionId,draft.versionId),eq(s.overtimePatternVersionState.sequence,1)));
+    expect(original).toBeDefined();
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state DISABLE TRIGGER overtime_pattern_version_state_guard`);
+    const restored=await tx.update(s.overtimePatternVersionState).set({effectiveFrom:day(-2)})
+     .where(and(eq(s.overtimePatternVersionState.versionId,draft.versionId),eq(s.overtimePatternVersionState.sequence,1))).returning();
+    expect(restored).toHaveLength(1);expect(restored[0]).toEqual({...original,effectiveFrom:day(-2)});
+    await tx.execute(sql`ALTER TABLE overtime_pattern_version_state ENABLE TRIGGER overtime_pattern_version_state_guard`);
+   });
+   const formulaGuards=await owner.db.execute(sql`select tgenabled from pg_trigger
+    where tgrelid='overtime_pattern_version_state'::regclass and tgname='overtime_pattern_version_state_guard'`);
+   expect(Array.from(formulaGuards).map(row=>row.tgenabled)).toEqual(['O']);
+   await expect(owner.db.update(s.overtimePatternVersionState).set({effectiveFrom:day(-3)})
+    .where(eq(s.overtimePatternVersionState.versionId,draft.versionId))).rejects.toThrow();
+  }
   const guards=await owner.db.execute(sql`select tgenabled from pg_trigger where tgrelid='attendance_group_policy_revision'::regclass
    and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
@@ -1099,7 +1128,11 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].datedCredit).toEqual(stored.datedCredit);
   const [type]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,b.tenantId),eq(s.leaveType.code,'REPLACEMENT')));
   await updateLeaveType(ctx,{id:type.id,name:type.name,durations:['full_day','half_day_am','half_day_pm']});
-  const leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
+  let leaveDate=new Date(Date.parse(f.sourceDate+'T00:00:00Z')+3*86400000).toISOString().slice(0,10);
+  // This replacement-leave fixture uses Monday–Friday. Retain its real half-day consumption
+  // assertions without accidentally selecting a non-working day as the calendar advances.
+  while([0,6].includes(new Date(leaveDate+'T00:00:00Z').getUTCDay()))
+   leaveDate=new Date(Date.parse(leaveDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
   const request=await requestLeave(ctx,{employmentId:f.employmentId,leaveTypeId:type.id,startDate:leaveDate,endDate:leaveDate,durationType:'half_day_am'});
   await decideLeave(ctx,{leaveRequestId:request.leaveRequestId,decision:'approved'});
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,credit.accrualId)))[0].daysTaken).toBe('0.50');
@@ -1397,9 +1430,10 @@ describe('immutable non-payable policy part storage',()=>{
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
    halfDayBefore:'00:01',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
   // Same declared private historical GROUP baseline restoration as the four Manual probes.
-  // Formula activation is genuine and current-day. This is not a historical activation command.
+  // Seed an already active historical formula as well; all business/database clocks remain
+  // real. This is financial integration coverage, not proof of historical API activation.
   const rounding:AttendanceGroupPolicy['overtime']['rounding']=roundMode==='none'?{mode:'none',step:null}:{mode:roundMode,step:30};
-  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,undefined,true),
+  const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,day(-1),true,true),
    p={employmentId:f.employmentId,date:f.sourceDate},midnight=Date.parse(p.date+'T00:00:00+08:00');
   const actual={completeWorkedDay:true as const,intervals:[{fromEpochMillisecond:midnight+60000+555,toEpochMillisecond:midnight+(1+physical)*60000}],
    requestedIntervals:[{fromEpochMillisecond:midnight+(1+physical-requested)*60000+777,toEpochMillisecond:midnight+(1+physical)*60000}]};
@@ -1418,9 +1452,25 @@ describe('immutable non-payable policy part storage',()=>{
   else await saveAttendanceWorkflow(ctx,{...workflow,routingVersion:3,
    stages:[{name:'Review complete actual work',mode:'sequential',source:{kind:'specific_employee',employmentIds:[reviewer.employmentId]},hrAlternative:false}]});
   await setAttendanceWorkflowEnabled(ctx,b.companyId,'self_overtime',true);
+  const future={...actual,intervals:actual.intervals.map(span=>({fromEpochMillisecond:span.fromEpochMillisecond+2*86400000,toEpochMillisecond:span.toEpochMillisecond+2*86400000})),
+   requestedIntervals:actual.requestedIntervals.map(span=>({fromEpochMillisecond:span.fromEpochMillisecond+2*86400000,toEpochMillisecond:span.toEpochMillisecond+2*86400000}))};
+  await expect(requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional still-future work must refuse',unclockedWork:future}))
+   .rejects.toThrow('completed intervals');
   const request=await requestAttendanceCorrection(ctx,{...p,requestedOtMinutes:requested,reason:'Fictional complete actual-work day with original millisecond endpoints',unclockedWork:actual});
   expect(await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p))).toBeNull();
   await decideAttendanceCorrection(reviewCtx,{correctionId:request.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+  // Bypass only the JS entry point to prove the independent, ACTIVE SQL clock guard.
+  // Same authorized actor/date/policy/interval lengths as the successful request; only instants differ.
+  const [submitted]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
+  const refusedId=randomUUID();let refused:unknown;
+  try{await withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({...submitted,id:refusedId,status:'pending',approvedOtMinutes:null,otApprovalMethod:null,decidedByEmploymentId:null,decidedAt:null,appliedAt:null,
+   originalClockSnapshot:{...submitted.originalClockSnapshot!,unclockedWork:{...submitted.originalClockSnapshot!.unclockedWork!,intervals:future.intervals,requestedIntervals:future.requestedIntervals}}}));}catch(error){refused=error;}
+  const sqlRefusal=refused as {cause?:{code?:string;message?:string};code?:string;message?:string};
+  expect(sqlRefusal?.cause?.code??sqlRefusal?.code).toBe('23514');
+  expect(sqlRefusal?.cause?.message??sqlRefusal?.message).toBe('Unclocked work intervals must be completed and ordered in the dated period');
+  expect(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,refusedId))).toEqual([]);
+  expect(await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,refusedId))).toEqual([]);
+  expect(await owner.db.select().from(s.attendancePolicyFinalReceipt).where(eq(s.attendancePolicyFinalReceipt.correctionId,refusedId))).toEqual([]);
   const read=await withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,p));if(!read?.calculation||!read.evidence||!read.policyParts)throw Error('Expected canonical attested financial parent');
   expect(read.calculation).toMatchObject({outcome:'ready',durationOutcome:'ready',transferable:true,payableNumerator:String(expectedMinutes),approvalStatus:'approved'});
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,p));

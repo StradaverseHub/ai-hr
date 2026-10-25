@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
@@ -249,9 +250,9 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
   // are the only ids the rule form adds to the picker on their behalf, and a name for anything else would
   // be data crossing to a client component for no reader.
   const heldByAGroup = new Set(gradeGroups.flatMap((g) => g.gradeIds));
-  const archivedMemberGrades = grades
+  const archivedMemberGrades = organisationChoiceLabels(grades.filter(g=>g.archivedAt == null || heldByAGroup.has(g.id)).map(g=>({...g,label:g.name})))
     .filter((g) => g.archivedAt != null && heldByAGroup.has(g.id))
-    .map((g) => ({ id: g.id, name: g.name }));
+    .map((g) => ({ id: g.id, name: g.displayLabel }));
 
   const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');
 

@@ -20,6 +20,7 @@ export type RowResult = {
 };
 
 export type ImportPreview = {
+  allocations?:import('./cost-allocation-import').AllocationImportPreview;
   registers?:RegisterPreview[];
   companyId: string;
   total: number;
