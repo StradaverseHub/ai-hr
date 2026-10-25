@@ -8,7 +8,7 @@
 .login-shell ::selection { background: #ddd9fa; color: #28235e; }
 .login-welcome { display: flex; flex-direction: column; min-width: 0; padding: clamp(2rem, 4vw, 4rem); background: var(--login-ink); color: #fff; }
 .login-brand { display: flex; align-items: center; gap: .75rem; width: fit-content; color: #fff; font-size: 1.75rem; font-weight: 700; text-decoration: none; }
-.login-brand-mark { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: .75rem; background: #e3212b; }
+.login-brand-mark { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: .75rem; background: #c2410c; color: #fff; font-size: 1rem; font-weight: 700; }
 .login-welcome-content { flex: 1; padding-top: clamp(2.5rem, 5vh, 5rem); }
 .login-welcome h2 { max-width: 16ch; margin: 0; font-size: clamp(2rem, 3.1vw, 3.5rem); font-weight: 700; line-height: 1.12; letter-spacing: -.025em; text-wrap: balance; }
 .login-welcome-content > p { max-width: 50ch; margin-top: 1.5rem; color: #dcd9ef; font-size: 1rem; line-height: 1.7; }

@@ -84,7 +84,7 @@ const fontVariables = `${jakarta.variable} ${geistMono.variable} ${schibsted.var
 export async function generateMetadata(): Promise<Metadata> {
   const presentation = await publicLoginPresentation();
   return { title: 'AIHR', description: 'AI-native HR platform',
-    icons: { icon: presentation.iconUrl || '/favicon.ico' } };
+    icons: { icon: presentation.iconUrl || '/login/favicon.svg' } };
 }
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

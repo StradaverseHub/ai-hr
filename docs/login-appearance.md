@@ -2,7 +2,7 @@
 
 Group administrators configure public login media and the browser tab icon under **System Configuration → Login & browser appearance** (`/admin/settings/login`). Settings belong to the current tenant, are audited, and use a saved revision to prevent stale overwrites. Company-scoped administrators and ordinary employees cannot edit them.
 
-Choose Default welcome, Image, Animated GIF or Video. Media requires a direct HTTPS URL and a text description. Videos and GIFs start only when the visitor chooses to play them; controls can stop playback. The mobile sign-in form uses a compact brand header instead of displaying the large visual panel. Broken artwork falls back to the built-in welcome. A PNG or ICO browser icon can be configured independently; clearing it restores `/favicon.ico`. Browsers may cache icons across page visits.
+Choose Default welcome, Image, Animated GIF or Video. Media requires a direct HTTPS URL and a text description. Videos and GIFs start only when the visitor chooses to play them; controls can stop playback. The mobile sign-in form uses a compact brand header instead of displaying the large visual panel. Broken artwork falls back to the built-in welcome. A PNG or ICO browser icon can be configured independently; clearing it restores the AIHR mark at `/login/favicon.svg`. Browsers may cache icons across page visits.
 
 These assets are public. Use approved artwork and a stable public media host; a URL that requires a signed-in session will not work for visitors. The application does not fetch or execute supplied media on its server.
 

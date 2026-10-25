@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Pause, Play, Sparkles } from 'lucide-react';
+import { Pause, Play } from 'lucide-react';
 import type { LoginPresentation } from '@/lib/login-presentation';
 
 export function LoginShell({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
@@ -20,7 +20,7 @@ export function LoginShell({ children, presentation }: { children: ReactNode; pr
   const media = presentation?.mediaUrl && !mediaFailed;
   return <main className="login-shell">
     <aside className="login-welcome" aria-label={common('appName')}>
-      <a href="/login" className="login-brand"><span aria-hidden className="login-brand-mark"><Sparkles size={22}/></span>{common('appName')}</a>
+      <a href="/login" className="login-brand"><span aria-hidden className="login-brand-mark">AI</span>{common('appName')}</a>
       <div className="login-welcome-content">
         <h2>{t('headline')}</h2>
         <p>{t('description')}</p>

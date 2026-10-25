@@ -265,7 +265,7 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
 describe('browser icon metadata follows system configuration', () => {
   it('uses the default icon when no custom icon is saved', async () => {
     const { generateMetadata } = await import('../app/layout');
-    expect((await generateMetadata()).icons).toEqual({ icon: '/favicon.ico' });
+    expect((await generateMetadata()).icons).toEqual({ icon: '/login/favicon.svg' });
   });
   it('uses the saved public icon without changing the app title', async () => {
     artwork.iconUrl = 'https://example.test/approved-icon.png';
