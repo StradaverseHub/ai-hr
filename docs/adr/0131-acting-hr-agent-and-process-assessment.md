@@ -1193,3 +1193,20 @@ privacy, factual accuracy, financial rules, required review or evaluation covera
 timeouts, rate limits, unavailable models, cold caches and large imports as well as the happy path.
 The acceptance matrix for each module includes these cost/responsiveness outcomes alongside its
 engine integration, access controls and improvement/rollback proof.
+
+
+### Current AI release verification: explicit owner retest exception
+
+On 2026-10-26 KL the owner explicitly instructed: “And only repair and retest those that fail,
+dont need to rerun. I give full permission for the exception”. For this AI release, retain authentic
+completed passing checks, repair and retest the failures, and execute required checks that have not
+yet run. Do not restart the whole suite merely because a repair changes the candidate commit.
+This direct owner exception overrides the general fresh-whole/reuse restriction for this release.
+
+Keep original raw outcomes, exact counted coverage, source/diff lineage, environment and failed-to-
+repaired retest results. A cancelled run, unexecuted check or still-failing assertion remains so;
+never manufacture a PASS receipt or relabel partial coverage as a completed whole run. If existing
+release verification cannot represent this authorized evidence composition, use an explicit reviewed
+exception validation path that verifies the real evidence and its scope. Do not silently bypass the
+operator's integrity checks. The exception does not authorize weakened permissions, financial or
+privacy rules, fake clocks, omitted outcomes or GitHub Actions in this session.
