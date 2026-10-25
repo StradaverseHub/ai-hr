@@ -1319,3 +1319,25 @@ never repaired or guessed by this parser. Missing accounting retains `usageRepor
 placeholder zeros cannot settle actual usage. No provider registration, tool execution or fresh-access
 proof is established here. Authored regressions remain UNRUN during Mobile's runtime priority; only
 source syntax/diff checks have run.
+
+
+### Dependency inventory reassessment after released-baseline integration
+
+FACT (static source only, 26 October 2026) — a tracked-source scan at `6f3332862`
+reassessed the four balance/reservation/type bindings across `app`, `core`, `packs`, `db`
+and `scripts`, including schema import aliases and immutable direct aliases. It found 61
+direct Drizzle writes across 16 files (ledger 28, request 13, request-date 6, type 14).
+The earlier 62nd hit was an untracked development journey, not an additional tracked source
+owner. This count change is an inventory-scope distinction, not removal of a canonical writer.
+No additional literal SQL-template write was found by the bounded lexical query; dynamic
+SQL, indirect data flow, installed procedures/triggers and external writers remain UNKNOWN.
+A separate scan identified 13 historical migration SQL candidates affecting leave types;
+historical statements are not evidence that their former function bodies remain installed.
+
+The scan deliberately does not infer branch participation from an enclosing lock literal.
+The next barrier implementation must still enumerate each actual write transaction, acquire
+its compatible dependency protection before protected reads, preserve import row isolation,
+and cover configuration/authority/roster/calendar/late approval dependencies. File-wide alias
+resolution also is not a lexical binding proof. No database or concurrency check ran; this
+reassessment establishes neither a complete writer graph nor a universal lock guarantee.
+Confirmation stays unexposed.
