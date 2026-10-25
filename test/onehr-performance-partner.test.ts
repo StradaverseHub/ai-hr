@@ -91,6 +91,8 @@ describe('OneHR performance partner (ADR-0141)', () => {
     ({ id: coB } = await createCompany(a, { legalName: 'Other Partner Co' }));
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
     otherEmployee = await hire('Other company person', coB, deptB.id);
+    // Opening a OneHR cycle resolves a leadership framework for every participant, so every employment is graded.
+    await owner.db.update(schema.employment).set({ gradeId: grade.id }).where(eq(schema.employment.tenantId, b.tenantId));
 
     onehrCycleId = await onehrCycle('Partner OneHR cycle', b.companyId);
     otherCycleId = await onehrCycle('Other company OneHR cycle', coB);
@@ -195,10 +197,15 @@ describe('OneHR performance partner (ADR-0141)', () => {
     const reviews = (ctx: SessionContext, cycleId: string) =>
       withTenant(ctx, (tx) => tx.select().from(schema.performanceReview).where(eq(schema.performanceReview.cycleId, cycleId)));
     expect((await reviews(a, genericCycleId)).length).toBeGreaterThan(0);
-    expect(await reviews(partner, genericCycleId)).toEqual([]);
+    // Only the partner's own review, which every employee reads (self visibility); nobody else's.
+    const seen = await reviews(partner, genericCycleId);
+    expect(seen.map((r) => r.employmentId)).toEqual(seen.length ? [partnerPerson.employmentId] : []);
+    expect((await reviews(a, genericCycleId)).some((r) => r.employmentId === subject.employmentId)).toBe(true);
+    expect(seen.some((r) => r.employmentId === subject.employmentId)).toBe(false);
     expect((await reviews(partner, onehrCycleId)).length).toBeGreaterThan(0);
     const detail = await perf.cycleDetail(partner, genericCycleId);
-    expect(detail?.roster ?? []).toEqual([]);
+    expect((detail?.roster ?? []).map((r) => r.employee)).not.toContain('Partner subject');
+    expect((detail?.roster ?? []).every((r) => r.employee === 'Partner herself')).toBe(true);
     expect(await perf.getOnehrCycle(partner, genericCycleId)).toBeNull();
 
     expect(await refusal(perf.createCycle(partner, { name: 'Partner-made cycle', companyId: b.companyId, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }))).toMatch(/can create a review cycle/);
