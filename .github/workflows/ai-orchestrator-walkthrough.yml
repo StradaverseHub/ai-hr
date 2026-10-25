@@ -45,7 +45,7 @@ jobs:
   production-renderer:
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: source
@@ -68,9 +68,34 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Build and walk through the actual production renderer on fresh fictional data
         run: node ../automation/.github/ci/orchestrator-browser.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
-      - name: Ensure owned database cleanup after interrupted walkthrough
+      - name: Preserve owned database evidence and clean up after interrupted walkthrough
         if: always()
-        run: bash ../automation/.github/ci/postgres.sh stop
+        run: |
+          cleanup_status=0
+          if docker container inspect "aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-db-1" >/dev/null 2>&1; then
+            node --input-type=module <<'JS' || cleanup_status=$?
+          import {mkdirSync, writeFileSync} from 'node:fs';
+          import {join} from 'node:path';
+          import {capturePostgresEvidence, validatePostgresEvidence} from '../automation/.github/ci/postgres-evidence.mjs';
+          import {CI_EXECUTION} from '../automation/.github/ci/manifest.mjs';
+          const dir = join(process.env.RUNNER_TEMP, 'orchestrator-production-renderer');
+          mkdirSync(dir, {recursive: true, mode: 0o700});
+          try {
+            const snapshot = capturePostgresEvidence('db-1');
+            writeFileSync(join(dir, 'postgres-cleanup-evidence.json'), JSON.stringify({
+              kind: 'INTERRUPTED_CLEANUP_ONLY', releaseEligible: false,
+              sha: process.env.AIHR_CI_HEAD, controller: process.env.AIHR_CI_CONTROL_HEAD,
+              run: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, snapshot,
+            }, null, 2) + '\n', {mode: 0o600});
+            validatePostgresEvidence(snapshot, CI_EXECUTION);
+          } catch (error) {
+            writeFileSync(join(dir, 'postgres-cleanup-error.json'), JSON.stringify({error: String(error).slice(0, 3000)}) + '\n', {mode: 0o600});
+            process.exitCode = 1;
+          }
+          JS
+          fi
+          timeout 20s bash ../automation/.github/ci/postgres.sh stop || cleanup_status=$?
+          exit "$cleanup_status"
         env:
           AIHR_CI_UNIT: db-1
       - if: always()

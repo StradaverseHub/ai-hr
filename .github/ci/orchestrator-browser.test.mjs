@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {validateFixture, receiptExpectation} from './orchestrator-browser.mjs';
+import {validateFixture, receiptExpectation, localesForActor, bounded} from './orchestrator-browser.mjs';
 
 const id = number => `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
 function manifest(reused = false) {
@@ -66,4 +66,25 @@ test('successful current receipts have four complete successful steps', () => {
 });
 test('unknown scenario input is refused rather than silently treated as success', () => {
   for (const value of ['', undefined, 'CURRENT', '../current', 'erase']) assert.throws(() => receiptExpectation(value));
+});
+
+test('populated and empty queues retain every locale on both routes and viewport sizes', () => {
+  for (const actor of ['group-admin', 'Empty-hr']) assert.deepEqual(localesForActor(actor).sort(), ['en', 'ms', 'ta', 'th', 'vi', 'zh']);
+});
+test('every distinct scoped administrator and employee remains in the security journey', () => {
+  const actors = manifest().actors;
+  const visits = actors.flatMap(actor => localesForActor(actor.key).flatMap(locale =>
+    ['desktop', 'mobile'].flatMap(viewport => ['/control-tower', '/control-tower/agents'].map(route => ({actor: actor.key, locale, viewport, route})))));
+  assert.equal(visits.length, 64);
+  for (const actor of actors) for (const viewport of ['desktop', 'mobile']) for (const route of ['/control-tower', '/control-tower/agents'])
+    assert(visits.some(visit => visit.actor === actor.key && visit.viewport === viewport && visit.route === route));
+  assert.throws(() => localesForActor('foreign-admin'));
+});
+test('a response that never finishes fails within its explicit bound', async () => {
+  await assert.rejects(bounded(new Promise(() => {}), 'Fictional response', 5), /Fictional response exceeded 5ms/);
+});
+test('bounded operations preserve ordinary results and errors', async () => {
+  assert.equal(await bounded(Promise.resolve('finished'), 'Fictional response', 50), 'finished');
+  const error = new Error('Transport failed');
+  await assert.rejects(bounded(Promise.reject(error), 'Fictional response', 50), received => received === error);
 });
