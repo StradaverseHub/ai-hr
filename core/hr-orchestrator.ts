@@ -10,7 +10,7 @@ import { EntitlementError } from './entitlements';
 import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
-import { HR_HARNESS_VERSION, readinessTransition, runHarnessStep } from './orchestrator-harness';
+import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass, summarizeOrchestrationPass } from './orchestrator-harness';
 
 /** Run state is administrative. Employee self-service continues through its existing services. */
 function assertAdmin(ctx: SessionContext) {
@@ -109,19 +109,16 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
  */
 export async function runHrOrchestrator(ctx: SessionContext) {
   assertAdmin(ctx);
-  const before = await runHarnessStep(() => reconcileReadinessCases(ctx));
-  const nudge = await runHarnessStep(() => sweepReadinessNudges(ctx));
-  const triage = await runHarnessStep(() => triagePendingClaims(ctx));
-  const after = await runHarnessStep(() => reconcileReadinessCases(ctx));
-  const failed = [before, nudge, triage, after].some(s => s.status === 'failed');
-  const trace = await runHarnessStep(() => withTenant(ctx, tx => appendEvent(tx, {
-    tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
-    eventType: 'orchestrator.pass-finished', actor: { type: 'agent' },
-    payload: { scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION, failed,
-      steps: { observe: before.status, readiness: nudge.status, claims: triage.status, verify: after.status } },
-  })));
-  return { harnessVersion: HR_HARNESS_VERSION, before, nudge, triage, after,
-    failed: failed || trace.status === 'failed' };
+  return runOrchestrationPass({
+    observe: () => reconcileReadinessCases(ctx),
+    readiness: () => sweepReadinessNudges(ctx),
+    claims: () => triagePendingClaims(ctx),
+    recordTrace: trace => withTenant(ctx, tx => appendEvent(tx, {
+      tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
+      eventType: 'orchestrator.pass-finished', actor: { type: 'agent' },
+      payload: { scopeDigest: scopeDigest(ctx), ...trace },
+    })),
+  });
 }
 
 /** Scope follows the source employment even after a transfer. Never expose tenant-wide aggregates. */
@@ -143,27 +140,28 @@ export async function orchestrationQueue(ctx: SessionContext) {
     const checks = await tx.select({ at: schema.domainEvent.occurredAt }).from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
-      .orderBy(desc(schema.domainEvent.occurredAt)).limit(1);
+      .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
     const open = rows.filter(r => r.state === 'needs_input' || r.state === 'needs_review');
+    const displayed = open.slice(0, 50);
     let actions = new Map<string, ReadinessAction>();
     let actionsUnavailable = false;
-    try { actions = await loadReadinessActions(tx, ctx, [...new Set(open.map(row => row.employmentId))]); }
+    // Counts cover the full scope; guidance is only needed for rows actually displayed.
+    try { actions = await loadReadinessActions(tx, ctx, [...new Set(displayed.map(row => row.employmentId))]); }
     catch (error) {
       // Settings resolution happens before action queries; a display failure must not hide the queue.
       if (!(error instanceof EntitlementError)) throw error;
       actionsUnavailable = true;
     }
-    const runs = await tx.select({ at: schema.domainEvent.occurredAt,
-      failed: sql<boolean>`coalesce((${schema.domainEvent.payload} ->> 'failed')::boolean, false)` })
+    const runs = await tx.select({ at: schema.domainEvent.occurredAt, payload: schema.domainEvent.payload })
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
-      .orderBy(desc(schema.domainEvent.occurredAt)).limit(1);
-    return { rows: open.slice(0, 50).map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
+      .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
+    return { rows: displayed.map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
       actionsUnavailable,
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
       observedAt: checks.length ? checks[0].at : null,
-      lastRun: runs.length ? runs[0] : null,
+      lastRun: runs.length ? { at: runs[0].at, ...summarizeOrchestrationPass(runs[0].payload) } : null,
     };
-  });
+  }, { readOnlySnapshot: true });
 }

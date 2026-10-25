@@ -6748,7 +6748,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "正在检查记录…",
-      "runFailed": "上次自动化执行需要处理。请查看执行历史。",
+      "runFailed": "最近记录的自动化执行需要处理。请展开下方的执行详情。",
       "navigation": "控制中心导航",
       "overview": "总览",
       "readiness": "员工资料",
@@ -6779,7 +6779,31 @@
       "shown": "显示 {total} 个问题中的 {shown} 个。",
       "verificationNote": "关闭表示检查时相关信息已填写或已不再需要。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
       "quality": "薪资与 AI 质量",
-      "opportunities": "机会"
+      "opportunities": "机会",
+      "runDetails": {
+        "title": "最近记录的自动化执行",
+        "recorded": "记录时间：{date}",
+        "version": "运行框架：{version}",
+        "steps": {
+          "observe": "检查源记录",
+          "readiness": "资料补全提醒",
+          "claims": "报销初步检查",
+          "verify": "复查源记录"
+        },
+        "states": {
+          "succeeded": "正常结束",
+          "failed": "失败",
+          "unknown": "未记录"
+        },
+        "outcomes": {
+          "succeeded": "已完成",
+          "failed": "失败",
+          "unknown": "完成情况未确认"
+        },
+        "incomplete": "部分执行详情未记录或无法读取。",
+        "receiptNote": "结果未能记录的执行尝试可能不会显示在此历史记录中。",
+        "evidenceNote": "正常结束的步骤可能已关闭或没有待处理工作。人力资源事项的结果仍须由源记录证据确认。"
+      }
     },
     "corrections": {
       "employeeTitle": "完善您的资料",
