@@ -193,6 +193,8 @@ App fields use a strong boundary, compact corners, and orange focus border plus 
 
 Quiet grey rail, compact icon-and-label rows, grey hover and a neutral selected row with medium-weight ink. Stroke SVGs are 1rem. Nested rows have a thin structural guide line; expansion rotates the chevron with the existing short transition. Preserve the current permission-aware navigation and mobile shell behavior rather than deriving a new menu from this visual guide.
 
+Expanded-menu section titles are semantic, noninteractive headings. Their compact uppercase type, extra vertical spacing and trailing divider distinguish them from clickable rows. Keep this treatment local to navigation.
+
 ### Tables and pagination
 
 Sentence-case headings, hairline divisions and 2.75rem cell height, with neutral row hover/focus. Pager and filter controls appear above rows within shared paged cards. Row actions use compact borderless text controls, with accent on hover.
@@ -214,4 +216,4 @@ The existing signature distinguishes a named person's confirmation from pending 
 - **Don't** replace the existing Atelier identity or restyle Classic and Monolith through unscoped overrides.
 - **Don't** treat the presence of a dark palette as a completed contrast audit.
 
-Not canonized or repaired: PRODUCT.md still describes the older floating indigo shell and stronger dark-mode assurance; the shell brief still lists mobile as unresolved despite implemented responsive rules. Compact uppercase rail subheadings remain source-level legacy presentation, not a new heading/eyebrow style to copy. Existing glyph back-arrow markup is not promoted into an icon rule. These pre-existing items are outside this documentation pass.
+Not canonized or repaired: PRODUCT.md still describes the older floating indigo shell and stronger dark-mode assurance; the shell brief still lists mobile as unresolved despite implemented responsive rules. Navigation section captions are not a heading/eyebrow style for page content. Existing glyph back-arrow markup is not promoted into an icon rule. These pre-existing items are outside this documentation pass.
