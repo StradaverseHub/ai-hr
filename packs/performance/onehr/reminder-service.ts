@@ -4,7 +4,7 @@ import { and,asc,eq,sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant,type SessionContext,type Tx } from '../../../db/client';
 import { actorOf,appendEvent } from '../../../db/events';
-import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle,employment } from '../../../db/schema';
+import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle,employment,person } from '../../../db/schema';
 import { onehrLabel } from './person-labels';
 import { getSetting,isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
 import { setTenantSetting } from '../../../core/tenant-settings';
@@ -92,7 +92,7 @@ export async function previewAssessmentReminder(ctx:SessionContext,cycleId:strin
  if(!ctx.userId)throw Error('Sign in to preview a reminder.');
  return withTenant(ctx,async tx=>{
   await access(tx,cycleId);const state=await fresh(tx,ctx.tenantId),current=await work(tx,cycleId,state);
-  const [employee]=await tx.select({id:employment.id,name:onehrLabel.fullName(employment.id)}).from(employment).where(and(eq(employment.employeeCode,code),sql`app.onehr_admin(${employment.companyId})`,onehrLabel.visible(employment.id)));
+  const [employee]=await tx.select({id:employment.id,name:onehrLabel.labelOrPerson(person.fullName,employment.id)}).from(employment).leftJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.employeeCode,code),sql`app.onehr_admin(${employment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`));
   if(!current||!employee||!current.graph.actors.some(actor=>actor.employmentIds.includes(employee.id)))throw Error('No employee with that ID is available in this cycle and your scope.');
   const actors=current.graph.actors.filter(actor=>actor.employmentIds.includes(employee.id));if(actors.length!==1)throw Error('This employee has more than one active account. Review the account mapping before previewing.');
   const actor=actors[0],recipient=current.recipients.find(recipient=>recipient.userId===actor.userId),tasks=recipient?.tasks??[];

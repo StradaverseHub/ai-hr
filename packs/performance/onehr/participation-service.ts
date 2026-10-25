@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { assessmentParticipationSnapshot, employment, onehrCycle, onehrResult, onehrReview, performanceReview, reviewCycle } from '../../../db/schema';
+import { assessmentParticipationSnapshot, employment, onehrCycle, onehrResult, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { ensureAssessmentCycleReviewTx, initializeOnehrCycleTx } from '../service';
@@ -39,10 +39,12 @@ export async function snapshotAssessmentParticipantsTx(tx:Tx,ctx:SessionContext,
 export async function assessmentParticipantsTx(tx:Tx,cycleId:string){
  const [cycle]=await tx.select({companyId:reviewCycle.companyId,status:reviewCycle.status,openedOn:onehrCycle.participationOpenedOn}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(eq(reviewCycle.id,cycleId));
  if(!cycle)return [];
- // ADR-0141: names come from the label projection (same companies as the onehr_admin filter below), not person.
- const rows=await tx.select({employmentId:employment.id,name:onehrLabel.fullName(employment.id),companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})
-  .from(employment).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,employment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
-  .where(and(cycle.companyId?eq(employment.companyId,cycle.companyId):undefined,isNull(employment.terminatedOn),sql`app.onehr_admin(${employment.companyId})`,onehrLabel.visible(employment.id))).orderBy(asc(onehrLabel.fullName(employment.id)),asc(employment.id));
+ // ADR-0141: the person row when the caller can read it (HR: unchanged rows, names and cost), else the label
+ // projection (performance partner, who cannot read person). Same companies as the onehr_admin filter.
+ const name=onehrLabel.labelOrPerson(person.fullName,employment.id);
+ const rows=await tx.select({employmentId:employment.id,name,companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})
+  .from(employment).leftJoin(person,eq(person.id,employment.personId)).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,employment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
+  .where(and(cycle.companyId?eq(employment.companyId,cycle.companyId):undefined,isNull(employment.terminatedOn),sql`app.onehr_admin(${employment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`)).orderBy(asc(name),asc(employment.id));
  return rows.map(({snapshot,...e})=>{
   const original=snapshot?{takingPart:snapshot.eligibleAtOpen,reason:snapshot.reason as ParticipationReason}:defaultParticipation(e,cycle.openedOn??todayInKualaLumpur());
   const override=snapshot?.override as ParticipationOverride;
