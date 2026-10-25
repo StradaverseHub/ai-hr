@@ -7,6 +7,9 @@ inputs:
   path:
     description: Candidate checkout
     default: source
+  mobile:
+    description: Install native SDK dependencies; keep enabled for all test/compiler jobs
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -20,9 +23,21 @@ runs:
         node-version: ${{ inputs.node }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.path }}/pnpm-lock.yaml
-    - shell: bash
-      working-directory: ${{ inputs.path }}
+    - name: Validate dependency scope
+      shell: bash
+      env: {INSTALL_MOBILE: '${{ inputs.mobile }}'}
       run: |
-        pnpm install --frozen-lockfile
-        npm ci --prefix mobile --no-audit --no-fund
-        cp .env.example .env.local
+        case "$INSTALL_MOBILE" in true|false) ;; *) echo 'Invalid mobile installation scope' >&2; exit 2 ;; esac
+    - name: Install web and tooling dependencies
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: pnpm install --frozen-lockfile
+    - name: Install native SDK dependencies
+      if: ${{ inputs.mobile == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: npm ci --prefix mobile --no-audit --no-fund
+    - name: Prepare disposable environment
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: cp .env.example .env.local
