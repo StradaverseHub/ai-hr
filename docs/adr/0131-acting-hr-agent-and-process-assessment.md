@@ -34,6 +34,49 @@ unattended principal, other actions, new autonomy, authentication changes or all
 No migration number is allocated or database changed by this amendment. Source authored under this
 exception remains unvalidated until the granted runtime window and is not a shipped capability.
 
+## Owner amendment, 2026-10-25: delivery order and import evaluation
+
+The owner revised the sequence: release the current harness and the Assistant's human-confirmed
+own-leave action; add another API provider, with OpenRouter named as a candidate; then expand into
+orchestration and evaluate its capability and measurable improvement during production data imports.
+This supersedes the earlier roadmap order. It is a delivery direction, not evidence that any of these
+capabilities has shipped. Preserve the current harness's release precedence while completing the
+own-leave slice; provider expansion follows both releases.
+
+1. **Current harness and confirmed own leave.** Finish the existing exact-candidate integration and
+   acceptance, then complete the single own-leave action's confirmation, canonical effect/receipt,
+   concurrency, authorization, privacy and recovery boundaries. Submission is not approval. The
+   current release and runtime coordination remains in force.
+2. **Additional provider support.** Integrate OpenRouter as the first candidate through the existing
+   tenant provider configuration, encrypted key custody, model gateway, inventory, allowances and
+   pause controls. Verify its current API, model/tool behavior, routing and data-handling terms before
+   choosing the adapter contract. Record the selected provider/model and supported behavior; preserve
+   fail-closed configuration and bounded calls. A provider switch must not change HR permissions,
+   confirmation requirements or the owning business services. Compare capability, latency and usage
+   cost using the same reviewed scenarios. Provider connectivity, credentials and production HR data
+   transfer are separate acceptance steps, not implied by this roadmap amendment.
+3. **Orchestration evaluated through imports.** Select one concrete import workflow after reviewing
+   the production import needs. Start with source-backed mapping suggestions, ambiguity/duplicate
+   detection, validation explanations and correction proposals. Keep page/cell/row provenance where
+   the supported input permits it. The existing module preview, fresh server validation, human
+   review and canonical commit remain the owners of imported facts. Expand into durable multi-step
+   coordination only through the typed registry and the existing autonomy/approval rules. Never
+   bypass import validation or invent missing HR values to improve a benchmark.
+4. **Measure during the production import.** Establish a comparable manual or existing-flow baseline
+   and log the AI-assisted flow on reviewed, comparable batches. Measure elapsed preparation and
+   completion time; actual human handling time when recorded; manual corrections/interventions;
+   mapping acceptance and reviewed errors; validation failures, duplicates, rework and successfully
+   committed rows; and model usage, cost and latency where available. Separate model extraction or
+   suggestions from validated and committed outcomes. Retain batch/source references and evaluation
+   definitions so the comparison can be checked. Report observed improvements and regressions with
+   their sample limits; do not equate elapsed time with staff effort or invent headcount savings.
+
+The exact first production dataset, import module, supported file formats, provider/model selection
+and improvement targets are still **UNKNOWN**. Determine them from the actual import work before
+finalizing acceptance. The future live installation remains distinct from today's alpha/staging
+host under the repository/environment owner decision; this amendment does not deploy to either or
+authorize sending an existing production dataset to a new provider immediately.
+
 ## Request
 
 The owner wants an AI HR orchestration agent and its harness on top of the existing HR engine. The
