@@ -187,9 +187,11 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,Date.parse(run.run_started_at),Date.parse(producer.completed_at));
   const manifest=JSON.parse(readFileSync(join(packet,'bytes/build-bundle-files.json')));
   requireValue(manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId&&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'manifest provenance differs');
+  const packageEvidence=execFileSync('python3',[join(controller,'.github/ci/build-package-diagnostic.py'),source,p.diagnosticRunner.sourcePath],{maxBuffer:1024*1024});
+  writeFileSync(join(output,'runtime-packages.json'),packageEvidence,{flag:'wx',mode:0o600});
   originalMode=lstatSync(source).mode&0o777;chmodSync(source,0o700);
   const unpackStart=Date.now();
-  execFileSync('python3',[join(controller,'.github/ci/build-bundle.py'),'unpack',join(packet,'bytes/build-bundle.tar.gz'),join(packet,'bytes/build-bundle-files.json'),join(source,'.next'),source],{stdio:'inherit'});
+  execFileSync('python3',[join(controller,'.github/ci/build-bundle.py'),'unpack-with-origin',join(packet,'bytes/build-bundle.tar.gz'),join(packet,'bytes/build-bundle-files.json'),join(source,'.next'),source,p.diagnosticRunner.sourcePath],{stdio:'inherit'});
   built=lstatSync(join(source,'.next'));phases.unpackMs=Date.now()-unpackStart;
   requireValue(testing.testingNextBuildId(source)===p.nextBuildId,'installed BUILD_ID');
   const config=JSON.parse(readFileSync(join(source,'.next/required-server-files.json')));

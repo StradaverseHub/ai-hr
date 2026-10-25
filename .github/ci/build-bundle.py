@@ -53,7 +53,30 @@ def regular(path, limit=MAX_FILE):
 def identity(st):
     return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns
 
-def package_identity(source, name):
+
+def rebase_installer_shim(data, source, producer_source):
+    """Compare one known pnpm wrapper at its authenticated original path; do not rewrite a file."""
+    original = Path(producer_source)
+    require(original.is_absolute() and str(original) == str(producer_source) and original.absolute().as_posix() == str(original)
+            and ".." not in original.parts and "." not in original.parts
+            and str(original) != str(source) and len(str(original).encode()) <= 4096,
+            "canonical distinct producer source required for installer comparison")
+    current = str(source / "node_modules").encode()
+    prior = str(original / "node_modules").encode()
+    require(len(data) <= 16384 and data.startswith(b"#!/bin/sh\nbasedir=")
+            and b"/semver/bin/semver.js" in data and b' "$@"' in data,
+            "unsupported generated semver wrapper")
+    require(current in data, "generated semver wrapper does not belong to this runtime source")
+    out = []
+    for line in data.splitlines(keepends=True):
+        if current in line:
+            require(line.lstrip().startswith(b'export NODE_PATH="') and line.endswith(b'"\n'),
+                    "runtime prefix outside generated NODE_PATH")
+            line = line.replace(current, prior)
+        out.append(line)
+    return b"".join(out)
+
+def package_identity(source, name, producer_source=None):
     require(name in EXTERNAL_PACKAGES, "unsupported external package")
     modules = source / "node_modules"
     require(modules.is_dir() and not modules.is_symlink() and modules.resolve() == modules, "runtime node_modules must be canonical")
@@ -69,8 +92,15 @@ def package_identity(source, name):
         for child in files:
             path=Path(base)/child;before=regular(path,MAX_PACKAGE);total+=before.st_size
             require(total<=MAX_PACKAGE and len(rows)<2000,'external package exceeds comparison bound')
-            digest=digest_file(path);require(identity(path.stat())==identity(before),'external package changed while hashing')
-            rows.append({'path':path.relative_to(target).as_posix(),'size':before.st_size,'sha256':digest})
+            relative=path.relative_to(target).as_posix();size=before.st_size
+            if producer_source is not None and name=='sharp' and value['version']=='0.35.5' and relative=='node_modules/.bin/semver':
+                require(before.st_size<=16384,'oversized generated installer shim')
+                compared=rebase_installer_shim(path.read_bytes(),source,producer_source)
+                digest=hashlib.sha256(compared).hexdigest();size=len(compared)
+            else:
+                digest=digest_file(path)
+            require(identity(path.stat())==identity(before),'external package changed while hashing')
+            rows.append({'path':relative,'size':size,'sha256':digest})
     tree=hashlib.sha256(canonical(sorted(rows,key=lambda r:r['path']))).hexdigest()
     return {"package": name, "version": value["version"], "packageJsonSha256": hashlib.sha256(data).hexdigest(),"packageTreeSha256":tree}, target
 
@@ -220,7 +250,7 @@ def read_manifest(path):
     require(data==canonical(m),'noncanonical/duplicate manifest JSON')
     return validate_manifest(m)
 
-def unpack(archive, manifest_path, destination, runtime_source):
+def unpack(archive, manifest_path, destination, runtime_source, producer_source=None):
     archive, manifest_path, destination, runtime_source=map(lambda p:Path(p).absolute(),[archive,manifest_path,destination,runtime_source])
     m=read_manifest(manifest_path);st=regular(archive,MAX_ARCHIVE)
     require(st.st_size==m['archiveBytes'] and digest_file(archive)==m['archiveSha256'],'archive bytes differ')
@@ -228,8 +258,8 @@ def unpack(archive, manifest_path, destination, runtime_source):
     require(runtime_source.resolve()==runtime_source and runtime_source.is_dir(),'canonical runtime source required')
     targets={}
     for alias in m['aliases']:
-        actual,target=package_identity(runtime_source,alias['package'])
-        require(actual=={k:alias[k] for k in actual},'installed external package differs')
+        actual,target=(package_identity(runtime_source,alias['package']) if producer_source is None else package_identity(runtime_source,alias['package'],producer_source=producer_source))
+        require(actual=={k:alias[k] for k in actual},'installed external package differs: '+alias['package']+' actual='+json.dumps(actual,sort_keys=True))
         targets[alias['path']]=target
     owned=OwnedOutput(destination)  # Existing/symlink destinations refuse before any cleanup.
     try:
@@ -264,7 +294,7 @@ def unpack(archive, manifest_path, destination, runtime_source):
         require(seen==set(expected),'missing build files')
         require((destination/'BUILD_ID').read_text().strip()==m['nextBuildId'],'installed build ID differs')
         for alias in m['aliases']:
-            actual,target=package_identity(runtime_source,alias['package'])
+            actual,target=(package_identity(runtime_source,alias['package']) if producer_source is None else package_identity(runtime_source,alias['package'],producer_source=producer_source))
             require(actual=={k:alias[k] for k in actual} and target==targets[alias['path']],'external package changed during extraction')
             (destination/alias['path']).symlink_to(target,target_is_directory=True)
         owned.assert_owned()
@@ -278,7 +308,7 @@ def unpack(archive, manifest_path, destination, runtime_source):
 if __name__=='__main__':
     try:
         mode,*args=sys.argv[1:]
-        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE')
+        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE')
         result=pack(*args) if mode=='pack' else unpack(*args)
         print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:

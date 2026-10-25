@@ -95,6 +95,8 @@ jobs:
         run: |
           node --test .github/ci/build-production.test.mjs .github/ci/build-transport.test.mjs
           python3 .github/ci/build-transport-extract.test.py
+          python3 .github/ci/build-shim-paths.test.py
+          python3 .github/ci/build-bundle.test.py
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
