@@ -196,9 +196,14 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   requireValue(testing.testingNextBuildId(source)===p.nextBuildId,'installed BUILD_ID');
   const config=JSON.parse(readFileSync(join(source,'.next/required-server-files.json')));
   for(const [key,value]of Object.entries(testing.systemTestingCompileEnvironment(prepared)))requireValue(config.config?.env?.[key]===value,'compiled System Testing identity differs');
+  const phaseEvidence=(kind,result)=>({format:1,kind,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:Number(env.GITHUB_RUN_ID),producerRunId:run.id,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,result,releaseAuthorized:false,sourceCleanVerified:false});
   const nativeStart=Date.now(),native=await nativeRuntime(source,manifest,output);phases.nativeMs=Date.now()-nativeStart;
+  writeFileSync(join(output,'native-runtime.json'),JSON.stringify(phaseEvidence('completed-native-runtime-assertions-not-release',native),null,2)+'\n',{flag:'wx',mode:0o600});
   const server=await runtimeServer(source,manifest,output);cleanup.ownedNextStopped=true;
-  requireValue(!git(source,['status','--porcelain'])&&!git(controller,['status','--porcelain']),'tracked source changed during consumer');
+  writeFileSync(join(output,'server-runtime.json'),JSON.stringify(phaseEvidence('completed-next-runtime-assertions-not-release',server),null,2)+'\n',{flag:'wx',mode:0o600});
+  const sourceStatus={source:git(source,['status','--porcelain','--untracked-files=all']),controller:git(controller,['status','--porcelain','--untracked-files=all'])};
+  writeFileSync(join(output,'source-status.json'),JSON.stringify(sourceStatus)+'\n',{flag:'wx',mode:0o600});
+  requireValue(!sourceStatus.source&&!sourceStatus.controller,'source/controller cleanliness changed during consumer');
   const result={format:1,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
   writeFileSync(join(output,'transport.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
   // Keep only small audit/runtime evidence; the authenticated producer artifact retains build bytes.

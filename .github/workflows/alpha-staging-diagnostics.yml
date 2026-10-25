@@ -71,6 +71,7 @@ concurrency:
   group: alpha-diagnostic-${{ inputs.candidate_ref }}
   cancel-in-progress: false
 env:
+  PYTHONDONTWRITEBYTECODE: '1'
   TZ: Asia/Kuala_Lumpur
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -97,6 +98,7 @@ jobs:
           python3 .github/ci/build-transport-extract.test.py
           python3 .github/ci/build-shim-paths.test.py
           python3 .github/ci/build-bundle.test.py
+          python3 .github/ci/build-helper-cleanliness.test.py
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
