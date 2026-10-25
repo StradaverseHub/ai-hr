@@ -1210,3 +1210,52 @@ release verification cannot represent this authorized evidence composition, use 
 exception validation path that verifies the real evidence and its scope. Do not silently bypass the
 operator's integrity checks. The exception does not authorize weakened permissions, financial or
 privacy rules, fake clocks, omitted outcomes or GitHub Actions in this session.
+
+
+### Initial complete module-to-agent coverage inventory
+
+Static source inventory at H `3c51317ea43ded103e782c37b55eccf9fdeae05c` identifies **20**
+`MODULE_CATALOG` entries. The table is an implementation work list, not proof of live agents or safe
+exportable tools. Listed files locate existing source owners; every concrete operation still needs
+its public boundary, permission/field projection, typed schema and evaluation reviewed before exposure.
+All full module-agent/improvement integrations below remain **planned**. Existing Assistant read
+tools and own-leave source drafts do not make a row complete. Reconcile this list against the actual
+released baseline and new catalogue entries during implementation.
+
+| Module / required logical agent | Existing owner entrypoints to audit for engine adapters | Status |
+| --- | --- | --- |
+| `employees` — Employees | `core/read.ts`, `core/org.ts` | Planned; adapter/security/improvement proof required |
+| `org` — Organization | `core/org.ts` | Planned; adapter/security/improvement proof required |
+| `leave` — Leave | `packs/leave/service.ts` | Planned; adapter/security/improvement proof required |
+| `ess` — Employee Self-Service | `core/employee-home.ts`, `core/employee-home-summary.ts` | Planned; adapter/security/improvement proof required |
+| `approvals` — Approvals | `core/approvals.ts`, `core/approvals-inbox.ts` | Planned; adapter/security/improvement proof required |
+| `knowledge_base` — Knowledge Base | `core/knowledge-base.ts` | Planned; adapter/security/improvement proof required |
+| `payroll` — Payroll | `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `attendance` — Attendance | `packs/attendance/service.ts` | Planned; adapter/security/improvement proof required |
+| `claims` — Claims | `packs/claims/service.ts` | Planned; adapter/security/improvement proof required |
+| `performance` — Performance | `packs/performance/service.ts` | Planned; adapter/security/improvement proof required |
+| `rewards` — Rewards | `packs/rewards/service.ts` | Planned; adapter/security/improvement proof required |
+| `lifecycle` — Onboarding, Offboarding & IT Assets | `packs/lifecycle/service.ts` | Planned; adapter/security/improvement proof required |
+| `toil` — Time Off In Lieu | `core/toil.ts`, `packs/leave/service.ts` | Planned; adapter/security/improvement proof required |
+| `multi_cycle_payroll` — Multi-Cycle Payroll | `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `typed_pay_components` — Typed Pay Components | `core/pay-components.ts`, `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `country-my` — Malaysia | `localization/registry.ts` | Planned; adapter/security/improvement proof required |
+| `notifications` — Notifications | `core/notifications.ts`, `core/notification-email.ts` | Planned; adapter/security/improvement proof required |
+| `system_explorer` — System Analysis & Dependency Explorer | `core/schema-explorer.ts` | Planned; adapter/security/improvement proof required |
+| `assistant` — AI Assistant | `core/assistant.ts`, `core/assistant-tools.ts` | Planned; adapter/security/improvement proof required |
+| `system_testing` — System Testing | `core/system-testing.ts`, `core/system-testing-library.ts` | Planned; adapter/security/improvement proof required |
+
+Submodules (`toil`, `multi_cycle_payroll`, `typed_pay_components`) are explicit entries even when
+reusing a parent engine; their entitlement and evaluation coverage remain distinct. The jurisdiction
+entry must call registered country-pack capabilities, never synthesize statutory policy. Employee
+Self-Service and Assistant coordinate existing owners rather than duplicate HR facts. Approvals,
+Notifications and System Testing agents must not approve themselves, send unauthorized messages or
+mark unrun checks passed. Schema Explorer access remains guarded product-reference access.
+
+Cross-cutting Import and orchestration capabilities are additional work streams, not invented new
+catalogue entries. Import adapters must map each actual domain preview/validation/commit owner
+(e.g. personnel, payroll history/transactions, leave and attendance imports) before selecting the
+production pilot. Pack/feature capabilities outside this catalogue, such as Job Descriptions, need
+an explicit module/engine relationship and agent coverage as well; catalogue counting alone cannot
+silently exclude a system feature. This inventory has not yet audited all exported functions, engine
+transitive dependencies or fine-grained data scopes and does not authorize generic service exports.
