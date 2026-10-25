@@ -1130,3 +1130,66 @@ expand through the complete module matrix. The final scope is system-wide; stage
 sequence, not that requirement. A module agent is done only after its real engine integration, UI
 journey, denied-access/prompt-injection tests, audited effects where allowed, measured improvement
 loop and rollback are demonstrated. An empty registry entry or chatbot persona is not completion.
+
+
+### Owner requirements: low communication/token cost and responsive interaction
+
+**Decision (2026-10-26 KL):** Token use, communication cost and response latency are core acceptance
+criteria for every module agent, the Assistant, orchestrator and self-improving harness. Optimize
+cost per successfully completed, authorized task together with quality and responsiveness. Do not
+claim savings or response-time compliance before measuring a representative baseline and candidate.
+
+One logical agent per module does not require an LLM call per module or per handoff. Use deterministic
+intent routing and canonical engine queries for supported structured tasks; invoke a model only where
+interpretation, planning or explanation adds value. Avoid repeated model restatement/reasoning at each
+hop. Engine-to-agent structured results and internal service calls do not inherently need model tokens.
+Use compact typed messages, source references and versioned shared run state rather than forwarding
+whole transcripts, catalogs, schemas, imports or employee records between agents. Load only the
+relevant authorized tool definitions and minimal fields/rows, with bounded pagination/result sizes.
+
+Read bounded previews/summaries from canonical sources; do not send entire import files for a small
+mapping question. Preserve exact dates, identity, units, warnings, permissions and receipt references
+when compressing context. Summaries are derived context, not new HR facts or permission evidence.
+Coalesce identical authorized in-flight reads and cache only when subject/tenant/scope/source version,
+retention and revocation are correctly bound. Never reuse another user's sensitive response simply
+to save tokens. Provider prompt/result caching must meet the selected privacy policy; cache eligibility
+and actual billable discounts require provider-specific verification. No blanket cache or savings claim.
+
+Route suitable tasks to evaluated smaller/less expensive models and escalate only on defined quality
+or capability criteria. Escalation/fallback must retain tool support, privacy and authorization policy.
+Set per-task and per-tenant limits across ALL steps, retries, agents and improvement evaluations:
+input/output/context tokens, provider requests, tool calls, concurrency, elapsed time and spend. Stop
+with an honest partial/uncertain state when exhausted; never drop an access check or silently truncate
+a required validation to meet a budget. Bound retries and avoid duplicate provider/tool work after a
+transport error; effect reconciliation remains canonical and does not require another model request.
+
+For latency, define task classes: direct authorized lookup, conversational explanation, proposed action,
+and long-running import/orchestration. The first two take the shortest eligible path; do not launch
+multi-agent planning for a simple balance question. Provide an immediate honest acknowledgement for
+longer work, stream useful permitted answer content when safe, and show actual stage progress for
+background jobs. A spinner/acknowledgement is not a completed answer. Do not stream unvalidated,
+unauthorized or speculative sensitive content. Separate first acknowledgement, first useful result,
+final answer, confirmation and committed business effect in telemetry and user claims.
+
+Bound provider/tool deadlines, queue time, overall interactive time and background-job duration.
+Parallelize only independent authorized reads; preserve transaction/ordering and confirmation rules
+for effects. Use bounded queues/backpressure instead of unlimited agents competing for resources.
+The user can cancel or leave/reopen a long job and inspect its canonical progress/receipt; reconnecting
+must not restart paid work or repeat business writes. Timeouts disclose what completed, failed or is
+still being reconciled. Provider failure must produce a prompt actionable result, not an indefinite
+wait or a fabricated success. Degrade to available canonical UI/engine results when appropriate.
+
+Instrument p50/p95 latency and cold/warm behavior for the actual end-to-end task, including permission
+checks, retrieval, queueing, provider/tool time and retries. Record input/output and cached/reasoning
+usage only where actually reported, request counts, payload sizes, cost and successful completion.
+Distinguish measured usage from estimates and reconcile billing where supported. Agree numerical
+latency/cost budgets by task class using real baseline and production-import targets, not one arbitrary
+SLA for every workload. Alerts, hard budgets, regression gates, run inspection and tenant pause
+controls must make overruns visible and controllable.
+
+Every self-improvement candidate must report quality/security, human corrections, cost and latency
+against comparable baseline cases. Reject optimizations that save tokens/time by weakening scope,
+privacy, factual accuracy, financial rules, required review or evaluation coverage. Test cancellation,
+timeouts, rate limits, unavailable models, cold caches and large imports as well as the happy path.
+The acceptance matrix for each module includes these cost/responsiveness outcomes alongside its
+engine integration, access controls and improvement/rollback proof.
