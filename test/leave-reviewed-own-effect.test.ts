@@ -107,6 +107,31 @@ describe('reviewed own-leave precondition at the canonical write', () => {
       tx, employeeCtx, result.leaveRequestId, result.leaveRequestId))).toBeNull();
   });
 
+  it('refuses another person\'s real submission even when the HR caller can read that request', async () => {
+    const other = await hireEmployee(adminCtx(base), {
+      person: { fullName: 'Fictional Other Reference Subject', primaryEmail: 'other-reference@acme.test' },
+      companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: args.startDate,
+    });
+    const otherUserId = await createAppUser(base.tenantId, other.personId, 'employee');
+    const otherCtx: SessionContext = { ...ctx, userId: otherUserId, personId: other.personId,
+      roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    await owner.db.insert(leaveLedger).values({ tenantId: base.tenantId, employmentId: other.employmentId,
+      leaveTypeId: base.annualLeaveTypeId, entryType: 'accrual', days: '10.00', effectiveOn: args.startDate });
+    const result = await withTenant(otherCtx, tx => requestLeave(otherCtx,
+      { ...args, employmentId: other.employmentId }, tx, { ...reviewed, employmentId: other.employmentId }));
+    await withTenant(ctx, async tx => {
+      // Prove that an empty projection below is the own-submission boundary, rather than a fixture
+      // whose HR caller cannot see the canonical request at all.
+      expect(await tx.select({ id: leaveRequest.id }).from(leaveRequest)
+        .where(eq(leaveRequest.id, result.leaveRequestId))).toEqual([{ id: result.leaveRequestId }]);
+      expect(await readOwnLeaveSubmissionReferenceTx(tx, ctx, result.leaveRequestId,
+        result.submittedEventId!)).toBeNull();
+    });
+    const own = await withTenant(ctx, tx => requestLeave(ctx, args, tx, reviewed));
+    expect(await withTenant(ctx, tx => readOwnLeaveSubmissionReferenceTx(tx, ctx,
+      own.leaveRequestId, result.submittedEventId!))).toBeNull();
+  });
+
   it('keeps the request and returned event inside the enclosing rollback boundary', async () => {
     let requestId = '', submittedEventId = '';
     const rollback = new Error('fictional enclosing command refused');

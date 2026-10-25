@@ -812,7 +812,9 @@ additionally narrows to the caller's own person and original human event actor, 
 admin. It selects only request identity/company references and submitted-event identity/actor/subject
 references; it never materializes reason, balance, status, approvers or event payload. An authored DB
 regression uses a real employee submission and fresh read, refuses another real login for the same
-person even with an HR role, and refuses a mismatched event reference.
+person even with an HR role, and refuses a mismatched event reference. A second authored case creates
+another person's real submission, proves that the HR caller can read its canonical request, and
+requires the own-submission projection to refuse it and a cross-linked real event reference.
 
 This is **UNRUN** source preparation. Syntax parsing and diff checks are not database/RLS proof.
 The helper neither establishes fresh Assistant authority nor reads completed action storage; a
