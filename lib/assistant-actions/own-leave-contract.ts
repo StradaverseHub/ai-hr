@@ -77,3 +77,24 @@ export type OwnLeaveClientOutcome =
   | { status: 'submission_recorded'; actionId: string; leaveRequestId: string }
   | { status: 'discarded'; actionId: string }
   | { status: 'refused'; actionId: string; code: OwnLeaveRefusalCode };
+
+/** Evidence shape only: completeness thresholds stay with the canonical holiday owner. */
+export const OwnLeaveReviewWarning = z.object({
+  country: z.string().min(1), state: z.string().min(1).nullable(),
+  year: z.number().int().min(0).max(9999), loaded: z.number().int().nonnegative(),
+  required: z.number().int().positive(),
+}).strict().refine(value => value.loaded < value.required);
+
+/** The sole public card shape. It deliberately excludes private balances, key custody, model output
+ * and login/person/tenant bindings. Confirmation still posts only ID/version/reviewed digest. */
+export const OwnLeavePreparedReview = z.object({
+  actionId: z.string().uuid(), contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
+  reviewedDigest: OwnLeaveDigest, createdAt: z.string().datetime(), expiresAt: z.string().datetime(),
+  companyName: z.string().min(1), employeeCode: z.string().nullable(), leaveTypeName: z.string().min(1),
+  date: calendarDate, durationType: z.literal('full_day'), deductionDays: z.number().finite().positive(),
+  availableBalance: z.number().finite().nullable(), estimatedAvailableAfter: z.number().finite().nullable(),
+  holidayWarnings: z.array(OwnLeaveReviewWarning).max(1), approvalRouting: z.literal('unknown'),
+  humanText: OwnLeaveHumanText,
+}).strict().refine(value => (value.availableBalance === null) === (value.estimatedAvailableAfter === null))
+  .refine(value => Date.parse(value.expiresAt) > Date.parse(value.createdAt));
+export type OwnLeavePreparedReview = z.infer<typeof OwnLeavePreparedReview>;

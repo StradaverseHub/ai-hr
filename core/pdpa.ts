@@ -67,9 +67,17 @@ export async function erasePersonPii(
       .limit(1);
     if (!emp) throw new Error(`No employment ${p.subjectEmploymentId} for PII erasure`);
 
+    // Source-only pending Assistant reviews use separate action keys, not the statutory PII vault.
+    // This custody owner joins the existing admitted person erasure in THIS transaction and requires
+    // the canonical pii.erased audit at commit. No new employee access to pii_key is granted.
+    const [reviews] = await tx.execute<{ cleared: number }>(sql`select app.assistant_own_leave_reviews_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if (!reviews || !Number.isSafeInteger(reviews.cleared) || reviews.cleared < 0)
+      throw new Error('Assistant review erasure unavailable.');
+
     // (2) retention guard
     const lifted = retentionLifted(emp.terminatedOn, erasureAt);
     const erased: string[] = [];
+    if (reviews.cleared > 0) erased.push('assistantPreparedReviews');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;

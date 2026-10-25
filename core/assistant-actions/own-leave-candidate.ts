@@ -19,7 +19,9 @@ import { readOwnLeaveActorTx } from './own-leave-actor';
 
 export type { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 export type OwnLeaveCandidateResult =
-  | { kind: 'candidate'; candidate: OwnLeaveReviewCandidate }
+  | { kind: 'candidate'; candidate: OwnLeaveReviewCandidate;
+      /** Server-only freshness expectation. NEVER serialize the entire result to a client or model. */
+      privateAvailableBalance: number }
   | { kind: 'unavailable' }
   | { kind: 'needs_selection' }
   | { kind: 'needs_employee_remark' }
@@ -99,5 +101,7 @@ export async function readOwnLeaveCandidateTx(
     holidayWarnings: preview.holidayWarnings,
     approvalRouting: 'unknown',
   });
-  return candidate.success ? { kind: 'candidate', candidate: candidate.data } : { kind: 'unavailable' };
+  return candidate.success
+    ? { kind: 'candidate', candidate: candidate.data, privateAvailableBalance: preview.availableBalance }
+    : { kind: 'unavailable' };
 }
