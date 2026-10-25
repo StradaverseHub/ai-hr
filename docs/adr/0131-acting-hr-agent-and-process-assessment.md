@@ -1341,3 +1341,40 @@ and cover configuration/authority/roster/calendar/late approval dependencies. Fi
 resolution also is not a lexical binding proof. No database or concurrency check ran; this
 reassessment establishes neither a complete writer graph nor a universal lock guarantee.
 Confirmation stays unexposed.
+
+
+### Dependency barrier design: protect reads as well as final writes
+
+FACT — PostgreSQL 16 [row-lock documentation](https://www.postgresql.org/docs/16/explicit-locking.html)
+distinguishes `FOR UPDATE` from `FOR NO KEY UPDATE` and describes their different conflicts with
+key-share locks. Its [referential-integrity implementation](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/backend/utils/adt/ri_triggers.c)
+checks referenced keys with a key-share query. The schema gives leave requests, ledger entries and
+request dates employment foreign keys. These facts suggest a parent-row insertion fence, but do
+not establish a complete business dependency interval.
+
+REJECTED SHORTCUT — locking only the employment parent is insufficient. A legacy request may read
+availability before it blocks at its later foreign-key check, then resume with stale validation.
+Existing request/status/date/ledger updates need not recheck an unchanged employment key. National
+holidays also have no non-null employment/company parent that would universally fence new dates.
+This is an inference from source/control flow, not a demonstrated database interleaving. Adding a
+privileged parent lock would also require separate employee-RLS and lock-order proof; it cannot be
+used as an Assistant-only replacement for writer participation.
+
+PROPOSED IMPLEMENTATION ORDER — a domain configuration barrier shared by ordinary leave commands
+and exclusive for dependency/configuration edits, followed by ordered exclusive employment barriers
+for balance/reservation changes. Take these before protected reads, including borrower mapping and
+late approval resolution. Keep them through the canonical event and receipt commit. The existing
+Access barrier must have a consistent order relative to these locks across every participant; audit
+transitive calls before selecting that order. A candidate acquired-lock token is not authorization.
+This design is not yet selected as a proven implementation or wired to an effect.
+
+For B/F and history import, the present commit analysis reads outside the individual row write
+transactions. A row-level lock inserted just before `insert` would still leave stale resolved source
+fields. Integrate the barrier and fresh row resolution inside EACH accepted row transaction, retaining
+independent row failure and summary transactions. Do not wrap the whole file in one write transaction.
+
+Before enabling confirmation, prove controlled two-connection interleavings against ordinary submit,
+borrower submit, cancel/edit/approval, negative adjustment and B/F/history import; source mapping,
+calendar/roster and authority changes; rollback/timeout/deadlock and retry-without-duplicate effects.
+Check meaningful current app-role behavior and actual lock waits, not elapsed sleeps or model ratings.
+No DB run, new lock, migration reservation or effect exposure is claimed by this design note.
