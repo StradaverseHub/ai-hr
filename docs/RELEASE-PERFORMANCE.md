@@ -6,6 +6,14 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
+## First focused standard-runner result — 26 October MYT
+
+[Run 40222366600](https://github.com/StradaverseHub/ai-hr/actions/runs/40222366600) succeeded on exact `a794ac29e`: repaired attendance split 4 files/100 cases with zero failures/pending/todo, plus whole-repository TypeScript. Actual GitHub run/job/attempt/artifact metadata and ZIP digest were checked, followed by independent strict assertion/resource validation. Submission through final job completion was **544 seconds (9m04s)**, with **937 occupied runner-seconds (15.62 runner-minutes)**. This is focused development evidence, with no full release gate, build or deployment. It does not achieve the ten-minute goal.
+
+The compiler took 315.28 seconds, used 6,959,464 KiB peak RSS and recorded 281,254 major page faults on the standard runner. Its complete job occupied 413 seconds. The selected database job occupied 511 seconds, including 133 seconds of shared toolchain setup and 340 seconds in its execution step. Actual PostgreSQL peak was 1,184,804,864 bytes under a 2 GiB cap, with no OOMs and JIT on. Profiling retained all100 resets: 56.9 inclusive seconds; 102 seeds totalled 3.84 seconds. These overlapping phase totals are not end-to-end time. The unclocked32-case file interval was 300.8 seconds; the other files were93.1,108.5 and96.0seconds. No causal comparison to another VM is claimed.
+
+Next is a bounded same-runner split/monolith comparison with exact repaired test-source preservation, identical runtime/database budgets and fresh containers. It retains both complete100-case results, records experimental monolith source composition and execution order, and cannot issue a release receipt. This measures a concrete optimization before another full matrix. The build-once authenticated-promotion path and complete release validation remain unfinished.
+
 ## Root cloud execution authorization — 26 October MYT
 
 The owner explicitly said in this chat, “You can continue your goal in github action”. This supersedes the older cloud-experiment hold for this chat's performance work, using included standard runners only. AI dev 2's latest direct “no you remain local” keeps its H release local; no H cloud run is dispatched. Root keeps its Mac resource handback and coordinates H before Mobile. Main/live deployment remains disabled.
