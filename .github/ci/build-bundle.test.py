@@ -10,6 +10,7 @@ import shutil
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 import sys
 sys.dont_write_bytecode=True
 
@@ -162,6 +163,59 @@ class BundleTests(unittest.TestCase):
         mutations=[lambda d:d.update(extra='untrusted'),lambda d:d.update(format=True),lambda d:d.update(archiveBytes=bundle.MAX_ARCHIVE+1),lambda d:d.update(unpackedBytes=bundle.MAX_UNPACKED+1),lambda d:d['files'][0].update(path='../escape'),lambda d:d['files'][0].update(mode=True),lambda d:d['files'].append(d['files'][0]),lambda d:d['aliases'][0].update(package='arbitrary'),lambda d:d['directories'].append('cache')]
         for mutate in mutations:
             value=json.loads(json.dumps(m));mutate(value);self.save(value,manifest);self.refuses_extract(archive,manifest)
+
+    def test_pack_failure_preserves_replacement_output_and_original_error(self):
+        original=bundle.scan; calls=0; moved=self.root/'owned-pack-moved'
+        def replace_during_rescan(source):
+            nonlocal calls
+            calls+=1
+            if calls==2:
+                self.output.rename(moved);self.output.mkdir();(self.output/'foreign').write_text('preserve')
+                raise ValueError('original pack failure')
+            return original(source)
+        with mock.patch.object(bundle,'scan',side_effect=replace_during_rescan):
+            with self.assertRaisesRegex(ValueError,'original pack failure'):
+                bundle.pack(self.source,self.output)
+        self.assertEqual((self.output/'foreign').read_text(),'preserve')
+        self.assertTrue((moved/'build-bundle.tar.gz').exists())
+
+    def test_unpack_failure_preserves_replacement_destination_and_original_error(self):
+        m,archive,manifest=self.packed();original=bundle.package_identity;calls=0;moved=self.root/'owned-unpack-moved'
+        def replace_at_final_package_check(source,name):
+            nonlocal calls
+            calls+=1
+            if calls==3:
+                self.destination.rename(moved);self.destination.mkdir();(self.destination/'foreign').write_text('preserve')
+                raise ValueError('original unpack failure')
+            return original(source,name)
+        with mock.patch.object(bundle,'package_identity',side_effect=replace_at_final_package_check):
+            with self.assertRaisesRegex(ValueError,'original unpack failure'):
+                bundle.unpack(archive,manifest,self.destination,self.target)
+        self.assertEqual((self.destination/'foreign').read_text(),'preserve')
+        self.assertTrue((moved/'BUILD_ID').exists())
+
+    def test_pack_cleanup_refuses_replaced_parent_and_preserves_both_trees(self):
+        parent=self.root/'selected-parent';parent.mkdir(mode=0o700);self.output=parent/'bundle'
+        moved=self.root/'moved-parent';original=bundle.scan;calls=0
+        def replace_parent_during_rescan(source):
+            nonlocal calls
+            calls+=1
+            if calls==2:
+                parent.rename(moved);parent.mkdir(mode=0o700);self.output.mkdir();(self.output/'foreign').write_text('preserve')
+                raise ValueError('original parent failure')
+            return original(source)
+        with mock.patch.object(bundle,'scan',side_effect=replace_parent_during_rescan):
+            with self.assertRaisesRegex(ValueError,'original parent failure') as failure:
+                bundle.pack(self.source,self.output)
+        self.assertIn('output parent replaced',' '.join(failure.exception.__notes__))
+        self.assertEqual((self.output/'foreign').read_text(),'preserve')
+        self.assertTrue((moved/'bundle/build-bundle.tar.gz').exists())
+
+    def test_pack_refuses_shared_output_parent_before_creating_output(self):
+        shared=self.root/'shared';shared.mkdir(mode=0o755)
+        with self.assertRaisesRegex(ValueError,'private canonical output parent'):
+            bundle.pack(self.source,shared/'output')
+        self.assertFalse((shared/'output').exists())
 
     def test_noncanonical_duplicate_json_keys_refuse(self):
         m,archive,manifest=self.packed();data=manifest.read_bytes();manifest.write_bytes(b'{"format":1,'+data[1:])

@@ -112,11 +112,51 @@ class HashReader:
         data = self.stream.read(size); self.hash.update(data); self.count += len(data)
         return data
 
+class OwnedOutput:
+    """Pin a new directory and its private parent; refuse observed replacements."""
+    def __init__(self, path):
+        self.path=path
+        require(path.parent.resolve()==path.parent, 'private canonical output parent required')
+        self.parent_fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:
+            parent=os.fstat(self.parent_fd)
+            require(parent.st_uid==os.getuid() and stat.S_IMODE(parent.st_mode)&0o077==0,
+                    'private canonical output parent required')
+            require(shutil.rmtree.avoids_symlink_attacks,'descriptor-relative cleanup unavailable')
+            os.mkdir(path.name,mode=0o700,dir_fd=self.parent_fd)
+            self.created=os.stat(path.name,dir_fd=self.parent_fd,follow_symlinks=False)
+            require(stat.S_ISDIR(self.created.st_mode),'new output is not a directory')
+        except BaseException:
+            os.close(self.parent_fd)
+            raise
+
+    def assert_owned(self):
+        parent=os.stat(self.path.parent,follow_symlinks=False)
+        pinned=os.fstat(self.parent_fd)
+        require(stat.S_ISDIR(parent.st_mode) and (parent.st_dev,parent.st_ino)==(pinned.st_dev,pinned.st_ino)
+                and parent.st_uid==os.getuid() and stat.S_IMODE(parent.st_mode)&0o077==0,
+                'output parent replaced or no longer private')
+        current=os.stat(self.path.name,dir_fd=self.parent_fd,follow_symlinks=False)
+        require(stat.S_ISDIR(current.st_mode) and (current.st_dev,current.st_ino)==(self.created.st_dev,self.created.st_ino),
+                'owned output directory replaced')
+
+    def cleanup_after_failure(self, original):
+        try:
+            self.assert_owned()
+            shutil.rmtree(self.path.name,dir_fd=self.parent_fd)
+        except (OSError,ValueError) as cleanup_error:
+            # Preserve the original failure. A moved/replaced output requires inspection,
+            # not recursive deletion of whatever now occupies its old pathname.
+            original.add_note('Owned output cleanup refused: '+str(cleanup_error))
+
+    def close(self):
+        os.close(self.parent_fd)
+
 def pack(source, output):
     source, output = Path(source).absolute(), Path(output).absolute()
     require(output.parent.resolve() == output.parent and not output.is_relative_to(source / ".next"), "unsafe bundle output directory")
     files, dirs, aliases = scan(source)
-    output.mkdir(mode=0o700)  # Never overwrite or merge output from another attempt.
+    owned=OwnedOutput(output)  # Never overwrite or merge output from another attempt.
     archive = output / "build-bundle.tar.gz"; rows = []
     try:
         with archive.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=6, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT, encoding="utf-8") as tar:
@@ -139,10 +179,13 @@ def pack(source, output):
         validate_manifest(manifest)
         data = canonical(manifest); require(len(data) <= MAX_MANIFEST, "manifest exceeds bound")
         with (output / "build-bundle-files.json").open("xb") as stream:stream.write(data)
+        owned.assert_owned()
         return manifest
-    except BaseException:
-        shutil.rmtree(output)
+    except BaseException as error:
+        owned.cleanup_after_failure(error)
         raise
+    finally:
+        owned.close()
 
 def validate_manifest(m):
     require(isinstance(m, dict) and set(m) == {"format", "kind", "platform", "nextBuildId", "files", "directories", "aliases", "unpackedBytes", "archiveBytes", "archiveSha256"}, "manifest shape differs")
@@ -188,7 +231,7 @@ def unpack(archive, manifest_path, destination, runtime_source):
         actual,target=package_identity(runtime_source,alias['package'])
         require(actual=={k:alias[k] for k in actual},'installed external package differs')
         targets[alias['path']]=target
-    destination.mkdir(mode=0o700)  # Existing/symlink destinations refuse before any cleanup.
+    owned=OwnedOutput(destination)  # Existing/symlink destinations refuse before any cleanup.
     try:
         for directory in m['directories']:(destination/directory).mkdir(mode=0o755)
         expected={r['path']:r for r in m['files']};seen=set()
@@ -224,10 +267,13 @@ def unpack(archive, manifest_path, destination, runtime_source):
             actual,target=package_identity(runtime_source,alias['package'])
             require(actual=={k:alias[k] for k in actual} and target==targets[alias['path']],'external package changed during extraction')
             (destination/alias['path']).symlink_to(target,target_is_directory=True)
+        owned.assert_owned()
         return m
-    except BaseException:
-        shutil.rmtree(destination)
+    except BaseException as error:
+        owned.cleanup_after_failure(error)
         raise
+    finally:
+        owned.close()
 
 if __name__=='__main__':
     try:
