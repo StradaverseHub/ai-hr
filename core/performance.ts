@@ -231,11 +231,10 @@ const isAdminOrPerfCompCtx = (ctx: SessionContext) =>
  */
 const canAdminOnehrCtx = (ctx: SessionContext, companyId: string | null) => {
   if (canAdminPerfCtx(ctx, companyId)) return true;
-  return (ctx.grants ?? []).some(
-    (g) =>
-      g.role === 'performance_partner' &&
-      (g.companyId == null || (companyId != null && g.companyId === companyId)),
-  );
+  // Company scope is the DB's: a partner granted on a parent company administers its subsidiaries
+  // (app.is_company_descendant), which an exact companyId match here would wrongly hide. Every caller
+  // has already required app.onehr_cycle_admin for the row; this only asks that the session holds the role.
+  return (ctx.grants ?? []).some((g) => g.role === 'performance_partner');
 };
 
 function assertRatingInScale(scale: RatingScale, value: number, label: string) {
@@ -1445,6 +1444,14 @@ export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCyc
         acknowledged: k?.acknowledged ?? 0,
       };
     });
+  });
+}
+
+/** ADR-0141 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
+export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<string>> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.execute<{ id: string }>(sql`select c.id from company c where app.onehr_admin(c.id)`);
+    return new Set(rows.map((r) => r.id));
   });
 }
 

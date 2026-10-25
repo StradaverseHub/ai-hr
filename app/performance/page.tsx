@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { canAdminOnehr, canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
+import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
 import { onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
-import { listCycles, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
+import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
@@ -48,7 +48,7 @@ export default async function PerformancePage({
   const [cycles, pending, companies, checkinData, onehr] = await Promise.all([
     (admin ? listCycles(s) : onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])) as Promise<(OnehrAdminCycleSummary & { pendingComp?: number })[]>,
     managerPendingReviews(s),
-    admin ? listCompanies(s) : onehrOnly ? listCompanies(s).then((rows) => rows.filter((c) => canAdminOnehr(s, c.id))) : Promise.resolve([]),
+    admin ? listCompanies(s) : onehrOnly ? Promise.all([listCompanies(s), listOnehrAdminCompanyIds(s)]).then(([rows, ids]) => rows.filter((c) => ids.has(c.id))) : Promise.resolve([]),
     managerCheckIns(s),
     onehrAssignments(s),
   ]);

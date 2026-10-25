@@ -212,7 +212,7 @@ describe('OneHR performance partner (ADR-0141)', () => {
     expect(await refusal(perf.openCycle(partner, { cycleId: genericDraftId }))).toMatch(/can open a review cycle|not found/i);
     expect(await refusal(perf.closeCycle(partner, { cycleId: onehrCycleId }))).toMatch(/can change a cycle status|not found/i);
     // Merit / pay recommendation actions on a generic review: invisible to the partner, never enacted.
-    const [generic] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.cycleId, genericCycleId));
+    const [generic] = await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId, genericCycleId), eq(schema.performanceReview.employmentId, subject.employmentId)));
     expect(generic, 'the generic cycle opened at least one review').toBeDefined();
     expect(await refusal(perf.enactCompAction(partner, { reviewId: generic.id }))).toMatch(/not found|not visible|Only an admin/i);
     expect(await refusal(perf.declineCompAction(partner, { reviewId: generic.id }))).toMatch(/not found|not visible|Only an admin/i);
@@ -328,5 +328,57 @@ describe('OneHR performance partner (ADR-0141)', () => {
       .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId)).where(inArray(schema.employment.id, ids));
     const byId = new Map(owned.map((o) => [o.id, o.name]));
     expect(hrView!.participants.every((p) => p.name === byId.get(p.employmentId))).toBe(true);
+  });
+  // ───────────────────────────── adversarial review VF-01…03 ─────────────────────────────
+  it('a partner who is also the subject\'s manager still cannot reassign: the actor decides, not RLS (VF-01)', async () => {
+    await setReportingLine(a, { subordinateEmploymentId: subject.employmentId, managerEmploymentId: partnerPerson.employmentId, lineType: 'administrative', validFrom: `${year - 1}-01-01` });
+    // Non-vacuous: on the manager path performance_review RLS lets this actor's UPDATE through, so a
+    // zero-row check alone would not refuse it. Undo the probe as the owner.
+    const probe = await withTenant(partner, (tx) =>
+      tx.update(schema.performanceReview).set({ reviewerEmploymentId: manager.employmentId }).where(eq(schema.performanceReview.id, reviewId)).returning({ id: schema.performanceReview.id }),
+    );
+    expect(probe.map((r) => r.id), 'the manager path admits the kernel UPDATE').toEqual([reviewId]);
+    const before = await revisionOf(reviewId);
+    expect(await refusal(perf.reassignOnehrReviewer(partner, reviewId, before, partnerPerson.employmentId))).toMatch(/Only an HR administrator can reassign the reviewer/);
+    const [row] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(row.reviewerEmploymentId).toBe(manager.employmentId);
+    expect(await revisionOf(reviewId)).toBe(before);
+  });
+
+  it('a parent-company partner administers subsidiary cycles; a group-wide partner every company; a child partner not the parent (VF-02)', async () => {
+    const { id: sub } = await createCompany(a, { legalName: 'Partner Subsidiary' });
+    await owner.db.update(schema.company).set({ parentCompanyId: b.companyId }).where(eq(schema.company.id, sub));
+    const subDept = await createDepartment(a, { companyId: sub, name: 'Sub-Dept' });
+    const subHire = await hire('Subsidiary person', sub, subDept.id);
+    const [grade] = await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId, b.tenantId), eq(schema.jobGrade.code, '12')));
+    await owner.db.update(schema.employment).set({ gradeId: grade.id }).where(eq(schema.employment.id, subHire.employmentId));
+    const subCycleId = await onehrCycle('Subsidiary OneHR cycle', sub);
+
+    expect((await perf.listOnehrAdminCycles(partner)).map((c) => c.id).sort()).toEqual([onehrCycleId, subCycleId].sort());
+    expect(await perf.isOnehrAdminCycle(partner, subCycleId)).toBe(true);
+    const ids = await perf.listOnehrAdminCompanyIds(partner);
+    expect(ids.has(sub) && ids.has(b.companyId)).toBe(true);
+    expect(ids.has(coB)).toBe(false);
+
+    const group = await partnerCtx(null, null);
+    expect((await perf.listOnehrAdminCycles(group)).map((c) => c.id).sort()).toEqual([onehrCycleId, otherCycleId, subCycleId].sort());
+
+    const child = await partnerCtx(sub, null);
+    expect((await perf.listOnehrAdminCycles(child)).map((c) => c.id)).toEqual([subCycleId]);
+    expect(await perf.isOnehrAdminCycle(child, onehrCycleId)).toBe(false);
+    expect((await perf.listOnehrAdminCompanyIds(child)).has(b.companyId)).toBe(false);
+  });
+
+  it('cannot open a configured draft OneHR cycle, and holds no payroll authority over its employees (VF-03)', async () => {
+    const { cycleId: draft } = await perf.createCycle(a, { name: 'Draft OneHR cycle', companyId: b.companyId, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` });
+    await perf.configureOnehrCycle(a, draft, null, defaultPolicy(framework));
+    expect(await refusal(perf.openCycle(partner, { cycleId: draft }))).not.toBe('');
+    const [cycle] = await owner.db.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, draft));
+    expect(cycle.status).toBe('draft');
+
+    const payroll = (ctx: SessionContext) =>
+      withTenant(ctx, (tx) => tx.execute<{ ok: boolean }>(sql`select app.can_admin_payroll_employment(${subject.employmentId}::uuid) as ok`));
+    expect((await payroll(a))[0].ok).toBe(true);
+    expect((await payroll(partner))[0].ok).toBe(false);
   });
 });
