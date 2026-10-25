@@ -22,7 +22,7 @@ export function validateSelectedCase(result,cwd){
   assert(Array.isArray(result.testResults)&&result.testResults.length===1,'Foreign or missing diagnostic file');
   const suite=result.testResults[0];assert.equal(suite.name,join(cwd,PROFILE_FILE));assert.equal(suite.status,'passed');
   assert.equal(suite.assertionResults.length,32);assert.deepEqual(suite.assertionResults.map(a=>a.fullName).sort(),registry.slice().sort(),'Registered cases changed');
-  let selected=0;for(const a of suite.assertionResults){if(a.fullName===PROFILE_CASE){selected++;assert.equal(a.status,'passed');}else assert.equal(a.status,'pending','Only deliberately unselected cases may be pending');}
+  let selected=0;for(const a of suite.assertionResults){if(a.fullName===PROFILE_CASE){selected++;assert.equal(a.status,'passed');}else assert.equal(a.status,'skipped','Only deliberately unselected cases may be skipped');}
   assert.equal(selected,1);return {registered:32,selectedPassed:1,deliberatelyUnselected:31,fullSuitePassed:false,releaseAuthorized:false};
 }
 const rowColumns=`userid::text,dbid::text,queryid::text,toplevel,calls,plans,total_exec_time,total_plan_time,mean_exec_time,

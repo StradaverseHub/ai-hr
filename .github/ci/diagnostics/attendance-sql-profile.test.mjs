@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {PROFILE_FILE,PROFILE_CASE,validateSelectedCase,validateStatistics,profile} from './attendance-sql-profile.mjs';
 const names=JSON.parse(readFileSync(new URL('./attendance-unclocked-cases.json',import.meta.url)));
-const selected=()=>({success:true,numTotalTests:32,numPassedTests:1,numFailedTests:0,numFailedTestSuites:0,numPendingTests:31,numTodoTests:0,testResults:[{name:join('/candidate',PROFILE_FILE),status:'passed',assertionResults:names.map(fullName=>({fullName,status:fullName===PROFILE_CASE?'passed':'pending'}))}]});
+const selected=()=>({success:true,numTotalTests:32,numPassedTests:1,numFailedTests:0,numFailedTestSuites:0,numPendingTests:31,numTodoTests:0,testResults:[{name:join('/candidate',PROFILE_FILE),status:'passed',assertionResults:names.map(fullName=>({fullName,status:fullName===PROFILE_CASE?'passed':'skipped'}))}]});
 test('one actual passing selection is distinct from31 deliberately unselected cases',()=>{
  assert.deepEqual(validateSelectedCase(selected(),'/candidate'),{registered:32,selectedPassed:1,deliberatelyUnselected:31,fullSuitePassed:false,releaseAuthorized:false});
  for(const edit of [r=>r.numPassedTests=32,r=>r.numPendingTests=0,r=>r.numFailedTests=1,r=>r.testResults[0].name='/foreign/file.ts',r=>r.testResults[0].assertionResults.pop(),r=>r.testResults[0].assertionResults.find(a=>a.fullName===PROFILE_CASE).status='pending',r=>r.testResults[0].assertionResults.find(a=>a.fullName!==PROFILE_CASE).status='passed']){const r=selected();edit(r);assert.throws(()=>validateSelectedCase(r,'/candidate'));}
@@ -32,4 +32,14 @@ test('PG statistics are default-off and require explicit manual diagnostic owner
 });
 test('profiler refuses non-runner invocation before any source or database access',async()=>{
  const previous=process.env.GITHUB_ACTIONS;try{process.env.GITHUB_ACTIONS='false';await assert.rejects(profile(),/Owned hosted diagnostic/);}finally{if(previous===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous;}
+});
+
+test('retained actual Vitest4.1.8 report uses skipped assertions with aggregate pending count',()=>{
+ const raw=readFileSync(new URL('./fixtures/attendance-selected-vitest-4.1.8.json',import.meta.url));
+ const report=JSON.parse(raw);
+ assert.equal(validateSelectedCase(report,'/home/runner/work/ai-hr/ai-hr/source').selectedPassed,1);
+ assert.equal(report.numPendingTests,31);
+ assert.equal(report.testResults[0].assertionResults.filter(a=>a.status==='skipped').length,31);
+ const missing=structuredClone(report);missing.testResults[0].assertionResults.find(a=>a.fullName===PROFILE_CASE).status='skipped';assert.throws(()=>validateSelectedCase(missing,'/home/runner/work/ai-hr/ai-hr/source'));
+ const wrong=structuredClone(report);wrong.testResults[0].assertionResults.find(a=>a.fullName!==PROFILE_CASE).status='pending';assert.throws(()=>validateSelectedCase(wrong,'/home/runner/work/ai-hr/ai-hr/source'));
 });
