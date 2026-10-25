@@ -41,6 +41,31 @@ on:
         required: false
         default: ""
         type: string
+      compiler_transport_probe:
+        description: Whole strict compiler state on two fresh VMs with real changed-dependency and new-root refusals
+        required: false
+        default: false
+        type: boolean
+      compiler_origin_run:
+        description: Consumer-only repair original run ID
+        required: false
+        default: ""
+        type: string
+      compiler_origin_sha:
+        description: Retained compiler producer source and controller
+        required: false
+        default: ""
+        type: string
+      compiler_origin_artifact:
+        description: Retained compiler-state artifact ID
+        required: false
+        default: ""
+        type: string
+      compiler_origin_digest:
+        description: Plain64hex digest of the retained compiler-state ZIP
+        required: false
+        default: ""
+        type: string
       compiler_probe:
         description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
         required: false
@@ -99,6 +124,9 @@ jobs:
           python3 .github/ci/build-shim-paths.test.py
           python3 .github/ci/build-bundle.test.py
           python3 .github/ci/build-helper-cleanliness.test.py
+      - name: Compiler transport controller checks
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' }}
+        run: node --test .github/ci/diagnostics/compiler-state.test.mjs .github/ci/diagnostics/compiler-transport.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -366,5 +394,131 @@ jobs:
         with:
           name: diagnostic-build-transport-consumer
           path: ${{ runner.temp }}/diagnostic-build-transport/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-producer:
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    outputs:
+      artifact_id: ${{ steps.snapshot.outputs.artifact-id }}
+      artifact_digest: ${{ steps.snapshot.outputs.artifact-digest }}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: producer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - name: Generate actual Next route types
+        run: pnpm exec next typegen
+      - name: Whole strict compiler and immutable state snapshot
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-producer
+      - name: Bind verified owned swap cleanup to compiler snapshot
+        run: |
+          test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
+          test ! -e "$RUNNER_TEMP/diagnostic-compiler-state-packet/swap-cleanup.json"
+          cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-state-packet/swap-cleanup.json"
+      - id: snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-producer
+          path: ${{ runner.temp }}/diagnostic-compiler-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-producer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-producer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-producer/swap-cleanup.json"
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-producer-debug
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-producer/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  compiler-state-consumer:
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' }}
+    needs: [resolve, compiler-state-producer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_ARTIFACT_ID: ${{ needs.compiler-state-producer.outputs.artifact_id }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ needs.compiler-state-producer.outputs.artifact_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - run: pnpm exec next typegen
+      - name: Authenticated fresh-VM restoration, full compiler and actual error-refusal controls
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-consumer-repair:
+    if: ${{ inputs.compiler_origin_run != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_ORIGIN_RUN_ID: ${{ inputs.compiler_origin_run }}
+      AIHR_COMPILER_ORIGIN_CONTROLLER: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_ARTIFACT_ID: ${{ inputs.compiler_origin_artifact }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ inputs.compiler_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.compiler_origin_sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - run: pnpm exec next typegen
+      - name: Retest consumer only against the authenticated retained compiler-state producer
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
           if-no-files-found: error
           retention-days: 3
