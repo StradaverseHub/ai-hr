@@ -25,11 +25,19 @@ The longest passing file in that run, `attendance-policy-storage.test.ts`, took 
 
 A read-only GitHub billing observation on 25 October showed **1,672 Linux minutes used out of 3,000 included**, a displayed 56%. The arithmetic remainder was 1,328 minutes. Gross usage of $10.03 was fully discounted, with $0 billed; the panel displayed seven days until reset. Billing can lag running jobs. No billing settings or spending authorization changed.
 
-The owner flagged the cost before any successful deployment. Root stopped new performance experiments, and Board 3 and AI dev 2 acknowledged a hold on automatic retries. Afterward, the owner separately authorized AI dev 2's reviewed, bounded walkthrough, run 40191431859. That narrow exception does not authorize new root performance experiments or another full gate.
+The owner flagged the cost before any successful deployment. Root stopped new performance experiments and automatic full cloud retries. Board 3 is completing its frozen release with local verification under the official resource locks. The owner separately authorized AI dev 2 to continue its reviewed, bounded walkthrough; that exception includes later repaired walkthrough attempts and does not authorize root experiments or another full cloud gate. Do not cancel another owner's authorized run.
 
 An earlier timestamp audit of 31 runs estimated 1,307.05 occupied job-minutes, including partial active work. Four full attempts accounted for about 1,027.81 minutes; cancellation does not erase consumed time. These estimates are not the billing balance. The billing API lacked the current token's `admin:org` scope, so the authenticated browser view supplied the displayed usage.
 
 For allowance A, reserve R and N expected monthly releases, the average available budget is `(A - R) / N`. Agree the release frequency before claiming a sustainable budget. Repeated full attempts costing roughly 280–293 minutes are unsuitable as routine development checks on this allowance. No paid larger runners or additional spending is authorized.
+
+## Operating approach while reducing cost
+
+Use focused development checks locally under the official resource locks, once the release owner releases the Mac. Diagnose a failure before choosing another run. Reserve included GitHub-hosted capacity for reviewed Linux-specific verification and final candidate checks; the current root experiment hold remains in place. This does not remove any required release coverage.
+
+Track two separate outcomes: end-to-end elapsed time and runner minutes per verified successful release, including failed attempts leading to that release. At approximately 293 occupied runner-minutes per whole attempt, ten attempts consume about 2,930 minutes of the 3,000-minute allowance before other workflows or per-job rounding. Increasing parallelism alone cannot make that sustainable.
+
+GitHub supports rerunning failed jobs on the **same original commit**. It does not automatically validate previously passing jobs after a code repair changes the commit. Keep input-aware, authenticated cross-commit reuse explicitly unfinished until its independent verifier is implemented and validated. See GitHub's [rerun behavior](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs) and [usage accounting](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
 ## Implemented in the isolated review branch
 
@@ -97,7 +105,7 @@ Seventeen lightweight assertions passed using the actual installed Drizzle error
 
 ## Next validation sequence
 
-1. Finish the concrete release repairs with focused local verification after the foreign REA gate releases the shared Mac resources. Do not touch its processes, database or locks.
+1. Let Board 3 finish the already-running, frozen local release verification. Its owner holds the official Mac resources and owns deployment; do not introduce future harness changes, competing heavy work or another cloud full run mid-release.
 2. Measure setup and fixture savings on comparable candidates; reduce actual work in the longest files before considering more parallelism.
 3. Complete authenticated, input-aware evidence reuse and its independent release validator.
 4. Assess build-once artifact promotion. Bind platform/runtime, compile-time environment, source, dependencies and artifact provenance; retain migrations, catalog work, restart, health and source/build arrival. Rebuilding identical output is a measured opportunity, but artifact promotion is not implemented.
