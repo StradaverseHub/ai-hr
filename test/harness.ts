@@ -230,6 +230,9 @@ async function truncateAllTables(): Promise<void> {
       // the extended protocol, which refuses multiple commands.
       await owner.db.transaction(async (tx) => {
         await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+        // Fixture-only reset emits thousands of expected cascade NOTICEs. Keep WARNING/ERROR visible;
+        // LOCAL restores the original message level before any test or migration assertion runs.
+        await tx.execute(sql`SET LOCAL client_min_messages = 'warning'`);
         await tx.execute(sql.raw(sqlText));
       });
       return;
