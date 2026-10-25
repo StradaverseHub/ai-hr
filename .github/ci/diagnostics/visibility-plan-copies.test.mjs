@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,mkdirSync,readFileSync,writeFileSync,rmSync,cpSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {createPlanCopies,validatePlanSelection,staticRegistry,VISIBILITY,PRINCIPAL,REUSED_CASE} from './visibility-plan-copies.mjs';
 import {PROFILE_FILE} from './attendance-sql-profile.mjs';
@@ -38,4 +38,19 @@ test('selected-scope accounting refuses omission, extra execution, skipped selec
   for(const edit of [r=>r.numPassedTests=125,r=>r.numPendingTests=0,r=>r.testResults.pop(),r=>r.testResults[0].name='/foreign/file.ts',r=>r.testResults[1].assertionResults.find(a=>p.selected.includes(a.fullName)).status='skipped',r=>r.testResults[0].assertionResults.find(a=>!p.selected.includes(a.fullName)).status='passed']){const next=structuredClone(r);edit(next);assert.throws(()=>validatePlanSelection(next,dir,p));}
   assert.throws(()=>staticRegistry("describe('x',()=>{it.each(getUnknownData())('case %s',()=>{});});",ts));
  }finally{rmSync(dir,{recursive:true});}
+});
+
+test('actual canonical database-name owner is old-RED/new-GREEN without relaxing URL or physical-name binding',async()=>{
+ const {workerDb}=await import(pathToFileURL(join(root,'test/db-names.ts')).href);
+ const {assertInstallEnvironment:oldGuard}=await import('./fixtures/visibility-worker-guard-original.mjs');
+ const {assertInstallEnvironment:newGuard}=await import('./visibility-plan-prototype.mjs');
+ const previous=process.env.TEST_DB_NAMESPACE;
+ try{for(const mode of ['baseline','prototype']){
+  const namespace=mode==='baseline'?'plan_base':'plan_proto';process.env.TEST_DB_NAMESPACE=namespace;const database=workerDb('1');
+  const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',AIHR_PLAN_REUSE_MODE:mode,AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),TEST_DB_NAMESPACE:namespace,TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/'+database};
+  assert.throws(()=>oldGuard(e),/Owned local runner worker only/);newGuard(e,database);
+  assert.throws(()=>newGuard(e,'ai_hr_test_w1'));assert.throws(()=>newGuard({...e,TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'},database));
+  assert.throws(()=>newGuard(e,workerDb('2')));
+  const source=createPlanCopies;assert(source.toString().includes('__planWorkerDb(process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID)'));
+ }}finally{if(previous===undefined)delete process.env.TEST_DB_NAMESPACE;else process.env.TEST_DB_NAMESPACE=previous;}
 });

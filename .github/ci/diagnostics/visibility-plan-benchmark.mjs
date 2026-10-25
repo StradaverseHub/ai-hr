@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {createRequire} from 'node:module';
-import {readFileSync,writeFileSync,mkdirSync,realpathSync,rmSync,readdirSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,realpathSync,rmSync,readdirSync,statfsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
@@ -51,8 +51,10 @@ export async function benchmark(){
   for(const mode of phases){
    clean();directory=join(out,mode);mkdirSync(directory,{mode:0o700});const hooks=join(directory,'function-proofs');mkdirSync(hooks,{mode:0o700});
    const row={mode,startedAt:new Date().toISOString(),exitCode:1};report.phases.push(row);let started=false;
+   row.sourceVolumeSamples=[];const sampleDisk=()=>{try{const f=statfsSync(cwd),availableBytes=f.bavail*f.bsize;assert(Number.isSafeInteger(availableBytes)&&availableBytes>=0);row.sourceVolumeSamples.push({at:new Date().toISOString(),availableBytes});row.minimumSampledSourceAvailableBytes=Math.min(row.minimumSampledSourceAvailableBytes??availableBytes,availableBytes);}catch(error){row.diskSamplingError=String(error);}};sampleDisk();const diskTimer=setInterval(sampleDisk,5000);
    const env={...base,TEST_DB_NAMESPACE:mode==='baseline'?'plan_base':'plan_proto',AIHR_PLAN_REUSE_MODE:mode,AIHR_PLAN_PROOF_DIR:hooks,AIHR_TEST_PROFILE_DIR:join(directory,'harness-profile'),AIHR_TEST_PROFILE_LABEL:mode};
    try{
+    assert(!row.diskSamplingError&&row.minimumSampledSourceAvailableBytes>=4*1024**3,'Need4GiB measured headroom before this bounded private database');
     control('reset');started=true;query('CREATE EXTENSION pg_stat_statements');
     row.migration=await measuredCommand('pnpm',['db:migrate'],{cwd,env,log:join(directory,'migrate.log'),timeoutMs:300000});assert(row.migration.code===0&&!row.migration.timedOut&&row.migration.signal===null,'Development migration failed');
     query('SELECT pg_stat_statements_reset()');
@@ -67,11 +69,13 @@ export async function benchmark(){
     const reused=JSON.parse(readFileSync(join(hooks,'reused-connection.json'),'utf8'));assert(reused.source===sha&&reused.mode===mode&&reused.reusedConnection===true&&reused.outerTransactionRolledBack===true&&reused.contextQueries>=72&&reused.roleRevocationAndRollbackVerified&&reused.loginArchivalAndRollbackVerified&&reused.actualGraphMutationAndRollbackVerified&&reused.releaseAuthorized===false);row.reusedConnection=reused;
     row.exitCode=0;
    }finally{
-    if(started)try{
-     const statistics=JSON.parse(query(STATISTICS_SQL));row.statistics=validateStatistics(statistics,'on');writeFileSync(join(directory,'statement-statistics.json'),JSON.stringify(statistics,null,2)+'\n',{flag:'wx',mode:0o600});
-     const target=validateVisibilityRows(JSON.parse(query(VISIBILITY_STATISTICS_SQL)));writeFileSync(join(directory,'visibility-statistics.json'),JSON.stringify(target,null,2)+'\n',{flag:'wx',mode:0o600});
-     row.databaseEvidence=capturePostgresEvidence(UNIT);validatePostgresEvidence(row.databaseEvidence,report.execution);
-    }catch(error){row.statisticsError=String(error);row.exitCode=1;}
+    clearInterval(diskTimer);sampleDisk();
+    if(started){
+     try{const raw=query(STATISTICS_SQL);writeFileSync(join(directory,'statement-statistics.json'),raw+'\n',{flag:'wx',mode:0o600});row.statistics=validateStatistics(JSON.parse(raw),'on');}catch(error){row.statisticsError=String(error);row.exitCode=1;}
+     try{const raw=query(VISIBILITY_STATISTICS_SQL);writeFileSync(join(directory,'visibility-statistics.json'),raw+'\n',{flag:'wx',mode:0o600});validateVisibilityRows(JSON.parse(raw));}catch(error){row.targetStatisticsError=String(error);row.exitCode=1;}
+     try{row.databaseEvidence=capturePostgresEvidence(UNIT);validatePostgresEvidence(row.databaseEvidence,report.execution);}catch(error){row.databaseEvidenceError=String(error);row.exitCode=1;}
+    }
+    if(row.diskSamplingError)row.exitCode=1;
     try{control('stop');row.ownedContainerRemoved=true;}catch(error){row.cleanupError=String(error);row.exitCode=1;}
     row.endedAt=new Date().toISOString();writeFileSync(join(directory,'phase.json'),JSON.stringify(row,null,2)+'\n',{flag:'wx',mode:0o600});
    }

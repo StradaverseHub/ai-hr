@@ -34,12 +34,12 @@ const all=Array.from({length:40},(_,i)=>'employment'+i);
 test('actual control flow on fake transport proves all72 context queries and refuses stale context, grant, graph or changed connection',async()=>{
  for(const broken of [null,'context','revocation','graph','connection']){
   const temp=realpathSync(mkdtempSync(join(tmpdir(),'plan-control-'))),out=join(temp,'proof');mkdirSync(out,{mode:0o700});
-  const changes={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',AIHR_PLAN_REUSE_MODE:'prototype',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),TEST_DB_NAMESPACE:'plan_proto',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test_w1_plan_proto',RUNNER_TEMP:temp,AIHR_PLAN_PROOF_DIR:out};
+  const changes={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',AIHR_PLAN_REUSE_MODE:'prototype',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),TEST_DB_NAMESPACE:'plan_proto',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test_w_plan_proto1',RUNNER_TEMP:temp,AIHR_PLAN_PROOF_DIR:out};
   const before=Object.fromEntries(Object.keys(changes).map(k=>[k,process.env[k]]));Object.assign(process.env,changes);
   const fake=transport(contexts,all,broken);
   try{
-   if(broken){await assert.rejects(exerciseReusedVisibilityConnection(fake.pg,contexts,all,{ceo:'ceo'}));assert(!existsSync(join(out,'reused-connection.json')));}
-   else{const proof=await exerciseReusedVisibilityConnection(fake.pg,contexts,all,{ceo:'ceo'});assert.equal(proof.contextQueries,72);assert.equal(proof.outerTransactionRolledBack,true);assert(proof.roleRevocationAndRollbackVerified&&proof.loginArchivalAndRollbackVerified&&proof.actualGraphMutationAndRollbackVerified);assert.equal(JSON.parse(readFileSync(join(out,'reused-connection.json'))).releaseAuthorized,false);}
+   if(broken){await assert.rejects(exerciseReusedVisibilityConnection(fake.pg,contexts,all,{ceo:'ceo'},'ai_hr_test_w_plan_proto1'));assert(!existsSync(join(out,'reused-connection.json')));}
+   else{const proof=await exerciseReusedVisibilityConnection(fake.pg,contexts,all,{ceo:'ceo'},'ai_hr_test_w_plan_proto1');assert.equal(proof.contextQueries,72);assert.equal(proof.outerTransactionRolledBack,true);assert(proof.roleRevocationAndRollbackVerified&&proof.loginArchivalAndRollbackVerified&&proof.actualGraphMutationAndRollbackVerified);assert.equal(JSON.parse(readFileSync(join(out,'reused-connection.json'))).releaseAuthorized,false);}
    assert(fake.released());
   }finally{for(const [k,v]of Object.entries(before))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(temp,{recursive:true});}
  }

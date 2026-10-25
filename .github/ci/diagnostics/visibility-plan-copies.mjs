@@ -45,14 +45,14 @@ export function createPlanCopies(source,ts){
    if(spec!==replacement)edits.push({from:n.moduleSpecifier.getStart(ast),to:n.moduleSpecifier.end,value:JSON.stringify(replacement)});
   }
   let copy=original;for(const e of edits.sort((a,b)=>b.from-a.from))copy=copy.slice(0,e.from)+e.value+copy.slice(e.to);
-  copy="import {installVisibilityPlan as __planInstall} from '../.github/ci/diagnostics/visibility-plan-prototype.mjs';\n"+copy;
+  copy="import {installVisibilityPlan as __planInstall} from '../.github/ci/diagnostics/visibility-plan-prototype.mjs';\nimport {workerDb as __planWorkerDb} from '../test/db-names';\nconst __planExpectedDb=__planWorkerDb(process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID);\n"+copy;
   const q=label==='visibility'?'q':"(text:string,params:unknown[]=[])=>owner.client.unsafe(text,params as never[])";
   if(label==='visibility'){
-   assert.equal(copy.split('  await setupOrg();').length,2);copy=copy.replace('  await setupOrg();',"  await __planInstall("+q+",'visibility');\n  await setupOrg();");
+   assert.equal(copy.split('  await setupOrg();').length,2);copy=copy.replace('  await setupOrg();',"  await __planInstall("+q+",'visibility',__planExpectedDb);\n  await setupOrg();");
    copy="import {exerciseReusedVisibilityConnection as __planExercise} from '../.github/ci/diagnostics/visibility-plan-controls.mjs';\nimport {E as __planIds} from '../test/r395-org';\n"+copy;
-   copy+="\nit("+JSON.stringify(REUSED_CASE)+",async()=>{await __planExercise(pg,CONTEXTS,ALL_EMP,__planIds);},120_000);\n";
+   copy+="\nit("+JSON.stringify(REUSED_CASE)+",async()=>{await __planExercise(pg,CONTEXTS,ALL_EMP,__planIds,__planExpectedDb);},120_000);\n";
   }else{
-   assert.equal(copy.split(captureHook).length,2);copy=copy.replace(captureHook,"beforeAll(migrateTestDb);beforeAll(async()=>{await __planInstall("+q+","+JSON.stringify(label)+");});afterAll(closeAll);");
+   assert.equal(copy.split(captureHook).length,2);copy=copy.replace(captureHook,"beforeAll(migrateTestDb);beforeAll(async()=>{await __planInstall("+q+","+JSON.stringify(label)+",__planExpectedDb);});afterAll(closeAll);");
   }
   const after=ts.createSourceFile(label+'.ts',copy,ts.ScriptTarget.Latest,true),beforeCalls=registrations(ast,ts),afterCalls=registrations(after,ts);
   assert.deepEqual(afterCalls.slice(0,beforeCalls.length),beforeCalls,'Original assertions/data/timeouts changed');assert.equal(afterCalls.length,beforeCalls.length+(label==='visibility'?1:0));

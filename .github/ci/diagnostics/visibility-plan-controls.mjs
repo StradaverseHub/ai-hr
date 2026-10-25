@@ -4,8 +4,8 @@ import {writeFileSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {assertInstallEnvironment} from './visibility-plan-prototype.mjs';
 const sorted=xs=>[...(xs??[])].map(String).sort();
-export async function exerciseReusedVisibilityConnection(pg,contexts,all,ids){
- assertInstallEnvironment(process.env);
+export async function exerciseReusedVisibilityConnection(pg,contexts,all,ids,expectedDatabase){
+ assertInstallEnvironment(process.env,expectedDatabase);
  assert(contexts.length>=24&&new Set(contexts.map(c=>c.tenantId)).size>=2&&all.length>=40);
  const session=await pg.reserve(),observations=[],proof={kind:'OWNED_REUSED_CONNECTION_VISIBILITY_CONTROLS',mode:process.env.AIHR_PLAN_REUSE_MODE,source:process.env.AIHR_CI_HEAD,releaseAuthorized:false};
  let begun=false,failure;

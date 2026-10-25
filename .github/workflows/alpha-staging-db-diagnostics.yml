@@ -98,6 +98,8 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
+        with:
+          capacity_profile: ${{ (matrix.probe == 'visibility-plan-benchmark' || matrix.probe == 'attendance-sql-profile') && 'bounded-db-diagnostic' || 'legacy' }}
       - name: Verify visibility copy fidelity using the installed candidate parser
         if: ${{ matrix.probe == 'visibility-plan-benchmark' }}
         run: node --test ../automation/.github/ci/diagnostics/visibility-plan-copies.test.mjs
