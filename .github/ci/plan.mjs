@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {CI_POLICY} from './policy-version.mjs';
 export const CI_SHARDS = 4;
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export function createPlan(cwd = process.cwd()) {
@@ -29,7 +30,7 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   if (!browsers.length) throw Error('Missing browser inventory');
   for (const engine of ['chromium', 'firefox', 'webkit']) units.push({id: `browser-${engine}`, kind: 'browser', engine, files: browsers});
-  const body = {schemaVersion: 1, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, suite, units};
+  const body = {schemaVersion: 1, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, suite, units};
   return {...body, fingerprint: hash(body)};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));

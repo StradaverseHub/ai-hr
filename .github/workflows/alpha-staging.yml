@@ -47,7 +47,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: CI integrity regression checks
-        run: node --test .github/ci/ci.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs
       - name: Resolve frozen candidate
         id: candidate
         env:
@@ -79,8 +79,7 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
       - run: pnpm exec next typegen
-      - run: pnpm exec tsc --noEmit
-        env: {NODE_OPTIONS: --max-old-space-size=6144}
+      - run: bash ../automation/.github/ci/typecheck.sh
   migrations:
     if: ${{ !inputs.diagnostics_only }}
     needs: resolve
@@ -144,6 +143,29 @@ jobs:
           path: ${{ runner.temp }}/runner-resources.json
           if-no-files-found: error
           retention-days: 30
+  controller-tests:
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Exercise actual official detached-deploy helpers with shim transport
+        run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs
   plan:
     if: ${{ !inputs.diagnostics_only }}
     needs: resolve
@@ -292,7 +314,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   verify:
-    needs: [resolve, plan, typecheck, migrations, build, test, browser]
+    needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, browser]
     if: ${{ always() && !inputs.diagnostics_only && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -33,9 +33,9 @@ export function verifyReports(plan, reports) {
     }
     if (JSON.stringify(files.sort()) !== JSON.stringify([...unit.files].sort())) throw Error('Unit omitted required test files');
   }
-  return {schemaVersion: 1, sha: plan.sha, controller: plan.controller, migrationBase: plan.migrationBase, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
+  return {schemaVersion: 1, policyVersion: plan.policyVersion, sha: plan.sha, controller: plan.controller, migrationBase: plan.migrationBase, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
     browserFiles: plan.units.filter(u => u.kind === 'browser').reduce((n, u) => n + u.files.length, 0),
-    tests, fingerprint: plan.fingerprint, reports: reports.map(r => ({id: r.id, hash: hash(r)}))};
+    tests, fingerprint: plan.fingerprint, reports: [...reports].sort((a,b)=>a.id.localeCompare(b.id)).map(r => ({id: r.id, hash: hash(r)}))};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [dir, output] = process.argv.slice(2);

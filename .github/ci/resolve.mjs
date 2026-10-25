@@ -8,7 +8,7 @@ export function candidateRequest(event,inputs={}) {
   if(event.repository?.full_name?.toLowerCase()!==repository.toLowerCase())throw Error('Unexpected repository');
   if(event.pull_request){
     if(event.pull_request.draft || event.pull_request.base.ref!=='alpha' || event.pull_request.head.repo?.full_name?.toLowerCase()!==repository.toLowerCase())throw Error('Only ready same-repository PRs targeting alpha');
-    return {branch:event.pull_request.head.ref,expected:event.pull_request.head.sha,base:event.pull_request.base.sha};
+    return {branch:event.pull_request.head.ref,expected:event.pull_request.head.sha,base:inputs.migration_base||event.pull_request.base.sha};
   }
   const branch=event.ref?.startsWith('refs/heads/')?event.ref.slice(11):inputs.candidate_ref||'alpha';
   // workflow_dispatch's event.ref names the controller branch, not the candidate.
@@ -16,7 +16,7 @@ export function candidateRequest(event,inputs={}) {
   if(!/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(target)||target.includes('..')||target.includes('//')||target.endsWith('/')||target.endsWith('.'))throw Error('Invalid candidate branch');
   if(!event.inputs && event.ref && target!=='alpha')throw Error('Only alpha pushes trigger CI');
   if(inputs.expected_sha && !/^[0-9a-f]{40}$/.test(inputs.expected_sha))throw Error('Invalid expected SHA');
-  return {branch:target,expected:inputs.expected_sha||null,base:inputs.migration_base||null};
+  return {branch:target,expected:inputs.expected_sha||event.after||null,base:inputs.migration_base||null};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
