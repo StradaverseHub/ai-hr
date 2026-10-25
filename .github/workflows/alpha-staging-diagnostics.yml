@@ -21,6 +21,26 @@ on:
         required: false
         default: false
         type: boolean
+      transport_origin_run:
+        description: "Retest receiver only: original diagnostic run containing a successful canonical producer"
+        required: false
+        default: ""
+        type: string
+      transport_origin_sha:
+        description: Exact original producer source/controller; retained build is never relabelled
+        required: false
+        default: ""
+        type: string
+      transport_origin_artifact:
+        description: Exact original producer artifact ID
+        required: false
+        default: ""
+        type: string
+      transport_origin_digest:
+        description: Plain hex SHA256 from the original upload action; authenticated API has sha256 prefix
+        required: false
+        default: ""
+        type: string
       compiler_probe:
         description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
         required: false
@@ -71,7 +91,7 @@ jobs:
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
       - name: Build transport controller checks
-        if: ${{ inputs.build_transport_probe }}
+        if: ${{ inputs.build_transport_probe || inputs.transport_origin_run != '' }}
         run: |
           node --test .github/ci/build-production.test.mjs .github/ci/build-transport.test.mjs
           python3 .github/ci/build-transport-extract.test.py
@@ -296,6 +316,46 @@ jobs:
           pdftoppm -v
           pdftotext -v
       - name: Authenticate, relocate and run the transported build without rebuilding
+        run: pnpm exec tsx ../automation/.github/ci/build-transport.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-consumer
+          path: ${{ runner.temp }}/diagnostic-build-transport/
+          if-no-files-found: error
+          retention-days: 3
+
+  build-transport-consumer-repair:
+    if: ${{ inputs.transport_origin_run != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    defaults: {run: {working-directory: recipient}}
+    env:
+      AIHR_CI_HEAD: ${{ inputs.transport_origin_sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-consumer-repair
+      AIHR_BUILD_PRODUCER_RUN_ID: ${{ inputs.transport_origin_run }}
+      AIHR_BUILD_PRODUCER_CONTROL_HEAD: ${{ inputs.transport_origin_sha }}
+      AIHR_BUILD_ARTIFACT_ID: ${{ inputs.transport_origin_artifact }}
+      AIHR_BUILD_ARTIFACT_DIGEST: ${{ inputs.transport_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.transport_origin_sha }}', path: recipient, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', path: recipient}
+      - name: Install independent PDF text and raster inspection tools
+        run: |
+          if ! command -v pdftoppm || ! command -v pdftotext; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          fi
+          pdftoppm -v
+          pdftotext -v
+      - name: Retest receiver only against authenticated original successful build
         run: pnpm exec tsx ../automation/.github/ci/build-transport.mjs
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

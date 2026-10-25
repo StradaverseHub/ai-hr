@@ -23,8 +23,24 @@ const requireValue=(value,message)=>{if(!value)fail(message);};
 const git=(source,args)=>execFileSync('git',args,{cwd:source,encoding:'utf8'}).trim();
 const api=path=>JSON.parse(execFileSync('gh',['api','repos/'+REPO+'/'+path],{encoding:'utf8',maxBuffer:2*1024**2,timeout:30000}));
 
+
+export function assertTransportConsumerInvocation(e){
+ if(e.AIHR_BUILD_DIAGNOSTIC!=='transport-consumer-repair')return assertDiagnosticBuildInvocation(e);
+ requireValue(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY===REPO
+  &&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1'
+  &&/^[a-f0-9]{40}$/.test(e.AIHR_CI_HEAD??'')&&/^[a-f0-9]{40}$/.test(e.AIHR_CI_CONTROL_HEAD??'')&&e.GITHUB_SHA===e.AIHR_CI_CONTROL_HEAD
+  &&/^[1-9][0-9]{0,15}$/.test(e.GITHUB_RUN_ID??'')&&Number.isSafeInteger(Number(e.GITHUB_RUN_ID))
+  &&/^[1-9][0-9]{0,15}$/.test(e.AIHR_BUILD_PRODUCER_RUN_ID??'')&&Number.isSafeInteger(Number(e.AIHR_BUILD_PRODUCER_RUN_ID))
+  &&e.AIHR_BUILD_PRODUCER_RUN_ID!==e.GITHUB_RUN_ID&&e.AIHR_BUILD_PRODUCER_CONTROL_HEAD===e.AIHR_CI_HEAD
+  &&typeof e.RUNNER_NAME==='string'&&e.RUNNER_NAME.length>0&&e.RUNNER_NAME.length<=200
+  &&e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025','manual consumer repair identity');
+ return true;
+}
+function originRunId(e){return e.AIHR_BUILD_DIAGNOSTIC==='transport-consumer-repair'?Number(e.AIHR_BUILD_PRODUCER_RUN_ID):Number(e.GITHUB_RUN_ID);}
+function originController(e){return e.AIHR_BUILD_DIAGNOSTIC==='transport-consumer-repair'?e.AIHR_BUILD_PRODUCER_CONTROL_HEAD:e.AIHR_CI_CONTROL_HEAD;}
+
 export function validateTransportMetadata({run,jobs,artifact},env){
- const runId=Number(env.GITHUB_RUN_ID),artifactId=Number(env.AIHR_BUILD_ARTIFACT_ID);
+ const runId=originRunId(env),artifactId=Number(env.AIHR_BUILD_ARTIFACT_ID);
  requireValue(Number.isSafeInteger(artifactId)&&artifactId>0,'artifact selector');
  requireValue(run.id===runId&&run.run_attempt===1&&run.event==='workflow_dispatch'&&run.head_sha===env.AIHR_CI_HEAD
   &&run.path===WORKFLOW&&run.head_branch==='codex/test-suite-efficiency-review-20261025'
@@ -35,15 +51,15 @@ export function validateTransportMetadata({run,jobs,artifact},env){
  requireValue(producer.run_id===runId&&producer.run_attempt===1&&producer.status==='completed'&&producer.conclusion==='success'
   &&producer.head_sha===env.AIHR_CI_HEAD&&Number.isFinite(Date.parse(producer.started_at))&&Number.isFinite(Date.parse(producer.completed_at)),'completed producer job');
  requireValue(artifact.id===artifactId&&artifact.name===NAME&&artifact.expired===false&&artifact.workflow_run?.id===runId
-  &&artifact.workflow_run.head_sha===env.AIHR_CI_HEAD&&artifact.digest===env.AIHR_BUILD_ARTIFACT_DIGEST
+  &&artifact.workflow_run.head_sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{64}$/.test(env.AIHR_BUILD_ARTIFACT_DIGEST??'')&&artifact.digest==='sha256:'+env.AIHR_BUILD_ARTIFACT_DIGEST
   &&/^sha256:[a-f0-9]{64}$/.test(artifact.digest)&&Number.isSafeInteger(artifact.size_in_bytes)&&artifact.size_in_bytes>0&&artifact.size_in_bytes<=MAX_ZIP,'authenticated artifact identity/bound');
  return producer;
 }
 export function validateTransportProvenance(p,env,runtime,localRunner){
- assertDiagnosticBuildInvocation(env);assertBuildRuntime(runtime,env);
+ assertTransportConsumerInvocation(env);assertBuildRuntime(runtime,env);
  requireValue(p?.format===1&&p.kind==='diagnostic-system-testing-build-not-release'&&p.releaseAuthorized===false
-  &&p.source===env.AIHR_CI_HEAD&&p.controller===env.AIHR_CI_CONTROL_HEAD&&p.repository===REPO&&p.repositoryId===1333414856
-  &&p.runId===Number(env.GITHUB_RUN_ID)&&p.runAttempt===1&&p.workflowRef===env.GITHUB_WORKFLOW_REF
+  &&p.source===env.AIHR_CI_HEAD&&p.controller===originController(env)&&p.repository===REPO&&p.repositoryId===1333414856
+  &&p.runId===originRunId(env)&&p.runAttempt===1&&p.workflowRef===env.GITHUB_WORKFLOW_REF
   &&isDeepStrictEqual(p.runtime,runtime)&&/^[a-f0-9-]{36}$/.test(p.buildRecordId)&&typeof p.nextBuildId==='string'&&p.nextBuildId.length>0,'producer provenance');
  for(const k of ['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'])requireValue(/^[a-f0-9]{64}$/.test(p[k]),'provenance digest');
  requireValue(p.diagnosticRunner&&typeof p.diagnosticRunner.name==='string'&&p.diagnosticRunner.name.length
@@ -140,18 +156,20 @@ async function runtimeServer(source,manifest,directory){
 
 export async function consumeBuild({source=process.cwd(),output=join(process.env.RUNNER_TEMP,'diagnostic-build-transport')}={}){
  const env=process.env,started=Date.now();source=resolve(source);output=resolve(output);
- assertDiagnosticBuildInvocation(env);
+ assertTransportConsumerInvocation(env);
  requireValue(realpathSync(source)===source&&git(source,['rev-parse','HEAD'])===env.AIHR_CI_HEAD&&!git(source,['status','--porcelain'])
   &&git(controller,['rev-parse','HEAD'])===env.AIHR_CI_CONTROL_HEAD&&!git(controller,['status','--porcelain']),'clean exact source/controller');
  requireValue(!existsSync(join(source,'.next')),'consumer must start without a build');
  mkdirSync(output,{mode:0o700});
  const phases={};let built,originalMode;const cleanup={ownedNextStopped:false,ownedBuildRemoved:false,sourceModeRestored:false};
  try{
-  const run=api('actions/runs/'+env.GITHUB_RUN_ID),jobsResponse=api('actions/runs/'+env.GITHUB_RUN_ID+'/attempts/1/jobs?per_page=100');
+  const run=api('actions/runs/'+originRunId(env)),jobsResponse=api('actions/runs/'+originRunId(env)+'/attempts/1/jobs?per_page=100');
+  const consumerRun=api('actions/runs/'+env.GITHUB_RUN_ID);
+  requireValue(consumerRun.id===Number(env.GITHUB_RUN_ID)&&consumerRun.run_attempt===1&&consumerRun.event==='workflow_dispatch'&&consumerRun.head_sha===env.AIHR_CI_CONTROL_HEAD&&consumerRun.path===WORKFLOW&&consumerRun.head_branch==='codex/test-suite-efficiency-review-20261025'&&consumerRun.repository?.full_name===REPO&&consumerRun.repository.id===1333414856,'authenticated consumer run identity');
   requireValue(jobsResponse.total_count===jobsResponse.jobs.length&&jobsResponse.jobs.length<100,'bounded complete jobs inventory');
   const artifact=api('actions/artifacts/'+env.AIHR_BUILD_ARTIFACT_ID);
   const producer=validateTransportMetadata({run,jobs:jobsResponse.jobs,artifact},env);
-  for(const [name,value]of Object.entries({run,jobs:jobsResponse,artifact}))writeFileSync(join(output,name+'.json'),JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
+  for(const [name,value]of Object.entries({run,consumerRun,jobs:jobsResponse,artifact}))writeFileSync(join(output,name+'.json'),JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
   const archive=join(output,'authenticated-build.zip'),digest=artifact.digest.slice(7),downloadStart=Date.now();
   const downloadedBytes=await download(artifact.id,archive,digest);phases.downloadMs=Date.now()-downloadStart;
   execFileSync('python3',[join(controller,'.github/ci/build-transport-extract.py'),archive,join(output,'packet'),digest],{stdio:'inherit'});
@@ -179,12 +197,13 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const nativeStart=Date.now(),native=await nativeRuntime(source,manifest,output);phases.nativeMs=Date.now()-nativeStart;
   const server=await runtimeServer(source,manifest,output);cleanup.ownedNextStopped=true;
   requireValue(!git(source,['status','--porcelain'])&&!git(controller,['status','--porcelain']),'tracked source changed during consumer');
-  const result={format:1,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:p.controller,runId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
+  const result={format:1,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
   writeFileSync(join(output,'transport.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
   // Keep only small audit/runtime evidence; the authenticated producer artifact retains build bytes.
   rmSync(archive);rmSync(join(packet,'bytes/build-bundle.tar.gz'));
   return result;
  }finally{
+  for(const binary of [join(output,'authenticated-build.zip'),join(output,'packet/bytes/build-bundle.tar.gz')])if(existsSync(binary))rmSync(binary);
   if(built){const current=lstatSync(join(source,'.next'));requireValue(current.ino===built.ino&&current.dev===built.dev&&!current.isSymbolicLink(),'owned build cleanup identity');rmSync(join(source,'.next'),{recursive:true});cleanup.ownedBuildRemoved=!existsSync(join(source,'.next'));}
   if(originalMode!==undefined){chmodSync(source,originalMode);cleanup.sourceModeRestored=(lstatSync(source).mode&0o777)===originalMode;}
   writeFileSync(join(output,'cleanup.json'),JSON.stringify(cleanup)+'\n',{flag:'wx',mode:0o600});
