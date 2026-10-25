@@ -1,0 +1,33 @@
+# Owned visibility plan-reuse experiment
+
+This manual diagnostic follows the authenticated one-case [SQL profile40232115042](https://github.com/StradaverseHub/ai-hr/actions/runs/40232115042): the visibility query had3501 calls/3498 plans/4184.636ms planning, no observed JIT, with all time/financial guards retained. Reusing its exact query plan is a hypothesis. No saving or semantic equivalence is proved by source comparison alone.
+
+## Scope and boundaries
+
+The existing alpha-staging-db-diagnostics workflow adds explicit slow_suite=visibility-plan-benchmark and plan_phases=both (default), or prototype only for a repaired failed prototype. It uses one standard Ubuntu24 runner, PostgreSQL16 with JIT on and2GiB, and one Vitest worker. Baseline then prototype run sequentially on the same VM with fresh owned containers. Each migration/test subprocess retains actual exit/signal/timeout; the database job has a25-minute ceiling. This is a bounded diagnostic, not a ten-minute-release claim. Ordinary workflows, release policy and staging are unchanged.
+
+Original tracked source is never edited during execution. Three labelled ignored copies preserve every original test registration, callback/assertion, data table, timeout and per-case fixture; local import specifiers are adjusted only where their resolved target is identical. The original functions/hooks remain, with an explicitly added beforeAll diagnostic installation hook. One new120-second control is added; no original timeout is raised. Parsing refuses unknown dynamic imports or registry expressions.
+
+There are125 registered cases: the original32 cash/unclocked registrations,87 visibility registrations,5 principal guards and1 new control. Exactly37 execute: the unchanged selected cash scenario,25 existing visibility-context checks,5 existing visibility mutation/restoration checks,all5 principal guards and the new reused-connection control. The other88 are deliberately unselected and must appear skipped, never passing. Actual identities/counts/statuses/process exits must match or the diagnostic refuses. This does not replace the remaining release coverage.
+
+## Function change
+
+The canonical migration0515 file and visibility predicate have pinned SHA256s. Only the worker database function app.visible_employment_ids() is wrapped in PL/pgSQL RETURN with its existing scalar query preserved byte-for-byte (apart from removing its final statement terminator inside the wrapper). Function OID, owner, ACLs, volatility, security mode, search path and every other pg_proc property except language/source must stay identical. Source body and function properties are checked before and after installation. The baseline only observes its original SQL implementation; the prototype accepts only that exact implementation or its own exact idempotent wrapper.
+
+The helper refuses outside a first-attempt manual hosted company-repository run with identical frozen candidate/controller, explicit private plan_base/plan_proto namespace, loopback PostgreSQL5433 and actual owner/worker catalog identity. It can touch only worker names ai_hr_test_w1/w2_plan_base/proto. An owned private evidence directory must be verified before any function mutation. No applied migration, server setting/version, production function, trigger or integrity guard changes. No staging credentials are provided. Main/live deployment remains disabled.
+
+## Actual security controls required
+
+The new control reserves one postgres-js connection and verifies the same backend PID throughout. It runs all24 existing fictional authorization contexts across two tenants three times, as the non-bypass application role, comparing the new set with the real per-row authorization function. It requires varied nonempty visibility sets rather than an always-empty equality.
+
+On that same connection it verifies an actual role revocation invalidates the current principal, restores it through savepoint rollback, verifies actual login archival and rollback, expires actual administrative graph edges and requires both changed visibility and recovery after rollback. Every result must still equal the per-row authorization reference. It rolls the entire owned control transaction back and releases its connection in finally. Installed postgres-js3.4.9 runtime source exposes unsafe/release on a reserved client, despite broader type declarations; the control therefore uses explicit BEGIN/ROLLBACK on that client, not an unavailable reserved-client begin method. The original principal cases additionally retain forged-role, expanded-grant, missing-identity, foreign-tenant and actual role/archive refusal; original visibility mutation controls must still catch the removed HOD, company-clamp, validity and termination predicates.
+
+These are proposed controls until genuine PostgreSQL execution succeeds. Pure fake-transport checks deliberately feed stale context, revoked-role, graph and changed-connection behavior and require refusal. Their initial fake savepoint-state failure was retained; only the fake actor lookup was repaired to survive state cloning. No real application/database test ran on the Mac.
+
+## Evidence and interpretation
+
+Retain exact source-copy hashes, all raw Vitest JSON/logs, per-worker before/after function catalog proofs, the actual reserved-connection proof, full counter settings/roles/no-eviction evidence, ranked and specifically captured visibility SQL rows, resource/zero-OOM evidence, process exits, unchanged source and owned-container/copy cleanup. Target SQL statistics include reverted mutation versions; do not attribute all rows to the final function or sum nested/outer times. Baseline precedes prototype, so normal VM warming is a caveat. A prototype-only repair supplies no paired timing comparison.
+
+Before adoption, independently authenticate actual workflow/run/attempt/artifact bytes and inspect every required scope. Any missing/failing control, altered metadata, timeout, eviction, source change or cleanup failure remains incomplete. A diagnostic success cannot authorize release or create a full-PASS baseline. Adoption would require normal append-only migration allocation, genuine security/financial/full-gate/compiler/build checks and verified staging arrival under the applicable policy. The complete required under-ten-minute goal remains unfinished.
+
+Runtime evidence is pending; this source is prepared, not deployed. Planning behavior rationale: PostgreSQL16 [PL/pgSQL plan caching](https://www.postgresql.org/docs/16/plpgsql-implementation.html#PLPGSQL-PLAN-CACHING) and the upstream [SQL-function plan-cache change](https://www.postgresql.org/message-id/E1u02Tn-002Kp0-0Q@gemulon.postgresql.org).

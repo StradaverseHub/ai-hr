@@ -22,7 +22,13 @@ on:
         required: false
         default: none
         type: choice
-        options: [none, r395, attendance, attendance-split-benchmark, attendance-sql-profile]
+        options: [none, r395, attendance, attendance-split-benchmark, attendance-sql-profile, visibility-plan-benchmark]
+      plan_phases:
+        description: Paired baseline/prototype, or only a failed prototype repair; diagnostic only
+        required: false
+        default: both
+        type: choice
+        options: [both, prototype]
       repaired_focus:
         description: Exact resolved repaired candidate; three original DB regression files, development only
         required: false
@@ -67,6 +73,9 @@ jobs:
       - name: Selected SQL diagnostic controller checks
         if: ${{ inputs.slow_suite == 'attendance-sql-profile' }}
         run: node --test .github/ci/diagnostics/attendance-sql-profile.test.mjs
+      - name: Visibility plan prototype controller checks
+        if: ${{ inputs.slow_suite == 'visibility-plan-benchmark' }}
+        run: node --test .github/ci/diagnostics/visibility-plan-prototype.test.mjs .github/ci/diagnostics/visibility-plan-controls.test.mjs .github/ci/diagnostics/visibility-plan-benchmark.test.mjs
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,11 +86,11 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.slow_suite == 'attendance-sql-profile' && 12 || inputs.slow_suite == 'attendance-split-benchmark' && 30 || 75 }}
+    timeout-minutes: ${{ inputs.slow_suite == 'visibility-plan-benchmark' && 25 || inputs.slow_suite == 'attendance-sql-profile' && 12 || inputs.slow_suite == 'attendance-split-benchmark' && 30 || 75 }}
     strategy:
       fail-fast: false
       matrix:
-        probe: ${{ fromJSON(inputs.slow_suite == 'attendance-sql-profile' && '["attendance-sql-profile"]' || inputs.slow_suite == 'attendance-split-benchmark' && '["attendance-split-benchmark"]' || inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
+        probe: ${{ fromJSON(inputs.slow_suite == 'visibility-plan-benchmark' && '["visibility-plan-benchmark"]' || inputs.slow_suite == 'attendance-sql-profile' && '["attendance-sql-profile"]' || inputs.slow_suite == 'attendance-split-benchmark' && '["attendance-split-benchmark"]' || inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
     defaults: {run: {working-directory: source}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -89,6 +98,14 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
+      - name: Verify visibility copy fidelity using the installed candidate parser
+        if: ${{ matrix.probe == 'visibility-plan-benchmark' }}
+        run: node --test ../automation/.github/ci/diagnostics/visibility-plan-copies.test.mjs
+        env: {AIHR_TEST_TYPESCRIPT_ROOT: '${{ github.workspace }}/source'}
+      - name: Compare unchanged visibility predicate plan reuse with financial and actual reused-connection controls
+        if: ${{ matrix.probe == 'visibility-plan-benchmark' }}
+        run: node ../automation/.github/ci/diagnostics/visibility-plan-benchmark.mjs
+        env: {AIHR_PLAN_BENCHMARK_PHASES: '${{ inputs.plan_phases }}'}
       - name: Paired attendance split comparison on one standard runner
         if: ${{ matrix.probe == 'attendance-split-benchmark' }}
         run: node ../automation/.github/ci/diagnostics/attendance-split-benchmark.mjs
@@ -97,11 +114,11 @@ jobs:
         if: ${{ matrix.probe == 'attendance-sql-profile' }}
         run: node ../automation/.github/ci/diagnostics/attendance-sql-profile.mjs
       - name: Record original workload and PostgreSQL crash/recovery/resource evidence
-        if: ${{ matrix.probe != 'attendance-split-benchmark' && matrix.probe != 'attendance-sql-profile' }}
+        if: ${{ matrix.probe != 'attendance-split-benchmark' && matrix.probe != 'attendance-sql-profile' && matrix.probe != 'visibility-plan-benchmark' }}
         run: node ../automation/.github/ci/diagnostics/run-db.mjs "$PROBE"
         env: {PROBE: '${{ matrix.probe }}'}
       - name: Always remove the paired diagnostic owned database
-        if: ${{ always() && (matrix.probe == 'attendance-split-benchmark' || matrix.probe == 'attendance-sql-profile') }}
+        if: ${{ always() && (matrix.probe == 'attendance-split-benchmark' || matrix.probe == 'attendance-sql-profile' || matrix.probe == 'visibility-plan-benchmark') }}
         run: bash ../automation/.github/ci/postgres.sh stop
         env: {AIHR_CI_UNIT: db-3}
       - if: always()
@@ -112,5 +129,6 @@ jobs:
             ${{ runner.temp }}/diagnostic-db-*/
             ${{ runner.temp }}/diagnostic-attendance-split/
             ${{ runner.temp }}/diagnostic-attendance-sql/
+            ${{ runner.temp }}/diagnostic-visibility-plan/
           if-no-files-found: error
           retention-days: 14
