@@ -161,6 +161,17 @@ async function main() {
   const captureFailure = async () => {
     if (report.failureScreenshot || !activePage || activePage.isClosed()) return;
     try {
+      report.failureDom = await bounded(activePage.evaluate(() => ({
+        lang: document.documentElement.lang,
+        focus: {tag: document.activeElement?.tagName, id: document.activeElement?.id,
+          role: document.activeElement?.getAttribute('role')},
+        orchestratorPanels: [...document.querySelectorAll('details#orchestrator')].map(panel => ({
+          open: panel.open, hidden: panel.hidden,
+          hasLayout: panel.getClientRects().length > 0, visibility: getComputedStyle(panel).visibility,
+        })),
+      })), 'Failure DOM diagnostics', 5000);
+    } catch { report.failureDomUnavailable = true; }
+    try {
       await activePage.screenshot({path: join(out, 'failure.png'), fullPage: true, animations: 'disabled', timeout: 10_000});
       report.failureScreenshot = 'failure.png'; report.failureUrl = activePage.url();
     } catch { report.failureScreenshotUnavailable = true; }
@@ -222,7 +233,7 @@ async function main() {
       page.on('console', message => { if (message.type() === 'error') report.consoleErrors.push(scrub(message.text())); });
       page.on('response', response => { if (response.status() >= 500) report.serverErrors.push({url: response.url(), status: response.status()}); });
       await page.goto(base + '/login');
-      await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();
+      await page.locator(`form[action="/login/as"]:visible:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();
       await page.waitForURL(url => url.pathname !== '/login' && url.pathname !== '/login/as');
       if (needsTour === 't' && !actor.key.endsWith('-employee')) {
         checkpoint('onboarding-dialog', {actor: actor.key});
@@ -269,7 +280,7 @@ async function main() {
       await page.getByRole('button', {name: 'Change language', exact: true}).click();
       const [response] = await Promise.all([
         page.waitForResponse(r => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action']), {timeout: 15_000}),
-        page.locator(`button[name="locale"][value="${locale}"]`).click(),
+        page.locator(`button[name="locale"][value="${locale}"]:visible`).click(),
       ]);
       checkpoint('locale-observe-rendered-state', {actor, locale, status: response.status()});
       assert(response.ok(), 'Locale action returned an unsuccessful response');
@@ -294,7 +305,7 @@ async function main() {
                 assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
               } else {
                 if (route === '/control-tower/agents') {
-                  const panel = page.locator('details#orchestrator');
+                  const panel = page.getByRole('main').locator('details#orchestrator:visible');
                   await expandWithKeyboard(panel, 'Orchestrator panel');
                 }
                 const card = cardFor(page, t); await card.waitFor({state: 'visible'});
