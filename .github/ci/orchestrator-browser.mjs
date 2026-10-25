@@ -418,14 +418,22 @@ async function main() {
         assert(uuid(before.id));
         const eventWatermark = psql(`select coalesce(max(sequence), 0) from domain_event where tenant_id = '${tenant}'`);
         assert(/^\d+$/.test(eventWatermark));
-        const capture = async label => {
+        const capture = async (label, target) => {
+          // The app scrolls its main region internally; fullPage alone still captures only the
+          // current viewport. Bring the actual evidence into view without changing business state.
+          if (target) {
+            await target.scrollIntoViewIfNeeded();
+            const box = await target.boundingBox(), viewport = page.viewportSize();
+            assert(box && viewport && box.y >= 0 && box.y + box.height <= viewport.height + 1,
+              'Correction evidence target is outside the captured viewport');
+          }
           await noPrivateText(page);
           const name = `correction-${label}.png`;
           await page.screenshot({path: join(out, name), fullPage: true, animations: 'disabled'});
           checkpoint('correction-' + label);
           return name;
         };
-        const images = [await capture('open-queue')];
+        const images = [await capture('open-queue', bankRow())];
         await bankRow().getByRole('link', {name: 'Orchestration fictional employee A', exact: true}).click();
         await page.waitForURL(url => url.pathname === href);
         const payroll = () => page.locator('[data-tab-save-scope="payroll"]:visible');
@@ -451,18 +459,18 @@ async function main() {
           await queue().getByText(t.refreshed, {exact: true}).waitFor({state: 'visible'});
         };
         checkpoint('correction-save-cash');
-        await saveAndReopen('cash'); images.push(await capture('cash-record-reopened'));
+        await saveAndReopen('cash'); images.push(await capture('cash-record-reopened', payment()));
         await refresh(); await observed(async () => await bankRow().count() === 0, 'Closed bank case absent from queue');
         const closed = witness(); assert.equal(closed.state, 'verified');
         images.push(await capture('verified-queue'));
         await page.goto(base + href + '?tab=payroll');
         checkpoint('correction-clear-payment-method');
-        await saveAndReopen(''); images.push(await capture('cleared-record-reopened'));
+        await saveAndReopen(''); images.push(await capture('cleared-record-reopened', payment()));
         await refresh(); await bankRow().waitFor({state: 'visible'});
         assert.equal(await bankRow().count(), 1);
         const reopened = witness(); validateCorrectionEvidence(before, closed, reopened);
         assert((await bankRow().innerText()).includes(t.reopened.replace('{count}', String(reopened.reopenCount))));
-        images.push(await capture('same-case-reopened'));
+        images.push(await capture('same-case-reopened', bankRow()));
         const audit = JSON.parse(psql(`select coalesce(json_agg(row_to_json(events) order by sequence), '[]'::json) from
           (select sequence, event_type, actor_type, actor_id, payload from domain_event
            where tenant_id = '${tenant}' and sequence > ${eventWatermark}
