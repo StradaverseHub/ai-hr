@@ -46,3 +46,11 @@ test('artifact reader preserves raw hashes and refuses traversal and symlinks',(
  for(const path of ['../raw.log','sub/../raw.log','/raw.log','link','linked-dir/missing'])assert.throws(()=>read(path));
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('artifact file and aggregate budgets refuse before oversized content can be accepted',()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'aihr-exception-budget-')));
+ try{writeFileSync(join(root,'a.log'),'1234');writeFileSync(join(root,'b.log'),'5678');
+ assert.throws(()=>boundedReader(root,'test',[],{maxFileBytes:3,maxTotalBytes:100})('a.log'));
+ const read=boundedReader(root,'test',[],{maxFileBytes:4,maxTotalBytes:7});assert.equal(read('a.log'),'1234');assert.throws(()=>read('b.log'));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

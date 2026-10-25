@@ -22,7 +22,7 @@ The prepared operator uses actual candidate release builders and a fresh System 
 
 A successful remote build is mirrored as immutable private exception evidence outside the source tree. Identical mirror retries are accepted; conflicting bytes refuse. A mirror failure saves the exact envelope for retry without rebuilding. Release learning retains the exceptional outcome and cannot create a new full PASS baseline. Active service restart, health, migration/source/build arrival, branch integration and actual resource handback remain the release owner's separate work.
 
-The operator and acceptance are **prepared, not executed or release-verified**. Their policy still needs independent source review and actual terminal evidence. Small tests cover 21 distinct report, file-reader, provenance, browser/walkthrough and mocked operator/transport boundaries across the recorded runs. One private fixture initially used macOS's `/var` alias and was correctly refused by the canonical-path guard; only that failed fixture was repaired/retested, with the other 13 passing groups retained. No application tests, databases, network calls or real deployment were executed by these regressions.
+The operator and acceptance are **prepared, not executed or release-verified**. Their policy still needs independent source review and actual terminal evidence. Small tests cover 23 distinct report, file-reader, provenance, browser/walkthrough and mocked operator/transport boundaries across the recorded runs. One private fixture initially used macOS's `/var` alias and was correctly refused by the canonical-path guard; only that failed fixture was repaired/retested, with the other 13 passing groups retained. No application tests, databases, network calls or real deployment were executed by these regressions.
 
 Invoke only after the existing full run is terminal and restored, the reviewed two-file counter repair is committed on the allowed final candidate, and independent review has completed:
 
@@ -33,3 +33,7 @@ node --import <candidate>/node_modules/tsx/dist/loader.mjs \
 ```
 
 The release owner selects `deploy` only after a valid verify result and existing release coordination. This documentation is not deployment proof or a new authorization beyond the direct owner exception.
+
+The initial report reviewer rejected the actual healthy DB teardown printed after Duration. A source review caught this before use. The corrected DB path requires exactly `[global-setup] teardown dropped 3 database(s) for namespace 'ai_hr_test_tpl_ai_h_final26'`; the no-DB path permits no tail. Wrong count, foreign namespace, missing/duplicate cleanup and extra/error output refuse. Only this changed boundary was retested, including actual saved batches 1 and 2 (62 files/833 cases and 62 files/1,006 cases). The original false refusal remains recorded; no database tests were rerun.
+
+Actual completed DB logs are approximately 35–48 MB each because the frozen candidate still emits reset notices. The terminal run reader therefore has an explicit 128 MiB per-file and 2 GiB total bound, processing reports sequentially. Other readers keep their smaller bounds. This accommodates observed evidence; it neither changes test execution nor suppresses original log bytes. Large-log transport/parsing cost remains part of the performance work.

@@ -30,7 +30,7 @@ const one = (text, regex, reason) => {
   const matches = [...text.matchAll(regex)]; requireEvidence(matches.length === 1, reason); return matches[0];
 };
 /** The real process status was overwritten by the old counter: it stays UNKNOWN. */
-export function reviewPassingReport(raw, asked) {
+export function reviewPassingReport(raw, asked, {database = false} = {}) {
   exactInventory(asked);
   const text = plainReport(raw);
   const fileLine = one(text, /^\s*Test Files\s+([^\r\n]+)\s*$/gm, 'one file summary required');
@@ -40,7 +40,9 @@ export function reviewPassingReport(raw, asked) {
   requireEvidence(files && +files[1] === asked.length && +files[2] === asked.length, 'nonpassing or incomplete files');
   requireEvidence(tests && +tests[1] > 0 && tests[1] === tests[2], 'failed, skipped or incomplete tests');
   const footer = one(text, /^\s*Duration\s+\d+(?:\.\d+)?(?:ms|s|m|h)(?:\s+\([^\r\n]*\))?[ \t]*$/gm, 'natural completion footer required');
-  requireEvidence(footer.index > fileLine.index && footer.index > testLine.index && !text.slice(footer.index + footer[0].length).trim(), 'output follows completion footer');
+  requireEvidence(footer.index > fileLine.index && footer.index > testLine.index, 'misplaced completion footer');
+  const tail=text.slice(footer.index+footer[0].length).trim();
+  requireEvidence(database ? tail==="[global-setup] teardown dropped 3 database(s) for namespace 'ai_hr_test_tpl_ai_h_final26'" : tail==='', 'unexpected or missing post-summary cleanup output');
   requireEvidence(!/^\s*(?:FAIL\s|Errors?\s|Unhandled\s|⎯[^\r\n]*(?:Failed Tests|Failed Suites|Unhandled Errors)|ELIFECYCLE\b|Test run (?:cancelled|canceled))/m.test(text), 'failure or unhandled-error marker');
   const passing = [...text.matchAll(/^\s*✓\s+(?:\|?(?:node|dom)\|?\s+)?(test\/[A-Za-z0-9_./-]+\.(?:test\.ts|dom\.test\.tsx))[ \t]+\((\d+) tests?\)[^\r\n]*$/gm)];
   requireEvidence(passing.length === asked.length, 'missing or repeated passing file reports');

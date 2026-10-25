@@ -49,3 +49,10 @@ test('terminal counter-only failure stays FAIL and never grants release',()=>{
 test('controller rejects interruption, missing batch, relabelled receipt and changed counts',()=>{
   for(const t of [controller.replace('════ FINAL ════',''),controller.replace('chunk 16/16','chunk 15/16'),controller.replace('result=FAIL','result=PASS'),controller.replace('files counted: 0','files counted: 1944'),controller+'PARTIAL RUN\n',controller.replace('exit=1 peak-disk','exit=0 peak-disk')])assert.throws(()=>reviewCounterController(t,inventory));
 });
+
+test('DB permits only this run healthy three-database teardown; no-DB permits no tail',()=>{
+ const tail="[global-setup] teardown dropped 3 database(s) for namespace 'ai_hr_test_tpl_ai_h_final26'\n";
+ assert.equal(reviewPassingReport(report+tail,names,{database:true}).cases,3);
+ assert.throws(()=>reviewPassingReport(report+tail,names));
+ for(const bad of ['',tail.replace('3 database','2 database'),tail.replace('ai_h_final26','foreign'),tail+'Unhandled Error\n','error\n'+tail,tail+tail])assert.throws(()=>reviewPassingReport(report+bad,names,{database:true}));
+});

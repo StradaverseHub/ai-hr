@@ -10,7 +10,7 @@ import {isDeepStrictEqual as equal} from 'node:util';
 import {COUNTER_EXCEPTION as P, sha256, reviewPassingReport, reviewCounterController} from './local-counter-exception.mjs';
 const requireEvidence = (ok, why) => assert(ok, 'Counter exception collection refused: ' + why);
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024}).trim();
-export function boundedReader(root, group, artifacts) {
+export function boundedReader(root, group, artifacts, {maxFileBytes=64*1024*1024,maxTotalBytes=512*1024*1024}={}) {
   root = resolve(root); requireEvidence(realpathSync(root) === root && lstatSync(root).isDirectory(), 'noncanonical archive root');
   let total = 0;
   return relative => {
@@ -18,7 +18,7 @@ export function boundedReader(root, group, artifacts) {
       && !relative.split('/').some(x => x === '.' || x === '..'), 'unsafe artifact path');
     const path = join(root, relative), stat = lstatSync(path);
     requireEvidence(stat.isFile() && !stat.isSymbolicLink() && realpathSync(path) === path, 'nonregular artifact');
-    requireEvidence(stat.size <= 64 * 1024 * 1024 && (total += stat.size) <= 512 * 1024 * 1024, 'artifact budget');
+    requireEvidence(stat.size <= maxFileBytes && (total += stat.size) <= maxTotalBytes, 'artifact budget');
     const fd = openSync(path, 'r'); let bytes;
     try {
       const before = fstatSync(fd); requireEvidence(before.dev === stat.dev && before.ino === stat.ino && before.size === stat.size, 'artifact replaced before read');
@@ -50,7 +50,7 @@ const list = text => {requireEvidence(text.endsWith('\n'), 'unterminated invento
 export async function collectCounterException({candidatePath, runDirectory, now = Date.now()}) {
   candidatePath = resolve(candidatePath); runDirectory = resolve(runDirectory);
   requireEvidence(basename(runDirectory) === P.run, 'different run');
-  const artifacts = [], read = boundedReader(runDirectory, 'run', artifacts), json = path => JSON.parse(read(path));
+  const artifacts = [], read = boundedReader(runDirectory, 'run', artifacts, {maxFileBytes:128*1024*1024,maxTotalBytes:2*1024*1024*1024}), json = path => JSON.parse(read(path));
   // Refuse active/incomplete runs before any source classification or report scan.
   const cleanup = json('cleanup.json');
   requireEvidence(cleanup.sharedRestoredAndContentsVerified === true && cleanup.privateDirectoryRemoved === true && cleanup.gateExit === 1 && cleanup.interrupted === 0 && equal(cleanup.errors, []), 'run incomplete, interrupted or restoration failed');
@@ -100,7 +100,7 @@ export async function collectCounterException({candidatePath, runDirectory, now 
   const phases = [{name: 'nodb', ...reviewPassingReport(read('fullgate/nodb.log'), nodb)}];
   for (let i = 0; i < P.chunks; i++) {
     read('fullgate/rebuild' + (i + 1) + '.log'); read('fullgate/migrate' + (i + 1) + '.log');
-    phases.push({name: 'db-' + (i + 1), ...reviewPassingReport(read('fullgate/chunk' + (i + 1) + '.log'), db.filter((_, n) => n % P.chunks === i))});
+    phases.push({name: 'db-' + (i + 1), ...reviewPassingReport(read('fullgate/chunk' + (i + 1) + '.log'), db.filter((_, n) => n % P.chunks === i), {database:true})});
   }
   requireEvidence(equal(counterSourceBoundary(candidatePath), sourceBoundary), 'source changed during collection');
   return {kind: P.kind, policyVersion: P.version, candidate: sourceBoundary.final, originalCandidate: P.candidate, sourceBoundary, baseline: P.baseline, candidatePath, runDirectory,
