@@ -75,7 +75,7 @@ The entire intentionally sequential experiment took873.329s from the recorded pr
 
 Raw archives, logs, authenticated metadata, original producer graph, independent review and submission endpoints are retained in the isolated performance worktree under `scratchpad/compiler-transport-20261026/run-40243921832/`. This does not enable persistent compiler caching, issue a new full-PASS baseline, run application tests/build/migrations or deploy staging. Compatible changed-candidate cache policy, actual Next application-compiler cache, validated capacity-aware setup and normal authenticated artifact promotion remain required before a complete representative release can establish the under600s goal. Main/live deployment stays disabled.
 
-## Prepared compatible-candidate and capacity trial
+## Compatible-candidate and capacity trial
 
 A new default-off `compiler_compatible_probe` consumer reuses the successful original run40243921832 artifact; it never launches another cold producer. The current candidate/controller remains distinct from that immutable original source/controller/run. The typed `scripts/ci-compiler-cache-policy.ts` guard requires GitHub-authenticated bounded ancestor comparison, complete changed-file membership, identical compiler binaries/runtime/flags/configuration/lockfiles/generated types/mobile inputs and exact invocation digests. Resource-only shell bytes may differ, while actual compiler options and binary/input digests must remain identical. Ineligible state cannot become a cached PASS.
 
@@ -83,4 +83,25 @@ This bounded trial adds exactly that new typed policy root to the real candidate
 
 Its explicit `bounded-compiler-diagnostic` capacity scope accepts only the actual company/manual review workflow, compatible consumer purpose and all four closed database URLs. It skips fixed SDK deletion when at least12GiB is free before dependencies; before creating the same bounded4GiB owned swap it requires8GiB free, leaving4GiB for finite compiler-state/log/evidence writes. Every compiler phase records actual filesystem samples and refuses less than2GiB remaining after swap reservation. Ordinary compiler/build/release profiles retain legacy cleanup and the20GiB compiler guard. All source/cache/fixture/owned-swap cleanup remains mandatory. Pure numeric/scope and actual fake-command preparation/cleanup checks cover the guards without a real Mac compiler, swap or database.
 
-Actual changed-candidate runtime and reduced-capacity results are pending at this checkpoint. No persistent cache or normal release workflow is enabled by this source. Any failing unexecuted phase must be investigated; the successful original cold compiler remains reusable rather than rerun automatically.
+The actual changed-candidate runtime and reduced-capacity results are independently verified below. No persistent cache or normal release workflow is enabled by this source. Any failing unexecuted phase must be investigated; the successful original cold compiler remains reusable rather than rerun automatically.
+
+## Verified changed-candidate and bounded-capacity result — 26 October 2026 MYT
+
+[Run40245915232](https://github.com/StradaverseHub/ai-hr/actions/runs/40245915232) succeeded on exact new candidate/controller `bf3868aa857e20deb3ea0a1afe8571caa7aff74b`. It reused the same original source/controller067301b3596a2f6c2f483265edf6a6015e34698c/run40243921832/artifact12617977681. No cold producer was rerun. Root independently authenticated both origins, original and consumer archive bytes, the actual ancestor comparison and complete changed-file membership, all semantic compiler inputs, every raw compiler count/exit/diagnostic and owned cleanup.
+
+| Actual phase | Elapsed | Complete files | Actual exit |
+| --- | --- | --- | --- |
+| First restored compiler; new candidate root deliberately invalid | 22.004s | 7,060 | 2, exact policy-root TS2322 |
+| Restore that root; complete clean changed candidate | 21.473s | 7,060 | 0 |
+| Add valid dependency and consumer | 20.318s | 7,062 | 0 |
+| Change dependency; unchanged consumer refuses | 20.017s | 7,062 | 2, exact consumer TS2322 |
+| Restore dependency; new invalid root refuses | 18.656s | 7,063 | 2, exact new-root TS2322 |
+| Remove fixtures; full changed source restored | 20.062s | 7,060 | 0 |
+
+The first restored command genuinely discovered the newly added typed root and refused its introduced error. The21.473s clean pass follows that explicit first-refusal control; do not describe it as the first unchanged-source invocation on a fresh VM. The original7,059-file source and the changed7,060-file candidate remain separately identified. Authenticated restoration/applicability verification took4.376s. Both source and controller remained at the new exact commit after all owned source changes were restored.
+
+Actual SDK preparation took2.229s and performed no SDK deletion. Source-volume free space was12,860,996KiB before that step and12,860,984KiB afterward. The same actual4GiB owned swap was reserved under the8GiB pre-swap guard, then stopped/removed; the original system swap remained outside our ownership. Twelve per-phase before/after samples retained at least7,221,878,784 bytes (6.73GiB) free after swap reservation. This is sampled headroom, not an exact continuous disk peak. Source/cache/fixtures/tracked-control/swap cleanup all passed. Ordinary compiler/build/test profiles still retain their existing guards; do not extend this compiler-only result to builds or databases.
+
+Recorded pre-dispatch submission through last-job completion was208.952925s (3m29s), including queue/setup/authentication, six actual compiler commands, cleanup and upload. GitHub-created-to-last-job208s, occupied runner time202s/3.367minutes, not authoritative billing. Consumer artifact12618253888 is1,220,068 bytes, ZIP SHA256 `57cd659428ed6279fd8f203eeb94e784555f8bd871f543a0ece9fab16813077a`. Independent raw evidence and source snapshots are in `scratchpad/compiler-compatible-20261026/run-40245915232/`. All21 pure controller/resource boundary groups also passed on the actual Linux resolve job.
+
+This verifies one real descendant with an additional typed root and its error/repair controls, under the explicit unchanged compiler/configuration/dependency/type-generation boundaries. It does not establish performance for arbitrary candidate changes or enable a persistent Actions cache. Normal compiler-cache integration, cold fallback/invalidation, actual Next build cache/promotion and complete required release coverage/arrival remain unfinished.
