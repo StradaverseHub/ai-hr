@@ -27,3 +27,17 @@ A successful remote build is not completed arrival. The coordinating release own
 ## Change control
 
 The final controller is frozen before the fresh whole pilot. A repair to verification or orchestration requires a new reviewed controller and whole validation witness; successful phases from older runs are not substituted. Changes to the policy's acceptance guarantees require an explicit version change. Candidate application source remains unchanged by CI setup or the operator adapter. Automatic staging and main deployment switches remain false throughout this pilot.
+
+## Assessment of database chunking
+
+The historical `CHUNKS=8` and `CHUNKS=16` commands are execution choices, not PostgreSQL requirements or proof of complete coverage. The header of `scripts/gate-chunked.sh` records their original motivation: a full local suite generated 10.7 GB of WAL and overflowed a 5 GB, then 8 GB, Mac RAM disk. The script defaults to three chunks while the local instruction file recommends eight. Its round-robin partition depends on the chosen count, so changing that count between slices can duplicate and omit files. The legacy full-tier branch in `scripts/improve/release-gate.ts` accepts PASS plus the exact commit; it does not independently reconstruct chunk coverage. The stricter CI verifier must not inherit that limitation.
+
+Separate these three quantities when evaluating changes:
+
+- **Coverage:** the complete independently reconstructed test inventory and every required assertion.
+- **Batch size:** how much work one disposable database receives before reset, selected using measured WAL, memory, runtime and isolation needs. The current 64-file guard is an existing operational bound, not a database limit.
+- **Concurrency:** how many isolated runner/database jobs execute together. This can change without changing required coverage.
+
+More chunks alone cannot fix every resource failure. In diagnostic run [40183692729](https://github.com/StradaverseHub/ai-hr/actions/runs/40183692729), the original isolated organization test exhausted its PostgreSQL container's 1 GiB cap: cgroup `oom_kill=1`, peak equal to the cap, Docker `OOMKilled=true`, and a backend terminated by signal 9. A test timeout preceded that kill; memory exhaustion therefore does not establish the cause of every earlier timeout or lock conflict. Controlled comparisons against the released baseline and a 2 GiB cap retain the original test assertions and timeouts. These diagnostic runs cannot authorize release.
+
+Recommended next design: stable batch identities derived from a trusted complete plan, with scheduling concurrency configured separately. Use measured durations to balance work, and investigate individual expensive queries, repeated fixture cleanup and database reset costs. Validate a complete, disjoint inventory at release time rather than treating a fixed count of eight or sixteen as the guarantee. Reusing successful batches after a repair additionally requires explicit invalidation and provenance rules and a versioned, validated release policy; the current v1 policy above still requires a fresh whole witness.
