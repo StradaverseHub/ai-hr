@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: Alpha CI · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +12,11 @@ on:
         description: Exact 40-character candidate SHA (refuse if the branch moved)
         required: true
         type: string
+      diagnostics_only:
+        description: Measure disposable runner resources without the full CI gate
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [alpha]
   pull_request:
@@ -21,7 +26,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}
+  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.diagnostics_only && 'diagnostics' || 'gate' }}
   cancel-in-progress: true
 env:
   TZ: Asia/Kuala_Lumpur
@@ -50,6 +55,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
         run: node .github/ci/resolve.mjs
   typecheck:
+    if: ${{ !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -57,6 +63,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -75,6 +82,7 @@ jobs:
       - run: pnpm exec tsc --noEmit
         env: {NODE_OPTIONS: --max-old-space-size=6144}
   migrations:
+    if: ${{ !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -82,6 +90,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -97,7 +106,46 @@ jobs:
           persist-credentials: false
       - run: node ../automation/.github/ci/check-migration-order.mjs "$BASE"
         env: {BASE: '${{ needs.resolve.outputs.base }}'}
+  runner-diagnostics:
+    if: ${{ inputs.diagnostics_only }}
+    needs: resolve
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Runner capacity before dependencies
+        run: |
+          df -Pk . "$RUNNER_TEMP" /var/lib/docker
+          for p in /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup; do
+            if [ -d "$p" ]; then sudo du -sx -B1 "$p"; fi
+          done
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Record measured capacity and unused SDK sizes
+        run: node ../automation/.github/ci/runner-diagnostics.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runner-resources
+          path: ${{ runner.temp }}/runner-resources.json
+          if-no-files-found: error
+          retention-days: 30
   plan:
+    if: ${{ !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -106,6 +154,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -135,6 +184,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   build:
+    if: ${{ !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -142,6 +192,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -167,6 +218,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -210,6 +262,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -240,7 +293,7 @@ jobs:
           retention-days: 14
   verify:
     needs: [resolve, plan, typecheck, migrations, build, test, browser]
-    if: ${{ always() && needs.resolve.result == 'success' }}
+    if: ${{ always() && !inputs.diagnostics_only && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
@@ -248,6 +301,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:

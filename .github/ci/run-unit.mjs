@@ -10,12 +10,13 @@ if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || proces
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
-const healthBefore = hostHealth();
-if (!healthBefore.ok) throw Error('Runner disk headroom too low: ' + healthBefore.reasons.join('; '));
-const report = {healthBefore, schemaVersion: 1, sha: plan.sha, fingerprint: plan.fingerprint, id, cwd: process.cwd(), files: unit.files, batches: [], exitCode: 1};
+const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint: plan.fingerprint, id, cwd: process.cwd(), files: unit.files, batches: [], exitCode: 1};
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 let failure = false;
 try {
+  report.healthBefore = hostHealth();
+  writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
+  if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));
   const batchSize = unit.kind === 'db' ? 64 : Math.max(1, unit.files.length);
   for (let offset = 0; offset < unit.files.length; offset += batchSize) {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
@@ -46,6 +47,9 @@ try {
   }
   if(createPlan().fingerprint!==plan.fingerprint)throw Error('Candidate changed during CI execution');
   report.exitCode = failure ? 1 : 0;
+} catch (error) {
+  report.error = error instanceof Error ? error.stack : String(error);
+  throw error;
 } finally {
   report.healthAfter = hostHealth();
   if (unit.kind === 'db') {

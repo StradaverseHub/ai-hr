@@ -29,7 +29,7 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   if (!browsers.length) throw Error('Missing browser inventory');
   for (const engine of ['chromium', 'firefox', 'webkit']) units.push({id: `browser-${engine}`, kind: 'browser', engine, files: browsers});
-  const body = {schemaVersion: 1, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, suite, units};
+  const body = {schemaVersion: 1, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, suite, units};
   return {...body, fingerprint: hash(body)};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));

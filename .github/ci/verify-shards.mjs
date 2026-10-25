@@ -33,7 +33,7 @@ export function verifyReports(plan, reports) {
     }
     if (JSON.stringify(files.sort()) !== JSON.stringify([...unit.files].sort())) throw Error('Unit omitted required test files');
   }
-  return {schemaVersion: 1, sha: plan.sha, controller: plan.controller, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
+  return {schemaVersion: 1, sha: plan.sha, controller: plan.controller, migrationBase: plan.migrationBase, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
     browserFiles: plan.units.filter(u => u.kind === 'browser').reduce((n, u) => n + u.files.length, 0),
     tests, fingerprint: plan.fingerprint, reports: reports.map(r => ({id: r.id, hash: hash(r)}))};
 }
