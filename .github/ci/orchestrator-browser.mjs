@@ -84,7 +84,7 @@ async function main() {
     TEST_MIGRATION_DATABASE_URL: `postgres://postgres@127.0.0.1:5433/${target}`};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   const container = `aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-db-1`;
-  let app, browser, databaseStarted = false;
+  let app, browser, activePage, databaseStarted = false;
   const run = (label, bin, args, env = dbEnv, timeout = 180_000) => {
     const started = Date.now();
     const child = spawnSync(bin, args, {env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024});
@@ -97,6 +97,13 @@ async function main() {
   const psql = query => run('query-' + report.phases.length, 'docker', ['exec', container, 'psql', '-U', 'postgres', '-p', '5433', '-d', target, '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], pgEnv).trim();
   const fixture = scenario => JSON.parse(run('fixture-' + scenario + '-' + report.phases.length,
     process.execPath, ['--import', 'tsx', 'scripts/dev-fixture-orchestrator-harness.ts', scenario]));
+  const captureFailure = async () => {
+    if (report.failureScreenshot || !activePage || activePage.isClosed()) return;
+    try {
+      await activePage.screenshot({path: join(out, 'failure.png'), fullPage: true, animations: 'disabled', timeout: 10_000});
+      report.failureScreenshot = 'failure.png'; report.failureUrl = activePage.url();
+    } catch { report.failureScreenshotUnavailable = true; }
+  };
   try {
     report.healthBefore = hostHealth(); assert(report.healthBefore.ok, 'Insufficient runner disk headroom');
     // Build with closed DB URLs before starting PostgreSQL, reducing peak concurrent memory.
@@ -137,15 +144,32 @@ async function main() {
     const require = createRequire(join(process.cwd(), 'package.json'));
     const {chromium} = require('playwright'); browser = await chromium.launch({headless: true});
     const catalogues = Object.fromEntries(locales.map(locale => [locale, JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8')).controlTower.orchestrator]));
+    const onboarding = JSON.parse(readFileSync('messages/en.json', 'utf8')).onboarding;
     const login = async actor => {
+      // Read the real preference only to know whether this login should present the welcome tour.
+      // Dismiss it through its real UI/action; never write a completion flag in the fixture or browser.
+      assert(uuid(actor.userId));
+      const needsTour = psql(`select onboarded_at is null from app_user where id = '${actor.userId}'`);
+      assert(['t', 'f'].includes(needsTour));
       const context = await browser.newContext({httpCredentials: {username: 'ci', password: gate}, locale: 'en-US'});
       const page = await context.newPage(); page.setDefaultTimeout(15_000);
+      activePage = page;
       page.on('pageerror', error => report.browserErrors.push(scrub(error.message)));
       page.on('console', message => { if (message.type() === 'error') report.consoleErrors.push(scrub(message.text())); });
       page.on('response', response => { if (response.status() >= 500) report.serverErrors.push({url: response.url(), status: response.status()}); });
       await page.goto(base + '/login');
       await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();
       await page.waitForURL(url => url.pathname !== '/login' && url.pathname !== '/login/as');
+      if (needsTour === 't' && !actor.key.endsWith('-employee')) {
+        const tour = page.getByRole('dialog', {name: onboarding.aria, exact: true});
+        await tour.waitFor({state: 'visible'});
+        const completed = page.waitForResponse(response => response.request().method() === 'POST'
+          && Boolean(response.request().headers()['next-action']));
+        await tour.getByRole('button', {name: onboarding.skip, exact: true}).click();
+        await (await completed).finished(); await tour.waitFor({state: 'hidden'});
+        assert.equal(psql(`select onboarded_at is not null from app_user where id = '${actor.userId}'`), 't');
+        (report.onboardingDismissed ??= []).push(actor.key);
+      }
       return {context, page};
     };
     const cardFor = (page, t) => page.getByRole('heading', {name: t.workTitle, exact: true}).locator('xpath=ancestor::*[@data-ui-card][1]');
@@ -190,7 +214,8 @@ async function main() {
             }
           }
         }
-      } finally { await context.close(); }
+      } catch (error) { await captureFailure(); throw error; }
+      finally { await context.close(); }
     }
     const actor = second.actors.find(row => row.key === 'A-hr');
     const {context, page} = await login(actor);
@@ -214,13 +239,17 @@ async function main() {
         await page.screenshot({path: join(out, `receipt-${scenario}.png`), fullPage: true, animations: 'disabled'});
         report.scenarios.push({scenario, ...expected});
       }
-    } finally { await context.close(); }
+    } catch (error) { await captureFailure(); throw error; }
+    finally { await context.close(); }
     report.modelRunsAfter = Number(psql('select count(*) from ai_model_run'));
     assert.equal(report.modelRunsAfter, report.modelRunsBefore, 'Walkthrough created a model admission');
     assert.equal(report.browserErrors.length, 0); assert.equal(report.consoleErrors.length, 0); assert.equal(report.serverErrors.length, 0);
     assert.equal(git('rev-parse', 'HEAD'), sha); assert.equal(git('status', '--porcelain'), '');
     report.exitCode = 0;
-  } catch (error) { report.error = scrub(error instanceof Error ? error.message : 'Walkthrough failed').slice(0, 3000); }
+  } catch (error) {
+    report.error = scrub(error instanceof Error ? error.message : 'Walkthrough failed').slice(0, 3000);
+    await captureFailure();
+  }
   finally {
     if (browser) await browser.close().catch(() => { report.exitCode = 1; });
     if (app && app.exitCode === null && app.signalCode === null) {
