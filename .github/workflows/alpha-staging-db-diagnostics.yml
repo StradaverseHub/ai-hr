@@ -22,7 +22,7 @@ on:
         required: false
         default: none
         type: choice
-        options: [none, r395, attendance, attendance-split-benchmark]
+        options: [none, r395, attendance, attendance-split-benchmark, attendance-sql-profile]
       repaired_focus:
         description: Exact resolved repaired candidate; three original DB regression files, development only
         required: false
@@ -64,6 +64,9 @@ jobs:
       - name: Paired benchmark controller checks
         if: ${{ inputs.slow_suite == 'attendance-split-benchmark' }}
         run: node --test .github/ci/diagnostics/attendance-split-benchmark.test.mjs
+      - name: Selected SQL diagnostic controller checks
+        if: ${{ inputs.slow_suite == 'attendance-sql-profile' }}
+        run: node --test .github/ci/diagnostics/attendance-sql-profile.test.mjs
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,11 +77,11 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.slow_suite == 'attendance-split-benchmark' && 30 || 75 }}
+    timeout-minutes: ${{ inputs.slow_suite == 'attendance-sql-profile' && 12 || inputs.slow_suite == 'attendance-split-benchmark' && 30 || 75 }}
     strategy:
       fail-fast: false
       matrix:
-        probe: ${{ fromJSON(inputs.slow_suite == 'attendance-split-benchmark' && '["attendance-split-benchmark"]' || inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
+        probe: ${{ fromJSON(inputs.slow_suite == 'attendance-sql-profile' && '["attendance-sql-profile"]' || inputs.slow_suite == 'attendance-split-benchmark' && '["attendance-split-benchmark"]' || inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
     defaults: {run: {working-directory: source}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -90,12 +93,15 @@ jobs:
         if: ${{ matrix.probe == 'attendance-split-benchmark' }}
         run: node ../automation/.github/ci/diagnostics/attendance-split-benchmark.mjs
         env: {AIHR_CI_HEAD: '${{ needs.resolve.outputs.sha }}'}
+      - name: Profile one unchanged cash settlement case using owned PostgreSQL statistics
+        if: ${{ matrix.probe == 'attendance-sql-profile' }}
+        run: node ../automation/.github/ci/diagnostics/attendance-sql-profile.mjs
       - name: Record original workload and PostgreSQL crash/recovery/resource evidence
-        if: ${{ matrix.probe != 'attendance-split-benchmark' }}
+        if: ${{ matrix.probe != 'attendance-split-benchmark' && matrix.probe != 'attendance-sql-profile' }}
         run: node ../automation/.github/ci/diagnostics/run-db.mjs "$PROBE"
         env: {PROBE: '${{ matrix.probe }}'}
       - name: Always remove the paired diagnostic owned database
-        if: ${{ always() && matrix.probe == 'attendance-split-benchmark' }}
+        if: ${{ always() && (matrix.probe == 'attendance-split-benchmark' || matrix.probe == 'attendance-sql-profile') }}
         run: bash ../automation/.github/ci/postgres.sh stop
         env: {AIHR_CI_UNIT: db-3}
       - if: always()
@@ -105,5 +111,6 @@ jobs:
           path: |
             ${{ runner.temp }}/diagnostic-db-*/
             ${{ runner.temp }}/diagnostic-attendance-split/
+            ${{ runner.temp }}/diagnostic-attendance-sql/
           if-no-files-found: error
           retention-days: 14
