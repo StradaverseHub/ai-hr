@@ -22,7 +22,7 @@ import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/pol
 import {randomUUID,createHash} from 'node:crypto';
 import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -79,7 +79,21 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
  const draft=await saveOvertimePatternDraft(state.ctx,{draft:{code:'POLICY_'+randomUUID().slice(0,8),name:'Fictional policy pattern',creationCompanyId:state.b.companyId,companyIds:[state.b.companyId],definition}});
  const validation=await validateOvertimePatternActivation(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision});
  expect(validation.issues).toEqual([]);
- await activateOvertimePattern(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
+ const historicalFinancialDay=financial&&unclocked&&currentManual?day(-1):null;
+ if(historicalFinancialDay){
+  // Activate through the genuine API under a declared Date-only setup clock, before
+  // yesterday's actual work. Restore real time before attestation: all database clock
+  // guards, financial checks and the refusal of future work remain unchanged.
+  expect(vi.isFakeTimers()).toBe(false);
+  vi.useFakeTimers({toFake:['Date']});
+  try{
+   vi.setSystemTime(Date.parse(historicalFinancialDay+'T00:00:00+08:00'));
+   await activateOvertimePattern(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:historicalFinancialDay});
+  }finally{vi.useRealTimers();}
+ }else{
+  await activateOvertimePattern(state.ctx,{versionId:draft.versionId,expectedRevision:draft.revision,validationDigest:validation.validationDigest!,effectiveFrom:day(currentManual?0:1)});
+ }
+
  let compatibleVersionId=draft.versionId;
  if(mixedCompatible){
   const compatibleDefinition=structuredClone(definition);
@@ -116,7 +130,7 @@ async function fixture(approval:'manual'|'auto'='manual',fixedHourlyRate?:string
    and tgname in ('attendance_group_policy_revision_guard','zz_attendance_policy_activation_epoch') order by tgname`);
   expect(Array.from(guards).map(row=>row.tgenabled)).toEqual(['O','O']);
  }
- const sourceOffset=currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
+ const sourceOffset=historicalFinancialDay?-1:currentManual?0:financial&&day(2).slice(0,7)!==day(3).slice(0,7)?4:2;
  const sourceDate=sourceDateOverride??day(sourceOffset),nextDate=new Date(Date.parse(sourceDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
  if(mixedCompatible){
   await saveScheduleGroupControl(state.ctx,{ruleId,kind:'duty',enabled:true});

@@ -226,7 +226,8 @@ describe('immutable non-payable policy part storage',()=>{
   await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'00:00',workEnd:'00:01',breakMinutes:0,lateAfter:'00:00',
    halfDayBefore:'00:01',workingDays:[1,2,3,4,5,6,7],otApprovalCalculation:method});
   // Same declared private historical GROUP baseline restoration as the four Manual probes.
-  // Formula activation is genuine and current-day. This is not a historical activation command.
+  // Formula activation uses the genuine API under the declared prior-day setup clock;
+  // actual-work submission uses real time. This is a controlled-time integration fixture.
   const rounding:AttendanceGroupPolicy['overtime']['rounding']=roundMode==='none'?{mode:'none',step:null}:{mode:roundMode,step:30};
   const f=await fixture('manual','12','actual',true,undefined,0,true,rounding,physical,roundMode==='nearest'?'latest':'earliest',false,undefined,true),
    p={employmentId:f.employmentId,date:f.sourceDate},midnight=Date.parse(p.date+'T00:00:00+08:00');
