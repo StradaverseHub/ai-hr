@@ -411,6 +411,30 @@ Before implementing savepoint recovery, trace every command callee for effects o
 transaction. A database rollback cannot undo a network delivery or a separately committed writer;
 such a path must be moved behind the existing transactional event owner or excluded from this action.
 
+FACT (source review only, own-leave source `61d5cce61a913faaf86e341cc034b8c1c88f1693`) — the inspected
+post-insertion path in [`requestLeave`](../../core/leave.ts) does not deliver a notification or open a
+second transaction. `insertLeaveRequest` receives the supplied `tx`, inserts the pending request,
+obtains the exact submitted event reference through `appendEvent(tx, ..., { returnId: true })`, and
+calls `generateApprovalSteps` with that same transaction. [`appendEvent`](../../db/events.ts) performs
+only the event insertion; returning its identifier is not a delivery acknowledgement.
+The final working-day warning path also retains that transaction: `leaveHolidayCompletenessTx`
+passes it to [`warnIfHolidaysIncomplete`](../../core/holidays.ts), which reads the holiday counts and
+appends `holiday.completeness.warned` through the same event owner. The dynamically imported
+[`frozenSnapshotFor`](../../core/leave-encashment.ts) is a supplied-transaction SELECT, not a separately
+committed encashment operation. The `withTenant` fallback at `requestLeave`'s return is not selected
+when the future command supplies `existingTx`.
+
+This narrows the effect audit; it does not establish an exhaustive transitive audit, trigger behavior,
+or a working savepoint boundary. The bounded reviewed path refuses attachments and conversion
+consent, requires Annual leave, and fixes both dates to one day; attachment, Emergency decomposition,
+replacement-credit and multi-date branches must stay unreachable rather than being assumed safe.
+One additional dependency is explicit: `generateApprovalSteps` resolves approval configuration and
+org/reporting facts **after** inserting the request. Those reads, and the final holiday-warning reads,
+must remain inside the eventual protected dependency interval. The earlier approval-chain read or
+pre-insertion holiday comparison cannot stand in for their protection. The review deliberately says
+`approvalRouting: unknown`; a submitted receipt must not claim a particular approver or approval.
+Runtime rollback/event/step atomicity and the remaining read dependencies are still unverified.
+
 If a dependency or effect changed, refuse the old confirmation and offer a freshly reviewed proposal.
 If the service refuses, a savepoint may roll back its writes while the outer transaction records a
 bounded refusal code. Unexpected errors abort the transaction. Never silently add override/unpaid
