@@ -2113,7 +2113,9 @@
       "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
       "exclusionReasons": {
         "datedCalendar": "Tetapkan kalendar mengikut tarikh dalam Personel > Kehadiran > Kalendar Cuti supaya sejarah penetapan terdahulu dikekalkan. Import pekerja tidak boleh mengubah kalendar atau tarikhnya.",
-        "testRecord": "HR mengurus klasifikasi rekod ujian dalam Personnel. Import pekerja tidak boleh mengubahnya.",
+        "testRecord": "Klasifikasi keselamatan dalaman ini dikekalkan. Personnel dan import pekerja tidak boleh mengubahnya.",
+        "resignationDates": "Tarikh peletakan jawatan datang daripada peristiwa Pergerakan yang terpakai. Gunakan import Pergerakan atau aliran kerja peletakan jawatan.",
+        "costAllocation": "Gunakan lembaran Peruntukan Pusat Kos atau import peruntukan khusus. Baris pekerja tidak boleh menggantikan set peruntukan bertarikh.",
         "managed": "Nilai ini dikira, merupakan sejarah, atau diubah melalui tindakan Personel tersendiri. Gunakan tab Personelnya.",
         "file": "Fail dan tindakan pada skrin diurus dalam Personel; ia bukan nilai hamparan.",
         "confirmation": "Dikira daripada tarikh pengesahan dan lanjutan percubaan yang diluluskan. Gunakan Pergerakan untuk lanjutan.",

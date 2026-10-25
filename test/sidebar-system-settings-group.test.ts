@@ -61,6 +61,7 @@ const TICKET_HREFS = [
  */
 const SYSTEM_SETTINGS_CHILD_HREFS = [
   '/admin/settings/employee-id',
+  '/admin/settings/people-general',
   '/admin/settings/dashboard',
   '/admin/settings/system-labels',
   '/admin/system-settings/approval-delegation',
