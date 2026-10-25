@@ -250,8 +250,52 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with: {node: '20', mobile: 'false'}
-      - run: pnpm build
+      - name: Bind compiler cache to CI build context
+        id: next-cache-context
+        run: |
+          cache_runtime="$(node -p '[process.platform, process.arch, process.versions.node].join("-")')"
+          printf 'prefix=aihr-next-compiler-v1-ubuntu24-%s-%s\n' "$cache_runtime" "${{ hashFiles('source/pnpm-lock.yaml', 'source/package.json', 'source/next.config.ts', 'source/tsconfig.json', 'source/tsconfig.build.json', 'source/.env.example', 'source/scripts/improve/system-testing-next-config.ts') }}" >> "$GITHUB_OUTPUT"
+      - name: Restore optional Turbopack compiler cache
+        id: next-cache
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: source/.next/cache/turbopack
+          key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
+          restore-keys: ${{ steps.next-cache-context.outputs.prefix }}-
+          enableCrossOsArchive: false
+          fail-on-cache-miss: false
+        env: {SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'}
+      - name: Compile production application
+        run: pnpm build
         env: {NODE_OPTIONS: --max-old-space-size=6144}
+      - name: Bound optional compiler cache upload
+        id: next-cache-budget
+        if: ${{ success() && steps.next-cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if [ -d .next/cache/turbopack ] && [ ! -L .next/cache/turbopack ]; then
+            cache_kib="$(du -sk .next/cache/turbopack | cut -f1)"
+            if [[ "$cache_kib" =~ ^[0-9]+$ ]] && [ "$cache_kib" -le 1048576 ]; then
+              echo 'eligible=true' >> "$GITHUB_OUTPUT"
+              echo "Compiler cache: ${cache_kib} KiB; within the 1 GiB per-entry upload bound."
+            else
+              echo 'Compiler cache upload skipped: exceeds the per-entry bound.'
+            fi
+          else
+            echo 'Compiler cache upload skipped: no regular compiler cache directory.'
+          fi
+      - name: Save optional Turbopack compiler cache
+        if: ${{ success() && steps.next-cache-budget.outputs.eligible == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: source/.next/cache/turbopack
+          key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
+          enableCrossOsArchive: false
   test:
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
