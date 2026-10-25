@@ -102,6 +102,16 @@ describe('pending own-leave review custody', () => {
     expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
   });
 
+  it('reconciles simultaneous discard deliveries to the same retired reference', async () => {
+    const review = await prepare();
+    const retire = () => withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    const results = await Promise.all([retire(), retire()]);
+    const expected = { kind: 'retired', receipt: { actionId: review.actionId, contractVersion: 1, state: 'discarded' } };
+    expect(results).toEqual([expected, expected]);
+    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId))).toEqual(expected);
+    expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
+  });
+
   it('allows only retirement after a pause or removed Assistant grant, never another private read', async () => {
     const review = await prepare();
     await setAiAllowance(adminCtx(base), { kind: 'user', subjectId: ctx.userId!, enabled: false,
@@ -136,6 +146,19 @@ describe('pending own-leave review custody', () => {
     await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(reviews[0])));
     await prepare();
     expect(await counts()).toMatchObject({ bodies: 6, pending: 6, model_runs: 0, requests: 0 });
+  });
+
+  it('shares pending capacity across competing preparations rather than admitting each from an old count', async () => {
+    const attempts = await Promise.allSettled(Array.from({ length: 6 }, () => prepare()));
+    const prepared = attempts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+    const refused = attempts.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+    expect(prepared).toHaveLength(5);
+    expect(new Set(prepared.map(review => review.actionId)).size).toBe(5);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect(await counts()).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    for (const review of prepared) expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
+      .toEqual({ kind: 'prepared', review });
   });
 
   it('does not let retirement bypass the rolling preparation budget or count old reviews forever', async () => {

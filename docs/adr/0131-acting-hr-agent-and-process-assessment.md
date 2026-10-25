@@ -678,8 +678,10 @@ SQL application, types, builds and app journeys remain **UNRUN** under the resou
 
 Additional authored storage-admission cases distinguish the five-pending limit from a twenty-created
 rolling window, cover retired-review budget consumption, old-window release and separate-login
-capacity, and require zero model/request writes. They remain UNRUN; no concurrent capacity guarantee
-or deployed rate-control claim follows from source review.
+capacity, and require zero model/request writes. Competing preparation calls must share five pending
+slots, and simultaneous discard deliveries must reconcile to the same terminal reference with no
+remaining private body. They remain UNRUN; no concurrent capacity guarantee or deployed rate-control
+claim follows from source review.
 
 Before wiring, demonstrate these cases on the actual restricted-owner/app-role database, forced
 constraint and concurrent erasure/prepare orderings, revocation/transfer/snapshot boundaries, scheduled
