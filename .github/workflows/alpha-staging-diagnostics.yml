@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      build_transport_probe:
+        description: Canonical Linux build transferred to a fresh VM with native Sharp and Chinese PDF render proof; no deployment
+        required: false
+        default: false
+        type: boolean
       compiler_probe:
         description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
         required: false
@@ -65,6 +70,11 @@ jobs:
       - name: Compiler diagnostic controller checks
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
+      - name: Build transport controller checks
+        if: ${{ inputs.build_transport_probe }}
+        run: |
+          node --test .github/ci/build-production.test.mjs .github/ci/build-transport.test.mjs
+          python3 .github/ci/build-transport-extract.test.py
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,3 +234,73 @@ jobs:
           path: ${{ runner.temp }}/diagnostic-compiler-incremental/
           if-no-files-found: error
           retention-days: 14
+
+  build-transport-producer:
+    if: ${{ inputs.build_transport_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    outputs:
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.bundle.outputs.artifact-digest }}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false'}
+      - name: Canonical owned System Testing build and bounded byte bundle
+        run: pnpm exec tsx ../automation/.github/ci/build-production.mjs --diagnostic "$RUNNER_TEMP/build-transport-producer"
+      - id: bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-producer
+          path: ${{ runner.temp }}/build-transport-producer/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  build-transport-consumer:
+    if: ${{ inputs.build_transport_probe }}
+    needs: [resolve, build-transport-producer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      AIHR_BUILD_ARTIFACT_ID: ${{ needs.build-transport-producer.outputs.artifact_id }}
+      AIHR_BUILD_ARTIFACT_DIGEST: ${{ needs.build-transport-producer.outputs.artifact_digest }}
+      GH_TOKEN: ${{ github.token }}
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false'}
+      - name: Install independent PDF text and raster inspection tools
+        run: |
+          if ! command -v pdftoppm || ! command -v pdftotext; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          fi
+          pdftoppm -v
+          pdftotext -v
+      - name: Authenticate, relocate and run the transported build without rebuilding
+        run: pnpm exec tsx ../automation/.github/ci/build-transport.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-consumer
+          path: ${{ runner.temp }}/diagnostic-build-transport/
+          if-no-files-found: error
+          retention-days: 3

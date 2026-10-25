@@ -105,7 +105,9 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  assertSuccessfulObservation(observation,prepared,preparedBytes,buildId,startedAt,endedAt);
  testing.verifyInstalledTestingBuild(prepared,source);
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD)fail('source changed during build');
+ const packStartedAt=Date.now();
  execFileSync('python3',[join(controllerRoot,'.github/ci/build-bundle.py'),'pack',source,join(output,'bytes')],{stdio:'inherit'});
+ const packEndedAt=Date.now();
  const manifestBytes=bytes(join(output,'bytes/build-bundle-files.json'),16*1024*1024),manifest=JSON.parse(manifestBytes);
  if(manifest.platform!=='linux'||manifest.nextBuildId!==buildId)fail('bundle/build identity mismatch');
  testing.verifyInstalledTestingBuild(prepared,source);
@@ -118,7 +120,10 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),
   preparedSha256:hash(preparedBytes),successfulObservationSha256:hash(observationBytes),manifestSha256:hash(manifestBytes),
   archiveSha256:manifest.archiveSha256,archiveBytes:manifest.archiveBytes,releaseAuthorized:false};
- if(purpose==='diagnostic')provenance.diagnosticRunner={name:environment.RUNNER_NAME,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
+ if(purpose==='diagnostic'){
+  provenance.diagnosticRunner={name:environment.RUNNER_NAME,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
+  provenance.diagnosticDurations={canonicalBuildMs:endedAt-startedAt,packMs:packEndedAt-packStartedAt};
+ }
  for(const [name,data]of [['system-testing.json',preparedBytes],['successful-build.json',observationBytes],['build-provenance.json',Buffer.from(JSON.stringify(provenance)+'\n')]])writeFileSync(join(output,name),data,{flag:'wx',mode:0o600});
  return provenance;
 }
