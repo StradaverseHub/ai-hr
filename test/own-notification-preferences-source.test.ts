@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
-import {resolveOwnNotificationServerIdentity,prepareOwnNotificationPreferencesTx,confirmOwnNotificationPreferencesTx,reopenOwnNotificationPreferencesTx} from '../core/assistant-actions/own-notification-preferences-source';
+import {resolveOwnNotificationServerIdentity,prepareOwnNotificationPreferencesTx,confirmOwnNotificationPreferencesTx,reopenOwnNotificationPreferencesTx,reopenOwnNotificationPreferencesEventTx} from '../core/assistant-actions/own-notification-preferences-source';
 import {OwnNotificationPreferencesIntent} from '../lib/assistant-actions/own-notification-preferences-contract';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
@@ -62,5 +62,33 @@ describe('unmounted own notification consent action source',()=>{
  });
  it('refuses current module revocation and a cross-person subject without leaking preferences',async()=>{
   const a=await fixture(),review=await prepare(a);await setModule(base.tenantId,'notifications','disabled');await expect(confirm(a,review.reviewDigest)).rejects.toThrow();await setModule(base.tenantId,'notifications','active');a.intent={...a.intent,employmentId:randomUUID()};await expect(prepare(a)).rejects.toThrow();expect((await state()).events).toHaveLength(0);
+ });
+});
+
+/** Actual terminal native-reference reads. No private review/result digest is retained by these calls. */
+describe('notification historical-event/current-values reconciliation',()=>{
+ async function recorded(){const a=await fixture(),review=await prepare(a),receipt=await confirm(a,review.reviewDigest);return {...a,reference:{employmentId:receipt.employmentId,eventId:receipt.eventId}};}
+ async function reopen(a:Awaited<ReturnType<typeof recorded>>,reference:unknown=a.reference){const cap=await resolveOwnNotificationServerIdentity();return withTenant(a.ctx,tx=>reopenOwnNotificationPreferencesEventTx(tx,a.ctx,reference,cap));}
+ it('reconciles exact own native facts repeatedly without another effect or private terminal digest',async()=>{
+  const a=await recorded(),before=await state(),first=await reopen(a),second=await reopen(a);expect(second).toEqual(first);expect(first).toEqual({version:1,kind:'own_notification_preferences',proof:'historical_event_current_values',...a.reference,enabledCategories:['leave'],locale:'en'});expect(first).not.toHaveProperty('resultDigest');expect(JSON.stringify(first)).not.toContain(a.identity.subject);expect(await state()).toEqual(before);
+  // A legitimate same-value save is permitted, but the old reference is explicitly historical.
+  await saveNotificationEmailPreferences(a.ctx,a.intent.employmentId,['leave'],'en',a.identity);expect((await reopen(a)).proof).toBe('historical_event_current_values');expect((await state()).events).toHaveLength(2);
+ });
+ it('refuses tampered reference, malformed native payload and an event row attributed to another actor',async()=>{
+  const a=await recorded();await expect(reopen(a,{...a.reference,employmentId:randomUUID()})).rejects.toThrow();await expect(reopen(a,{...a.reference,resultDigest:'0'.repeat(64)})).rejects.toThrow();
+  const foreignActor=await createAppUser(base.tenantId,a.ctx.personId!,'hr_admin');const [other]=await owner.db.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'employment',aggregateId:a.intent.employmentId,eventType:'notification-email.consent-changed',actorType:'user',actorId:foreignActor,subjectEmploymentId:a.intent.employmentId,payload:{enabledCategories:['leave'],locale:'en'}}).returning({id:schema.domainEvent.id});
+  await expect(reopen(a,{...a.reference,eventId:other.id})).rejects.toThrow();
+  const [malformed]=await owner.db.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'employment',aggregateId:a.intent.employmentId,eventType:'notification-email.consent-changed',actorType:'user',actorId:a.ctx.userId!,subjectEmploymentId:a.intent.employmentId,payload:{enabledCategories:['leave','leave'],locale:'en'}}).returning({id:schema.domainEvent.id});await expect(reopen(a,{...a.reference,eventId:malformed.id})).rejects.toThrow();
+ });
+ it('refuses later changed category/locale values and an actually changed stored consent user',async()=>{
+  const a=await recorded();await saveNotificationEmailPreferences(a.ctx,a.intent.employmentId,['claims'],'ms',a.identity);await expect(reopen(a)).rejects.toThrow();await saveNotificationEmailPreferences(a.ctx,a.intent.employmentId,['leave'],'en',a.identity);
+  const other=await createAppUser(base.tenantId,a.ctx.personId!,'employee');await owner.db.update(schema.notificationPref).set({emailConsentUserId:other}).where(and(eq(schema.notificationPref.recipientEmploymentId,a.intent.employmentId),eq(schema.notificationPref.category,'leave'),eq(schema.notificationPref.channel,'email')));await expect(reopen(a)).rejects.toThrow();
+ });
+ it('requires every persisted report identity field to match current verified identity, beyond an own-login mapping',async()=>{
+  const a=await fixture();a.intent={...a.intent,enabledCategories:['employee_master_reports']};const review=await prepare(a),receipt=await confirm(a,review.reviewDigest),record={...a,reference:{employmentId:receipt.employmentId,eventId:receipt.eventId}};expect((await reopen(record)).enabledCategories).toEqual(['employee_master_reports']);
+  await owner.db.update(schema.notificationPref).set({reportConsentSubject:'different-stored-subject'}).where(and(eq(schema.notificationPref.recipientEmploymentId,a.intent.employmentId),eq(schema.notificationPref.category,'employee_master_reports'),eq(schema.notificationPref.channel,'email')));await expect(reopen(record)).rejects.toThrow();
+ });
+ it('refuses revocation of the current provider binding even when stored category values still match',async()=>{
+  const a=await recorded();await owner.db.update(schema.appExternalIdentity).set({revokedAt:new Date()}).where(and(eq(schema.appExternalIdentity.issuer,a.identity.issuer),eq(schema.appExternalIdentity.subject,a.identity.subject)));const before=await state();await expect(reopen(a)).rejects.toThrow();expect(await state()).toEqual(before);
  });
 });

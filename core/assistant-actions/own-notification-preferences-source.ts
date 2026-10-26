@@ -78,3 +78,33 @@ export async function reopenOwnNotificationPreferencesTx(tx:Tx,ctx:SessionContex
   digest(payload.data)!==digest({enabledCategories:intent.enabledCategories,locale:intent.locale})||current.sourceDigest!==receipt.resultDigest)return fail();
  return receipt;
 }
+
+/** Terminal custody retains only these native references. This proves that the exact caller's
+ * historical effect exists AND current permitted preference values match; it does not claim this
+ * is the latest event, an unchanged xmin, or continuity of an erased private identity digest.
+ * Ordinary workflow consent stores user+watermark only. Reports additionally persist the actual
+ * issuer/subject/address binding, all of which must still match the fresh verified server identity. */
+export async function reopenOwnNotificationPreferencesEventTx(tx:Tx,ctx:SessionContext,value:unknown,capability:OwnNotificationServerIdentity){
+ const reference=OwnNotificationPreferencesReceipt.pick({employmentId:true,eventId:true}).strict().parse(value),fresh=await guard(tx,ctx);
+ const [event]=await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(
+  eq(domainEvent.id,reference.eventId),eq(domainEvent.tenantId,fresh.tenantId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,fresh.userId!),
+  eq(domainEvent.aggregateType,'employment'),eq(domainEvent.aggregateId,reference.employmentId),eq(domainEvent.subjectEmploymentId,reference.employmentId),eq(domainEvent.eventType,'notification-email.consent-changed')));
+ const payload=OwnNotificationPreferencesReview.shape.after.safeParse(event?.payload);if(!event||!payload.success)return fail();
+ const intent=OwnNotificationPreferencesIntent.parse({version:1,employmentId:reference.employmentId,...payload.data,consent:'selected_categories_only'});
+ const current=await source(tx,fresh,intent,capability),rows=current.state.preferences;
+ if(rows.length!==notificationPreferenceCategories.length)return fail();
+ const enabled=new Set(intent.enabledCategories);
+ for(const category of notificationPreferenceCategories){
+  const row=rows.find(p=>p.category===category),selected=enabled.has(category);
+  if(!row||row.enabled!==selected||row.emailLocale!==intent.locale)return fail();
+  if(selected){
+   if(row.emailConsentUserId!==fresh.userId||row.emailAfterSequence===null||!Number.isSafeInteger(row.emailAfterSequence)||row.emailAfterSequence<0)return fail();
+   if(category==='employee_master_reports'){
+    const identity=current.identity,addressHash=identity?.email?createHash('sha256').update(identity.email.toLowerCase()).digest('hex'):null;
+    if(!identity||!addressHash||row.reportConsentIssuer!==identity.issuer||row.reportConsentSubject!==identity.subject||row.reportConsentAddressHash!==addressHash||!row.reportConsentVerifiedAt||!Number.isFinite(row.reportConsentVerifiedAt.getTime()))return fail();
+   }
+  }else if(row.emailConsentUserId!==null||row.emailAfterSequence!==null||category==='employee_master_reports'&&(row.reportConsentIssuer!==null||row.reportConsentSubject!==null||row.reportConsentAddressHash!==null||row.reportConsentVerifiedAt!==null))return fail();
+ }
+ return {version:1 as const,kind:'own_notification_preferences' as const,proof:'historical_event_current_values' as const,
+  employmentId:reference.employmentId,eventId:reference.eventId,enabledCategories:intent.enabledCategories,locale:intent.locale};
+}
