@@ -23932,6 +23932,14 @@
     "checking": "正在准备工作单位设置…"
   },
   "letters": {
+    "notifications": {
+      "approval": "有信函待审批",
+      "approvalReminder": "信函审批提醒",
+      "escalation": "信函审批已逾期",
+      "issued": "有新信函可供查阅",
+      "acknowledgementReminder": "信函确认提醒",
+      "body": "请打开安全信函页面，查看当前状态及可用操作。"
+    },
     "mine": {
       "title": "我的信函",
       "description": "查看您当前和以往任职期间收到的已发出信函。",

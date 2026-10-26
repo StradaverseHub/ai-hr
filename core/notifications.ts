@@ -1027,7 +1027,7 @@ export function unreadNotificationCount(
       .where(
         and(
           isNull(notification.readAt),
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1070,7 +1070,7 @@ export function listNotifications(
       .from(notification)
       .where(
         and(
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.read === true ? isNotNull(notification.readAt) : undefined,
           opts.read === false ? isNull(notification.readAt) : undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
@@ -1094,6 +1094,6 @@ export async function markAllNotificationsRead(ctx: SessionContext, employmentId
     tx
       .update(notification)
       .set({ readAt: sql`now()` })
-      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)),
+      .where(and(isNull(notification.readAt), employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined)),
   );
 }

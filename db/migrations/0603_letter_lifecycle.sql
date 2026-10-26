@@ -82,7 +82,7 @@ CREATE TABLE letter_access_token (
 CREATE TABLE letter_job (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),letter_id uuid REFERENCES letter_record(id),
  kind text NOT NULL CHECK(kind IN ('notification','approvalReminder','acknowledgementReminder','escalation','eventDraft')),recipient_user_id uuid REFERENCES app_user(id),source_event_id uuid REFERENCES domain_event(id),
- dedupe_key text NOT NULL,payload jsonb NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','sent','failed','cancelled')),due_at timestamptz NOT NULL,attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0),last_error text,lease_token uuid,lease_until timestamptz,created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_job_dedupe_uq UNIQUE(tenant_id,dedupe_key)
+ dedupe_key text NOT NULL,payload jsonb NOT NULL,status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','completed','failed','cancelled')),due_at timestamptz NOT NULL,attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0),last_error text,lease_token uuid,lease_until timestamptz,created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_job_dedupe_uq UNIQUE(tenant_id,dedupe_key)
 );
 --> statement-breakpoint
 CREATE TABLE letter_counter (
@@ -492,7 +492,7 @@ BEGIN IF NEW.tenant_id<>OLD.tenant_id OR NEW.year<>OLD.year OR NEW.next_value<=O
 CREATE TRIGGER letter_counter_advance BEFORE UPDATE ON letter_counter FOR EACH ROW EXECUTE FUNCTION app.letter_counter_advance();
 CREATE FUNCTION app.letter_job_identity() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
- IF (to_jsonb(NEW)-ARRAY['status','due_at','attempts','last_error','lease_token','lease_until']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','due_at','attempts','last_error','lease_token','lease_until']) OR NEW.attempts<OLD.attempts OR OLD.status IN ('sent','cancelled') AND NEW.status<>OLD.status THEN RAISE EXCEPTION 'Letter job identity or completed outcome is immutable';END IF;
+ IF (to_jsonb(NEW)-ARRAY['status','due_at','attempts','last_error','lease_token','lease_until']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','due_at','attempts','last_error','lease_token','lease_until']) OR NEW.attempts<OLD.attempts OR OLD.status IN ('completed','cancelled') AND NEW.status<>OLD.status THEN RAISE EXCEPTION 'Letter job identity or completed outcome is immutable';END IF;
  RETURN NEW;
 END $$;
 CREATE TRIGGER letter_job_identity BEFORE UPDATE ON letter_job FOR EACH ROW EXECUTE FUNCTION app.letter_job_identity();
@@ -758,3 +758,63 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_policy_people(uuid),app.letter_policy_appearance(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_policy_people(uuid),app.letter_policy_appearance(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Letters can address an approver account without inventing an employment record.
+-- These are purpose-bound rows in the canonical bell, not a second notification store.
+ALTER TABLE notification ALTER COLUMN recipient_employment_id DROP NOT NULL;
+ALTER TABLE notification ADD COLUMN recipient_user_id uuid REFERENCES app_user(id);
+ALTER TABLE notification ADD COLUMN letter_job_id uuid REFERENCES letter_job(id);
+ALTER TABLE notification ADD CONSTRAINT notification_audience_xor CHECK (
+ (recipient_employment_id IS NOT NULL AND recipient_user_id IS NULL AND letter_job_id IS NULL) OR
+ (recipient_employment_id IS NULL AND recipient_user_id IS NOT NULL AND letter_job_id IS NOT NULL));
+CREATE UNIQUE INDEX notification_letter_job_uq ON notification(letter_job_id) WHERE letter_job_id IS NOT NULL;
+CREATE INDEX notification_user_recipient_idx ON notification(tenant_id,recipient_user_id,created_at);
+CREATE FUNCTION app.letter_notification_storage_owner() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH actor AS (SELECT session_user::text AS login,
+  coalesce(nullif(nullif(current_setting('role',true),'none'),''),session_user::text) AS effective)
+ SELECT a.login<>'ai_hr_app' AND a.effective<>'ai_hr_app' AND coalesce((
+  SELECT count(*)=4 AND bool_and(
+   (p.rolsuper OR p.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.effective::name,c.relowner,'USAGE')))
+   AND (s.rolsuper OR s.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.login::name,c.relowner,'USAGE'))))
+  FROM pg_catalog.pg_roles p CROSS JOIN pg_catalog.pg_roles s CROSS JOIN pg_catalog.pg_class c
+  WHERE p.rolname=a.effective::name AND s.rolname=a.login::name
+   AND c.oid IN ('public.letter_record'::regclass,'public.letter_job'::regclass,'public.notification'::regclass,'public.domain_event'::regclass)
+ ),false) FROM actor a
+$$;
+REVOKE ALL ON FUNCTION app.letter_notification_storage_owner() FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.guard_letter_notification() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE j public.letter_job%ROWTYPE;e public.domain_event%ROWTYPE;target_path text;expected_kind text;
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF OLD.recipient_user_id IS NOT NULL THEN RAISE EXCEPTION 'Letter notification history is immutable' USING ERRCODE='42501';END IF;RETURN OLD;
+ END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.recipient_user_id IS NOT NULL OR NEW.recipient_user_id IS NOT NULL THEN
+   IF (to_jsonb(NEW)-'read_at') IS DISTINCT FROM (to_jsonb(OLD)-'read_at') THEN RAISE EXCEPTION 'Letter notification is immutable' USING ERRCODE='42501';END IF;
+  END IF;RETURN NEW;
+ END IF;
+ IF NEW.recipient_user_id IS NULL THEN RETURN NEW;END IF;
+ IF NOT app.letter_notification_storage_owner() THEN RAISE EXCEPTION 'Letter projection requires its maintenance connection' USING ERRCODE='42501';END IF;
+ SELECT * INTO j FROM public.letter_job WHERE id=NEW.letter_job_id AND tenant_id=NEW.tenant_id;
+ SELECT * INTO e FROM public.domain_event WHERE id=j.source_event_id AND tenant_id=j.tenant_id AND aggregate_type='letter' AND aggregate_id=j.letter_id;
+ expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
+ target_path:=CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END||j.letter_id::text;
+ IF j.id IS NULL OR e.id IS NULL OR j.recipient_user_id IS DISTINCT FROM NEW.recipient_user_id
+  OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
+  OR expected_kind IS NULL OR NEW.kind IS DISTINCT FROM expected_kind
+  OR NEW.severity::text IS DISTINCT FROM CASE WHEN expected_kind='letter.issued' THEN 'info' ELSE 'action' END
+  OR NEW.title IS DISTINCT FROM 'letters.notifications.'||substring(NEW.kind FROM 8)
+  OR NEW.body IS DISTINCT FROM 'letters.notifications.body' OR NEW.read_at IS NOT NULL
+ THEN RAISE EXCEPTION 'Letter notification identity is invalid' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_letter_notification() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER letter_notification_guard BEFORE INSERT OR UPDATE OR DELETE ON notification
+ FOR EACH ROW EXECUTE FUNCTION app.guard_letter_notification();
+CREATE POLICY notification_letter_user_read ON notification FOR SELECT USING
+ (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current());
+CREATE POLICY notification_letter_user_update ON notification FOR UPDATE USING
+ (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current())
+ WITH CHECK (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current());

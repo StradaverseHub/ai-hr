@@ -23932,6 +23932,14 @@
     "checking": "Preparing your workplace setup…"
   },
   "letters": {
+    "notifications": {
+      "approval": "Letter approval required",
+      "approvalReminder": "Letter approval reminder",
+      "escalation": "Overdue letter approval",
+      "issued": "A new letter is available",
+      "acknowledgementReminder": "Letter acknowledgement reminder",
+      "body": "Open the secure letter page to review the current status and available actions."
+    },
     "mine": {
       "title": "My Letters",
       "description": "Your issued letters across your current and previous employments.",

@@ -11,6 +11,7 @@ import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
 import {LETTER_CAPABILITIES,validateLetterPolicy,validateLetterTemplatePresentation,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
+import {letterStageEnteredAt} from './letter-stage-clock';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {PDFDocument} from 'pdf-lib';
 import {readNotificationEmailTransport,type NotificationEmailTransport} from './notification-email-delivery';
@@ -40,7 +41,7 @@ async function anyPermission(tx:Tx,co:string,caps:LetterCapability[]){
  uuid(co);const [row]=await tx.execute<{allowed:boolean}>(sql`select (${sql.join(caps.map(cap=>sql`app.letter_permission(${co}::uuid,${cap})`),sql` OR `)}) as allowed`);if(!row?.allowed)throw new LetterWorkflowError('permission');
 }
 async function event(tx:Tx,ctx:SessionContext,id:string,type:string,payload:Record<string,unknown>){
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'letter',aggregateId:id,eventType:'letter.'+type,actor:actorOf(ctx),payload});
+ const eventId=randomUUID();await appendEvent(tx,{id:eventId,tenantId:ctx.tenantId,aggregateType:'letter',aggregateId:id,eventType:'letter.'+type,actor:actorOf(ctx),payload});return eventId;
 }
 async function lockCompany(tx:Tx,co:string){const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,uuid(co)),isNull(company.archivedAt))).for('share');if(!row)throw new LetterWorkflowError('permission');}
 export function letterCompanyAccess(ctx:SessionContext){return letters(ctx,false,async tx=>{
@@ -318,7 +319,7 @@ export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:
 async function cancelLetterStageJobs(tx:Tx,letterId:string,revisionId:string,stageIndex:number){
  await tx.update(letterJob).set({status:'cancelled',leaseToken:null,leaseUntil:null}).where(and(eq(letterJob.letterId,letterId),inArray(letterJob.status,['queued','failed']),inArray(letterJob.kind,['notification','approvalReminder','escalation']),sql`${letterJob.payload}->>'revisionId'=${revisionId}`,sql`${letterJob.payload}->>'stageIndex'=${String(stageIndex)}`));
 }
-async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,stageIndex:number,delegation?:{userId:string;decisionId:string}){
+async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,stageIndex:number,sourceEventId:string,delegation?:{userId:string;decisionId:string}){
  if(!policy.portalNotifications&&!policy.emailNotifications)return;
  const enteredAt=sql`(select ${letterStageEnteredAt(sql`stage_record.stage_index`,sql`stage_record.submitted_at`,sql`stage_record.current_revision_id`)} from letter_record stage_record where stage_record.id=${record.id}::uuid)`;
  const audience=delegation?[delegation.userId]:policy.stages[stageIndex].userIds;
@@ -326,12 +327,12 @@ async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRec
   const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${userId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);if(!eligible?.ok)continue;
   const key=`${record.id}:${revisionId}:stage:${stageIndex}:${userId}${delegation?':delegation:'+delegation.decisionId:''}`;
   const payload={revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications};
-  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'notification',recipientUserId:userId,dedupeKey:key,payload,dueAt:sql`now()`}).onConflictDoNothing();
-  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'approvalReminder',recipientUserId:userId,dedupeKey:key+':reminder',payload,dueAt:sql`${enteredAt}+${policy.reminderHours}*interval '1 hour'`}).onConflictDoNothing();
+  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,kind:'notification',recipientUserId:userId,dedupeKey:key,payload,dueAt:sql`now()`}).onConflictDoNothing();
+  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,kind:'approvalReminder',recipientUserId:userId,dedupeKey:key+':reminder',payload,dueAt:sql`${enteredAt}+${policy.reminderHours}*interval '1 hour'`}).onConflictDoNothing();
  }
  if(policy.escalationUserId){
   const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${policy.escalationUserId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);
-  if(eligible?.ok)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'escalation',recipientUserId:policy.escalationUserId,dedupeKey:`${record.id}:${revisionId}:${stageIndex}:escalation${delegation?':delegation:'+delegation.decisionId:''}`,payload:{revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`${enteredAt}+${policy.approvalDueHours}*interval '1 hour'`}).onConflictDoNothing();
+  if(eligible?.ok)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,kind:'escalation',recipientUserId:policy.escalationUserId,dedupeKey:`${record.id}:${revisionId}:${stageIndex}:escalation${delegation?':delegation:'+delegation.decisionId:''}`,payload:{revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`${enteredAt}+${policy.approvalDueHours}*interval '1 hour'`}).onConflictDoNothing();
  }
 }
 export function submitLetterBatch(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
@@ -340,7 +341,7 @@ export function submitLetterBatch(ctx:SessionContext,id:string){return letters(c
  const rows=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.id)).for('update');if(!rows.length)throw new LetterWorkflowError('state');assertLetterBatchCohort(batch,rows);
  const selected=rows.filter(row=>row.state!=='withdrawn');if(!selected.length||selected.some(row=>['returned','rejected'].includes(row.state)))throw new LetterWorkflowError('state');const drafts=selected.filter(row=>row.state==='draft');
  for(const row of drafts){await assertLetterChain(tx,batch.companyId,policy,row.createdBy,row.confidential);if(!row.currentRevisionId)throw new LetterWorkflowError('configuration','missingFields');const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,row.currentRevisionId));const fresh=await snapshotLetter(tx,ctx,batch.companyId,row.employmentId,template,batch.policyVersionId,revision.editableValues,batch.selection.sourceAsOfDate);if(fresh.sourceHash!==revision.sourceHash)throw new LetterWorkflowError('stale','sourceChanged');}
- for(const row of drafts){await tx.update(letterRecord).set({state:'submitted',stageIndex:0,lockVersion:row.lockVersion+1}).where(eq(letterRecord.id,row.id));await queueLetterStage(tx,ctx,row,policy,row.currentRevisionId!,0);await event(tx,ctx,row.id,'submitted',{revisionId:row.currentRevisionId});}
+ for(const row of drafts){await tx.update(letterRecord).set({state:'submitted',stageIndex:0,lockVersion:row.lockVersion+1}).where(eq(letterRecord.id,row.id));const sourceEventId=await event(tx,ctx,row.id,'submitted',{revisionId:row.currentRevisionId});await queueLetterStage(tx,ctx,row,policy,row.currentRevisionId!,0,sourceEventId);}
  return {batchId:id,submitted:drafts.length,alreadySubmitted:drafts.length===0};
 });}
 export function withdrawLetterDraft(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
@@ -379,8 +380,9 @@ async function decideLetterTx(ctx:SessionContext,tx:Tx,input:LetterDecisionInput
  }
  await cancelLetterStageJobs(tx,record.id,revision.id,record.stageIndex);
  await tx.update(letterRecord).set({state:next.state,stageIndex:next.stageIndex,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
- if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex);
- await event(tx,ctx,record.id,'approval.'+input.decision.action,{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,artifactId,contentHash:revision.contentHash});return {letterId:record.id,state:next.state,lockVersion:record.lockVersion+1,artifactId};
+ const sourceEventId=await event(tx,ctx,record.id,'approval.'+input.decision.action,{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,artifactId,contentHash:revision.contentHash});
+ if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex,sourceEventId);
+return {letterId:record.id,state:next.state,lockVersion:record.lockVersion+1,artifactId};
 }
 
 export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string;expectedRevisionId:string;expectedLockVersion:number;delegateUserId:string;reason:string}){return letters(ctx,true,async tx=>{
@@ -394,8 +396,9 @@ export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string
  await tx.update(letterRecord).set({lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  const batch=await staffBatchTx(tx,record.id),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
  await cancelLetterStageJobs(tx,record.id,revision.id,record.stageIndex);
- await queueLetterStage(tx,ctx,record,policy,revision.id,record.stageIndex,{userId:delegate,decisionId:decision.id});
- await event(tx,ctx,record.id,'approval.delegated',{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,delegateUserId:delegate,reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
+ const sourceEventId=await event(tx,ctx,record.id,'approval.delegated',{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,delegateUserId:delegate,reason});
+ await queueLetterStage(tx,ctx,record,policy,revision.id,record.stageIndex,sourceEventId,{userId:delegate,decisionId:decision.id});
+return {letterId:record.id,lockVersion:record.lockVersion+1};
 });}
 
 export function issueLetter(ctx:SessionContext,input:{letterId:string;expectedRevisionId:string;expectedLockVersion:number}){return letters(ctx,true,async tx=>{
@@ -411,12 +414,13 @@ export function issueLetter(ctx:SessionContext,input:{letterId:string;expectedRe
  await tx.insert(employeeDocument).values({id:documentId,tenantId:ctx.tenantId,employmentId:record.employmentId,letterArtifactId:artifact.id,title:template.name,category:template.category,description:record.reference,content:Buffer.alloc(0),fileName:record.reference.replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf',mimeType:'application/pdf',sizeBytes:artifact.content.length,uploadedByUserId:ctx.userId!,updatedByUserId:ctx.userId!});
  await tx.update(letterRecord).set({state:'issued',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,record.employmentId));const recipients=await tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.personId,subject.personId),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
+ const sourceEventId=await event(tx,ctx,record.id,'issued',{revisionId:record.currentRevisionId,artifactId:artifact.id,artifactHash:artifact.contentHash,documentId,recipientCount:recipients.length});
  for(const recipient of recipients){
   const key=`${record.id}:${artifact.id}:issued:${recipient.id}`;
-  if(policy.portalNotifications||policy.emailNotifications)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,recipientUserId:recipient.id,kind:'notification',dedupeKey:key,payload:{artifactId:artifact.id,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()`}).onConflictDoNothing();
-  if(policy.acknowledgement!=='none')await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,recipientUserId:recipient.id,kind:'acknowledgementReminder',dedupeKey:key+':acknowledgement',payload:{artifactId:artifact.id},dueAt:sql`now()+${policy.acknowledgementDueDays}*interval '1 day'`}).onConflictDoNothing();
+  if(policy.portalNotifications||policy.emailNotifications)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,recipientUserId:recipient.id,kind:'notification',dedupeKey:key,payload:{artifactId:artifact.id,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()`}).onConflictDoNothing();
+  if((policy.portalNotifications||policy.emailNotifications)&&policy.acknowledgement!=='none')await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,recipientUserId:recipient.id,kind:'acknowledgementReminder',dedupeKey:key+':acknowledgement',payload:{artifactId:artifact.id,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()+${policy.acknowledgementDueDays}*interval '1 day'`}).onConflictDoNothing();
  }
- await event(tx,ctx,record.id,'issued',{revisionId:record.currentRevisionId,artifactId:artifact.id,artifactHash:artifact.contentHash,documentId,recipientCount:recipients.length});return {letterId:record.id,artifactId:artifact.id,alreadyIssued:false};
+ return {letterId:record.id,artifactId:artifact.id,alreadyIssued:false};
 });}
 export function voidLetter(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'issue');const reason=text(input.reason,2000);if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(record.state!=='issued')throw new LetterWorkflowError('state');
@@ -479,10 +483,6 @@ export function listLetterRegister(ctx:SessionContext,input:LetterRegisterFilter
   .where(and(inArray(letterRecord.state,input.state?[input.state]:['issued','void']),sql`app.letter_permission(${letterRecord.companyId},'read')`,input.state==='approved'?sql`app.letter_permission(${letterRecord.companyId},'issue')`:undefined,input.companyId?eq(letterRecord.companyId,input.companyId):undefined,input.employmentId?eq(letterRecord.employmentId,input.employmentId):undefined,input.category?eq(letterTemplateVersion.category,text(input.category,100)):undefined,search?or(ilike(person.fullName,search),ilike(employment.employeeCode,search),ilike(letterRecord.reference,search)):undefined,input.issuedFrom?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date>=${input.issuedFrom}::date`:undefined,input.issuedTo?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date<=${input.issuedTo}::date`:undefined,input.cursor?sql`(coalesce(${letterRecord.issuedAt},${letterRecord.approvedAt}),${letterRecord.id})<(select coalesce(c.issued_at,c.approved_at),c.id from letter_record c where c.id=${input.cursor}::uuid)`:undefined)).orderBy(sql`coalesce(${letterRecord.issuedAt},${letterRecord.approvedAt}) desc`,desc(letterRecord.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-// Every stage gets its own deadline; delegation keeps the original stage entry time.
-function letterStageEnteredAt(stageIndex:SQL,submittedAt:SQL,revisionId:SQL){
- return sql`case when ${stageIndex}=0 then ${submittedAt} else (select decision.created_at from letter_approval_decision decision where decision.revision_id=${revisionId} and decision.stage_index=${stageIndex}-1 and decision.action='approve') end`;
-}
 export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:string;limit?:number;cursor?:string}={}){return letters(ctx,false,async tx=>{
  const limit=letterListLimit(input.limit);if(input.companyId)uuid(input.companyId);if(input.cursor)uuid(input.cursor);
  const rows=await tx.select({record:letterRecord,title:letterTemplateVersion.name,category:letterTemplateVersion.category,employeeName:sql<string>`staff.employee_name`,employeeCode:sql<string|null>`staff.employee_code`,final:sql<boolean>`${letterRecord.stageIndex}=jsonb_array_length(${letterPolicyVersion.policy}->'stages')-1`,stageLabel:sql<string>`${letterPolicyVersion.policy}->'stages'->${letterRecord.stageIndex}->>'label'`,dueAt:sql<Date>`${letterStageEnteredAt(sql`${letterRecord.stageIndex}`,sql`${letterRecord.submittedAt}`,sql`${letterRecord.currentRevisionId}`)}+(${letterPolicyVersion.policy}->>'approvalDueHours')::integer*interval '1 hour'`}).from(letterRecord).innerJoin(sql`lateral app.letter_staff_identity(${letterRecord.id}) staff`,sql`true`).innerJoin(sql`lateral app.letter_staff_batch_metadata(${letterRecord.id}) batch_metadata`,sql`true`).innerJoin(letterTemplateVersion,sql`${letterTemplateVersion.id}=batch_metadata.template_version_id`).innerJoin(letterPolicyVersion,sql`${letterPolicyVersion.id}=batch_metadata.policy_version_id`)

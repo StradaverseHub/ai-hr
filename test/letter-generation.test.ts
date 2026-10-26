@@ -6,11 +6,13 @@ import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
 import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate,readLetterReport,saveLetterPermission,letterReportDepartments,addLetterAsset,listLetterGenerationBatches,delegateLetterApproval,listLetterDelegates} from '../core/letters';
 import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} from '../core/employee-documents';
+import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
+import {dispatchNotifications,listNotifications,unreadNotificationCount,markNotificationRead} from '../core/notifications';
 import {client,withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
-import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,reviewer:SessionContext,templateId:string,templateVersionId:string,templateRevision:number,employees:string[];
 const today=()=>todayInKualaLumpur();
 const custom=(ids:string[])=>Object.fromEntries(ids.map(id=>[id,{effectiveDate:{kind:'date' as const,value:today()}}]));
@@ -27,6 +29,27 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('projects durable portal work to an approver account without employment and rejects forged bell rows',async()=>{
+  await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);
+  expect(await owner.db.select().from(s.employment).where(eq(s.employment.personId,reviewer.personId!))).toHaveLength(0);
+  // The opportunistic web dispatcher may already have advanced the shared event cursor.
+  // Durable Letter jobs must still reach the same canonical bell exactly once.
+  await dispatchNotifications(ctx);const system={tenantId:b.tenantId,roles:[]};
+  await expect(projectLetterNotificationsFromSweep(ctx,owner)).rejects.toThrow();await expect(projectLetterNotificationsFromSweep(system,{withTenant})).rejects.toThrow();
+  expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:1,cancelled:0,deferredEmail:0,failed:0});expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});
+  const rows=(await listNotifications(reviewer,employees[0])).filter(row=>row.kind==='letter.approval');expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({title:'letters.notifications.approval',body:'letters.notifications.body',severity:'action'});expect((await listNotifications(ctx)).some(row=>row.id===rows[0].id)).toBe(false);
+  const [stored]=await owner.db.select().from(s.notification).where(eq(s.notification.id,rows[0].id));expect(stored.recipientEmploymentId).toBeNull();expect(stored.recipientUserId).toBe(reviewer.userId);expect(stored.letterJobId).toBeTruthy();
+  await expect(withTenant(ctx,tx=>tx.insert(s.notification).values({tenantId:b.tenantId,recipientUserId:reviewer.userId,letterJobId:stored.letterJobId,sourceEventId:stored.sourceEventId,kind:stored.kind,title:stored.title,body:stored.body,linkPath:stored.linkPath}))).rejects.toThrow();
+  await expect(withTenant(reviewer,tx=>tx.update(s.notification).set({body:'Attempt to replace official routing'}).where(eq(s.notification.id,stored.id)))).rejects.toThrow();
+  expect(await unreadNotificationCount(reviewer,employees[0])).toBe(1);await markNotificationRead(reviewer,rows[0].id);expect(await unreadNotificationCount(reviewer,employees[0])).toBe(0);
+  const [reminder]=await owner.db.select().from(s.letterJob).where(eq(s.letterJob.kind,'approvalReminder'));await owner.db.update(s.letterJob).set({dueAt:sq`now()`}).where(eq(s.letterJob.id,reminder.id));
+  expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,cancelled:0,failed:0});const [rescheduled]=await owner.db.select().from(s.letterJob).where(eq(s.letterJob.id,reminder.id));expect(rescheduled.dueAt).toEqual(reminder.dueAt);
+  await owner.db.update(s.letterJob).set({dueAt:sq`now()`}).where(eq(s.letterJob.id,reminder.id));await saveLetterPermission(ctx,{companyId:b.companyId,capability:'approve',role:'hr_admin',allowed:false});
+  expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,cancelled:1,failed:0});expect((await owner.db.select().from(s.notification).where(eq(s.notification.recipientUserId,reviewer.userId!)))).toHaveLength(1);
+ });
+
  it('lets the configured escalation reviewer inspect the frozen letter without deciding an unassigned stage',async()=>{
   const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   const [escalationPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional escalation reviewer',primaryEmail:'escalation-reviewer@fixture.test'}).returning(),escalationId=await createAppUser(b.tenantId,escalationPerson.id,'employee'),escalation={...await entitledCtx(b,['employee']),userId:escalationId,personId:escalationPerson.id};
@@ -41,6 +64,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
  });
 
  it('moves pending stage jobs to the delegated reviewer without restarting the deadline and cancels obsolete work',async()=>{
+  await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);
   const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional reminder delegate',primaryEmail:'reminder-delegate@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'hr_admin'),delegate={...ctx,userId:delegateId,personId:delegatePerson.id};
   const [blockedPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional unavailable reviewer',primaryEmail:'unavailable-reviewer@fixture.test'}).returning(),blockedId=await createAppUser(b.tenantId,blockedPerson.id,'hr_admin');

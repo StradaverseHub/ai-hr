@@ -6,6 +6,7 @@ import { sweepOnboarding, refreshOnboardingPersonnel } from '../packs/lifecycle/
 import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
+import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
 import {createNoticeSweepAccess} from '../core/notice-projection';
 async function main(){
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
@@ -20,9 +21,10 @@ async function main(){
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);
     const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-    const projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    const letters=await projectLetterNotificationsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    if(letters.failed>0)failed++;
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
-    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,...delivered,attendanceCc}));
+    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,...delivered,attendanceCc}));
    }catch{failed++;console.error('Workflow email sweep failed for tenant '+tenant.id);}
   }
  }finally{await owner.client.end();}

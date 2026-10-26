@@ -23932,6 +23932,14 @@
     "checking": "Đang chuẩn bị thiết lập nơi làm việc…"
   },
   "letters": {
+    "notifications": {
+      "approval": "Cần phê duyệt thư",
+      "approvalReminder": "Nhắc phê duyệt thư",
+      "escalation": "Phê duyệt thư đã quá hạn",
+      "issued": "Có thư mới",
+      "acknowledgementReminder": "Nhắc xác nhận đã nhận thư",
+      "body": "Mở trang thư bảo mật để xem trạng thái hiện tại và các thao tác có thể thực hiện."
+    },
     "mine": {
       "title": "Thư của tôi",
       "description": "Các thư đã phát hành cho bạn trong thời gian làm việc hiện tại và trước đây.",

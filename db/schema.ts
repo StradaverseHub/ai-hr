@@ -5405,9 +5405,9 @@ export const notification = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    recipientEmploymentId: uuid('recipient_employment_id')
-      .notNull()
-      .references(() => employment.id),
+    recipientEmploymentId: uuid('recipient_employment_id').references(() => employment.id),
+    recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
+    letterJobId: uuid('letter_job_id'),
     kind: text('kind').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),
@@ -5418,6 +5418,8 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    uniqueIndex('notification_letter_job_uq').on(t.letterJobId).where(sql`letter_job_id is not null`),
+    index('notification_user_recipient_idx').on(t.tenantId,t.recipientUserId,t.createdAt),
     index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
     index('notification_unread_idx').on(t.tenantId, t.recipientEmploymentId).where(sql`read_at is null`),
   ],
@@ -10972,7 +10974,7 @@ export const letterAccessToken=pgTable('letter_access_token',{
 export const letterJob=pgTable('letter_job',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),letterId:uuid('letter_id').references(()=>letterRecord.id),
  kind:text('kind').notNull().$type<'notification'|'approvalReminder'|'acknowledgementReminder'|'escalation'|'eventDraft'>(),recipientUserId:uuid('recipient_user_id').references(()=>appUser.id),sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),
- dedupeKey:text('dedupe_key').notNull(),payload:jsonb('payload').notNull().$type<Record<string,unknown>>(),status:text('status').notNull().$type<'queued'|'sent'|'failed'|'cancelled'>().default('queued'),
+ dedupeKey:text('dedupe_key').notNull(),payload:jsonb('payload').notNull().$type<Record<string,unknown>>(),status:text('status').notNull().$type<'queued'|'completed'|'failed'|'cancelled'>().default('queued'),
  dueAt:timestamp('due_at',{withTimezone:true}).notNull(),attempts:integer('attempts').notNull().default(0),lastError:text('last_error'),leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),createdAt:createdAt(),
 },t=>[uniqueIndex('letter_job_dedupe_uq').on(t.tenantId,t.dedupeKey)]);
 export const letterCounter=pgTable('letter_counter',{

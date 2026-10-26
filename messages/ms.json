@@ -23932,6 +23932,14 @@
     "checking": "Menyediakan persediaan tempat kerja…"
   },
   "letters": {
+    "notifications": {
+      "approval": "Kelulusan surat diperlukan",
+      "approvalReminder": "Peringatan kelulusan surat",
+      "escalation": "Kelulusan surat tertunggak",
+      "issued": "Surat baharu tersedia",
+      "acknowledgementReminder": "Peringatan pengakuan penerimaan surat",
+      "body": "Buka halaman surat selamat untuk menyemak status semasa dan tindakan yang tersedia."
+    },
     "mine": {
       "title": "Surat Saya",
       "description": "Surat yang dikeluarkan untuk pekerjaan semasa dan terdahulu anda.",
