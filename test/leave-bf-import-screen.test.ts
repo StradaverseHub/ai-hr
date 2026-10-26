@@ -136,9 +136,10 @@ describe('db55d08a — the entry type, pinned in the source as well as in the da
     // idx 240 is dated 1781862219000 — ten seconds EARLIER despite the higher number. Both were applied
     // long ago so the watermark has passed them and it is inert, but it is real, and it is why this
     // case checks the neighbourhood of one entry rather than the whole file.
-    // …and `entries.length` is NOT the allocator: the two have diverged by dozens, and a number taken
-    // from the length would be a low number, which is a silent skip.
-    expect(journal.entries.length).not.toBe(mine!.idx);
+    // Compare with the entry count when this migration was allocated. The current total grows
+    // and can eventually equal an old idx without changing that migration's allocation or safety.
+    const entriesBeforeAllocation = byIdx.filter((entry) => entry.idx < mine!.idx).length;
+    expect(mine!.idx).toBeGreaterThan(entriesBeforeAllocation);
   });
 });
 
