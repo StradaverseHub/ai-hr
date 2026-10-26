@@ -38,7 +38,7 @@ CREATE TABLE mobile_integrity_challenge (
  binding_hash text NOT NULL CHECK(binding_hash ~ '^[a-f0-9]{64}$'),
  nonce text NOT NULL CHECK(length(nonce)=43 AND nonce ~ '^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$'),
  issued_at timestamptz NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz,
- CHECK(expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes'),
+ CHECK(expires_at>issued_at AND expires_at<=issued_at+CASE WHEN purpose='clock.online' THEN interval '2 minutes' ELSE interval '10 minutes' END),
  CHECK(consumed_at IS NULL OR consumed_at>=issued_at AND consumed_at<=expires_at)
 );
 CREATE UNIQUE INDEX mobile_integrity_challenge_intent_uq ON mobile_integrity_challenge(tenant_id,actor_id,request_id);

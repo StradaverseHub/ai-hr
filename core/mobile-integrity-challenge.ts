@@ -22,7 +22,8 @@ async function own(tx:Tx,ctx:SessionContext,employmentId:string){
   if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(row=>row.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
 }
 async function stamp(tx:Tx){
-  const rows=await tx.execute(sql`select clock_timestamp() stamp`),date=new Date(String(rows[0]?.stamp));
+  const rows=await tx.execute(sql`select clock_timestamp() stamp`),value=rows[0]?.stamp;
+  const date=value instanceof Date?value:new Date(String(value));
   if(!Number.isFinite(date.getTime()))throw new IntegrityChallengeError('time_unavailable');return date;
 }
 function matches(row:Row,intent:IntegrityChallengeIntent){

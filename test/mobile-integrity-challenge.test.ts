@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -37,10 +37,16 @@ describe('persistent own integrity challenges',()=>{
     for(const change of [{purpose:'clock.online' as const},{bindingHash:'b'.repeat(64)},{appInstallationId:randomUUID()}])
       await expect(issueOwnIntegrityChallenge(e.ctx,{...e.intent,...change})).rejects.toMatchObject({reason:'binding_conflict'});
   });
+  it('normalizes equivalent UUID spelling without replacing the stored challenge',async()=>{
+    const e=await employee(),first=await issueOwnIntegrityChallenge(e.ctx,e.intent);
+    const retry=await issueOwnIntegrityChallenge(e.ctx,{...e.intent,employmentId:e.intent.employmentId.toUpperCase(),
+      requestId:e.intent.requestId.toUpperCase(),appInstallationId:e.intent.appInstallationId.toUpperCase()});
+    expect(retry).toEqual(first);
+  });
   it('serializes consumption, runs one transactional result and returns a stable terminal receipt',async()=>{
     const e=await employee(),challenge=await issueOwnIntegrityChallenge(e.ctx,{...e.intent,purpose:'clock.online'});
     expect(new Date(challenge.expiresAt).getTime()-new Date(challenge.issuedAt).getTime()).toBe(120000);
-    const operation=vi.fn(async(tx:Parameters<Parameters<typeof withTenant>[1]>[0])=>{
+    const operation=vi.fn(async(tx:Tx)=>{
       await appendEvent(tx,{tenantId:base.tenantId,aggregateType:'integrity-test-result',aggregateId:challenge.id,eventType:'integrity.test.result',actor:actorOf(e.ctx),subjectEmploymentId:e.employmentId,payload:{}});return 'saved';
     });
     const command={...e.intent,purpose:'clock.online' as const,challengeId:challenge.id};
@@ -80,6 +86,26 @@ describe('persistent own integrity challenges',()=>{
     expect((await issueOwnIntegrityChallenge(e.ctx,e.intent)).id).toBe(first.id);
     expect(await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.actorId,e.ctx.userId!))).toHaveLength(4);
   });
+  it('applies the shared enrollment issuance rate even when earlier challenges were consumed',async()=>{
+    const e=await employee();let first:Awaited<ReturnType<typeof issueOwnIntegrityChallenge>>|undefined;
+    for(let i=0;i<5;i++){
+      const intent={...e.intent,requestId:i===0?e.intent.requestId:randomUUID()},challenge=await issueOwnIntegrityChallenge(e.ctx,intent);
+      first??=challenge;await consumeOwnIntegrityChallenge(e.ctx,{...intent,challengeId:challenge.id},async()=>null);
+    }
+    await expect(issueOwnIntegrityChallenge(e.ctx,{...e.intent,requestId:randomUUID()})).rejects.toMatchObject({retryAfter:expect.any(Number)});
+    expect((await issueOwnIntegrityChallenge(e.ctx,e.intent)).id).toBe(first!.id);
+    const peer=await employee();expect((await issueOwnIntegrityChallenge(peer.ctx,peer.intent)).state).toBe('active');
+  });
+  it('refuses a different binding at consumption and never invokes that callback',async()=>{
+    const e=await employee(),challenge=await issueOwnIntegrityChallenge(e.ctx,e.intent),operation=vi.fn(async()=>null);
+    await expect(consumeOwnIntegrityChallenge(e.ctx,{...e.intent,challengeId:challenge.id,bindingHash:'b'.repeat(64)},operation)).rejects.toMatchObject({reason:'binding_conflict'});
+    expect(operation).not.toHaveBeenCalled();expect((await issueOwnIntegrityChallenge(e.ctx,e.intent)).state).toBe('active');
+  });
+  it('enforces the shorter online expiry in the database as well as the service',async()=>{
+    const e=await employee(),identity=await owner.db.select().from(schema.mobileIntegrityInstallation),now=new Date();
+    await expect(withTenant(e.ctx,tx=>tx.insert(schema.mobileIntegrityChallenge).values({...e.intent,purpose:'clock.online',tenantId:base.tenantId,actorId:e.ctx.userId!,
+      installationId:identity[0].installationId,nonce:'D'+'A'.repeat(42),issuedAt:now,expiresAt:new Date(now.getTime()+180000)}))).rejects.toThrow();
+  });
   it('retains expired references without minting a fresh nonce or running the consumer',async()=>{
     const e=await employee(),now=Date.now();
     const identity=await owner.db.select().from(schema.mobileIntegrityInstallation);
@@ -97,6 +123,6 @@ describe('persistent own integrity challenges',()=>{
     await expect(withTenant(e.ctx,tx=>tx.update(schema.mobileIntegrityChallenge).set({consumedAt:null}).where(eq(schema.mobileIntegrityChallenge.id,challenge.id)))).rejects.toThrow();
     await expect(withTenant(e.ctx,tx=>tx.delete(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,challenge.id)))).rejects.toThrow();
     const [row]=await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,challenge.id));
-    await expect(withTenant(peer.ctx,tx=>tx.insert(schema.mobileIntegrityChallenge).values({...row,id:randomUUID(),requestId:randomUUID(),nonce:'C'+'A'.repeat(42),consumedAt:null})))).rejects.toThrow();
+    await expect(withTenant(peer.ctx,tx=>tx.insert(schema.mobileIntegrityChallenge).values({...row,id:randomUUID(),requestId:randomUUID(),nonce:'C'+'A'.repeat(42),consumedAt:null}))).rejects.toThrow();
   });
 });
