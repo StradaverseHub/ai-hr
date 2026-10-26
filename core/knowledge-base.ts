@@ -9,7 +9,7 @@ import { withCanonicalAiReadTx } from './ai-read-transaction';
  * library and viewer stay light.
  */
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
@@ -262,8 +262,9 @@ async function logEvent(
   id: string,
   eventType: string,
   payload: unknown,
+  returnId = false,
 ) {
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'kb-document',
     aggregateId: id,
@@ -272,38 +273,37 @@ async function logEvent(
     // KB documents are org-level content, not employee-scoped PII → no subject (admin-only in audit).
     subjectEmploymentId: null,
     payload,
-  });
+  }, {returnId});
+}
+
+export type ArticleHumanInput={title:string;body:string;category?:string;audience?:KbAudience};
+/** Shared native normalization/author-clearance owner. A review displays these exact values. */
+export function prepareArticleContent(ctx:SessionContext,p:ArticleHumanInput){
+  assertKbAuthor(ctx);
+  const title=cleanTitle(p.title),body=String(p.body??'');
+  if(!body.trim())throw new Error('The article body is empty.');
+  const category=cleanCategory(p.category),audience=cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx,audience);return {title,body,category,audience};
+}
+async function createArticleOwnerTx(tx:Tx,ctx:SessionContext,content:ReturnType<typeof prepareArticleContent>,returnId=false){
+  const {title,body,category,audience}=content;
+  const [row]=await tx.insert(kbDocument).values({tenantId:ctx.tenantId,kind:'article',title,body,category,audience,
+    createdByUserId:ctx.userId??null,updatedByUserId:ctx.userId??null}).returning({id:kbDocument.id});
+  const eventId=await logEvent(tx,ctx,row.id,'kb.document.created',{kind:'article',title,category,audience},returnId);
+  return {id:row.id,eventId};
+}
+/** Supplied-transaction native article creation. The Assistant caller still owns fresh identity,
+ * human confirmation, shared custody and completion; this function is not a model tool. */
+export async function createArticleTx(tx:Tx,ctx:SessionContext,p:ArticleHumanInput){
+  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const content=prepareArticleContent(current,{...p}),effect=await createArticleOwnerTx(tx,current,content,true);
+  if(!effect.eventId)throw Error('Article event unavailable.');return {id:effect.id,eventId:effect.eventId};
 }
 
 /** Author a new Markdown article. */
-export async function createArticle(
-  ctx: SessionContext,
-  p: { title: string; body: string; category?: string; audience?: KbAudience },
-) {
-  assertKbAuthor(ctx);
-  const title = cleanTitle(p.title);
-  const body = String(p.body ?? '');
-  if (!body.trim()) throw new Error('The article body is empty.');
-  const category = cleanCategory(p.category);
-  const audience = cleanAudience(p.audience);
-  assertAudienceWithinClearance(ctx, audience);
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .insert(kbDocument)
-      .values({
-        tenantId: ctx.tenantId,
-        kind: 'article',
-        title,
-        body,
-        category,
-        audience,
-        createdByUserId: ctx.userId ?? null,
-        updatedByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: kbDocument.id });
-    await logEvent(tx, ctx, row.id, 'kb.document.created', { kind: 'article', title, category, audience });
-    return { id: row.id };
-  });
+export async function createArticle(ctx:SessionContext,p:ArticleHumanInput){
+  const content=prepareArticleContent(ctx,p);
+  return withTenant(ctx,async tx=>{const {id}=await createArticleOwnerTx(tx,ctx,content);return {id};});
 }
 
 /** Edit an article (and/or its metadata). RLS confines it to admins + the author of a non-system doc. */
