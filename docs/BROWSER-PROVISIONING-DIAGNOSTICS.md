@@ -155,3 +155,12 @@ partitions, changed filters, assertions, clock values or resets. An initial misp
 caught by that functional probe and corrected before Linux execution; a subsequent probe-boundary
 selection error was repaired only in that failed probe. Ten source controls and the repaired
 registration probe pass; actual new Linux financial-file execution is still pending.
+
+
+### Financial partition verification and measured R395 follow-up
+
+Focused Linux run [40345479694](https://github.com/StradaverseHub/ai-hr/actions/runs/40345479694), source/controller `e136a9e24aa5c6686ca435276d23321a56cd2996`, passed the exact original 18 unique financial assertion full names: cash 9 and TOIL 9, no failed/pending/todo cases. Raw before/after reports show the original 236.198-second file became 119.312 and 121.011 seconds. This is a focused development measurement, not a new full gate or staging arrival. Both health observations passed; private PostgreSQL retained 2 GiB/JIT on, peaked at 751,976,448 bytes and recorded zero OOM events. The focused runner completed its owned stop path with exit zero.
+
+The same full v13 raw reports identify the R395 generic permission-context comparisons as the next serial test tail: primary 223.202 seconds, secondary approximately 142 seconds. The helper already batches statements inside each context; repeated per-statement policy installation was ruled out. Moving its fast person/employment cases would not address the measured tail.
+
+The follow-up partitions the original 24 generic contexts into three disjoint groups of eight, weighted using the actual v13 per-case times. Primary retains employee context 0 and group HR-admin context 16; secondary and tertiary independently repeat those two original controls so the unchanged non-vacuity thresholds remain meaningful. All original 88 cases remain, with six explicitly additional controls (two repeated contexts and a non-vacuity assertion in each added partition). Original SQL, old/new policy setup, callbacks, rollback, mutation refusal, fixture restoration and thresholds remain mechanically checked against the frozen source. Each fixture report has its own bounded partition label. Estimated sums are scheduling hypotheses only; actual three-file Linux runtime and exact assertion coverage must be checked before accepting a speed improvement. This does not change application SQL, runner memory, database JIT, worker count or release authority.
