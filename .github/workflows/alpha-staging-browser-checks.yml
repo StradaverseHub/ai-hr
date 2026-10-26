@@ -19,7 +19,7 @@ on:
         options: [browser-install, operator-transport]
 permissions: {contents: read, actions: read}
 concurrency:
-  group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}
+  group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
