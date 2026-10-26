@@ -1,5 +1,6 @@
 /** Deterministic user jobs: one fresh closed Assistant carrier, no provider/model or shared cache. */
 import {randomUUID} from 'node:crypto';
+import type {SpecialistAssessment} from '../lib/ai/module-specialists';
 import type {SessionContext,Tx} from '../db/client';
 import {reopenGovernedModuleReadJobTx} from './module-agent-releases';
 import {withAssistantRead} from './assistant-read-session';
@@ -13,7 +14,7 @@ import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
 import type {JobPresentation} from '../lib/ai/module-jobs';
 const owners=new WeakMap<object,{principal:string;issuedAt:number;digest:string}>();
 const principal=(ctx:SessionContext)=>JSON.stringify([ctx.tenantId,ctx.userId,ctx.personId??null,ctx.roles??null,ctx.grants??null]);
-export type CanonicalModuleJobView=Readonly<{state:'ready';presentation:JobPresentation;checkedAt:number;viewId:string;toolName?:GroundedToolName}|{state:'unavailable';module:AgentModuleCode|null;checkedAt:number;viewId:string}>;
+export type CanonicalModuleJobView=Readonly<{state:'ready';presentation:JobPresentation;checkedAt:number;viewId:string;toolName?:GroundedToolName;specialist?:SpecialistAssessment|null}|{state:'unavailable';module:AgentModuleCode|null;checkedAt:number;viewId:string}>;
 export async function loadCanonicalModuleJob(ctx:SessionContext,input:unknown):Promise<CanonicalModuleJobView>{
  const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const request=input&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:null;
@@ -57,7 +58,7 @@ export async function loadGovernedWorkspaceJobTx(ctx:SessionContext,tx:Tx,id:str
  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  try{const result=await reopenGovernedModuleReadJobTx(tx,current,id),views:CanonicalModuleJobView[]=[];
   for(const row of result.results){if(!isAgentModuleCode(row.module)||row.scope!=='current-caller'||row.capability!==MODULE_AGENT_CAPABILITIES.find(binding=>binding[0]===row.module)![1])throw Error();
-   const view=Object.freeze({state:'ready' as const,presentation:presentCanonicalModuleData(row.module,row.data),checkedAt:Date.now(),viewId:randomUUID()});
+   const view=Object.freeze({state:'ready' as const,presentation:presentCanonicalModuleData(row.module,row.data),checkedAt:Date.now(),viewId:randomUUID(),...(result.specialist===undefined?{}:{specialist:result.specialist?.module===row.module?result.specialist:null})});
    owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});views.push(view);
   }
   return Object.freeze({state:'ready',jobId:result.jobId,mode:result.mode,changedSinceRun:result.changedSinceRun,feedbackOutcome:result.feedbackOutcome,views:Object.freeze(views)});

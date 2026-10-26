@@ -63,6 +63,7 @@ export function executeCanonicalSpecialist(candidateValue:unknown,source:{module
   case'system_explorer':{const row=object(data);add('schema_inventory_not_record_access');if(positive(row.withheldTables))add('schema_partly_withheld');break;}
   case'assistant':add('catalogue_not_permission');add('human_confirmation_owns_effects');break;
   case'system_testing':for(const row of bounded(data)){if(row.status==='passed')add('human_test_pass_not_independent_verification');else if(['failed','blocked','retest_required'].includes(String(row.status)))add('human_test_failure_needs_native_followup');else if(row.status==='not_applicable')add('test_not_applicable_not_pass');else add('test_work_incomplete');}break;
+  default:{const unsupported:never=module;void unsupported;return fail();}
  }
  return Object.freeze({version:1,module,coverage:'canonical_domain_guidance_only',findings:Object.freeze([...findings].sort()),presentation,humanActions:moduleHumanActionHandoffs(module),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true});
 }

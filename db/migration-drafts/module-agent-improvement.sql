@@ -6,7 +6,7 @@ CREATE TABLE public.ai_agent_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  owner_user_id uuid NOT NULL REFERENCES public.app_user(id), author_user_id uuid NOT NULL REFERENCES public.app_user(id),
  module_code text NOT NULL, version integer NOT NULL CHECK(version>0),
- kind text NOT NULL CHECK(kind IN('typed_route_priority_v1','read_plan_prompt_v1')), configuration jsonb NOT NULL,
+ kind text NOT NULL CHECK(kind IN('typed_route_priority_v1','read_plan_prompt_v1','canonical_specialist_v1')), configuration jsonb NOT NULL,
  candidate_digest text NOT NULL CHECK(candidate_digest~'^[a-f0-9]{64}$'),
  baseline_digest text NOT NULL CHECK(baseline_digest~'^[a-f0-9]{64}$'),
  source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),
@@ -14,6 +14,9 @@ CREATE TABLE public.ai_agent_candidate (
  policy_digest text NOT NULL CHECK(policy_digest~'^[a-f0-9]{64}$'),
  input_digest text NOT NULL CHECK(input_digest~'^[a-f0-9]{64}$'),
  created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK((kind IN('typed_route_priority_v1','read_plan_prompt_v1') AND module_code='assistant') OR
+  (kind='canonical_specialist_v1' AND module_code IN('employees','org','leave','ess','approvals','knowledge_base','payroll','attendance','claims','performance','rewards','lifecycle','toil','multi_cycle_payroll','typed_pay_components','country-my','notifications','system_explorer','assistant','system_testing')
+   AND configuration=jsonb_build_object('kind','canonical_specialist_v1','module',module_code,'playbook','canonical_domain_v1'))),
  UNIQUE(id,tenant_id),UNIQUE(tenant_id,owner_user_id,module_code,version)
 );
 --> statement-breakpoint
@@ -71,9 +74,11 @@ CREATE POLICY ai_agent_promotion_consume ON public.ai_agent_promotion FOR UPDATE
  WITH CHECK(tenant_id=app.current_tenant_id() AND owner_user_id=app.current_user_id());
 CREATE POLICY ai_agent_rollback_read ON public.ai_agent_rollback FOR SELECT TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND (app.is_group_admin() OR EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_rollback.tenant_id AND p.owner_user_id=app.current_user_id())));
+-- Specialist owners may only retire their own promoted behavior on a trusted domain-contract failure.
+-- This restores baseline, consumes no effect authority and grants no HR-row/provider capability.
 CREATE POLICY ai_agent_rollback_create ON public.ai_agent_rollback FOR INSERT TO ai_hr_app
  WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id()
- AND (app.is_group_admin() OR (reason='source_changed' AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_rollback.tenant_id AND p.owner_user_id=app.current_user_id()))));
+ AND (app.is_group_admin() OR (reason='quality_regression' AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p JOIN public.ai_agent_candidate c ON c.id=p.candidate_id AND c.tenant_id=p.tenant_id WHERE p.id=promotion_id AND p.tenant_id=ai_agent_rollback.tenant_id AND p.owner_user_id=app.current_user_id() AND c.kind='canonical_specialist_v1')) OR (reason='source_changed' AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_rollback.tenant_id AND p.owner_user_id=app.current_user_id()))));
 --> statement-breakpoint
 REVOKE ALL ON public.ai_agent_candidate,public.ai_agent_evaluation,public.ai_agent_promotion,public.ai_agent_rollback FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON public.ai_agent_candidate,public.ai_agent_evaluation,public.ai_agent_promotion,public.ai_agent_rollback TO ai_hr_app;
