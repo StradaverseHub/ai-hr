@@ -11,6 +11,7 @@ import type {AgentModuleCode} from '../../lib/ai/module-agents';
 import type {JobFact,JobCard} from '../../lib/ai/module-jobs';
 import type {GroundedWorkspaceAnswer} from '../../core/workspace-grounded-answers';
 import {MODULE_JOBS} from '../../lib/ai/module-jobs';
+import {ModuleSpecialistFindings} from './module-specialist-findings';
 const knownStates=new Set(['active','probation','resigned','terminated','pending','approved','rejected','cancelled','draft','paid','closed','completed','in_progress','not_tested','passed','failed','skipped','annual','offcycle','regular','day','hour','not_started','self_review','manager_review','submitted','acknowledged','present','absent','late','half_day','active_serving_notice','blacklisted','withhold','full_day','half_day_am','half_day_pm','hourly','administrative','functional','taken','converted_to_pay','lapsed','reversed','pass','fail','blocked','partial','manager','report']);
 export async function ModuleJobChooser({modules,selected}:{modules:readonly AgentModuleCode[];selected?:string}){
  const t=await getTranslations('assistant.workspace.jobs'),leave=await getTranslations('ownLeaveReview.workflow'),notifications=await getTranslations('assistant.workspace.moduleActions'),profile=await getTranslations('assistant.workspace.profileActions'),performance=await getTranslations('assistant.workspace.performanceActions'),claims=await getTranslations('assistant.workspace.claimActions'),testing=await getTranslations('assistant.workspace.testingActions'),org=await getTranslations('assistant.workspace.orgActions'),knowledge=await getTranslations('assistant.workspace.knowledgeActions'),lifecycle=await getTranslations('assistant.workspace.lifecycleActions'),toil=await getTranslations('assistant.workspace.toilActions'),approvals=await getTranslations('assistant.workspace.approvalActions'),attendance=await getTranslations('assistant.workspace.attendanceActions'),payComponents=await getTranslations('assistant.workspace.payComponentActions'),rewards=await getTranslations('assistant.workspace.rewardsActions'),employeeImport=await getTranslations('people.import'),payrollClose=await getTranslations('assistant.workspace.payrollCloseActions'),countryStatutory=await getTranslations('assistant.workspace.countryStatutoryActions'),multiCycleRun=await getTranslations('assistant.workspace.multiCycleRunActions');
@@ -64,6 +65,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
    {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(card.linkPurpose==='human_review'?'reviewAction':'original')}</a>}
   </Card>)}</div>
   {presentation.truncated&&<p className="text-sm text-muted-foreground">{t('truncated')}</p>}
+  {view.specialist&&<ModuleSpecialistFindings assessment={view.specialist}/>}
   {['payroll','typed_pay_components'].includes(presentation.module)&&<p className="text-xs text-muted-foreground">{t('moneyNote')}</p>}
   {presentation.module==='notifications'&&<p className="text-xs text-muted-foreground">{t('notificationNote')}</p>}
  </section>;

@@ -8,6 +8,7 @@ import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
 import {ModuleQuestionPlanner,HumanPlannerEvaluation} from '@/components/assistant/module-plan';
 import {eraseModuleProposalsAction} from './module-plan-actions';
 import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
+import {ModuleSpecialistReview,SpecialistJobComposer} from '@/components/assistant/module-specialist-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -83,6 +84,7 @@ export default async function AssistantPage({
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
+      <SpecialistJobComposer modules={workspace.jobModules}/>
       <ModuleQuestionPlanner permit={workspace.planningPermit} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
       {workspace.agentReview&&<HumanPlannerEvaluation candidates={workspace.agentReview.candidates}/>}
 
@@ -94,6 +96,7 @@ export default async function AssistantPage({
       </Card>
 
       {'agentReview' in workspace&&workspace.agentReview&&<ModuleAgentReview view={workspace.agentReview}/>}
+      {workspace.specialistReview&&<ModuleSpecialistReview view={workspace.specialistReview}/>}
 
       {!selectedJob&&!workspace.governedJob&&history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
       <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>
