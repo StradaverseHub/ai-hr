@@ -1,4 +1,16 @@
-# r395 write-equivalence savepoint cleanup
+# r395 write-equivalence performance and preservation
+
+## Two-part write-context candidate — runtime pending
+
+The measured50-file run40275058443 passed the original88 write cases, but this file took529.998s after an80.604s start delay. Its24generic caller cases account for524.506s of reported intervals. Ordering addresses the start delay; it does not remove the sequential caller loop.
+
+The new candidate retains all88original expanded cases across two independently isolated Vitest files. The primary keeps12generic contexts plus all63other setup/handwritten/CTE/real-hire/restoration/mutation cases. The secondary contains the remaining12generic contexts, repeats the canonical employee0 and group-administrator16 as additional controls, and independently requires the same >=40 tables with allowed inserts, RLS-refused inserts and returned updates. Primary already includes both controls and retains the original non-vacuity assertion. Total write cases become91; three extra checks are not replacements for original coverage. Each comparison still executes the identical SQL, both policy sets, role transitions, returned-row/error comparison and rollback/release logic. All original per-case/hook deadlines remain.
+
+The fixture lives in test/r395-write-fixture.ts and registers once per isolated file. Existing current Feedback/Profile policy snapshots, real hire cases, committed-policy restoration and always-on administrator-refusal mutation remain unchanged. The context0/16 identities and total24 are checked after fixture setup. R395_REPORT now writes explicit .primary.json/.secondary.json suffixes; neither partial tally silently overwrites a shared aggregate path. The old frozen slow-r395 diagnostic remains pinned to its original ba214 source; use both current files for the new candidate.
+
+The immutable source oracle in .github/ci/diagnostics/fixtures/r395-write-before-split.ts.txt is bound to the original file at2a83c8c84. A closed source-preservation reader reconstructs permitted moves and rejects modified callbacks, queries, savepoints, original63other cases, thresholds, missing contexts, mutation removal, report collision or oracle replacement. All8dependency-free preservation/refusal controls passed in52ms locally, with no application imports, database, compiler, Vitest or Mac slots. They also run before expensive hosted checks and in the normal controller. This is source evidence, not runtime or full release proof.
+
+The partition weights280.429s and293.485s are sums of old reported case intervals, including the extra controls. They are scheduling estimates, not measured split wall time or a predicted speedup. Run both complete files on the same existing2workers/2GiB PostgreSQL/JIT-on budget; independently verify all88original names plus3extras, both non-vacuity results, actual exits, memory/OOM state and cleanup. No full release, compiler/build/staging or under600s claim is established yet.
 
 ## Runtime verification on 26 October MYT
 
@@ -22,7 +34,7 @@ This is a prepared optimization candidate, not a measured speedup or release pro
 | Real hire service comparisons and live-policy restoration | 12 |
 | **Total** | **88** |
 
-All original registration expressions, callbacks, assertions, table-driven values and timeouts are unchanged. The source proof collected the same 88 expanded registrations using inert imports, without executing hooks or case bodies. Splitting the generic context table without preserving its accumulated non-vacuity witness would change this proof, so that approach was not used.
+At the savepoint-only revision below, all original registration expressions, callbacks, assertions, table-driven values and timeouts were unchanged. The source proof collected the same 88 expanded registrations using inert imports, without executing hooks or case bodies. A naive split would lose the accumulated non-vacuity witness and was rejected. The subsequent two-part candidate above retains every original comparison and adds independent administrator/employee controls with the original thresholds in each part; runtime remains pending.
 
 ## Observed bottleneck
 
