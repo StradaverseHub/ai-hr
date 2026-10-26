@@ -186,12 +186,13 @@ async function failureEvent(ctx:SessionContext,id:string,kind:'failed'|'revert_f
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:id,eventType:'payroll-history-import.'+kind,actor:actorOf(ctx),payload:{reason}});
  });}catch(recordError){console.error('[payroll history failure audit]',recordError);}
 }
-export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean}){
+export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;expectedCompanyId?:string}){
  assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select().from(attempt).where(eq(attempt.id,input.attemptId)).for('update');if(!source)fail('Import attempt unavailable.');
   for(const id of source.companyIds)await permission(tx,ctx,id,'import');
+  if(input.expectedCompanyId&&(!uuid.test(input.expectedCompanyId)||source.companyIds.some(id=>id!==input.expectedCompanyId)))fail('This record-based import is restricted to its selected company. Use the original-file workflow for a multi-company import.');
   const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,source.id));
   if(events.some(event=>event.kind==='reverted'))fail('This import was reverted. Validate a new upload to import again.');
   const confirmed=events.find(event=>event.kind==='confirmed');if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true};

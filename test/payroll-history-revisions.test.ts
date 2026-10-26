@@ -49,7 +49,8 @@ describe('immutable payroll history correction and recovery',()=>{
   await revertPayrollHistoryUpload(ctx,correction.attemptId);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
   const [unchanged]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id));expect(unchanged).toEqual(original);
   await expect(revertPayrollHistoryUpload(ctx,correction.attemptId)).rejects.toThrow(/already been reverted/);
-  await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toThrow(/immutable/);
+  await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/immutable/)}});
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id)))[0]).toEqual(original);
  });
  it('retires a newly created effective entry without erasing its physical snapshot or audit',async()=>{
   const first=await upload();await confirm(first);await revertPayrollHistoryUpload(ctx,first.attemptId);
