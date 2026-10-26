@@ -9,6 +9,7 @@
 !/lib/clock-attempt.ts
 !/lib/mobile-clock-integrity.ts
 !/lib/mobile-key-enrollment.ts
+!/lib/mobile-integrity-contract.ts
 !/lib/mobile-connection.ts
 !/lib/mobile-workplace-setup.ts
 !/lib/mobile-design.ts
