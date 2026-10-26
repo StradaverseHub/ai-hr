@@ -1548,3 +1548,22 @@ and affected entitlement, deletion, configuration and authorization consumers re
 source review proves neither actual app-role behavior nor lock-order/security guarantees. Remaining
 direct writers, policy/module/Access, organization, calendar, snapshot and request owners still need
 participation before a universal barrier or Assistant effect can be claimed. No migration or release.
+
+
+### Encashment policy and administrative snapshot overrides participate (unrun)
+
+The encashment-policy upsert now takes exclusive configuration ownership before reading or writing
+its policy. Administrative unfreeze/adjust capture the snapshot ID before awaiting, nominate its
+RLS-visible employment under shared configuration, acquire the employment barrier, then reread the
+snapshot with `FOR UPDATE NOWAIT`. Changed/missing subjects or busy rows refuse the whole transaction;
+existing status/override validation, snapshot change and canonical event stay together. No Payroll
+money calculation or canonical day rounding changed.
+
+Five authored real-employee two-connection cases freeze through the actual resignation approval
+workflow, hold either employment ownership or the real snapshot row, require both administrative
+commands to refuse with identical snapshot/event state, release and apply once. The fifth requires
+the policy writer to refuse during an employee interval, then records its change after release. They remain UNRUN,
+as do policy, resignation, snapshot, ledger-trigger, Payroll and authorization consumers. Snapshot
+CREATION and its parent offboarding/termination transaction are deliberately still pending dependency
+integration: this checkpoint does not fence the freeze writer or establish a universal barrier.
+No app-role, concurrency, erasure or security guarantee follows from static source checks; no release.
