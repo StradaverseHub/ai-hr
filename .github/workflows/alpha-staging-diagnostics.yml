@@ -16,11 +16,12 @@ on:
         required: false
         default: false
         type: boolean
-      installer_repair_only:
-        description: Retest the one pinned failed negative fixture and execute previously unrun installer controls; original run stays FAIL
+      installer_fixture_phase:
+        description: Private installer controls; follow-up phases retain their pinned original outcomes
         required: false
-        default: false
-        type: boolean
+        default: full
+        type: choice
+        options: [full, source-proof-followup, environment]
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -746,10 +747,15 @@ jobs:
           assert(p.filesystem_activation_probe===true&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
           assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
           for(const [key,value]of Object.entries(p)){
-            if(['filesystem_activation_probe','installer_repair_only','candidate_ref','expected_sha'].includes(key))continue;
+            if(['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))continue;
             assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='', 'No unrelated diagnostic allowed: '+key);
           }
-          if(p.installer_repair_only){
+          assert(['full','source-proof-followup','environment'].includes(p.installer_fixture_phase));
+          if(p.installer_fixture_phase==='environment'){
+            const changed=execFileSync('git',['diff','--name-only','a36301ca07df445ea1d6f1a0d97e85849a62e5c0',e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+            assert.deepEqual(changed,['.github/ci/staging-environment.mjs','.github/ci/staging-environment.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          }
+          if(p.installer_fixture_phase==='source-proof-followup'){
             const original='a1c8157f729b603625b5d5de4900082bbc0212f9',runId=40268601211;
             const changed=execFileSync('git',['diff','--name-only',original,e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
             assert.deepEqual(changed,['.github/ci/staging-cleanup-protocol.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
@@ -764,7 +770,7 @@ jobs:
           }
           NODE
       - name: Actual private Linux exchanges and strict fake staging transport
-        if: ${{ !inputs.installer_repair_only }}
+        if: ${{ inputs.installer_fixture_phase == 'full' }}
         run: |
           set -euo pipefail
           python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
@@ -773,7 +779,10 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/deploy.sh
-          if [ "${{ inputs.installer_repair_only }}" = "true" ]; then
+          if [ "${{ inputs.installer_fixture_phase }}" = "environment" ]; then
+            node --test --test-reporter=spec .github/ci/staging-environment.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          else
+          if [ "${{ inputs.installer_fixture_phase }}" = "source-proof-followup" ]; then
             node --test --test-reporter=spec --test-name-pattern="^owned cleanup requires the actual empty checksum output, fresh observation and exact original build tuple$" .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
           else
             node --test --test-reporter=spec .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
@@ -782,11 +791,15 @@ jobs:
           node --test --test-reporter=spec .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-ci-promotion.log"
           node --test --test-reporter=spec .github/ci/staging-build-install.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-build-install.log"
           python3 .github/ci/build-bundle.test.py -v 2>&1 | tee "$RUNNER_TEMP/build-bundle.log"
+          fi
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
         with: {version: 10.33.2}
       - name: Install dependencies only for actual official-helper private fixtures
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Actual candidate detached launcher and private rsync transport
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
         run: |
           set -euo pipefail
           node --import tsx --test --test-reporter=spec .github/ci/operator-flow.test.mjs .github/ci/staging-launcher.test.mjs .github/ci/staging-source-transfer.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-official-helpers.log"

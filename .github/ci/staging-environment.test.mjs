@@ -15,7 +15,8 @@ function fixture(t){
   FragmentPath:unit,DropInPaths:'',LoadCredential:'',LoadCredentialEncrypted:'',SetCredential:'',SetCredentialEncrypted:'',ImportCredential:''};
  let manager='PATH=/usr/bin\nSERVER_TOKEN=never-export-secret\n',pid=1;
  const systemctl=args=>args[0]==='show-environment'?manager:Object.entries({...values,ExecStart:values.ExecStart.replace('pid=1','pid='+pid++)}).map(([k,v])=>k+'='+v).join('\n')+'\n';
- return {root,source,unit,external,values,systemctl,setManager:value=>manager=value,fingerprint:()=>fingerprintStagingEnvironment(source,{systemctl})};
+ const busctl=args=>args[0]==='call'?{type:'o',data:['/org/freedesktop/systemd1/unit/aihr_2eservice']}:{type:args.at(-1).startsWith('Set')?'a(say)':'a(ss)',data:values[args.at(-1)]===''||values[args.at(-1)]==='[unprintable]'?[]:[['fixture','never-export-secret']]};
+ return {root,source,unit,external,values,systemctl,busctl,setManager:value=>manager=value,fingerprint:()=>fingerprintStagingEnvironment(source,{systemctl,busctl})};
 }
 test('stable configuration and changing execution-only PID fields produce one digest without exposing values',t=>{
  const f=fixture(t),a=f.fingerprint();assert.match(a,/^[a-f0-9]{64}$/);assert.equal(f.fingerprint(),a);assert(!a.includes('never-export-secret'));
@@ -63,5 +64,15 @@ test('optional missing systemd environment file is explicit; symlinked or requir
 test('configuration or file changes during the two reads refuse instead of producing mixed authority',t=>{
  const f=fixture(t);let calls=0;
  const changing=args=>{const value=f.systemctl(args);if(args[0]==='show-environment'&&++calls===1)writeFileSync(f.external,'SERVER_VALUE=concurrent-change\n');return value;};
- assert.throws(()=>fingerprintStagingEnvironment(f.source,{systemctl:changing}),/changed during fingerprint/);
+ assert.throws(()=>fingerprintStagingEnvironment(f.source,{systemctl:changing,busctl:f.busctl}),/changed during fingerprint/);
+});
+
+test('unprintable display requires independently typed empty credential arrays; nonempty/wrong types still refuse',t=>{
+ const f=fixture(t),before=f.fingerprint();
+ for(const key of ['LoadCredential','LoadCredentialEncrypted','SetCredential','SetCredentialEncrypted'])f.values[key]='[unprintable]';
+ assert.equal(f.fingerprint(),before);
+ for(const invalid of [{type:'a(ss)',data:[['fixture','never-export-secret']]},{type:'s',data:''},{type:'a(ss)'},{type:'a(ss)',data:null}]){
+  const busctl=args=>args[0]==='call'?f.busctl(args):invalid;
+  assert.throws(()=>fingerprintStagingEnvironment(f.source,{systemctl:f.systemctl,busctl}),e=>!e.message.includes('never-export-secret'));
+ }
 });

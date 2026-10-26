@@ -8,6 +8,9 @@ import * as path from 'node:path';
 export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
  try{return cp.execFileSync('/usr/bin/systemctl',argv,{encoding:'utf8',timeout:10000,maxBuffer:1024**2});}
  catch{throw Error('Unable to inspect bounded staging service configuration');}
+},busctl=argv=>{
+ try{return JSON.parse(cp.execFileSync('/usr/bin/busctl',['--system','--json=short',...argv],{encoding:'utf8',timeout:10000,maxBuffer:1024**2}));}
+ catch{throw Error('Unable to inspect typed staging credential configuration');}
 }}={}){
  assert(path.isAbsolute(source)&&fs.realpathSync(source)===source,'Canonical environment source required');
  const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
@@ -39,8 +42,15 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
   }
   assert(keys.every(k=>Object.hasOwn(values,k)),'Incomplete systemd configuration properties');
   assert(values.WorkingDirectory===source&&values.DynamicUser==='no','Fixed service directory/principal required');
-  for(const key of ['PAMName','RootDirectory','RootImage','LoadCredential','LoadCredentialEncrypted','SetCredential','SetCredentialEncrypted','ImportCredential'])
+  for(const key of ['PAMName','RootDirectory','RootImage','ImportCredential'])
    assert(values[key]==='','Unreviewed dynamic service environment or credential source');
+  const unit=busctl(['call','org.freedesktop.systemd1','/org/freedesktop/systemd1','org.freedesktop.systemd1.Manager','GetUnit','s','aihr.service']);
+  assert(unit?.type==='o'&&Array.isArray(unit.data)&&unit.data.length===1&&/^\/org\/freedesktop\/systemd1\/unit\/[A-Za-z0-9_]+$/.test(unit.data[0]),'Exact loaded unit object required');
+  for(const [key,type]of Object.entries({LoadCredential:'a(ss)',LoadCredentialEncrypted:'a(ss)',SetCredential:'a(say)',SetCredentialEncrypted:'a(say)'})){
+   const value=busctl(['get-property','org.freedesktop.systemd1',unit.data[0],'org.freedesktop.systemd1.Service',key]);
+   assert(value?.type===type&&Array.isArray(value.data)&&value.data.length===0,'Unreviewed nonempty typed service credential source');
+   values[key]={type,data:[]}; // Display placeholders alone can never prove absence.
+  }
   noCompileKeys(values.Environment);
   assert(values.PassEnvironment===''||/^[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z_][A-Za-z0-9_]*)*$/.test(values.PassEnvironment),'Unsupported inherited environment syntax');
   const starts=[...values.ExecStart.matchAll(/(?:^|[;{])\s*path=([^;]+?)\s*;/g)],argv=[...values.ExecStart.matchAll(/argv\[\]=([^;]+?)\s*;/g)];
@@ -67,7 +77,7 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
   const managerLines=manager.trimEnd().split('\n').filter(Boolean);
   assert(managerLines.every(line=>/^[A-Za-z_][A-Za-z0-9_]*=/.test(line)),'Unreviewed manager environment syntax');
   const publicRows=rows=>rows.map(({text,...row})=>row);
-  return {service:Object.fromEntries(keys.map(k=>[k,values[k]])),files:publicRows(files),unitFiles:publicRows(unitFiles),managerSha256:hash(managerLines.sort().join('\n'))};
+  return {objectPath:unit.data[0],service:Object.fromEntries(keys.map(k=>[k,values[k]])),files:publicRows(files),unitFiles:publicRows(unitFiles),managerSha256:hash(managerLines.sort().join('\n'))};
  }
  const dotenv=['.env.production.local','.env.local','.env.production','.env'].map(name=>file(path.join(source,name),name!=='.env.production'));
  for(const row of dotenv)if(row.present)noCompileKeys(row.text);
