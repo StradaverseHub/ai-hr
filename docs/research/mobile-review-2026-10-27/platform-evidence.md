@@ -111,6 +111,24 @@ a valid complete signed fixture and is not accepted as verified. Fraud-receipt v
 revocation, actor/key/challenge persistence, Android vendor checks, physical devices and full CI remain
 open. The new helpers make no business writes and are not activated in v1 routes.
 
+Play standard-token boundary at `a718ad7bc`: six focused suites passed 55 tests and root TypeScript
+exited 0. All Google transport/auth responses were synthetic ports; no Google decode, credential access,
+quota use or hardware acceptance occurred. The public discovery schema confirmed `integrityToken`,
+`tokenPayloadExternal`, request/app fields and the `https://www.googleapis.com/auth/playintegrity` scope.
+[Discovery schema](https://playintegrity.googleapis.com/$discovery/rest?version=v1),
+[standard flow](https://developer.android.com/google/play/integrity/standard),
+[verdict fields](https://developer.android.com/google/play/integrity/verdicts).
+
+Coverage includes fixed endpoint/no redirects, canonical hash/package/version/signer binding, old/future
+timestamps, expiry after response, replay-cleared evaluation, truthful lower signals, malformed/oversized
+bodies, credential errors, quotas/outages, stalled bodies, cancellation and late credentials without a
+late decode. The initial 17-test pass at `59f0932c2` had one compiler narrowing error; a captured validated
+command repairs that without assertions or weaker types. Invalid numeric configuration is guarded before
+BigInt conversion. A controlled hash-comparison deletion caused one test to fail (ten passed); exact
+source restoration returned all eleven Play tests to PASS with no diff. Existing API routes do not use
+this adapter. Android key-attestation verification, enrolled-key ownership, stored one-use challenges,
+atomic receipts/counters and live Google/Play-distributed device evidence are still required.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.

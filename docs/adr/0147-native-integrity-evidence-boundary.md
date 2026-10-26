@@ -72,3 +72,19 @@ nonce matches raw example-challenge bytes, while the documented algorithm and ou
 pass it. The captured production/development fixtures validate key proofs at their historical issuance
 times and lack modern metadata. Metadata-complete positive acceptance still needs a valid signed sample
 from the supported device/build population. Missing evidence cannot become verified by fixture editing.
+
+The Play standard-token boundary sends an opaque token only to Google's fixed HTTPS decode endpoint,
+using a deployment-owned scoped access-token provider. It never accepts a phone-supplied decoded JSON
+verdict. A single deadline covers credential acquisition, response headers and a bounded response body;
+redirects and automatic retries are disabled. A late credential result cannot start a decode after timeout.
+The server compares the canonical command hash, challenge window, request/package identity, all signer
+digests and the allowed/claimed version before retaining vendor signals. Token time must fall after
+server challenge issuance, before expiry, and no more than 30 seconds ahead of the checked server time.
+This bounded online check does not authenticate an earlier offline location or claimed device wall time.
+
+Recognition, licensing and device labels stay separate facts. Unknown labels grant no known assurance;
+cleared/unevaluated verdicts remain unavailable. A decoded verdict alone establishes neither Keystore
+private-key possession nor actor/employment ownership, and does not accept attendance. The future owner
+must reconcile receipts before decoding again and persist command/challenge outcomes atomically: Google
+may have consumed a token when a response is lost. No credentials are loaded and no endpoint is activated
+by the primitive itself. Live service-account/project/distribution acceptance remains required.
