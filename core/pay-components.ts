@@ -1,3 +1,6 @@
+import {createHash} from 'node:crypto';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 /**
  * Typed pay-component services (Wave 3 #9, ADR-0025). Catalog management (admin), per-employment
@@ -155,9 +158,12 @@ async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promis
 
 // ───────────────────────── Catalog ─────────────────────────
 
+const capturePayCatalogContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 /** Idempotently upsert the Malaysia default catalog (by code). Admin-only via RLS. */
 export function seedPayComponentCatalog(ctx: SessionContext) {
+  ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     let created = 0;
     for (const c of DEFAULT_PAY_COMPONENTS) {
       const existing = await componentIdByCode(tx, ctx.tenantId, c.code);
@@ -581,6 +587,7 @@ export class PayComponentCodeExistsError extends Error {
  * (single validation/event path — the insert branch emits pay-component.created).
  */
 export async function createPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, tx => createPayComponentTx(tx, ctx, p));
 }
 
@@ -612,22 +619,80 @@ export function validatePayComponentCreateSettings(p: PayComponentInput): { fiel
   return issues;
 }
 
-/** Shared create-only owner; transaction caller owns atomicity, without nested transactions. */
-export async function createPayComponentTx(tx: Tx, ctx: SessionContext, input: PayComponentInput,
-  options: { archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
+async function preparePayComponentCreateInputTx(tx:Tx,ctx:SessionContext,input:PayComponentInput){
+  input=structuredClone(input);
   const p = { ...input, code: input.code.trim().toUpperCase(), label: input.label?.trim() ?? '', name: input.name.trim() || input.label?.trim() || '' };
   const issues = validatePayComponentCreateSettings(p);
   if (issues.length) throw new PayComponentInputError(issues);
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':pay-component-catalog'}, 0))`);
+  await lockPayComponentCatalogTx(tx,ctx);
   const [hit] = await tx.select({ archivedAt: payComponent.archivedAt }).from(payComponent)
     .where(and(eq(payComponent.tenantId, ctx.tenantId), sql`upper(trim(${payComponent.code})) = ${p.code}`)).limit(1);
   if (hit) throw new PayComponentCodeExistsError(p.code, hit.archivedAt != null);
+  return p;
+}
+
+/** Shared create-only owner; transaction caller owns atomicity, without nested transactions. */
+export async function createPayComponentTx(tx: Tx, ctx: SessionContext, input: PayComponentInput,
+  options: { archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
+  input=structuredClone(input);ctx=capturePayCatalogContext(ctx);
+  options={...options};
+  const p=await preparePayComponentCreateInputTx(tx,ctx,input);
   return upsertPayComponentTx(tx, ctx, p, { ...options, createOnly: true });
+}
+
+/** Reviewed tenant catalogue scope is the ACTUAL native RLS admin-anywhere predicate, not a
+ * manufactured group-admin restriction or caller role string. Source wrappers additionally require
+ * fresh Assistant/Payroll/typed entitlements and pause before reaching private catalogue facts. */
+async function assertReviewedPayCatalogPrincipalTx(tx:Tx,ctx:SessionContext){
+ const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+ const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
+ const [proof]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+  where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id()
+   and u.tenant_id=app.current_tenant_id() and u.person_id is not distinct from ${ctx.personId??null}::uuid
+   and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+   and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb
+   and current_setting('transaction_isolation')='read committed' and app.is_admin()) as allowed`);
+ if(!proof?.allowed)throw new Error('Pay catalogue authority unavailable');
+}
+async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,input:PayComponentInput){
+ const ctx=capturePayCatalogContext(supplied),captured=structuredClone(input);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ if(captured.pendingInputKind!==undefined&&captured.pendingInputKind!==null)throw new PayComponentInputError([{field:'inputKind',code:'invalidPendingCalculation'}]);
+ const p=await preparePayComponentCreateInputTx(tx,ctx,captured),prepared=await preparePayComponentWriteTx(tx,ctx,p,{createOnly:true});
+ const {tenantId: _tenant,pendingInputKind: _readyPending,...review}=payComponentCreateValues(ctx,p,prepared,{});
+ const catalog=await tx.execute(sql`select c.id,c.xmin::text as version,to_jsonb(c) as record from public.pay_component c where c.tenant_id=${ctx.tenantId}::uuid order by c.id`);
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-pay-component-create:v1',
+  {tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},captured,review,catalog])).digest('hex');
+ return {ctx,p,review,reviewedDigest};
+}
+export async function prepareReviewedPayComponentCreateTx(tx:Tx,ctx:SessionContext,input:PayComponentInput){
+ const prepared=await reviewedPayComponentPreflightTx(tx,ctx,input);return {review:prepared.review,reviewedDigest:prepared.reviewedDigest};
+}
+export async function createReviewedPayComponentTx(tx:Tx,ctx:SessionContext,input:PayComponentInput,reviewedDigest:string){
+ const prepared=await reviewedPayComponentPreflightTx(tx,ctx,input);
+ if(prepared.reviewedDigest!==reviewedDigest)throw new Error('Pay catalogue review changed');
+ const created=await createPayComponentTx(tx,prepared.ctx,prepared.p,{returnCreatedEventId:true});
+ if(!created.createdEventId)throw new Error('Pay catalogue event unavailable');
+ const reference=await readReviewedPayComponentReferenceTx(tx,prepared.ctx,{componentId:created.id,createdEventId:created.createdEventId});
+ if(!reference)throw new Error('Pay catalogue canonical reference unavailable');return reference;
+}
+/** Historical exact original-actor native creation, plus explicitly CURRENT catalogue metadata.
+ * No old description/rule/rate is retained or claimed to remain current after a native update. */
+export async function readReviewedPayComponentReferenceTx(tx:Tx,supplied:SessionContext,reference:{componentId:string;createdEventId:string}){
+ const ctx=capturePayCatalogContext(supplied),p={...reference};await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const [row]=await tx.execute<{componentId:string;createdEventId:string;code:string;name:string;label:string|null;kind:PayComponentInput['kind'];archived:boolean}>(sql`select c.id as "componentId",d.id as "createdEventId",c.code,c.name,c.label,c.kind,(c.archived_at is not null) as archived
+  from public.pay_component c join public.domain_event d on d.aggregate_id=c.id and d.tenant_id=c.tenant_id
+  where c.id=${p.componentId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and d.id=${p.createdEventId}::uuid
+   and d.aggregate_type='pay-component' and d.event_type='pay-component.created'
+   and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.payload->>'code'=c.code`);
+ return row??null;
 }
 
 /** Whole-file transaction; errors, concurrent duplicates and audit faults roll every row back. */
 export function createPayComponentsFromImport(ctx: SessionContext, rows: { input: PayComponentInput; archived: boolean }[], fileName: string) {
+  rows=structuredClone(rows);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async tx => {
+    await lockPayComponentCatalogTx(tx,ctx);
     if (!ctx.roles?.some(role => role === 'hr_admin' || role === 'super_admin')) throw new Error('Pay component administration required.');
     if (!rows.length || rows.length > 1000) throw new Error('Invalid pay component import size.');
     const seen = new Set<string>();
@@ -713,6 +778,7 @@ async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> 
  *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
  *  contract the kernel and the AI validator enforce, from the one pure validatePayRule). */
 export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p));
 }
 
@@ -721,6 +787,7 @@ export class PayComponentNotFoundError extends Error {
 }
 /** Maintenance edits never create a row if the submitted code is absent or was removed concurrently. */
 export function updatePayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p, { updateOnly: true }));
 }
 
@@ -743,9 +810,13 @@ export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: strin
   for (const component of [...recurring, ...batch, ...individual]) assertPayComponentReady(component);
 }
 
-async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
-  options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean } = {}) {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':pay-component-catalog'}, 0))`);
+function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepared:{rule:PayRule|null;label:string|null|undefined;storedCode:string;description:{description?:string|null};pending:{pendingInputKind?:PendingPayInputKind|null}},options:{archived?:boolean}){
+ const {rule,label,storedCode,description,pending}=prepared;
+ return { tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) };
+}
+
+async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
+    await lockPayComponentCatalogTx(tx,ctx);
     const rule = ruleOf(p);
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
       throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
@@ -789,6 +860,13 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
       : rule != null ? { pendingInputKind: null } : {};
     if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null)
       throw new PayComponentInputError([{ field: 'inputKind', code: 'calculationRequired' }]);
+    return {rule,label,existing,storedCode,description,pending};
+}
+
+async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
+  options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
+    p=structuredClone(p);ctx=capturePayCatalogContext(ctx);options={...options};
+    const {rule,label,existing,storedCode,description,pending}=await preparePayComponentWriteTx(tx,ctx,p,options);
     let id: string;
     let changed: string[] = [];
     if (existing) {
@@ -810,7 +888,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) })
+        .values(payComponentCreateValues(ctx,p,{rule,label,storedCode,description,pending},options))
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -820,7 +898,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     // can never disagree. Only rows whose rank actually moved are written (a catalog of fixed amounts
     // issues no UPDATE at all, so the byte-identical legacy path stays write-free).
     if (!options.deferResolutionOrder) await recordResolutionOrderTx(tx, ctx.tenantId);
-    await appendEvent(tx, {
+    const createdEventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'pay-component',
       aggregateId: id,
@@ -830,12 +908,12 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
       // which fields changed (names only) and whether the row is archived (actor/time live on the event).
       payload: { code: storedCode, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : options.archived ?? false,
         ...(options.importFileName ? { source: 'Excel import', fileName: payItemImportFileName(options.importFileName) } : {}) },
-    });
+    }, {returnId:options.returnCreatedEventId===true});
     // 017d9c25 — `changed` is returned so the master-save action can mark the processed runs this edit
     // makes stale (markRunsAffectedByPayComponent), WITHOUT recomputing the diff or importing the payroll
     // kernel here. Additive: every existing caller destructures `{ id }` and is unaffected. Empty on an
     // insert — a brand-new code cannot be on a run that has already been processed.
-    return { id, changed };
+    return { id, changed, ...(options.returnCreatedEventId ? {createdEventId} : {}) };
 }
 
 /**
@@ -847,7 +925,9 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
  * those core/admin.ts call sites carry is unnecessary here.
  */
 export function archivePayComponent(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     await tx.update(payComponent).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(payComponent.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1410,10 +1490,11 @@ export function seedOvertimeMultipliers(
     seeds?: readonly OvertimeMultiplierSeed[];
   } = {},
 ): Promise<{ created: string[]; skipped: string[]; hourlyRate: number }> {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   const fromCode = (p.fromCode ?? 'OT1_5').trim().toUpperCase();
   const fromMultiplier = p.fromMultiplier ?? 1.5;
   const seeds = p.seeds ?? OVERTIME_MULTIPLIER_SEEDS;
-  return withTenant(ctx, async (tx) => {
+  const readNomination=() => withTenant(ctx, async (tx) => {
     const [ref] = await tx
       .select()
       .from(payComponent)
@@ -1434,20 +1515,31 @@ export function seedOvertimeMultipliers(
     // rates by more than the rounding itself.
     const hourlyRate = Math.round((refRule.rate / fromMultiplier) * 1e4) / 1e4;
 
+    return {ref,hourlyRate};
+  });
+  return (async()=>{
+    const nomination=await readNomination();
+    const {ref,hourlyRate}=nomination;
     const created: string[] = [];
     const skipped: string[] = [];
     for (const seed of seeds) {
       const code = seed.code.trim().toUpperCase();
+      const made=await withTenant(ctx,async tx=>{
+      await lockPayComponentCatalogTx(tx,ctx);
+      const [current]=await tx.select().from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,fromCode))).limit(1);
+      // Resolution rank is derived and an earlier item in THIS seed may legitimately re-rank the reference.
+      // All actual copied source facts, including rule/classification/archived state, must remain exact.
+      const facts=(row:typeof ref)=>{const {resolutionOrder:_rank,...value}=row;return value;};
+      if(!current||JSON.stringify(facts(current))!==JSON.stringify(facts(ref)))throw new OvertimeReferenceUnusableError('not_found');
       const [existing] = await tx
         .select({ id: payComponent.id })
         .from(payComponent)
         .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
         .limit(1);
       if (existing) {
-        skipped.push(code);
-        continue;
+        return false;
       }
-      await upsertPayComponent(ctx, {
+      await upsertPayComponentTx(tx, ctx, {
         code,
         name: seed.name,
         label: seed.name,
@@ -1476,10 +1568,12 @@ export function seedOvertimeMultipliers(
         displayCategory: ref.displayCategory,
         rule: { kind: 'per_hour', rate: Math.round(hourlyRate * seed.multiplier * 1e4) / 1e4 },
       });
-      created.push(code);
+      return true;
+      });
+      if(made)created.push(code);else skipped.push(code);
     }
     return { created, skipped, hourlyRate };
-  });
+  })();
 }
 
 /**
@@ -1489,7 +1583,9 @@ export function seedOvertimeMultipliers(
  * the tenant + admin.
  */
 export function deletePayComponent(ctx: SessionContext, id: string) {
+  ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     const [rec] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(employmentPayComponent)

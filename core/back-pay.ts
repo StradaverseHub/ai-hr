@@ -1,3 +1,4 @@
+import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 /**
  * Back Pay (Arrears) — item 2ef69d1e, pass 1.
  *
@@ -1033,7 +1034,9 @@ export function approveAndPostBackPay(
   ctx: SessionContext,
   p: { runId: string },
 ): Promise<{ runId: string; postedCount: number; total: number }> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     const run = await loadRunTx(tx, p.runId);
     if (run.status !== 'draft' && run.status !== 'verified') throw new BackPayStatusError(run.status, 'verified');
 
