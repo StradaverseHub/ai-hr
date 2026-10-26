@@ -62,7 +62,7 @@ export function preparePersonnelImportMatrix(input:{revisionId:string;matrix:rea
   }
  }else{
   // Regular unlabeled delimited rows can offer type-shape candidates, never guess an identity/name.
-  const width=Math.max(...original.matrix.map(row=>row.length));if(width<2||nonblank.length<2)return deep({state:'manual',sourceRevisionId:revisionId,reason:'unsupported_structure'});
+  const width=Math.max(...original.matrix.map(row=>row.length));if(width<2)return deep({state:'manual',sourceRevisionId:revisionId,reason:'unsupported_structure'});
   const shapes=Array.from({length:width},(_,c)=>shapeCandidates(original.matrix.map(row=>row[c]?.value??''),options));
   for(let r=0;r<original.matrix.length;r++){const row=original.matrix[r],number=row[0]?.row??r+1;if(!row.some(cell=>cell.value.trim())){extras.push({id:'extra:'+r,row:number,kind:'blank',cells:row});continue;}records.push(deep({id:'record:'+r,rows:[number],fields:Array.from({length:width},(_,c)=>field('cell:'+r+':'+c,'',row[c]?[row[c]]:[],shapes[c],options,true))}));}
  }
