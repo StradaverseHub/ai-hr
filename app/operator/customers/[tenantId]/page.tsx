@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { notFound,redirect } from 'next/navigation';
 import { getTranslations,getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -20,7 +21,7 @@ export default async function CustomerPage({params}:{params:Promise<{tenantId:st
   if(!customer)notFound();
   const w=await getTranslations('operatorWorkspace'),o=await getTranslations('operator');
   const locale=await getLocale();
-  const date=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short'});
+  const date=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ});
   const optional=MODULE_CATALOG.filter(m=>!m.isCore).sort((a,b)=>a.sortOrder-b.sortOrder);
   const busy=customer.changes.some(c=>['pending','running'].includes(c.status));
   return <div className="mx-auto max-w-5xl space-y-6">
@@ -45,7 +46,7 @@ export default async function CustomerPage({params}:{params:Promise<{tenantId:st
     <Card className="p-5"><SectionHeader title={w('changeHistory')}/>
       {customer.changes.length===0?<p className="mt-3 text-sm text-muted-foreground">{w('noChanges')}</p>:<ul className="mt-3 divide-y divide-border">{customer.changes.map(c=><li key={c.id} className="space-y-1 py-3">
         <div className="flex flex-wrap justify-between gap-2 text-sm"><span className="font-medium">{c.action==='activate'?w('enable'):w('disable')} · {MODULE_CATALOG.find(m=>m.code===c.module_code)?.name??c.module_code}</span><Badge variant={c.status==='failed'?'danger':c.status==='done'?'success':'warning'}>{o(`status.${c.status}`)}</Badge></div>
-        <p className="text-xs text-muted-foreground">{date.format(new Date(c.created_at))}</p>{c.error&&<p role="alert" className="text-sm text-destructive">{c.error}</p>}
+        <p className="text-xs text-muted-foreground"><time dateTime={new Date(c.created_at).toISOString()}>{date.format(new Date(c.created_at))} MYT</time></p>{c.error&&<p role="alert" className="text-sm text-destructive">{c.error}</p>}
       </li>)}</ul>}
     </Card>
   </div>;

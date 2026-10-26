@@ -24,18 +24,21 @@ function workforceBindings(file:string,source:string):Record<string,readonly str
   }
 }
 describe('actual mounted Personnel form inventory',()=>{
-  it('binds the classification fact and exempts only its one dedicated-command subject pointer',()=>{
+  it('retires profile classification maintenance while retaining its guarded canonical fact',()=>{
     const file='app/admin/personnel/[employmentId]/page.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
-    const start=source.indexOf('const dataClassificationCard'),end=source.indexOf('const directSuperiorCard',start);
-    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+500);const card=source.slice(start,end);
-    expect(card).toContain('action={setTestRecordAction}');expect(card).toContain('fieldId="employment.data_classification.istestrecord"');
-    const binding="personnelControl('employment.data_classification.istestrecord','edit')";expect(card).toContain(binding);
-    expect(card).toContain('defaultValue={String(classification.isTestRecord)}');expect(card).toContain('value="false"');expect(card).toContain('value="true"');
-    const transport=exemptions[file].filter(item=>item.context==='dataClassificationCard');expect(transport).toHaveLength(1);
-    expect(transport[0]).toMatchObject({tag:'input',name:'employmentId',hidden:true,occurrences:1});
-    expect(transport[0].reason).toContain('setTestRecordAction');expect(exemptions[file].some(item=>item.name==='isTestRecord')).toBe(false);
-    const altered=source.replace(binding,'unregisteredClassificationControl()');expect(altered).not.toBe(source);
-    expect(auditPersonnelFormSource(file,altered,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)}).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+    expect(source).not.toContain('dataClassificationCard');
+    expect(source).not.toContain('setTestRecordAction');
+    expect(source).not.toContain('employment.data_classification.istestrecord');
+    expect(exemptions[file].filter(item=>item.context==='dataClassificationCard')).toEqual([]);
+    const actions=readFileSync(new URL('../app/admin/personnel/[employmentId]/actions.ts',import.meta.url),'utf8');
+    expect(actions).not.toContain('setTestRecordAction');
+    const owner=readFileSync(new URL('../core/employment-test-record.ts',import.meta.url),'utf8');
+    expect(owner).toContain('export async function setEmploymentTestRecord');
+    expect(owner).toContain('assertWorkforceEmploymentTx');
+    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.data_classification.istestrecord')?.ownerField).toBe('isTestRecord');
+    const field=PERSONNEL_FIELDS.find(field=>field.id==='employment.data_classification.istestrecord');
+    expect(field).toBeDefined();expect(field?.form).toBeUndefined();expect(field?.ess.visibility).toBe('protected');
+    expect(field?.import.disabledReason).toContain('Personnel and generic import do not maintain');
   });
   it('checks every real control reached from Personnel, draft completion and short Create',()=>{
     const {files,boundaries}=personnelFormSources(root);

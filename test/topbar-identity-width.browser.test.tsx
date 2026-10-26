@@ -39,19 +39,25 @@
  *
  * ═══ WHY THE BUDGET ASSERTION IS IN PIXELS AND USES A DELIBERATELY LONG NAME ═══
  *
- * A test browser has no Plus Jakarta Sans, so "how wide is this name" is not reproducible here. The
- * property being guarded is not the glyphs, it is the ROOM: the cluster must leave the identity at
+ * The replica loads the application’s compiled fonts with the same CSS-variable cascade. Glyph
+ * assertions therefore measure actual typography; the independent room assertion still guards geometry.
+ * The cluster must leave the identity at
  * least as many pixels as the real name needed. So one case feeds in a name long enough to saturate
  * whatever room exists and asserts the room is >= IDENTITY_BUDGET_PX, and a second case feeds a
  * realistic name and asserts nothing is truncated. Both fail on the shipped layout.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render, cleanup } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import en from '../messages/en.json';
 import '../app/globals.css';
+import { installTopbarFonts } from './fixtures/topbar-fonts';
+
+let restoreFonts: (() => void) | undefined;
+beforeAll(async () => { restoreFonts = await installTopbarFonts(); });
+afterAll(() => { restoreFonts?.(); });
 
 // The logout server action, stubbed: importing it for real pulls lib/session → db/client, which opens a
 // database connection at module load. Nothing here submits the form (same reasoning as the DOM test).
@@ -226,6 +232,7 @@ describe('topbar identity is actually visible at laptop widths', () => {
       expect(document.querySelector('[data-tour="account"]')!.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       const name = lineWithText('Aisyah Rahman');
       const code = lineWithText('EMP-0001');
+      expect(getComputedStyle(name).fontFamily, 'the replica must use the application Classic font').toContain('TopbarJakarta');
       // The reported defect, in the form it was measured: width 0, scrollWidth 87.
       expect(box(name)).toBeGreaterThan(0);
       expect(box(code)).toBeGreaterThan(0);
@@ -449,6 +456,7 @@ describe('Monolith top line: the identity is visible and nothing scrolls sideway
     monolith();
     wrap(<MonolithShell account={null} />);
     const header = document.querySelector<HTMLElement>('[data-testid="topbar"]')!;
+    expect(getComputedStyle(header).fontFamily, 'theme variables must override the Classic font class').toContain('TopbarSchibsted');
     expect(getComputedStyle(header).display).toBe('flex');
     expect(getComputedStyle(header).borderTopLeftRadius).toBe('0px');
     expect(Math.round(header.getBoundingClientRect().width)).toBe(monoHeaderWidthFor(1440));

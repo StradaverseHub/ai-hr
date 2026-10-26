@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
@@ -78,7 +79,7 @@ export default async function LeaveConfigEarnedAccrualPage() {
     ? companies
     : companies.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id))
   ).map((c) => ({ id: c.id, name: c.name }));
-  const accrualGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
+  const accrualGrades = organisationChoiceLabels(grades.filter((g) => !g.archivedAt)).map((g) => ({ id: g.id, name: g.displayLabel }));
   /**
    * r293 → r299 — THE PICKER SAYS WHICH TYPES THIS SCREEN CAN ACTUALLY ACCRUE, BEFORE A RUN IS SPENT.
    *

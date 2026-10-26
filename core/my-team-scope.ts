@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '../lib/organisation-choice-label';
 /** Shared spine authority for My Team reads and in-transaction workflow decisions. */
 import {and,eq,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {type SessionContext,type Tx,withTenant} from '../db/client';
@@ -29,8 +30,9 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
   const authorizedCompanies=companies.filter(c=>selected.has(c.id));
   const companyIds=authorizedCompanies.map(c=>c.id);
   const canEditRoster=authorizedCompanies.length>0&&authorizedCompanies.every(c=>c.admin);
-  const departments=companyIds.length ? await tx.select({id:department.id,companyId:department.companyId,name:department.name})
+  const departmentRows=companyIds.length ? await tx.select({id:department.id,companyId:department.companyId,name:department.name,code:department.name,label:department.label,description:department.description})
     .from(department).where(inArray(department.companyId,companyIds)).orderBy(department.name) : [];
+  const departments=organisationChoiceLabels(departmentRows).map(row=>({id:row.id,companyId:row.companyId,name:row.displayLabel}));
   if(!companyIds.length)return {employees:[],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,principal,canEditRoster,canChooseDepartment:capability.admin};
   const direct=sql`EXISTS(SELECT 1 FROM reporting_line r JOIN employment m ON m.id=r.manager_employment_id
     JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id

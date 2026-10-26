@@ -304,6 +304,7 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
   children: [
     // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
     { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash, adminOnly: true },
+    { href: '/admin/settings/people-general', labelKey: 'peopleGeneral', icon: Settings2, adminOnly: true },
     // HR-Admin Dashboard Card Master (feedback 1586d2f5): configurable employee-dashboard card catalog.
     { href: '/admin/settings/dashboard', labelKey: 'dashboardCardConfig', icon: LayoutDashboard, adminOnly: true },
     // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
@@ -419,6 +420,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true },
+      { href: '/admin/job-descriptions', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
       ONBOARDING_NODE,
       ONBOARDING_REQUISITIONS_NODE,
       ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'&&link.href!=='/lifecycle/requisitions/onboarding'),

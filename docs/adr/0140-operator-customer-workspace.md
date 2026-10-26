@@ -34,3 +34,11 @@ requires the same protected authentication origin and encryption key as the appl
 configuration fails creation instead of reporting a usable customer. Deploy the additive migration
 and compatible worker together, verify private worker configuration, and preserve existing data.
 No deployment or environment change follows merely from committing this code.
+
+Browser invitation activation finishes at login with the verified organization code prefilled. The
+activation transaction enables and binds the account after MFA, but creates no browser session.
+Recovery codes remain visible until the user confirms they are saved; that confirmation opens login.
+Existing-account invitation acceptance also clears the current browser session and opens login.
+The public organization query parameter is a validated display hint, never an identity claim. Passwords,
+invitation tokens and recovery codes are excluded from the login URL. Native enrollment keeps its
+existing session flow. Operator request and module-change times explicitly use Asia/Kuala_Lumpur (MYT).

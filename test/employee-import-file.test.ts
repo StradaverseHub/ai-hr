@@ -383,11 +383,11 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     const tableBody = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
     expect(tableBody).not.toMatch(/preview\.rows\.filter/);
     expect(src).toMatch(/onDownloadErrors\(preview\.rows\.filter\(\(r\) => !r\.ok\)\)/);
-    expect(src).toMatch(/r\.errors\.join\('; '\)/);
+    expect(src).toMatch(/r\.errors\.map\(nricMessage\)\.join\('; '\)/);
     expect(src).toMatch(/preview\.missingColumns\.map/);
     // Result card: failures listed with row number and message.
     expect(src).toMatch(/result\.failed\.map\(\(f\) =>/);
-    expect(src).toMatch(/\{f\.message\}/);
+    expect(src).toMatch(/\{nricMessage\(f\.message\)\}/);
   });
 
   it('does not paginate the preview (r75 — a hidden row is a row nobody approved)', () => {

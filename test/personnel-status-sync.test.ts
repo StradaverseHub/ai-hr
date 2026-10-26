@@ -1,3 +1,5 @@
+import {createMovementEvent} from '../core/movement';
+import {todayInKualaLumpur} from '../lib/hr-date';
 /**
  * Employee Status sync (5afcda91) — the Personnel (Admin) module and every other employee-status surface
  * show ONE system-derived Employee Status (deriveEmploymentStatus over the lifecycle dates), and the
@@ -79,8 +81,8 @@ describe('Employee Status sync — one derived status across every payload (5afc
     await setEmploymentInfo(adminCtx(b), {
       employmentId: notice.employmentId,
       confirmationDate: '2026-03-01',
-      resignationDate: '2026-12-31',
     });
+    await createMovementEvent(adminCtx(b),{employmentId:notice.employmentId,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-12-01',resignationEffectiveDate:'2026-12-31'});
     expected.set(notice.employmentId, 'active_serving_notice');
 
     // resigned — resignation date already reached.
@@ -88,8 +90,8 @@ describe('Employee Status sync — one derived status across every payload (5afc
     await setEmploymentInfo(adminCtx(b), {
       employmentId: resigned.employmentId,
       confirmationDate: '2026-03-01',
-      resignationDate: '2026-06-01',
     });
+    await createMovementEvent(adminCtx(b),{employmentId:resigned.employmentId,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-05-01',resignationEffectiveDate:'2026-06-01'});
     expected.set(resigned.employmentId, 'resigned');
 
     // blacklisted — the one stored, event-driven override; wins over every date bucket.

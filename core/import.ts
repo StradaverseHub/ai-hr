@@ -1,3 +1,7 @@
+import { getPeopleGeneral, occupiedNricsTx } from './people-general';
+import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
+import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
+import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
@@ -268,11 +272,11 @@ async function loadCompanyContext(
     listBusinessUnits(ctx, { companyIds: [co.id] }),
     listJobGrades(ctx),
   ]);
-  const deptByName=new PersonnelImportLookup<string>('label-first');
-  const posByName=new PersonnelImportLookup<string>('label-first');
-  const ccByName=new PersonnelImportLookup<string>('label-first');
-  const buByName=new PersonnelImportLookup<string>('label-first');
-  const gradeByName=new PersonnelImportLookup<string>('label-first');
+  const deptByName=new PersonnelImportLookup<string>();
+  const posByName=new PersonnelImportLookup<string>();
+  const ccByName=new PersonnelImportLookup<string>();
+  const buByName=new PersonnelImportLookup<string>();
+  const gradeByName=new PersonnelImportLookup<string>();
   for(const d of departments)deptByName.add(d.id,d.id,{codes:[d.code],names:[d.label]});
   for(const p of positions)posByName.add(p.id,p.id,{codes:[p.code],names:[p.label]});
   for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.label]});
@@ -344,6 +348,7 @@ async function analyze(
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
+  const { allowDuplicatedNric } = await getPeopleGeneral(ctx);
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const {
     existingEmails,
@@ -367,6 +372,7 @@ async function analyze(
       normPack = requirePackFor(co?.country);
     }
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
+    const hiddenConflicts = allowDuplicatedNric ? [] : await occupiedNricsTx(tx,{companyId,keys:records.map(record=>normPack!.statutory.normalizeIC(norm(record.ic_number)))});
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
     // existing staff ID. Compared on the normalized (uppercased) value, matching the uniqueness rule.
@@ -395,7 +401,7 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new PersonnelImportCatalog(new Set(['division','branch','region','line','section','team','base','category']));
+    const catalog = new PersonnelImportCatalog();
     for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
     const superiorByEmail = new Map<string, string|null>();
@@ -412,7 +418,7 @@ async function analyze(
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
       // enters the collision set (mirrors the employeeCode filter below).
       existingIcs: new Set(
-        ics.filter((r) => r.ic).map((r) => normPack!.statutory.normalizeIC(r.ic as string)),
+        [...hiddenConflicts,...ics.filter((r) => r.ic).map((r) => normPack!.statutory.normalizeIC(r.ic as string))],
       ),
       existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
     };
@@ -493,14 +499,14 @@ async function analyze(
     else if (existingEmails.has(email.toLowerCase())) warnings.push('A person with this email already exists');
     if (email) seenEmails.add(email.toLowerCase());
 
-    // Department (required, resolved by name)
+    // Department (required, canonical code before an unambiguous legacy label)
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
     if (!deptName) errors.push('Missing department');
     else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — choose a distinct label or code`);
     else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
 
-    // Position / cost-center (optional, resolved by name; unknown = error so it's never dropped silently)
+    // Position / cost-center (optional; code first, unknown = error so it is never dropped silently)
     const posName = norm(rec.position);
     let positionId: string | undefined;
     if (posName) {
@@ -541,12 +547,12 @@ async function analyze(
       else errors.push(`Unknown employment_type "${rec.employment_type}"`);
     }
 
-    // IC (required, format + uniqueness — DB enforces tenant-unique IC; rules from the company's pack)
+    // Optional NRIC: format is unconditional; duplication follows the current tenant policy.
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
     if (icRaw && !pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (icRaw && seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
-    else if (icRaw && existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
+    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
+    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) errors.push(NRIC_DUPLICATE_MESSAGE);
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
@@ -973,6 +979,8 @@ async function analyze(
     catalog,
   });
 
+  if(['tender_resignation_date','resignation_date','last_working_date'].some(field=>presentColumns.has(field)))fileErrors.push('Resignation dates must be recorded through Movement import. Remove these columns from the employee file. Nothing was imported.');
+
   for(const dependent of dependents)if(dependent.result.ok) {
     try { await assertDependentsValid(ctx,[dependent.add]); }
     catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
@@ -1144,7 +1152,7 @@ function analyzeDependents(
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords },
 ): Promise<ImportPreview> {
   const { preview, resolved } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? [],p.registerRecords);
   await withTenant(ctx,async tx=>{
@@ -1155,6 +1163,10 @@ export async function validateEmployeeImport(
       await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     }
   });
+  if(p.allocationRecords?.length){
+    preview.allocations=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[])));
+    for(const group of preview.allocations.groups)if(group.errors.length)preview.fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
+  }
   return preview;
 }
 
@@ -1163,7 +1175,7 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; fileName?: string },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string },
 ): Promise<ImportResult> {
   const { preview, resolved, dependents,registers } = await analyze(
     ctx,
@@ -1172,6 +1184,13 @@ export async function commitEmployeeImport(
     p.dependentRecords ?? [],
     p.registerRecords,
   );
+  const allocationEmployees=resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]);
+  let allocationPreview:AllocationImportPreview|undefined;
+  if(p.allocationRecords?.length){
+    allocationPreview=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,allocationEmployees));
+    if(!p.allocationToken||p.allocationToken!==allocationPreview.token)preview.fileErrors.push('Cost Center Allocations changed. Preview the complete workbook again.');
+    for(const group of allocationPreview.groups)if(group.errors.length)preview.fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
+  }
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   const superiorFailed: ImportResult['superiorFailed'] = [];
@@ -1216,6 +1235,10 @@ export async function commitEmployeeImport(
   try {
     await withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
+  if(p.allocationRecords?.length){
+    allocationPreview=await previewCostAllocationImportTx(tx,ctx,p.allocationRecords,allocationEmployees);
+    if(allocationPreview.token!==p.allocationToken||allocationPreview.groups.some(g=>g.errors.length))throw new Error('Cost Center Allocations changed. Preview the complete workbook again.');
+  }
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
@@ -1224,6 +1247,7 @@ export async function commitEmployeeImport(
     try {
       const saved = await (async()=>{
       const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
+      if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
       let familyCount=0;
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
       if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);

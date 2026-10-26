@@ -54,6 +54,7 @@ export default async function AuditPage({
     module?: string;
     type?: string;
     record?: string;
+    employment?: string;
     q?: string;
     from?: string;
     to?: string;
@@ -106,6 +107,7 @@ export default async function AuditPage({
     module: chosenModule,
     aggregateType: chosenType,
     aggregateId: uuidRe.test(sp.record ?? '') ? sp.record : undefined,
+    employmentId: uuidRe.test(sp.employment ?? '') ? sp.employment : undefined,
     eventQuery: sp.q || undefined,
     action: chosenAction,
     actorId: chosenUser,
@@ -155,6 +157,7 @@ export default async function AuditPage({
     company: chosenCompany,
     leaveType: chosenLeaveType,
     record: uuidRe.test(sp.record ?? '') ? sp.record : undefined,
+    employment: filters.employmentId,
     from: filters.from,
     to: filters.to,
   };
@@ -174,9 +177,11 @@ export default async function AuditPage({
         <PageHeader title={t('title')} description={t('description')} />
       </div>
 
+      {filters.employmentId && <p role="status" className="text-sm text-muted-foreground">{t('personnelSubjectScope')}</p>}
       <Card data-tour="admin-audit-filters">
         <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
           {filters.aggregateId && <input type="hidden" name="record" value={filters.aggregateId}/>}
+          {filters.employmentId && <input type="hidden" name="employment" value={filters.employmentId}/>}
           <Field label={t('area')}>
             <select name="module" defaultValue={chosenModule ?? ''} className={inputCls}>
               <option value="">{t('allAreas')}</option>

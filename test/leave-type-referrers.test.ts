@@ -124,7 +124,7 @@ describe('the declared referrer set matches the live schema', () => {
     }
   });
 
-  it('nothing references the tables the cascade deletes, so it needs no second level', () => {
+  it('nothing references the tables the cascade deletes, so it needs no second level', async () => {
     // The cascade removes config rows and then the leave type. If any of those config tables were
     // themselves referenced by something else, the delete would abort on a nested foreign-key violation —
     // which is the SAME raw 23503 at the admin that these two items exist to remove, just one level down.
@@ -133,23 +133,41 @@ describe('the declared referrer set matches the live schema', () => {
     const cascaded = configReferrers()
       .filter((r) => !r.viaTemplateLineage)
       .map((r) => r.table);
-    return owner.db
-      .execute(sql`
-        select ccu.table_name as referenced, tc.table_name as referrer
-        from information_schema.table_constraints tc
-        join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name
-        join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-        where tc.constraint_type = 'FOREIGN KEY' and tc.table_name <> ccu.table_name
-      `)
-      .then((rows) => {
-        const offenders = (rows as unknown as { referenced: string; referrer: string }[]).filter(
-          (r) => cascaded.includes(r.referenced) && !cascaded.includes(r.referrer),
-        );
-        expect(
-          offenders.map((o) => `${o.referrer} -> ${o.referenced}`),
-          'a table now references one the cascade deletes; deleting it would raise a nested FK error',
-        ).toEqual([]);
-      });
+    // This guard needs table edges, not expanded information_schema column/privilege views.
+    // OID joins also identify the actual relationship when constraint names are reused.
+    const foreignKeys = sql`
+      select referenced.relname::text as referenced, referrer.relname::text as referrer
+      from pg_catalog.pg_constraint fk
+      join pg_catalog.pg_class referrer on referrer.oid = fk.conrelid
+      join pg_catalog.pg_class referenced on referenced.oid = fk.confrelid
+      where fk.contype = 'f' and referrer.relname <> referenced.relname
+    `;
+    type TableEdge = { referenced: string; referrer: string };
+    const offendersIn = (rows: TableEdge[]) => rows.filter(
+      (r) => cascaded.includes(r.referenced) && !cascaded.includes(r.referrer),
+    );
+    const rows = await owner.db.execute(foreignKeys);
+    expect(
+      offendersIn(rows as unknown as TableEdge[]).map((o) => `${o.referrer} -> ${o.referenced}`),
+      'a table now references one the cascade deletes; deleting it would raise a nested FK error',
+    ).toEqual([]);
+
+    // Positive control: an empty or incorrectly joined catalogue must not pass this guard.
+    // Create/drop the row-free probe in one transaction; failure rolls the DDL back.
+    // A TEMP table cannot reference the permanent entitlement table in PostgreSQL.
+    expect(cascaded).toContain('entitlement_template');
+    const probe = `b3_fk_probe_${randomUUID().replaceAll('-', '')}`;
+    await owner.db.transaction(async (tx) => {
+      await tx.execute(sql`
+        create table ${sql.identifier(probe)} (
+          template_id uuid references entitlement_template(id)
+        )
+      `);
+      const controlled = await tx.execute(foreignKeys);
+      expect(offendersIn(controlled as unknown as TableEdge[]).map((o) => `${o.referrer} -> ${o.referenced}`))
+        .toContain(`${probe} -> entitlement_template`);
+      await tx.execute(sql`drop table ${sql.identifier(probe)}`);
+    });
   });
 
   it('never cascades a table that holds leave people took', () => {

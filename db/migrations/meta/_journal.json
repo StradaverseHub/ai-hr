@@ -3429,6 +3429,48 @@
       "idx": 601,
       "version": "7",
       "when": 1791900000081,
+      "tag": "0594_people_nric_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 602,
+      "version": "7",
+      "when": 1791900000082,
+      "tag": "0595_job_description_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 603,
+      "version": "7",
+      "when": 1791900000083,
+      "tag": "0596_rewards_review_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 604,
+      "version": "7",
+      "when": 1791900000084,
+      "tag": "0597_employment_cost_allocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 605,
+      "version": "7",
+      "when": 1791900000085,
+      "tag": "0598_cost_allocation_criteria_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 606,
+      "version": "7",
+      "when": 1791900000086,
+      "tag": "0599_board3_company_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 607,
+      "version": "7",
+      "when": 1792941214168,
       "tag": "0601_operator_customer_workspace",
       "breakpoints": true
     }

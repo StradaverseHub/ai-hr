@@ -6,7 +6,7 @@ import { ZodError } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
 import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -101,4 +101,19 @@ export async function saveSeniorMembershipAction(unitId: string, revision: numbe
     revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
     return { ok: true as const };
   } catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+
+export async function previewRewardAccessAction(input:unknown){
+ try{return{ok:true as const,preview:await previewRewardAccessChange(await getSession(),input)};}
+ catch(error){return{ok:false as const,error:maintenanceErrorCode(error)};}
+}
+export async function saveRewardAccessAction(input:unknown,digest:string){
+ try{await saveRewardAccessChange(await getSession(),input,digest);revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');return{ok:true as const};}
+ catch(error){return{ok:false as const,error:maintenanceErrorCode(error)};}
+}
+function maintenanceErrorCode(error:unknown){return error instanceof RewardMaintenanceError?error.code:'system';}
+export async function deleteRewardAction(f:FormData){
+ try{await deleteRewardReview(await getSession(),str(f,'unitId'),number(f,'revision'),str(f,'confirmation'));}
+ catch(error){redirect(`/admin/rewards?deletionError=${maintenanceErrorCode(error)}`);}
+ revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/admin/rewards?deleted=1');
 }

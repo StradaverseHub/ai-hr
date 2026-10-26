@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
@@ -47,7 +48,7 @@ export default async function AttendanceRecomputePage() {
         companies={companies
           .filter((c) => scopeIds.includes(c.id))
           .map((c) => ({ id: c.id, name: c.name }))}
-        departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds }))}
+        departments={organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel, companyId: d.companyId, isGlobal: d.isGlobal, assignedCompanyIds: d.assignedCompanyIds }))}
         employees={employees.map((e) => ({
           employmentId: e.employmentId,
           name: e.name,

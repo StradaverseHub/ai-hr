@@ -1,3 +1,4 @@
+import { organisationChoiceLabels, organisationFilterChoices } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
@@ -183,8 +184,8 @@ export default async function RosterPage({
 
   // Filter dropdown values come from the employees this session can already see, so a Business Group
   // with nobody in it never appears and a supervisor is never offered somebody else's department.
-  const buOptions = dedupe(view.allEmployees.map((e) => ({ id: e.businessUnitId, name: e.businessUnit })));
-  const deptOptions = dedupe(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.department })));
+  const buOptions = organisationFilterChoices(view.allEmployees.map((e) => ({ id: e.businessUnitId, name: e.businessUnitLabel ?? e.businessUnit, code: e.businessUnitCode })));
+  const deptOptions = organisationFilterChoices(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.departmentLabel ?? e.department, code: e.departmentCode })));
 
   /**
    * THE WINDOW RIDES EVERY LINK OFF THIS SCREEN. Export, Exceptions, Upload and each row's Edit all take
@@ -533,9 +534,9 @@ export default async function RosterPage({
                   {/* A chosen department wins over the employee multi-select (the action prefers it). */}
                   <select name="departmentId" defaultValue="" className={inputCls}>
                     <option value="">{t('scopeEmployees')}</option>
-                    {departments.map((d) => (
+                    {organisationChoiceLabels(departments).map((d) => (
                       <option key={d.id} value={d.id}>
-                        {t('scopeDepartment')}: {d.name}
+                        {t('scopeDepartment')}: {d.displayLabel}
                       </option>
                     ))}
                   </select>
@@ -611,12 +612,4 @@ export default async function RosterPage({
 
     </div>
   );
-}
-
-/** Distinct, named options for a filter dropdown, sorted by name. Rows with no value are dropped —
- *  "unassigned" is not a Business Group you can filter to. */
-function dedupe(rows: { id: string | null; name: string | null }[]): { id: string; name: string }[] {
-  const out = new Map<string, string>();
-  for (const r of rows) if (r.id && r.name) out.set(r.id, r.name);
-  return [...out].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }

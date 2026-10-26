@@ -1,5 +1,5 @@
-/** Identifier-first remains the default for existing import paths. Full hire organisation fields
- * explicitly opt into label-first; ambiguity always refuses within the chosen precedence tier. */
+/** Import identifiers and canonical codes precede legacy labels. Ambiguity refuses within the
+ * selected tier; label-first remains available only for the read-only historical repair inventory. */
 export class PersonnelImportLookup<T> {
   private exact = new Map<string, Map<string,T>>();
   private names = new Map<string, Map<string,T>>();
@@ -18,4 +18,18 @@ export class PersonnelImportLookup<T> {
 /** Repeated aliases for one identity are harmless; aliases spanning identities must refuse. */
 export function addUniqueImportAlias(map:Map<string,string|null>,key:string,id:string) {
   if(!map.has(key))map.set(key,id);else if(map.get(key)!==id)map.set(key,null);
+}
+
+/** Build reference resolution without promoting display aliases into the identifier tier. Repeated
+ * aliases for one target are harmless; a code shared by different targets always remains ambiguous. */
+export function personnelImportOptionLookup(options:readonly {value:string;label:string;codes?:readonly string[];aliases?:readonly string[]}[]) {
+  const lookup=new PersonnelImportLookup<string>();
+  for(const option of options){
+    const names=[option.label,...option.aliases??[]];
+    lookup.add(option.value,option.value,{
+      codes:option.codes,
+      names:[...names,...[...names,...option.codes??[]].map(name=>`${option.value} · ${name}`)],
+    });
+  }
+  return lookup;
 }

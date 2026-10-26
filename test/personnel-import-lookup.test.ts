@@ -32,7 +32,7 @@ it('resolves fresh catalog display names to saved values and refuses ambiguous l
  expect(normalizePersonnelCatalogRecord({religion:'Distinct faith'},'employee',catalog)).toEqual({record:{religion:'CODE-C'},errors:[]});
  expect(normalizePersonnelCatalogRecord({religion:'Shared faith'},'employee',catalog).errors[0]).toContain('ambiguous');
  expect(normalizePersonnelCatalogRecord({religion:'CODE-A'},'employee',catalog).record.religion).toBe('CODE-A');
- expect(personnelCatalogReferenceValues(options)).toEqual(['CODE-A','CODE-B','CODE-C','Distinct faith']);
+ expect(personnelCatalogReferenceValues(options)).toEqual(['CODE-A','CODE-B','CODE-C']);
 });
 
 it('retains configured-but-inactive catalogue state instead of treating it as never configured',()=>{

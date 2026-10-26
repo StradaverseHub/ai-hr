@@ -1344,6 +1344,7 @@ export function listPositions(
         title: position.title,
         code: position.title,
         label: position.label,
+        description: position.description,
         jobFamily: position.jobFamily,
         // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
@@ -1385,7 +1386,7 @@ export function listCostCenters(
         isGlobal: costCenter.isGlobal,
         assignedCompanyIds: labelCompanyIdsSql(costCenter, 'cost_center'),
         archivedAt: costCenter.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null) or app.cost_allocation_label_in_use(cost_center.id)`,
       })
       .from(costCenter)
       .where(
@@ -1562,7 +1563,7 @@ export function listCostCentersForLabels(
         createdAt: costCenter.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('cost-center', costCenter.id),
         lastUpdatedBy: lastUpdatedBySql('cost-center', costCenter.id),
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null) or app.cost_allocation_label_in_use(cost_center.id)`,
       })
       .from(costCenter)
       .where(
@@ -2652,6 +2653,8 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
     await lockLabelCriteriaTx(tx,ctx.tenantId);
+    const [allocated]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_label_in_use(${p.id}::uuid) as used`);
+    if(allocated?.used)throw new InUseError('cost center allocation; archive the label to retain its history');
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.costCenterId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
     await tx.delete(costCenter).where(eq(costCenter.id, p.id));
@@ -5228,6 +5231,8 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     if (!row) throw new CompanyNotFoundError();
     if (!row.canDelete) throw new CompanyDeleteForbiddenError();
 
+    // Match the panel's retention-query execution. LOCAL restores the caller's JIT setting at transaction end.
+    await tx.execute(sql`SET LOCAL jit = off`);
     const [blocked] = (await tx.execute(
       sql`select (${sql.raw(companyDeleteBlockSqlText('company.id'))}) as "reason" from company where company.id = ${p.id}::uuid`,
     )) as unknown as { reason: string | null }[];

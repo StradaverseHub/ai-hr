@@ -249,7 +249,7 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     // regression this item exists to prevent, and it would not show up as a failing behaviour test.
     const start = pageSrc.indexOf('const employmentInfoCard = admin ? (');
     expect(start).toBeGreaterThan(-1);
-    const end = pageSrc.indexOf('const dataClassificationCard', start);
+    const end = pageSrc.indexOf('const directSuperiorCard', start);
     expect(end).toBeGreaterThan(start);
     const card = pageSrc.slice(start, end);
 
@@ -266,17 +266,18 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     expect(pageSrc).toContain("t('employmentInfo.companyLockedNote')");
   });
 
-  it('leaves the non-assignment Employment Dates fields editable', () => {
-    // The item scopes view-only to ORGANISATION ASSIGNMENT (plus the two join dates, item 89ea527b).
-    // Probation / notice / resignation are lifecycle facts with no movement kind that owns them; silently
-    // freezing them too would remove capability the item never asked to remove.
+  it('keeps probation and confirmation editable while resignation dates have their Movement owner', () => {
+    // Board 3 gives resignation dates one canonical Movement owner. Probation and confirmation
+    // remain editable here; their established posted bindings must survive the cleanup.
     const from = pageSrc.indexOf('const employmentInfoCard = admin ? (');
-    const end = pageSrc.indexOf('const dataClassificationCard', from);
+    const end = pageSrc.indexOf('const directSuperiorCard', from);
     expect(from).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(from);
     const card = pageSrc.slice(from, end);
     for (const [field, name] of [['tenderresignationdate', 'tenderResignationDate'], ['lastworkingdate', 'lastWorkingDate']]) {
-      expect(hasPersonnelPostedBinding(card, `employment.employment_dates_and_service.${field}`, name), `${name} must remain editable`).toBe(true);
+      expect(hasPersonnelPostedBinding(card, `employment.employment_dates_and_service.${field}`, name), `${name} belongs to Movement`).toBe(false);
+      expect(card).toContain(`readOnlyValue("employment.employment_dates_and_service.${field}"`);
+      expect(card).toContain(`resignationInfo?.${name}.source.kind === 'movement'`);
     }
     expect(card).toContain('<ConfirmationDateField mode="form" value={emp.confirmationDate} dmyDisplay />');
     const confirmationAt = PERIOD_FIELDS_SRC.indexOf('export function ConfirmationDateField');

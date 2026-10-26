@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { internalSelected } from '@/lib/internal-auth/config';
 import Link from 'next/link';
 import { listOperatorCustomers } from '@/core/operator-customers';
@@ -53,7 +54,7 @@ export default async function OperatorPage() {
   const countries = countryPacks().map((p) => p.country.toUpperCase()).sort();
   const sellableModules = MODULE_CATALOG.filter((m) => !m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
   const coreModules = MODULE_CATALOG.filter((m) => m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
-  const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
+  const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: HR_LOCAL_TZ });
 
   const inFlight = requests.some((r) => r.status === 'pending' || r.status === 'running');
   const statusVariant = (st: string) =>
@@ -115,7 +116,7 @@ export default async function OperatorPage() {
                     <div className="font-medium">{r.customerName}</div>
                     {r.organizationCode&&<p className="text-xs text-muted-foreground">{w('organizationCode')}: {r.organizationCode}</p>}
                     <p className="text-sm text-muted-foreground">{r.adminEmail}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{dateTime.format(r.createdAt)}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground"><time dateTime={r.createdAt.toISOString()}>{dateTime.format(r.createdAt)} MYT</time></p>
                   </div>
                   <Badge variant={statusVariant(r.status)}>{statusLabel(r.status)}</Badge>
                 </div>

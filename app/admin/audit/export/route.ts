@@ -75,6 +75,7 @@ export async function GET(req: Request) {
       module: moduleKey,
       aggregateType: type,
       aggregateId: UUID_RE.test(g('record')) ? g('record') : undefined,
+      employmentId: UUID_RE.test(g('employment')) ? g('employment') : undefined,
       eventQuery: g('q') || undefined,
       action,
       actorId: user,

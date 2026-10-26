@@ -16,6 +16,11 @@ The displayed step list describes the provisioning sequence; it is not a measure
 
 ## Deliver activation
 
+The administrator sets their username and password, enrolls an authenticator and saves their recovery
+codes. Finishing activation takes them directly to login with their organization code already filled.
+They sign in with their new credentials and authenticator.
+
+
 When the request is done, deliberately reveal the activation link. It is shown once; copy it only when ready to deliver it privately to the intended administrator. Do not paste it into feedback, logs or documentation. A page refresh cannot recover a consumed reveal.
 
 If the link is lost or no longer usable, request Reissue and wait for the runner to produce the replacement. A reissue request is not itself a new link. Verify the updated state before trying to reveal again.
