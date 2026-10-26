@@ -1747,3 +1747,18 @@ then the canonical save after release. Authored, not executed. Accrual, reversal
 consumption/restoration and settlement paths have their own credit/Attendance/
 Payroll lock order; they still need caller-level integration before earlier
 protected reads, rather than a late lock added only at the ledger insertion.
+
+
+Canonical hire cohort participant (source-only, UNRUN): `hireEmployee` captures
+person/grant inputs and context, retains its fresh Workforce company/person gate,
+then takes exclusive leave configuration ownership before Criteria/reference
+locks, catalogue/template resolution, person/employment/assignment/reporting
+creation and initial ledger grants. A new invisible employment has no prior
+subject interval; the exclusive configuration phase protects cohort membership
+until the hire commits, rather than acquiring an unknown new ID after writes.
+Both direct and caller-transaction real employee interleavings are authored:
+held ordinary interval must leave the full hire graph/ledger/events unchanged,
+then release permits the canonical hire and its opening grant. Tests UNRUN;
+syntax/diff review only. Draft activation/import callers may have earlier work;
+those transitive intervals and remaining org/credit/config writers still require
+review and verification. No universal protection or Assistant effect is exposed.

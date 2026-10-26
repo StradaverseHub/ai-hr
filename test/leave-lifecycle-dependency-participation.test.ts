@@ -9,7 +9,7 @@ import { createMovementEvent, createMovementEventTx, rehearseMovementSequenceTx,
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 beforeAll(migrateTestDb);
@@ -131,5 +131,46 @@ describe('Movement correction source interval — authored, unrun acceptance', (
     expect(after.filter(row => row.eventType === 'employment.movement.recorded')).toHaveLength(2);
     const corrected = after.find(row => row.id !== original!.id && row.eventType === 'employment.movement.recorded');
     expect(corrected?.payload).toMatchObject({ remarks: 'Fictional corrected' });
+  });
+});
+
+/** Authored actual new-subject/cohort writer cases; UNRUN pending coordinated local admission. */
+describe('canonical hire configuration participant', () => {
+  it.each(['direct', 'caller-tx'] as const)('%s refuses before creating any hire graph or opening grant, then succeeds after release', async path => {
+    const ctx = adminCtx(b), today = todayInKualaLumpur();
+    const existing = await hireEmployee(ctx, { person: { fullName: 'Fictional Existing Interval',
+      primaryEmail: `hire-holder-${randomUUID()}@t.local` }, companyId: b.companyId,
+      departmentId: b.deptA, employmentType: 'full_time', hiredOn: today });
+    await seedEntitlement(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 12,
+      validFrom: `${today.slice(0, 4)}-01-01`, name: 'Fictional guarded hire entitlement' });
+    const input = { person: { fullName: 'Fictional Protected Hire', primaryEmail: `hire-target-${randomUUID()}@t.local` },
+      companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time' as const, hiredOn: today,
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }] };
+    const hire = () => path === 'direct' ? hireEmployee(ctx, input) : withTenant(ctx, tx => hireEmployee(ctx, input, tx));
+    const state = async () => ({
+      persons: await owner.db.select().from(schema.person).where(eq(schema.person.tenantId, b.tenantId)).orderBy(schema.person.id),
+      employments: await owner.db.select().from(schema.employment).where(eq(schema.employment.tenantId, b.tenantId)).orderBy(schema.employment.id),
+      assignments: await owner.db.select().from(schema.assignment).where(eq(schema.assignment.tenantId, b.tenantId)).orderBy(schema.assignment.id),
+      reporting: await owner.db.select().from(schema.reportingLine).where(eq(schema.reportingLine.tenantId, b.tenantId)).orderBy(schema.reportingLine.id),
+      ledger: await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.tenantId, b.tenantId)).orderBy(schema.leaveLedger.id),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned hire handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [existing.employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started; await expect(hire()).rejects.toThrow('Leave source is unavailable');
+      expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    const created = await hire(), after = await state();
+    expect(after.persons).toHaveLength(before.persons.length + 1);
+    expect(after.employments).toHaveLength(before.employments.length + 1);
+    expect(after.assignments.filter(row => row.employmentId === created.employmentId)).toHaveLength(1);
+    const grants = after.ledger.filter(row => row.employmentId === created.employmentId && row.leaveTypeId === b.annualLeaveTypeId);
+    expect(grants).toHaveLength(1); expect(Number(grants[0].days)).toBeGreaterThan(0);
   });
 });

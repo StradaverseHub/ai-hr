@@ -197,11 +197,16 @@ export function resolveProbationMonths(probationMonths: number | null | undefine
 export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
+  p = { ...p, person: { ...p.person }, grantLeaveTypes: p.grantLeaveTypes?.map(type => ({ ...type })) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const run = async (tx:Tx) => {
     // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
     // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
+    // A hire changes cohort membership and may create opening ledger grants. Own configuration
+    // before Criteria, catalogue/template reads or any new person/employment/assignment is written.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // The same Criteria-before-row lock order as the canonical reference writers.
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
