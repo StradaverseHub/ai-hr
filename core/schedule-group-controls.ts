@@ -2,6 +2,8 @@ import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resol
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import { attendanceExceptionRevision, attendanceRule, employment, shift, rosterAssignment } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -48,8 +50,11 @@ export function scheduleGroupControls(ctx:SessionContext,ruleId:string) {
  });
 }
 export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kind:'exception'|'duty';enabled:boolean}) {
+ p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change Schedule Group controls.');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
   if(!rule)throw new Error('Schedule Group not found.');
   if(p.kind==='duty') {
@@ -72,8 +77,12 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
 }
 /** No caller-supplied purpose can bypass this guard. Automatic rotations are derived, not manual rows. */
 export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:readonly {employmentId:string;shiftDate:string;shiftId?:string|null;isRestDay?:boolean;note?:string|null;clear?:boolean}[]) {
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change the roster.');
+ changes=changes.map(change=>({...change}));
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new Error('An employee is unavailable in your company scope.');
  const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');

@@ -40,7 +40,8 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { holidayCalendarFactsByEmployment } from './holidays';
-import { approvedLeavePresenceByEmploymentTx } from '../packs/leave/service';
+import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -2054,6 +2055,8 @@ async function rosterRowBefore(
 
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
 export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,isRestDay:false}]);
     // 870b79e2 — the Schedule Group's allowed-shift list, enforced before the upsert. assignRosterRow
@@ -2083,6 +2086,8 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
 
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
 export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,shiftId:null,isRestDay:true}]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
@@ -2138,6 +2143,8 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
  * DO NOT ADD A CALLER THAT SKIPS `assertRosterAdmin`; it is what turns this into a visible refusal.
  */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,clear:true}]);
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
@@ -2170,6 +2177,8 @@ export async function assignShiftBulk(
   ctx: SessionContext,
   p: { employmentIds: string[]; shiftDates: string[]; shiftId: string },
 ) {
+  p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { assigned: 0 };
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
@@ -2219,6 +2228,8 @@ export async function setRestDayBulk(
     anchorId?: string;
   },
 ) {
+  p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
   const anchorId = p.forShiftId ?? p.anchorId;
   if (!anchorId) throw new Error('setRestDayBulk needs forShiftId or anchorId to anchor its event');
@@ -2385,6 +2396,8 @@ export async function copyRoster(
   ctx: SessionContext,
   p: { employmentIds?: string[]; sourceFrom: string; sourceTo: string; targetFrom: string },
 ): Promise<{ copied: number; sourceRows: number }> {
+  p={...p,employmentIds:p.employmentIds?.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isIsoDate(p.sourceFrom) || !isIsoDate(p.sourceTo) || !isIsoDate(p.targetFrom)) {
     throw new Error('Dates must be YYYY-MM-DD');
   }
@@ -2397,8 +2410,17 @@ export async function copyRoster(
 
   const empIds = [...new Set((p.employmentIds ?? []).filter(Boolean))];
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
     if (empIds.length > 0) srcConds.push(inArray(rosterAssignment.employmentId, empIds));
+    // Nominate source/target subjects only, then reread membership before copying source facts.
+    const nominate=()=>tx.selectDistinct({employmentId:rosterAssignment.employmentId}).from(rosterAssignment)
+      .where(and(...srcConds)).orderBy(rosterAssignment.employmentId);
+    const nominated=await nominate();
+    if(!nominated.length)return {copied:0,sourceRows:0};
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,nominated.map(row=>row.employmentId));
+    if(JSON.stringify(nominated)!==JSON.stringify(await nominate()))throw new LeaveDependencyUnavailable();
     const srcRows = await tx
       .select({
         employmentId: rosterAssignment.employmentId,

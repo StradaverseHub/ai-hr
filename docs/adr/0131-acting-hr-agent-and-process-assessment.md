@@ -1892,3 +1892,25 @@ and canonical behavior. ALL UNRUN; only syntax/diff/source review. No allocator 
 calendar eligibility, authority or historical rules were replaced. Roster/Attendance/
 TOIL and other earlier source writers still need integration and runtime proof; this
 is not universal protection, a completed gate or readiness for Assistant exposure.
+
+
+Manual roster write intervals — source preparation, UNRUN
+
+The canonical `assertDutyRosterWriteTx` now captures changes/context and acquires
+Access, shared leave configuration and the complete ordered employee set BEFORE
+its existing employment/rule row locks, schedule facts, Payroll guards and audit.
+Single assign/rest/clear and both bulk owners capture inputs/context before opening
+transactions. `copyRoster` additionally nominates distinct source/target employees
+under shared configuration, locks the ordered set and rereads exact membership
+BEFORE copying row facts; it refuses newly appearing unprotected subjects instead
+of acquiring them out of order. The same original manual-roster authority and rule
+checks still run. Schedule-group control edits take Access/exclusive configuration
+before the original rule lock, version/history and event writes.
+
+Seven actual real-employee interleavings (assign/rest/clear/both bulks/copy/control)
+are authored: last ordered employee held, no roster/rule/event effects, earlier
+partial ownership available after failed command rollback, release then original
+mutation. ALL UNRUN; AST syntax/diff review only. This does not cover every earlier
+roster derivation: template-generation source reads, fixed/dated shifts, schedule
+assignment/bulk controls and other config/Attendance/TOIL writers remain pending.
+No universal barrier, latency, concurrency or security readiness is established.
