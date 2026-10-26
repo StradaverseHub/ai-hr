@@ -1,3 +1,6 @@
+import {CountryStatutoryActionChoices,CountryStatutoryEditable,CountryStatutoryLabels,COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES} from '../../lib/assistant-actions/module-action-http';
+import {prepareCountryStatutoryReview,confirmCountryStatutoryReview,reopenCountryStatutoryReview,discardCountryStatutoryReview,listCountryStatutoryReviews} from './country-statutory-review-store';
+import {reviewedCountryStatutoryChoiceMetadataTx,readReviewedCountryStatutoryEditableTx,readReviewedCountryStatutoryLabelsTx} from './reviewed-country-statutory-source';
 /** Candidate authenticated human browser binding; no model executor or posted session/identity. */
 import 'server-only';
 import {PayComponentActionChoices} from '../../lib/assistant-actions/module-action-http';
@@ -133,6 +136,7 @@ async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typ
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  countryStatutory:{readEditable:(session,id)=>readCountryStatutoryModuleActionEditable(session.ctx,id),list:session=>listCountryStatutoryReviews(session.ctx),prepare:async(session,input)=>countryStatutoryBrowserResult(session.ctx,await prepareCountryStatutoryReview(session.ctx,input)),reopen:async(session,id)=>countryStatutoryBrowserResult(session.ctx,await reopenCountryStatutoryReview(session.ctx,id)),confirm:async(session,input)=>countryStatutoryBrowserResult(session.ctx,await confirmCountryStatutoryReview(session.ctx,input)),discard:(session,input)=>discardCountryStatutoryReview(session.ctx,input)},
   rewardsPost:{list:session=>listRewardsPostReviews(session.ctx),prepare:(session,input)=>prepareRewardsPostReview(session.ctx,input),reopen:(session,id)=>reopenRewardsPostReview(session.ctx,id),confirm:(session,input)=>confirmRewardsPostReview(session.ctx,input),discard:(session,input)=>discardRewardsPostReview(session.ctx,input)},
   payrollClose:{list:session=>listPayrollCloseReviews(session.ctx),prepare:(session,input)=>preparePayrollCloseReview(session.ctx,input),reopen:(session,id)=>reopenPayrollCloseReview(session.ctx,id),confirm:(session,input)=>confirmPayrollCloseReview(session.ctx,input),discard:(session,input)=>discardPayrollCloseReview(session.ctx,input)},
   payComponent:{list:session=>listPayComponentReviews(session.ctx),prepare:(session,input)=>preparePayComponentReview(session.ctx,input),reopen:(session,id)=>reopenPayComponentReview(session.ctx,id),confirm:(session,input)=>confirmPayComponentReview(session.ctx,input),discard:(session,input)=>discardPayComponentReview(session.ctx,input)},
@@ -178,3 +182,8 @@ export async function readPayrollCloseModuleActionChoices(supplied:SessionContex
  const fresh=await assertReviewedPayrollCloseActorTx(tx,ctx),result=PayrollCloseActionChoices.parse({kind:'choices',...await reviewedPayrollCloseChoiceMetadataTx(tx,fresh)});if(Buffer.byteLength(JSON.stringify(result))>49152)throw Error();return result;
  });}catch{return PayrollCloseActionChoices.parse({kind:'unavailable'});}
 }
+
+/** Country-only fresh labels. No retired/login-only operation needs target disclosure. */
+async function countryStatutoryBrowserResult(ctx:SessionContext,result:Awaited<ReturnType<typeof reopenCountryStatutoryReview>>){if(result.kind==='retired')return result;const employmentId=result.kind==='prepared'?result.review.review.employmentId:result.receipt.receipt.employmentId,personId=result.kind==='prepared'?result.review.review.personId:result.receipt.receipt.personId,labels=await withTenant(ctx,tx=>readReviewedCountryStatutoryLabelsTx(tx,ctx,employmentId,personId));return{...result,labels:CountryStatutoryLabels.parse(labels)};}
+export async function readCountryStatutoryModuleActionChoices(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{const metadata=await reviewedCountryStatutoryChoiceMetadataTx(tx,ctx),result=CountryStatutoryActionChoices.parse({kind:'choices',...metadata});if(Buffer.byteLength(JSON.stringify(result))>COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES)throw Error();return result;});}catch{return CountryStatutoryActionChoices.parse({kind:'unavailable'});}}
+export async function readCountryStatutoryModuleActionEditable(supplied:SessionContext,employmentId:string){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=z.uuid().parse(employmentId);return withTenant(ctx,async tx=>CountryStatutoryEditable.parse(await readReviewedCountryStatutoryEditableTx(tx,ctx,id)));}

@@ -18036,6 +18036,101 @@
           "scheduled_not_before": "Scheduled, no earlier than the configured release"
         },
         "company": "Company"
+      },
+      "countryStatutoryActions": {
+        "title": "Review EPF / SOCSO changes",
+        "description": "Choose an authorized Personnel record, enter the changes yourself, then review before saving.",
+        "back": "Back to Assistant",
+        "intro": "Choose a Personnel record to begin. Nothing is saved when you open this page.",
+        "record": "Personnel record",
+        "choose": "Choose a record",
+        "load": "Open editable section",
+        "noChoices": "No eligible records are available here. Use Personnel for other changes.",
+        "truncated": "This list is limited to 20 records. Use Personnel to find another record.",
+        "choicesUnavailable": "These records are unavailable here. Saved-review recovery and privacy discard remain available below.",
+        "sectionScope": "Only EPF / SOCSO controls are editable here. Identity, tax, bank, TP3 and Zakat stay with their dedicated Personnel owners.",
+        "sharedScope": "This statutory record belongs to the person. Saving these changes can affect their other employments, including other companies.",
+        "authorship": "These are the changes I chose for this person’s shared record. Prepare a review without saving.",
+        "prepare": "Review my changes",
+        "reviewTitle": "Checked changes",
+        "reviewNote": "Check every value and the shared effect before saving.",
+        "canonicalNote": "These are the values Personnel’s canonical checks will save.",
+        "preserved": "Stored identity, tax, bank, TP3 and Zakat details are preserved and are not shown here.",
+        "confirmConsent": "I reviewed these changes and understand they affect this person’s shared statutory record across employments and companies.",
+        "confirm": "Save reviewed changes",
+        "reopen": "Reopen the same review",
+        "discard": "Discard private review",
+        "expires": "Review expires",
+        "expired": "This review expired. Open a new review before saving.",
+        "working": "Working on your handoff…",
+        "unavailable": "Let’s take a fresh look. Reopen the same review or use Personnel.",
+        "invalid": "Check the values you entered before preparing the review.",
+        "uncertainKnown": "The outcome is not confirmed. Reopen this same review; do not submit another change.",
+        "uncertainUnknown": "The handoff could not be confirmed. Find your saved reviews before starting again.",
+        "saved": "Statutory profile saved",
+        "receiptMeaning": "The reviewed EPF / SOCSO profile update was recorded. Payroll was not recalculated, processed or paid.",
+        "historical": "This receipt confirms the recorded action and a currently accessible profile. It does not claim these are the latest unchanged values.",
+        "retired": "Private review retired",
+        "retiredMeaning": "This private review cannot save changes. No new statutory update was submitted by retiring it.",
+        "newReview": "Start a new review",
+        "find": "Find my saved reviews",
+        "indexScope": "This list contains only your saved-review status and times. Reopening checks your current access again.",
+        "noReviews": "No saved reviews found.",
+        "openReview": "Open saved review",
+        "manual": "Open Personnel",
+        "none": "Not set",
+        "yes": "Yes",
+        "no": "No",
+        "fields": {
+          "epfNumber": "EPF number",
+          "socsoNumber": "SOCSO / EIS number",
+          "socsoCategory": "SOCSO category",
+          "eisCategory": "EIS category",
+          "subjectToSocso": "Subject to SOCSO",
+          "eisEligible": "Subject to EIS",
+          "subjectToSkbbk": "Subject to SKBBK",
+          "employerBearsSocso": "Employer bears SOCSO",
+          "employerBearsEis": "Employer bears EIS",
+          "employerBearsSkbbk": "Employer bears SKBBK",
+          "employerBearsEpf": "Employer bears EPF",
+          "epfCitizenship": "EPF citizenship",
+          "epfMode": "EPF contribution mode",
+          "epfEmployeeRate": "Employee EPF rate",
+          "epfEmployerRate": "Employer EPF rate",
+          "epfEmployeeAmount": "Employee EPF amount",
+          "epfEmployerAmount": "Employer EPF amount",
+          "epfManualReason": "Reason for fixed amount"
+        },
+        "values": {
+          "epfMode": {
+            "auto": "Statutory rules",
+            "voluntary_excess": "Voluntary excess",
+            "exempt": "Exempt",
+            "manual_amount": "Fixed amount"
+          },
+          "epfCitizenship": {
+            "citizen": "Malaysian citizen",
+            "pr": "Permanent resident",
+            "non_citizen": "Non-citizen"
+          },
+          "socsoCategory": {
+            "auto": "Automatic",
+            "first": "First category",
+            "second": "Second category",
+            "none": "No contribution"
+          },
+          "eisCategory": {
+            "auto": "Automatic",
+            "none": "No contribution"
+          }
+        },
+        "states": {
+          "awaiting_confirmation": "Awaiting confirmation",
+          "completed": "Recorded",
+          "discarded": "Discarded",
+          "expired": "Expired",
+          "refused": "Unavailable"
+        }
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

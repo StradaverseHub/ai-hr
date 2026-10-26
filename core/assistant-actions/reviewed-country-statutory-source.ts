@@ -10,7 +10,7 @@ import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
-import {masterReportFieldsTx} from '../employee-master-access';
+import {masterReportFieldsTx,MasterReportAccessError} from '../employee-master-access';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../leave-dependency-lock';
 import {REVIEWED_COUNTRY_STATUTORY_ACTION as action,ReviewedCountryStatutoryHumanContent as Human,ReviewedCountryStatutoryConfirmation as Confirmation,ReviewedCountryStatutoryPreparedSource as Prepared,ReviewedCountryStatutorySourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-country-statutory-contract';
 export class ReviewedCountryStatutoryUnavailable extends Error{constructor(){super('That statutory update needs a fresh look. Please reopen the Personnel record.');this.name='ReviewedCountryStatutoryUnavailable';}}
@@ -40,3 +40,14 @@ export async function reconcileReviewedCountryStatutorySourceTx(tx:Tx,supplied:S
 export async function withReviewedCountryStatutoryIntervalTx<T>(tx:Tx,supplied:SessionContext,employmentId:string,work:(fresh:SessionContext,binding:{employmentId:string;personId:string;companyId:string;country:'MY';statutoryId:string})=>Promise<T>):Promise<T>{
  const ctx=capture(supplied),id=z.uuid().parse(employmentId),fresh=await assertReviewedCountryStatutoryActorTx(tx,ctx),{row,owner}=await source(tx,fresh,id),native=await owner.lockSubject(tx,fresh,row.personId);if(native.personId!==row.personId)return fail();return work(fresh,{...row,country:'MY',statutoryId:native.statutoryId});
 }
+
+/** Metadata-only bounded human picker; no profile/salary snapshot or plaintext before field scope. */
+export async function reviewedCountryStatutoryChoiceMetadataTx(tx:Tx,supplied:SessionContext){
+ const ctx=capture(supplied),fresh=await assertReviewedCountryStatutoryActorTx(tx,ctx);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);
+ const companies=await tx.select({id:company.id,country:company.country}).from(company).where(and(eq(company.tenantId,fresh.tenantId),eq(company.country,'MY'),sql`app.is_admin_for(${company.id}) and app.can_admin_payroll_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(company.id).limit(101);if(companies.length>100)return fail();
+ const allowed:string[]=[];let owner:NonNullable<ReturnType<typeof requirePackFor>['statutory']['reviewed']>|undefined;
+ for(const candidate of companies){let fields;try{fields=await masterReportFieldsTx(tx,fresh,[candidate.id]);}catch(error){if(error instanceof MasterReportAccessError)continue;throw error;}if(!(['identity','bank','statutory','payroll'] as const).every(sensitivity=>fields.some(field=>field.sensitivity===sensitivity)))continue;const pack=requirePackFor(candidate.country);if(pack.country!=='MY'||!pack.statutory.reviewed)continue;owner=pack.statutory.reviewed;allowed.push(candidate.id);}
+ if(!owner)return{items:[],truncated:false};const rows=await owner.choices(tx,fresh,allowed,21);return {items:rows.slice(0,20).map(({employmentId,employeeCode,name,companyName})=>({employmentId,employeeCode,name,companyName})),truncated:rows.length>20};
+}
+export async function readReviewedCountryStatutoryEditableTx(tx:Tx,supplied:SessionContext,employmentId:string){const ctx=capture(supplied),id=z.uuid().parse(employmentId);return withReviewedCountryStatutoryIntervalTx(tx,ctx,id,async(fresh,binding)=>{const owner=requirePackFor(binding.country).statutory.reviewed;if(!owner)return fail();const native=await owner.readEditable(tx,fresh,binding.personId),labels=await owner.labels(tx,fresh,binding.employmentId,binding.personId);if(native.personId!==binding.personId||native.statutoryId!==binding.statutoryId)return fail();return{kind:'country_statutory_editable' as const,employmentId:binding.employmentId,personId:binding.personId,country:binding.country,fields:native.fields,labels};});}
+export async function readReviewedCountryStatutoryLabelsTx(tx:Tx,supplied:SessionContext,employmentId:string,personId:string){const ctx=capture(supplied),id=z.uuid().parse(employmentId),person=z.uuid().parse(personId).toLowerCase();return withReviewedCountryStatutoryIntervalTx(tx,ctx,id,async(fresh,binding)=>{if(binding.personId!==person)return fail();const owner=requirePackFor(binding.country).statutory.reviewed;if(!owner)return fail();return owner.labels(tx,fresh,binding.employmentId,binding.personId);});}

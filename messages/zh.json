@@ -18036,6 +18036,101 @@
           "scheduled_not_before": "按计划，不早于配置时间"
         },
         "company": "公司"
+      },
+      "countryStatutoryActions": {
+        "title": "核对 EPF / SOCSO 更改",
+        "description": "选择您有权操作的人事记录，亲自输入更改，并在保存前核对。",
+        "back": "返回 Assistant",
+        "intro": "请选择人事记录。打开此页面不会保存任何更改。",
+        "record": "人事记录",
+        "choose": "选择记录",
+        "load": "打开可编辑部分",
+        "noChoices": "此处没有符合条件的记录。其他更改请使用人事页面。",
+        "truncated": "此列表最多显示 20 条记录。请到人事页面查找其他记录。",
+        "choicesUnavailable": "此处无法使用这些记录。您仍可在下方查找或丢弃已保存的私人核对记录。",
+        "sectionScope": "此处仅可编辑 EPF / SOCSO 设置。身份、税务、银行、TP3 和 Zakat 仍由各自专用页面处理。",
+        "sharedScope": "此法定资料由该人员共用。保存更改可能影响其其他雇佣关系，包括其他公司。",
+        "authorship": "这些是我为此人的共用资料选择的更改。先准备核对记录，不保存更改。",
+        "prepare": "核对我的更改",
+        "reviewTitle": "已校验的更改",
+        "reviewNote": "保存前请核对每个值及其共用影响。",
+        "canonicalNote": "这些是人事规范校验后将保存的值。",
+        "preserved": "现有身份、税务、银行、TP3 和 Zakat 资料会保留，且不会在此显示。",
+        "confirmConsent": "我已核对这些更改，并理解其会影响此人在不同雇佣关系及公司间共用的法定资料。",
+        "confirm": "保存已核对的更改",
+        "reopen": "重新打开同一核对记录",
+        "discard": "丢弃私人核对记录",
+        "expires": "核对记录到期时间",
+        "expired": "此核对记录已过期。保存前请新建核对记录。",
+        "working": "正在处理…",
+        "unavailable": "我们再核对一下。请重新打开同一记录，或使用人事页面。",
+        "invalid": "准备核对记录前，请检查输入的值。",
+        "uncertainKnown": "结果尚未确认。请重新打开同一核对记录，不要再次提交更改。",
+        "uncertainUnknown": "无法确认结果。重新开始前，请查找已保存的核对记录。",
+        "saved": "法定资料已保存",
+        "receiptMeaning": "已记录核对后的 EPF / SOCSO 更新。工资未重新计算、处理或支付。",
+        "historical": "此回执确认已记录的操作及当前可访问的资料，不表示这些是最新且未变的值。",
+        "retired": "私人核对记录已停用",
+        "retiredMeaning": "此记录不能再保存更改。停用它不会提交新的法定资料更新。",
+        "newReview": "开始新的核对",
+        "find": "查找我的核对记录",
+        "indexScope": "此列表仅显示您的核对状态和时间。重新打开时会再次检查当前权限。",
+        "noReviews": "未找到已保存的核对记录。",
+        "openReview": "打开已保存的核对记录",
+        "manual": "打开人事页面",
+        "none": "未设置",
+        "yes": "是",
+        "no": "否",
+        "fields": {
+          "epfNumber": "EPF 号码",
+          "socsoNumber": "SOCSO / EIS 号码",
+          "socsoCategory": "SOCSO 类别",
+          "eisCategory": "EIS 类别",
+          "subjectToSocso": "需缴 SOCSO",
+          "eisEligible": "需缴 EIS",
+          "subjectToSkbbk": "需缴 SKBBK",
+          "employerBearsSocso": "雇主承担 SOCSO",
+          "employerBearsEis": "雇主承担 EIS",
+          "employerBearsSkbbk": "雇主承担 SKBBK",
+          "employerBearsEpf": "雇主承担 EPF",
+          "epfCitizenship": "EPF 国籍类别",
+          "epfMode": "EPF 缴款模式",
+          "epfEmployeeRate": "员工 EPF 比率",
+          "epfEmployerRate": "雇主 EPF 比率",
+          "epfEmployeeAmount": "员工 EPF 金额",
+          "epfEmployerAmount": "雇主 EPF 金额",
+          "epfManualReason": "固定金额原因"
+        },
+        "values": {
+          "epfMode": {
+            "auto": "法定规则",
+            "voluntary_excess": "自愿额外缴款",
+            "exempt": "豁免",
+            "manual_amount": "固定金额"
+          },
+          "epfCitizenship": {
+            "citizen": "马来西亚公民",
+            "pr": "永久居民",
+            "non_citizen": "非公民"
+          },
+          "socsoCategory": {
+            "auto": "自动",
+            "first": "第一类别",
+            "second": "第二类别",
+            "none": "不缴款"
+          },
+          "eisCategory": {
+            "auto": "自动",
+            "none": "不缴款"
+          }
+        },
+        "states": {
+          "awaiting_confirmation": "待确认",
+          "completed": "已记录",
+          "discarded": "已丢弃",
+          "expired": "已过期",
+          "refused": "不可用"
+        }
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

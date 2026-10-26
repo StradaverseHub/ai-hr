@@ -18036,6 +18036,101 @@
           "scheduled_not_before": "Berjadual, tidak lebih awal daripada tetapan"
         },
         "company": "Syarikat"
+      },
+      "countryStatutoryActions": {
+        "title": "Semak perubahan EPF / SOCSO",
+        "description": "Pilih rekod Personel yang dibenarkan, masukkan perubahan sendiri dan semak sebelum menyimpan.",
+        "back": "Kembali ke Assistant",
+        "intro": "Pilih rekod Personel untuk bermula. Membuka halaman ini tidak menyimpan perubahan.",
+        "record": "Rekod Personel",
+        "choose": "Pilih rekod",
+        "load": "Buka bahagian boleh edit",
+        "noChoices": "Tiada rekod yang layak di sini. Gunakan Personel untuk perubahan lain.",
+        "truncated": "Senarai ini terhad kepada 20 rekod. Gunakan Personel untuk mencari rekod lain.",
+        "choicesUnavailable": "Rekod ini tidak tersedia di sini. Pemulihan dan pelupusan semakan peribadi masih tersedia di bawah.",
+        "sectionScope": "Hanya kawalan EPF / SOCSO boleh diubah di sini. Identiti, cukai, bank, TP3 dan Zakat kekal pada bahagian khususnya.",
+        "sharedScope": "Rekod berkanun ini milik individu tersebut. Perubahan boleh menjejaskan pekerjaan mereka yang lain, termasuk syarikat lain.",
+        "authorship": "Ini perubahan yang saya pilih untuk rekod bersama individu ini. Sediakan semakan tanpa menyimpan.",
+        "prepare": "Semak perubahan saya",
+        "reviewTitle": "Perubahan yang disemak",
+        "reviewNote": "Semak setiap nilai dan kesan perkongsian sebelum menyimpan.",
+        "canonicalNote": "Ini nilai yang akan disimpan selepas semakan kanonik Personel.",
+        "preserved": "Butiran identiti, cukai, bank, TP3 dan Zakat yang disimpan dikekalkan dan tidak dipaparkan di sini.",
+        "confirmConsent": "Saya telah menyemak perubahan ini dan memahami kesannya pada rekod berkanun individu ini merentas pekerjaan dan syarikat.",
+        "confirm": "Simpan perubahan disemak",
+        "reopen": "Buka semula semakan sama",
+        "discard": "Lupuskan semakan peribadi",
+        "expires": "Semakan tamat",
+        "expired": "Semakan ini tamat tempoh. Buka semakan baharu sebelum menyimpan.",
+        "working": "Sedang memproses…",
+        "unavailable": "Mari semak semula. Buka semakan yang sama atau gunakan Personel.",
+        "invalid": "Semak nilai yang dimasukkan sebelum menyediakan semakan.",
+        "uncertainKnown": "Hasil belum disahkan. Buka semakan yang sama; jangan hantar perubahan lain.",
+        "uncertainUnknown": "Hasil tidak dapat disahkan. Cari semakan tersimpan sebelum bermula semula.",
+        "saved": "Profil berkanun disimpan",
+        "receiptMeaning": "Kemas kini EPF / SOCSO yang disemak telah direkodkan. Gaji tidak dikira semula, diproses atau dibayar.",
+        "historical": "Resit ini mengesahkan tindakan yang direkodkan dan profil yang boleh diakses kini. Ia tidak mengesahkan nilai terkini tidak berubah.",
+        "retired": "Semakan peribadi ditamatkan",
+        "retiredMeaning": "Semakan ini tidak boleh menyimpan perubahan. Penamatannya tidak menghantar kemas kini berkanun baharu.",
+        "newReview": "Mulakan semakan baharu",
+        "find": "Cari semakan tersimpan saya",
+        "indexScope": "Senarai ini hanya mengandungi status dan masa semakan anda. Akses semasa diperiksa semula apabila dibuka.",
+        "noReviews": "Tiada semakan tersimpan.",
+        "openReview": "Buka semakan tersimpan",
+        "manual": "Buka Personel",
+        "none": "Belum ditetapkan",
+        "yes": "Ya",
+        "no": "Tidak",
+        "fields": {
+          "epfNumber": "Nombor EPF",
+          "socsoNumber": "Nombor SOCSO / EIS",
+          "socsoCategory": "Kategori SOCSO",
+          "eisCategory": "Kategori EIS",
+          "subjectToSocso": "Tertakluk SOCSO",
+          "eisEligible": "Tertakluk EIS",
+          "subjectToSkbbk": "Tertakluk SKBBK",
+          "employerBearsSocso": "Majikan menanggung SOCSO",
+          "employerBearsEis": "Majikan menanggung EIS",
+          "employerBearsSkbbk": "Majikan menanggung SKBBK",
+          "employerBearsEpf": "Majikan menanggung EPF",
+          "epfCitizenship": "Kewarganegaraan EPF",
+          "epfMode": "Mod caruman EPF",
+          "epfEmployeeRate": "Kadar EPF pekerja",
+          "epfEmployerRate": "Kadar EPF majikan",
+          "epfEmployeeAmount": "Amaun EPF pekerja",
+          "epfEmployerAmount": "Amaun EPF majikan",
+          "epfManualReason": "Sebab amaun tetap"
+        },
+        "values": {
+          "epfMode": {
+            "auto": "Peraturan berkanun",
+            "voluntary_excess": "Lebihan sukarela",
+            "exempt": "Dikecualikan",
+            "manual_amount": "Amaun tetap"
+          },
+          "epfCitizenship": {
+            "citizen": "Warganegara Malaysia",
+            "pr": "Pemastautin tetap",
+            "non_citizen": "Bukan warganegara"
+          },
+          "socsoCategory": {
+            "auto": "Automatik",
+            "first": "Kategori pertama",
+            "second": "Kategori kedua",
+            "none": "Tiada caruman"
+          },
+          "eisCategory": {
+            "auto": "Automatik",
+            "none": "Tiada caruman"
+          }
+        },
+        "states": {
+          "awaiting_confirmation": "Menunggu pengesahan",
+          "completed": "Direkodkan",
+          "discarded": "Dilupuskan",
+          "expired": "Tamat tempoh",
+          "refused": "Tidak tersedia"
+        }
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

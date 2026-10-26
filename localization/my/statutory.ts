@@ -9,10 +9,10 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC format is validated; tenant-wide duplicate admission is enforced by the database policy.
  */
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
-import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
+import { company,companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import { customHolderGaps, IncompleteCustomHolderError } from '../../lib/custom-holder';
@@ -1430,18 +1430,23 @@ export const reviewedStatutoryInputSchemaMY=z.object({
  socsoCategory:z.enum(['auto','first','second','none']).optional(),eisCategory:z.enum(['auto','none']).optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),
  epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
 }).strict();
-async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId:string){
+async function lockReviewedStatutoryPersonIdMYTx(tx:Tx,ctx:SessionContext,personId:string){
  if(!ctx.userId)throw new Error('Statutory review unavailable');
  await statutoryWriteIntervalMYTx(tx,ctx);
  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.is_admin() and app.can_see_person(${personId}::uuid) and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' as ok`);
  if(allowed?.ok!==true)throw new Error('Statutory review unavailable');
- const [subject]=await tx.select({id:person.id,nationality:person.nationality}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ const [subject]=await tx.select({id:person.id}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
  if(!subject)throw new Error('Statutory review unavailable');
- const [snapshot]=await tx.select({profile:employeeStatutoryMy,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('update',{noWait:true});
- return snapshot?{...snapshot,nationality:subject.nationality}:null;
+ return subject.id;
 }
-/** Nomination-only actual native profile ownership, no human/defaulted intent or pending gate. */
-export async function lockReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,personId:string){ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase(),snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,id);if(!snapshot)throw new NoStatutoryProfileError();return{personId:id,statutoryId:snapshot.profile.id};}
+async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ await lockReviewedStatutoryPersonIdMYTx(tx,ctx,personId);
+ const [subject]=await tx.select({nationality:person.nationality}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId)));
+ const [snapshot]=await tx.select({profile:employeeStatutoryMy,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('update',{noWait:true});
+ return snapshot?{...snapshot,nationality:subject?.nationality??null}:null;
+}
+/** Nomination-only actual native ownership; no preserved statutory columns are prefetched. */
+export async function lockReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,personId:string){ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase();await lockReviewedStatutoryPersonIdMYTx(tx,ctx,id);const [row]=await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,id),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('update',{noWait:true});if(!row)throw new NoStatutoryProfileError();return{personId:id,statutoryId:row.id};}
 /** Same stored pass-through as the actual Personnel statutory section, resolved under its
  * protected current-person/profile interval. No caller can post or clear these preserved values. */
 function composeReviewedStatutorySectionMY(input:z.infer<typeof reviewedStatutoryInputSchemaMY>,snapshot:NonNullable<Awaited<ReturnType<typeof lockReviewedStatutoryPersonMYTx>>>):StatutoryInput{
@@ -1479,7 +1484,7 @@ export async function confirmReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionConte
 export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;statutoryId:string;eventId:string}){
  ctx=captureStatutoryContext(ctx);
  const ref=z.object({personId:z.uuid().transform(id=>id.toLowerCase()),statutoryId:z.uuid().transform(id=>id.toLowerCase()),eventId:z.uuid().transform(id=>id.toLowerCase())}).strict().parse(structuredClone(p));
- const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,ref.personId);if(!snapshot||snapshot.profile.id!==ref.statutoryId)throw new Error('Statutory review unavailable');
+ const binding=await lockReviewedStatutoryProfileMYTx(tx,ctx,ref.personId);if(binding.statutoryId!==ref.statutoryId)throw new Error('Statutory review unavailable');
  const [event]=await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,personId:sql<string|null>`${domainEvent.payload}->>'personId'`}).from(domainEvent).where(and(eq(domainEvent.id,ref.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employee-statutory-my'),eq(domainEvent.aggregateId,ref.statutoryId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),sql`${domainEvent.eventType} in ('statutory.my.created','statutory.my.updated')`));
  if(!event||typeof event.personId!=='string'||event.personId.toLowerCase()!==ref.personId)throw new Error('Statutory review unavailable');
  return {...ref,eventType:event.eventType as 'statutory.my.updated'|'statutory.my.created',currentRecordPresent:true as const,proof:'historical_native_event_current_person_record' as const};
@@ -1491,3 +1496,9 @@ export function withStatutoryProfileWriteMY<T>(supplied:SessionContext,personId:
  const ctx=captureStatutoryContext(supplied),id=personId;
  return withTenant(ctx,async tx=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,id,{forUpdate:true});return work(tx,current);});
 }
+
+/** Current mutable section fields only, after actual native person/statutory ownership. */
+export async function readReviewedStatutoryEditableMYTx(tx:Tx,ctx:SessionContext,personId:string){ctx=captureStatutoryContext(ctx);const binding=await lockReviewedStatutoryProfileMYTx(tx,ctx,personId),[fields]=await tx.select({epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber,socsoCategory:employeeStatutoryMy.socsoCategory,eisCategory:employeeStatutoryMy.eisCategory,subjectToSkbbk:employeeStatutoryMy.subjectToSkbbk,employerBearsSocso:employeeStatutoryMy.employerBearsSocso,employerBearsEis:employeeStatutoryMy.employerBearsEis,employerBearsSkbbk:employeeStatutoryMy.employerBearsSkbbk,employerBearsEpf:employeeStatutoryMy.employerBearsEpf,epfCitizenship:employeeStatutoryMy.epfCitizenship,epfMode:employeeStatutoryMy.epfMode,epfEmployeeRate:employeeStatutoryMy.epfEmployeeRate,epfEmployerRate:employeeStatutoryMy.epfEmployerRate,epfEmployeeAmount:employeeStatutoryMy.epfEmployeeAmount,epfEmployerAmount:employeeStatutoryMy.epfEmployerAmount,epfManualReason:employeeStatutoryMy.epfManualReason}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.id,binding.statutoryId),eq(employeeStatutoryMy.tenantId,ctx.tenantId)));if(!fields)throw new NoStatutoryProfileError();return{...binding,fields};}
+/** Purpose-authorized labels only. Caller has checked granular fields for the complete company set. */
+export async function reviewedStatutoryChoiceMetadataMYTx(tx:Tx,ctx:SessionContext,supplied:readonly string[],limit=21){ctx=captureStatutoryContext(ctx);const companyIds=[...new Set(supplied.map(id=>z.uuid().parse(id).toLowerCase()))].sort();if(!companyIds.length)return[];if(companyIds.length>100||!Number.isInteger(limit)||limit<1||limit>21||!ctx.userId)throw new Error('Statutory choices unavailable');await statutoryWriteIntervalMYTx(tx,ctx);return tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyId:employment.companyId,companyName:company.legalName}).from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(employeeStatutoryMy,and(eq(employeeStatutoryMy.personId,employment.personId),eq(employeeStatutoryMy.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),inArray(employment.companyId,companyIds),eq(company.country,'MY'),sql`app.principal_snapshot_current() and app.is_admin() and app.can_see_person(${person.id}) and app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`)).orderBy(asc(employment.id)).limit(limit);}
+export async function readReviewedStatutoryLabelsMYTx(tx:Tx,ctx:SessionContext,employmentId:string,personId:string){ctx=captureStatutoryContext(ctx);await lockReviewedStatutoryProfileMYTx(tx,ctx,personId);const [row]=await tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:company.legalName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,employmentId),eq(person.id,personId),eq(employment.tenantId,ctx.tenantId),eq(company.country,'MY'),sql`app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`));if(!row)throw new Error('Statutory labels unavailable');return row;}

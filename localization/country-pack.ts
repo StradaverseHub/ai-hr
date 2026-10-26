@@ -388,7 +388,7 @@ export interface CountryPack {
     /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
     withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
-    reviewed?:{lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
+    reviewed?:{readEditable:MyStatutoryModule['readReviewedStatutoryEditableMYTx'];choices:MyStatutoryModule['reviewedStatutoryChoiceMetadataMYTx'];labels:MyStatutoryModule['readReviewedStatutoryLabelsMYTx'];lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];

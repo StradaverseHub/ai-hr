@@ -18036,6 +18036,101 @@
           "scheduled_not_before": "Theo lịch, không trước thời điểm cấu hình"
         },
         "company": "Công ty"
+      },
+      "countryStatutoryActions": {
+        "title": "Kiểm tra thay đổi EPF / SOCSO",
+        "description": "Chọn hồ sơ Nhân sự được phép, tự nhập thay đổi rồi kiểm tra trước khi lưu.",
+        "back": "Quay lại Assistant",
+        "intro": "Chọn hồ sơ Nhân sự để bắt đầu. Mở trang này không lưu thay đổi.",
+        "record": "Hồ sơ Nhân sự",
+        "choose": "Chọn hồ sơ",
+        "load": "Mở phần được chỉnh sửa",
+        "noChoices": "Không có hồ sơ phù hợp ở đây. Dùng Nhân sự cho thay đổi khác.",
+        "truncated": "Danh sách giới hạn 20 hồ sơ. Dùng Nhân sự để tìm hồ sơ khác.",
+        "choicesUnavailable": "Không thể dùng các hồ sơ ở đây. Bạn vẫn có thể khôi phục hoặc hủy bản kiểm tra riêng đã lưu bên dưới.",
+        "sectionScope": "Chỉ chỉnh sửa điều khiển EPF / SOCSO ở đây. Danh tính, thuế, ngân hàng, TP3 và Zakat vẫn thuộc trang riêng.",
+        "sharedScope": "Hồ sơ pháp định này thuộc về một người. Thay đổi có thể ảnh hưởng các quan hệ lao động khác của họ, kể cả công ty khác.",
+        "authorship": "Đây là thay đổi tôi chọn cho hồ sơ dùng chung của người này. Chuẩn bị kiểm tra, chưa lưu thay đổi.",
+        "prepare": "Kiểm tra thay đổi của tôi",
+        "reviewTitle": "Thay đổi đã kiểm tra",
+        "reviewNote": "Kiểm tra từng giá trị và ảnh hưởng dùng chung trước khi lưu.",
+        "canonicalNote": "Đây là các giá trị mà kiểm tra chuẩn của Nhân sự sẽ lưu.",
+        "preserved": "Danh tính, thuế, ngân hàng, TP3 và Zakat hiện có được giữ nguyên và không hiển thị ở đây.",
+        "confirmConsent": "Tôi đã kiểm tra thay đổi và hiểu ảnh hưởng đến hồ sơ pháp định dùng chung của người này giữa các quan hệ lao động và công ty.",
+        "confirm": "Lưu thay đổi đã kiểm tra",
+        "reopen": "Mở lại cùng bản kiểm tra",
+        "discard": "Hủy bản kiểm tra riêng",
+        "expires": "Bản kiểm tra hết hạn",
+        "expired": "Bản kiểm tra đã hết hạn. Mở bản mới trước khi lưu.",
+        "working": "Đang xử lý…",
+        "unavailable": "Hãy kiểm tra lại. Mở lại cùng bản kiểm tra hoặc dùng Nhân sự.",
+        "invalid": "Kiểm tra giá trị đã nhập trước khi chuẩn bị bản kiểm tra.",
+        "uncertainKnown": "Chưa xác nhận kết quả. Mở lại cùng bản kiểm tra, không gửi thay đổi khác.",
+        "uncertainUnknown": "Không xác nhận được kết quả. Tìm bản kiểm tra đã lưu trước khi bắt đầu lại.",
+        "saved": "Đã lưu hồ sơ pháp định",
+        "receiptMeaning": "Đã ghi nhận cập nhật EPF / SOCSO được kiểm tra. Lương chưa được tính lại, xử lý hoặc thanh toán.",
+        "historical": "Biên nhận xác nhận hành động đã ghi và hồ sơ hiện có thể truy cập, không khẳng định đây là giá trị mới nhất không đổi.",
+        "retired": "Đã đóng bản kiểm tra riêng",
+        "retiredMeaning": "Bản này không thể lưu thay đổi. Việc đóng không gửi cập nhật pháp định mới.",
+        "newReview": "Bắt đầu bản kiểm tra mới",
+        "find": "Tìm bản kiểm tra đã lưu",
+        "indexScope": "Danh sách chỉ có trạng thái và thời gian của bạn. Khi mở lại sẽ kiểm tra quyền hiện tại.",
+        "noReviews": "Không tìm thấy bản kiểm tra đã lưu.",
+        "openReview": "Mở bản kiểm tra đã lưu",
+        "manual": "Mở Nhân sự",
+        "none": "Chưa đặt",
+        "yes": "Có",
+        "no": "Không",
+        "fields": {
+          "epfNumber": "Số EPF",
+          "socsoNumber": "Số SOCSO / EIS",
+          "socsoCategory": "Nhóm SOCSO",
+          "eisCategory": "Nhóm EIS",
+          "subjectToSocso": "Thuộc diện SOCSO",
+          "eisEligible": "Thuộc diện EIS",
+          "subjectToSkbbk": "Thuộc diện SKBBK",
+          "employerBearsSocso": "Chủ sử dụng chịu SOCSO",
+          "employerBearsEis": "Chủ sử dụng chịu EIS",
+          "employerBearsSkbbk": "Chủ sử dụng chịu SKBBK",
+          "employerBearsEpf": "Chủ sử dụng chịu EPF",
+          "epfCitizenship": "Quốc tịch EPF",
+          "epfMode": "Chế độ đóng EPF",
+          "epfEmployeeRate": "Tỷ lệ EPF người lao động",
+          "epfEmployerRate": "Tỷ lệ EPF chủ sử dụng",
+          "epfEmployeeAmount": "Số tiền EPF người lao động",
+          "epfEmployerAmount": "Số tiền EPF chủ sử dụng",
+          "epfManualReason": "Lý do số tiền cố định"
+        },
+        "values": {
+          "epfMode": {
+            "auto": "Quy định pháp định",
+            "voluntary_excess": "Đóng thêm tự nguyện",
+            "exempt": "Miễn",
+            "manual_amount": "Số tiền cố định"
+          },
+          "epfCitizenship": {
+            "citizen": "Công dân Malaysia",
+            "pr": "Thường trú nhân",
+            "non_citizen": "Không phải công dân"
+          },
+          "socsoCategory": {
+            "auto": "Tự động",
+            "first": "Nhóm thứ nhất",
+            "second": "Nhóm thứ hai",
+            "none": "Không đóng"
+          },
+          "eisCategory": {
+            "auto": "Tự động",
+            "none": "Không đóng"
+          }
+        },
+        "states": {
+          "awaiting_confirmation": "Chờ xác nhận",
+          "completed": "Đã ghi nhận",
+          "discarded": "Đã hủy",
+          "expired": "Hết hạn",
+          "refused": "Không khả dụng"
+        }
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
