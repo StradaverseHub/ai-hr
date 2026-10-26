@@ -11,6 +11,9 @@ import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,parseLetterValue,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
 import {LETTER_CAPABILITIES,validateLetterPolicy,validateLetterTemplatePresentation,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
+import {assertLetterNotificationConnection} from './letter-notifications';
+import {readLetterAutomationSourcesTx,readRegisteredLetterAutomationSourceTx} from './letter-automation-sources';
+import {resolveEntitlementsTx} from './entitlements';
 import {letterStageEnteredAt} from './letter-stage-clock';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {PDFDocument} from 'pdf-lib';
@@ -263,11 +266,11 @@ async function snapshotLetter(tx:Tx,ctx:SessionContext,co:string,employmentId:st
  const sourceHash=hash(canonical({employmentId,companyId:co,templateVersionId:template.version.id,policyVersionId,referenceDate,values:sources.values,fields:template.fields}));
  return {...sources,document:rendered.document,sourceHash,contentHash:hash(canonical({document:rendered.document,sourceHash}))};
 }
-async function assertLetterChain(tx:Tx,co:string,policy:ReturnType<typeof validateLetterPolicy>,creator:string,confidential=false){
+async function assertLetterChain(tx:Tx,co:string,policy:ReturnType<typeof validateLetterPolicy>,creator:string,confidential=false,maintenance=false){
  for(const stage of policy.stages){
   let eligible=false;
   for(const userId of stage.userIds.filter(id=>id!==creator)){
-   const [row]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${userId}::uuid,${co}::uuid,${confidential}) as ok`);if(row?.ok)eligible=true;
+   const [row]=await tx.execute<{ok:boolean}>(maintenance?sql`select app.letter_approver_eligible_at(app.current_tenant_id(),${userId}::uuid,${co}::uuid,${confidential}) as ok`:sql`select app.letter_approver_eligible(${userId}::uuid,${co}::uuid,${confidential}) as ok`);if(row?.ok)eligible=true;
   }
   if(!eligible)throw new LetterWorkflowError('configuration','approver');
  }
@@ -278,11 +281,37 @@ async function nextReference(tx:Tx,ctx:SessionContext,format:string,co:string){
  await tx.update(letterCounter).set({nextValue:counter.nextValue+BigInt(1)}).where(and(eq(letterCounter.tenantId,ctx.tenantId),eq(letterCounter.year,year)));
  const [entity]=await tx.select({code:company.companyLabel}).from(company).where(eq(company.id,co));return letterReference(format,{year,companyCode:entity?.code??'',sequence:String(counter.nextValue)});
 }
-async function newLetterRevision(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,snapshot:Awaited<ReturnType<typeof snapshotLetter>>,custom:Record<string,LetterValue|null>){
+async function newLetterRevision(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,snapshot:Awaited<ReturnType<typeof snapshotLetter>>,custom:Record<string,LetterValue|null>,authorId=ctx.userId){
  const [last]=await tx.select({ordinal:letterRevision.ordinal}).from(letterRevision).where(eq(letterRevision.letterId,record.id)).orderBy(desc(letterRevision.ordinal)).limit(1);
- const [revision]=await tx.insert(letterRevision).values({tenantId:ctx.tenantId,letterId:record.id,ordinal:(last?.ordinal??0)+1,document:snapshot.document,values:snapshot.values,editableValues:custom,sourceHash:snapshot.sourceHash,contentHash:snapshot.contentHash,createdBy:ctx.userId!}).returning();
+ const [revision]=await tx.insert(letterRevision).values({tenantId:ctx.tenantId,letterId:record.id,ordinal:(last?.ordinal??0)+1,document:snapshot.document,values:snapshot.values,editableValues:custom,sourceHash:snapshot.sourceHash,contentHash:snapshot.contentHash,createdBy:authorId!}).returning();
  await tx.update(letterRecord).set({currentRevisionId:revision.id,state:'draft',stageIndex:0,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  await event(tx,ctx,record.id,'revision.created',{revisionId:revision.id,contentHash:revision.contentHash,sourceHash:revision.sourceHash});return revision;
+}
+/** The automatic path consumes one immutable, maintenance-registered intent. It
+ * reuses the manual snapshot/reference/revision owners and never adopts a human session. */
+export async function createAutomaticLetterDraftTx(tx:Tx,ctx:SessionContext,jobId:string){
+ if(ctx.userId)throw new LetterWorkflowError('permission');uuid(jobId);await assertLetterNotificationConnection(tx);
+ await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ const [locked]=await tx.select().from(letterJob).where(and(eq(letterJob.id,jobId),eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.kind,'eventDraft'))).for('update');if(!locked)throw new LetterWorkflowError('permission');
+ const registered=await readRegisteredLetterAutomationSourceTx(tx,ctx,jobId);if(!registered)throw new LetterWorkflowError('permission');const {job,rule,intent}=registered;
+ const [existing]=await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(eq(letterGenerationBatch.tenantId,ctx.tenantId),eq(letterGenerationBatch.operationKey,jobId),eq(letterGenerationBatch.createdBy,rule.createdBy)));if(existing)return {batchId:existing.id,alreadyCreated:true,cancelled:false};
+ if(!['queued','failed'].includes(job.status)||job.dueAt.getTime()>Date.now()||job.leaseUntil&&job.leaseUntil.getTime()>Date.now())return {batchId:null,alreadyCreated:false,cancelled:false};
+ const current=await readLetterAutomationSourcesTx(tx,ctx,rule.id,{employmentId:intent.employmentId,limit:1});
+ if(!registered.current||!current.rule||!current.rows.some(source=>source.sourceFingerprint===intent.sourceFingerprint&&source.sourceKey===intent.sourceKey)){await tx.update(letterJob).set({status:'cancelled',lastError:'sourceChanged',leaseToken:null,leaseUntil:null}).where(eq(letterJob.id,jobId));return {batchId:null,alreadyCreated:false,cancelled:true};}
+ const entitlements=await resolveEntitlementsTx(tx,ctx.tenantId),maintenance={...ctx,entitlements};assertModuleGate(maintenance,'employees');
+ const [version]=await tx.select({id:letterTemplateVersion.id}).from(letterTemplateVersion).where(and(eq(letterTemplateVersion.tenantId,ctx.tenantId),eq(letterTemplateVersion.templateId,rule.templateId),eq(letterTemplateVersion.status,'approved'),lte(letterTemplateVersion.effectiveFrom,todayInKualaLumpur()))).orderBy(desc(letterTemplateVersion.ordinal)).limit(1);if(!version)throw new LetterWorkflowError('configuration','activeTemplate');
+ const template=await generationTemplate(tx,rule.companyId,version.id,true,true),confidential=template.fields.some(field=>field.definition.sensitive);
+ const [authority]=await tx.execute<{ok:boolean}>(sql`select app.letter_automation_owner_eligible_at(${ctx.tenantId}::uuid,${rule.createdBy}::uuid,${rule.companyId}::uuid,${confidential}) as ok`);if(!authority?.ok)throw new LetterWorkflowError('permission');
+ const [configured]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.tenantId,ctx.tenantId),eq(letterPolicyVersion.companyId,rule.companyId),eq(letterPolicyVersion.category,template.version.category))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);if(!configured?.enabled)throw new LetterWorkflowError('configuration','policy');const policy=validateLetterPolicy(configured.policy);
+ if(template.version.presentation&&template.version.presentation.signatoryUserId!==policy.signatoryUserId)throw new LetterWorkflowError('configuration','templateSignatory');await assertLetterChain(tx,rule.companyId,policy,rule.createdBy,confidential,true);
+ await tx.update(letterJob).set({leaseToken:randomUUID(),leaseUntil:sql`now()+interval '2 minutes'`}).where(eq(letterJob.id,jobId));
+ const selection={employmentIds:[intent.employmentId],customValues:{[intent.employmentId]:rule.customValues},sourceAsOfDate:intent.sourceAsOfDate};
+ const [batch]=await tx.insert(letterGenerationBatch).values({id:intent.batchId,tenantId:ctx.tenantId,companyId:rule.companyId,templateVersionId:version.id,policyVersionId:configured.id,selection,inputHash:hash(canonical({ruleVersionId:rule.id,sourceFingerprint:intent.sourceFingerprint,templateVersionId:version.id,policyVersionId:configured.id,selection})),createdBy:rule.createdBy,operationKey:jobId,sourceEventId:job.sourceEventId}).returning();
+ const reference=await nextReference(tx,maintenance,policy.referenceFormat,rule.companyId),[record]=await tx.insert(letterRecord).values({tenantId:ctx.tenantId,companyId:rule.companyId,employmentId:intent.employmentId,batchId:batch.id,reference,createdBy:rule.createdBy,confidential,retainUntil:calendarDays(intent.sourceAsOfDate,policy.retentionDays)}).returning();
+ try{const snapshot=await snapshotLetter(tx,maintenance,rule.companyId,intent.employmentId,template,configured.id,rule.customValues,intent.sourceAsOfDate);await newLetterRevision(tx,maintenance,record,snapshot,rule.customValues,rule.createdBy);}catch(error){if(!(error instanceof LetterModelError)||!['missingField','invalid'].includes(error.code))throw error;await event(tx,ctx,record.id,'draft.validation-failed',{field:error.path,code:error.code});}
+ await event(tx,ctx,record.id,'automation.source-bound',{ruleVersionId:rule.id,jobId,sourceEventId:job.sourceEventId,sourceFingerprint:intent.sourceFingerprint,responsibleUserId:rule.createdBy});
+ await event(tx,ctx,batch.id,'automation.drafted',{companyId:rule.companyId,ruleVersionId:rule.id,jobId,letterId:record.id,sourceEventId:job.sourceEventId,sourceFingerprint:intent.sourceFingerprint,responsibleUserId:rule.createdBy});
+ await tx.update(letterJob).set({status:'completed',attempts:job.attempts+1,lastError:null,leaseToken:null,leaseUntil:null}).where(eq(letterJob.id,jobId));return {batchId:batch.id,alreadyCreated:false,cancelled:false};
 }
 export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:string;templateVersionId:string;employmentIds:string[];customValues?:Record<string,Record<string,LetterValue|null>>;operationKey:string;reissueOf?:string}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'generate');await permission(tx,input.companyId,'read');await lockCompany(tx,input.companyId);uuid(input.operationKey);

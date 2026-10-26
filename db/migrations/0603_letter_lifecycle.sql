@@ -257,14 +257,16 @@ CREATE TRIGGER letter_template_version_no_delete BEFORE DELETE ON letter_templat
 CREATE FUNCTION app.letter_bind_insert() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE row_data jsonb:=to_jsonb(NEW);co uuid;v public.letter_template_version;b public.letter_generation_batch;l public.letter_record;r public.letter_revision;p public.letter_policy_version;
- a public.letter_artifact;stage jsonb;delegate uuid;next_ordinal integer;
+ a public.letter_artifact;stage jsonb;delegate uuid;next_ordinal integer;automation boolean;
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Letter principal is unavailable' USING ERRCODE='insufficient_privilege'; END IF;
+ automation:=app.letter_automation_insert_allowed(TG_TABLE_NAME,row_data);
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT automation AND NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Letter principal is unavailable' USING ERRCODE='insufficient_privilege'; END IF;
+ IF TG_TABLE_NAME='letter_job' AND row_data->>'kind'='eventDraft' AND NOT automation THEN RAISE EXCEPTION 'Automatic draft intents require the maintenance connection' USING ERRCODE='insufficient_privilege';END IF;
  IF row_data ? 'company_id' THEN
   co:=(row_data->>'company_id')::uuid;
   IF NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=NEW.tenant_id AND c.archived_at IS NULL) THEN RAISE EXCEPTION 'Letter company identity mismatch';END IF;
  END IF;
- IF row_data ? 'created_by' AND (row_data->>'created_by')::uuid IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Letter actor identity mismatch';END IF;
+ IF NOT automation AND row_data ? 'created_by' AND (row_data->>'created_by')::uuid IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Letter actor identity mismatch';END IF;
  IF TG_TABLE_NAME='letter_asset' THEN
   IF NEW.owner_user_id IS DISTINCT FROM app.current_user_id() OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=NEW.owner_user_id AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL)
     OR encode(sha256(NEW.content),'hex')<>NEW.content_hash OR substring(NEW.content from 1 for 8)<>decode('89504e470d0a1a0a','hex')
@@ -386,6 +388,7 @@ CREATE FUNCTION app.letter_record_transition() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE b public.letter_generation_batch;p public.letter_policy_version;d public.letter_approval_decision;
 BEGIN
+ IF app.letter_automation_transition_allowed(to_jsonb(OLD),to_jsonb(NEW)) THEN RETURN NEW;END IF;
  IF NOT (app.letter_permission(OLD.company_id,'generate') OR app.letter_permission(OLD.company_id,'approve') OR app.letter_permission(OLD.company_id,'issue') OR app.letter_permission(OLD.company_id,'settings')) THEN RAISE EXCEPTION 'Letter write permission unavailable';END IF;
  NEW.submitted_at:=OLD.submitted_at;NEW.approved_at:=OLD.approved_at;NEW.issued_at:=OLD.issued_at;NEW.voided_at:=OLD.voided_at;
  IF (to_jsonb(NEW)-ARRAY['current_revision_id','state','stage_index','lock_version','legal_hold','retain_until','submitted_at','approved_at','issued_at','voided_at']) IS DISTINCT FROM
@@ -628,12 +631,18 @@ LANGUAGE sql STABLE AS $$
  SELECT app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_company)
 $$;
 --> statement-breakpoint
+CREATE FUNCTION app.letter_approver_eligible_at(wanted_tenant uuid,subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.letter_permission_for_user_at(wanted_tenant,subject,co,'read') AND app.letter_permission_for_user_at(wanted_tenant,subject,co,'approve')
+ AND (NOT confidential OR app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)) FROM public.role_assignment r WHERE r.tenant_id=wanted_tenant AND r.app_user_id=subject),co))
+$$;
+REVOKE ALL ON FUNCTION app.letter_approver_eligible_at(uuid,uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.letter_approver_eligible(subject uuid,co uuid,confidential boolean) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT app.principal_snapshot_current()
  AND (app.letter_permission(co,'generate') OR app.letter_permission(co,'approve') OR app.letter_permission(co,'settings') OR app.letter_permission(co,'template'))
- AND app.letter_permission_for_user(subject,co,'read') AND app.letter_permission_for_user(subject,co,'approve')
- AND (NOT confidential OR app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)) FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id() AND r.app_user_id=subject),co))
+ AND app.letter_approver_eligible_at(app.current_tenant_id(),subject,co,confidential)
 $$;
 REVOKE ALL ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) TO ai_hr_app;
@@ -1121,3 +1130,72 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
     AND (NOT c.supported OR app.access_allowed_for_tenant(wanted_tenant,subject,c.id,co)))
 $$;
 REVOKE ALL ON FUNCTION app.letter_automation_owner_eligible_at(uuid,uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Only the real storage owner with NO human principal can consume an explicitly
+-- configured and registered draft intent. Ordinary web roles cannot mint these jobs.
+CREATE FUNCTION app.letter_automation_insert_allowed(table_name text,row_data jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE j public.letter_job;rule public.letter_automation_rule_version;b public.letter_generation_batch;l public.letter_record;v public.letter_template_version;p public.letter_policy_version;subject uuid;
+BEGIN
+ IF app.current_user_id() IS NOT NULL OR NOT app.letter_notification_storage_owner() OR row_data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RETURN false;END IF;
+ IF table_name='letter_job' THEN
+  IF row_data->>'kind'<>'eventDraft' OR row_data->>'letter_id' IS NOT NULL OR row_data->>'status'<>'queued' OR (row_data->>'attempts')::integer<>0 OR row_data->>'lease_token' IS NOT NULL OR row_data->>'lease_until' IS NOT NULL THEN RETURN false;END IF;
+  SELECT * INTO rule FROM public.letter_automation_rule_version WHERE id=(row_data->'payload'->>'ruleVersionId')::uuid AND tenant_id=app.current_tenant_id();
+  subject:=(row_data->'payload'->>'employmentId')::uuid;
+  IF rule.id IS NULL OR row_data->>'company_id'<>rule.company_id::text OR row_data->>'recipient_user_id' IS DISTINCT FROM rule.created_by::text
+   OR row_data->'payload'->>'sourceFingerprint' !~ '^[0-9a-f]{64}$' OR row_data->'payload'->>'sourceAsOfDate' IS NULL OR row_data->'payload'->>'batchId' IS NULL
+   OR row_data->>'dedupe_key' IS DISTINCT FROM 'automation:'||rule.template_id::text||':'||rule.trigger||':'||subject::text||':'||(row_data->'payload'->>'sourceFingerprint')||':'||rule.id::text
+   OR row_data->>'source_event_id' IS DISTINCT FROM row_data->'payload'->>'sourceEventId'
+   OR (row_data->>'source_event_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=(row_data->>'source_event_id')::uuid AND event.tenant_id=rule.tenant_id AND event.subject_employment_id=subject AND event.sequence=(row_data->'payload'->>'sourceSequence')::bigint))
+   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=rule.tenant_id AND e.company_id=rule.company_id)
+  THEN RETURN false;END IF;
+ ELSE
+  IF table_name='letter_generation_batch' THEN SELECT * INTO j FROM public.letter_job WHERE id=(row_data->>'operation_key')::uuid;
+  ELSIF table_name='letter_record' THEN SELECT * INTO b FROM public.letter_generation_batch WHERE id=(row_data->>'batch_id')::uuid;SELECT * INTO j FROM public.letter_job WHERE id=b.operation_key;
+  ELSIF table_name='letter_revision' THEN SELECT * INTO l FROM public.letter_record WHERE id=(row_data->>'letter_id')::uuid;SELECT * INTO b FROM public.letter_generation_batch WHERE id=l.batch_id;SELECT * INTO j FROM public.letter_job WHERE id=b.operation_key;
+  ELSIF table_name='letter_counter' THEN
+   IF row_data->>'year'<>to_char(now() AT TIME ZONE 'Asia/Kuala_Lumpur','YYYY') OR (row_data->>'next_value')::bigint<>1 THEN RETURN false;END IF;
+   SELECT * INTO j FROM public.letter_job WHERE tenant_id=app.current_tenant_id() AND kind='eventDraft' AND status IN ('queued','failed') AND lease_token IS NOT NULL AND lease_until>now() ORDER BY created_at,id LIMIT 1;
+  ELSE RETURN false;END IF;
+  IF j.id IS NULL OR j.tenant_id<>app.current_tenant_id() OR j.kind<>'eventDraft' OR j.status NOT IN ('queued','failed') OR j.lease_token IS NULL OR j.lease_until<=now() THEN RETURN false;END IF;
+  SELECT * INTO rule FROM public.letter_automation_rule_version WHERE id=(j.payload->>'ruleVersionId')::uuid AND tenant_id=j.tenant_id AND company_id=j.company_id;subject:=(j.payload->>'employmentId')::uuid;
+  IF table_name='letter_generation_batch' THEN
+   SELECT * INTO v FROM public.letter_template_version WHERE id=(row_data->>'template_version_id')::uuid;SELECT * INTO p FROM public.letter_policy_version WHERE id=(row_data->>'policy_version_id')::uuid;
+   IF row_data->>'id' IS DISTINCT FROM j.payload->>'batchId' OR row_data->>'company_id' IS DISTINCT FROM rule.company_id::text OR row_data->>'created_by' IS DISTINCT FROM rule.created_by::text OR row_data->>'source_event_id' IS DISTINCT FROM j.source_event_id::text
+    OR row_data->'selection' IS DISTINCT FROM jsonb_build_object('employmentIds',jsonb_build_array(subject::text),'customValues',jsonb_build_object(subject::text,rule.custom_values),'sourceAsOfDate',j.payload->>'sourceAsOfDate')
+    OR v.template_id IS DISTINCT FROM rule.template_id OR p.id IS NULL OR EXISTS(SELECT 1 FROM public.letter_policy_version newer WHERE newer.tenant_id=p.tenant_id AND newer.company_id=p.company_id AND newer.category=p.category AND newer.ordinal>p.ordinal)
+   THEN RETURN false;END IF;
+  ELSIF table_name='letter_record' THEN
+   IF b.id::text IS DISTINCT FROM j.payload->>'batchId' OR row_data->>'company_id' IS DISTINCT FROM rule.company_id::text OR row_data->>'employment_id' IS DISTINCT FROM subject::text OR row_data->>'created_by' IS DISTINCT FROM rule.created_by::text OR row_data->>'original_letter_id' IS NOT NULL
+    OR (row_data->>'legal_hold')::boolean OR (row_data->>'retain_until')::date IS DISTINCT FROM (j.payload->>'sourceAsOfDate')::date+(SELECT (policy->>'retentionDays')::integer FROM public.letter_policy_version WHERE id=b.policy_version_id)
+    OR (row_data->>'confidential')::boolean IS DISTINCT FROM EXISTS(SELECT 1 FROM public.letter_template_field binding JOIN public.letter_merge_field_version field ON field.id=binding.field_version_id AND field.tenant_id=binding.tenant_id WHERE binding.template_version_id=b.template_version_id AND binding.tenant_id=b.tenant_id AND coalesce((field.definition->>'sensitive')::boolean,true))
+   THEN RETURN false;END IF;
+  ELSIF table_name='letter_revision' THEN
+   IF b.id::text IS DISTINCT FROM j.payload->>'batchId' OR l.employment_id IS DISTINCT FROM subject OR l.created_by IS DISTINCT FROM rule.created_by OR l.current_revision_id IS NOT NULL OR l.state<>'draft' OR (row_data->>'ordinal')::integer<>1 OR row_data->>'created_by' IS DISTINCT FROM rule.created_by::text THEN RETURN false;END IF;
+  END IF;
+ END IF;
+ RETURN coalesce(rule.enabled AND rule.tenant_id=app.current_tenant_id() AND app.letter_automation_owner_eligible_at(rule.tenant_id,rule.created_by,rule.company_id,rule.confidential)
+  AND NOT EXISTS(SELECT 1 FROM public.letter_automation_rule_version newer WHERE newer.tenant_id=rule.tenant_id AND newer.company_id=rule.company_id AND newer.template_id=rule.template_id AND newer.trigger=rule.trigger AND newer.ordinal>rule.ordinal),false);
+END $$;
+REVOKE ALL ON FUNCTION app.letter_automation_insert_allowed(text,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_automation_transition_allowed(old_row jsonb,new_row jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b public.letter_generation_batch;j public.letter_job;r public.letter_revision;
+BEGIN
+ IF app.current_user_id() IS NOT NULL OR NOT app.letter_notification_storage_owner() OR old_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR (new_row->>'lock_version')::integer<>(old_row->>'lock_version')::integer+1 THEN RETURN false;END IF;
+ SELECT * INTO b FROM public.letter_generation_batch WHERE id=(old_row->>'batch_id')::uuid AND tenant_id=app.current_tenant_id();SELECT * INTO j FROM public.letter_job WHERE id=b.operation_key AND tenant_id=b.tenant_id AND kind='eventDraft';
+ IF j.id IS NULL OR b.id::text IS DISTINCT FROM j.payload->>'batchId' OR old_row->>'employment_id' IS DISTINCT FROM j.payload->>'employmentId' OR j.lease_token IS NULL OR j.lease_until<=now() THEN RETURN false;END IF;
+ IF j.status='completed' AND j.last_error='sourceChanged' AND old_row->>'state' IN ('draft','submitted','approved','returned','rejected') AND new_row->>'state'='withdrawn' AND new_row->>'stage_index'='0'
+  AND new_row-ARRAY['state','stage_index','lock_version'] IS NOT DISTINCT FROM old_row-ARRAY['state','stage_index','lock_version'] THEN RETURN true;END IF;
+ IF old_row->>'state'<>'draft' OR old_row->>'current_revision_id' IS NOT NULL OR new_row->>'current_revision_id' IS NULL OR new_row-ARRAY['current_revision_id','lock_version'] IS DISTINCT FROM old_row-ARRAY['current_revision_id','lock_version'] THEN RETURN false;END IF;
+ SELECT * INTO r FROM public.letter_revision WHERE id=(new_row->>'current_revision_id')::uuid AND tenant_id=b.tenant_id AND letter_id=(old_row->>'id')::uuid AND ordinal=1 AND created_by=b.created_by;
+ RETURN r.id IS NOT NULL AND app.letter_automation_insert_allowed('letter_revision',to_jsonb(r));
+END $$;
+REVOKE ALL ON FUNCTION app.letter_automation_transition_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Cancelled, never-created intents may be replaced after configuration changes.
+-- A queued, failed or completed generation reserves its source across rule versions.
+CREATE UNIQUE INDEX letter_automation_source_once_uq ON letter_job(tenant_id,(regexp_replace(dedupe_key,':[0-9a-f-]{36}$','')))
+ WHERE kind='eventDraft' AND status IN ('queued','failed','completed');
