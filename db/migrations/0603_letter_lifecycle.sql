@@ -1413,3 +1413,24 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.letter_draft_created_notice_valid(wanted_tenant,to_jsonb(j)) FROM public.letter_job j WHERE j.id=wanted_job AND j.tenant_id=wanted_tenant),false)
 $$;
 REVOKE ALL ON FUNCTION app.letter_draft_created_job_current(uuid,uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Company deletion sees a retention boolean even when the HR actor cannot inspect individual letters.
+CREATE FUNCTION app.letter_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.company c
+ WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id() AND app.is_admin_for(c.id) AND (
+ EXISTS(SELECT 1 FROM public.letter_asset r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_automation_rule_version r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_capability_grant r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_generation_batch r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_job r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_merge_field_version r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_policy_version r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_record r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_template r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.letter_template_version r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)
+ OR  EXISTS(SELECT 1 FROM public.notification r WHERE r.company_id=c.id AND r.tenant_id=c.tenant_id)))
+$$;
+REVOKE ALL ON FUNCTION app.letter_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_company_in_use(uuid) TO ai_hr_app;

@@ -78,6 +78,18 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'letter_asset',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_automation_rule_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_capability_grant',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_generation_batch',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_job',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_merge_field_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_policy_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_record',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'notification',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
   { table: 'job_document_form', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Versioned authored form definitions retain their company and must not be erased by company setup deletion.' },
@@ -228,6 +240,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'payroll_history_import_record',column:'cycle_id',references:'payroll_cycle',effect:'blocks',note:'Imported payroll identities retain the exact configured cycle even after every effective value is retired.'},
   { table: 'employment_cost_allocation_row', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },

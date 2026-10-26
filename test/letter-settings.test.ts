@@ -6,6 +6,8 @@ import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
+import {companyDeleteStatus} from '../core/read';
+import {createCompany,deleteCompany} from '../core/admin';
 import {visibleModuleCodes} from '../lib/nav-entitlements';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -53,6 +55,16 @@ it('does not let an ordinary approver enumerate a different owner’s signatures
 
 it('reports entitlement resolution failures at the service boundary instead of silently hiding destinations',async()=>{
  await expect(letterNavigation({...ctx,entitlements:undefined,entitlementsExempt:undefined,entitlementsError:'fixture entitlement lookup failed'},[b.companyId])).rejects.toMatchObject({name:'EntitlementsResolutionFailedError'});
+});
+
+it('retains company-scoped Letters history through the deletion guard without disclosing it to an ordinary account',async()=>{
+ const company=await createCompany(ctx,{legalName:'Fictional retained Letters company',country:'MY',currency:'MYR'});
+ expect(await companyDeleteStatus(ctx,company.id)).toMatchObject({blockedBy:null});
+ await saveLetterPermission(ctx,{companyId:company.id,role:'hr_admin',capability:'read',allowed:false});
+ expect(await companyDeleteStatus(ctx,company.id)).toMatchObject({blockedBy:'other'});await expect(deleteCompany(ctx,{id:company.id})).rejects.toMatchObject({name:'CompanyInUseError',reason:'other'});
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional retention reader',primaryEmail:'retention-reader@fixture.test'}).returning();const userId=await createAppUser(b.tenantId,person.id,'employee');
+ const [limited]=await withTenant({...ctx,userId,personId:person.id,roles:['employee']},tx=>tx.execute<{used:boolean}>(sql`select app.letter_company_in_use(${company.id}::uuid) as used`));expect(limited.used).toBe(false);
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,company.id))).toHaveLength(1);
 });
 
 it('resolves real navigation permissions only in the selected company and immediately removes revoked access',async()=>{
