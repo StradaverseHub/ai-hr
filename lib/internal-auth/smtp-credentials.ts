@@ -23,7 +23,7 @@ export function assertFreshDeliveryRelay(relay:unknown,now=Date.now()):DeliveryE
 }
 export async function prepareSmtpRelay(input:EmailRelay,options:{fetch?:typeof fetch;now?:()=>number}={}):Promise<DeliveryEmailRelay> {
  const clock=options.now??Date.now;
- if('accessToken' in input)return assertFreshDeliveryRelay(input,clock());
+ if(input&&typeof input==='object'&&'accessToken' in input)return assertFreshDeliveryRelay(input,clock());
  const parsed=storedEmailRelay.safeParse(input);if(!parsed.success)throw new EmailSettingsError('invalid');
  const relay=parsed.data,c=relay.config;
  if(c.authentication!=='microsoft365')return c.auth?relay:{config:c};

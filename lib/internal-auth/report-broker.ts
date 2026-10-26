@@ -115,6 +115,7 @@ async function start(request:Extract<ReportBrokerRequest,{phase:'start'}>,d:Repo
    return {prepare:m.relay.relay,revision:m.relay.revision,secretDigest:reportProofDigest(m.relay.relay)};
   if(prepared&&(prepared.revision!==m.relay.revision||prepared.secretDigest!==reportProofDigest(m.relay.relay)))refuse();
   const delivery=prepared?assertFreshDeliveryRelay(prepared.relay,now()):m.relay.relay;
+  if(prepared&&reportProofDigest(delivery.config)!==reportProofDigest(m.relay.relay.config))refuse('unavailable');
   const [row]=await tx.unsafe('select app.internal_auth_report_start($1::uuid,$2::uuid,$3::text,($4::text)::jsonb,($5::text)::jsonb) value',
    [request.occurrenceId,request.leaseToken,origin,JSON.stringify(c),JSON.stringify(manifest.artifact)]);
   if(row?.value!=='started')refuse(row?.value==='busy'?'busy':row?.value==='notEligible'?'notEligible':'unavailable');

@@ -10,7 +10,10 @@ export function SavedEmailConnectionFields({config,allowMicrosoft365,hasSecret}:
  const [method,setMethod]=useState(config.authentication??String(config.auth));
  const [host,setHost]=useState(config.host),[port,setPort]=useState(config.port),[security,setSecurity]=useState(config.security);
  const [user,setUser]=useState(config.user),[from,setFrom]=useState(config.from);
+ const [tenantId,setTenantId]=useState(config.oauth2?.tenantId??''),[clientId,setClientId]=useState(config.oauth2?.clientId??'');
  const microsoft=method==='microsoft365';
+ const keepSecret=hasSecret&&method===(config.authentication??String(config.auth))&&host===config.host&&user===config.user
+  &&(!microsoft||(tenantId===config.oauth2?.tenantId&&clientId===config.oauth2?.clientId));
  return <>
   <Field label={t('authentication')}><select name="auth" className={inputCls} value={method} onChange={event=>{
    const next=event.target.value;setMethod(next);
@@ -26,13 +29,13 @@ export function SavedEmailConnectionFields({config,allowMicrosoft365,hasSecret}:
   <Field label={t('from')}><input name="from" placeholder="hr@example.com" type="email" required value={from} onChange={event=>setFrom(event.target.value)} maxLength={320} className={inputCls}/></Field>
   <Field label={t('fromName')}><input name="fromName" defaultValue={config.fromName} maxLength={160} className={inputCls}/></Field>
   <Field label={t('username')}><input name="user" autoComplete="off" value={user} onChange={event=>setUser(event.target.value)} required={method!=='false'} type={microsoft?'email':'text'} maxLength={320} className={inputCls}/></Field>
-  <Field label={t(microsoft?'clientSecret':'password')}><input key={method} name="password" type="password" autoComplete="new-password" maxLength={4096} className={inputCls}/></Field>
+  <Field label={t(microsoft?'clientSecret':'password')}><input key={method} name="password" type="password" autoComplete="new-password" required={method!=='false'&&!keepSecret} disabled={method==='false'} maxLength={4096} className={inputCls}/></Field>
   {microsoft&&<>
-   <Field label={t('tenantId')}><input name="tenantId" defaultValue={config.oauth2?.tenantId??''} required autoComplete="off" maxLength={36} className={inputCls}/></Field>
-   <Field label={t('clientId')}><input name="clientId" defaultValue={config.oauth2?.clientId??''} required autoComplete="off" maxLength={36} className={inputCls}/></Field>
+   <Field label={t('tenantId')}><input name="tenantId" value={tenantId} onChange={event=>setTenantId(event.target.value)} required autoComplete="off" maxLength={36} className={inputCls}/></Field>
+   <Field label={t('clientId')}><input name="clientId" value={clientId} onChange={event=>setClientId(event.target.value)} required autoComplete="off" maxLength={36} className={inputCls}/></Field>
    <p className="max-w-prose text-sm text-muted-foreground sm:col-span-2">{t('microsoft365Help')}</p>
   </>}
   <Field label={t('replyTo')} className="sm:col-span-2"><input name="replyTo" type="email" defaultValue={config.replyTo} maxLength={320} className={inputCls}/></Field>
-  <p className="text-sm text-muted-foreground sm:col-span-2">{t(microsoft?(hasSecret?'clientSecretKept':'clientSecretNeeded'):(hasSecret?'passwordKept':'passwordNeeded'))}</p>
+  {method!=='false'&&<p className="text-sm text-muted-foreground sm:col-span-2">{t(microsoft?(keepSecret?'clientSecretKept':'clientSecretNeeded'):(keepSecret?'passwordKept':'passwordNeeded'))}</p>}
  </>;
 }

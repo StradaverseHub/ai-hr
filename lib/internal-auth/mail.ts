@@ -6,11 +6,12 @@ import { authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
+import type {StoredEmailRelay} from '../identity/email-relay';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
-type Draft = Relay & { id: string; revision: string; testedAt: number | null };
-type MailState = { revision: string; active: Relay | null; drafts: Record<string, Draft> };
+type Draft = StoredEmailRelay & { id: string; revision: string; testedAt: number | null };
+type MailState = { revision: string; active: StoredEmailRelay | null; drafts: Record<string, Draft> };
 const STATE = INTERNAL_EMAIL_STATE_KEY;
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
 export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(client, STATE))?.active); }
@@ -49,7 +50,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
       if (request.op === 'test') {
         // An accepted test is not human receipt. Activation separately requires the explicit receipt checkbox.
         draft.testedAt = null;
-        try { await transport(draft, { to: identity.email!, subject: 'AI HR email delivery test', text: 'This verifies email delivery for your AI HR installation. Return to Admin → Email delivery and confirm receipt to activate it.' }); }
+        try { await transport({config:draft.config,password:draft.password}, { to: identity.email!, subject: 'AI HR email delivery test', text: 'This verifies email delivery for your AI HR installation. Return to Admin → Email delivery and confirm receipt to activate it.' }); }
         catch {
           await writeRecord(tx, STATE, state, null);
           await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.test-failed','user',$2::uuid,NULL)", [ctx.tenantId, ctx.userId!]);

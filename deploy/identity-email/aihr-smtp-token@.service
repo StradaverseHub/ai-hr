@@ -1,0 +1,24 @@
+[Unit]
+Description=One-attempt keyless Microsoft SMTP token helper
+[Service]
+DynamicUser=yes
+User=aihr-smtp-token
+Environment=SMTP_TOKEN_PEER_UID=@WEB_UID@
+ExecStart=/usr/bin/python3 -I /usr/local/lib/aihr-identity-email/smtp-token-peer.py
+StandardInput=socket
+StandardOutput=inherit
+StandardError=null
+Slice=aihrmanagedmail-dispatch.slice
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+InaccessiblePaths=/etc/aihr-internal-report -/var/lib/aihr-identity-email /var/lib/aihr-report-renderer -/etc/aihr-keycloak /opt/ai-hr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=32M
+TasksMax=4
+LimitNOFILE=32
+RuntimeMaxSec=14
+KillMode=control-group

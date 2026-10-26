@@ -57,7 +57,7 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
   <Card><SectionHeader title={t('connectionTitle')}/>{demoTest?<DemoSmtpForm>{connectionFields(true)}</DemoSmtpForm>:<form action={view?saveEmailDraft:undefined} className="p-5">
    <fieldset disabled={!view} aria-label={t('connectionTitle')} className="grid min-w-0 gap-4 sm:grid-cols-2">
    {view&&<input type="hidden" name="revision" value={view.revision}/>}
-   <SavedEmailConnectionFields config={config} allowMicrosoft365={internalSelected()} hasSecret={Boolean(view?.draft?.hasPassword||view?.active?.hasPassword)}/>
+   <SavedEmailConnectionFields key={view?.draft?.id??view?.revision??'preview'} config={config} allowMicrosoft365={internalSelected()} hasSecret={Boolean(view?.draft?.hasPassword||view?.active?.hasPassword)}/>
    {view&&<EmailSubmit type="submit" className="w-fit">{t('saveDraft')}</EmailSubmit>}
    </fieldset>
    <p className="mt-4 max-w-prose text-sm text-muted-foreground">{t('tlsHelp')}</p>
