@@ -1,5 +1,7 @@
 // Host-compiled model checks. No DeviceCheck call or real Keychain access occurs in this harness.
 import Foundation
+import Dispatch
+import Darwin
 
 private enum Synthetic: Error { case outage, unknown, storage, failure(String) }
 private final class MemoryPersistence: AppAttestProofPersistence {
@@ -25,7 +27,11 @@ private let proof = Data([1, 2, 3, 4])
 private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { return true }; return false }
 
 @main private struct ProofStoreHarness {
-  static func main() throws {
+  static func main() {
+    do { try run() }
+    catch { print("AppAttestProofStore harness failed: \(error)"); exit(1) }
+  }
+  static func run() throws {
     var checks = 0
     do {
       let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
@@ -136,6 +142,51 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
       try require(try store.snapshot(keyId: "sdk-0", hash: hash) == .completed(proof), "recovery frees uncommitted capacity")
       store.request(keyId: "sdk-fifth", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
       try require(calls == 5, "capacity recovers without evicting evidence"); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { $0(.success(proof)) }, completion: { _ in })
+      let account = memory.lastRead!, original = memory.records[account]!
+      memory.records[account] = Data("{\"version\":99}".utf8)
+      var result: Result<Data, Error>?, calls = 0
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
+      if case .storageUnavailable? = failure(result) {} else { throw Synthetic.failure("corrupt state cannot become an unused key") }
+      memory.records[account] = original
+      store.request(keyId: "sdk-B", hash: hash, retryable: retryable, vendor: { $0(.success(proof)) }, completion: { _ in })
+      let otherAccount = memory.lastRead!; memory.records[otherAccount] = original
+      store.request(keyId: "sdk-B", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
+      if case .storageUnavailable? = failure(result) {} else { throw Synthetic.failure("cross-key record transplant refused") }
+      try require(calls == 0, "corruption and transplant never reach vendor"); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(); memory.failAfterWrite = true
+      let store = AppAttestProofStore(persistence: memory); var calls = 0, result: Result<Data, Error>?
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
+      memory.failAfterWrite = false
+      try require(calls == 0 && result != nil, "ambiguous initial write prevents vendor call")
+      AppAttestProofStore(persistence: memory).request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
+      if case .recoveryRequired? = failure(result) {} else { throw Synthetic.failure("ambiguous durable intent is not silently restarted") }
+      try require(calls == 0, "restart does not guess whether SDK was called"); checks += 1
+    }
+    do {
+      final class Parallel: @unchecked Sendable {
+        let lock = NSLock()
+        var calls = 0, replies = 0
+        var callback: ((Result<Data, Error>) -> Void)?
+      }
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory), state = Parallel(), group = DispatchGroup()
+      for _ in 0..<8 {
+        group.enter(); DispatchQueue.global().async {
+          store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { complete in
+            state.lock.lock(); state.calls += 1; state.callback = complete; state.lock.unlock()
+          }, completion: { _ in state.lock.lock(); state.replies += 1; state.lock.unlock() })
+          group.leave()
+        }
+      }
+      try require(group.wait(timeout: .now() + 5) == .success, "parallel requests return")
+      try require(state.calls == 1 && state.replies == 7, "one active vendor call among concurrent callers")
+      state.callback?(.success(proof))
+      try require(state.replies == 8 && (try store.snapshot(keyId: "sdk-A", hash: hash)) == .completed(proof), "one durable concurrent outcome"); checks += 1
     }
     print("AppAttestProofStore: \(checks) host model scenarios passed; no vendor or OS Keychain acceptance claimed")
   }

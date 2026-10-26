@@ -21,6 +21,41 @@ function fixture(){
 }
 afterEach(()=>vi.useRealTimers());
 describe('native integrity evidence boundary',()=>{
+  it('recovers native proof state without retrying a one-use vendor operation or claiming verification',async()=>{
+    const f=fixture(),attestation=Buffer.from('retained artifact').toString('base64');
+    for(const state of [{state:'absent'},{state:'requested'},{state:'retryable'},{state:'completed',attestation}]){
+      f.native.appleAttestationInfo.mockResolvedValueOnce(state);
+      expect(await f.bridge.appleAttestationInfo('same-key',hash)).toEqual({status:'evidence',evidence:state,verification:'not_verified'});
+    }
+    expect(f.native.attestAppleKey).not.toHaveBeenCalled();expect(f.native.generateAppleKey).not.toHaveBeenCalled();
+    expect(f.native.appleAttestationInfo.mock.calls).toEqual(Array(4).fill(['same-key',hash]));
+  });
+  it('rejects malformed proof-cache records and noncanonical or oversized cached artifacts',async()=>{
+    const f=fixture();
+    for(const value of [{state:'verified'},{state:'completed',attestation:''},{state:'completed',attestation:'AB=='},
+      {state:'completed',attestation:Buffer.alloc(65537).toString('base64')},{state:'retryable',attestation:'AAAA'},
+      {state:'completed',attestation:'AAAA',verified:true}]){
+      f.native.appleAttestationInfo.mockResolvedValueOnce(value);
+      expect(await f.bridge.appleAttestationInfo('same-key',hash)).toEqual({status:'unavailable',reason:'malformed'});
+    }
+    expect(await f.bridge.appleAttestationInfo('key',hash+'\n')).toEqual({status:'invalid',reason:'invalid_input'});
+    expect(f.native.appleAttestationInfo).toHaveBeenCalledTimes(6);
+  });
+  it('keeps hash conflicts and uncertain one-use calls distinct without fallback or key replacement',async()=>{
+    const f=fixture();f.native.attestAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_BINDING_CONFLICT',message:'private'});
+    expect(await f.bridge.attestAppleKey('same-key',hash)).toEqual({status:'invalid',reason:'binding_conflict'});
+    f.native.attestAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_RECOVERY_REQUIRED',message:'private'});
+    expect(await f.bridge.attestAppleKey('same-key',hash)).toEqual({status:'unavailable',reason:'recovery_required'});
+    expect(f.native.generateAppleKey).not.toHaveBeenCalled();expect(f.native.appleAttestationInfo).not.toHaveBeenCalled();
+    const old={...f.native,appleAttestationInfo:undefined} as unknown as Parameters<typeof createIntegrityBridge>[0];
+    expect(await createIntegrityBridge(old,()=>{}).appleAttestationInfo('same-key',hash)).toEqual({status:'unsupported',reason:'method_missing'});
+  });
+  it('rejects a recovered artifact delivered after its authenticated owner changed',async()=>{
+    const f=fixture();let complete!:(value:unknown)=>void;
+    f.native.appleAttestationInfo.mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    const pending=f.bridge.appleAttestationInfo('same-key',hash);await Promise.resolve();f.changeAccount();complete({state:'completed',attestation:'AAAA'});
+    await expect(pending).rejects.toBeInstanceOf(SessionChangedError);
+  });
   it('keeps absent bridges unsupported instead of substituting a JavaScript signing key',async()=>{
     const bridge=createIntegrityBridge(null,()=>{});
     expect(bridge.capabilities()).toEqual({status:'unsupported',reason:'bridge_missing'});
