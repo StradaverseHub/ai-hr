@@ -5,6 +5,8 @@ CREATE TABLE payroll_history_import_attempt (
  source_name text NOT NULL CHECK(length(source_name) BETWEEN 1 AND 255), mime_type text NOT NULL,
  source_hash text NOT NULL CHECK(source_hash ~ '^[0-9a-f]{64}$'), source_content bytea NOT NULL CHECK(octet_length(source_content)<=10485760),
  company_ids uuid[] NOT NULL, plan jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK(source_hash=encode(sha256(source_content),'hex')),
+ CHECK((plan->>'sourceHash') IS NOT DISTINCT FROM source_hash),
  UNIQUE(tenant_id,created_by,operation_key)
 );
 CREATE INDEX payroll_history_attempt_created_idx ON payroll_history_import_attempt(tenant_id,created_at);
@@ -109,7 +111,15 @@ BEGIN
   JOIN public.payroll_batch b ON b.id=p.batch_id
   WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND p.tenant_id=r.tenant_id AND b.tenant_id=r.tenant_id
   AND p.employment_id=r.employment_id AND b.company_id=r.company_id AND b.pay_period=r.period
-  AND b.payroll_cycle_id=r.cycle_id AND b.history_import_attempt_id IS NOT NULL AND b.status='closed')
+  AND b.payroll_cycle_id=r.cycle_id AND b.history_import_attempt_id IS NOT NULL AND b.status='closed'
+  AND NEW."values"=jsonb_build_object('basicSalary',p.basic_salary::text,'allowance',p.allowance::text,
+   'overtimePay',p.overtime_pay::text,'bonus',p.bonus::text,'grossPay',p.gross_pay::text,'statutory',p.statutory,
+   'otherDeductions',p.other_deductions::text,'totalDeductions',p.total_deductions::text,'netPay',p.net_pay::text,'employerCost',p.employer_cost::text)
+  AND EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a, jsonb_array_elements(a.plan->'rows') planned
+   WHERE a.id=b.history_import_attempt_id AND a.tenant_id=r.tenant_id
+   AND planned->>'companyId'=r.company_id::text AND planned->>'employmentId'=r.employment_id::text
+   AND planned->>'period'=r.period AND planned->>'cycleId'=r.cycle_id::text
+   AND planned->>'operation' IN ('create','replace') AND planned->'values'=NEW."values" AND planned->>'valueHash'=NEW.value_hash))
  THEN RAISE EXCEPTION 'Payroll import snapshot identity mismatch'; END IF;
  RETURN NEW;
 END $$;

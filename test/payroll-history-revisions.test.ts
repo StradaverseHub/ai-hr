@@ -67,6 +67,16 @@ describe('immutable payroll history correction and recovery',()=>{
   await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/later correction/);
   expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
  });
+ it('binds immutable snapshot evidence to actual payroll money and its validated attempt',async()=>{
+  const first=await upload();await confirm(first);
+  const [source]=await owner.db.select().from(schema.payrollHistoryImportAttempt),[batch]=await owner.db.select().from(schema.payrollBatch),[slip]=await owner.db.select().from(schema.payslip),[evidence]=await owner.db.select().from(schema.payrollHistoryImportSnapshot);
+  await expect(owner.db.insert(schema.payrollHistoryImportAttempt).values({...source,id:randomUUID(),operationKey:randomUUID(),sourceContent:Buffer.from('different source')})).rejects.toMatchObject({cause:{code:'23514'}});
+  const [copyBatch]=await owner.db.insert(schema.payrollBatch).values({...batch,id:randomUUID(),runSeq:batch.runSeq+1}).returning();
+  const [copySlip]=await owner.db.insert(schema.payslip).values({...slip,id:randomUUID(),batchId:copyBatch.id}).returning();
+  await expect(owner.db.insert(schema.payrollHistoryImportSnapshot).values({...evidence,id:copySlip.id,values:{...evidence.values,grossPay:'1.00'}})).rejects.toMatchObject({cause:{message:expect.stringMatching(/snapshot identity mismatch/)}});
+  await expect(owner.db.insert(schema.payrollHistoryImportSnapshot).values({...evidence,id:copySlip.id,valueHash:'0'.repeat(64)})).rejects.toMatchObject({cause:{message:expect.stringMatching(/snapshot identity mismatch/)}});
+  expect(await owner.db.select().from(schema.payrollHistoryImportSnapshot)).toEqual([evidence]);
+ });
  it('serializes concurrent confirmations with the same expected revision',async()=>{
   const a=await upload(),b=await upload('6000.00');
   const outcomes=await Promise.allSettled([confirm(a),confirm(b)]);
