@@ -81,7 +81,7 @@ export default async function AssistantPage({
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
-      <ModuleQuestionPlanner view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
+      <ModuleQuestionPlanner permit={workspace.planningPermit} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
       {workspace.agentReview&&<HumanPlannerEvaluation candidates={workspace.agentReview.candidates}/>}
 
       <Card className="p-5">

@@ -644,22 +644,40 @@ export async function reopenOwnModulePlanTx(tx:Tx,ctx:SessionContext,id:string):
  if(row.state==='ready')return Object.freeze({state:'ready',proposalId:row.id,modules:captureTypedModulePlan(opened.proof.plan).modules,consumedJobId:row.consumed_job_id,expiresAt:row.expires_at});
  return Object.freeze({state:row.state,proposalId:row.id,expiresAt:row.expires_at});
 }
+/** Server-issued request identity. Issuance is read-only and consumes no model or job allowance.
+ * The browser receives only AEAD bytes; posted timestamps/nonces never authorize a new request.
+ */
+export async function issueOwnModulePlanPermitTx(tx:Tx,ctx:SessionContext,ttlSeconds=MODULE_PLAN_PROPOSAL_TTL_SECONDS):Promise<string>{
+ const current=capture(ctx);if(!Number.isSafeInteger(ttlSeconds)||ttlSeconds<1||ttlSeconds>MODULE_PLAN_PROPOSAL_TTL_SECONDS)return fail();const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);if(mode?.readonly!=='on')return fail();
+ const fresh=await guard(tx,current,false);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');
+ const [clock]=await tx.execute<{issued:string;expires:string}>(sql`select now()::text as issued,(now()+make_interval(secs=>${ttlSeconds}))::text as expires`);
+ return seal('human-plan-permit',current.tenantId,current.userId!,{version:1,tenantId:current.tenantId,userId:current.userId,nonce:randomUUID(),sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:PROMPT_ENGINE_DIGEST,policyDigest:PROMPT_POLICY_DIGEST,issuedAt:clock.issued,expiresAt:clock.expires});
+}
+function openPlanPermit(ctx:SessionContext,permit:string){
+ if(!ctx.userId||typeof permit!=='string'||permit.length>8192)return fail();const proof=open('human-plan-permit',ctx.tenantId,ctx.userId,permit);
+ if(!exact(proof,['version','tenantId','userId','nonce','sourceDigest','engineDigest','policyDigest','issuedAt','expiresAt'])||proof.version!==1||proof.tenantId!==ctx.tenantId||proof.userId!==ctx.userId||typeof proof.nonce!=='string'||!uuid(proof.nonce)||proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.engineDigest!==PROMPT_ENGINE_DIGEST||proof.policyDigest!==PROMPT_POLICY_DIGEST||typeof proof.issuedAt!=='string'||typeof proof.expiresAt!=='string')return fail();
+ const issued=Date.parse(proof.issuedAt),expires=Date.parse(proof.expiresAt);if(!Number.isFinite(issued)||!Number.isFinite(expires)||expires<=issued||expires-issued>MODULE_PLAN_PROPOSAL_TTL_SECONDS*1000)return fail();
+ return {nonce:proof.nonce,issuedAt:proof.issuedAt,expiresAt:proof.expiresAt};
+}
+async function currentPlanPermitTx(tx:Tx,permit:ReturnType<typeof openPlanPermit>){
+ const [clock]=await tx.execute<{valid:boolean}>(sql`select ${permit.issuedAt}::timestamptz<=clock_timestamp() and ${permit.expiresAt}::timestamptz>clock_timestamp() as valid`);if(clock?.valid!==true)return fail();
+}
 /** No question or provider text is persisted. Even request digests remain inside authenticated ciphertext. */
-export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{nonce:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}){
- const current=capture(ctx),nonce=input.nonce,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
- if(!exact(input,['nonce','question','locale','consent'])||!uuid(nonce)||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
- const questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();
+export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}){
+ const current=capture(ctx),token=input.permit,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
+ if(!exact(input,['permit','question','locale','consent'])||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
+ const permit=openPlanPermit(current,token),nonce=permit.nonce,questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();
  try{
   const prepared=await withTenant(current,async tx=>{
-   const fresh=await guard(tx,current,false);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);await proposalNonceTx(tx,current,nonce);
+   const fresh=await guard(tx,current,false);await currentPlanPermitTx(tx,permit);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);await proposalNonceTx(tx,current,nonce);
    const [existing]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
    if(existing){const prior=openProposal(existing,current);await currentPlanningBindingTx(tx,current,prior.binding);if(prior.proof.questionDigest!==questionDigest||prior.proof.locale!==locale||!Number.isSafeInteger(prior.proof.duplicateReplays)||Number(prior.proof.duplicateReplays)<0)return fail();await tx.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,existing.id,{...prior.proof,duplicateReplays:Number(prior.proof.duplicateReplays)+1})} where id=${existing.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);return {replayed:true as const,id:existing.id};}
    const [promotion]=await tx.execute<{id:string;candidate_id:string}>(sql`select p.id,p.candidate_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='read_plan_prompt_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
    if(!promotion)return {unavailable:true as const};
    const candidate=await candidateTx(tx,current,promotion.candidate_id),snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();const id=randomUUID();
    const bound=capturePlanningBinding({proposalId:id,candidateId:candidate.id,candidateDigest:candidate.candidate_digest,promotionId:promotion.id,providerFingerprint:snapshot.fingerprint,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:PROMPT_ENGINE_DIGEST,policyDigest:PROMPT_POLICY_DIGEST,suiteDigest:PROMPT_SUITE_DIGEST,humanSuiteDigest:HUMAN_PLAN_SUITE_DIGEST});
-   await currentPlanningBindingTx(tx,current,bound);
-   const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${MODULE_PLAN_PROPOSAL_TTL_SECONDS}))::text as expires`);
+   await currentPlanningBindingTx(tx,current,bound);await currentPlanPermitTx(tx,permit);
+   const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,${permit.expiresAt}::timestamptz::text as expires`);
    const proof={version:1,userId:current.userId,nonce,state:'reserved',questionDigest,locale,binding:bound,createdAt:clock.now,expiresAt:clock.expires,runId:null,tokens:null,cost:null,elapsedMs:null,outcome:'pending',duplicateReplays:0};
    await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
    await tx.execute(sql`insert into public.ai_agent_plan_proposal(id,tenant_id,user_id,request_nonce,promotion_id,state,receipt,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${nonce}::uuid,${promotion.id}::uuid,'reserved',${seal('human-plan',current.tenantId,id,proof)},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);
@@ -670,11 +688,11 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{nonce:s
   // Fresh provider configuration is issued only after durable reservation. No transaction spans network.
   const cfg=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const checked=await currentPlanningBindingTx(tx,current,prepared.bound);
    const admitted=withAiAdmissionCheck(governedAiConfig(checked.fresh,checked.snapshot,'module_agent_planning'),'module_agent_planning',async carrier=>{
-    await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||openProposal(row,current).proof.state!=='reserved')return fail();
+    await currentPlanPermitTx(carrier,permit);await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||openProposal(row,current).proof.state!=='reserved')return fail();
    });
    return withAiAdmissionLifecycle(admitted,'module_agent_planning',{
     admitted:async(carrier,event)=>{
-     await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);
+     await currentPlanPermitTx(carrier,permit);await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);
      const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
      if(!row||event.request.operation!=='draft'||event.request.inputDigest!==expectedInputDigest)return fail();const {proof}=openProposal(row,current);if(row.state!=='reserved'||proof.runId!==null)return fail();
      await carrier.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,row.id,{...proof,runId:event.runId})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
@@ -690,7 +708,7 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{nonce:s
   });
   let text:string|undefined;try{text=await generateDraft(cfg,outbound);}catch{/* Reserved request is terminally failed; it is never automatically sent again. */}
   let plan:ReturnType<typeof adjudicatePromptReadPlan>|undefined;try{if(text!==undefined)plan=adjudicatePromptReadPlan(text);}catch{/* Malformed prose never becomes a plan. */}
-  await withTenant(current,async tx=>{await currentPlanningBindingTx(tx,current,prepared.bound);await proposalNonceTx(tx,current,nonce);
+  await withTenant(current,async tx=>{await currentPlanPermitTx(tx,permit);await currentPlanningBindingTx(tx,current,prepared.bound);await proposalNonceTx(tx,current,nonce);
    const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||row.state!=='reserved')return fail();const {proof}=openProposal(row,current);
    const state=text===undefined||proof.settled!==true||typeof proof.runId!=='string'?'failed':plan?.decision==='read'?'ready':'refused';
    await tx.execute(sql`update public.ai_agent_plan_proposal set state=${state},receipt=${seal('human-plan',current.tenantId,row.id,{...proof,state,plan:state==='ready'?{version:1,modules:plan!.modules}:null,outputDigest:text===undefined?null:routingDigest(text),elapsedMs:Math.max(0,Date.now()-started),outcome:state})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
