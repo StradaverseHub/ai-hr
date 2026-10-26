@@ -18,6 +18,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {
   appUser,
   attendance,
@@ -441,6 +443,8 @@ export type ToilPolicyInput = {
  * of purchase. `assertAdminCtx` still applies, so this is admin-only, never employee-reachable.
  */
 export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
+  p = { ...p, requestEligibility: p.requestEligibility == null ? p.requestEligibility : structuredClone(p.requestEligibility) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   // Own message — the default one talks about running the sweeps, which is not what this refuses.
   if (!isAdminCtx(ctx))
     throw new ToilSweepForbiddenError('Only an HR administrator may change the replacement-leave settings.');
@@ -486,6 +490,8 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   // (NULL), and a criteria object that is all-empty lists cannot masquerade as a restriction.
   const requestEligibility = cleanReplacementEligibility(p.requestEligibility);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [row] = await tx
       .insert(toilPolicy)
       .values({

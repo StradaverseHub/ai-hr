@@ -1736,3 +1736,14 @@ The authored actual two-employee regression checks that behavior and release/ret
 idempotency and summary counts. It and all existing import consumers remain UNRUN.
 No compiler, database, application or release verification is claimed. Tenant/module
 facts and other nonparticipating owners still require complete fencing and proof.
+
+
+Replacement policy source participant (UNRUN): `setToilPolicy` captures scalar
+input/context and acquires Access then exclusive leave configuration ownership
+before its existing upsert, replacement-type creation and canonical event. Its
+existing admin/module/input gates remain. A real employee two-connection case
+requires unchanged policy/catalogue/events while the shared interval is held,
+then the canonical save after release. Authored, not executed. Accrual, reversal,
+consumption/restoration and settlement paths have their own credit/Attendance/
+Payroll lock order; they still need caller-level integration before earlier
+protected reads, rather than a late lock added only at the ledger insertion.

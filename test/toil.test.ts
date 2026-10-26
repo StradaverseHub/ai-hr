@@ -30,6 +30,9 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee } from '../core/org';
+import { withTenant } from '../db/client';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { setRestDay } from '../core/roster';
@@ -462,5 +465,36 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     );
     // The credit is still leave — the day was compensated once, in lieu.
     expect(await replacementBalance(employmentId)).toBe(1);
+  });
+});
+
+/** Authored policy/source interval regression. UNRUN pending coordinated local verification. */
+describe('replacement-leave policy configuration participant', () => {
+  it('keeps policy, catalogue and events unchanged while a real employee interval is held', async () => {
+    const ctx = await toilOnCtx();
+    const employee = await hireEmployee(ctx, { person: { fullName: 'Fictional Policy Interval', primaryEmail: uniqEmail() },
+      companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: todayInKualaLumpur() });
+    const state = async () => ({
+      policies: await owner.db.select().from(schema.toilPolicy).where(eq(schema.toilPolicy.tenantId, b.tenantId)).orderBy(schema.toilPolicy.id),
+      types: await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.tenantId, b.tenantId)).orderBy(schema.leaveType.id),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned policy handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employee.employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started;
+      await expect(setToilPolicy(ctx, policy(b.companyId))).rejects.toThrow('Leave source is unavailable');
+      expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await setToilPolicy(ctx, policy(b.companyId));
+    const after = await state();
+    expect(after.policies).toHaveLength(1); expect(after.policies[0].enabled).toBe(true);
+    expect(after.types.filter(type => type.code === 'REPLACEMENT')).toHaveLength(1);
+    expect(after.events.filter(event => event.eventType === 'toil-policy.updated')).toHaveLength(1);
   });
 });
