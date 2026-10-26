@@ -21,11 +21,12 @@ ALTER POLICY onehr_panel_read ON performance_onehr_panel USING(tenant_id=app.cur
 ALTER POLICY onehr_panel_update ON performance_onehr_panel USING(tenant_id=app.current_tenant_id() AND NOT EXISTS(SELECT 1 FROM employment sub WHERE sub.id=subject_employment_id AND app.is_self_person(sub.person_id)) AND (app.onehr_cycle_admin((SELECT cycle_id FROM performance_review WHERE id=review_id)) OR app.onehr_feedback_card(request_id) IS NOT NULL)) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.onehr_cycle_admin((SELECT cycle_id FROM performance_review WHERE id=review_id)) OR EXISTS(SELECT 1 FROM employment e JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=peer_employment_id AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))));
 --> statement-breakpoint
 -- Panel membership for the subject's live line manager only. Archived members are included because the
--- manager's assignment writer restores them; the service hides them from the manager's screen.
+-- manager's assignment writer restores them; the service hides them from the manager's screen, so their
+-- HR-entered archive reason is withheld here.
 CREATE FUNCTION app.onehr_manager_panel(wanted_review uuid)
 RETURNS TABLE(request_id uuid,peer_employment_id uuid,relationship text,submitted_at timestamptz,archived_at timestamptz,reset_at timestamptz,archive_reason text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT a.request_id,a.peer_employment_id,a.relationship,a.submitted_at,a.archived_at,a.reset_at,a.archive_reason
+ SELECT a.request_id,a.peer_employment_id,a.relationship,a.submitted_at,a.archived_at,a.reset_at,CASE WHEN a.archived_at IS NULL THEN a.archive_reason END
  FROM public.performance_onehr_panel a
  WHERE a.review_id=wanted_review AND a.tenant_id=app.current_tenant_id() AND app.onehr_manager(a.review_id)
   AND NOT EXISTS(SELECT 1 FROM public.employment sub WHERE sub.id=a.subject_employment_id AND sub.tenant_id=a.tenant_id AND app.is_self_person(sub.person_id))

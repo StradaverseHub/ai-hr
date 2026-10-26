@@ -99,6 +99,10 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
     const member=(await view(a)).peers.find(p=>p.employmentId===peers[1].employmentId)!;
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,member.requestId,'archive','HR fixture');
     expect((await ownedRows()).filter(r=>r.archivedAt).map(r=>r.peerEmploymentId).sort()).toEqual([peers[0].employmentId,peers[1].employmentId].sort());
+    // The manager's projection still lists the archived member for restoring, without HR's archive reason.
+    const archived=(await membership(mgr)).find(r=>r.peer_employment_id===peers[1].employmentId)!;
+    expect(archived.archived_at).not.toBeNull();expect(archived.archive_reason).toBeNull();
+    expect((await ownedRows()).find(r=>r.peerEmploymentId===peers[1].employmentId)!.archiveReason).toBe('HR fixture');
   });
 
   it('exposes panel membership and status to the line manager only, never answers or remarks',async()=>{
