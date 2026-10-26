@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
-import { withAttendanceTenant as withTenant } from './module-gate';
+import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
 import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
@@ -215,7 +215,8 @@ export async function setAttendanceWorkflowEnabled(ctx: SessionContext, companyI
     });
 }
 /** In the correction submission transaction. Old rows have no snapshot and always keep legacy routing. */
-export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType) {
+export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionContext,employmentId:string,applicationType:AttendanceApplicationType){
+    assertModuleGate(ctx,'attendance');
     const [subject] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     if (!subject)
         throw new AttendanceWorkflowError('scope', 'The employee is not visible.');
@@ -235,6 +236,11 @@ export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, 
     const selected = matches[0], validated = attendanceWorkflowConfiguration(selected);
     const resolved=validated.routingVersion===4?await resolveV4(tx,employmentId,validated.stages,validated.cc):{stages:await resolveStages(tx,employmentId,validated.stages,validated.routingVersion),cc:[]};
     const {stages,cc}=resolved;
+    return {subject,selected,validated,stages,cc};
+}
+export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType) {
+    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);if(!prepared)return null;
+    const {subject,selected,validated,stages,cc}=prepared;
     const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages, cc }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId, eventType: 'attendance-workflow.resolved', actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { workflowRequestId: snapshot.id, templateId: selected.id, templateVersion: selected.version, stages } });
     return snapshot;
