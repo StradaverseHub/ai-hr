@@ -44,6 +44,16 @@ beforeEach(async () => {
     leaveTypeId: base.annualLeaveTypeId, date: next.toISOString().slice(0, 10), durationType: 'full_day' };
 });
 
+/** seedBase inserts this exact group-wide role. Supply its explicit scope carrier and prove the
+ * real SQL principal before changing user allowances; an admin label alone is deliberately too weak. */
+async function groupCtx(): Promise<SessionContext> {
+  const actor: SessionContext = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+  const [proof] = await withTenant(actor, tx => tx.execute<{ allowed: boolean }>(sql`select
+    app.is_group_admin() and app.principal_snapshot_current() as allowed`));
+  expect(proof?.allowed).toBe(true);
+  return actor;
+}
+
 async function credit(employmentId: string) {
   await owner.db.insert(schema.leaveLedger).values({ tenantId: base.tenantId, employmentId,
     leaveTypeId: base.annualLeaveTypeId, entryType: 'accrual', days: '10', effectiveOn: todayInKualaLumpur() });
@@ -117,7 +127,7 @@ describe('pending own-leave review custody', () => {
 
   it('allows only retirement after a pause or removed Assistant grant, never another private read', async () => {
     const review = await prepare();
-    await setAiAllowance(adminCtx(base), { kind: 'user', subjectId: ctx.userId!, enabled: false,
+    await setAiAllowance(await groupCtx(), { kind: 'user', subjectId: ctx.userId!, enabled: false,
       dailyRequests: null, monthlyTokens: null });
     await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
     await expect(withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId))).rejects.toThrow();
@@ -127,7 +137,7 @@ describe('pending own-leave review custody', () => {
   });
 
   it('does not count deterministic prepare/reopen/discard against exhausted model quotas', async () => {
-    await setAiAllowance(adminCtx(base), { kind: 'user', subjectId: ctx.userId!, enabled: true,
+    await setAiAllowance(await groupCtx(), { kind: 'user', subjectId: ctx.userId!, enabled: true,
       dailyRequests: 0, monthlyTokens: 0 });
     const review = await prepare();
     await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId));
@@ -170,6 +180,7 @@ describe('pending own-leave review custody', () => {
     // Historical, already retired fixtures exhaust only the creation budget. No ciphertext or
     // pending row exists, so a refusal cannot accidentally pin only the outstanding-review cap.
     await owner.db.execute(sql`insert into app.assistant_own_leave_review
+      (id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at)
       select gen_random_uuid(),tenant_id,user_id,person_id,employment_id,company_id,NULL,
        NULL,'discarded',created_at,expires_at
       from app.assistant_own_leave_review cross join generate_series(1,19)
@@ -508,7 +519,7 @@ describe('own-leave top-level confirmation owner', () => {
   it.each(['grant', 'pause'] as const)('refuses fresh %s revocation before creating any submission', async mode => {
     const review = await prepare();
     if (mode === 'grant') await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
-    else await setAiAllowance(adminCtx(base), { kind: 'user', subjectId: ctx.userId!, enabled: false,
+    else await setAiAllowance(await groupCtx(), { kind: 'user', subjectId: ctx.userId!, enabled: false,
       dailyRequests: null, monthlyTokens: null });
     const before = await counts();
     await expect(confirmOwnLeaveReview(ctx, confirmation(review), 'en')).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);

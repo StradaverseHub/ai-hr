@@ -28,7 +28,7 @@ async function review(expired: boolean) {
       intent_digest,reviewed_digest,state,created_at,expires_at)
     values(${id}::uuid,${base.tenantId}::uuid,${base.adminUserId}::uuid,${employee.personId}::uuid,
       ${employee.employmentId}::uuid,${base.companyId}::uuid,${'a'.repeat(64)},${'b'.repeat(64)},
-      'awaiting_confirmation',${created},${expires}) returning id
+      'awaiting_confirmation',${created.toISOString()}::timestamptz,${expires.toISOString()}::timestamptz) returning id
   ) insert into app.assistant_own_leave_review_content(action_id,kid,wrapped_dek,ciphertext)
     select id,'0123456789abcdef','fictional-wrapped-bytes','fictional-encrypted-bytes' from inserted`);
   return id;
@@ -39,7 +39,7 @@ async function feedback(expired: boolean) {
     values(${exchange}::uuid,${base.tenantId}::uuid,${base.adminUserId}::uuid,'Fictional consent fixture')`);
   await owner.db.execute(sql`insert into public.ai_agent_feedback(id,tenant_id,user_id,exchange_id,outcome,consented,created_at,expires_at)
     values(${id}::uuid,${base.tenantId}::uuid,${base.adminUserId}::uuid,${exchange}::uuid,'incorrect',true,
-      now()-interval '29 days',${new Date(Date.now() + (expired ? -1000 : 60_000))})`);
+      now()-interval '29 days',${new Date(Date.now() + (expired ? -1000 : 60_000)).toISOString()}::timestamptz)`);
   return id;
 }
 const state = async () => ({
