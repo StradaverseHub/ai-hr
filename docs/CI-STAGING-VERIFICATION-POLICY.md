@@ -18,6 +18,8 @@ A dispatch concurrency choice of 4, 8, 16 or 20 (default 20) limits simultaneous
 
 Manual controller_only diagnostics require diagnostics_only=true and identical frozen candidate/controller. They execute dependency-free controller checks and reconstruct the entire tracked classifier manifest, without application dependencies/tests, compilers, databases or deployment. Their differently named diagnostic artifact and skipped required jobs cannot supply a release witness. Source grouping/runtime integration remains subject to a fresh complete normal validation.
 
+[Controller-only40273794715](https://github.com/StradaverseHub/ai-hr/actions/runs/40273794715), exact0cf72a1528fd8ede07f1d24a95958d7a7b8488c9, passed294 controller controls and reconstructed all1,957 tracked Node/DOM files without application dependencies. Independent API/archive review confirmed exactly16 DB units,4 no-DB units and3 browser engines, unchanged complete membership, the dataset digest and manifest fingerprint. This validates controller/source topology and the absence of application execution in this diagnostic; actual balanced matrix runtime and a complete current-policy release witness remain unproved.
+
 ## Operator route
 
 From the frozen candidate directory, using its installed toolchain:

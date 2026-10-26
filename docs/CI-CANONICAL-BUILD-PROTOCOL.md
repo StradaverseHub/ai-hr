@@ -26,7 +26,7 @@ The operator authenticates the repository/run/controller/job/artifact through Gi
 
 The source/record binding is asynchronous because it imports the actual candidate's typed helpers. Both operator verification calls await it. Use the installed candidate toolchain, for example node --import tsx .../.github/ci/operator-release.mjs verify CANDIDATE RUN_ID; plain Node20 cannot import these typed helpers.
 
-A resumable source assessment checks any present binary packet's provenance, bytes and producing job, but still requires a fresh build and supplies no additional reusable test unit. A failed or incomplete normal run remains failed/incomplete. Older policy witnesses cannot be relabelled version5.
+A resumable source assessment checks any present binary packet's provenance, bytes and producing job, but still requires a fresh build and supplies no additional reusable test unit. A failed or incomplete normal run remains failed/incomplete. Older policy witnesses cannot be relabelled as the current version.
 
 ## What remains before build-once deployment
 
