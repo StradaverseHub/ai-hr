@@ -2746,6 +2746,15 @@ export async function saveClaimDraft(ctx:SessionContext,p:ClaimDraftInput,attach
  * child INSERT still needs its existing FK key-share on the owned claim-type parent. All existing
  * child rows (including archived/future generations) are owned, so reactivation is not a phantom.
  * App-role acceptance and every dependency interleaving remain UNRUN before Assistant exposure. */
+async function lockReviewedClaimCatalogueTx(tx:Tx,ctx:SessionContext,p:{claimTypeId:string}){
+ const [type]=await tx.select({id:claimType.id,revision:sql<string>`xmin::text`}).from(claimType).where(and(eq(claimType.tenantId,ctx.tenantId),eq(claimType.id,p.claimTypeId))).limit(1).for('update',{noWait:true});
+ if(!type)throw new ClaimError('The own draft source is unavailable');
+ const policies=await tx.select({id:claimPolicy.id,revision:sql<string>`xmin::text`}).from(claimPolicy).where(and(eq(claimPolicy.tenantId,ctx.tenantId),eq(claimPolicy.claimTypeId,p.claimTypeId))).orderBy(claimPolicy.id).limit(501).for('share',{noWait:true});
+ const items=await tx.select({id:claimItem.id,revision:sql<string>`xmin::text`}).from(claimItem).where(and(eq(claimItem.tenantId,ctx.tenantId),eq(claimItem.claimTypeId,p.claimTypeId))).orderBy(claimItem.id).limit(501).for('share',{noWait:true});
+ const fields=await tx.select({id:claimFormField.id,revision:sql<string>`xmin::text`}).from(claimFormField).where(and(eq(claimFormField.tenantId,ctx.tenantId),eq(claimFormField.claimTypeId,p.claimTypeId))).orderBy(claimFormField.id).limit(501).for('share',{noWait:true});
+ if([policies,items,fields].some(rows=>rows.length>500))throw new ClaimError('The own draft source is unavailable');
+ return{type,policies,items,fields};
+}
 async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[]){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'claims');
@@ -2757,12 +2766,7 @@ async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDr
  // draft action must not acquire employment UPDATE ownership or gain Workforce write authority.
  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId,gradeId:employment.gradeId,revision:sql<string>`${employment}.xmin::text`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,fresh.personId))).limit(1);
  if(!subject||subject.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
- const [type]=await tx.select({id:claimType.id,revision:sql<string>`xmin::text`}).from(claimType).where(and(eq(claimType.tenantId,ctx.tenantId),eq(claimType.id,p.claimTypeId))).limit(1).for('update',{noWait:true});
- if(!type)throw new ClaimError('The own draft source is unavailable');
- const policies=await tx.select({id:claimPolicy.id,revision:sql<string>`xmin::text`}).from(claimPolicy).where(and(eq(claimPolicy.tenantId,ctx.tenantId),eq(claimPolicy.claimTypeId,p.claimTypeId))).orderBy(claimPolicy.id).limit(501).for('share',{noWait:true});
- const items=await tx.select({id:claimItem.id,revision:sql<string>`xmin::text`}).from(claimItem).where(and(eq(claimItem.tenantId,ctx.tenantId),eq(claimItem.claimTypeId,p.claimTypeId))).orderBy(claimItem.id).limit(501).for('share',{noWait:true});
- const fields=await tx.select({id:claimFormField.id,revision:sql<string>`xmin::text`}).from(claimFormField).where(and(eq(claimFormField.tenantId,ctx.tenantId),eq(claimFormField.claimTypeId,p.claimTypeId))).orderBy(claimFormField.id).limit(501).for('share',{noWait:true});
- if([policies,items,fields].some(rows=>rows.length>500))throw new ClaimError('The own draft source is unavailable');
+ const {type,policies,items,fields}=await lockReviewedClaimCatalogueTx(tx,ctx,p);
  let draft:{id:string;revision:string}|null=null,attachments:{id:string;revision:string}[]=[];
  if(p.id){
   const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id),eq(claimRequest.employmentId,p.employmentId))).limit(1).for('update',{noWait:true});
@@ -2857,6 +2861,36 @@ export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: stri
  * claim, and the batch is sorted by claim type first) so two employees' batches — or one employee's two
  * tabs — can never hold each other's next lock.
  */
+async function transitionClaimDraftSubmissionTx(tx:Tx,ctx:SessionContext,d:{id:string;employmentId:string;claimTypeId:string;incurredOn:string},priced:PricedClaim,reviewed=false){
+      // The transition IS the reservation, and it happens under the lock priceAndCheckClaimTx just took.
+      await tx
+        .update(claimRequest)
+        .set({
+          status: 'pending',
+          claimItemId: priced.claimItemId,
+          amount: priced.amount.toFixed(2),
+          quantityKm: priced.quantityKm == null ? null : priced.quantityKm.toFixed(2),
+          taxable: priced.taxable,
+          // e7eb5d83 — a draft is priced at SUBMIT, so the rate it is stamped with is the one live on the
+          // day it was filed, not the day it was drafted. Same column, same transition, same reservation.
+          mileageRateApplied: priced.mileageStamp,
+          fieldValues: priced.fieldValues,
+        })
+        .where(eq(claimRequest.id, d.id));
+      const submittedEventId=await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: d.id,
+        // The SAME event a fresh submit appends: downstream (notifications, approval history, the audit
+        // trail) must not have to learn that a claim can arrive by two different names.
+        eventType: 'claim-request.submitted',
+        actor: actorOf(ctx),
+        subjectEmploymentId: d.employmentId,
+        payload: { claimTypeId: d.claimTypeId, claimItemId: priced.claimItemId, incurredOn: d.incurredOn, taxable: priced.taxable, fromDraft: true },
+      },{returnId:reviewed});
+ return{submittedEventId};
+}
+
 export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[];employmentId?:string }): Promise<{ submitted: number }> {
   const ids = Array.from(new Set(p.ids.filter((s) => typeof s === 'string' && s.length > 0)));
   if (ids.length === 0) throw new ClaimError('Select at least one draft claim to submit');
@@ -2918,32 +2952,7 @@ export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[];
         // message the employee cannot act on.
         throw new ClaimError(`"${d.typeName}" (${d.incurredOn}) cannot be submitted: ${(e as Error).message}`);
       }
-      // The transition IS the reservation, and it happens under the lock priceAndCheckClaimTx just took.
-      await tx
-        .update(claimRequest)
-        .set({
-          status: 'pending',
-          claimItemId: priced.claimItemId,
-          amount: priced.amount.toFixed(2),
-          quantityKm: priced.quantityKm == null ? null : priced.quantityKm.toFixed(2),
-          taxable: priced.taxable,
-          // e7eb5d83 — a draft is priced at SUBMIT, so the rate it is stamped with is the one live on the
-          // day it was filed, not the day it was drafted. Same column, same transition, same reservation.
-          mileageRateApplied: priced.mileageStamp,
-          fieldValues: priced.fieldValues,
-        })
-        .where(eq(claimRequest.id, d.id));
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'claim-request',
-        aggregateId: d.id,
-        // The SAME event a fresh submit appends: downstream (notifications, approval history, the audit
-        // trail) must not have to learn that a claim can arrive by two different names.
-        eventType: 'claim-request.submitted',
-        actor: actorOf(ctx),
-        subjectEmploymentId: d.employmentId,
-        payload: { claimTypeId: d.claimTypeId, claimItemId: priced.claimItemId, incurredOn: d.incurredOn, taxable: priced.taxable, fromDraft: true },
-      });
+      await transitionClaimDraftSubmissionTx(tx,ctx,d,priced);
     }
     return { submitted: ordered.length };
   });
@@ -2956,6 +2965,46 @@ async function draftHasAttachment(tx: Tx, claimRequestId: string): Promise<boole
     .from(claimAttachment)
     .where(eq(claimAttachment.claimRequestId, claimRequestId));
   return Number(row?.n ?? 0) > 0;
+}
+
+/** Reviewed existing-draft submission only. New/direct/upload submissions remain native UI paths.
+ * Own subject is established before the native limit key; every subsequent optional row ownership
+ * is NOWAIT so a legacy row-first bulk command cannot form an inverse waiting cycle. */
+export type OwnClaimSubmissionSelection={employmentId:string;draftId:string;receiptIds:readonly string[]};
+async function prepareReviewedClaimSubmissionTx(tx:Tx,supplied:SessionContext,selection:OwnClaimSubmissionSelection){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={employmentId:selection.employmentId,draftId:selection.draftId,receiptIds:[...selection.receiptIds]};
+ await assertAiPrincipalTx(tx,ctx);const actor={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(actor,'claims');if(!actor.personId||!actor.userId||p.receiptIds.length>25||new Set(p.receiptIds).size!==p.receiptIds.length)throw new ClaimError('The own submission source is unavailable');
+ const [nomination]=await tx.select({employmentId:claimRequest.employmentId,claimTypeId:claimRequest.claimTypeId,companyId:employment.companyId,gradeId:employment.gradeId,subjectRevision:sql<string>`${employment}.xmin::text`}).from(claimRequest).innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId)))
+  .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.draftId),eq(claimRequest.employmentId,p.employmentId),eq(employment.personId,actor.personId))).limit(1);
+ if(!nomination)throw new ClaimError('The own submission source is unavailable');
+ const [admission]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${claimLimitLockKey(ctx.tenantId,nomination.employmentId,nomination.claimTypeId)},0)) as owned`);if(admission?.owned!==true)throw new ClaimError('The own submission source is busy');
+ const [d]=await tx.select({id:claimRequest.id,status:claimRequest.status,employmentId:claimRequest.employmentId,claimTypeId:claimRequest.claimTypeId,claimItemId:claimRequest.claimItemId,amount:claimRequest.amount,quantityKm:claimRequest.quantityKm,incurredOn:claimRequest.incurredOn,description:claimRequest.description,fieldValues:claimRequest.fieldValues,revision:sql<string>`${claimRequest}.xmin::text`}).from(claimRequest)
+  .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.draftId),eq(claimRequest.employmentId,p.employmentId),sql`exists(select 1 from public.employment e where e.id=${claimRequest.employmentId} and e.tenant_id=${claimRequest.tenantId} and e.person_id=${actor.personId}::uuid)`)).limit(1).for('update',{noWait:true});
+ if(!d||d.status!=='draft'||d.employmentId!==nomination.employmentId||d.claimTypeId!==nomination.claimTypeId)throw new ClaimError('The own submission source changed');await assertDraftOwner(tx,actor,d.employmentId);
+ const catalogue=await lockReviewedClaimCatalogueTx(tx,actor,d);
+ // Lock every generation, including future/archived rows. Existing row edits are protected directly;
+ // insertion of another generation needs the selected type's existing FK key-share, held exclusively.
+ const mileage=await tx.select({id:claimMileageRate.id,revision:sql<string>`xmin::text`}).from(claimMileageRate).where(and(eq(claimMileageRate.tenantId,ctx.tenantId),eq(claimMileageRate.claimTypeId,d.claimTypeId))).orderBy(claimMileageRate.id).limit(1001).for('share',{noWait:true});if(mileage.length>1000)throw new ClaimError('The own submission source is unavailable');
+ const receipts=await tx.select({id:claimAttachment.id,employmentId:claimAttachment.employmentId,fileName:claimAttachment.fileName,mimeType:claimAttachment.mimeType,sizeBytes:claimAttachment.sizeBytes,revision:sql<string>`xmin::text`}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,ctx.tenantId),eq(claimAttachment.claimRequestId,d.id))).orderBy(claimAttachment.id).limit(26).for('share',{noWait:true});
+ if(receipts.length>25||receipts.some(row=>row.employmentId!==p.employmentId)||JSON.stringify([...p.receiptIds].sort())!==JSON.stringify(receipts.map(row=>row.id)))throw new ClaimError('The own submission receipt source changed');
+ // Native submit/approve already owns the same limit key. A cancellation does not need that key,
+ // so protect the bounded current reserved rows too before reading any private limit facts.
+ const reserved=await tx.select({id:claimRequest.id,status:claimRequest.status,amount:claimRequest.amount,claimItemId:claimRequest.claimItemId,incurredOn:claimRequest.incurredOn,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.employmentId,p.employmentId),eq(claimRequest.claimTypeId,d.claimTypeId),inArray(claimRequest.status,[...RESERVING_STATUSES]))).orderBy(claimRequest.id).limit(5001).for('share',{noWait:true});if(reserved.length>5000)throw new ClaimError('The own submission source is unavailable');
+ const sourceDay=today(),hasReceipt=await draftHasAttachment(tx,d.id),priced=await priceAndCheckClaimTx(tx,actor,{employmentId:d.employmentId,claimTypeId:d.claimTypeId,claimItemId:d.claimItemId,amount:Number(d.amount),quantityKm:d.quantityKm==null?null:Number(d.quantityKm),incurredOn:d.incurredOn,description:d.description,hasReceipt,fieldValues:d.fieldValues??null,excludeId:d.id});if(sourceDay!==today())throw new ClaimError('The own submission source changed');
+ const review={employmentId:d.employmentId,draftId:d.id,claimTypeId:d.claimTypeId,claimItemId:priced.claimItemId,amount:priced.amount.toFixed(2),quantityKm:priced.quantityKm==null?null:priced.quantityKm.toFixed(2),taxable:priced.taxable,incurredOn:d.incurredOn,description:d.description,fieldValues:priced.fieldValues,receipts:receipts.map(({id,fileName,mimeType,sizeBytes})=>({id,fileName,mimeType,sizeBytes}))};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-claim-submission:v1',{tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId},p,nomination,d,catalogue,mileage,receipts,reserved,sourceDay,priced,review])).digest('hex');return{ctx:actor,d,priced,review:{...review,reviewedDigest}};
+}
+export async function prepareOwnClaimSubmissionReviewTx(tx:Tx,ctx:SessionContext,p:OwnClaimSubmissionSelection){return(await prepareReviewedClaimSubmissionTx(tx,ctx,p)).review;}
+/** Refusal-only reviewed digest, then the SAME native draft transition/event in this transaction. */
+export async function submitReviewedOwnClaimDraftTx(tx:Tx,ctx:SessionContext,p:OwnClaimSubmissionSelection,expectedReviewedDigest:string){
+ const expected=expectedReviewedDigest,prepared=await prepareReviewedClaimSubmissionTx(tx,ctx,p);if(!/^[a-f0-9]{64}$/.test(expected)||prepared.review.reviewedDigest!==expected)throw new ClaimError('The reviewed submission source changed');
+ const effect=await transitionClaimDraftSubmissionTx(tx,prepared.ctx,prepared.d,prepared.priced,true);if(!effect.submittedEventId)throw new ClaimError('The native submission event is unavailable');const reference=await readOwnClaimSubmissionReferenceTx(tx,prepared.ctx,prepared.d.id,effect.submittedEventId);if(!reference)throw new ClaimError('The native submission event is unavailable');return reference;
+}
+export async function readOwnClaimSubmissionReferenceTx(tx:Tx,supplied:SessionContext,claimId:string,submittedEventId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};await assertAiPrincipalTx(tx,ctx);assertModuleEnabled({...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},'claims');if(!ctx.personId||!ctx.userId)return null;
+ const [claim]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,claimTypeId:claimRequest.claimTypeId,claimItemId:claimRequest.claimItemId,incurredOn:claimRequest.incurredOn}).from(claimRequest).innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId))).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,claimId),eq(employment.personId,ctx.personId))).limit(1);if(!claim||claim.status==='draft')return null;
+ const [event]=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,submittedEventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'claim-request'),eq(domainEvent.aggregateId,claim.id),eq(domainEvent.eventType,'claim-request.submitted'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId),eq(domainEvent.subjectEmploymentId,claim.employmentId))).limit(1);
+ const payload=event?.payload as {fromDraft?:unknown;claimTypeId?:unknown;claimItemId?:unknown;incurredOn?:unknown}|null;if(!event||payload?.fromDraft!==true||payload.claimTypeId!==claim.claimTypeId||payload.claimItemId!==claim.claimItemId||payload.incurredOn!==claim.incurredOn)return null;return{claimId:claim.id,submittedEventId:event.id,employmentId:claim.employmentId,status:claim.status};
 }
 
 /** Receipt MIME allowlist (fail-closed): only PDF / JPG / PNG. The action sniffs magic bytes to derive a
