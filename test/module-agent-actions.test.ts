@@ -51,6 +51,7 @@ it('closes every declared canonical public boundary and source anchor against ac
 });
 
 it('rejects deliberately disabled legacy testing owners even when their export still exists and declares the versioned human-observation workflow',()=>{
+ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
  const row=MODULE_AGENT_ACTIONS.system_testing;
  expect(row.publicBoundary).toBe('core/system-testing-workspace.ts#saveTestingExecution');
  expect(row.source).toBe('core/system-testing-workspace.ts#ownTestingWorkStatusesTx');
