@@ -19,7 +19,7 @@ it('keeps employee selection in the scoped Workforce owner and returns no privat
  mocks.employees.mockResolvedValue({rows:[{employmentId:id,name:'Fictional employee',employeeCode:'0007',email:'PRIVATE CONTACT'}],nextCursor:id});const response=await GET(request('employee','&q=0007&branch=North&hiredFrom=2025-01-01&hiredTo=2025-12-31'));expect(await response.json()).toEqual({rows:[{id,label:'Fictional employee · 0007'}],nextCursor:id});expect(mocks.employees).toHaveBeenCalledExactlyOnceWith(ctx,{companyId,search:'0007',cursor:undefined,limit:25,departmentId:undefined,departmentSearch:undefined,branch:'North',hiredFrom:'2025-01-01',hiredTo:'2025-12-31'});
 });
 it('refuses malformed identities and closed kinds before reaching any owner',async()=>{
- for(const value of [request('signature'),request('field','&after=invalid%20field'),request('signatory','&after=employeeName'),new Request('https://fixture.test/letters/templates/options?companyId=foreign&kind=field')])expect((await GET(value)).status).toBe(400);expect(mocks.fields).not.toHaveBeenCalled();expect(mocks.heads).not.toHaveBeenCalled();expect(mocks.signers).not.toHaveBeenCalled();
+ for(const value of [request('signature-bytes'),request('field','&after=invalid%20field'),request('signatory','&after=employeeName'),new Request('https://fixture.test/letters/templates/options?companyId=foreign&kind=field')])expect((await GET(value)).status).toBe(400);expect(mocks.fields).not.toHaveBeenCalled();expect(mocks.heads).not.toHaveBeenCalled();expect(mocks.signers).not.toHaveBeenCalled();
 });
 it('keeps permission and expired-session failures private',async()=>{
  mocks.session.mockRejectedValue(new AuthRequiredError());expect((await GET(request())).status).toBe(401);mocks.session.mockResolvedValue(ctx);
