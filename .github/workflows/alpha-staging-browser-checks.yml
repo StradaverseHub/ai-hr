@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite]
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
+      base: ${{ steps.candidate.outputs.base }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
@@ -127,7 +128,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   browser-image:
-    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' }}
+    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'browser-image-suite' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -139,6 +140,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
       ENGINE: ${{ matrix.engine }}
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     strategy:
@@ -149,7 +151,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with: {version: 10.33.2}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -166,8 +168,20 @@ jobs:
           sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/browser-image/lockfile-sha256.txt"
           node -e 'const assert=require("node:assert/strict"),fs=require("node:fs");const version=require("playwright/package.json").version;assert.equal(version,"1.62.1");fs.writeFileSync(process.env.RUNNER_TEMP+"/browser-image/image-binding.json",JSON.stringify({kind:"PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS",image:"mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e",playwrightVersion:version,nodeVersion:process.versions.node,candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,releaseAuthorized:false},null,2))'
       - name: Native browser launch and multilingual raster with preinstalled dependencies
+        if: ${{ inputs.probe_scope != 'browser-image-suite' }}
         run: node ../automation/.github/ci/browser-tooling-probe.mjs "$ENGINE" "$RUNNER_TEMP/browser-image"
         env: {HOME: /root}
+      - name: Complete original browser unit in pinned image
+        if: ${{ inputs.probe_scope == 'browser-image-suite' }}
+        run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
+        env: {HOME: /root}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.probe_scope == 'browser-image-suite' }}
+        with:
+          name: diagnostic-complete-image-browser-${{ matrix.engine }}
+          path: ${{ runner.temp }}/aihr-ci/
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain container package and filesystem facts
         if: always()
         run: |

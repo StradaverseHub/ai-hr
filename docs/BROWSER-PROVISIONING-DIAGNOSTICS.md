@@ -97,3 +97,12 @@ Only the native launch step receives that corrected home; no browser sandbox fla
 user-namespace guard is disabled. `probe_scope=browser-image-firefox` reruns only that failed
 engine. The original failure and two passing engine records remain intact. Queue time is retained
 in the end-to-end evidence, and no sub-ten-minute claim follows from fast container initialization.
+
+Firefox-only follow-up40336625875 succeeded on the same digest/version with the corrected owned
+home. The original Chromium/WebKit outcomes are retained at9c632b90a; Firefox's repaired origin
+is separate. `probe_scope=browser-image-suite` now executes the complete original canonical
+browser unit in each of the three engines, with every original file/assertion and two-worker
+policy. It uses the actual `run-unit.mjs` manifest reconstruction, closed database endpoints,
+original disk headroom guard and before/after health records. No APT install, test removal,
+time-budget exclusion or release receipt is introduced. Raw full-browser reports use diagnostic
+artifact names and cannot substitute for a trusted complete normal staging witness.
