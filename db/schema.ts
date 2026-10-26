@@ -30,7 +30,7 @@ import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/at
 import {
   pgTable,
   pgView,
-  alias,
+  QueryBuilder,
   foreignKey,
   pgEnum,
   uuid,
@@ -10894,8 +10894,11 @@ export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
  changes:jsonb('changes').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionChange[]>(),detail:jsonb('detail').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_history_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('payroll_history_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
 /** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
-export const payrollHistoryEffectiveBatch=alias(pgView('payroll_history_effective_batch').as(qb=>qb.select({
+const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),
  totals:sql<unknown>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.totals} ELSE app.payroll_history_batch_totals(${payrollBatch.id}) END`.as('totals'),
  employeeCount:sql<number>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.employeeCount} ELSE (app.payroll_history_batch_totals(${payrollBatch.id})->>'employeeCount')::integer END`.as('employee_count'),
-}).from(payrollBatch)),'payroll_batch');
+}).from(payrollBatch));
+// Alias a subquery, rather than the view: Drizzle emits an aliased view's name alone in FROM,
+// which would resolve to the physical payroll_batch table and bypass the effective projection.
+export const payrollHistoryEffectiveBatch=new QueryBuilder().select().from(payrollHistoryBatchView).as('payroll_batch');

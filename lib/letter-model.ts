@@ -73,7 +73,7 @@ export function validateLetterDocument(input:unknown,fields:readonly LetterField
  if(!result.success)throw new LetterModelError('invalid','document');
  const definitions=new Map(fields.map(field=>[field.key,field]));
  function condition(test:LetterCondition){
-  if(test.type==='all'||test.type==='any'){test.conditions.forEach(condition);return;}if(test.type==='not'){condition(test.condition);return;}
+  if('conditions' in test){test.conditions.forEach(condition);return;}if(test.type==='not'){condition(test.condition);return;}
   const field=definitions.get(test.field);if(!field)throw new LetterModelError('unknownField',test.field);
   if(test.type==='present')return;
   if(field.kind!==test.value.kind||test.type==='after'&&field.kind!=='date'||test.type==='greater'&&field.kind!=='currency')throw new LetterModelError('invalid',test.field);
@@ -101,7 +101,7 @@ export function renderLetterDocument(input:unknown,fieldInput:unknown,values:Rea
  function cents(value:string){const negative=value.startsWith('-'),[whole,fraction='']=value.replace(/^-/, '').split('.');const amount=BigInt(whole+fraction.padEnd(3,'0'));return negative?-amount:amount;}
  function condition(test:LetterCondition):boolean{
   // Evaluate every operand: a true/false sibling cannot hide a forbidden or missing source.
-  if(test.type==='all'||test.type==='any'){const answers=test.conditions.map(condition);return test.type==='all'?answers.every(Boolean):answers.some(Boolean);}if(test.type==='not')return !condition(test.condition);
+  if('conditions' in test){const answers=test.conditions.map(condition);return test.type==='all'?answers.every(Boolean):answers.some(Boolean);}if(test.type==='not')return !condition(test.condition);
   const value=read(test.field,test.type!=='present');if(test.type==='present')return value!==null;if(!value)return false;
   if(value.kind!==test.value.kind)throw new LetterModelError('invalid',test.field);
   if(value.kind==='currency'&&test.value.kind==='currency'){
