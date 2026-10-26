@@ -60,10 +60,20 @@ Artifact12626007913 is3273bytes, ZIP SHA256c6154894449515f490c10cf78185fd0de93b7
 
 No installer stage/activate/confirm-runtime command ran on staging. Operator grant transfer, actual recipient native verification, migration/source arrival and owned cleanup remain unverified. Private Linux fixture success does not certify the complete deployment spine.
 
-## Operator integration prepared; hosted verification pending
+## Operator integration prepared; private hosted fixtures verified
 
 The CI operator now selects the original authenticated packet/build-record UUID, creates a separate installation attempt, revalidates the exact ready baseline, announces source pending, uses the same private alias/config for source and packet rsync, initializes the private server grant and launches the actual candidate helper with both identifiers. Its second baseline check requires its own expected pending state and unchanged original build bytes. A legacy helper ignoring the new installation argument refuses before launch.
 
 After the deploy spine reports success, the operator requires the original CI BUILD_ID, a zero-line checksum rsync of the canonical source filter, and a fresh installer status bound to source/install/build UUID, post-activation service PID, health200 and the complete ordered migration ledger. Ledger checking uses a bounded explicit read-only repeatable snapshot and the installed Drizzle hash semantics. It preserves historical journal array order; it does not sort timestamps or invent sequential indices. The existing journal has496entries and is not strictly ordered by timestamp/index, so those assumptions would be incorrect.
 
 This integration has not run against staging. The next private hosted checks cover refused transfers, immutable origin, pending-state lineage, ledger tampering, real rsync protocol and the actual candidate detached launcher. No application build or database is run. Old-build cleanup, final owner handback, complete current normal CI and representative end-to-end release proof remain required; the operator explicitly returns ownedResourceCleanupVerified=false and releaseHandbackVerified=false.
+
+## Hosted operator integration fixtures verified — 26 October 2026 MYT
+
+[Run40266467001](https://github.com/StradaverseHub/ai-hr/actions/runs/40266467001) passed on exact source/controller0e81a64bc0b69dc954c28bb0f44e0855abee7680, first attempt. Independent authenticated API/ZIP review confirmed only job121389862266 executed; all application/compiler/database/build diagnostics were skipped. The private test set passed73cases with0failures/0skips:12promotion/ledger,8real official-helper/rsync,11installer,28bundle,5transport and9kernel cases. Six actual Linux directory exchanges ran.
+
+Artifact12626493069 is4889bytes, ZIP SHA2568a2fb7188364d00f99e14f3cdd3f431c69fc29b390cf0ec8c44ed0b07c5d20fb, exactly seven expected evidence files. The job occupied28seconds, including remote dependency installation; workflow created-to-updated was32seconds. These figures describe private controller fixtures, not a full application gate, live ledger query, deployed artifact or under600second release. Originals are retained in scratchpad/staging-operator-20261026/.
+
+The same pure installer/promotion/ledger tests and actual candidate launcher are now registered in the normal controller workflow. This registration is source wiring; the complete normal workflow has not yet executed these changes. The tested code remains pinned to0e; subsequent wiring/documentation is not relabelled as a new execution.
+
+Before staging execution, finish owned old-build/packet cleanup and final health/handback. Review the environment boundary: the current grant hashes .env.production and refuses compile-affecting keys in all four Next dotenv files, but it does not yet fingerprint every other dotenv file and systemd environment source. That broader environment binding remains required before adopting the installer. No staging mutation was run.
