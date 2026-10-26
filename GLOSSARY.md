@@ -1,6 +1,6 @@
 # AIHR Personnel
 
-Personnel distinguishes a person from each employment they hold. These terms describe deliberate
+Personnel distinguishes a person from each employment they hold. These terms distinguish identity, access and deliberate
 HR classification of an employment.
 
 ## Language

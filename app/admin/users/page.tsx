@@ -5,17 +5,19 @@ import { listManualIdentityEnrollments } from '@/core/manual-identity';
 import { manualIdentityErrorCodes } from '@/lib/identity/manual-model';
 import { ManualAccountSetup } from './manual-setup';
 import { AccountTargetFields } from './account-target-fields';
+import { UsersDirectory } from './users-directory';
+import type { UserDirectoryRow } from './directory-model';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
 import { listAssistantGrants } from '@/core/assistant-grant';
 import { listPendingInvitations } from '@/core/auth';
 import { adminCompanies, listCompanies, listEmployees } from '@/core/read';
-import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { FunctionAccessGrid } from '@/components/function-access-grid';
 import Link from 'next/link';
 import { type Role, type ScreenEntry } from '@/lib/permissions';
-import { archiveUserAction, assignRoleAction, inviteUserAction, revokeInvitationAction, revokeRoleAction, setAssistantGrantAction } from '../actions';
+import { inviteUserAction } from '../actions';
 
 const ROLES = [
   'employee',
@@ -25,36 +27,6 @@ const ROLES = [
   'payroll_partner',
   'performance_comp_partner',
 ] as const;
-
-// Roles that carry a company scope (ADR-0049) — hr_admin + the two job-function partners. These
-// render the company-scope chip on a grant and may be scoped via the company <select>.
-const SCOPABLE_ROLES = new Set<string>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
-
-/** Login rows and activation candidates use stable IDs. An email never establishes identity. */
-type Row = {
-  key: string;
-  status: 'active' | 'invited' | 'archived' | 'preparing' | 'pending';
-  personId: string | null;
-  name: string | null;
-  email: string | null;
-  /** app_user id — null while activation has not created a login. */
-  appUserId: string | null;
-  /** Short form of the WorkOS id, shown when no person is linked. */
-  workosUserId: string | null;
-  roles: {
-    id: string;
-    role: string;
-    companyId: string | null;
-    company: string | null;
-  }[];
-  /** Invitation id — set only on an invited row, so Revoke targets it. */
-  invitationId: string | null;
-  invitedRole: string | null;
-  invitedCompanyId: string | null;
-  /** Manually archived ⇒ Restore is offered. Blocked by termination ⇒ it is not (clear the dates). */
-  manuallyArchived: boolean;
-  hasEmployment?: boolean;
-};
 
 export default async function UsersPage({
   searchParams,
@@ -88,8 +60,7 @@ export default async function UsersPage({
     groupAdmin ? listEmployeeActivationCandidates(s) : Promise.resolve([]),
   ]);
   const { users: allUsers } = userList;
-  const users = includeArchived ? allUsers : allUsers.filter(u => !u.archivedAt && !u.blockedByTermination);
-  const hiddenCount = allUsers.length - users.length;
+  const users = allUsers;
   // LIVE grants only. listAssistantGrants deliberately returns every grant EVER, revoked rows included
   // ("who could ask the assistant last March" is the reason revocation is a stamp rather than a delete),
   // so filtering on revokedAt is load-bearing: without it a revoked user reads as still granted and the
@@ -108,7 +79,7 @@ export default async function UsersPage({
     ).values(),
   ].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
-  const rows: Row[] = users.map((u) => ({
+  const rows: UserDirectoryRow[] = users.map((u) => ({
     key: `user:${u.id}`,
     personId: u.personId,
     // Archived covers BOTH causes; the cause line below distinguishes them.
@@ -229,173 +200,8 @@ export default async function UsersPage({
         </Card>
       )}
 
-      <Card data-tour="admin-users">
-        <SectionHeader title={t('sectionUsers')} count={rows.length} />
-        {/* This count and userCount in the page header both EXCLUDE hidden rows, so the toggle carries
-            the hidden count — the default view never silently omits a set. */}
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">
-            {hiddenCount > 0 ? t('archivedCount', { count: hiddenCount }) : ''}
-          </span>
-          <a href={includeArchived ? '/admin/users' : '/admin/users?archived=1'} className={btnGhost}>
-            {includeArchived ? t('hideArchived') : t('showArchived')}
-          </a>
-        </div>
-        <ul className="divide-y divide-border">
-          {rows.map((u) => (
-            <li key={u.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <Avatar name={u.name ?? u.email ?? 'User'} />
-                <div className="min-w-0">
-                  <div className="font-medium text-foreground">
-                    {/* No person linked → an unlinked/external login. Deliberately NOT falling back to
-                        the invitation email: a PDPA-erased person must not be re-identified here. */}
-                    {u.name ?? (u.appUserId ? t('unlinkedLogin', { id: (u.workosUserId ?? '').slice(-6) }) : u.email)}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">{u.email ?? '—'}</div>
-                  {u.hasEmployment===false&&u.personId&&<p className="text-xs text-muted-foreground">{t('withoutEmployment')}</p>}
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="sr-only">{t('statusColumn')}: </span>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        u.status === 'active'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : u.status === 'invited'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                            : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {t(`status.${u.status}`)}
-                    </span>
-                    {u.status === 'archived' && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {u.manuallyArchived ? t('archivedCauseManual') : t('archivedCauseLeft')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {u.status === 'pending' && groupAdmin && u.personId && <>
-                  <a href={`/admin/users?activate=${u.personId}#manual-account-setup`} className={btnGhost}>{t('activateManually')}</a>
-                  <a href={`/admin/users?activate=${u.personId}#invite-user`} className={btnGhost}>{t('activateByInvitation')}</a>
-                </>}
-                {u.status === 'preparing' && !u.appUserId && <a href="#manual-account-setup" className={btnGhost}>{t('resumeActivation')}</a>}
-                {u.status === 'invited' && u.invitedRole && (
-                  <span className="text-xs text-muted-foreground">
-                    {t(`role.${u.invitedRole}`)}
-                    {u.invitedCompanyId
-                      ? ` · ${companyName(u.invitedCompanyId) ?? ''}`
-                      : ` · ${t('groupWide')}`}
-                  </span>
-                )}
-                {u.roles.map((r) => (
-                  <span key={r.id} className="inline-flex items-center gap-1">
-                    <RoleTag role={r.role} label={t(`role.${r.role}`)} />
-                    {r.companyId && SCOPABLE_ROLES.has(r.role) && (
-                      <span
-                        className="text-[10px] text-muted-foreground"
-                        title={t('scopedTo', { company: r.company ?? '' })}
-                      >
-                        · {r.company}
-                      </span>
-                    )}
-                    {u.status === 'active' && (groupAdmin || (r.role === 'hr_admin' && r.companyId)) && (
-                      <form action={revokeRoleAction} className="inline">
-                        <input type="hidden" name="roleAssignmentId" value={r.id} />
-                        <button
-                          type="submit"
-                          title={t('revokeRole')}
-                          className="text-muted-foreground transition-colors hover:text-red-500"
-                        >
-                          ×
-                        </button>
-                      </form>
-                    )}
-                  </span>
-                ))}
-                {u.status === 'active' && u.roles.length === 0 && (
-                  <span className="text-xs text-muted-foreground">{t('noRoles')}</span>
-                )}
+      <UsersDirectory rows={rows} groupAdmin={groupAdmin} includeArchived={includeArchived} companies={companies} roleOptions={[...roleOptions]} assistantGrantedIds={rows.flatMap(row=>row.appUserId&&assistantGranted.has(row.appUserId)?[row.appUserId]:[])}/>
 
-                {/* Invited rows keep the existing Revoke. */}
-                {u.status === 'invited' && u.invitationId && (
-                  <form action={revokeInvitationAction}>
-                    <input type="hidden" name="invitationId" value={u.invitationId} />
-                    <button type="submit" className={btnGhost}>
-                      {t('revokeInvitation')}
-                    </button>
-                  </form>
-                )}
-
-                {/* Archived rows hide the role editor — permissions are kept on file untouched so a
-                    Restore puts the user back exactly as they were. */}
-                {u.status === 'active' && u.appUserId && (
-                  <form data-tour="admin-assign" action={assignRoleAction} className="inline-flex items-center gap-2">
-                    <input type="hidden" name="appUserId" value={u.appUserId} />
-                    <select
-                      name="role"
-                      className={`${inputCls} py-1`}
-                      defaultValue={groupAdmin ? 'employee' : 'hr_admin'}
-                    >
-                      {roleOptions.map((r) => (
-                        <option key={r} value={r}>
-                          {t(`role.${r}`)}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      name="companyId"
-                      className={`${inputCls} py-1`}
-                      defaultValue=""
-                      title={t('companyScopeHint')}
-                    >
-                      {groupAdmin && <option value="">{t('groupWide')}</option>}
-                      {companies.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="submit" className={btnGhost}>
-                      {t('addRole')}
-                    </button>
-                  </form>
-                )}
-
-                {/* ADR-0082 §2.8 — the assistant is a per-user grant ON TOP of the billable module, and
-                    both gates fail closed. Offered only to group admins and only for a row that has a
-                    real login: an invitation with no app_user cannot hold a grant. */}
-                {groupAdmin && u.appUserId && u.status!=='preparing' && (
-                  <form action={setAssistantGrantAction} className="inline">
-                    <input type="hidden" name="appUserId" value={u.appUserId} />
-                    <input type="hidden" name="granted" value={assistantGranted.has(u.appUserId) ? 'false' : 'true'} />
-                    <button type="submit" className={btnGhost}>
-                      {assistantGranted.has(u.appUserId) ? t('assistantRevoke') : t('assistantGrant')}
-                    </button>
-                  </form>
-                )}
-
-                {/* Archive / Restore — group admins only (RLS is the backstop). Restore is offered ONLY
-                    for a manual archive: a row blocked by termination is unwound by clearing the end
-                    dates on the employment record, which restores access by itself. */}
-                {groupAdmin && u.appUserId && u.status!=='preparing' && (u.status === 'active' || u.manuallyArchived) && (
-                  <form action={archiveUserAction} className="inline">
-                    <input type="hidden" name="appUserId" value={u.appUserId} />
-                    <input type="hidden" name="archived" value={u.manuallyArchived ? 'false' : 'true'} />
-                    <button type="submit" className={btnGhost}>
-                      {u.manuallyArchived ? t('restore') : t('archive')}
-                    </button>
-                  </form>
-                )}
-              </div>
-            </li>
-          ))}
-          {rows.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</li>
-          )}
-        </ul>
-      </Card>
     </div>
   );
 }

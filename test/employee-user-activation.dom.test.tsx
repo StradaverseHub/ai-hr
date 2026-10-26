@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), manual: vi.fn() }));
@@ -22,7 +22,7 @@ vi.mock('../app/admin/users/manual-setup', () => ({ ManualAccountSetup: (props: 
 import UsersPage from '../app/admin/users/page';
 const person = { id: 'person-a', name: 'Employee A', email: 'same@example.test', code: 'A-001' };
 const show = async (params = {}) => render(<NextIntlClientProvider locale="en" messages={en}>{await UsersPage({ searchParams: Promise.resolve(params) })}</NextIntlClientProvider>);
-const directory = () => document.querySelector('[data-tour="admin-users"]') as HTMLElement;
+const directory = () => (document.querySelector('[data-tour="admin-users"] table') ?? document.querySelector('[data-tour="admin-users"]')) as HTMLElement;
 beforeEach(() => {
   vi.clearAllMocks(); m.group.mockReturnValue(true); m.enabled.mockReturnValue(true);
   m.users.mockResolvedValue({ users: [], hiddenCount: 0 }); m.candidates.mockResolvedValue([person]);
@@ -33,9 +33,11 @@ describe('employee activation actions and lifecycle display', () => {
   it('shows pending activation without access-management actions and links both methods by person ID', async () => {
     await show(); const d = within(directory());
     expect(d.getByText('Pending activation')).toBeTruthy();
+    fireEvent.click(d.getByRole('button', {name:'Activate'}));
     expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toBe('/admin/users?activate=person-a#manual-account-setup');
     expect(d.getByRole('link', { name: 'Send invitation' }).getAttribute('href')).toBe('/admin/users?activate=person-a#invite-user');
-    expect(d.queryByRole('button')).toBeNull();
+    expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
+    expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
   });
   it('preselects the exact pending person, prefills email, and keeps employee access as default', async () => {
     await show({ activate: person.id });
@@ -66,6 +68,7 @@ describe('employee activation actions and lifecycle display', () => {
     await show(); const d = within(directory());
     expect(d.getAllByText('Employee A')).toHaveLength(1); expect(d.getAllByText('Employee B')).toHaveLength(1);
     expect(d.getAllByText('Pending activation')).toHaveLength(1); expect(d.getAllByText('Invited')).toHaveLength(1);
+    fireEvent.click(d.getByRole('button',{name:'Activate'}));
     expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toContain('person-b');
   });
   it('shows unfinished manual setup once and offers resume instead of a second activation', async () => {
@@ -87,6 +90,7 @@ describe('employee activation actions and lifecycle display', () => {
     m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});
     m.candidates.mockResolvedValue([]);await show();const d=within(directory());
     expect(d.getByText('External admin')).toBeTruthy();expect(d.getByText('No employee record')).toBeTruthy();
+    fireEvent.click(d.getByRole('button',{name:'Manage access'}));
     expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
   });
   it('delegated admins receive no pending roster or activation controls', async () => {

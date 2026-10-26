@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { client, withTenant, type SessionContext } from '../db/client';
@@ -61,6 +62,25 @@ describe('named users without employment', () => {
     expect((await principal(userId)).resolved).toBeUndefined();
     await setAppUserArchived(ctx, { appUserId: userId, archived: false });
     expect((await principal(userId)).resolved.app_user_id).toBe(userId);
+  });
+  it('reproduces the previous employment-only refusal and proves the same request succeeds with the new admission rule',async()=>{
+    const oldSql=readFileSync(new URL('../db/migrations/0526_manual_identity_enrollment.sql',import.meta.url),'utf8');
+    const newSql=readFileSync(new URL('../db/migrations/0601_standalone_user_enrollment.sql',import.meta.url),'utf8');
+    function target(source:string,marker:string){
+      const start=source.indexOf(marker),end=source.indexOf('--> statement-breakpoint',start);
+      expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);expect(end-start).toBeGreaterThan(1000);
+      return source.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
+    }
+    const oldTarget=target(oldSql,'CREATE FUNCTION app.manual_identity_target(');
+    const newTarget=target(newSql,'CREATE OR REPLACE FUNCTION app.manual_identity_target(');
+    const request=input(),p=provider();
+    await owner.client.unsafe(oldTarget);
+    try{
+      await expect(createManualAccount(ctx,request,p)).rejects.toMatchObject({code:'target'});
+      expect(p.create).not.toHaveBeenCalled();
+    }finally{await owner.client.unsafe(newTarget);}
+    await expect(createManualAccount(ctx,request,p)).resolves.toEqual(expect.any(String));
+    expect(p.create).toHaveBeenCalledTimes(1);
   });
   it('serializes retries without duplicating the person, and resumes interrupted setup by the same ID', async () => {
     const p = provider(), request = input(); p.enable.mockRejectedValueOnce(new Error('offline'));

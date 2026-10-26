@@ -21,6 +21,12 @@ This creates a named person and login access without an employment, employee num
 
 If that email already belongs to a person in this group, choose the existing person instead of creating a duplicate. Unfinished manual setup uses **Resume setup**. A revoked invitation leaves the person available for another activation. Archive blocks a standalone login using the same existing control. If the person is later hired, reuse their existing person record; the existing employment lifecycle then governs login blocking.
 
+## Find and group users
+
+Search by name or email, then filter by login status, role and company scope. Group administrators can also filter by whether the person has an employee record. **Group by** organizes the same directory by status, role, company scope or employee record. Users with several roles or scopes appear in each matching group; the matching-user count remains distinct. Group headings expand and collapse, and the directory shows 20 entries per page.
+
+Each row shows current status and role/scope information. **Manage access** opens that user's assigned roles, role editor, assistant control and archive/restore actions. **Activate** opens the two supported activation methods for a pending person; **Resume setup** returns to the unfinished manual enrollment. These controls retain the existing group/delegated-administrator restrictions.
+
 ## Roles and scope
 
 Review role grants, company boundaries and function access together. Group access is broader than a company grant. Payroll permissions and workflow assignments can impose additional restrictions. Operator provisioning and installation email administration are separate capabilities; neither follows automatically from an HR role.
