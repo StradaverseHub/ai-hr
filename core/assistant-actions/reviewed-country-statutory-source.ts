@@ -1,0 +1,36 @@
+/** UNMOUNTED human full-input country statutory source. No country import, model arithmetic,
+ * default-country routing, bank/TP3 clearing by a partial card, or automatic payroll calculation. */
+import {createHash} from 'node:crypto';
+import {and,eq,sql} from 'drizzle-orm';
+import {z} from 'zod';
+import {company,employment} from '../../db/schema';
+import type {SessionContext,Tx} from '../../db/client';
+import {requirePackFor} from '../../localization/registry';
+import {assertAiPrincipalTx} from '../ai-principal';
+import {assertMayUseAssistant} from '../assistant-grant';
+import {assertAiActionUnpausedTx} from '../ai-governance';
+import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {masterReportFieldsTx} from '../employee-master-access';
+import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../leave-dependency-lock';
+import {REVIEWED_COUNTRY_STATUTORY_ACTION as action,ReviewedCountryStatutoryHumanContent as Human,ReviewedCountryStatutoryConfirmation as Confirmation,ReviewedCountryStatutoryPreparedSource as Prepared,ReviewedCountryStatutorySourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-country-statutory-contract';
+export class ReviewedCountryStatutoryUnavailable extends Error{constructor(){super('That statutory update needs a fresh look. Please reopen the Personnel record.');this.name='ReviewedCountryStatutoryUnavailable';}}
+const fail=():never=>{throw new ReviewedCountryStatutoryUnavailable();},capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))}),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+async function actor(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'country-my');assertModuleEnabled(fresh,'payroll');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+/** Source selection carries no private field values. Actual shared-person native tuple ownership is
+ * acquired by the country pack before statutory facts; this prefix supplies no role or row grant. */
+async function source(tx:Tx,ctx:SessionContext,id:string){
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:company.id,country:company.country}).from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,ctx.tenantId))).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.can_see_person(${employment.personId}) and app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`));
+ if(!row)return fail();await lockLeaveDependenciesTx(tx,ctx.tenantId,[row.employmentId]);
+ // Sensitive full-set categories use the existing company-scoped granular resolver, not a union of
+ // role names across companies. Read the private full snapshot only after each category is permitted.
+ const fields=await masterReportFieldsTx(tx,ctx,[row.companyId]);for(const sensitivity of ['identity','bank','statutory','payroll'] as const)if(!fields.some(field=>field.sensitivity===sensitivity))return fail();
+ const pack=requirePackFor(row.country);if(pack.country!=='MY'||!pack.statutory.reviewed)return fail();return {row,owner:pack.statutory.reviewed};
+}
+function packet(binding:{employmentId:string;personId:string;companyId:string;country:string},native:Awaited<ReturnType<NonNullable<ReturnType<typeof requirePackFor>['statutory']['reviewed']>['prepare']>>,content:z.infer<typeof Human>){
+ if(native.input.personId!==binding.personId)return fail();return Prepared.parse({kind:'prepared_source',content,review:{...native.review,...binding,country:'MY'},reviewedDigest:hash([1,action,binding,native.reviewedDigest,content]),consequence:'person_statutory_profile_saved_not_payroll_recalculated_or_paid'});
+}
+export async function prepareReviewedCountryStatutorySourceTx(tx:Tx,supplied:SessionContext,value:unknown){const ctx=capture(supplied);try{const content=Human.parse(structuredClone(value)),fresh=await actor(tx,ctx),{row,owner}=await source(tx,fresh,content.employmentId);if(content.input.personId!==row.personId)return fail();const native=await owner.prepare(tx,fresh,content.input);return packet(row,native,content);}catch{return fail();}}
+/** Entire enclosing top-level transaction must roll back on any refusal or storage failure. */
+export async function confirmReviewedCountryStatutorySourceTx(tx:Tx,supplied:SessionContext,value:unknown,confirmationValue:unknown){const ctx=capture(supplied);try{const content=Human.parse(structuredClone(value)),expected=Confirmation.parse(structuredClone(confirmationValue)),fresh=await actor(tx,ctx),{row,owner}=await source(tx,fresh,content.employmentId);if(content.input.personId!==row.personId)return fail();const native=await owner.prepare(tx,fresh,content.input);if(packet(row,native,content).reviewedDigest!==expected.reviewedDigest)return fail();const done=await owner.confirm(tx,fresh,content.input,native.reviewedDigest),current=await owner.readReference(tx,fresh,{personId:done.personId,statutoryId:done.statutoryId,eventId:done.eventId});return Receipt.parse({kind:'saved',...row,country:'MY',...current,scope:'shared_person_across_employments',semantics:'profile_saved_not_payroll_recalculated_or_paid',replayed:false});}catch{return fail();}}
+export async function reconcileReviewedCountryStatutorySourceTx(tx:Tx,supplied:SessionContext,value:unknown){const ctx=capture(supplied);try{const p=Receipt.pick({employmentId:true,personId:true,statutoryId:true,eventId:true}).strict().parse(structuredClone(value)),fresh=await actor(tx,ctx),{row,owner}=await source(tx,fresh,p.employmentId);if(row.personId!==p.personId)return fail();const current=await owner.readReference(tx,fresh,{personId:p.personId,statutoryId:p.statutoryId,eventId:p.eventId});return Receipt.parse({kind:'saved',...row,country:'MY',...current,scope:'shared_person_across_employments',semantics:'profile_saved_not_payroll_recalculated_or_paid',replayed:true});}catch{return fail();}}

@@ -385,6 +385,8 @@ export interface CountryPack {
    */
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
+    /** Optional trusted human full-row reviewed source; never a generic model executor. */
+    reviewed?:{prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];

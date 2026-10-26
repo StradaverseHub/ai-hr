@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {z} from 'zod';
 import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
 import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
@@ -214,9 +216,8 @@ export type StatutoryInput = {
   zakatEffectiveTo?: string | null;
 };
 
-export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput,
-  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
-  outerTx?: Tx) {
+/** The full native normalizer shared by ordinary setters and refusal-only reviewed preparation. */
+function normalizeStatutoryInputMY(p:StatutoryInput){
   // Item 35524d1f — the same rule setIcProfileMY has carried since 55865c32: a BLANK IC is accepted and
   // stored as null; any NON-blank value stays strict 12-digit MyKad. This opened with a bare
   // `if (!isValidIC(...)) throw`, which rejected '' as well, so the Create Employee wizard failed at its last
@@ -297,7 +298,10 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     zakatEffectiveFrom: zakat.zakatEffectiveFrom,
     zakatEffectiveTo: zakat.zakatEffectiveTo,
   };
-  const run = async (tx:Tx) => {
+  return {values,epf,zakat};
+}
+async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=normalizeStatutoryInputMY(p)){
+  const {values,epf,zakat}=normalized;
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -331,6 +335,10 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     if(p.taxCircumstance!==undefined && existing && (p.expectedApplicabilityEpoch!==undefined ? p.expectedApplicabilityEpoch!==existing.taxApplicabilityEpoch : existing.taxApplicabilityEpoch!==0))throw new TaxSelectionError('stale_context');
     const circumstance = writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing?.taxCircumstance,beforeCategory:existing?.taxCategory,epoch:existing?.taxApplicabilityEpoch});
     Object.assign(values,circumstance);
+    return {values,epf,zakat,existing};
+}
+async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInput,prepared:Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>){
+    const {values,epf,zakat,existing}=prepared;
     let id: string;
     if (existing) {
       await tx
@@ -345,7 +353,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
         .returning({ id: employeeStatutoryMy.id });
       id = row.id;
     }
-    await appendEvent(tx, {
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory-my',
       aggregateId: id,
@@ -431,10 +439,16 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
           },
         },
       },
-    });
-    return { id };
-  };
-  return outerTx ? run(outerTx) : withTenant(ctx,run);
+    },{returnId:true});
+    return { id,eventId };
+}
+
+export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
+  // Preserve the ordinary API and native defaults, event fields, SYSTEM/bootstrap admission and math.
+  const input=structuredClone(p);
+  const normalized=normalizeStatutoryInputMY(input);
+  const run=async(tx:Tx)=>{const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
@@ -1384,4 +1398,46 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
     return {id:before.id};
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/** UNMOUNTED full-row literal reviewed source. Ordinary partial card owners remain independent.
+ * A person row lock protects absent-row INSERT/FK ownership; existing full/partial UPDATE writers
+ * contend on the actual statutory tuple. No claim that their earlier read-before-write semantics change.
+ * Remaining ordinary writer Access/config participation is release-blocking; these physical locks
+ * alone are NOT universal dependency/authority protection. */
+export const reviewedStatutoryInputSchemaMY=z.object({
+ personId:z.uuid(),icNumber:z.string().max(512).nullable(),epfNumber:z.string().max(512).optional(),socsoNumber:z.string().max(512).optional(),taxNumber:z.string().max(512).optional(),
+ taxCategory:z.number().finite().optional(),expectedApplicabilityEpoch:z.number().int().nonnegative().optional(),taxCircumstance:z.string().max(512).nullable().optional(),numChildren:z.number().finite().optional(),
+ eisEligible:z.boolean().optional(),socsoCategory:z.string().max(512).nullable().optional(),eisCategory:z.string().max(512).nullable().optional(),subjectToSocso:z.boolean().optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),isResident:z.boolean().optional(),
+ epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
+ bankName:z.string().max(512).optional(),bankAccountNo:z.string().max(512).optional(),tp3Year:z.number().int().nullable().optional(),tp3NetRemuneration:z.number().finite().nullable().optional(),tp3EpfClaimed:z.number().finite().nullable().optional(),tp3PcbPaid:z.number().finite().nullable().optional(),tp3ZakatPaid:z.number().finite().nullable().optional(),
+ zakatActive:z.boolean().optional(),zakatState:z.string().max(512).nullable().optional(),zakatMethod:z.enum(['percent_of_pcb','fixed']).nullable().optional(),zakatPercent:z.number().finite().nullable().optional(),zakatFixed:z.number().finite().nullable().optional(),zakatEffectiveFrom:z.string().max(512).nullable().optional(),zakatEffectiveTo:z.string().max(512).nullable().optional(),
+}).strict();
+async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.is_admin() and app.can_see_person(${personId}::uuid) and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' as ok`);
+ if(allowed?.ok!==true)throw new Error('Statutory review unavailable');
+ const [subject]=await tx.select({id:person.id}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ if(!subject)throw new Error('Statutory review unavailable');
+ const [snapshot]=await tx.select({profile:employeeStatutoryMy,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('update',{noWait:true});
+ return snapshot??null;
+}
+export async function prepareReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown){
+ const input=reviewedStatutoryInputSchemaMY.parse(structuredClone(value));if(Buffer.byteLength(JSON.stringify(input))>24576)throw new Error('Statutory review unavailable');
+ const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,input.personId),prepared=await prepareStatutoryProfileMYTx(tx,input);
+ const review={personId:input.personId,scope:'shared_person_across_employments' as const,operation:'full_native_write_set' as const,after:prepared.values,omittedInput:'native_defaults_and_clears_are_shown_in_after' as const,untouched:'columns_outside_native_write_set_remain_unchanged' as const};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['country-statutory:MY:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},input,snapshot,review])).digest('hex');
+ return {input,review,reviewedDigest};
+}
+export async function confirmReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown,expectedDigest:string){
+ const source=await prepareReviewedStatutoryProfileMYTx(tx,ctx,value);if(!/^[a-f0-9]{64}$/.test(expectedDigest)||source.reviewedDigest!==expectedDigest)throw new Error('Statutory review unavailable');
+ const prepared=await prepareStatutoryProfileMYTx(tx,source.input),native=await writeStatutoryProfileMYTx(tx,ctx,source.input,prepared);
+ return {statutoryId:native.id,eventId:native.eventId,personId:source.input.personId,eventType:prepared.existing?'statutory.my.updated' as const:'statutory.my.created' as const};
+}
+/** Historical human native event plus CURRENT same-person record, not original values/latest event. */
+export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;statutoryId:string;eventId:string}){
+ const ref=z.object({personId:z.uuid(),statutoryId:z.uuid(),eventId:z.uuid()}).strict().parse(structuredClone(p));
+ const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,ref.personId);if(!snapshot||snapshot.profile.id!==ref.statutoryId)throw new Error('Statutory review unavailable');
+ const [event]=await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,ref.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employee-statutory-my'),eq(domainEvent.aggregateId,ref.statutoryId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),sql`${domainEvent.eventType} in ('statutory.my.created','statutory.my.updated')`));
+ if(!event||!event.payload||typeof event.payload!=='object'||Array.isArray(event.payload)||(event.payload as {personId?:unknown}).personId!==ref.personId)throw new Error('Statutory review unavailable');
+ return {...ref,eventType:event.eventType as 'statutory.my.updated'|'statutory.my.created',currentRecordPresent:true as const,proof:'historical_native_event_current_person_record' as const};
 }
