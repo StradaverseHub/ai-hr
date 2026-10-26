@@ -3,7 +3,7 @@
 -- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
- action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request')),
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
@@ -14,7 +14,7 @@ CREATE TABLE app.assistant_own_leave_review (
  testing_run_id uuid UNIQUE,testing_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='system_testing.execution.save' THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NOT NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
-  WHEN action_kind='knowledge_base.article.create' THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
+  WHEN action_kind IN ('knowledge_base.article.create','typed_pay_components.create') THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='approvals.leave.decide' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   ELSE person_id IS NOT NULL AND employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL END),
@@ -31,6 +31,9 @@ CREATE TABLE app.assistant_own_leave_review (
  -- Multiple pending reviews may name one human draft; only one may claim its exact submit event.
  claim_submission_id uuid REFERENCES public.claim_request(id),claim_submitted_event_id uuid UNIQUE,
  knowledge_article_id uuid UNIQUE,knowledge_created_event_id uuid UNIQUE,
+ pay_component_id uuid UNIQUE,pay_component_created_event_id uuid UNIQUE,
+ CHECK(CASE WHEN action_kind='typed_pay_components.create' THEN ((state='completed')=(pay_component_id IS NOT NULL AND pay_component_created_event_id IS NOT NULL)) ELSE pay_component_id IS NULL AND pay_component_created_event_id IS NULL END),
+ CHECK((pay_component_id IS NULL)=(pay_component_created_event_id IS NULL)),
  toil_request_id uuid UNIQUE,toil_submitted_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='toil.replacement.request' THEN ((state='completed')=(toil_request_id IS NOT NULL AND toil_submitted_event_id IS NOT NULL)) ELSE toil_request_id IS NULL AND toil_submitted_event_id IS NULL END),
  CHECK((toil_request_id IS NULL)=(toil_submitted_event_id IS NULL)),
@@ -70,6 +73,7 @@ CREATE TABLE app.assistant_own_leave_review (
   WHEN action_kind='toil.replacement.request' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='knowledge_base.article.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
+  WHEN action_kind='typed_pay_components.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='claims.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='system_testing.execution.save' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
@@ -2046,3 +2050,142 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_attendance_review_peek(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_attendance_review_peek(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Closed Typed Pay Component CREATE custody. Native catalogue engine owns every rule and value.
+CREATE FUNCTION app._assistant_pay_component_review_identity(p_person uuid,p_bind_actor boolean DEFAULT true) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)
+  AND (p_bind_actor IS NOT TRUE OR a.person_id IS NOT DISTINCT FROM p_person)
+  AND (a.person_id IS NULL OR EXISTS(SELECT 1 FROM public.person p WHERE p.id=a.person_id AND p.tenant_id=t))) THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_pay_component_review_identity(uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_pay_component_review_json(p_id uuid) RETURNS jsonb
+ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',jsonb_build_object('actionId',r.id,'action',r.action_kind,'contractVersion',1,
+ 'binding',jsonb_build_object('tenantId',r.tenant_id,'userId',r.user_id,'personId',r.person_id,'employmentId',r.employment_id,'companyId',r.company_id),
+ 'intentDigest',r.intent_digest,'reviewedDigest',r.reviewed_digest,'state',r.state,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+ 'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object('formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
+ 'componentId',r.pay_component_id,'eventId',r.pay_component_created_event_id)
+ FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id WHERE r.id=p_id AND r.action_kind='typed_pay_components.create';
+$$;
+REVOKE ALL ON FUNCTION app._assistant_pay_component_review_json(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_pay_component_review_prepare(p_id uuid,p_person uuid,
+ p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE at_time timestamptz;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(p_person);
+ -- A preparation in the same privacy-erasure transaction must not create new uncaptured private text.
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+  AND i.tenant_id=t AND i.person_id=p_person)
+  OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+   AND i.tenant_id=t AND i.person_id=p_person) THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$'
+  OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$'
+  OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512
+  OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ -- Private review admission is separate from model quota. The identity owner already holds the
+ -- tenant Access lock, serializing competing preparations and privacy/custody transitions. Bounds
+ -- apply to this login only: at most five unexpired pending reviews and twenty preparations per
+ -- rolling ten minutes. Discard/expiry cannot reset the creation-rate budget. SQL owns every time.
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND state='awaiting_confirmation' AND expires_at>at_time)>=5
+  OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND created_at>at_time-interval '10 minutes')>=20 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review
+  (action_kind,id,tenant_id,user_id,person_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES('typed_pay_components.create',p_id,t,u,p_person,
+  p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);
+ RETURN app._assistant_pay_component_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_review_prepare(uuid,uuid,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_review_prepare(uuid,uuid,text,text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_pay_component_review_read(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='typed_pay_components.create' FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_pay_component_review_identity(r.person_id);
+ IF r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at THEN UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='expired' WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a WHERE c.action_id=a.id AND a.id=r.id AND a.state<>'awaiting_confirmation';
+ RETURN app._assistant_pay_component_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_review_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_review_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_pay_component_review_complete(p_id uuid,p_reviewed_digest text,p_component uuid,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='typed_pay_components.create' FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_pay_component_review_identity(r.person_id);
+ IF p_component IS NULL OR p_event IS NULL THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='completed' THEN
+  IF r.pay_component_id IS DISTINCT FROM p_component OR r.pay_component_created_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+  -- Exact original-actor native creation in THIS top-level transaction. Row versions reject old or
+  -- child-savepoint evidence; trusted source ownership, not xmin alone, proves canonical provenance.
+  IF NOT EXISTS(SELECT 1 FROM public.pay_component q JOIN public.domain_event d ON d.id=p_event AND d.tenant_id=q.tenant_id
+   AND d.aggregate_type='pay-component' AND d.aggregate_id=q.id AND d.event_type='pay-component.created' AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id IS NULL
+   WHERE q.id=p_component AND q.tenant_id=t AND q.archived_at IS NULL
+    AND d.payload=jsonb_build_object('code',q.code,'ruleKind',q.rule->>'kind','changed','[]'::jsonb,'archived',false)
+    AND q.xmin=pg_current_xact_id()::xid AND d.xmin=pg_current_xact_id()::xid) THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+  UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',pay_component_id=p_component,pay_component_created_event_id=p_event WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_pay_component_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_review_complete(uuid,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_review_complete(uuid,text,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Login-only privacy cleanup retains no code/rule/rate/description or canonical reference in its projection.
+-- Revoked catalogue/Assistant authority never becomes effect authority through cleanup.
+CREATE FUNCTION app.assistant_pay_component_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='typed_pay_components.create' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN
+  UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;
+ END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','typed_pay_components.create','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_pay_component_reviews_index()
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+ WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.action_kind='typed_pay_components.create' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
