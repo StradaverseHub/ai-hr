@@ -3,7 +3,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {and,asc,eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate} from '../core/letters';
 import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} from '../core/employee-documents';
 import {client} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -26,6 +26,12 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('uses the current effective approved version for new batches and preserves an in-flight older snapshot',async()=>{
+  const original=await getLetterTemplate(ctx,templateVersionId),created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()}),before=(await getLetterGenerationBatch(ctx,created.batchId))!.rows[0].revision;
+  const next=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:'GENERATION',name:'Version two',category:'confirmation',effectiveFrom:today(),document:original!.version.document,fieldVersionIds:original!.fields.map(field=>field.id)});await decideLetterTemplate(ctx,{versionId:next.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:next.versionId,expectedStatus:'submitted',action:'approve'});
+  await expect(createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()})).rejects.toMatchObject({code:'configuration'});expect(await submitLetterBatch(ctx,created.batchId)).toMatchObject({submitted:1});expect((await getLetterGenerationBatch(ctx,created.batchId))!.rows[0].revision).toEqual(before);
+  expect(await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId:next.versionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()})).toMatchObject({alreadyCreated:false});
+ });
  it('seals the current approved revision only after a personally confirmed final signatory decision',async()=>{
   const created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,created.batchId);
   const row=(await getLetterGenerationBatch(ctx,created.batchId))!.rows[0],input={letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve' as const,comment:'Reviewed the frozen document',confirmSignature:true}};

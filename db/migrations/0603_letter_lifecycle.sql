@@ -135,7 +135,7 @@ CREATE POLICY letter_policy_version_insert ON letter_policy_version FOR INSERT W
 GRANT SELECT,INSERT ON letter_policy_version TO ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE letter_merge_field_version ENABLE ROW LEVEL SECURITY;
-CREATE POLICY letter_merge_field_version_read ON letter_merge_field_version FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (app.letter_permission(company_id,'read') OR app.letter_permission(company_id,'template')));
+CREATE POLICY letter_merge_field_version_read ON letter_merge_field_version FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (app.letter_permission(company_id,'read') OR app.letter_permission(company_id,'template')) AND (NOT coalesce((definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(company_id)));
 CREATE POLICY letter_merge_field_version_insert ON letter_merge_field_version FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (created_by=app.current_user_id() AND app.letter_permission(company_id,'template')));
 GRANT SELECT,INSERT ON letter_merge_field_version TO ai_hr_app;
 --> statement-breakpoint
@@ -273,12 +273,13 @@ BEGIN
   SELECT coalesce(max(x.ordinal),0)+1 INTO next_ordinal FROM public.letter_template_version x WHERE x.template_id=NEW.template_id;
   IF NEW.ordinal<>next_ordinal OR NEW.status<>'draft' OR NEW.approved_by IS NOT NULL OR NEW.approved_at IS NOT NULL THEN RAISE EXCEPTION 'Create a fresh letter template draft';END IF;
  ELSIF TG_TABLE_NAME='letter_template_field' THEN
-  IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active AND (NOT coalesce((f.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(x.company_id))) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_generation_batch' THEN
   SELECT * INTO v FROM public.letter_template_version WHERE id=NEW.template_version_id;
   SELECT * INTO p FROM public.letter_policy_version WHERE id=NEW.policy_version_id;
   IF v.id IS NULL OR p.id IS NULL OR v.tenant_id<>NEW.tenant_id OR p.tenant_id<>NEW.tenant_id OR v.company_id<>NEW.company_id OR p.company_id<>NEW.company_id OR p.category<>v.category OR NOT p.enabled OR v.status<>'approved'
    OR v.effective_from>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR EXISTS(SELECT 1 FROM public.letter_template t WHERE t.id=v.template_id AND t.deactivated)
+   OR EXISTS(SELECT 1 FROM public.letter_template_version n WHERE n.template_id=v.template_id AND n.status='approved' AND n.effective_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND n.ordinal>v.ordinal)
   THEN RAISE EXCEPTION 'An effective approved template and configured policy are required';END IF;
   IF NEW.source_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.id=NEW.source_event_id AND e.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Letter source event mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_record' THEN

@@ -32,6 +32,9 @@ function letters<T>(ctx:SessionContext,write:boolean,work:(tx:Tx)=>Promise<T>):P
 async function permission(tx:Tx,co:string,cap:LetterCapability){
  uuid(co);const [row]=await tx.execute<{allowed:boolean}>(sql`select app.letter_permission(${co}::uuid,${cap}) as allowed`);if(!row?.allowed)throw new LetterWorkflowError('permission');
 }
+async function anyPermission(tx:Tx,co:string,caps:LetterCapability[]){
+ uuid(co);const [row]=await tx.execute<{allowed:boolean}>(sql`select (${sql.join(caps.map(cap=>sql`app.letter_permission(${co}::uuid,${cap})`),sql` OR `)}) as allowed`);if(!row?.allowed)throw new LetterWorkflowError('permission');
+}
 async function event(tx:Tx,ctx:SessionContext,id:string,type:string,payload:Record<string,unknown>){
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'letter',aggregateId:id,eventType:'letter.'+type,actor:actorOf(ctx),payload});
 }
@@ -76,7 +79,7 @@ export function saveLetterField(ctx:SessionContext,input:{companyId:string;defin
  await event(tx,ctx,saved.id,'field.versioned',{companyId:input.companyId,key:definition.key,ordinal:saved.ordinal,active:input.active});return saved;
 });}
 export function listLetterFields(ctx:SessionContext,input:{companyId:string;after?:string;limit?:number}){return letters(ctx,false,async tx=>{
- await permission(tx,input.companyId,'read');const limit=Math.min(100,Math.max(1,input.limit??50));
+ await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit??50);
  const rows=await tx.selectDistinctOn([letterMergeFieldVersion.key]).from(letterMergeFieldVersion).where(and(eq(letterMergeFieldVersion.companyId,input.companyId),input.after?gt(letterMergeFieldVersion.key,input.after.slice(0,80)):undefined)).orderBy(asc(letterMergeFieldVersion.key),desc(letterMergeFieldVersion.ordinal)).limit(limit+1);
  const [financial]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${input.companyId}::uuid) as allowed`);
  return {items:rows.slice(0,limit).filter(row=>!row.definition.sensitive||financial?.allowed),nextCursor:rows.length>limit?rows[limit-1].key:null};
@@ -84,7 +87,8 @@ export function listLetterFields(ctx:SessionContext,input:{companyId:string;afte
 async function templateFields(tx:Tx,ids:string[],co:string):Promise<{id:string;definition:LetterField}[]>{
  if(ids.length>200||ids.some(id=>!UUID.test(id)))throw new LetterWorkflowError('invalid','fields');const unique=[...new Set(ids)];
  const rows=unique.length?await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition}).from(letterMergeFieldVersion).where(and(inArray(letterMergeFieldVersion.id,unique),eq(letterMergeFieldVersion.companyId,co),eq(letterMergeFieldVersion.active,true))):[];
- if(rows.length!==unique.length)throw new LetterWorkflowError('configuration','field');validateLetterFields(rows.map(row=>row.definition));return rows;
+ if(rows.length!==unique.length)throw new LetterWorkflowError('configuration','field');validateLetterFields(rows.map(row=>row.definition));
+ if(rows.some(row=>row.definition.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}return rows;
 }
 export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;document:unknown;fieldVersionIds:string[]}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);if(!isCalendarDate(input.effectiveFrom))throw new LetterWorkflowError('invalid','effectiveFrom');
@@ -118,8 +122,8 @@ export function setLetterTemplateActive(ctx:SessionContext,input:{templateId:str
 
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
 function calendarDays(day:string,amount:number){const value=new Date(day+'T00:00:00Z');value.setUTCDate(value.getUTCDate()+amount);return value.toISOString().slice(0,10);}
-async function generationTemplate(tx:Tx,co:string,id:string,requireActive=true){
- const [version]=await tx.select().from(letterTemplateVersion).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(and(eq(letterTemplateVersion.id,uuid(id)),eq(letterTemplateVersion.companyId,co),eq(letterTemplateVersion.status,'approved'),requireActive?lte(letterTemplateVersion.effectiveFrom,todayInKualaLumpur()):undefined,requireActive?eq(letterTemplate.deactivated,false):undefined)).limit(1);
+async function generationTemplate(tx:Tx,co:string,id:string,requireActive=true,requireLatest=false){
+ const [version]=await tx.select().from(letterTemplateVersion).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(and(eq(letterTemplateVersion.id,uuid(id)),eq(letterTemplateVersion.companyId,co),eq(letterTemplateVersion.status,'approved'),requireActive?lte(letterTemplateVersion.effectiveFrom,todayInKualaLumpur()):undefined,requireActive?eq(letterTemplate.deactivated,false):undefined,requireLatest?sql`not exists(select 1 from letter_template_version n where n.template_id=${letterTemplateVersion.templateId} and n.status='approved' and n.effective_from<=${todayInKualaLumpur()}::date and n.ordinal>${letterTemplateVersion.ordinal})`:undefined)).limit(1);
  if(!version)throw new LetterWorkflowError('configuration','activeTemplate');
  const fields=await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,id)).orderBy(asc(letterMergeFieldVersion.key));
  validateLetterDocument(version.letter_template_version.document,fields.map(row=>row.definition));return {version:version.letter_template_version,fields,active:!version.letter_template.deactivated&&version.letter_template_version.effectiveFrom<=todayInKualaLumpur()};
@@ -186,7 +190,7 @@ export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:strin
  const selection={employmentIds:ids,customValues:input.customValues??{},sourceAsOfDate:todayInKualaLumpur()},inputHash=hash(canonical({employmentIds:ids,customValues:selection.customValues,companyId:input.companyId,templateVersionId:input.templateVersionId,reissueOf:input.reissueOf??null}));
  if(Object.keys(selection.customValues).some(id=>!ids.includes(id))||Buffer.byteLength(canonical(selection.customValues),'utf8')>2097152)throw new LetterWorkflowError('invalid','employeeSelection');
  const [existing]=await tx.select().from(letterGenerationBatch).where(and(eq(letterGenerationBatch.createdBy,ctx.userId!),eq(letterGenerationBatch.operationKey,input.operationKey)));if(existing){if(existing.inputHash!==inputHash)throw new LetterWorkflowError('conflict','operationKey');return {batchId:existing.id,alreadyCreated:true};}
- const template=await generationTemplate(tx,input.companyId,input.templateVersionId);
+ const template=await generationTemplate(tx,input.companyId,input.templateVersionId,true,true);
  const [configured]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,template.version.category))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);
  if(!configured?.enabled)throw new LetterWorkflowError('configuration','policy');const policy=validateLetterPolicy(configured.policy);
  await assertLetterChain(tx,input.companyId,policy,ctx.userId!);
@@ -396,4 +400,38 @@ export function bulkDecideLetters(ctx:SessionContext,input:{letters:{letterId:st
 export function setLetterRetention(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;legalHold:boolean;retainUntil:string;reason:string}){return letters(ctx,true,async tx=>{
  if(typeof input.legalHold!=='boolean'||!isCalendarDate(input.retainUntil))throw new LetterWorkflowError('invalid','retention');const reason=text(input.reason,2000),[record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'settings');if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(input.retainUntil<record.retainUntil)throw new LetterWorkflowError('invalid','retention');
  await tx.update(letterRecord).set({legalHold:input.legalHold,retainUntil:input.retainUntil,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'retention.changed',{before:{legalHold:record.legalHold,retainUntil:record.retainUntil},after:{legalHold:input.legalHold,retainUntil:input.retainUntil},reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
+});}
+
+export function listLetterTemplates(ctx:SessionContext,input:{companyId:string;mode?:'latest'|'active';search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);if(input.mode&&!['latest','active'].includes(input.mode))throw new LetterWorkflowError('invalid','mode');
+ const active=input.mode==='active',search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+ const rows=await tx.select({root:letterTemplate,version:{id:letterTemplateVersion.id,ordinal:letterTemplateVersion.ordinal,name:letterTemplateVersion.name,category:letterTemplateVersion.category,effectiveFrom:letterTemplateVersion.effectiveFrom,status:letterTemplateVersion.status,approvedAt:letterTemplateVersion.approvedAt}}).from(letterTemplate).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.templateId,letterTemplate.id)).where(and(eq(letterTemplate.companyId,input.companyId),active?eq(letterTemplate.deactivated,false):undefined,input.cursor?gt(letterTemplate.id,input.cursor):undefined,needle?or(ilike(letterTemplate.code,needle),ilike(letterTemplateVersion.name,needle)):undefined,
+ sql`${letterTemplateVersion.id}=(select v.id from letter_template_version v where v.template_id=${letterTemplate.id} ${active?sql`and v.status='approved' and v.effective_from<=${todayInKualaLumpur()}::date`:sql``} order by v.ordinal desc limit 1)`)).orderBy(asc(letterTemplate.id)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].root.id:null};
+});}
+export function getLetterTemplate(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
+ const [row]=await tx.select({root:letterTemplate,version:letterTemplateVersion}).from(letterTemplateVersion).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(eq(letterTemplateVersion.id,uuid(id)));if(!row)return null;await anyPermission(tx,row.root.companyId,['read','template']);
+ const fields=await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition,active:letterMergeFieldVersion.active}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,id)).orderBy(asc(letterMergeFieldVersion.key));
+ if(usedLetterFields(row.version.document).some(key=>!fields.some(field=>field.definition.key===key)))throw new LetterWorkflowError('permission');
+ return {...row,fields};
+});}
+export function listLetterTemplateVersions(ctx:SessionContext,input:{templateId:string;cursor?:number;limit?:number}){return letters(ctx,false,async tx=>{
+ const [root]=await tx.select().from(letterTemplate).where(eq(letterTemplate.id,uuid(input.templateId)));if(!root)throw new LetterWorkflowError('permission');await anyPermission(tx,root.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
+ const rows=await tx.select({id:letterTemplateVersion.id,ordinal:letterTemplateVersion.ordinal,name:letterTemplateVersion.name,category:letterTemplateVersion.category,status:letterTemplateVersion.status,effectiveFrom:letterTemplateVersion.effectiveFrom,createdBy:letterTemplateVersion.createdBy,approvedBy:letterTemplateVersion.approvedBy,approvedAt:letterTemplateVersion.approvedAt}).from(letterTemplateVersion).where(and(eq(letterTemplateVersion.templateId,root.id),input.cursor?sql`${letterTemplateVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterTemplateVersion.ordinal)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
+});}
+export function previewLetterTemplate(ctx:SessionContext,input:{templateVersionId:string;employmentId:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,false,async tx=>{
+ const [version]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,uuid(input.templateVersionId)));if(!version)throw new LetterWorkflowError('permission');await anyPermission(tx,version.companyId,['template','generate']);
+ const fields=await tx.select({definition:letterMergeFieldVersion.definition}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,version.id));
+ const definitions=fields.map(field=>field.definition);if(usedLetterFields(version.document).some(key=>!definitions.some(field=>field.key===key)))throw new LetterWorkflowError('permission');
+ const source=await letterSources(tx,ctx,version.companyId,input.employmentId,definitions,input.customValues??{},todayInKualaLumpur());return renderLetterDocument(version.document,definitions,source.values,{allowSensitive:true});
+});}
+export function letterFieldDependencies(ctx:SessionContext,input:{fieldVersionId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ const [field]=await tx.select().from(letterMergeFieldVersion).where(eq(letterMergeFieldVersion.id,uuid(input.fieldVersionId)));if(!field)throw new LetterWorkflowError('permission');await anyPermission(tx,field.companyId,['read','template']);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit);
+ const rows=await tx.select({versionId:letterTemplateVersion.id,templateId:letterTemplate.id,code:letterTemplate.code,name:letterTemplateVersion.name,ordinal:letterTemplateVersion.ordinal,status:letterTemplateVersion.status,deactivated:letterTemplate.deactivated}).from(letterTemplateField).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterTemplateField.templateVersionId)).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(and(eq(letterTemplateField.fieldVersionId,field.id),input.cursor?gt(letterTemplateVersion.id,input.cursor):undefined)).orderBy(asc(letterTemplateVersion.id)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].versionId:null};
+});}
+export function letterPolicyHistory(ctx:SessionContext,input:{companyId:string;category:string;cursor?:number;limit?:number}){return letters(ctx,false,async tx=>{
+ await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
+ const rows=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)),input.cursor?sql`${letterPolicyVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterPolicyVersion.ordinal)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}

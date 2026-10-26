@@ -2,7 +2,8 @@ import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess,listLetterTemplates,getLetterTemplate,listLetterTemplateVersions,previewLetterTemplate,letterFieldDependencies,letterPolicyHistory} from '../core/letters';
+import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,type Base} from './harness';
@@ -18,6 +19,17 @@ beforeEach(async()=>{
  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');approver={...author,userId,personId:person.id};
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('versioned Letters configuration and template owner',()=>{
+ it('previews a draft from canonical employee information without creating a letter or audit mutation',async()=>{
+  const template=await draft(),hired=await hireEmployee(author,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(),employeeCode:'PREVIEW-1',person:{fullName:'Fictional preview employee',primaryEmail:'preview@fixture.test'}}),before=await owner.db.select().from(s.domainEvent);
+  const preview=await previewLetterTemplate(author,{templateVersionId:template.versionId,employmentId:hired.employmentId});expect(JSON.stringify(preview.document)).toContain('Fictional preview employee');expect(await owner.db.select().from(s.domainEvent)).toHaveLength(before.length);expect(await owner.db.select().from(s.letterRecord)).toHaveLength(0);expect(await owner.db.select().from(s.letterCounter)).toHaveLength(0);
+ });
+ it('does not expose or bind confidential fields through a template-only permission grant',async()=>{
+  const sensitive=await saveLetterField(author,{companyId:b.companyId,definition:{key:'salary',label:'Salary',description:'Canonical basic salary',kind:'currency',source:'compensation.basicSalary',required:true,editable:false,sensitive:true},active:true}),template=await saveLetterTemplate(author,{companyId:b.companyId,code:'CONFIDENTIAL',name:'Confidential template',category:'salary',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'salary'}]}]},fieldVersionIds:[sensitive.id]});
+  const hired=await hireEmployee(author,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(),employeeCode:'EDITOR-1',person:{fullName:'Fictional template editor',primaryEmail:'editor@fixture.test'}}),[employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,hired.employmentId)),userId=await createAppUser(b.tenantId,employee.personId,'employee'),editor={...await entitledCtx(b,['employee']),userId,personId:employee.personId};
+  for(const capability of ['read','template'] as const)await saveLetterPermission(author,{companyId:b.companyId,role:'employee',capability,allowed:true});
+  expect((await listLetterFields(editor,{companyId:b.companyId})).items).toEqual([]);expect(await withTenant(editor,tx=>tx.select().from(s.letterMergeFieldVersion))).toEqual([]);await expect(getLetterTemplate(editor,template.versionId)).rejects.toMatchObject({code:'permission'});
+  await expect(saveLetterTemplate(editor,{companyId:b.companyId,code:'UNAUTHORISED',name:'Not permitted',category:'salary',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'salary'}]}]},fieldVersionIds:[sensitive.id]})).rejects.toMatchObject({code:'configuration'});expect(await owner.db.select().from(s.letterTemplate)).toHaveLength(1);
+ });
  it('requires a configured public verification origin before enabling an issuance policy',async()=>{
   vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','');await expect(saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy()})).rejects.toMatchObject({code:'configuration',detail:'publicOrigin'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);
  });
@@ -28,6 +40,7 @@ describe('versioned Letters configuration and template owner',()=>{
   const [binding]=await owner.db.select().from(s.letterTemplateField).where(eq(s.letterTemplateField.templateVersionId,first.versionId));
   const second=await saveLetterTemplate(author,{companyId:b.companyId,templateId:first.templateId,expectedRevision:first.revision,code:'CONFIRMATION',name:'Revised confirmation',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document:{...document,blocks:[{type:'paragraph',content:[{type:'text',text:'Revised wording'}]}]},fieldVersionIds:[binding.fieldVersionId]});
   expect(second.versionId).not.toBe(first.versionId);const versions=await owner.db.select().from(s.letterTemplateVersion).orderBy(asc(s.letterTemplateVersion.ordinal));expect(versions.map(version=>version.status)).toEqual(['approved','draft']);expect(versions[0]).toEqual(approved);
+  expect((await listLetterTemplates(author,{companyId:b.companyId})).rows.map(row=>row.version.id)).toEqual([second.versionId]);expect((await listLetterTemplates(author,{companyId:b.companyId,mode:'active'})).rows.map(row=>row.version.id)).toEqual([first.versionId]);expect((await listLetterTemplateVersions(author,{templateId:first.templateId})).rows.map(row=>row.ordinal)).toEqual([2,1]);expect(await getLetterTemplate(author,first.versionId)).toMatchObject({version:{document},fields:[{id:binding.fieldVersionId}]});expect((await letterFieldDependencies(author,{fieldVersionId:binding.fieldVersionId})).rows.map(row=>row.versionId)).toEqual([first.versionId]);
   await expect(withTenant(author,tx=>tx.update(s.letterTemplateVersion).set({name:'Replaced wording'}).where(eq(s.letterTemplateVersion.id,first.versionId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/immutable/)}});
   expect((await owner.db.select().from(s.letterTemplateVersion).where(eq(s.letterTemplateVersion.id,first.versionId)))[0]).toEqual(approved);
  });
@@ -40,6 +53,7 @@ describe('versioned Letters configuration and template owner',()=>{
  it('versions policy without altering the old chain and rejects inactive or unauthorised approvers',async()=>{
   const saved=await saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy()});
   const next=await saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...policy(),retentionDays:730}});expect(next.ordinal).toBe(2);expect((await owner.db.select().from(s.letterPolicyVersion).where(eq(s.letterPolicyVersion.id,saved.id)))[0].policy.retentionDays).toBe(365);
+  expect((await letterPolicyHistory(author,{companyId:b.companyId,category:'confirmation',limit:1}))).toMatchObject({rows:[{ordinal:2}],nextCursor:2});expect((await letterPolicyHistory(author,{companyId:b.companyId,category:'confirmation',cursor:2})).rows.map(row=>row.ordinal)).toEqual([1]);
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,approver.userId!));await expect(saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy()})).rejects.toMatchObject({code:'configuration'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(2);
  });
  it('keeps signature bytes owner-only while settings may select their safe metadata',async()=>{
