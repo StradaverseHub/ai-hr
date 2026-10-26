@@ -1,3 +1,4 @@
+import { provisionInternalOrganization } from '../lib/internal-auth/provision-organization';
 /**
  * Tenant provisioning — the shared, transaction-scoped module that creates a new customer.
  *
@@ -270,6 +271,7 @@ async function mintActivationInvitation(
 }
 
 export type ProvisionInput = {
+  organizationCode?: string | null;
   name: string;
   adminEmail: string;
   baseUrl?: string;
@@ -320,6 +322,10 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
       .returning({ id: tenant.id });
     return t.id;
   });
+
+  if (input.organizationCode) {
+    await step('tenant', () => provisionInternalOrganization(tx, {tenantId, code:input.organizationCode!, name}));
+  }
 
   const companyId = await step('company', async () => {
     // The country the operator recorded at intake, resolved through the pack registry so an

@@ -1,14 +1,13 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { validCompanyProfile, type CompanyProfile } from '../../lib/mobile-connection';
+import { setupBytes } from '../../lib/mobile-workplace-setup';
 
 export type SignedCompanyProfile = { keyId: string; payload: string; signature: string };
 export type ConnectionTrust = { keyId: string; publicKey: string }[];
 declare const verifiedProfile: unique symbol;
 export type VerifiedCompanyProfile = CompanyProfile & { readonly [verifiedProfile]: true };
 function bytes(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid company setup encoding.');
-  const binary = atob(value.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(value.length / 4) * 4,'='));
-  return Uint8Array.from(binary, c => c.charCodeAt(0));
+  return setupBytes(value);
 }
 /** The trust key comes from the installed binary, never from the file being verified. */
 export function verifyCompanyProfile(raw: string, trust: ConnectionTrust, now?: number): VerifiedCompanyProfile {

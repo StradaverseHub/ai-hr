@@ -16,7 +16,8 @@ type Session = { subject: string; version: string; family: string; native: boole
 type Refresh = Session & { used: boolean };
 export type Organization = { code: string; tenantId: string; name: string };
 export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string } |
-  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[] };
+  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[] } |
+  { step: 'activated'; organization: string; recoveryCodes?: string[] };
 const SESSION_LIFE = 8 * 3600_000, ACCESS_LIFE = 15 * 60_000, CHALLENGE_LIFE = 10 * 60_000;
 const credentialKey = (subject: string) => `credential:${subject}`;
 export const loginKey = (organization: string, username: string) => `login:${digest(`${organization}\0${username}`)}`;
@@ -168,6 +169,11 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
       return reply(raw, c, ch);
     }
     await deleteRecord(tx, key);
+    if (ch.invitation && !ch.native) {
+      // Browser activation ends at login. Do not create a session that would bypass that page.
+      await assertActiveCredential(tx, c);
+      return { step: 'activated', organization: c.organization, recoveryCodes: codes };
+    }
     return makeSession(tx, c, ch.native, codes);
   });
 }

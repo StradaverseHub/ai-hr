@@ -10,6 +10,7 @@ import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import type { EntitlementSnapshot } from '../core/entitlement-types';
+import { isFixtureResetLockError } from './harness-reset-errors';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -230,13 +231,15 @@ async function truncateAllTables(): Promise<void> {
       // the extended protocol, which refuses multiple commands.
       await owner.db.transaction(async (tx) => {
         await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+        // Refuse a lingering transaction before TRUNCATE holds a partial lock set.
+        // Both statements stay in this transaction, so successful locks survive through the reset.
+        await tx.execute(sql.raw(`LOCK TABLE ${ALL_TABLES.join(', ')} IN ACCESS EXCLUSIVE MODE NOWAIT`));
         await tx.execute(sql.raw(sqlText));
       });
       return;
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      const lockish = /lock_timeout|deadlock detected|canceling statement/i.test(msg);
-      if (!lockish || attempt === ATTEMPTS) throw e;
+      // DrizzleQueryError.message contains the SQL, while the actual PostgreSQL SQLSTATE is in cause.
+      if (!isFixtureResetLockError(e) || attempt === ATTEMPTS) throw e;
       // Last try: clear anything else still attached to this database, then go again.
       if (attempt === ATTEMPTS - 1) {
         await owner.db

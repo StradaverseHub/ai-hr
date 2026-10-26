@@ -48,5 +48,8 @@ export async function acceptInternalInvitation(token: string, identity: { issuer
   const rows = await client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]);
   const invitation = rows[0];
   if (!invitation || identity.issuer !== internalIssuer(invitation.tenant_id) || identity.email?.toLowerCase() !== invitation.email.toLowerCase()) throw new InternalAuthError('invalidChallenge');
+  const org = await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`);
+  if (!org || org.tenantId !== invitation.tenant_id) throw new InternalAuthError('invalidChallenge');
   await (await import('../../core/auth')).acceptInvitation({ token, issuer: identity.issuer, subject: identity.subject, verifiedEmail: identity.email! });
+  return org.code;
 }

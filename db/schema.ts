@@ -9183,6 +9183,7 @@ export const tenantProvisionRequest = pgTable(
   {
     id: id(),
     customerName: text('customer_name').notNull(),
+    organizationCode: text('organization_code'),
     adminEmail: text('admin_email').notNull(),
     // 'pending' | 'running' | 'failed' | 'done' — plain text, not a pgEnum (the 0275 widening lesson).
     // The vocabulary is owned by core/operator.ts ProvisionStatus.

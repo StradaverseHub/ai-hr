@@ -30,6 +30,11 @@ The name `.env.production`, Next.js production build mode, an old runbook saying
 
 ## Transition and release coordination
 
+**Owner deployment rule — 26 October 2026.** Deploy verified changes to staging first and verify
+staging acceptance. Production deployment requires a subsequent explicit request from the owner.
+A staging deployment, successful checks, branch alignment, tag or package publication does not
+authorize production deployment. After staging verification, stop and report the result.
+
 - `alpha` starts from the existing host's verified deployed application commit **`c98bfed60f6330b57f5a67d959ce6e3757df3b53`**, not from an unshipped development candidate. Read-only server evidence on 25 October 2026 showed `ref=built_ref` at that commit, build ID `dhL_pFtVUIgHtI832fI05` and `stale_build=0`. This is the initial baseline, not a permanent claim about the current deployment. Documentation commits may advance `alpha` without deploying application code.
 - Board 3 owns the in-flight verification, server release and Mac resource window. Coordinate its eventual deployment to the existing host as a **staging / alpha** release. Its owner will reconcile the alpha ref and local WIP before integrating the verified candidate; the former automatic merge-to-main step is superseded by this branch decision.
 - Branch creation/publication and this document do not restart services, move data, provision the new live host, configure GitHub environments or enable deployment workflows. No runtime or infrastructure cutover is implied by a Git push.
