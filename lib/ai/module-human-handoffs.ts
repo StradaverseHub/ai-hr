@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from './module-agent-actions';
 import type {AgentModuleCode} from './module-agents';
 const routes=[
+ {module:'rewards',action:'rewards.post',route:'/assistant/rewards'},
  {module:'typed_pay_components',action:'typed_pay_components.create',route:'/assistant/pay-codes'},
  {module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance'},
  {module:'approvals',action:'approvals.leave.decide',route:'/assistant/approvals'},
@@ -19,8 +20,8 @@ const routes=[
  {module:'performance',action:'performance.review.acknowledge',route:'/assistant/performance'},
  {module:'performance',action:'performance.onehr.plan.acknowledge',route:'/assistant/performance'},
 ] as const;
-const Handoff=z.object({module:z.enum(['typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
- route:z.enum(['/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/toil','/assistant/lifecycle','/assistant/knowledge-base','/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
+const Handoff=z.object({module:z.enum(['rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['rewards.post','typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
+ route:z.enum(['/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/toil','/assistant/lifecycle','/assistant/knowledge-base','/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
 export type ModuleHumanHandoff=z.infer<typeof Handoff>;
 /** Called only after actual canonical read admission. It retrieves no HR values or choices. The
  * destination must still prove the current caller, source permission and human confirmation. */
@@ -35,7 +36,7 @@ export function moduleHumanActionHandoffs(module:AgentModuleCode):readonly Modul
  * read outcomes without handoff metadata keep their original presentation. */
 export function checkedModuleHumanHandoffs(module:AgentModuleCode,value:unknown):readonly ModuleHumanHandoff[]{
  if(value===undefined)return Object.freeze([]);
- const actual=z.array(Handoff).max(15).parse(value),expected=moduleHumanActionHandoffs(module);
+ const actual=z.array(Handoff).max(16).parse(value),expected=moduleHumanActionHandoffs(module);
  if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('Human review options unavailable.');
  return Object.freeze(actual.map(row=>Object.freeze(row)));
 }
