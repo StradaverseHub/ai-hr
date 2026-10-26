@@ -99,7 +99,7 @@ CREATE FUNCTION app.letter_permission_for_user(subject uuid,co uuid,cap text) RE
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT cap IN ('read','template','generate','approve','issue','report','settings') AND EXISTS(SELECT 1 FROM public.company c JOIN public.app_user u ON u.tenant_id=c.tenant_id AND u.id=subject AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
   WHERE c.id=co AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL
-  AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=c.tenant_id AND r.app_user_id=u.id AND (r.company_id IS NULL OR r.company_id=c.id)
+  AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=c.tenant_id AND r.app_user_id=u.id AND app.access_scope_covers(r.company_id,c.id,c.tenant_id)
     AND coalesce((SELECT g.allowed FROM public.letter_capability_grant g WHERE g.tenant_id=c.tenant_id AND g.company_id=c.id AND g.capability=cap AND g.role=r.role::text),r.role::text IN ('super_admin','hr_admin'))))
 $$;
 CREATE FUNCTION app.letter_permission(co uuid,cap text) RETURNS boolean
@@ -328,7 +328,7 @@ BEGIN
     IF (delegate IS NOT NULL AND delegate<>NEW.actor_id) OR (delegate IS NULL AND NOT coalesce(stage->'userIds' ? NEW.actor_id::text,false)) THEN RAISE EXCEPTION 'Letter stage belongs to another approver';END IF;
     IF NEW.action IN ('reject','return','delegate') AND length(trim(NEW.comment))=0 THEN RAISE EXCEPTION 'A decision reason is required';END IF;
     IF NEW.action='delegate' THEN
-     IF NOT coalesce((stage->>'allowDelegation')::boolean,false) OR NEW.delegated_to IS NULL OR NEW.delegated_to=l.created_by OR NEW.delegated_to=NEW.actor_id OR NOT app.letter_permission_for_user(NEW.delegated_to,l.company_id,'approve') THEN RAISE EXCEPTION 'Choose an eligible separate delegated approver';END IF;
+     IF NOT coalesce((stage->>'allowDelegation')::boolean,false) OR NEW.delegated_to IS NULL OR NEW.delegated_to=l.created_by OR NEW.delegated_to=NEW.actor_id OR NOT app.letter_approver_eligible(NEW.delegated_to,l.company_id,l.confidential) THEN RAISE EXCEPTION 'Choose an eligible separate delegated approver';END IF;
     ELSIF NEW.delegated_to IS NOT NULL THEN RAISE EXCEPTION 'Only a delegation may change its recipient';END IF;
     IF l.stage_index=jsonb_array_length(p.policy->'stages')-1 AND (NEW.actor_id<>(p.policy->>'signatoryUserId')::uuid OR NEW.action='delegate') THEN RAISE EXCEPTION 'The final authorised signatory must act personally';END IF;
    ELSE
@@ -594,3 +594,40 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_picker_rows(text,date,date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_workforce_picker_rows(text,date,date) TO ai_hr_app;
+
+--> statement-breakpoint
+-- One grant policy serves current principals and read-only evaluation of an actual prospective
+-- approver's grants. These pure predicates never install a principal or change session authority.
+CREATE FUNCTION app.grants_have_role_for(grants jsonb,wanted_role text,wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(grants,'[]'::jsonb)) g
+ WHERE g->>'role'=wanted_role AND (g->>'companyId' IS NULL OR (g->>'companyId')::uuid=wanted_company OR app.is_company_descendant(wanted_company,(g->>'companyId')::uuid)))
+$$;
+CREATE FUNCTION app.grants_admin_for(grants jsonb,wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE AS $$ SELECT app.grants_have_role_for(grants,'hr_admin',wanted_company) OR app.grants_have_role_for(grants,'super_admin',wanted_company) $$;
+CREATE FUNCTION app.grants_payroll_admin_for(grants jsonb,wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE AS $$ SELECT app.grants_admin_for(grants,wanted_company) OR app.grants_have_role_for(grants,'payroll_partner',wanted_company) $$;
+--> statement-breakpoint
+-- Preserve the public wrappers' volatility/security attributes and their existing grant semantics.
+CREATE OR REPLACE FUNCTION app.has_role_for(p_role text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+ SELECT app.grants_have_role_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_role,p_company)
+$$;
+CREATE OR REPLACE FUNCTION app.is_admin_for(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+ SELECT app.grants_admin_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_company)
+$$;
+CREATE OR REPLACE FUNCTION app.can_admin_payroll_for(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+ SELECT app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_company)
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_approver_eligible(subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current()
+ AND (app.letter_permission(co,'generate') OR app.letter_permission(co,'approve') OR app.letter_permission(co,'settings') OR app.letter_permission(co,'template'))
+ AND app.letter_permission_for_user(subject,co,'read') AND app.letter_permission_for_user(subject,co,'approve')
+ AND (NOT confidential OR app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)) FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id() AND r.app_user_id=subject),co))
+$$;
+REVOKE ALL ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) TO ai_hr_app;

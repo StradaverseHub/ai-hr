@@ -1,6 +1,6 @@
 /** Letters use the existing employee identity, purpose access, document folder and DomainEvent owners. */
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql,ilike} from 'drizzle-orm';
+import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql,ilike,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,employeeDocument,letterRecipientEvent,letterAccessToken} from '../db/schema';
@@ -191,11 +191,11 @@ async function snapshotLetter(tx:Tx,ctx:SessionContext,co:string,employmentId:st
  const sourceHash=hash(canonical({employmentId,companyId:co,templateVersionId:template.version.id,policyVersionId,referenceDate,values:sources.values,fields:template.fields}));
  return {...sources,document:rendered.document,sourceHash,contentHash:hash(canonical({document:rendered.document,sourceHash}))};
 }
-async function assertLetterChain(tx:Tx,co:string,policy:ReturnType<typeof validateLetterPolicy>,creator:string){
+async function assertLetterChain(tx:Tx,co:string,policy:ReturnType<typeof validateLetterPolicy>,creator:string,confidential=false){
  for(const stage of policy.stages){
   let eligible=false;
   for(const userId of stage.userIds.filter(id=>id!==creator)){
-   const [row]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${userId}::uuid,${co}::uuid,'approve') AND app.letter_permission_for_user(${userId}::uuid,${co}::uuid,'read') as ok`);if(row?.ok)eligible=true;
+   const [row]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${userId}::uuid,${co}::uuid,${confidential}) as ok`);if(row?.ok)eligible=true;
   }
   if(!eligible)throw new LetterWorkflowError('configuration','approver');
  }
@@ -223,7 +223,7 @@ export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:strin
  const [configured]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,template.version.category))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);
  if(!configured?.enabled)throw new LetterWorkflowError('configuration','policy');const policy=validateLetterPolicy(configured.policy);
  if(template.version.presentation&&template.version.presentation.signatoryUserId!==policy.signatoryUserId)throw new LetterWorkflowError('configuration','templateSignatory');
- await assertLetterChain(tx,input.companyId,policy,ctx.userId!);
+ await assertLetterChain(tx,input.companyId,policy,ctx.userId!,template.fields.some(field=>field.definition.sensitive));
  // Validate every selected identity before creating any draft; unknown and foreign identities are identical refusals.
  for(const id of ids){await assertWorkforceEmploymentTx(tx,ctx,id,'view');const [row]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,id),eq(employment.companyId,input.companyId))).for('share');if(!row)throw new LetterWorkflowError('permission');}
  const confidential=template.fields.some(field=>field.definition.sensitive);if(confidential){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${input.companyId}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}
@@ -291,7 +291,7 @@ export function submitLetterBatch(ctx:SessionContext,id:string){return letters(c
  const template=await generationTemplate(tx,batch.companyId,batch.templateVersionId),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
  const rows=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.id)).for('update');if(!rows.length)throw new LetterWorkflowError('state');assertLetterBatchCohort(batch,rows);
  const selected=rows.filter(row=>row.state!=='withdrawn');if(!selected.length||selected.some(row=>['returned','rejected'].includes(row.state)))throw new LetterWorkflowError('state');const drafts=selected.filter(row=>row.state==='draft');
- for(const row of drafts){await assertLetterChain(tx,batch.companyId,policy,row.createdBy);if(!row.currentRevisionId)throw new LetterWorkflowError('configuration','missingFields');const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,row.currentRevisionId));const fresh=await snapshotLetter(tx,ctx,batch.companyId,row.employmentId,template,batch.policyVersionId,revision.editableValues,batch.selection.sourceAsOfDate);if(fresh.sourceHash!==revision.sourceHash)throw new LetterWorkflowError('stale','sourceChanged');}
+ for(const row of drafts){await assertLetterChain(tx,batch.companyId,policy,row.createdBy,row.confidential);if(!row.currentRevisionId)throw new LetterWorkflowError('configuration','missingFields');const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,row.currentRevisionId));const fresh=await snapshotLetter(tx,ctx,batch.companyId,row.employmentId,template,batch.policyVersionId,revision.editableValues,batch.selection.sourceAsOfDate);if(fresh.sourceHash!==revision.sourceHash)throw new LetterWorkflowError('stale','sourceChanged');}
  for(const row of drafts){await tx.update(letterRecord).set({state:'submitted',stageIndex:0,lockVersion:row.lockVersion+1}).where(eq(letterRecord.id,row.id));await queueLetterStage(tx,ctx,row,policy,row.currentRevisionId!,0);await event(tx,ctx,row.id,'submitted',{revisionId:row.currentRevisionId});}
  return {batchId:id,submitted:drafts.length,alreadySubmitted:drafts.length===0};
 });}
@@ -337,7 +337,7 @@ export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'approve');await permission(tx,record.companyId,'read');
  if(record.state!=='submitted'||!record.currentRevisionId)throw new LetterWorkflowError('state');if(record.currentRevisionId!==input.expectedRevisionId||record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');
  const reason=text(input.reason,2000),delegate=uuid(input.delegateUserId);if(delegate===record.createdBy||delegate===ctx.userId)throw new LetterWorkflowError('permission');
- const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${delegate}::uuid,${record.companyId}::uuid,'read') AND app.letter_permission_for_user(${delegate}::uuid,${record.companyId}::uuid,'approve') as ok`);if(!eligible?.ok)throw new LetterWorkflowError('permission');
+ const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${delegate}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);if(!eligible?.ok)throw new LetterWorkflowError('permission');
  const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId));
  // The database checks the current stage, previous delegation and personally acting final signatory.
  const [decision]=await tx.insert(letterApprovalDecision).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,stageIndex:record.stageIndex,actorId:ctx.userId!,action:'delegate',comment:reason,delegatedTo:delegate,contentHash:revision.contentHash}).returning();
@@ -426,9 +426,13 @@ export function listLetterRegister(ctx:SessionContext,input:LetterRegisterFilter
   .where(and(inArray(letterRecord.state,input.state?[input.state]:['issued','void']),sql`app.letter_permission(${letterRecord.companyId},'read')`,input.companyId?eq(letterRecord.companyId,input.companyId):undefined,input.employmentId?eq(letterRecord.employmentId,input.employmentId):undefined,input.category?eq(letterTemplateVersion.category,text(input.category,100)):undefined,search?or(ilike(person.fullName,search),ilike(employment.employeeCode,search),ilike(letterRecord.reference,search)):undefined,input.issuedFrom?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date>=${input.issuedFrom}::date`:undefined,input.issuedTo?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date<=${input.issuedTo}::date`:undefined,input.cursor?sql`(${letterRecord.issuedAt},${letterRecord.id})<(select c.issued_at,c.id from letter_record c where c.id=${input.cursor}::uuid)`:undefined)).orderBy(desc(letterRecord.issuedAt),desc(letterRecord.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
+// Every stage gets its own deadline; delegation keeps the original stage entry time.
+function letterStageEnteredAt(stageIndex:SQL,submittedAt:SQL,revisionId:SQL){
+ return sql`case when ${stageIndex}=0 then ${submittedAt} else (select decision.created_at from letter_approval_decision decision where decision.revision_id=${revisionId} and decision.stage_index=${stageIndex}-1 and decision.action='approve') end`;
+}
 export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:string;limit?:number;cursor?:string}={}){return letters(ctx,false,async tx=>{
  const limit=letterListLimit(input.limit);if(input.companyId)uuid(input.companyId);if(input.cursor)uuid(input.cursor);
- const rows=await tx.select({record:letterRecord,title:letterTemplateVersion.name,category:letterTemplateVersion.category,employeeName:person.fullName,employeeCode:employment.employeeCode,stageLabel:sql<string>`${letterPolicyVersion.policy}->'stages'->${letterRecord.stageIndex}->>'label'`,dueAt:sql<Date>`${letterRecord.submittedAt}+(${letterPolicyVersion.policy}->>'approvalDueHours')::integer*interval '1 hour'`}).from(letterRecord).innerJoin(employment,eq(employment.id,letterRecord.employmentId)).innerJoin(person,eq(person.id,employment.personId)).innerJoin(letterGenerationBatch,eq(letterGenerationBatch.id,letterRecord.batchId)).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterGenerationBatch.templateVersionId)).innerJoin(letterPolicyVersion,eq(letterPolicyVersion.id,letterGenerationBatch.policyVersionId))
+ const rows=await tx.select({record:letterRecord,title:letterTemplateVersion.name,category:letterTemplateVersion.category,employeeName:person.fullName,employeeCode:employment.employeeCode,stageLabel:sql<string>`${letterPolicyVersion.policy}->'stages'->${letterRecord.stageIndex}->>'label'`,dueAt:sql<Date>`${letterStageEnteredAt(sql`${letterRecord.stageIndex}`,sql`${letterRecord.submittedAt}`,sql`${letterRecord.currentRevisionId}`)}+(${letterPolicyVersion.policy}->>'approvalDueHours')::integer*interval '1 hour'`}).from(letterRecord).innerJoin(employment,eq(employment.id,letterRecord.employmentId)).innerJoin(person,eq(person.id,employment.personId)).innerJoin(letterGenerationBatch,eq(letterGenerationBatch.id,letterRecord.batchId)).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterGenerationBatch.templateVersionId)).innerJoin(letterPolicyVersion,eq(letterPolicyVersion.id,letterGenerationBatch.policyVersionId))
  .where(and(eq(letterRecord.state,'submitted'),sql`${letterRecord.createdBy}<>${ctx.userId}::uuid`,sql`app.letter_permission(${letterRecord.companyId},'read') AND app.letter_permission(${letterRecord.companyId},'approve')`,input.companyId?eq(letterRecord.companyId,input.companyId):undefined,input.cursor?gt(letterRecord.id,input.cursor):undefined,
  sql`coalesce((select d.delegated_to=${ctx.userId}::uuid from letter_approval_decision d where d.revision_id=${letterRecord.currentRevisionId} and d.stage_index=${letterRecord.stageIndex} and d.action='delegate' order by d.created_at desc,d.id desc limit 1),(${letterPolicyVersion.policy}->'stages'->${letterRecord.stageIndex}->'userIds') ? ${ctx.userId})`)).orderBy(asc(letterRecord.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].record.id:null};
@@ -524,7 +528,7 @@ export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Pr
   select l.id,l.reference,l.state,l.company_id,c.legal_name as company_name,l.employment_id,p.full_name as employee_name,e.employee_code,
    org.department_id,coalesce(nullif(trim(d.label),''),nullif(trim(d.description),''),d.name) as department_name,org.ambiguous as organisation_ambiguous,v.category,v.name as title,
    l.created_at,l.submitted_at,l.approved_at,l.issued_at,l.voided_at,
-   case when l.stage_index=0 then l.submitted_at else (select decision.created_at from letter_approval_decision decision where decision.revision_id=l.current_revision_id and decision.stage_index=l.stage_index-1 and decision.action='approve') end as stage_entered_at,
+   ${letterStageEnteredAt(sql`l.stage_index`,sql`l.submitted_at`,sql`l.current_revision_id`)} as stage_entered_at,
    (policy.policy->>'approvalDueHours')::integer as approval_due_hours,(policy.policy->>'acknowledgementDueDays')::integer as acknowledgement_due_days,
    policy.policy->>'acknowledgement' as acknowledgement_mode,recipient.viewed_at,recipient.acknowledged_at
   from letter_record l join company c on c.id=l.company_id and c.tenant_id=l.tenant_id

@@ -1,6 +1,6 @@
 import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
-import {and,asc,eq} from 'drizzle-orm';
+import {and,asc,eq,sql as sq} from 'drizzle-orm';
 import {PDFDocument,PDFRawStream,PDFName} from 'pdf-lib';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
@@ -27,6 +27,35 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+
+ it('refuses confidential delegation through both the owner and direct database writes when the target lacks financial access',async()=>{
+  const [previous]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previous.policy,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...previous.policy.stages]}});
+  const field=await saveLetterField(ctx,{companyId:b.companyId,definition:{key:'award',label:'Award',description:'Private award amount',kind:'currency',source:'custom.currency',required:true,editable:true,sensitive:true},active:true});
+  const template=await saveLetterTemplate(ctx,{companyId:b.companyId,code:'CONFIDENTIAL',name:'Private award',category:'confirmation',effectiveFrom:today(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'award'}]}]},fieldVersionIds:[field.id]});
+  await decideLetterTemplate(ctx,{versionId:template.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:template.versionId,expectedStatus:'submitted',action:'approve'});
+  const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional nonfinancial delegate',primaryEmail:'nonfinancial@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'manager');
+  for(const capability of ['read','approve'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'manager',allowed:true});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId:template.versionId,employmentIds:[employees[0]],customValues:{[employees[0]]:{award:{kind:'currency',amount:'123.45',currency:'MYR'}}},operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);
+  const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0];expect(row.record.confidential).toBe(true);
+  await expect(delegateLetterApproval(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,delegateUserId:delegateId,reason:'Review this private award'})).rejects.toMatchObject({code:'permission'});
+  await expect(withTenant(reviewer,tx=>tx.insert(s.letterApprovalDecision).values({tenantId:b.tenantId,letterId:row.record.id,revisionId:row.revision!.id,stageIndex:0,actorId:reviewer.userId!,action:'delegate',comment:'Attempt direct delegation',delegatedTo:delegateId,contentHash:row.revision!.contentHash}))).rejects.toThrow();
+  expect(await owner.db.select().from(s.letterApprovalDecision)).toHaveLength(0);expect((await getStaffLetter(reviewer,row.record.id))!.record.lockVersion).toBe(row.record.lockVersion);
+ });
+
+ it('starts each approval deadline on entry to that stage and keeps queue/report deadlines identical',async()=>{
+  const [previous]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previous.policy,stages:[{key:'review',label:'Initial review',userIds:[reviewer.userId!],allowDelegation:true},...previous.policy.stages]}});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);
+  const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0];
+  // Owner-only historical fixture; application writes cannot rewrite workflow timestamps.
+  await owner.db.transaction(async tx=>{await tx.execute(sq`alter table letter_record disable trigger letter_record_transition`);await tx.execute(sq`update letter_record set submitted_at=now()-interval '96 hours' where id=${row.record.id}::uuid`);await tx.execute(sq`alter table letter_record enable trigger letter_record_transition`);});
+  const before=await listLetterApprovalQueue(reviewer,{companyId:b.companyId});expect(new Date(before.rows[0].dueAt).getTime()).toBeLessThan(Date.now());
+  await decideLetter(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve',comment:'Initial stage reviewed',confirmSignature:false}});
+  const after=await listLetterApprovalQueue(reviewer,{companyId:b.companyId}),report=await readLetterReport(ctx,{companyId:b.companyId,from:today(),to:today()});
+  expect(after.rows).toHaveLength(1);expect(after.rows[0].record.stageIndex).toBe(1);expect(new Date(after.rows[0].dueAt).getTime()).toBeGreaterThan(Date.now()+47*3600000);
+  expect(new Date(after.rows[0].dueAt).toISOString()).toBe(new Date(report.rows[0].approval_due_at!).toISOString());expect(report.rows[0].approval_overdue).toBe(false);
+ });
 
 
  it('paginates a complete batch without narrowing readiness totals or partially submitting it',async()=>{
