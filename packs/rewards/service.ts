@@ -10,6 +10,7 @@ import { appUser, assignment, businessUnit, company, compensation, employment, j
 import { assertModuleGate, withRewardsTenant } from '../../core/module-gate';
 import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
+import { lockLeaveDependencyConfigurationTx } from '../../core/leave-dependency-lock';
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { calculateRewards } from './engine';
@@ -396,9 +397,14 @@ export async function rewardPayrollChoices(ctx: SessionContext, unitId: string) 
 }
 
 export async function postRewardUnit(ctx: SessionContext, unitId: string, revision: number, batchId?: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (batchId) idSchema.parse(batchId);
   assertModuleGate(ctx, 'payroll');
   return withRewardsTenant(ctx, async tx => {
+    // Posting can enact an approved grade change. Own the graph interval before funding/source,
+    // credit/Payroll or employment locks rather than upgrading at the later grade-writer call.
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
     if (!roles.includes('payroll')) throw new RewardError('The assigned payroll role is required.');

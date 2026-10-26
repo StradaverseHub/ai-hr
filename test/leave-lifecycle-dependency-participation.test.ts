@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
-import { hireEmployee, terminateEmployment } from '../core/org';
+import { hireEmployee, terminateEmployment, setEmploymentGrade } from '../core/org';
 import { createMovementEvent, createMovementEventTx, rehearseMovementSequenceTx, editMovementEvent } from '../core/movement';
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
@@ -173,4 +173,25 @@ describe('canonical hire configuration participant', () => {
     const grants = after.ledger.filter(row => row.employmentId === created.employmentId && row.leaveTypeId === b.annualLeaveTypeId);
     expect(grants).toHaveLength(1); expect(Number(grants[0].days)).toBeGreaterThan(0);
   });
+});
+
+
+/** Direct and supplied-Tx grade writers, authored UNRUN. */
+describe('grade source configuration ownership', () => {
+ it.each(['direct', 'caller-tx'] as const)('%s refuses before grade/events and commits once after release', async path => {
+  const ctx=adminCtx(b);
+  const employee=await hireEmployee(ctx,{person:{fullName:'Fictional Grade Subject',primaryEmail:`grade-${randomUUID()}@t.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:`G-${randomUUID().slice(0,8)}`,name:'Fictional grade'}).returning();
+  const input={employmentId:employee.employmentId,gradeId:grade.id};
+  const mutate=()=>path==='direct'?setEmploymentGrade(ctx,input):withTenant(ctx,tx=>setEmploymentGrade(ctx,input,tx));
+  const state=async()=>({employees:await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId)),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)});
+  const before=await state();let ready!:()=>void,fail!:(error:unknown)=>void,release!:()=>void;
+  const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
+  const timer=setTimeout(()=>{fail(new Error('owned grade handshake timed out'));release();},10000);
+  const holder=withTenant(ctx,async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[employee.employmentId]);ready();await finish;});void holder.catch(fail);
+  try{await started;await expect(mutate()).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);}
+  finally{release();clearTimeout(timer);await holder;}
+  expect(await mutate()).toMatchObject({changed:true});const after=await state();expect(after.employees[0].gradeId).toBe(grade.id);expect(after.events.length).toBe(before.events.length+1);
+  expect(await mutate()).toMatchObject({changed:false});expect(await state()).toEqual(after);
+ });
 });

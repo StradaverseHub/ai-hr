@@ -1745,7 +1745,11 @@ export async function setEmploymentGrade(
   p: { employmentId: string; gradeId: string | null; movement?: MovementTag },
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ gradeId: employment.gradeId })
       .from(employment)

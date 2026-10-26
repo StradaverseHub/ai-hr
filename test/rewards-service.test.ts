@@ -10,6 +10,7 @@ import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 describe('Rewards persistence, authorization and atomic enactment', () => {
@@ -237,6 +238,19 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(saveRewardEntry(admin, unitId, rev, v.rows[0].id, v.rows[0].recommendation)).rejects.toThrow(/Return/);
     expect(await decideRewardUnit(admin, unitId, rev, 'return', 'Source salary needs refreshing')).toBe('draft');
     expect((await view()).unit.revision).toBe(rev + 1);
+  });
+  it('owns the leave graph interval before reward funding/source/grade and payroll effects', async () => {
+    const rev=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    const state=async()=>({unit:await view(),employees:await owner.db.select().from(schema.employment),compensation:await owner.db.select().from(schema.compensation),inputs:await owner.db.select().from(schema.payrollInput),events:await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)});
+    const before=await state();let ready!:()=>void,fail!:(error:unknown)=>void,release!:()=>void;
+    const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
+    const timer=setTimeout(()=>{fail(new Error('owned reward interval handshake timed out'));release();},10000);
+    const holder=withTenant(admin,async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[employmentId]);ready();await finish;});void holder.catch(fail);
+    try{await started;await expect(postRewardUnit(admin,unitId,rev,batch.batchId)).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);}
+    finally{release();clearTimeout(timer);await holder;}
+    expect(await postRewardUnit(admin,unitId,rev,batch.batchId)).toEqual({alreadyPosted:false});
+    const after=await state();expect(after.unit.unit.status).toBe('posted');
+    expect(await postRewardUnit(admin,unitId,rev,batch.batchId)).toEqual({alreadyPosted:true});expect(await state()).toEqual(after);
   });
   it('posts exactly once, adds awards to existing payroll and preserves unrelated inputs', async () => {
     const rev = await approve();
