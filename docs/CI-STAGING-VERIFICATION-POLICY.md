@@ -1,6 +1,6 @@
 # CI staging verification policy
 
-Policy identifier: `aihr-staging-ci/v7`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. Version6 introduced the reviewed build-once installer contract; version7 retains it and binds duration-balanced DB grouping. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
+Policy identifier: `aihr-staging-ci/v8`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. Version6 introduced the reviewed build-once installer contract; version7 retains it and binds duration-balanced DB grouping; version8 retains complete membership and adds duration-first within-job ordering. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
 
 ## Evidence authority
 
@@ -19,6 +19,8 @@ A dispatch concurrency choice of 4, 8, 16 or 20 (default 20) limits simultaneous
 Manual controller_only diagnostics require diagnostics_only=true and identical frozen candidate/controller. They execute dependency-free controller checks and reconstruct the entire tracked classifier manifest, without application dependencies/tests, compilers, databases or deployment. Their differently named diagnostic artifact and skipped required jobs cannot supply a release witness. Source grouping/runtime integration remains subject to a fresh complete normal validation.
 
 [Controller-only40273794715](https://github.com/StradaverseHub/ai-hr/actions/runs/40273794715), exact0cf72a1528fd8ede07f1d24a95958d7a7b8488c9, passed294 controller controls and reconstructed all1,957 tracked Node/DOM files without application dependencies. Independent API/archive review confirmed exactly16 DB units,4 no-DB units and3 browser engines, unchanged complete membership, the dataset digest and manifest fingerprint. This validates controller/source topology and the absence of application execution in this diagnostic; actual balanced matrix runtime and a complete current-policy release witness remain unproved.
+
+Version8 sets duration-first ordering only for normal DB units. The installed Vitest base sequencer still owns sharding. Its project group, project name, isolation and prior-failure priorities remain ahead of duration; unknown files stay required with a positive advisory default. Local default behavior stays unchanged unless explicitly opted in. This execution change and new mandatory sequencing controls require a fresh complete current-policy witness; version7 source/model validation is retained at its actual origin, not relabelled as version8 runtime proof.
 
 ## Operator route
 

@@ -14,7 +14,7 @@ export function validateDurationHints(value){
 }
 const bytes=readFileSync(new URL('./db-duration-hints.json',import.meta.url));
 const profile=JSON.parse(bytes),hints=validateDurationHints(profile);
-export const DB_SCHEDULING=Object.freeze({algorithm:'duration-balanced-v1',hintsSha256:createHash('sha256').update(bytes).digest('hex'),unknownDurationMs:profile.unknownDurationMs});
+export const DB_SCHEDULING=Object.freeze({algorithm:'duration-balanced-v1',hintsSha256:createHash('sha256').update(bytes).digest('hex'),unknownDurationMs:profile.unknownDurationMs,fileOrder:'duration-within-project-v1'});
 /** Stable longest-first bin packing; preserve the original ceil(N/maxFiles) job count and cap. */
 export function balanceDatabaseFiles(files,maxFiles=64,durations=hints,unknownDurationMs=profile.unknownDurationMs){
  assert(Array.isArray(files)&&files.every(f=>typeof f==='string'&&pathPattern.test(f)&&!f.split('/').some(p=>!p||p==='.'||p==='..'))&&new Set(files).size===files.length,'Invalid complete DB inventory');
@@ -30,3 +30,6 @@ export function balanceDatabaseFiles(files,maxFiles=64,durations=hints,unknownDu
  // Expensive groups enter a constrained matrix first; every member is sorted before content hashing.
  return bins.sort((a,b)=>b.cost-a.cost||a.index-b.index).map(b=>b.files.sort(compare));
 }
+
+/** Advisory ordering only; an unknown file remains required. */
+export function testDurationHintMs(file){return Object.hasOwn(hints,file)?hints[file]:profile.unknownDurationMs;}
