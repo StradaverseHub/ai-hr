@@ -27,3 +27,14 @@ Public recovery commits its exact request/context before acknowledging it, then 
 ## Acceptance and limits
 
 Verify actual owner login/MFA/logout, browser and native expiry/revocation, a second organization with the same username, role/company refusals, verified SMTP receipt, password recovery and invitation enrollment. Rehearse database/key restore in an isolated installation. On-prem needs customer DNS/TLS and phone reachability via local network/VPN; signed company setup files do not install a CA or bypass TLS. The standard binary expects a certificate trusted by the phone’s system store. A registered DNS name with a publicly trusted certificate can resolve privately and use DNS-based issuance. A private-CA Android deployment needs a separately reviewed, domain-scoped enterprise app trust configuration; adding a user CA alone is insufficient for modern Android defaults ([Android documentation](https://developer.android.com/privacy-and-security/security-config)). Login/MFA require no external identity provider; mail delivery can use an internal relay. Physical device, blocked-egress, restored-state and production owner acceptance must each be recorded separately from local tests. Enterprise federation/passkeys and legacy-service removal are separate work.
+
+
+## New customers created by the operator
+
+With `AUTH_PROVIDER=internal`, customer provisioning initializes both encrypted login-organization mappings inside the same owner transaction as the tenant and first-administrator invitation. A failure at any later provisioning step rolls these mappings back too. The provisioning process must receive the same `AUTH_PUBLIC_ORIGIN` and `AUTH_SESSION_KEY` as the web application.
+
+The initial organization code is derived from the customer name. Name collisions receive a stable tenant-specific suffix; the installation's `operator` namespace is reserved. Existing organization mappings are preserved rather than reassigned. Activation shows the organization code throughout password/MFA setup so the administrator can retain it for subsequent sign-ins.
+
+Provisioning creates no password, identity binding or role grant. The first administrator chooses a password and completes personal MFA through the ordinary invitation flow. A missing or inconsistent organization mapping is reported as a service/configuration failure rather than an expired invitation. Reissuing an invitation still revokes the old link without changing the organization mapping.
+
+Verification covers the actual operator request/runner → provision → password/MFA → identity binding flow, atomic rollback, concurrent same-name customers, existing code preservation, application-role refusal and other-provider isolation in `test/internal-auth-provisioning.test.ts`. No migration or automatic repair of existing customers is included.
