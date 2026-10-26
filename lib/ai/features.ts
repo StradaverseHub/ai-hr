@@ -1,6 +1,7 @@
 /** Closed workload inventory shared by the gateway and management page. Add a feature before enabling a new model caller. */
 export const AI_FEATURES = [
   {id:'hr_assistant',module:'assistant',kind:'assistant',setting:null},
+  {id:'provider_evaluation',module:null,kind:'feature',setting:null},
   {id:'readiness_reminders',module:'notifications',kind:'agent',setting:'notifications.readiness_nudge_enabled'},
   {id:'claims_triage',module:'claims',kind:'agent',setting:'claims.input_triage_enabled'},
   {id:'payroll_hypotheses',module:'payroll',kind:'agent',setting:'payroll.anomaly_hypotheses_enabled'},
