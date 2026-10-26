@@ -27,8 +27,12 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
           'app.assistant_own_leave_review_content'::regclass,'public.ai_agent_feedback'::regclass)) as allowed`);
     if (role?.allowed !== true) return unavailable();
     // Each statement is bounded independently; never weaken another owner's timeout or role/session.
-    await tx.execute(sql`set local statement_timeout='5s'`);
-    await tx.execute(sql`set local lock_timeout='500ms'`);
+    const bounds = await tx.execute(sql`select name,set_config(name,(case
+      when setting::bigint=0 then case name when 'statement_timeout' then 5000 else 500 end
+      else least(setting::bigint,case name when 'statement_timeout' then 5000 else 500 end)
+      end)::text,true) as value from pg_catalog.pg_settings
+      where name in ('statement_timeout','lock_timeout') and unit='ms'`);
+    if (bounds.length !== 2) return unavailable();
     const tenants = await tx.execute<{ tenant_id: string }>(sql`select tenant_id from (
       select tenant_id,expires_at from app.assistant_own_leave_review
         where state='awaiting_confirmation' and expires_at<=now()

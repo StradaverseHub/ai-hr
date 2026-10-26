@@ -31,6 +31,13 @@ CREATE POLICY ai_agent_feedback_expired_connection_delete ON public.ai_agent_fee
  USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
   AND session_user=pg_get_userbyid((SELECT c.relowner FROM pg_class c WHERE c.oid='public.ai_agent_feedback'::regclass)));
 --> statement-breakpoint
+-- SELECT FOR UPDATE also uses UPDATE's USING policy. WITH CHECK(false) still refuses every
+-- UPDATE effect, while permitting the expired-only row locking needed before bounded deletion.
+CREATE POLICY ai_agent_feedback_expired_connection_lock ON public.ai_agent_feedback FOR UPDATE TO PUBLIC
+ USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
+  AND session_user=pg_get_userbyid((SELECT c.relowner FROM pg_class c WHERE c.oid='public.ai_agent_feedback'::regclass)))
+ WITH CHECK(false);
+--> statement-breakpoint
 CREATE POLICY ai_agent_feedback_own ON public.ai_agent_feedback FOR ALL TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND user_id=app.current_user_id())
  WITH CHECK (tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()

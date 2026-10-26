@@ -74,6 +74,16 @@ describe('out-of-band expired AI custody maintenance', () => {
     await expect(owner.db.transaction(async tx => { await retireExpiredAiCustodyTx(tx as unknown as Tx); throw Error('owned retention rollback'); })).rejects.toThrow('owned retention rollback');
     expect(await state()).toEqual(before);
   });
+  it('retains stricter caller statement and lock timeouts', async () => {
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`set local statement_timeout='4000ms'`);
+      await tx.execute(sql`set local lock_timeout='400ms'`);
+      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0 });
+      const rows = await tx.execute<{ name: string; setting: string }>(sql`select name,setting from pg_settings
+        where name in ('statement_timeout','lock_timeout') order by name`);
+      expect(rows).toEqual([{ name: 'lock_timeout', setting: '400' }, { name: 'statement_timeout', setting: '4000' }]);
+    });
+  });
   it('skips a genuinely busy Access interval without changes and retires after release', async () => {
     await review(true); await feedback(true); const before = await state();
     let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
@@ -97,6 +107,15 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`alter table app.assistant_own_leave_review_content owner to ${role}`);
       await tx.execute(sql`alter table public.ai_agent_feedback owner to ${role}`);
       await tx.execute(sql`set local session authorization ${role}`);
+      const [identity] = await tx.execute<{ current_role_name: string; session_role_name: string; rolsuper: boolean; rolbypassrls: boolean }>(sql`
+        select current_user as current_role_name,session_user as session_role_name,r.rolsuper,r.rolbypassrls
+        from pg_roles r where r.rolname=current_user`);
+      expect(identity).toEqual({ current_role_name: name, session_role_name: name, rolsuper: false, rolbypassrls: false });
+      const [expired] = await tx.execute<{ count: number }>(sql`select count(*)::int as count from public.ai_agent_feedback where expires_at<=now()`);
+      expect(expired.count).toBe(1);
+      await tx.execute(sql`savepoint feedback_update_refusal`);
+      await expect(tx.execute(sql`update public.ai_agent_feedback set outcome='helpful' where expires_at<=now()`)).rejects.toThrow();
+      await tx.execute(sql`rollback to savepoint feedback_update_refusal`);
       expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1 });
       const [hidden] = await tx.execute<{ count: number }>(sql`select count(*)::int as count from public.ai_agent_feedback where expires_at>now()`);
       expect(hidden.count).toBe(0);
