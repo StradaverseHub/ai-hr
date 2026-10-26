@@ -2357,7 +2357,24 @@
         "invalidSource": "We could not prepare this file for header review. Use the current template or check the CSV.",
         "acceptedRevision": "Headings updated. Validate this revision before importing.",
         "sourceChanged": "The source changed. Open header review again.",
-        "unknownSheet": "Source text"
+        "unknownSheet": "Source text",
+        "aiTitle": "Optional AI header suggestions",
+        "aiDescription": "This AI request excludes file contents, sample values and sheet names. You choose whether to use each suggestion.",
+        "aiChoose": "Choose unresolved headings to review",
+        "aiConsent": "I reviewed the exact headings shown. Send only these headings and standard field definitions to the configured AI provider.",
+        "aiSend": "Ask for header suggestions",
+        "aiWorking": "Requesting suggestions…",
+        "aiUnavailable": "I can’t get a suggestion through that door right now. You can still map these headings yourself.",
+        "aiUncertain": "The reply did not arrive clearly. Check the saved request; nothing will be resent automatically.",
+        "aiReopen": "Check saved request",
+        "aiNewRequest": "Start a new request",
+        "aiReady": "Suggestions are ready for your review. They have not changed any heading or row.",
+        "aiUseSuggestion": "Use suggestion",
+        "aiNoHeadings": "These headings already have known matches. You can review them manually.",
+        "aiLimit": "Choose up to 32 distinct, valid headings. Review the exact heading packet below.",
+        "aiSelected": "Headings to send",
+        "aiStale": "The source or company changed. Open review again before using suggestions.",
+        "aiPrepareUnknown": "I couldn’t confirm that the request was saved. Nothing will be resent automatically. Keep mapping locally, or explicitly start a new request."
       }
     },
     "wizard": {

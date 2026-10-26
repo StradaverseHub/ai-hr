@@ -1,5 +1,5 @@
 'use client';
-import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages} from '@/components/personnel-import-header-review';
+import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages,type PersonnelImportHeaderAssistanceAnnotation} from '@/components/personnel-import-header-review';
 import {capturePersonnelImportSource,applyPersonnelHeaderMapping,type PersonnelImportSource} from '@/lib/personnel-import-assistance-source';
 import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
@@ -98,7 +98,7 @@ reviewHeadings:t('headerAssistance.reviewHeadings'),
 invalidSource:t('headerAssistance.invalidSource'),
 acceptedRevision:t('headerAssistance.acceptedRevision'),
 sourceChanged:t('headerAssistance.sourceChanged'),
-unknownSheet:t('headerAssistance.unknownSheet')};
+unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTitle'),aiDescription:t('headerAssistance.aiDescription'),aiChoose:t('headerAssistance.aiChoose'),aiConsent:t('headerAssistance.aiConsent'),aiSend:t('headerAssistance.aiSend'),aiWorking:t('headerAssistance.aiWorking'),aiUnavailable:t('headerAssistance.aiUnavailable'),aiUncertain:t('headerAssistance.aiUncertain'),aiReopen:t('headerAssistance.aiReopen'),aiNewRequest:t('headerAssistance.aiNewRequest'),aiReady:t('headerAssistance.aiReady'),aiUseSuggestion:t('headerAssistance.aiUseSuggestion'),aiNoHeadings:t('headerAssistance.aiNoHeadings'),aiLimit:t('headerAssistance.aiLimit'),aiSelected:t('headerAssistance.aiSelected'),aiStale:t('headerAssistance.aiStale'),aiPrepareUnknown:t('headerAssistance.aiPrepareUnknown')};
   const nricMessage = useNricPolicyMessage();
   const nricTexts = useTranslations('peopleGeneral');
   const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
@@ -116,6 +116,8 @@ unknownSheet:t('headerAssistance.unknownSheet')};
   const [importSource,setImportSource]=useState<PersonnelImportSource|null>(null);
   const [reviewHeaders,setReviewHeaders]=useState(false);
   const [headerNotice,setHeaderNotice]=useState<string|null>(null);
+  // Opaque proposal-use metadata only. This does not claim a canonical commit or correctness.
+  const headerAssistanceAnnotation=useRef<PersonnelImportHeaderAssistanceAnnotation|null>(null);
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
   const [dependentsCsv, setDependentsCsv] = useState('');
@@ -194,7 +196,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
         allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       if (revision !== inputRevision.current) return;
-      setCsv(text);
+      setCsv(text);headerAssistanceAnnotation.current=null;
       try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
 
       setDependentsCsv(dependentsText);
@@ -210,7 +212,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
       // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
       // alone — the user must press Validate again to get a preview back.
       setFileName(null);
-      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
+      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');headerAssistanceAnnotation.current=null;
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -415,7 +417,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
               value={companyId}
               onChange={(e) => {
                 if (commitPending.current) return;
-                setCompanyId(e.target.value);
+                setCompanyId(e.target.value);headerAssistanceAnnotation.current=null;
                 reset();
               }}
             >
@@ -524,7 +526,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
                 value={csv}
                 onChange={(e) => {
                   if (commitPending.current) return;
-                  setCsv(e.target.value);setImportSource(null);
+                  setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;
                   setFileName(null);
                   reset();
                 }}
@@ -541,14 +543,14 @@ unknownSheet:t('headerAssistance.unknownSheet')};
             catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
           }}>{headerMessages.reviewHeadings}</Button>
           {headerNotice&&<p role="status" className="text-sm text-muted-foreground">{headerNotice}</p>}
-          {reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource}
+          {reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource} companyId={companyId}
             options={{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}}
             choices={employeeTemplate.columns.map(column=>({key:column.key,label:employeeColumnLabel(column.key)}))}
             messages={headerMessages} disabled={pending||reading||committing}
-            onCancel={()=>setReviewHeaders(false)} onApply={(destinations,revision)=>{
+            onCancel={()=>setReviewHeaders(false)} onApply={(destinations,revision,assistance)=>{
               if(commitPending.current)return;
               if(importSource.revisionId!==revision||importSource.currentText!==csv){setHeaderNotice(headerMessages.sourceChanged);setReviewHeaders(false);return;}
-              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());reset();setCsv(accepted.text);setImportSource(accepted.source);setHeaderNotice(headerMessages.acceptedRevision);}
+              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());reset();setCsv(accepted.text);setImportSource(accepted.source);headerAssistanceAnnotation.current=assistance??null;setHeaderNotice(headerMessages.acceptedRevision);}
               catch{setHeaderNotice(headerMessages.invalidSource);}
             }}/>}
         </div>
@@ -562,7 +564,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;
-              setCsv(SAMPLE);setImportSource(null);
+              setCsv(SAMPLE);setImportSource(null);headerAssistanceAnnotation.current=null;
               setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
@@ -684,7 +686,7 @@ unknownSheet:t('headerAssistance.unknownSheet')};
               type="button"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
-                setCsv('');setImportSource(null);
+                setCsv('');setImportSource(null);headerAssistanceAnnotation.current=null;
                 setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();

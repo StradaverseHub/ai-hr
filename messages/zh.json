@@ -2357,7 +2357,24 @@
         "invalidSource": "无法准备此文件的标题核对。请使用当前模板或检查 CSV。",
         "acceptedRevision": "标题已更新。导入前请验证此版本。",
         "sourceChanged": "源数据已更改，请重新打开标题核对。",
-        "unknownSheet": "源文本"
+        "unknownSheet": "源文本",
+        "aiTitle": "可选的 AI 标题建议",
+        "aiDescription": "此 AI 请求不包含文件内容、示例值或工作表名称。每条建议是否采用由您决定。",
+        "aiChoose": "选择尚未确定的标题",
+        "aiConsent": "我已核对显示的完整标题。同意仅将这些标题和标准字段定义发送给已配置的 AI 服务商。",
+        "aiSend": "请求标题建议",
+        "aiWorking": "正在请求建议…",
+        "aiUnavailable": "暂时无法取得建议，您仍可自行匹配这些标题。",
+        "aiUncertain": "回复未能完整返回。请检查已保存的请求，系统不会自动重发。",
+        "aiReopen": "检查已保存的请求",
+        "aiNewRequest": "开始新请求",
+        "aiReady": "建议已准备好供您核对，尚未更改任何标题或数据行。",
+        "aiUseSuggestion": "采用建议",
+        "aiNoHeadings": "这些标题已有已知匹配，您可以手动核对。",
+        "aiLimit": "请选择最多 32 个不同的有效标题，并核对下方将发送的完整标题。",
+        "aiSelected": "将发送的标题",
+        "aiStale": "源数据或公司已更改。使用建议前请重新打开核对。",
+        "aiPrepareUnknown": "无法确认请求是否已保存。系统不会自动重发。请继续手动匹配，或明确开始新请求。"
       }
     },
     "wizard": {

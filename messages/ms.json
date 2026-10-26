@@ -2357,7 +2357,24 @@
         "invalidSource": "Fail ini tidak dapat disediakan untuk semakan tajuk. Gunakan templat semasa atau semak CSV.",
         "acceptedRevision": "Tajuk dikemas kini. Sahkan semakan ini sebelum mengimport.",
         "sourceChanged": "Sumber telah berubah. Buka semula semakan tajuk.",
-        "unknownSheet": "Teks sumber"
+        "unknownSheet": "Teks sumber",
+        "aiTitle": "Cadangan tajuk AI pilihan",
+        "aiDescription": "Permintaan AI ini tidak menyertakan kandungan fail, nilai contoh atau nama lembaran. Anda memilih sama ada menggunakan setiap cadangan.",
+        "aiChoose": "Pilih tajuk yang belum diselesaikan",
+        "aiConsent": "Saya telah menyemak tajuk tepat yang dipaparkan. Hantar tajuk ini dan definisi medan standard sahaja kepada penyedia AI yang dikonfigurasi.",
+        "aiSend": "Minta cadangan tajuk",
+        "aiWorking": "Meminta cadangan…",
+        "aiUnavailable": "Cadangan belum dapat diperoleh sekarang. Anda masih boleh memadankan tajuk ini sendiri.",
+        "aiUncertain": "Jawapan tidak diterima dengan jelas. Semak permintaan tersimpan; tiada apa dihantar semula secara automatik.",
+        "aiReopen": "Semak permintaan tersimpan",
+        "aiNewRequest": "Mulakan permintaan baharu",
+        "aiReady": "Cadangan sedia untuk semakan anda. Tiada tajuk atau baris diubah.",
+        "aiUseSuggestion": "Gunakan cadangan",
+        "aiNoHeadings": "Tajuk ini sudah mempunyai padanan diketahui. Anda boleh menyemaknya secara manual.",
+        "aiLimit": "Pilih sehingga 32 tajuk berbeza yang sah. Semak tajuk tepat di bawah.",
+        "aiSelected": "Tajuk untuk dihantar",
+        "aiStale": "Sumber atau syarikat telah berubah. Buka semula semakan sebelum menggunakan cadangan.",
+        "aiPrepareUnknown": "Simpanan permintaan tidak dapat dipastikan. Tiada penghantaran semula automatik. Teruskan padanan setempat atau mulakan permintaan baharu secara jelas."
       }
     },
     "wizard": {

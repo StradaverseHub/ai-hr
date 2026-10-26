@@ -2357,7 +2357,24 @@
         "invalidSource": "Không thể chuẩn bị tệp để kiểm tra tiêu đề. Hãy dùng mẫu hiện tại hoặc kiểm tra CSV.",
         "acceptedRevision": "Đã cập nhật tiêu đề. Hãy xác thực phiên bản này trước khi nhập.",
         "sourceChanged": "Nguồn đã thay đổi. Hãy mở lại phần kiểm tra tiêu đề.",
-        "unknownSheet": "Văn bản nguồn"
+        "unknownSheet": "Văn bản nguồn",
+        "aiTitle": "Gợi ý tiêu đề AI tùy chọn",
+        "aiDescription": "Yêu cầu AI không chứa nội dung tệp, giá trị mẫu hay tên trang tính. Bạn quyết định dùng từng gợi ý hay không.",
+        "aiChoose": "Chọn tiêu đề chưa xác định",
+        "aiConsent": "Tôi đã kiểm tra đúng các tiêu đề hiển thị. Chỉ gửi các tiêu đề này và định nghĩa trường chuẩn đến nhà cung cấp AI đã cấu hình.",
+        "aiSend": "Yêu cầu gợi ý tiêu đề",
+        "aiWorking": "Đang yêu cầu gợi ý…",
+        "aiUnavailable": "Hiện chưa thể lấy gợi ý. Bạn vẫn có thể tự ghép các tiêu đề này.",
+        "aiUncertain": "Chưa nhận được phản hồi rõ ràng. Hãy kiểm tra yêu cầu đã lưu; hệ thống không tự gửi lại.",
+        "aiReopen": "Kiểm tra yêu cầu đã lưu",
+        "aiNewRequest": "Bắt đầu yêu cầu mới",
+        "aiReady": "Gợi ý đã sẵn sàng để bạn kiểm tra. Chưa có tiêu đề hay dòng nào bị thay đổi.",
+        "aiUseSuggestion": "Dùng gợi ý",
+        "aiNoHeadings": "Các tiêu đề này đã có trường khớp. Bạn có thể kiểm tra thủ công.",
+        "aiLimit": "Chọn tối đa 32 tiêu đề hợp lệ, khác nhau. Kiểm tra đúng các tiêu đề sẽ gửi bên dưới.",
+        "aiSelected": "Tiêu đề sẽ gửi",
+        "aiStale": "Nguồn hoặc công ty đã thay đổi. Hãy mở lại phần kiểm tra trước khi dùng gợi ý.",
+        "aiPrepareUnknown": "Chưa thể xác nhận yêu cầu đã được lưu. Không có lần gửi lại tự động. Hãy tiếp tục ghép thủ công hoặc chủ động bắt đầu yêu cầu mới."
       }
     },
     "wizard": {
