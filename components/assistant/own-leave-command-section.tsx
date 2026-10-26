@@ -26,7 +26,8 @@ export async function OwnLeaveCommandSection({resumeActionId:resumeValue}:{resum
   const employments=choices.kind==='choices'?choices.employments:[];
   // A server-derived opaque React identity prevents cross-login or changed-resume state reuse.
   // This key grants no authority and contains no private text, raw session IDs or posted actor data.
-  const key=createHash('sha256').update(JSON.stringify(['own-leave-panel-v1',ctx.tenantId,ctx.userId,ctx.personId,resume.data??null])).digest('hex');
+  const grants=(ctx.grants??[]).map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const key=createHash('sha256').update(JSON.stringify(['own-leave-panel-v2',ctx.tenantId,ctx.userId,ctx.personId,[...(ctx.roles??[])].sort(),grants,locale,resume.data??null,choices])).digest('hex');
   return <section className="space-y-4">
    {employments.length===0&&<p role="alert" className="text-sm">{messages.unavailable}</p>}
    <OwnLeaveCommandPanel key={key} employments={employments} messages={messages} resumeActionId={resume.data}/>

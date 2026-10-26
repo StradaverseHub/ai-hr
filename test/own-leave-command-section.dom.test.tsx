@@ -42,6 +42,13 @@ describe('unmounted real-session own-leave section composition',()=>{
   owners.session.mockResolvedValue({...session(),personId:randomUUID()});expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key);
   owners.session.mockResolvedValue(session());expect(panel(await OwnLeaveCommandSection({resumeActionId:randomUUID()}))!.key).not.toBe(first.key);
  });
+ it('resets private client state when the same login loses choices or its actual grant/allowed subject binding changes',async()=>{
+  const first=panel(await OwnLeaveCommandSection())!;
+  owners.choices.mockResolvedValueOnce({kind:'unavailable'});const denied=panel(await OwnLeaveCommandSection())!;expect(denied.key).not.toBe(first.key);expect(denied.props.employments).toEqual([]);
+  owners.choices.mockResolvedValueOnce({...choices,employments:[{...choices.employments[0],id:randomUUID()}]});expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key);
+  owners.session.mockResolvedValueOnce({...session(),grants:[{role:'employee',companyId:randomUUID()}]});expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key);
+  expect(panel(await OwnLeaveCommandSection())!.key).toBe(first.key);
+ });
  it('captures session carrier arrays before locale resolution can mutate the retained cache object',async()=>{
   const actual=session();owners.session.mockResolvedValue(actual);owners.locale.mockImplementationOnce(async()=>{actual.roles[0]='hr_admin';actual.grants[0].role='hr_admin';return'en';});
   await OwnLeaveCommandSection();expect(owners.choices).toHaveBeenCalledWith(tx,session(),'en');
