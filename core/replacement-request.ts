@@ -238,9 +238,10 @@ export async function replacementRequestAvailability(
   ctx: SessionContext,
   employmentId: string,
   asOf: string,
+  existingTx?:Tx,
 ): Promise<ReplacementRequestAvailability> {
   if (!isModuleEnabled(ctx, 'toil')) return { allowed: false, reason: 'module_off' };
-  return withTenant(ctx, async (tx) => {
+  const read=async(tx:Tx)=>{
     const resolved = await resolvePolicyForTx(tx, employmentId);
     if (!resolved) return { allowed: false, reason: 'no_employment' as const };
     const { policy } = resolved;
@@ -268,7 +269,8 @@ export async function replacementRequestAvailability(
     if (firstSchedule && !policy.allowFirstScheduleEligible)
       return { allowed: false, reason: 'first_schedule_protected' as const };
     return { allowed: true, requiresFirstScheduleConsent: firstSchedule };
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /**
@@ -425,8 +427,8 @@ export type LeaveCreditOffer = {
  * Null only when there is no resolved policy for the employment at all, which is the one case in which
  * the table cannot be drawn.
  */
-export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId: string): Promise<LeaveCreditOffer | null> {
-  return withTenant(ctx, async (tx) => {
+export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId: string, existingTx?:Tx): Promise<LeaveCreditOffer | null> {
+  const read=async(tx:Tx)=>{
     const resolved = await resolvePolicyForTx(tx, employmentId);
     if (!resolved) return null;
     const policy = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
@@ -439,7 +441,8 @@ export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId:
       },
       ordinaryDayAllowed: policy.extendedHoursEnabled,
     };
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };

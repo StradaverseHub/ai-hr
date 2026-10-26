@@ -2,7 +2,7 @@
 import 'server-only';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {ToilRequestActionChoices,LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
 import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
@@ -11,7 +11,7 @@ import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
 import {readOwnNotificationEmailChoiceSubjectsTx} from '../notification-email';
-import {myOwnEmploymentSubjectsTx} from '../read';
+import {myOwnEmploymentSubjectsTx,pickName} from '../read';
 import {readOwnProfileWorkspace} from '../profile-edit';
 import {PERSONNEL_FIELDS} from '../../lib/personnel-field-registry';
 import {ownPerformanceAcknowledgementChoicesTx} from '../../packs/performance/service';
@@ -20,7 +20,12 @@ import {prepareClaimModuleActionReview,confirmClaimModuleActionReview,reopenClai
 import {ownTestingWorkStatusesTx,readOwnTestingExecutionEditableTx} from '../system-testing-workspace';
 import {prepareTestingModuleActionReview,confirmTestingModuleActionReview,reopenTestingModuleActionReview,discardTestingModuleActionReview,listTestingModuleActionReviews} from './module-action-review-store';
 import {prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview,reopenClaimSubmissionModuleActionReview,discardClaimSubmissionModuleActionReview,listClaimSubmissionModuleActionReviews} from './module-action-review-store';
-import {sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
+import {assertOwnToilReplacementActorTx,withOwnToilReplacementIntervalTx} from './own-toil-replacement-source';
+import {prepareToilRequestReview,confirmToilRequestReview,reopenToilRequestReview,discardToilRequestReview,listToilRequestReviews} from './toil-request-review-store';
+import {replacementRequestAvailability,leaveCreditOfferForEmployment,findReplacementLeaveTypeIdTx,lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx} from '../../packs/leave/service';
+import {leaveType} from '../../db/schema';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 import {assertOwnLifecycleAcknowledgementActorTx} from './own-lifecycle-acknowledgement-source';
 import {prepareLifecycleAckReview,confirmLifecycleAckReview,reopenLifecycleAckReview,discardLifecycleAckReview,listLifecycleAckReviews} from './lifecycle-ack-review-store';
 import {assertKnowledgeArticleActorTx} from './knowledge-article-source';
@@ -80,6 +85,9 @@ export async function readTestingModuleActionChoices(supplied:SessionContext):Pr
 export async function readTestingModuleActionExecution(supplied:SessionContext,id:string){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};return withTenant(ctx,async tx=>({kind:'testing_execution_edit' as const,source:await readOwnTestingExecutionEditableTx(tx,ctx,id)}));
 }
+/** Native request eligibility/policy only, never banked credits or wage values. Complete own-subject
+ * ownership precedes per-policy reads; genuine unconfigured catalogues retain native nullable target. */
+export async function readToilRequestModuleActionChoices(supplied:SessionContext,locale?:string){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{const fresh=await assertOwnToilReplacementActorTx(tx,ctx),today=todayInKualaLumpur();await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const subjects=await myOwnEmploymentSubjectsTx(tx,fresh);if(subjects.length>16)throw Error('TOIL choices unavailable');if(subjects.length)await lockLeaveDependenciesTx(tx,fresh.tenantId,subjects.map(row=>row.employmentId));const currentSubjects=await myOwnEmploymentSubjectsTx(tx,fresh);if(JSON.stringify(currentSubjects)!==JSON.stringify(subjects))throw Error('TOIL choices changed');const typeId=await findReplacementLeaveTypeIdTx(tx,fresh.tenantId);let replacementType:{id:string;name:string}|null=null;if(typeId){const [type]=await tx.select({id:leaveType.id,name:leaveType.name,i18n:leaveType.i18n}).from(leaveType).where(and(eq(leaveType.id,typeId),eq(leaveType.tenantId,fresh.tenantId))).limit(1);if(!type)throw Error('TOIL choices unavailable');replacementType={id:type.id,name:pickName(type.name,type.i18n,locale)};}const employments:Extract<z.infer<typeof ToilRequestActionChoices>,{kind:'choices'}>['employments']=[];for(const subject of [...currentSubjects].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))){await withOwnToilReplacementIntervalTx(tx,fresh,subject.employmentId,async current=>{const availability=await replacementRequestAvailability(current,subject.employmentId,today,tx);if(!availability.allowed)return;const offer=await leaveCreditOfferForEmployment(current,subject.employmentId,tx);if(!offer)throw Error('TOIL choices unavailable');employments.push({employmentId:subject.employmentId,employeeCode:subject.employeeCode,companyName:subject.company,requiresFirstScheduleConsent:availability.requiresFirstScheduleConsent===true,ordinaryDayAllowed:offer.ordinaryDayAllowed,replacementType});});}if(today!==todayInKualaLumpur())throw Error('TOIL choices changed');return ToilRequestActionChoices.parse({kind:'choices',today,employments});});}catch{return{kind:'unavailable' as const};}}
 /** Pending-only native email-owned availability. No dummy human content or invented own employee;
  * completed reopen deliberately bypasses this pending gate and uses its separate custody owner. */
 export async function readLifecycleAckModuleActionAvailability(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{await assertOwnLifecycleAcknowledgementActorTx(tx,ctx);const [row]=await tx.execute<{source:unknown}>(sql`select app.lc_my_daa_review_source() as source`),source=z.object({caseId:z.uuid(),caseNumber:z.string().min(1).max(100),caseRevision:z.string().regex(/^\d+$/),distributionRevision:z.string().regex(/^\d+$/)}).strict().parse(row?.source);return LifecycleAckActionAvailability.parse({kind:'available',currentCase:{caseId:source.caseId,caseNumber:source.caseNumber}});});}catch{return{kind:'unavailable' as const};}}
@@ -98,6 +106,7 @@ async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typ
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  toil:{list:session=>listToilRequestReviews(session.ctx),prepare:(session,input)=>prepareToilRequestReview(session.ctx,input),reopen:(session,id)=>reopenToilRequestReview(session.ctx,id),confirm:(session,input)=>confirmToilRequestReview(session.ctx,input),discard:(session,input)=>discardToilRequestReview(session.ctx,input)},
   lifecycleAck:{list:session=>listLifecycleAckReviews(session.ctx),prepare:(session,input)=>prepareLifecycleAckReview(session.ctx,input),reopen:(session,id)=>reopenLifecycleAckReview(session.ctx,id),confirm:(session,input)=>confirmLifecycleAckReview(session.ctx,input),discard:(session,input)=>discardLifecycleAckReview(session.ctx,input)},
   knowledge:{list:session=>listKnowledgeArticleReviews(session.ctx),prepare:(session,input)=>prepareKnowledgeArticleReview(session.ctx,input),reopen:(session,id)=>reopenKnowledgeArticleReview(session.ctx,id),confirm:(session,input)=>confirmKnowledgeArticleReview(session.ctx,input),discard:(session,input)=>discardKnowledgeArticleReview(session.ctx,input)},
   org:{choices:(session,selection)=>readOrgModuleActionChoices(session.ctx,selection),list:session=>listOrgActionReviews(session.ctx),prepare:async(session,input)=>presentOrgResult(session.ctx,await prepareOrgActionReview(session.ctx,input)),reopen:async(session,id)=>presentOrgResult(session.ctx,await reopenOrgActionReview(session.ctx,id)),confirm:async(session,input)=>presentOrgResult(session.ctx,await confirmOrgActionReview(session.ctx,input)),discard:(session,input)=>discardOrgActionReview(session.ctx,input)},
