@@ -23939,6 +23939,8 @@
   },
   "letters": {
     "notifications": {
+      "acknowledged": "Nhân viên đã xác nhận nhận thư",
+      "signed": "Nhân viên đã ký xác nhận",
       "returned": "Thư được trả lại để chỉnh sửa",
       "rejected": "Thư bị từ chối",
       "approved": "Thư đã được phê duyệt",

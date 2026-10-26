@@ -23939,6 +23939,8 @@
   },
   "letters": {
     "notifications": {
+      "acknowledged": "员工已确认收到信函",
+      "signed": "员工已签署确认",
       "returned": "信函已退回修改",
       "rejected": "信函被拒绝",
       "approved": "信函已批准",

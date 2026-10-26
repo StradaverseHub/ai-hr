@@ -560,8 +560,8 @@ export function acknowledgeMyLetter(ctx:SessionContext,input:{letterId:string;ex
  const record=await ownLetterTx(tx,input.letterId),artifact=await currentLetterArtifact(tx,record),[configuration]=await tx.execute<{mode:'none'|'acknowledge'|'signature'}>(sql`select app.letter_recipient_mode(${record.id}::uuid) as mode`);if(!configuration)throw new LetterWorkflowError('configuration','policy');
  assertLetterAcknowledgement({state:record.state,mode:configuration.mode,action:input.action,artifactHash:artifact.contentHash,expectedArtifactHash:input.expectedArtifactHash});const intent=text(input.intent,2000),kind=input.action==='signature'?'signed':'acknowledged';
  const [existing]=await tx.select().from(letterRecipientEvent).where(and(eq(letterRecipientEvent.artifactId,artifact.id),eq(letterRecipientEvent.actorId,ctx.userId!),eq(letterRecipientEvent.kind,kind)));if(existing)return {at:existing.createdAt,alreadyRecorded:true};
- const [action]=await tx.insert(letterRecipientEvent).values({tenantId:ctx.tenantId,letterId:record.id,artifactId:artifact.id,actorId:ctx.userId!,kind,contentHash:artifact.contentHash,intent}).returning({at:letterRecipientEvent.createdAt});
- await event(tx,ctx,record.id,'recipient.'+kind,{artifactId:artifact.id,artifactHash:artifact.contentHash,actorId:ctx.userId!,intent});return {at:action.at,alreadyRecorded:false};
+ const [action]=await tx.insert(letterRecipientEvent).values({tenantId:ctx.tenantId,letterId:record.id,artifactId:artifact.id,actorId:ctx.userId!,kind,contentHash:artifact.contentHash,intent}).returning({id:letterRecipientEvent.id,at:letterRecipientEvent.createdAt});
+ const sourceEventId=await event(tx,ctx,record.id,'recipient.'+kind,{artifactId:artifact.id,artifactHash:artifact.contentHash,actorId:ctx.userId!,intent});await tx.execute(sql`select app.queue_letter_acknowledgement_notices(${action.id}::uuid,${sourceEventId}::uuid)`);return {at:action.at,alreadyRecorded:false};
 });}
 
 export type LetterRegisterFilter={companyId?:string;employmentId?:string;category?:string;search?:string;issuedFrom?:string;issuedTo?:string;state?:'approved'|'issued'|'void';cursor?:string;limit?:number};

@@ -23939,6 +23939,8 @@
   },
   "letters": {
     "notifications": {
+      "acknowledged": "Pekerja mengakui penerimaan surat",
+      "signed": "Pekerja menandatangani pengakuan penerimaan",
       "returned": "Surat dipulangkan untuk pembetulan",
       "rejected": "Surat ditolak",
       "approved": "Surat diluluskan",

@@ -23939,6 +23939,8 @@
   },
   "letters": {
     "notifications": {
+      "acknowledged": "Employee acknowledged the letter",
+      "signed": "Employee signed the acknowledgement",
       "returned": "Letter returned for correction",
       "rejected": "Letter rejected",
       "approved": "Letter approved",
