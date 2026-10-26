@@ -20031,7 +20031,8 @@
     },
     "switchAccountTitle": "Gunakan akaun lain",
     "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
-    "switchAccountSubmit": "Log keluar dan buka jemputan"
+    "switchAccountSubmit": "Log keluar dan buka jemputan",
+    "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan."
   },
   "aiManagement": {
     "title": "Pengurusan AI",
@@ -23738,5 +23739,14 @@
     },
     "iconUrl": "URL ikon pelayar",
     "iconHelp": "Gunakan pautan HTTPS terus ke PNG atau ICO segi empat sama, sebaiknya 32×32 atau 48×48 piksel. Kosongkan untuk ikon AIHR. Muat semula halaman untuk mengemas kini ikon yang dicache."
+  },
+  "mobileSetup": {
+    "title": "Sambung ke tempat kerja",
+    "help": "Buka AI HR pada telefon ini untuk menyemak tempat kerja dan meneruskan log masuk.",
+    "open": "Buka AI HR",
+    "install": "Jika aplikasi belum dipasang, dapatkan AI HR daripada pentadbir anda, kemudian buka semula pautan ini.",
+    "network": "Pelayan HR persendirian mungkin memerlukan Wi-Fi syarikat atau VPN.",
+    "invalid": "Pautan persediaan ini tidak sah atau telah tamat tempoh. Minta pautan baharu daripada pentadbir.",
+    "checking": "Menyediakan persediaan tempat kerja…"
   }
 }

@@ -20031,7 +20031,8 @@
     },
     "switchAccountTitle": "Use a different account",
     "switchAccountHelp": "This invitation belongs to a different organization or verified email. Sign out to set up or sign in to the invited account. Your current HR account stays separate.",
-    "switchAccountSubmit": "Sign out and open invitation"
+    "switchAccountSubmit": "Sign out and open invitation",
+    "workplaceLoginHelp": "Your workplace is selected. Enter your username and password."
   },
   "aiManagement": {
     "title": "AI management",
@@ -23738,5 +23739,14 @@
     },
     "iconUrl": "Browser icon URL",
     "iconHelp": "Use a direct HTTPS link to a square PNG or ICO file, ideally 32×32 or 48×48 pixels. Leave blank to use the AIHR icon. Browsers may cache their tab icon until the page is reloaded."
+  },
+  "mobileSetup": {
+    "title": "Connect your workplace",
+    "help": "Open AI HR on this phone to review your workplace and continue to sign in.",
+    "open": "Open AI HR",
+    "install": "If the app is not installed, get AI HR from your administrator, then reopen this setup link.",
+    "network": "A private HR server may require your company Wi-Fi or VPN.",
+    "invalid": "This setup link is invalid or expired. Ask your administrator for a new link.",
+    "checking": "Preparing your workplace setup…"
   }
 }

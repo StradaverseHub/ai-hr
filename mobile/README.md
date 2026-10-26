@@ -1,7 +1,7 @@
 # Native app foundation
 
 Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
-admits only this app and its four shared contracts. The mobile `.easignore` also protects
+admits only this app and its five shared contracts/helpers. The mobile `.easignore` also protects
 standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
 server code, local credentials and generated native/build folders must be absent.
 The backend release filter also excludes native build folders and signing inputs; mobile binaries
@@ -218,6 +218,50 @@ sign-in, the app compares `/login/mobile-connection` against the pinned profile.
 uses the same HR origin; only the legacy Keycloak adapter checks OIDC discovery and S256 support.
 The public metadata route reads only operator-owned configuration,
 contains no HR/tenant data, and returns unavailable while internal authentication is disabled/demo.
+
+### Workplace QR codes and setup links
+
+One app supports several organizations on the same cloud URL and separate on-prem URLs. For a
+workplace-specific setup, add `"organization": "customer-a"` to the unsigned **internal** profile before
+signing. This is the operator-owned login organization code already bound to the tenant, not a tenant
+UUID or a grant. Use a display name employees can recognize. Query parameters cannot override the
+signed organization. Existing profiles without this field retain manual organization entry at sign-in.
+
+From the repository root, use the existing private operator key to generate a new output directory:
+
+```sh
+node --import tsx scripts/mobile-company-profile.ts setup /PRIVATE/operator.pem /PRIVATE/company.json /OUTPUT/customer-a-setup
+```
+
+The directory contains `company.aihr.json`, `setup-link.txt` and `setup-qr.png`. Existing output paths
+are refused. The QR encodes the HTTPS link, with the signed setup in its URL fragment. The same
+installation hosts `/login/mobile-setup`; it needs no central cloud directory or identity provider.
+The page offers an explicit **Open AI HR** button using the app's existing `aihr` scheme. It does not
+automatically launch an app, request credentials, fetch a supplied URL or create a session. An app must
+already be installed; otherwise the employee gets it from their administrator and reopens the original
+link. This uses an ordinary HTTPS landing page, not per-customer Apple Universal Link / Android App
+Link domain registrations.
+
+Employees scan the QR with their phone's camera, tap a shared setup link, or paste it into
+**Connect to your company → Paste setup link**. The app verifies the signature with its installed trust
+anchors and presents the workplace, server and organization for review. Nothing is saved or signed out
+until confirmation. Reviewing a link temporarily closes private screens while retaining the session,
+employee drafts and attachments. Cancel and Android Back restore them; confirmation clears the old
+session, private drafts, files and device registration
+before changing workplaces. A malformed, expired or unapproved setup is refused. Organizations on one
+cloud URL get separate credential storage namespaces, even when usernames match. Only one workplace
+session is active at a time.
+
+After confirmation the login form shows the selected organization and asks only for username/password
+and normal MFA steps. First-password change and MFA enrollment still apply to new accounts. The server
+owns tenant membership, HR identity and permissions. On-prem phones still need company Wi-Fi/VPN and
+system-trusted HTTPS; a setup link cannot install a CA or bypass TLS.
+
+New workplace links require an updated app; 1.0.2/build 3 does not support the organization field or
+link handoff. Use production-approved trust anchors for customer bundles; the current test-only anchor
+does not authorize customer distribution. Setup generation does not activate authentication: production
+stays dormant until origin TLS and owner prerequisites pass. Physical camera/browser/app handoff and
+employee journeys on both platforms remain separate from operator/contract/UI test evidence.
 Profile changes hide private screens first, invalidate authentication, delete refresh/device credentials
 and local capture/draft files, then persist and install the new connection. Cleanup failure keeps the
 gate closed. Cookies are omitted from token/API/bootstrap requests and redirects are refused.
@@ -228,7 +272,7 @@ employments within the resolved tenant; a new cross-tenant identity-adoption flo
 Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to the
 HR server (and a separate identity server only when using a legacy adapter). Private certificate authorities require OS/customer provisioning and verification on each
 supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
-QR scanning and a hosted company directory are not part of this setup-file slice.
+QR scanning uses the phone’s camera and the HTTPS setup page; there is no in-app scanner or hosted company directory.
 
 ### Installable test builds
 
