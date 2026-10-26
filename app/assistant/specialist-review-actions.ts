@@ -11,7 +11,7 @@ const finish=():never=>{revalidatePath('/assistant');redirect('/assistant');};
 export async function createSpecialistCandidateAction(form:FormData){
  const choice=String(form.get('moduleVersion')??'').split(':'),module=choice[0],version=Number(choice[1]);
  const signalIds=form.getAll('signalId').map(value=>String(value));
- if(choice.length!==2||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)fail();
+ if(choice.length!==2||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
  try{const ctx=await getBrowserCommandSession();await createCanonicalSpecialistCandidate(ctx,{module,version,signalIds});}catch{fail();}finish();
 }
 export async function evaluateSpecialistCandidateAction(form:FormData){
@@ -27,8 +27,8 @@ export async function rollbackSpecialistCandidateAction(form:FormData){
  try{const ctx=await getBrowserCommandSession();await rollbackRoutingAgent(ctx,{promotionId,reason:'human'});}catch{fail();}finish();
 }
 export async function runSpecialistJobAction(form:FormData){
- const module=String(form.get('module')??''),nonce=String(form.get('commandNonce')??'');if(!isAgentModuleCode(module))fail();
+ const module=String(form.get('module')??''),nonce=String(form.get('commandNonce')??'');if(!isAgentModuleCode(module))return fail();
  let jobId:string;
- try{const ctx=await getBrowserCommandSession(),result=await runGovernedSpecialistJob(ctx,{module},{nonce});jobId=result.jobId;}catch{fail();}
+ try{const ctx=await getBrowserCommandSession(),result=await runGovernedSpecialistJob(ctx,{module},{nonce});jobId=result.jobId;}catch{return fail();}
  revalidatePath('/assistant');redirect('/assistant?governed='+encodeURIComponent(jobId));
 }

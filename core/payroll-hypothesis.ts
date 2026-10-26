@@ -582,7 +582,7 @@ export async function proposeHypotheses(
   // WORST FIRST, so the blast-radius cap keeps the most unusual rather than the alphabetically luckiest.
   const candidates = verdicts
     .map((v) => ({ ...v, f: features.get(v.employmentId) }))
-    .filter((c): c is { id: string; employmentId: string; f: FeatureVector } => c.f !== undefined)
+    .filter((c): c is typeof c & { f: FeatureVector } => c.f !== undefined)
     .map((c) => ({ ...c, keys: materialKeys(c.f) }))
     .filter((c) => c.keys.length > 0)
     .map((c) => ({
