@@ -24,20 +24,20 @@ export function exactImportCreditMean(values: readonly string[], successes: numb
     if (!Number.isSafeInteger(successes) || successes < 1 || values.some(value => !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) || value.length > 1024))
         throw Error('Import summary unavailable.');
     const parts = values.map(decimal), scale = Math.max(0, ...parts.map(part => part.scale));
-    let total = 0n;
+    let total = BigInt(0);
     for (const part of parts)
-        total += part.value * 10n ** BigInt(scale - part.scale);
-    const divisor = gcd(total, BigInt(successes) * 10n ** BigInt(scale)), numerator = total / divisor, denominator = BigInt(successes) * 10n ** BigInt(scale) / divisor;
+        total += part.value * BigInt(10) ** BigInt(scale - part.scale);
+    const divisor = gcd(total, BigInt(successes) * BigInt(10) ** BigInt(scale)), numerator = total / divisor, denominator = BigInt(successes) * BigInt(10) ** BigInt(scale) / divisor;
     let rest = denominator, twos = 0, fives = 0;
-    while (rest % 2n === 0n) {
+    while (rest % BigInt(2) === BigInt(0)) {
         twos++;
-        rest /= 2n;
+        rest /= BigInt(2);
     }
-    while (rest % 5n === 0n) {
+    while (rest % BigInt(5) === BigInt(0)) {
         fives++;
-        rest /= 5n;
+        rest /= BigInt(5);
     }
-    const digits = Math.max(twos, fives), exactDecimal = rest === 1n ? renderDecimal(numerator * 2n ** BigInt(digits - twos) * 5n ** BigInt(digits - fives), digits) : null;
+    const digits = Math.max(twos, fives), exactDecimal = rest === BigInt(1) ? renderDecimal(numerator * BigInt(2) ** BigInt(digits - twos) * BigInt(5) ** BigInt(digits - fives), digits) : null;
     return { totalCredits: renderDecimal(total, scale), successfulWorkflows: successes, numerator: String(numerator), denominator: String(denominator), exactDecimal };
 }
 export type ImportReportedMetric = Readonly<{

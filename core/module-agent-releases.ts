@@ -728,7 +728,7 @@ export async function eraseOwnModulePlanProposals(ctx:SessionContext){const curr
 function checkedHumanEvaluation(row:{id:string;evaluator_user_id:string;receipt:string},candidate:CandidateRow,ctx:SessionContext,fingerprint:string){
  const proof=open('human-plan-evaluation',ctx.tenantId,row.id,row.receipt);
  if(proof.version!==1||proof.suiteDigest!==HUMAN_PLAN_SUITE_DIGEST||proof.candidateDigest!==candidate.candidate_digest||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==fingerprint||routingDigest(proof.binding)!==routingDigest(binding(candidate))||!Array.isArray(proof.cases)||proof.cases.length>HUMAN_PLAN_HOLDOUTS.length)return fail();
- const seen=new Set<string>();for(const item of proof.cases){if(!item||typeof item.id!=='string'||seen.has(item.id)||!HUMAN_PLAN_HOLDOUTS.some(f=>f.id===item.id)||!['passed','failed','unavailable'].includes(item.state)||item.state!=='unavailable'&&(typeof item.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.outputDigest)))return fail();seen.add(item.id);}return {...proof,cases:proof.cases};
+ const seen=new Set<string>();for(const item of proof.cases){if(!item||typeof item.id!=='string'||seen.has(item.id)||!HUMAN_PLAN_HOLDOUTS.some(f=>f.id===item.id)||!['passed','failed','unavailable'].includes(item.state)||item.state!=='unavailable'&&(typeof item.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.outputDigest)))return fail();seen.add(item.id);}return {...proof,state:proof.state,cases:proof.cases};
 }
 async function assertHumanPlanEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,fingerprint:string){
  // Group-admin-only evaluation RLS is unchanged. Learned candidates are never lent to other owners.
