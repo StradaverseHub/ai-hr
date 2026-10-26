@@ -2043,3 +2043,26 @@ The key metadata endpoint does not prove model/routing/tools capability; no cred
 probe or provider call was made. Registry/adapter/gateway/admin configuration and
 calling-user/minimal-field admission remain incomplete and unexposed. No production
 HR transfer/provider activation, accounting settlement or performance proof follows.
+
+
+### Rule/pool/rotation configuration interval (26 October 2026; source only)
+
+Eight canonical attendance-rule owners (pool, Standard ensure, create, full update,
+section update, copy, status and delete) now capture nested input/context and acquire
+Access configuration then exclusive leave configuration before their first source
+read/row lock. Full and section update own the interval before the private shared
+update helper; no late lock inside that helper is substituted for earlier reads.
+Standard's original read-existing/no-op/creation semantics are retained. Its traced
+production caller is the schedule page, not an in-transaction leaf caller.
+Rotation save captures its cycle/pool/context, joins Access before the original fresh
+group-admin predicate and exclusive configuration immediately after it, before any
+rule/shift/version/membership/Payroll work. Original module gate, permission refusal,
+revision/date/pool/cycle immutability and Payroll calculations/events are unchanged.
+Static reversal of only import/entry/wrapper changes reproduces both old source
+files exactly. Nine actual real-employee two-connection cases are authored in
+`test/leave-schedule-dependency-participation.test.ts`: busy interval refuses with
+identical rules/bands/pool/versions/events, then release and canonical operation.
+All cases and affected consumers are UNRUN. Three-file AST syntax/diff only; no
+compiler/app/test/DB/build/provider/staging execution. Other policy/direct source
+writers, generator planning, TOIL/org/authority and retention/server exposure work
+remain pending. No universal protection or runtime/app-role/security claim.
