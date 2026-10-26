@@ -1,0 +1,110 @@
+name: alpha-staging-build-cache-diagnostic
+run-name: Canonical build cache diagnostic · ${{ inputs.phase }} · ${{ inputs.candidate_ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Existing frozen review branch; diagnostic only
+        required: true
+        type: string
+      expected_sha:
+        description: Exact candidate and controller commit
+        required: true
+        type: string
+      phase:
+        description: Cold captures a real build; warm uses an authenticated retained graph and still builds
+        required: true
+        type: choice
+        options: [cold, warm]
+      origin:
+        description: 'Warm only: JSON with runId, sha, artifactId, digest; original provenance remains intact'
+        required: false
+        default: ''
+        type: string
+permissions: {contents: read, actions: read}
+concurrency:
+  group: next-build-cache-diagnostic-${{ inputs.candidate_ref }}
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TZ: Asia/Kuala_Lumpur
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - name: Dependency-free build/cache controller and resource refusal checks
+        run: node --test .github/ci/next-build-cache-policy.test.mjs .github/ci/build-production.test.mjs .github/ci/runner-capacity.test.mjs
+      - name: Validate explicit purpose and retained origin selection
+        env:
+          MODE: ${{ inputs.phase }}
+          ORIGIN: ${{ inputs.origin }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {parseNextCacheOrigin} from './.github/ci/next-build-cache-policy.mjs';
+          assert(['cold','warm'].includes(process.env.MODE));
+          if(process.env.MODE==='warm')parseNextCacheOrigin(process.env.ORIGIN);
+          else assert(process.env.ORIGIN==='');
+          NODE
+      - id: candidate
+        name: Resolve exact clean candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+        run: node .github/ci/resolve.mjs
+      - name: Keep diagnostic source and actual controller aligned
+        env:
+          SOURCE: ${{ steps.candidate.outputs.sha }}
+          CONTROL: ${{ github.workflow_sha }}
+        run: test "$SOURCE" = "$CONTROL"
+  next-build-cache:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      AIHR_NEXT_BUILD_CACHE_MODE: ${{ inputs.phase }}
+      AIHR_NEXT_BUILD_ORIGIN: ${{ inputs.origin }}
+      AIHR_CI_CAPACITY_PROFILE: bounded-next-build-diagnostic
+      GH_TOKEN: ${{ github.token }}
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', capacity_profile: bounded-next-build-diagnostic}
+      - name: Generate the real current Next application types
+        run: pnpm exec next typegen
+      - name: Genuine canonical build, full application compiler and retained-graph refusal controls
+        run: node ../automation/.github/ci/next-build-cache.mjs
+      - name: Publish graph only after actual complete build and owned cleanup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-app-compiler-state
+          path: ${{ runner.temp }}/next-app-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-build-cache
+          path: |
+            ${{ runner.temp }}/diagnostic-next-build-cache/
+            !${{ runner.temp }}/diagnostic-next-build-cache/canonical-build/bytes/build-bundle.tar.gz
+          if-no-files-found: error
+          retention-days: 3

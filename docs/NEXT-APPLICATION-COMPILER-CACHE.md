@@ -1,0 +1,27 @@
+# Canonical Next application compiler-state diagnostic
+
+This isolated manual diagnostic prepares the next release-efficiency measurement. No actual cold/warm application-build result exists yet. It does not change the normal release workflow, authorize a deployment or waive any required test/compiler/build/migration/arrival check.
+
+The installed Next16.3.8 documentation identifies persistent compiler data under .next/cache. Both actual installed application type-check implementations write .next/cache/.tsbuildinfo; the current normal cache preserves only .next/cache/turbopack. Application build TypeScript is separate from the complete repository compiler and uses the unchanged strict tsconfig.build.json.
+
+## Exact measurement
+
+The default-off alpha-staging-build-cache-diagnostic workflow takes an exact frozen candidate/controller and explicit cold or warm phase. Both execute the real canonical owned System Testing build through the existing build-production helper. They retain all application compilation/type checks, fresh Next build ID, new build-record UUID, compiled five-value System Testing identity, source hashes, package/runtime checks and the canonical bounded byte bundle.
+
+Cold begins without an application compiler graph, genuinely builds, captures actual raw output/state and publishes graph data only after successful command and owned cleanup. Warm selects one actual successful earlier first-attempt job by immutable run/source/artifact/digest. It authenticates GitHub repository/job/artifact identities, original code Git blobs, ZIP bytes, raw completed canonical-build output, original record/observation, exact graph bytes/version/age, runtime/config/compiler/generated-type/CSS inputs and same-source or complete bounded ancestor comparison. It requires a different actual runner/boot identity at the same source path. Original state is never relabelled as a new build or PASS.
+
+The first build after restore is measured before any negative controls and must write a new Next build ID and owned record. Warm then invokes the actual installed Next CLI type-check entry for an added valid dependency/consumer, changes only the dependency and requires exact TS2322 in the unchanged consumer, adds a new invalid root and requires its exact TS2322, removes owned fixtures and checks the restored full application source. It records wrapper exits honestly; expected type errors cannot be replaced by a timeout, signal or unrelated diagnostic. Full graph membership/count changes must reflect the owned files. Existing code/type/financial/security checks remain unchanged.
+
+## Capacity and artifacts
+
+Only this dedicated hosted-company/manual/first-attempt build diagnostic can select bounded-next-build-diagnostic. It requires 12GiB measured setup headroom and 8GiB after dependencies before build, with closed database URLs and the original Node20.20.2/Next16.3.8/Linux-x64/glibc2.39 build tuple and 6GiB heap. Fixed unused SDK deletion is skipped only when capacity is already sufficient. Other normal build/test profiles remain unchanged. Five-second source/temp/home-volume samples and a terminal 2GiB floor are retained; samples are not exact peak usage. Linux caps individual output files at1GiB. The whole job has a25minute bound, and each command has its own shorter timeout with owned-process-group termination.
+
+The one-day diagnostic-next-app-compiler-state artifact contains exactly seven bounded flat JSON members: state, envelope, producer, raw build log, canonical build provenance, preparation and successful observation. The three-day diagnostic-next-build-cache artifact retains raw phase logs, source/config/runtime/resource/cleanup proof, original authenticated origin bytes and canonical bundle inventory; the large archive is excluded. Both preserve releaseAuthorized=false. Original source/controller/run identities remain distinct on consumer-only repairs. A failed consumer never triggers a new cold build automatically.
+
+Only owned fresh-runner .next output, negative-control fixtures, private record directory and temporary bundle data are removed; tracked source and foreign storage are not reset. Source/controller cleanliness and actual cleanup are required before publication. No PostgreSQL container, application suite, staging connection, Mac slot, paid runner, spending change or live deployment is involved.
+
+## Adoption remains separate
+
+First authenticate actual cold and warm runs and inspect all counts, diagnostics, timings, disk samples, source bindings and cleanup. Preserve failed original observations and repair only the failing reader/consumer when appropriate. Validate changed-source behavior before admitting broader reuse. Then integrate the measured application-cache and build-capacity changes into the normal canonical build/promotion path under its existing release trust boundary. The current build-once transport already has separate Linux/native/runtime proof, but full authenticated promotion still needs staging environment, migrations/catalog/audit, restart/health and source/build arrival.
+
+The complete required release path must still be demonstrated below600seconds from submission through verified staging arrival. Isolated component times cannot establish that result. Main/live deployment remains disabled and Mobile owns the next local runtime window.

@@ -68,3 +68,14 @@ test('normal whole compiler capacity requires its actual job/purpose, closed URL
  assert.equal(compilerSwapFloorKiB('bounded-whole-compiler',pilot),8*1024**2);
  assert.throws(()=>compilerSwapFloorKiB('bounded-whole-compiler',{...pilot,AIHR_COMPILER_CACHE_PILOT:'false'}));
 });
+
+test('application-build headroom is scoped to the dedicated diagnostic and cannot lower compiler swap admission',async()=>{
+ const {compilerSwapFloorKiB}=await import('./runner-capacity.mjs');
+ const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-build-cache-diagnostic.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',GITHUB_RUN_ATTEMPT:'1',AIHR_NEXT_BUILD_CACHE_MODE:'cold',AIHR_BUILD_DIAGNOSTIC:'transport-producer',
+ ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2-1).decision,'clean');
+ assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2).decision,'enough');
+ for(const mode of ['cold','warm'])assert(validateCapacityScope('bounded-next-build-diagnostic',{...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}));
+ for(const changes of [{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('build-cache-diagnostic','alpha-staging')},{GITHUB_JOB:'typecheck'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_NEXT_BUILD_CACHE_MODE:'other'},{DATABASE_URL:'postgres://live'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>validateCapacityScope('bounded-next-build-diagnostic',{...e,...changes}));
+ assert.throws(()=>compilerSwapFloorKiB('bounded-next-build-diagnostic',e));
+});
