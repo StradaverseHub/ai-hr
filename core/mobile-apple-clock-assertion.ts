@@ -74,6 +74,12 @@ export function createAppleClockAssertionService(settings:unknown){
       throw new AppleClockAssertionError('key_unavailable');
     return row;
   }
+  async function fresh(tx:Tx,challenge:IntegrityChallengeView){
+    const rows=await tx.execute(sql`select clock_timestamp() stamp`),rawStamp=rows[0]?.stamp;
+    const now=rawStamp instanceof Date?rawStamp:new Date(String(rawStamp));
+    if(!Number.isFinite(now.getTime())||now.getTime()<Date.parse(challenge.issuedAt))throw new AppleClockAssertionError('time_unavailable');
+    if(now.getTime()>=Date.parse(challenge.expiresAt))throw new AppleClockAssertionError('expired');
+  }
   return {
     async begin(ctx:SessionContext,raw:AppleClockAssertionInput){
       const p=snapshot(raw);
@@ -94,14 +100,15 @@ export function createAppleClockAssertionService(settings:unknown){
           publicKey:createPublicKey({key:enrolled.publicKeySpki,type:'spki',format:'der'}),appId:config.target.appId,previousCounter:enrolled.assertionCounter});
         // A request can wait for the key lock beyond the challenge window. Recheck DB time after
         // that wait and verification; process wall time and the earlier consumption stamp do not suffice.
-        const rows=await tx.execute(sql`select clock_timestamp() stamp`),rawStamp=rows[0]?.stamp;
-        const now=rawStamp instanceof Date?rawStamp:new Date(String(rawStamp));
-        if(!Number.isFinite(now.getTime())||now.getTime()<Date.parse(challenge.issuedAt))throw new AppleClockAssertionError('time_unavailable');
-        if(now.getTime()>=Date.parse(challenge.expiresAt))throw new AppleClockAssertionError('expired');
+        await fresh(tx,challenge);
         const [updated]=await tx.update(mobileIntegrityKey).set({assertionCounter:checked.nextCounter}).where(and(
           eq(mobileIntegrityKey.id,enrolled.id),eq(mobileIntegrityKey.assertionCounter,enrolled.assertionCounter),isNull(mobileIntegrityKey.revokedAt))).returning({id:mobileIntegrityKey.id});
         if(!updated)throw new AppleClockAssertionError('counter_unavailable');
         const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,nextCounter:checked.nextCounter,proofKind:enrolled.proofKind as 'apple_key_proof'|'apple_app_metadata'});
+        // Acceptance may wait on another subject/day lock after the key check. A stale grant must
+        // roll back even if the callback has already written its tentative attendance outcome.
+        await own(tx,ctx,p);
+        await fresh(tx,challenge);
         await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:challengeId,
           eventType:'mobile.integrity.assertion.checked',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
           payload:{keyId:enrolled.id,counter:checked.nextCounter,proofKind:enrolled.proofKind}});

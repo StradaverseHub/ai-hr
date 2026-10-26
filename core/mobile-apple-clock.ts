@@ -12,8 +12,8 @@ import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
 import {createAppleClockAssertionService,type AppleClockAssertionInput} from './mobile-apple-clock-assertion';
 
-/** Metadata in this receipt describes checked historical enrollment evidence; no trust tier or
- * assertion of physical presence is created. Native receipt recovery remains available separately.
+/** The audit link describes checked historical enrollment evidence; no trust tier or assertion of
+ * physical presence is created. Native receipt recovery remains available separately.
  */
 export function createAppleClockService(settings:unknown){
   const assertions=createAppleClockAssertionService(settings);

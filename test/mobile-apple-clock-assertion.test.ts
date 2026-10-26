@@ -9,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService,revokeOwnIntegrityKey} from '../core/mobile-apple-enrollment';
 import {createAppleClockAssertionService} from '../core/mobile-apple-clock-assertion';
 import {createAppleClockService} from '../core/mobile-apple-clock';
-import {captureNativeClock,abandonNativeClock,ownNativeClockReceipt} from '../core/attendance-clock';
+import {captureNativeClock,abandonNativeClock,ownNativeClockReceipt,AttendancePhotoRequiredError,ClockConflictError} from '../core/attendance-clock';
 import {setAttendancePolicy,setAttendancePhotoSetting,createClockingLocation,setClockingControl,registerDevice} from '../packs/attendance/service';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
@@ -202,7 +202,7 @@ describe('signed Apple carrier using the real attendance writer',()=>{
   it('keeps current photo policy authoritative and does not consume proof on a missing required photo',async()=>{
     const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
     await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'required'});
-    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toMatchObject({name:'AttendancePhotoRequiredError'});await counts(f,begin.challenge.id);
+    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toBeInstanceOf(AttendancePhotoRequiredError);await counts(f,begin.challenge.id);
     await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'optional'});
     expect((await clock.complete(f.ctx,f.input,proof)).photoAvailable).toBe(false);
   });
@@ -218,13 +218,13 @@ describe('signed Apple carrier using the real attendance writer',()=>{
   it('cannot retroactively upgrade an existing unsigned capture or bypass server-ordered abandonment',async()=>{
     const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
     const accepted=await captureNativeClock(f.ctx,{...f.input.command,employmentId:f.input.employmentId});
-    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toMatchObject({name:'ClockConflictError'});
+    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toBeInstanceOf(ClockConflictError);
     expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(begin.challenge.id)).consumedAt).toBeNull();
     expect(await ownNativeClockReceipt(f.ctx,f.input.employmentId,f.input.command.requestId)).toEqual(accepted);
     expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.clock.integrity.checked'))).toHaveLength(0);
     const next={...f.input,command:{...f.input.command,requestId:randomUUID()}},pending=await clock.begin(f.ctx,next);
     await abandonNativeClock(f.ctx,next.employmentId,next.command.requestId);
-    await expect(clock.complete(f.ctx,next,{challengeId:pending.challenge.id,assertion:assertion(pending.context,f.privateKey)})).rejects.toMatchObject({name:'ClockConflictError'});
+    await expect(clock.complete(f.ctx,next,{challengeId:pending.challenge.id,assertion:assertion(pending.context,f.privateKey)})).rejects.toBeInstanceOf(ClockConflictError);
     expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(pending.challenge.id)).consumedAt).toBeNull();
     expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
   });
@@ -240,5 +240,54 @@ describe('signed Apple carrier using the real attendance writer',()=>{
     expect(capture.deviceId).toBe(registered.deviceId);
     const links=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,receipt.id));
     expect(JSON.stringify(links)).not.toContain(registered.deviceToken);
+  });
+  it('rolls back an already-written punch when its integrity audit link cannot commit',async()=>{
+    const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    await owner.db.execute(sql`create function app.test_integrity_link_failure() returns trigger language plpgsql as $$begin
+      if new.event_type='attendance.clock.integrity.checked' then raise exception 'synthetic integrity link refusal';end if;return new;end;$$`);
+    await owner.db.execute(sql`create trigger zz_test_integrity_link_failure before insert on domain_event for each row execute function app.test_integrity_link_failure()`);
+    try{
+      const failure=await clock.complete(f.ctx,f.input,proof).then(()=>null,error=>error);
+      expect(failure).toBeInstanceOf(Error);let cause=failure;
+      for(let depth=0;depth<5&&cause.cause;depth++)cause=cause.cause;
+      expect(cause.message).toBe('synthetic integrity link refusal');
+      await counts(f,begin.challenge.id);
+      expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.clock.captured'))).toHaveLength(0);
+    }finally{
+      await owner.db.execute(sql`drop trigger zz_test_integrity_link_failure on domain_event`);
+      await owner.db.execute(sql`drop function app.test_integrity_link_failure()`);
+    }
+    expect((await clock.complete(f.ctx,f.input,proof)).direction).toBe('in');
+  });
+  it.each(['expiry','employment'] as const)('refuses %s changed while the attendance subject lock is held',async(change)=>{
+    const f=await fixture(),input={...f.input,command:{...f.input.command,sampledAt:Date.now()+119000}};let begin=await clock.begin(f.ctx,input);
+    if(change==='expiry'){
+      const row=await challenge(begin.challenge.id),now=Date.now();
+      await owner.db.delete(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,row.id));
+      await owner.db.insert(schema.mobileIntegrityChallenge).values({...row,issuedAt:new Date(now-118000),expiresAt:new Date(now+2000)});
+      begin=await clock.begin(f.ctx,input);
+    }
+    let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+    const holding=owner.db.transaction(async tx=>{
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${base.tenantId+':'+input.employmentId},0))`);entered();await held;
+    });
+    try{
+      await started;
+      const pending=clock.complete(f.ctx,input,{challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)}),result=Promise.allSettled([pending]);
+      try{
+        const until=Date.now()+5000;let waiting=false;
+        while(Date.now()<until){
+          const rows=await owner.db.execute(sql`select pid from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid()
+            and wait_event_type='Lock' and query like '%pg_advisory_xact_lock%'`);
+          if(rows.length){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
+        }
+        expect(waiting).toBe(true);
+        if(change==='expiry')await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${begin.challenge.expiresAt}::timestamptz-clock_timestamp())))+0.05)`);
+        else await owner.db.update(schema.employment).set({hiredOn:'2099-01-01'}).where(eq(schema.employment.id,input.employmentId));
+      }finally{release();}
+      await holding;const [outcome]=await result;expect(outcome.status).toBe('rejected');
+      if(change==='expiry')expect(outcome).toMatchObject({reason:{reason:'expired'}});
+      await counts(f,begin.challenge.id);
+    }finally{release();await holding.catch(()=>{});}
   });
 });

@@ -7,7 +7,7 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {myEmployments,myEmploymentsTx} from './read';
+import {myEmployments,myOwnEmploymentSubjectsTx} from './read';
 import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
@@ -115,7 +115,7 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 }
 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number },joined?:{tx:Tx;requireNew:boolean}) {
-  const me=native?(await (joined?myEmploymentsTx(joined.tx,ctx):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
+  const me=native?(await (joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
   if(!me)throw new OwnClockEmploymentUnavailableError();
   if(!native&&p.employmentId!==undefined&&p.clockContext==null)throw new ClockContextChangedError('Reopen the selected employee clock context.');
   if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
@@ -126,6 +126,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   const execute=async(tx:Tx)=>{
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
+    if(joined&&!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===me.employmentId))throw new OwnClockEmploymentUnavailableError();
     if(await submissionAbandonedTx(tx,ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
     if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
     const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
