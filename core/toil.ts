@@ -19,7 +19,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {
   appUser,
   attendance,
@@ -2395,6 +2395,8 @@ export async function grantLeaveCredit(
     approvedOn?: Date;
   },
 ): Promise<GrantLeaveCreditResult> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
   assertModuleEnabled(ctx, 'toil');
   const today = p.today ?? todayInKualaLumpur();
@@ -2412,7 +2414,11 @@ export async function grantLeaveCredit(
   }
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    // This command can create the replacement catalogue type as well as bank credit.
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         companyId: employment.companyId,
@@ -2735,6 +2741,8 @@ export async function grantLeaveCreditRows(
     approvedOn?: Date;
   },
 ): Promise<GrantLeaveCreditRowsResult> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
   assertModuleEnabled(ctx, 'toil');
   const today = p.today ?? todayInKualaLumpur();
@@ -2756,7 +2764,11 @@ export async function grantLeaveCreditRows(
   const approvedOn = p.approvedOn ?? new Date();
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    // This command can create the replacement catalogue type as well as bank credit.
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         companyId: employment.companyId,
@@ -2944,17 +2956,25 @@ export async function reverseLeaveCredit(
   ctx: SessionContext,
   p: { accrualId: string; reason: string; today?: string },
 ): Promise<ReverseLeaveCreditResult> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may reverse a Leave Credit.');
   const reason = p.reason?.trim();
   if (!reason) throw new LeaveCreditError('A reason is required when reversing a Leave Credit.');
   const today = p.today ?? todayInKualaLumpur();
 
   return withTenant(ctx, async (tx) => {
-    const [initial] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    // Legacy fallback may create the replacement catalogue type. Own configuration first.
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    const [initial] = await tx.select({id:toilAccrual.id,employmentId:toilAccrual.employmentId}).from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
     if (!initial) throw new LeaveCreditError('That Leave Credit could not be found.');
+    await assertAdminForEmploymentTx(tx,initial.employmentId,'reverse a Leave Credit');
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[initial.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+initial.employmentId},0))`);
     const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, initial.id)).limit(1).for('update');
     if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
+    if(acc.employmentId!==initial.employmentId)throw new LeaveDependencyUnavailable();
     await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
     const [owner] = await tx
       .select({ personId: employment.personId })

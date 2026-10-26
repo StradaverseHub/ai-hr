@@ -2092,3 +2092,30 @@ successful complete retry. ALL UNRUN. Three-file AST syntax/scoped diff only; co
 app-role/DB/concurrency/performance/experience claims remain unproven. Other relevant
 org/cohort/policy/TOIL/authority writers still require coverage, so this is not a
 universal barrier or permission to expose Assistant effects.
+
+
+### Manual leave-credit source ownership (26 October 2026; source only)
+
+Manual single and measured-row grant commands capture nested rows/scalars/Date and
+actor context before awaiting, then Access, original fresh company-admin predicate,
+exclusive leave configuration and employment ownership BEFORE service/eligibility/
+formula/calendar/credit/Payroll source reads and the existing bank's locks. Exclusive
+configuration is deliberate: the canonical path can create a replacement-leave type,
+so ordinary shared configuration would leave that catalogue mutation unprotected.
+No concurrency/latency benefit is claimed for this conservative phase.
+Manual reversal joins Access/exclusive configuration before minimal RLS-visible
+credit identity/employee nomination, fresh company-admin gate and employee ownership,
+then the existing credit advisory and accrual row lock. A changed employee binding
+refuses before existing reversal calculations/compensation/events; original fresh
+permission/self/state/Payroll guards remain. Strip only those entry additions,
+minimal projection and binding guard and the original three bodies compare exact.
+Three real employee source-interval cases are authored in the existing measured-row
+suite: unchanged credit/catalogue/ledger/attendance/event state on refusal, release
+and canonical single/measured grant or reversal; repeated reversal must refuse with
+unchanged state. ALL UNRUN. Initial AST parsing caught an insertion-position syntax
+error, repaired before commit; corrected two-file AST syntax and diff only pass.
+Other automatic/employee accrual, bank/consume/restore/sweep and Attendance/Payroll
+parents still require transitive ownership BEFORE earlier reads/locks. These public
+manual commands alone do not establish universal source/authority protection or
+app-role/concurrency/security/readiness proof. No compiler/app/tests/DB/build or
+provider/release runtime was executed.
