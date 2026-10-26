@@ -142,8 +142,9 @@ export function buildPendingCommand(ref: string, dir = DIR, stateDir = DEPLOY_ST
  * REFUSING when setsid is absent is deliberate. Falling back to a bare `nohup … &` would look like it
  * worked and would still die to a group signal — the exact failure this round exists to remove.
  */
-export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STATE_DIR, testingBuildRecordId?: string): string {
+export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STATE_DIR, testingBuildRecordId?: string, ciBuildInstallId?: string): string {
   if (testingBuildRecordId !== undefined) testingUuid.parse(testingBuildRecordId);
+  if (ciBuildInstallId !== undefined && (!testingBuildRecordId || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(ciBuildInstallId))) throw new Error('CI installation requires an exact attempt UUID and the original build record');
   return [
     'set -e',
     `cd ${dir}`,
@@ -152,7 +153,7 @@ export function buildLaunchCommand(ref: string, dir = DIR, stateDir = DEPLOY_STA
     `LOG='${stateDir}'/deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.log`,
     `: > "$LOG"`,
     `AIHR_DEPLOY_STATE_DIR='${stateDir}' AIHR_DEPLOY_REF='${ref}' AIHR_DEPLOY_LOG="$LOG" ` +
-      `setsid nohup ./deploy/deploy.sh${testingBuildRecordId ? ` --testing-build-record=${testingBuildRecordId}` : ''} > "$LOG" 2>&1 < /dev/null &`,
+      `setsid nohup ./deploy/deploy.sh${testingBuildRecordId ? ` --testing-build-record=${testingBuildRecordId}` : ''}${ciBuildInstallId ? ` --ci-build=${ciBuildInstallId}` : ''} > "$LOG" 2>&1 < /dev/null &`,
     `echo "aihr-deploy-log=$LOG"`,
   ].join('\n');
 }

@@ -8,6 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {brotliDecompressSync} from 'node:zlib';
 import {isDeepStrictEqual} from 'node:util';
+import {collectMigrationLedger} from './staging-migration-ledger.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys} from './build-production.mjs';
@@ -152,16 +153,17 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
  runtimeContract(source,g);const bound=await sourceContract(source,p);
  assert(buildId(join(source,'.next'))===g.baselineBuildId&&buildId(p.next)===g.build.nextBuildId,'Expected baseline/new build moved');
  verifyDirectory(source,p);compiledContract(p.next,bound.testing,bound.prepared);
+ const migrationLedger=collectMigrationLedger(source);
  const before=Number(readFileSync('/proc/uptime','utf8').split(' ')[0])*1000000;
  const text=execFileSync('python3',[join(ROOT,'.github/ci/build-activate.py'),'activate',p.next,source,g.build.nextBuildId,g.baselineBuildId],{encoding:'utf8',timeout:15000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  const activation=JSON.parse(text);
  assert(activation.activeBuildId===g.build.nextBuildId&&activation.retainedBuildId===g.baselineBuildId,'Atomic exchange result differs');
  const result={format:1,kind:'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL',source:g.source,installId,buildRecordId,nextBuildId:g.build.nextBuildId,
-  authorizationSha256:p.authorizationSha256,activation,afterActivationMonotonicUs:Math.max(before,Number(readFileSync('/proc/uptime','utf8').split(' ')[0])*1000000),
+  authorizationSha256:p.authorizationSha256,activation,migrationLedger,afterActivationMonotonicUs:Math.max(before,Number(readFileSync('/proc/uptime','utf8').split(' ')[0])*1000000),
   bootIdSha256:installHash(readFileSync('/proc/sys/kernel/random/boot_id')),activatedAt:new Date().toISOString(),releaseAuthorized:false,activeServiceVerified:false};
  save(join(p.directory,'activated.json'),result);return result;
 }
-async function confirmRuntime(sourceRef,installId,buildRecordId){
+async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true}={}){
  const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId),g=p.grant;
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  assert(activated.installId===installId&&activated.source===sourceRef&&activated.buildRecordId===buildRecordId&&activated.authorizationSha256===p.authorizationSha256,'Activated installation differs');
@@ -180,13 +182,13 @@ async function confirmRuntime(sourceRef,installId,buildRecordId){
  }
  assert(response?.status===200&&get('MainPID')===pid,'Restarted service health or stable PID not verified');
  const result={format:1,kind:'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,
-  authorizationSha256:p.authorizationSha256,pid,startedMonotonicUs:started,healthStatus:200,verifiedAt:new Date().toISOString(),releaseAuthorized:false,fullSourceChecksumVerified:false,fullMigrationLedgerVerified:false};
- save(join(p.directory,'runtime.json'),result);return result;
+  authorizationSha256:p.authorizationSha256,pid,startedMonotonicUs:started,healthStatus:200,migrationLedger:collectMigrationLedger(source),verifiedAt:new Date().toISOString(),releaseAuthorized:false,fullSourceChecksumVerified:false,fullMigrationLedgerVerified:true};
+ if(persist)save(join(p.directory,'runtime.json'),result);return result;
 }
-function readStatus(sourceRef,installId,buildRecordId){
+async function readStatus(sourceRef,installId,buildRecordId){
  targetRoot();const p=selected(installId,sourceRef,buildRecordId);
  return {authorizationSha256:p.authorizationSha256,verified:JSON.parse(regular(join(p.directory,'verified.json'),1024**2)),
-  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:JSON.parse(regular(join(p.directory,'runtime.json'),1024**2)),releaseAuthorized:false};
+  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false}),releaseAuthorized:false};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,sourceRef,installId,buildRecordId]=process.argv.slice(2);

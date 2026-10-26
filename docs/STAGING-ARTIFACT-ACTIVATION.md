@@ -1,6 +1,6 @@
 # Staging artifact activation preparation
 
-Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; an opt-in build-artifact installation path is now prepared in deploy.sh but is not integrated with the operator or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
+Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; an opt-in build-artifact installation path is prepared in deploy.sh and the operator, but has not run on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
 
 ## Opt-in installation source prepared — private fixtures verified
 
@@ -59,3 +59,11 @@ Submission before the dispatch request through job completion:20.859296s. Occupi
 Artifact12626007913 is3273bytes, ZIP SHA256c6154894449515f490c10cf78185fd0de93b7a58cfb185cc57cf22a338c47c29, exactly five expected JSON/log members. The job occupied17seconds; workflow created-to-updated was22seconds. Those are diagnostic timings, not submission-to-release timings or billing. Private originals are retained in scratchpad/staging-install-20261026/.
 
 No installer stage/activate/confirm-runtime command ran on staging. Operator grant transfer, actual recipient native verification, migration/source arrival and owned cleanup remain unverified. Private Linux fixture success does not certify the complete deployment spine.
+
+## Operator integration prepared; hosted verification pending
+
+The CI operator now selects the original authenticated packet/build-record UUID, creates a separate installation attempt, revalidates the exact ready baseline, announces source pending, uses the same private alias/config for source and packet rsync, initializes the private server grant and launches the actual candidate helper with both identifiers. Its second baseline check requires its own expected pending state and unchanged original build bytes. A legacy helper ignoring the new installation argument refuses before launch.
+
+After the deploy spine reports success, the operator requires the original CI BUILD_ID, a zero-line checksum rsync of the canonical source filter, and a fresh installer status bound to source/install/build UUID, post-activation service PID, health200 and the complete ordered migration ledger. Ledger checking uses a bounded explicit read-only repeatable snapshot and the installed Drizzle hash semantics. It preserves historical journal array order; it does not sort timestamps or invent sequential indices. The existing journal has496entries and is not strictly ordered by timestamp/index, so those assumptions would be incorrect.
+
+This integration has not run against staging. The next private hosted checks cover refused transfers, immutable origin, pending-state lineage, ledger tampering, real rsync protocol and the actual candidate detached launcher. No application build or database is run. Old-build cleanup, final owner handback, complete current normal CI and representative end-to-end release proof remain required; the operator explicitly returns ownedResourceCleanupVerified=false and releaseHandbackVerified=false.

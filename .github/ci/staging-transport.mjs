@@ -24,6 +24,11 @@ export function stagingTransport(candidatePath,environment=process.env){
  args.push('-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=12');
  const remote=STAGING.host+':'+STAGING.directory+'/';
  return {sshArgs:command=>[...args,STAGING.host,command],configSelected:selected!==null,
+  packetRsyncArgs:(packet,destination)=>{
+   if(!isAbsolute(packet)||realpathSync(packet)!==packet||!lstatSync(packet).isDirectory()||lstatSync(packet).isSymbolicLink())throw Error('Canonical private verified packet required');
+   if(typeof destination!=='string'||!/^\/[A-Za-z0-9_./-]+\/\.aihr-ci-builds\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\/packet$/.test(destination)||destination.split('/').some(p=>p==='.'||p==='..'))throw Error('Private installation packet destination differs');
+   return ['-a','--chmod=D700,F600','-e',['ssh',...args].map(quote).join(' '),'--',packet+'/',STAGING.host+':'+destination+'/'];
+  },
   rsyncArgs:(official,source)=>{
    // Reuse the actual candidate filter, changing only its transport and fixed destination.
    const result=official.deploymentRsyncArgs(source,remote);
