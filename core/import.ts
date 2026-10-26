@@ -1,3 +1,5 @@
+import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
+import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
@@ -1177,12 +1179,17 @@ export async function validateEmployeeImport(
 /** Commit the valid rows. Re-validates server-side (never trusts a client-supplied preview),
  *  imports row-by-row reusing the hire / statutory / compensation services, and records a
  *  batch event so the import itself shows up in the audit trail. */
+function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
+ const c=evaluationReceipt.canonicalCounts;if(!c)throw Error('The import receipt could not be confirmed.');
+ return{companyId,imported:c.imported,failed:[],skipped:c.skipped,dependentsImported:c.dependents,registersImported:{qualification:c.qualification,emergency:c.emergency},superiorFailed:[],fileErrors:[],runId:null,evaluationReceipt};
+}
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string },
-): Promise<ImportResult> {
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string; evaluationBinding?:EmployeeImportEvaluationBinding },
+): Promise<ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if(p.evaluationBinding){const replay=await withTenant(ctx,tx=>readEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding!,p));if(replay)return measuredImportReplay(p.companyId,replay);}
   let { preview, resolved, dependents,registers } = await analyze(
     ctx,
     p.companyId,
@@ -1240,10 +1247,12 @@ export async function commitEmployeeImport(
   const familySyncPersonIds=new Set<string>();
   const writeFileErrors:string[]=[];
   const writeWarnings:string[]=[];
+  let evaluationReceipt:EmployeeImportEvaluationReceipt|undefined,replayedEvaluation=false;
   try {
     await withTenant(ctx,async tx=>{
   await tx.execute(sql`select app.access_workforce_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  if(p.evaluationBinding){const claimed=await claimEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p);if(claimed.replayed){evaluationReceipt=claimed.replayed;replayedEvaluation=true;return;}}
   // The outside analysis nominated this exact raw file. Resolve ALL protected facts in this actual
   // transaction before any employee/assignment/reporting write; changing the binding requires preview.
   const fresh=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords,tx);
@@ -1371,7 +1380,7 @@ export async function commitEmployeeImport(
 
   for(const register of registers)registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
 
-  await appendEvent(tx, {
+  const evaluationEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
       aggregateId: p.companyId,
@@ -1390,16 +1399,20 @@ export async function commitEmployeeImport(
         dependents: dependentsImported,
         registers:registersImported,
       },
-    });
+    },{returnId:Boolean(p.evaluationBinding)});
+  if(p.evaluationBinding){if(typeof evaluationEventId!=='string')throw Error('The import receipt could not be confirmed.');evaluationReceipt=await completeEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p.companyId,evaluationEventId,{imported,failed:failed.length,skipped:resolved.length-valid.length,dependents:dependentsImported,qualification:registersImported.qualification,emergency:registersImported.emergency});}
 
     });
   } catch(error) {
+    evaluationReceipt=undefined;replayedEvaluation=false;
     const first=failed[0]??superiorFailed[0];
     const reason=first?.message??publicErrorMessage(error);
     writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
     failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
     superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
+
+  if(replayedEvaluation&&evaluationReceipt)return measuredImportReplay(p.companyId,evaluationReceipt);
 
   // A post-commit refresh failure must never be described as a rolled-back employee import.
   if(!writeFileErrors.length) for(const personId of familySyncPersonIds) {
@@ -1426,6 +1439,7 @@ export async function commitEmployeeImport(
     fileErrors: writeFileErrors,
     warnings: [...new Set(writeWarnings)],
     runId,
+    ...(evaluationReceipt?{evaluationReceipt}:{}),
   };
 }
 
