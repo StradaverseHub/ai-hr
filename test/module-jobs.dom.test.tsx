@@ -37,7 +37,7 @@ describe('deterministic current-user job cards',()=>{
  });
  it('discovers20 real tasks without reading any of them or placing HR facts/subjects into links',async()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave'}));
-  expect(screen.getAllByRole('link')).toHaveLength(22);expect(withAssistantRead).not.toHaveBeenCalled();
+  expect(screen.getAllByRole('link')).toHaveLength(23);expect(withAssistantRead).not.toHaveBeenCalled();
   const action=screen.getByRole('link',{name:en.ownLeaveReview.workflow.title});expect(action.getAttribute('href')).toBe('/assistant/leave');
   expect(action.parentElement?.textContent).toContain(en.assistant.workspace.jobs.module_leave);
   for(const link of view.container.querySelectorAll<HTMLAnchorElement>('a[href^="/assistant?job="]')){const url=new URL(link.href);expect([...url.searchParams.keys()]).toEqual(['job']);expect(AGENT_MODULE_CODES).toContain(url.searchParams.get('job'));}
@@ -58,6 +58,13 @@ describe('deterministic current-user job cards',()=>{
   expect(entry.parentElement?.textContent).toContain((copies[locale] as typeof en).assistant.workspace.jobs.module_notifications);
   expect(visible.container.querySelectorAll('form')).toHaveLength(0);expect(withAssistantRead).not.toHaveBeenCalled();visible.unmount();
   render(await ModuleJobChooser({modules:['leave']}));expect(screen.queryByRole('link',{name:copy.title})).toBeNull();
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s discovers profile review inside ESS without loading or preparing private fields',async locale=>{
+  state.locale=locale;const copy=(copies[locale] as typeof en).assistant.workspace.profileActions;
+  const visible=render(await ModuleJobChooser({modules:['ess'],selected:'ess'}));const entry=screen.getByRole('link',{name:copy.title});
+  expect(entry.getAttribute('href')).toBe('/assistant/profile');expect(entry.parentElement?.textContent).toContain((copies[locale] as typeof en).assistant.workspace.jobs.module_ess);
+  expect(visible.container.querySelectorAll('form')).toHaveLength(0);expect(withAssistantRead).not.toHaveBeenCalled();visible.unmount();
+  render(await ModuleJobChooser({modules:['leave','notifications']}));expect(screen.queryByRole('link',{name:copy.title})).toBeNull();
  });
  it('refuses model-forged, serialized, cross-user and expired views before rendering their facts',async()=>{
   const issued=await loadCanonicalModuleJob(ctx,{module:'employees'});

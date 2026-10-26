@@ -80,3 +80,14 @@ it('connects Notifications to its closed human review lifecycle without admittin
  ].map(extra=>({module:'notifications',action,phase:'prepare',...extra}))])expect(()=>parseModuleAgentActionNomination(value)).toThrow();
  expect(MODULE_AGENT_ACTIONS.notifications.source).toBe('core/assistant-actions/module-action-review-store.ts#prepareModuleActionReview+confirmModuleActionReview');
 });
+
+it('keeps ESS human selection distinct from requests for approval and refuses model-authored profile proposals or confirmation',()=>{
+ const action='ess.profile.request';expect(getModuleAgentAction('ess',action)).toMatchObject({owner:'profile',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_profile_review_v1'}});
+ expect(parseModuleAgentActionNomination({module:'ess',action,phase:'prepare'})).toEqual({kind:'prepare',module:'ess',action,adapter:'module_profile_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{proposal:{v:2,fields:[],registers:[]}},{employmentId:'other'},{roles:['hr_admin']},{reviewedDigest:'a'.repeat(64)},{actionId:'posted'}])expect(()=>parseModuleAgentActionNomination({module:'ess',action,phase:'prepare',...extra})).toThrow();expect(()=>parseModuleAgentActionNomination({module:'ess',action,phase:'confirm'})).toThrow();
+});
+it('keeps Claims submission pending separately from draft saving and declares the modern Performance acknowledgement separately',()=>{
+ expect(MODULE_AGENT_ACTIONS.claims.actions.map(row=>row.id)).toEqual(['claims.submit','claims.draft.save']);expect(getModuleAgentAction('claims','claims.submit')?.prepare.status).toBe('pending_adapter');
+ expect(MODULE_AGENT_ACTIONS.performance.actions.map(row=>row.id)).toEqual(['performance.review.acknowledge','performance.onehr.plan.acknowledge']);
+ for(const [module,action] of [['claims','claims.draft.save'],['performance','performance.onehr.plan.acknowledge']])expect(()=>parseModuleAgentActionNomination({module,action,phase:'prepare'})).toThrow();
+});
