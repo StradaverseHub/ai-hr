@@ -506,8 +506,9 @@ export function listEmployeesPage(
     offset: number;
   },
   purpose?:'workforce',
+  existingTx?: Tx,
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       const columns = workforceListColumns();
@@ -599,7 +600,8 @@ export function listEmployeesPage(
       .leftJoin(assignment, currentAssignment)
       .where(where);
     return { rows, total: Number(count) };
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx,read);
 }
 
 /**

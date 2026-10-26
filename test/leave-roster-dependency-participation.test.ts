@@ -1,13 +1,13 @@
 /** Authored actual roster/configuration interleavings. UNRUN pending local resource handback. */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { ensureStandardRule } from '../core/attendance-rule';
 import { saveScheduleGroupControl } from '../core/schedule-group-controls';
-import { createShift, updateShift, copyShift, deleteShift, archiveShift, unarchiveShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
+import { generateRosterFromTemplate, createShift, updateShift, copyShift, deleteShift, archiveShift, unarchiveShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { assignEmployeeShiftDated, removeShiftArrangement } from '../core/shift-arrangement';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -201,5 +201,58 @@ describe('master shift configuration participants', () => {
     if (command === 'delete') expect(after.shifts.find(row => row.id === shift.id)).toBeUndefined();
     if (command === 'archive') expect(after.shifts.find(row => row.id === shift.id)?.archivedAt).not.toBeNull();
     if (command === 'unarchive') expect(after.shifts.find(row => row.id === shift.id)?.archivedAt).toBeNull();
+  });
+});
+
+/** Generator owns planning and both canonical bulk writes in the same real transaction. UNRUN. */
+describe('protected roster generation', () => {
+  it.each(['explicit', 'department', 'rest-write-rollback'] as const)
+  ('%s retains a fresh protected plan and never commits a partial working/rest generation', async mode => {
+    const ctx = adminCtx(b), today = todayInKualaLumpur(), date = addDays(today, 1), end = addDays(date, 6);
+    const rule = await ensureStandardRule(ctx);
+    await saveScheduleGroupControl(ctx, { ruleId: rule.id, kind: 'duty', enabled: true });
+    const shift = await createShift(ctx, { name: 'Fictional Generation Template', code: 'FGT', companyId: b.companyId,
+      startTime: '09:00', endTime: '18:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
+    const { employmentId } = await hireEmployee(ctx, { person: { fullName: 'Fictional Generated Roster Subject',
+      primaryEmail: `generation-${randomUUID()}@t.local` }, companyId: b.companyId, departmentId: b.deptA,
+      employmentType: 'full_time', hiredOn: today });
+    const request = { shiftId: shift.id, from: date, to: end,
+      ...(mode === 'department' ? { departmentId: b.deptA } : { employmentIds: [employmentId] }) };
+    const state = async () => ({
+      roster: await owner.db.select().from(schema.rosterAssignment).where(eq(schema.rosterAssignment.tenantId, b.tenantId)).orderBy(schema.rosterAssignment.id),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    if (mode === 'rest-write-rollback') {
+      await owner.db.execute(sql.raw(`CREATE FUNCTION app.test_leave_generator_rest_failure() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'owned generation rest failure'; END $$`));
+      try {
+        await owner.db.execute(sql.raw(`CREATE TRIGGER test_leave_generator_rest_failure BEFORE INSERT OR UPDATE ON public.roster_assignment
+          FOR EACH ROW WHEN (NEW.is_rest_day) EXECUTE FUNCTION app.test_leave_generator_rest_failure()`));
+        await expect(generateRosterFromTemplate(ctx, request)).rejects.toThrow();
+        expect(await state()).toEqual(before); // Working rows and their already-written event must roll back too.
+      } finally {
+        await owner.db.execute(sql.raw('DROP TRIGGER IF EXISTS test_leave_generator_rest_failure ON public.roster_assignment'));
+        await owner.db.execute(sql.raw('DROP FUNCTION app.test_leave_generator_rest_failure()'));
+      }
+    } else {
+      let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+      const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+      const watchdog = setTimeout(() => { fail(new Error('owned generation handshake timed out')); release(); }, 10_000);
+      const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employmentId]); ready(); await finish; });
+      void holder.catch(fail);
+      try {
+        await started; await expect(generateRosterFromTemplate(ctx, request)).rejects.toThrow('Leave source is unavailable');
+        expect(await state()).toEqual(before);
+      } finally { release(); clearTimeout(watchdog); await holder; }
+    }
+    const result = await generateRosterFromTemplate(ctx, request), after = await state();
+    expect(result.employments).toBe(1); expect(result.workingRows + result.restRows).toBe(7);
+    expect(result.workingRows).toBeGreaterThan(0); expect(result.restRows).toBeGreaterThan(0);
+    expect(after.roster.filter(row => row.employmentId === employmentId)).toHaveLength(7);
+    expect(after.events.length).toBe(before.events.length + 4); // Two original per-employee audits plus two summaries.
+    const oldEventIds=new Set(before.events.map(row=>row.id)),emitted=after.events.filter(row=>!oldEventIds.has(row.id));
+    expect(emitted.filter(row=>row.eventType==='roster.bulk.assigned')).toHaveLength(1);
+    expect(emitted.filter(row=>row.eventType==='roster.bulk.rest-day.set')).toHaveLength(1);
   });
 });

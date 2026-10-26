@@ -2066,3 +2066,29 @@ All cases and affected consumers are UNRUN. Three-file AST syntax/diff only; no
 compiler/app/test/DB/build/provider/staging execution. Other policy/direct source
 writers, generator planning, TOIL/org/authority and retention/server exposure work
 remain pending. No universal protection or runtime/app-role/security claim.
+
+
+### Roster generator owns the complete source interval (26 October 2026; source only)
+
+Generator template/week and department discovery formerly committed in separate
+reads, followed by independent working-day and rest-day write transactions. A final
+leaf guard could therefore protect writes while consuming an older plan; a later
+rest-day failure could leave working rows committed. Generation now owns one top-level
+transaction: captured input/context, original admin gate, Access/shared configuration,
+canonical template/week read and department query, ordered complete employment ownership,
+exact department membership reread, then both existing canonical bulk operations in
+that same transaction. A truncated department page refuses rather than silently
+claiming a complete department. No new date/week/eligibility/Payroll calculation or
+query predicates were introduced. Working and rest rows/audits/summaries now commit or
+roll back together; this deliberate atomicity change does not change per-row import
+semantics elsewhere.
+`listEmployeesPage`, `assignShiftBulk` and `setRestDayBulk` accept an optional trusted
+existing carrier. Their original standalone behavior is retained; byte comparison
+reversing only carrier wrappers reproduces each prior query/write body. No posted
+transaction or model capability is added. Three actual explicit/department busy-source
+and injected rest-write-failure cases are authored in the roster participation suite;
+the latter requires already-written working rows and events to roll back, then a
+successful complete retry. ALL UNRUN. Three-file AST syntax/scoped diff only; compiler,
+app-role/DB/concurrency/performance/experience claims remain unproven. Other relevant
+org/cohort/policy/TOIL/authority writers still require coverage, so this is not a
+universal barrier or permission to expose Assistant effects.

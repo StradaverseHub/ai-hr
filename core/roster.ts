@@ -2214,6 +2214,7 @@ export async function clearRoster(ctx: SessionContext, p: { employmentId: string
 export async function assignShiftBulk(
   ctx: SessionContext,
   p: { employmentIds: string[]; shiftDates: string[]; shiftId: string },
+  existingTx?: Tx,
 ) {
   p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -2221,7 +2222,7 @@ export async function assignShiftBulk(
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
   );
-  return withTenant(ctx, async (tx) => {
+  const write = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,values);
     // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
     // would put somebody on a shift their group forbids fails whole rather than half. This is the
@@ -2246,7 +2247,8 @@ export async function assignShiftBulk(
       payload: { shiftId: p.shiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
     });
     return { assigned: values.length };
-  });
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
 }
 
 /** Bulk-mark rest days for many employees across many dates — the rest-day half of roster generation,
@@ -2265,6 +2267,7 @@ export async function setRestDayBulk(
      *  do with the change; one of the two must be supplied. */
     anchorId?: string;
   },
+  existingTx?: Tx,
 ) {
   p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -2274,7 +2277,7 @@ export async function setRestDayBulk(
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
-  return withTenant(ctx, async (tx) => {
+  const write = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,values);
     await tx
       .insert(rosterAssignment)
@@ -2297,7 +2300,8 @@ export async function setRestDayBulk(
       },
     });
     return { rested: values.length };
-  });
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
 }
 
 const DAY_MS = 86_400_000;
@@ -2328,11 +2332,18 @@ export async function generateRosterFromTemplate(
   ctx: SessionContext,
   p: { shiftId: string; employmentIds?: string[]; departmentId?: string; from: string; to: string },
 ) {
+  p={...p,employmentIds:p.employmentIds?.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new Error('Dates must be YYYY-MM-DD');
   const fromMs = Date.parse(`${p.from}T00:00:00Z`);
   const toMs = Date.parse(`${p.to}T00:00:00Z`);
   if (toMs < fromMs) throw new Error('The end date must not be before the start date');
   if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
+
+  return withTenant(ctx,async tx=>{
+  assertRosterAdmin(ctx);
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
 
   // 07ebd04d — the template's week is resolved through its SCHEDULE GROUP first (migration 0483). The
   // generator writes a row for every date in the window, so if it split the month by the shift's own week
@@ -2344,7 +2355,7 @@ export async function generateRosterFromTemplate(
   // The GROUP here is the SHIFT's (shift.rule_id), not any one employee's: this call generates for a whole
   // department, and the group guard (assertShiftsAllowedForEmploymentsTx) already refuses an employment
   // whose own group does not contain this shift, so on every assignment the system accepts the two agree.
-  const tpl = await withTenant(ctx, async (tx) => {
+  const tpl = await (async () => {
     const [row] = await tx
       .select({
         companyId: shift.companyId,
@@ -2365,7 +2376,7 @@ export async function generateRosterFromTemplate(
       offPattern: row.offPattern,
     });
     return { ...row, ...week };
-  });
+  })();
   if (!tpl) throw new Error('Shift not found (or not visible)');
   if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
   // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
@@ -2386,12 +2397,22 @@ export async function generateRosterFromTemplate(
       status: 'active',
       limit: 100_000,
       offset: 0,
-    });
+    },undefined,tx);
+    if(page.total!==page.rows.length)throw new LeaveDependencyUnavailable();
     employmentIds = page.rows.map((r) => r.employmentId);
   } else {
     employmentIds = [...new Set(p.employmentIds ?? [])];
   }
   if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,employmentIds);
+  if(p.departmentId){
+    const fresh=await listEmployeesPage(ctx,{departmentId:p.departmentId,
+      companyIds:tpl.companyId?[tpl.companyId]:undefined,status:'active',limit:100_000,offset:0},undefined,tx);
+    if(fresh.total!==fresh.rows.length)throw new LeaveDependencyUnavailable();
+    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh.rows.map(row=>row.employmentId))].sort();
+    if(nominated.length!==current.length||nominated.some((id,index)=>id!==current[index]))throw new LeaveDependencyUnavailable();
+  }
+
 
   // b8aa3466 — generation reads the FOUR-WAY row through the shared resolver. Full and Half both generate
   // a shift row (a half day is a working day; its shorter hours are decided by the engine, not by whether a
@@ -2405,8 +2426,8 @@ export async function generateRosterFromTemplate(
     (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
   }
 
-  const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId });
-  const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId });
+  const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId },tx);
+  const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId },tx);
   return {
     employments: employmentIds.length,
     workingDates: workingDates.length,
@@ -2414,6 +2435,7 @@ export async function generateRosterFromTemplate(
     workingRows: assigned.assigned,
     restRows: rested.rested,
   };
+  });
 }
 
 /**
