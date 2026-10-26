@@ -99,6 +99,9 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
       if(controller.signal.aborted||signal.aborted)throw new ConfigurationReadUnavailable();
       if(raw===null)throw new NotConfigured();
       const parsed=AppleEnrollmentSettings.safeParse(raw);if(!parsed.success)throw new AppleKeyEnrollmentError('configuration_unavailable');return parsed.data;
+    }catch(error){
+      if(controller.signal.aborted||signal.aborted)throw new ConfigurationReadUnavailable();
+      throw error;
     }finally{clearTimeout(timer);signal.removeEventListener('abort',abort);controller.abort();}
   }
   function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){

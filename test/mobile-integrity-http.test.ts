@@ -136,14 +136,20 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
     const refused=await call('enrollmentBegin',e.employmentId,{...intent,requestId:randomUUID()});expect(refused.status).toBe(429);expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0);
     expect((await call('enrollmentBegin',e.employmentId,intent)).body).toEqual(first.body);expect(await owner.db.select().from(schema.mobileIntegrityChallenge)).toHaveLength(4);
   });
-  it.each(['timeout','abort'] as const)('stops issuance on configuration %s and ignores a late configuration result',async(mode)=>{
+  it.each(['timeout','abort','cooperative_abort'] as const)('stops issuance on configuration %s and ignores a late configuration result',async(mode)=>{
     const e=await employee();caller=e.ctx;let finish!:(value:unknown)=>void,entered!:()=>void,readSignal:AbortSignal|undefined;
     const started=new Promise<void>(resolve=>{entered=resolve;}),configuration=new Promise<unknown>(resolve=>{finish=resolve;});
-    const delayed=createIntegrityHttpHandlers(async(_ctx,_id,signal)=>{readSignal=signal;entered();return configuration;},async()=>e.ctx,{configurationTimeoutMs:50});
+    const delayed=createIntegrityHttpHandlers(async(_ctx,_id,signal)=>{
+      readSignal=signal;entered();
+      if(mode==='cooperative_abort')return new Promise((resolve,reject)=>{
+        signal.addEventListener('abort',()=>reject(new Error('synthetic private configuration cancellation')),{once:true});configuration.then(resolve,reject);
+      });
+      return configuration;
+    },async()=>e.ctx,{configurationTimeoutMs:50});
     const controller=new AbortController(),pending=delayed.enrollmentBegin(new Request('https://hr.example.com/?employmentId='+e.employmentId,{
       method:'POST',signal:controller.signal,headers:{'content-type':'application/json'},body:JSON.stringify({requestId:randomUUID(),appInstallationId:randomUUID()}),
     }));
-    await started;if(mode==='abort')controller.abort();
+    await started;if(mode!=='timeout')controller.abort();
     const response=await pending;expect(response.status).toBe(200);expect(await response.json()).toEqual({outcome:'unavailable',code:'configuration_unavailable'});
     expect(readSignal?.aborted).toBe(true);finish(settings);await new Promise(resolve=>setImmediate(resolve));
     expect(await owner.db.select().from(schema.mobileIntegrityChallenge)).toHaveLength(0);expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
