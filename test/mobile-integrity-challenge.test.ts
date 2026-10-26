@@ -93,7 +93,7 @@ describe('persistent own integrity challenges',()=>{
       const outcomes=await results;
       expect(outcomes.map(row=>row.status)).toEqual(['fulfilled','fulfilled']);
       if(outcomes[0].status!=='fulfilled'||outcomes[1].status!=='fulfilled')throw new Error('Concurrent consumer failed');
-      expect(outcomes.map(row=>row.value.state)).toEqual(['consumed','already_consumed']);
+      expect([outcomes[0].value.state,outcomes[1].value.state]).toEqual(['consumed','already_consumed']);
       expect(outcomes[0].value.consumedAt).toBe(outcomes[1].value.consumedAt);expect(operation).toHaveBeenCalledOnce();
     }finally{clearTimeout(timer);release();await first.catch(()=>{});}
   });
