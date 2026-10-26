@@ -16,6 +16,7 @@ import './onboarding-workspace.css';
 import './atelier.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
+import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -32,7 +33,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin } from '@/lib/authz';
+import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
@@ -127,6 +128,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   } catch (e) {
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
+  }
+  if (isOperator(session) && !isDemoDeployment()) {
+    if (pathname !== '/operator' && !pathname.startsWith('/operator/')) redirect('/operator');
+    const viewer = await viewerIdentity(session);
+    return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
+      <body className="h-dvh overflow-hidden font-sans">
+        <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
+          <OperatorShell name={viewer.name}>{children}</OperatorShell>
+          <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
+          <Toaster/>
+        </UiThemeProvider></Providers></NextIntlClientProvider>
+      </body>
+    </html>;
   }
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).

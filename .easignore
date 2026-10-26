@@ -6,6 +6,7 @@
 !/lib
 /lib/*
 !/lib/mobile-connection.ts
+!/lib/mobile-workplace-setup.ts
 !/lib/mobile-design.ts
 !/lib/mobile-composition.ts
 !/lib/mobile-api

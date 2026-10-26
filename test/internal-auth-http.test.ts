@@ -6,7 +6,10 @@ const postResponse = vi.hoisted(() => ({ after: vi.fn() }));
 vi.mock('next/server', async original => ({ ...await original<typeof import('next/server')>(), after: postResponse.after }));
 vi.mock('../lib/internal-auth/service', () => ({ ...service, InternalAuthError: class extends Error { constructor(public code: string) { super(code); } } }));
 vi.mock('../lib/internal-auth/recovery', () => recovery);
-vi.mock('../lib/internal-auth/invitations', () => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
+const invitations = vi.hoisted(() => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
+const identity = vi.hoisted(() => ({ currentInternalIdentity: vi.fn() }));
+vi.mock('../lib/internal-auth/invitations', () => invitations);
+vi.mock('../lib/internal-auth/web-session', () => identity);
 import { POST } from '../app/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
@@ -49,6 +52,31 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     expect(reply.qr).toMatch(/^data:image\/png;base64,/);
     expect(Buffer.from(reply.qr.split(',')[1],'base64').subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');
     expect(response.headers.get('set-cookie')).toBeNull();expect(reply).not.toHaveProperty('access_token');
+  });
+  it('returns the verified activation organization and clears an old browser session instead of signing in', async () => {
+    service.verifyMfa.mockResolvedValue({ step: 'activated', organization: 'new-customer', recoveryCodes: ['BACKUP-CODE'] });
+    const response = await request('mfa', { challenge: 'c'.repeat(43), code: '123456', organization: 'forged' },
+      { origin: 'https://hr.test', cookie: '__Host-aihr_internal=old-browser-session' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ step: 'activated', organization: 'new-customer', recoveryCodes: ['BACKUP-CODE'] });
+    expect(service.revokeSession).toHaveBeenCalledWith('old-browser-session');
+    expect(response.cookies.get('__Host-aihr_internal')?.value).toBe('');
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(service.verifyMfa).toHaveBeenCalledWith('c'.repeat(43), '123456', false);
+  });
+  it('also sends an already authenticated invitee to their organization login after acceptance', async () => {
+    const verified = { issuer: 'https://hr.test/auth/tenant', subject: 'existing', email: 'existing@example.test', emailVerified: true };
+    identity.currentInternalIdentity.mockResolvedValue(verified);
+    invitations.acceptInternalInvitation.mockResolvedValue('existing-customer');
+    const response = await request('accept-invite', { token: 'i'.repeat(43), organization: 'forged' },
+      { origin: 'https://hr.test', cookie: '__Host-aihr_internal=existing-browser-session' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ step: 'activated', organization: 'existing-customer' });
+    expect(invitations.acceptInternalInvitation).toHaveBeenCalledWith('i'.repeat(43), verified);
+    expect(service.revokeSession).toHaveBeenCalledWith('existing-browser-session');
+    expect(response.cookies.get('__Host-aihr_internal')?.value).toBe('');
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
   it('native login returns opaque handles without setting a browser cookie', async () => {
     service.startLogin.mockResolvedValue({ step: 'complete', access_token: access, refresh_token: refresh, expires_in: 900 });

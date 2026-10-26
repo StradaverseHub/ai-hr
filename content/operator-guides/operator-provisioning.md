@@ -2,19 +2,24 @@ Use the Operator console to create a customer tenant. You need an explicit opera
 
 ## Before creating a customer
 
-Confirm the customer name, initial administrator's email, supported country and purchased modules. Only registered country packs are offered. Core modules are always included; optional modules can have dependencies. Provisioning a tenant is different from changing the modules of an existing customer.
+Confirm the customer name, initial administrator's email, supported country and purchased modules. Only registered country packs are offered. Core modules are always included; optional modules can have dependencies. Use Customers to open an existing account; use Provisioning to create a new one.
 
 ## Create and monitor
 
-1. Enter the customer name and administrator email.
+1. Enter the customer name and administrator email. With internal authentication, enter a unique organization code (2–64 lowercase letters, numbers or hyphens). This is the customer login code and cannot be edited after creation.
 2. Select the country and review every module checkbox. Defaults are a starting point, not a substitute for reviewing the sale.
 3. Submit once and find the request in the list.
 4. Watch its status: **Pending** waits for the runner, **Running** is being processed, **Done** completed, and **Failed** needs investigation. The console refreshes while creation is in flight.
-5. Read any failed step and error. Correct the underlying issue before using Retry. Retry creates a new request and carries the recorded country/modules forward; the failed request remains history.
+5. Read any failed step and error. Correct the underlying issue before using Retry. Retry creates a new request and carries the recorded organization code, country and modules forward; the failed request remains history.
 
-The displayed step list describes the provisioning sequence; it is not a measured per-step progress indicator. The provisioning transaction creates the tenant's baseline data and system guides. A pending row does not establish that the customer exists.
+The displayed step list describes the provisioning sequence; it is not a measured per-step progress indicator. The provisioning transaction creates the tenant's baseline data, system guides and internal login namespace before exposing an activation link. A pending row does not establish that the customer exists.
 
 ## Deliver activation
+
+The administrator sets their username and password, enrolls an authenticator and saves their recovery
+codes. Finishing activation takes them directly to login with their organization code already filled.
+They sign in with their new credentials and authenticator.
+
 
 When the request is done, deliberately reveal the activation link. It is shown once; copy it only when ready to deliver it privately to the intended administrator. Do not paste it into feedback, logs or documentation. A page refresh cannot recover a consumed reveal.
 
@@ -23,3 +28,20 @@ If the link is lost or no longer usable, request Reissue and wait for the runner
 ## Troubleshooting
 
 Pending for too long: ask the installation maintainer to check the provisioning runner and its logs. Failed: use the recorded step/error instead of repeatedly resubmitting. Empty or redirected console: verify operator grant, session and deployment mode. Do not use customer administrator access as a substitute for operator authorization.
+
+## Manage an existing customer
+
+Open the customer from Customers. Save its account name without changing its company legal names or
+fixed login code. Review the active modules, then select one to enable or disable. Billable additions
+require the purchase or agreement reference. The screen names required or dependent modules that must
+be changed first. Core modules are always included.
+
+Before disabling a module, review unfinished-work counts and record the agreed plan for each item.
+Disabling does not complete or cancel that work, delete data or reset configuration. Earned obligations
+remain. Company-specific access is displayed but requires a separate contract review before a
+tenant-wide change.
+
+Submit once, then watch Recent module changes. Pending or Running is not completed access. The same
+provisioning worker applies the change and records Done or Failed. Review a failure before retrying;
+re-enabling preserves the customer's existing configuration. Do not bypass the queue with direct
+entitlement edits.

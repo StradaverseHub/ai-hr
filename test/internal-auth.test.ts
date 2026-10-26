@@ -266,14 +266,30 @@ describe('first-party authentication with real private storage and existing HR b
     expect((await owner.client`select status from app_invitation where id=${invite.invitationId}::uuid`)[0].status).toBe('pending');
     expect((await owner.client`select count(*)::int n from app_external_identity where issuer=${c.issuer} and subject=${c.subject}`)[0].n).toBe(1);
   });
-  it('invitation enrollment cannot grant HR access before MFA and cannot bind twice', async () => {
+  it.each([false, true])('invitation enrollment is single-use and browser activation requires a fresh login (native=%s)', async native => {
     const provider: AuthProvider = { sendInvitation: async () => ({ invitationId: 'test' }), revokeInvitation: async () => {}, sendPasswordReset: async () => {}, endSession: async () => {} };
     const invite = await inviteUser(adminCtx(base), { email: 'invited@example.test', role: 'employee' }, provider);
-    const setup = await startInvitation(invite.token, 'invited', final);
+    const setup = await startInvitation(invite.token, 'invited', final, native);
     if (setup.step !== 'enroll' || !setup.secret) throw new Error('Expected setup');
     expect(await credentialByLogin('alpha', 'invited')).toBeNull(); expect(await readSession(challenge(setup))).toBeNull();
-    const result = completed(await verifyMfa(challenge(setup), await generate({ secret: setup.secret })));
-    expect((await readSession(result.access_token))?.credential.email).toBe('invited@example.test');
+    const result = await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native);
+    if (native) {
+      const session = completed(result);
+      expect((await readSession(session.access_token, true))?.credential.email).toBe('invited@example.test');
+    } else {
+      expect(result).toMatchObject({ step: 'activated', organization: 'alpha', recoveryCodes: expect.any(Array) });
+      expect(result).not.toHaveProperty('access_token');
+      if (result.step !== 'activated') throw new Error('Expected activation without a session');
+      const credential = (await credentialByLogin('alpha', 'invited'))!;
+      const sessions = await owner.client`select count(*)::int n from app_internal_auth_record
+        where owner_id=${credential.subject}::uuid and (record_key like 'session:%' or record_key like 'family:%')`;
+      expect(sessions[0].n).toBe(0);
+      const login = await startLogin({ organization: 'alpha', username: 'invited', password: final, native: false });
+      expect(login.step).toBe('mfa');
+      const signedIn = completed(await verifyMfa(challenge(login), result.recoveryCodes![0]));
+      expect((await readSession(signedIn.access_token))?.credential.email).toBe('invited@example.test');
+    }
+    await expect(verifyMfa(challenge(setup), '123456', native)).rejects.toMatchObject({ code: 'invalidChallenge' });
     await expect(startInvitation(invite.token, 'another', final)).rejects.toMatchObject({ code: 'invalidChallenge' });
   });
 });
