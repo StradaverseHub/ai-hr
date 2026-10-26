@@ -3,6 +3,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
+import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {assertAiPrincipalTx} from '../ai-principal';
 import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
@@ -20,9 +21,9 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  &&(value.metadata.state==='completed')===(value.eventId!==null)
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
 type Stored=z.infer<typeof Stored>;
-const Body=z.object({content:Human,caseNumber:z.string().min(1).max(100),nativeReviewedDigest:digest}).strict();type Body=z.infer<typeof Body>;
+const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,caseNumber:z.string().min(1).max(100),nativeReviewedDigest:digest}).strict();type Body=z.infer<typeof Body>;
 function identity(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);}
-const reviewed=(binding:z.infer<typeof Binding>,body:Body)=>hash([1,action,binding,body]);
+const reviewed=(binding:z.infer<typeof Binding>,body:Body)=>privateReviewCommitment([1,action,binding],body);
 function checked(m:Meta,value:unknown){const body=Body.parse(value);if(body.content.caseId!==m.binding.caseId||hash(body.content)!==m.intentDigest||reviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;}
 function seal(m:Meta,body:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(checked(m,body));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}finally{dek?.fill(0);}}
 function unseal(stored:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>32768)return fail();return checked(stored.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
@@ -34,7 +35,7 @@ function retired(stored:Stored){return{kind:'retired' as const,receipt:Lifecycle
 async function completed(tx:Tx,ctx:SessionContext,stored:Stored){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const receipt=await reconcileOwnLifecycleAcknowledgementSourceTx(tx,ctx,{caseId:stored.metadata.binding.caseId,submittedEventId:stored.eventId});return{kind:'completed' as const,receipt:LifecycleAckCompletedReview.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt})};}
 async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_lifecycle_ack_review_subject(${id}::uuid) as subject`);return z.uuid().parse(row?.subject);}
 export async function prepareLifecycleAckReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=LifecycleAckReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnLifecycleAcknowledgementIntervalTx(tx,ctx,human.caseId,async(fresh,source)=>{
- const native=await prepareOwnLifecycleAcknowledgementSourceTx(tx,fresh,human),body=Body.parse({content:native.content,caseNumber:native.caseNumber,nativeReviewedDigest:native.reviewedDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId});
+ const native=await prepareOwnLifecycleAcknowledgementSourceTx(tx,fresh,human),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,caseNumber:native.caseNumber,nativeReviewedDigest:native.reviewedDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId});
  const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
  const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.caseId}::uuid,${binding.casePersonId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,source);return pending(stored);
  }));}catch{return fail();}}

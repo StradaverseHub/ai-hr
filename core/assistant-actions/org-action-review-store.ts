@@ -3,6 +3,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
+import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {employment} from '../../db/schema';
 import {assertAiPrincipalTx} from '../ai-principal';
@@ -24,10 +25,10 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  &&(r.metadata.state==='completed')===(r.reportingLineId!==null&&r.setEventId!==null)
  &&((r.reportingLineId===null)===(r.setEventId===null))
  &&(r.metadata.state==='awaiting_confirmation'||(r.sealed===null&&r.metadata.intentDigest===null&&r.metadata.reviewedDigest===null&&r.metadata.managerPersonId===null&&r.metadata.previousManagerPersonId===null)));
-const Body=z.object({content:Human,review:Review,nativeReviewedDigest:digest}).strict();
+const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,review:Review,nativeReviewedDigest:digest}).strict();
 type Stored=z.infer<typeof Stored>;type Meta=z.infer<typeof Metadata>;type Body=z.infer<typeof Body>;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-const reviewed=(m:Pick<Meta,'binding'|'managerPersonId'|'previousManagerPersonId'>,body:Body)=>hash([1,ACTION,m.binding,m.managerPersonId,m.previousManagerPersonId,body]);
+const reviewed=(m:Pick<Meta,'binding'|'managerPersonId'|'previousManagerPersonId'>,body:Body)=>privateReviewCommitment([1,ACTION,m.binding,m.managerPersonId,m.previousManagerPersonId],body);
 function checked(m:Meta,value:unknown){const b=Body.parse(value);if(b.content.subordinateEmploymentId!==m.binding.employmentId||b.review.subordinateEmploymentId!==m.binding.employmentId||b.content.managerEmploymentId!==b.review.after.managerEmploymentId||hash(b.content)!==m.intentDigest||reviewed(m,b)!==m.reviewedDigest)return fail();return b;}
 function aad(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,ACTION,m.actionId,m.binding,m.managerPersonId,m.previousManagerPersonId,m.intentDigest,m.reviewedDigest]);}
 function seal(m:Meta,b:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=aad(m),text=JSON.stringify(checked(m,b));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:org-review:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:org-review:body:'+id)});}finally{dek?.fill(0);}}
@@ -41,7 +42,7 @@ function pending(r:Stored,b=unseal(r)){const m=r.metadata;return{kind:'prepared'
 function retired(r:Stored){return{kind:'retired' as const,receipt:OrgActionRetirementReceipt.parse({action:ACTION,contractVersion:1,actionId:r.metadata.actionId,state:r.metadata.state})};}
 async function completed(tx:Tx,ctx:SessionContext,r:Stored){if(r.metadata.state!=='completed'||!r.reportingLineId||!r.setEventId)return fail();const receipt=await reconcileReviewedReportingLineSourceTx(tx,ctx,{reportingLineId:r.reportingLineId,setEventId:r.setEventId,subordinateEmploymentId:r.metadata.binding.employmentId});return{kind:'completed' as const,receipt:OrgActionCompletedReceipt.parse({action:ACTION,contractVersion:1,actionId:r.metadata.actionId,state:'completed',receipt})};}
 async function existing(tx:Tx,ctx:SessionContext,id:string){const [nom]=await tx.execute<{subject:unknown}>(sql`select app.assistant_org_review_subject(${id}::uuid) as subject`),subject=z.uuid().parse(nom?.subject),r=await read(tx,sql`select app.assistant_org_review_read(${id}::uuid) as review`);bound(r,ctx,id,subject);return r;}
-export async function prepareOrgActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=OrgActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const actor=await ownInterval(tx,ctx);const native=await prepareReviewedReportingLineSourceTx(tx,actor,p),body=Body.parse({content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest});
+export async function prepareOrgActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=OrgActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const actor=await ownInterval(tx,ctx);const native=await prepareReviewedReportingLineSourceTx(tx,actor,p),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest});
  // Native preflight has already established subordinate maintain and both manager views.
  const lookup=async(id:string)=>{const [r]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.tenantId,actor.tenantId),eq(employment.id,id))).limit(1);if(!r)return fail();return r;};
  const target=await lookup(p.subordinateEmploymentId),manager=await lookup(p.managerEmploymentId),prior=native.review.before?await lookup(native.review.before.managerEmploymentId):null,binding=Binding.parse({tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId??null,employmentId:p.subordinateEmploymentId,companyId:target.companyId,subjectPersonId:target.personId});
