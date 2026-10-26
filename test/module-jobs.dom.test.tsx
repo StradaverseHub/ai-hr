@@ -42,7 +42,7 @@ describe('deterministic current-user job cards',()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave'}));
   expect(screen.getAllByRole('link').map(link=>link.getAttribute('href')).sort()).toEqual([
    ...AGENT_MODULE_CODES.map(module=>'/assistant?job='+encodeURIComponent(module)),
-   '/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
+   '/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
   ].sort());expect(withAssistantRead).not.toHaveBeenCalled();
   expect(screen.getByRole('link',{name:en.assistant.workspace.claimActions.title}).getAttribute('href')).toBe('/assistant/claims');
   expect(screen.getByRole('link',{name:en.assistant.workspace.knowledgeActions.title}).getAttribute('href')).toBe('/assistant/knowledge-base');

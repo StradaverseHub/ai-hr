@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
+  const connected=['approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
@@ -52,4 +52,9 @@ it('offers equipment acknowledgement only as a human Lifecycle page with no devi
 it('hands TOIL to human worked-date review without generating work, consent, credit or approval',()=>{
  const actions=moduleHumanActionHandoffs('toil');expect(actions).toEqual([{module:'toil',action:'toil.replacement.request',route:'/assistant/toil',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{rows:[]},{workedDate:'2026-01-01'},{firstScheduleConsent:true},{creditId:'invented'},{approved:true},{route:'/assistant/toil?employmentId=other'}])expect(()=>checkedModuleHumanHandoffs('toil',actions.map(row=>({...row,...extra})))).toThrow();
+});
+
+it('hands assigned Leave decisions to human selection without model task, decision or confirmation',()=>{
+ const rows=moduleHumanActionHandoffs('approvals');expect(rows).toEqual([{module:'approvals',action:'approvals.leave.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ for(const extra of [{leaveRequestId:'other'},{currentStepId:'other'},{decision:'approved'},{rejectReason:'model reason'},{confirmAssignedDecision:true},{route:'/assistant/approvals?task=other'}])expect(()=>checkedModuleHumanHandoffs('approvals',rows.map(row=>({...row,...extra})))).toThrow();
 });

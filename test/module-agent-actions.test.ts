@@ -142,3 +142,10 @@ it('connects the TOIL human request without treating submission as earned credit
  for(const extra of [{employmentId:'other'},{rows:[]},{reason:'invented work'},{firstScheduleConsent:true},{approved:true},{creditDays:10}])expect(()=>parseModuleAgentActionNomination({module:'toil',action:'toil.replacement.request',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'toil',action:'toil.replacement.request',phase:'confirm'})).toThrow();
 });
+
+it('connects assigned Leave decisions without granting models decision inputs or confirmation',()=>{
+ expect(getModuleAgentAction('approvals','approvals.leave.decide')).toMatchObject({owner:'leave',outcome:'canonical_receipt_required',prepare:{status:'implemented',adapter:'module_leave_decision_review_v1'},confirm:{status:'implemented',inputSchema:'LeaveDecisionReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'prepare'})).toEqual({kind:'prepare',module:'approvals',action:'approvals.leave.decide',adapter:'module_leave_decision_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{leaveRequestId:'other'},{currentStepId:null},{decision:'approved'},{rejectReason:'invented'},{confirmAssignedDecision:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'confirm'})).toThrow();
+});
