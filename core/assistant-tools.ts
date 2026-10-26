@@ -36,6 +36,7 @@
  */
 import type { SessionContext } from '../db/client';
 import type { AiJsonSchema, AiToolSpec } from '../lib/ai/types';
+import {projectMineLeaveBalance,projectMineLeaveEntitlement} from './assistant-leave-projection';
 import { AGENT_MODULE_CODES, isAgentModuleCode } from '../lib/ai/module-agents';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // Reads `statutory.componentLines` BY SHAPE, so this file consumes the kernel's stamp without importing
@@ -242,7 +243,7 @@ const myLeaveBalances: AssistantTool = {
     description:
       "Return the asking user's own leave balances, one block per active employment. Use this for any " +
       'question about how much leave they have left, have taken, or have awaiting approval. All figures ' +
-      'are DAYS as numbers: accrued, taken, pending, balance, and available (= balance minus pending). ' +
+      'are canonical recorded day quantities. Mine ESS visibility applies before disclosure: hidden values are null or omitted, never zero. ' +
       'Quote `available` when asked what they can still apply for. Quote the figures exactly as returned; ' +
       'never add, subtract or recompute them. Each row carries a leaveTypeId that leave_entitlement_explain ' +
       'needs. This tool takes no arguments and can only answer about the asking user — for someone who ' +
@@ -270,17 +271,7 @@ const myLeaveBalances: AssistantTool = {
       employments.push({
         employmentId: e.employmentId,
         company: e.company,
-        balances: rows.map((r) => ({
-          leaveTypeId: r.leaveTypeId,
-          leaveType: r.leaveType,
-          accrued: r.accrued,
-          taken: r.taken,
-          pending: r.pending,
-          balance: r.balance,
-          available: r.available,
-          // Named so the model can explain why two types show the same figure, instead of inventing a reason.
-          sharedPoolName: r.sharedBalance?.sourceLeaveTypeName ?? null,
-        })),
+        balances: rows.map(projectMineLeaveBalance),
       });
     }
     return { ok: true, employments };
@@ -321,6 +312,7 @@ const myLeaveRequests: AssistantTool = {
     for (const e of emps) {
       for (const r of await read.leaveRequestsFor(e.employmentId)) {
         merged.push({
+          company:e.company,
           leaveTypeId: r.leaveTypeId,
           leaveType: r.leaveType,
           status: r.status,
@@ -356,7 +348,7 @@ const leaveEntitlementExplain: AssistantTool = {
     description:
       "Explain how ONE of the asking user's own leave entitlements was arrived at: the entitlement for " +
       'the current cycle, what was carried forward, what expires and when, adjustments, what has been ' +
-      'taken, and what is pending. Call my_leave_balances first to obtain leave_type_id. Every figure here ' +
+      'taken, and what is pending. Hidden Mine rows and their raw decomposition are withheld; never reconstruct them. Call my_leave_balances first to obtain leave_type_id. Every figure here ' +
       'has already been computed by the system — quote them; do not add them up or derive a new number ' +
       "yourself. If entitlementStatus is 'no_eligibility_match', the `eligibility` block says which rule " +
       'did not match; relay it rather than guessing.',
@@ -405,35 +397,7 @@ const leaveEntitlementExplain: AssistantTool = {
       employments: breakdowns.map(({ employment, breakdown: b }) => ({
         employmentId: employment.employmentId,
         company: employment.company,
-        leaveType: b.leaveType,
-        cycleStart: b.cycleStart,
-        eligibleDays: b.eligibleDays,
-        entitlementStatus: b.entitlementStatus,
-        entitlementTemplateName: b.entitlementTemplateName,
-        eligibility: b.eligibility ?? null,
-        currentYearEntitlement: b.currentYearEntitlement,
-        // r335 (6af80f5d): the figure the employee's own screens print under "Earned to Date". Both are given
-        // so the model can answer "what does my screen say" and "what does the ledger hold" without
-        // inventing the difference; the exact one is what `balance` and `totalEntitlement` are built from.
-        currentYearEntitlementRounded: b.currentYearEntitlementRounded,
-        monthlyAccruedToDate: b.monthlyAccruedToDate,
-        broughtForward: b.broughtForward,
-        carriedForward: b.carriedForward,
-        carryForwardRemaining: b.carryForwardRemaining,
-        carryForwardExpiryDate: b.carryForwardExpiryDate,
-        adjustments: b.adjustments,
-        configAdjustments: b.configAdjustments,
-        systemAdjustments: b.systemAdjustments,
-        forfeitedThisCycle: b.forfeitedThisCycle,
-        takenThisCycle: b.takenThisCycle,
-        totalEntitlement: b.totalEntitlement,
-        balance: b.balance,
-        pendingApproval: b.pendingApproval,
-        totalAvailable: b.totalAvailable,
-        // The raw cycle ledger is unbounded; twenty rows is enough to point at where a figure came from.
-        // `formulaExplanations` is deliberately absent: it is large, and the model must not narrate a
-        // formula nobody asked about.
-        transactions: cap(b.transactions, 20),
+        ...projectMineLeaveEntitlement(b),
       })),
     };
 

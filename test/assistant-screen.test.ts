@@ -50,9 +50,17 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
     // naming who can fix it. A single "no access" would be a dead end.
     const page = read('app/assistant/page.tsx');
     expect(page).toContain('denied_');
-    for (const reason of ['module_off', 'no_grant', 'no_user']) {
+    for (const reason of ['module_off', 'no_grant', 'no_user','unavailable']) {
       expect(read('messages/en.json')).toContain(`denied_${reason}`);
     }
+  });
+
+  it('renders deterministic canonical cards and fixed bridge copy, never raw stored model prose',()=>{
+    const page=read('app/assistant/page.tsx');expect(page).not.toContain('{h.answer}');
+    expect(page).toContain('CanonicalModuleJob');expect(page).toContain('GroundedWorkspaceReply');
+    const renderer=read('components/assistant/module-jobs.tsx');expect(renderer).toContain("t('grounded')");expect(renderer).toContain("'generic':'unavailable'");
+    const source=read('core/ai-workspace.ts');expect(source).toContain('answer:null');
+    expect(source).toContain('workspaceGroundedAnswers');
   });
 
   it('every stop reason and every error code has a localised sentence', () => {

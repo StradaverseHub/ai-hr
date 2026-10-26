@@ -30,7 +30,7 @@ async function profileReceipt() {
   const input = { employment_id: peer.employmentId };
   const tool = ASSISTANT_TOOLS.find(tool => tool.spec.name === 'employee_profile')!;
   const outcome = await tool.run(ctx, input); expect(outcome.ok).toBe(true);
-  const id = randomUUID(), question = 'What is this employee profile?', answer = 'HISTORICAL_PEER_PRIVATE_SENTINEL';
+  const id = randomUUID(), question = 'What is this employee profile?', answer = 'MODEL_INVENTED_BALANCE_987654.32_AND_APPROVAL';
   const receipt = sealAssistantDisclosure({ tenantId: base.tenantId, userId, exchangeId: id, question, answer },
     [{ name: tool.spec.name, input, digest: assistantSourceDigest(outcome) }]);
   expect(receipt).toBeTruthy();
@@ -58,7 +58,7 @@ describe('actual AI workspace source read', () => {
     const ctx = await grant();
     const [row] = await owner.db.insert(schema.assistantExchange).values({ tenantId: base.tenantId, appUserId: ctx.userId!,
       question: 'Old question', answer: 'LEGACY_PRIVATE_ANSWER_SENTINEL', stop: 'end' }).returning({ id: schema.assistantExchange.id });
-    const workspace = await loadAiWorkspace(ctx);
+    const workspace = await loadAiWorkspace(ctx,{selectedExchangeId:row.id});
     expect(workspace.history).toMatchObject([{ id: row.id, answer: null, answerVisibility: 'unavailable' }]);
     expect(JSON.stringify(workspace)).not.toContain('LEGACY_PRIVATE_ANSWER_SENTINEL');
     const [retained] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, row.id));
@@ -66,8 +66,10 @@ describe('actual AI workspace source read', () => {
   });
   it('replays actual canonical fields and returns neither receipt nor lookup inputs in page props', async () => {
     const { ctx, id, receipt, peer } = await profileReceipt();
-    const workspace = await loadAiWorkspace(ctx);
-    expect(workspace.history).toMatchObject([{ id, answer: 'HISTORICAL_PEER_PRIVATE_SENTINEL', answerVisibility: 'current' }]);
+    const workspace = await loadAiWorkspace(ctx,{selectedExchangeId:id});
+    expect(workspace.history).toMatchObject([{ id, answer:null, answerVisibility:'current', grounded:{mode:'grounded'} }]);
+    expect(JSON.stringify(workspace)).toContain('HISTORICAL_PEER_PRIVATE_SENTINEL');
+    expect(JSON.stringify(workspace)).not.toContain('MODEL_INVENTED_BALANCE_987654.32_AND_APPROVAL');
     expect(JSON.stringify(workspace)).not.toContain(receipt!);
     expect(JSON.stringify(workspace)).not.toContain(peer.employmentId);
     expect(workspace.history[0]).not.toHaveProperty('disclosureReceipt');
@@ -75,23 +77,45 @@ describe('actual AI workspace source read', () => {
   });
   it('withholds an unchanged stored peer answer after actual role scope is reduced', async () => {
     const { ctx, id } = await profileReceipt();
-    expect((await loadAiWorkspace(ctx)).history[0].answer).toBe('HISTORICAL_PEER_PRIVATE_SENTINEL');
+    expect((await loadAiWorkspace(ctx,{selectedExchangeId:id})).history[0].grounded?.mode).toBe('grounded');
     await owner.db.update(schema.roleAssignment).set({ role: 'employee' }).where(eq(schema.roleAssignment.appUserId, ctx.userId!));
     const reduced = { ...ctx, roles: ['employee'] };
-    const workspace = await loadAiWorkspace(reduced);
+    const workspace = await loadAiWorkspace(reduced,{selectedExchangeId:id});
     expect(workspace.history).toMatchObject([{ id, answer: null, answerVisibility: 'unavailable' }]);
     expect(JSON.stringify(workspace)).not.toContain('HISTORICAL_PEER_PRIVATE_SENTINEL');
+  });
+  it('rechecks an actual narrowed company grant and current Assistant revocation before typed historical facts',async()=>{
+    const {ctx,id}=await profileReceipt();
+    const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional different permitted company'}).returning({id:schema.company.id});
+    await owner.db.update(schema.roleAssignment).set({companyId:company.id}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
+    const narrowed={...ctx,grants:[{role:'hr_admin',companyId:company.id}]};
+    const hidden=await loadAiWorkspace(narrowed,{selectedExchangeId:id,includeGovernance:false});
+    expect(JSON.stringify(hidden)).not.toContain('HISTORICAL_PEER_PRIVATE_SENTINEL');expect(hidden.history[0]?.grounded?.mode).not.toBe('grounded');
+    await revokeAssistant(adminCtx(base),{appUserId:ctx.userId!});
+    const revoked=await loadAiWorkspace(narrowed,{selectedExchangeId:id,includeGovernance:false});
+    expect(revoked.access.allowed).toBe(false);expect(revoked.history).toEqual([]);
   });
   it('withholds answers when canonical facts drift or the exact stored answer is swapped', async () => {
     const { ctx, peer, id } = await profileReceipt();
     await owner.db.update(schema.person).set({ fullName: 'Changed canonical name' }).where(eq(schema.person.id, peer.personId));
-    expect((await loadAiWorkspace(ctx)).history[0]).toMatchObject({ answer: null, answerVisibility: 'unavailable' });
+    expect((await loadAiWorkspace(ctx,{selectedExchangeId:id})).history[0]).toMatchObject({ answer: null, answerVisibility: 'unavailable' });
     await owner.db.update(schema.person).set({ fullName: 'HISTORICAL_PEER_PRIVATE_SENTINEL' }).where(eq(schema.person.id, peer.personId));
-    expect((await loadAiWorkspace(ctx)).history[0].answer).toBe('HISTORICAL_PEER_PRIVATE_SENTINEL');
+    expect((await loadAiWorkspace(ctx,{selectedExchangeId:id})).history[0].grounded?.mode).toBe('grounded');
     await owner.db.update(schema.assistantExchange).set({ answer: 'FORGED_REPLACEMENT_SENTINEL' }).where(eq(schema.assistantExchange.id, id));
-    const workspace = await loadAiWorkspace(ctx);
+    const workspace = await loadAiWorkspace(ctx,{selectedExchangeId:id});
     expect(workspace.history[0].answerVisibility).toBe('unavailable');
     expect(JSON.stringify(workspace)).not.toContain('FORGED_REPLACEMENT_SENTINEL');
+  });
+  it('leaves unselected history audit-only and renders source-free responses as fixed help',async()=>{
+    const {ctx,id}=await profileReceipt();
+    const unselected=await loadAiWorkspace(ctx);expect(unselected.history[0]).toMatchObject({id,answer:null,grounded:null,answerVisibility:'not_requested'});
+    expect(JSON.stringify(unselected)).not.toContain('MODEL_INVENTED_BALANCE');
+    const genericId=randomUUID(),question='Help me',answer='UNTRUSTED_GENERIC_MODEL_PAY_999999';
+    const receipt=sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:genericId,question,answer},[]);
+    await owner.db.insert(schema.assistantExchange).values({id:genericId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer,disclosureReceipt:receipt,stop:'end'});
+    const result=await loadAiWorkspace(ctx,{selectedExchangeId:genericId});
+    expect(result.history.find(row=>row.id===genericId)).toMatchObject({answer:null,grounded:{mode:'generic',views:[]}});
+    expect(JSON.stringify(result)).not.toContain(answer);
   });
   it('bounds personal history to ten records in a stable newest-first order', async () => {
     const ctx = await grant();
@@ -114,21 +138,21 @@ describe('actual AI workspace source read', () => {
     expect(fresh.taskIds).not.toContain('pay_change'); expect(fresh.taskIds).toContain('leave_available');
     await setModule(base.tenantId, 'assistant', null);
     const disabled = await loadAiWorkspace(ctx);
-    expect(disabled).toEqual({ access: { allowed: false, reason: 'module_off' }, taskIds: [], history: [] });
+    expect(disabled).toEqual({ access: { allowed: false, reason: 'module_off' }, taskIds: [], history: [],jobModules:[],agentReview:null });
   });
   it('returns neither tasks nor history after a grant revocation or without a login', async () => {
     const ctx = await grant(); await exchange(base.tenantId, ctx.userId!, 'OWN_PRIVATE_SENTINEL');
     await revokeAssistant(ctx, { appUserId: ctx.userId! });
-    expect(await loadAiWorkspace(ctx)).toEqual({ access: { allowed: false, reason: 'no_grant' }, taskIds: [], history: [] });
-    expect(await loadAiWorkspace({ ...ctx, userId: undefined })).toEqual({ access: { allowed: false, reason: 'no_user' }, taskIds: [], history: [] });
+    expect(await loadAiWorkspace(ctx)).toEqual({ access: { allowed: false, reason: 'no_grant' }, taskIds: [], history: [],jobModules:[],agentReview:null });
+    expect(await loadAiWorkspace({ ...ctx, userId: undefined })).toEqual({ access: { allowed: false, reason: 'no_user' }, taskIds: [], history: [],jobModules:[],agentReview:null });
   });
   it('refuses archived/stale actual principals before reading personal history', async () => {
     const ctx = await grant(); await exchange(base.tenantId, ctx.userId!, 'OWN_PRIVATE_SENTINEL');
     await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, ctx.userId!));
-    await expect(loadAiWorkspace(ctx)).rejects.toThrow('Current AI calling authority');
+    expect(await loadAiWorkspace(ctx)).toMatchObject({access:{allowed:false,reason:'unavailable'},history:[]});
     await owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, ctx.userId!));
     await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, ctx.userId!));
-    await expect(loadAiWorkspace(ctx)).rejects.toThrow('Current AI calling authority');
+    expect(await loadAiWorkspace(ctx)).toMatchObject({access:{allowed:false,reason:'unavailable'},history:[]});
   });
   it('binds each advertised job to real read services and a known owning module', () => {
     const modules = new Set(MODULE_CATALOG.map(module => module.code));

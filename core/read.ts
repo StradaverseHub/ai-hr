@@ -6340,6 +6340,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
         id: payslip.id,
         employmentId:payslip.employmentId,
         company: company.legalName,
+        companyId:payrollBatch.companyId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,

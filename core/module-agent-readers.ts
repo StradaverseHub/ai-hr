@@ -4,12 +4,15 @@
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_CAPABILITIES, isAgentModuleCode, type AgentModuleCode } from '../lib/ai/module-agents';
+import {isAdmin} from '../lib/authz-model';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import { assertModuleEnabled, resolveEntitlementsTx, isModuleEnabled } from './entitlements';
 import * as reads from './read';
 import { readinessSnapshot } from './record-readiness';
+import {projectMineLeaveBalance} from './assistant-leave-projection';
+import {recordedPayrollComparisonCurrency} from '../lib/payroll-comparison-source';
 import { storedComponentLines } from './payslip-earning-lines';
 import { listDocuments } from './knowledge-base';
 import { listNotifications } from './notifications';
@@ -51,28 +54,28 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
     switch (module) {
       case 'employees': data = bounded((await own()).map(row => ({ employmentId: row.employmentId, employeeCode: row.employeeCode,
         company: row.company, hiredOn: row.hiredOn, terminatedOn: row.terminatedOn, status: row.status }))); break;
-      case 'org': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,
+      case 'org': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,company:row.company,
         reportingLines: (await reads.reportingLinesFor(fresh, row.employmentId, tx)).managers.map(line => ({ lineType: line.lineType, name: line.name, employeeCode: line.employeeCode })) })))); break;
-      case 'leave': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,
-        balances: (await reads.leaveBalances(fresh, row.employmentId, undefined, { includeArchived: false }, tx)).map(balance => ({ leaveTypeId: balance.leaveTypeId, leaveType: balance.leaveType, accrued: balance.accrued, taken: balance.taken, pending: balance.pending, balance: balance.balance, available: balance.available })) })))); break;
+      case 'leave': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,company:row.company,
+        balances: (await reads.leaveBalances(fresh, row.employmentId, undefined, { includeArchived: false }, tx)).map(projectMineLeaveBalance) })))); break;
       case 'ess': data = await ready(false); break;
       case 'country-my': data = await ready(true); break;
-      case 'approvals': data = bounded((await Promise.all((await own()).map(async row => {
+      case 'approvals': assertModuleEnabled(fresh,'leave'); data = bounded((await Promise.all((await own()).map(async row => {
         const requests = await reads.leaveRequestsFor(fresh, row.employmentId, undefined, tx);
-        return requests.map(request => ({ id: request.id, status: request.status }));
+        return requests.map(request => ({ id: request.id,company:row.company, status: request.status,leaveType:request.leaveType,startDate:request.startDate,endDate:request.endDate,days:request.days,hours:request.hours,durationType:request.durationType,hasRejectedDates:request.hasRejectedDates }));
       }))).flat()); break;
       case 'knowledge_base': data = bounded((await listDocuments(fresh, {}, tx)).map(row => ({ id: row.id, title: row.title,
         category: row.category, updatedAt: row.updatedAt }))); break;
       case 'payroll': {
         const rows = await reads.myPayslips(fresh, (await own()).map(row => row.employmentId), true, tx);
         data = bounded(rows.filter(row => row.released).map(row => ({ id: row.id, payPeriod: row.payPeriod,
-          runType: row.runType, runSeq: row.runSeq, gross: row.gross, deductions: row.deductions, net: row.net })));
+          runType: row.runType, runSeq: row.runSeq,company:row.company,currency:recordedPayrollComparisonCurrency(row.statutory,row.companyId), gross: row.gross, deductions: row.deductions, net: row.net })));
         break;
       }
       case 'typed_pay_components': {
         assertModuleEnabled(fresh, 'payroll');
         const rows = await reads.myPayslips(fresh, (await own()).map(row => row.employmentId), true, tx);
-        data = bounded(rows.filter(row => row.released).map(row => ({ payslipId: row.id, payPeriod: row.payPeriod,
+        data = bounded(rows.filter(row => row.released).map(row => ({ payslipId: row.id, payPeriod: row.payPeriod,currency:recordedPayrollComparisonCurrency(row.statutory,row.companyId),
           // Stored kernel amounts only. Missing historical detail stays absent; never re-derive money.
           lines: bounded(storedComponentLines(row.statutory).map(line => ({ code: storedLabel(line.code),
             name: storedLabel(line.name), amount: storedAmount(line.amount) }))) })));
@@ -81,18 +84,18 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       case 'multi_cycle_payroll': assertModuleEnabled(fresh, 'payroll'); data = bounded((await reads.myReleasedPayslipRuns(fresh, tx)).map(run => ({ payslipId: run.payslipId, payPeriod: run.payPeriod, cycleName: run.cycleName, runType: run.runType, runSeq: run.runSeq }))); break;
       case 'attendance': data = bounded((await Promise.all((await own()).map(async row => {
         const records = await reads.myAttendance(fresh, row.employmentId, 14, tx);
-        return records.map(record => ({ employmentId: row.employmentId, date: record.date, status: record.status,
+        return records.map(record => ({ employmentId: row.employmentId,company:row.company, date: record.date, status: record.status,
           workedMinutes: record.workedMinutes, otMinutes: record.otMinutes }));
       }))).flat()); break;
       case 'claims': data = await ownClaimStatuses(fresh, 25, tx); break;
       case 'performance': data = bounded((await myReviews(fresh, tx)).map(row => ({ reviewId: row.reviewId,
         cycleName: row.cycleName, status: row.status, released: row.released, periodEnd: row.periodEnd }))); break;
       case 'rewards': data = bounded((await listRewardUnits(fresh, (await reads.allowedCompanies(fresh, tx)).map(row => row.id), tx))
-        .map(row => ({ id: row.id, kind: row.kind, year: row.year, status: row.status, revision: row.revision }))); break;
+        .map(row => ({ id: row.id, kind: row.kind, year: row.year, status: row.status, revision: row.revision,cycle:row.cycle,company:row.company,unit:row.unit }))); break;
       case 'lifecycle': {
         const result = await getMyOnboarding(fresh, tx);
         data = result ? { status: result.status, progress: result.progress,
-          steps: result.steps.map(step => ({ key: step.key, applicable: step.applicable, done: step.done })) } : null;
+          steps: result.steps.map(step => ({ key: step.key,label:step.label, applicable: step.applicable, done: step.done })) } : null;
         break;
       }
       case 'toil': data = bounded(await Promise.all((await own()).map(async row => {
@@ -105,14 +108,14 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       }))); break;
       case 'notifications': data = bounded((await Promise.all((await own()).map(async row =>
         (await listNotifications(fresh, row.employmentId, { limit: 25 }, tx)).map(record => ({ id: record.id,
-          kind: record.kind, severity: record.severity, readAt: record.readAt, createdAt: record.createdAt })) ))).flat()); break;
+          readAt: record.readAt, createdAt: record.createdAt })) ))).flat()); break;
       case 'system_explorer': {
         const result = await listSchemaTables(fresh, tx);
         data = { tables: bounded(result.tables.map(row => ({ table: row.table, module: row.moduleCode }))), withheldTables: result.withheldTables }; break;
       }
       case 'system_testing': data = bounded((await listTestCases(fresh, {}, tx)).map(row => ({ caseNo: row.caseNo,
         moduleCode: row.moduleCode, latestOutcome: row.latestOutcome, latestRunAt: row.latestRunAt, runCount: row.runCount }))); break;
-      case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code))
+      case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(!['system_explorer','system_testing'].includes(code)||isAdmin(fresh)))
         .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only' }; break;
       default: return unavailable();
     }

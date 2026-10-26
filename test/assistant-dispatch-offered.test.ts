@@ -164,7 +164,7 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     expect(toolsFor(ctx).map((t) => t.spec.name)).toContain('my_payslip_summary');
 
     converse.mockResolvedValueOnce(toolUse([{ id: 'c1', name: 'my_payslip_summary', input: { limit: 12 } }]))
-      .mockResolvedValueOnce({ ...end, text: `Fictional released net pay: ${net}.` });
+      .mockResolvedValueOnce({ ...end, text: `MODEL_INVENTED_NET_987654_AND_PAY_APPROVAL. Recorded net: ${net}.` });
 
     const res = await askAssistant(ctx, { question: 'What was my last net pay?' });
     const audit = await auditOf(res.exchangeId);
@@ -174,12 +174,16 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     expect(sentToModel()).toContain(net);
     const [stored] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, res.exchangeId));
     expect(stored.disclosureReceipt).toBeTruthy();
-    const reopened = await loadAiWorkspace(ctx);
-    expect(reopened.history[0]).toMatchObject({ id: res.exchangeId, answer: res.answer, answerVisibility: 'current' });
+    expect(res).not.toHaveProperty('answer');
+    const reopened = await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
+    expect(reopened.history[0]).toMatchObject({ id: res.exchangeId, answer:null, answerVisibility:'current',grounded:{mode:'grounded'} });
+    expect(JSON.stringify(reopened.history[0].grounded?.views)).toContain(net);
+    expect(JSON.stringify(reopened)).not.toContain('MODEL_INVENTED_NET_987654_AND_PAY_APPROVAL');
+    expect(stored.answer).toContain('MODEL_INVENTED_NET_987654_AND_PAY_APPROVAL');
     expect(JSON.stringify(reopened)).not.toContain(stored.disclosureReceipt!);
     // Actual command -> source receipt -> canonical replay -> module revocation, no forged backfill.
     await setModule(base.tenantId, 'payroll', null);
-    const retired = await loadAiWorkspace(ctx);
+    const retired = await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
     expect(retired.history[0]).toMatchObject({ id: res.exchangeId, answer: null, answerVisibility: 'unavailable' });
     expect(JSON.stringify(retired)).not.toContain(net);
   });
