@@ -435,3 +435,61 @@ export function letterPolicyHistory(ctx:SessionContext,input:{companyId:string;c
  await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
  const rows=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)),input.cursor?sql`${letterPolicyVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterPolicyVersion.ordinal)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}
+
+export type LetterReportFilter={companyId?:string;departmentId?:string;from:string;to:string;cursor?:string;limit?:number;exportAll?:boolean;expectedDataHash?:string};
+export type LetterReportRow={id:string;reference:string;state:string;company_id:string;company_name:string;employment_id:string;employee_name:string;employee_code:string|null;department_id:string|null;department_name:string|null;organisation_ambiguous:boolean;category:string;title:string;created_at:string;submitted_at:string|null;approved_at:string|null;issued_at:string|null;voided_at:string|null;stage_entered_at:string|null;approval_due_at:string|null;acknowledgement_due_at:string|null;viewed_at:string|null;acknowledged_at:string|null;pending_acknowledgement:boolean;approval_overdue:boolean;acknowledgement_overdue:boolean;approval_hours:number|null;issue_hours:number|null;acknowledgement_hours:number|null};
+export type LetterReportSummary={total:number;issued:number;void:number;historicalIssued:number;pendingApproval:number;pendingAcknowledgement:number;approvalOverdue:number;acknowledgementOverdue:number;meanApprovalHours:number|null;meanIssueHours:number|null;meanAcknowledgementHours:number|null};
+export type LetterReport={rows:LetterReportRow[];summary:LetterReportSummary;dataHash:string;generatedAt:string;generatedBy:string;timezone:'Asia/Kuala_Lumpur';period:{from:string;to:string};nextCursor:string|null};
+/** One SQL statement owns the complete scoped cohort, aggregates, page and fingerprint. Reads emit nothing. */
+export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Promise<LetterReport>{return letters(ctx,false,async tx=>{
+ if(!isCalendarDate(input.from)||!isCalendarDate(input.to)||input.from>input.to||(Date.parse(input.to)-Date.parse(input.from))/86400000>365)throw new LetterWorkflowError('invalid','period');
+ for(const id of [input.companyId,input.departmentId,input.cursor])if(id)uuid(id);if(input.expectedDataHash&&!/^[0-9a-f]{64}$/.test(input.expectedDataHash))throw new LetterWorkflowError('invalid','reportHash');
+ if(input.companyId){await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'report');}
+ else{const [scope]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and app.letter_permission(c.id,'read') and app.letter_permission(c.id,'report')) as ok`);if(!scope?.ok)throw new LetterWorkflowError('permission');}
+ const limit=input.exportAll?50001:letterListLimit(input.limit),cursor=input.exportAll?null:input.cursor??null;
+ const [result]=await tx.execute<{rows:LetterReportRow[];summary:LetterReportSummary;data_hash:string;generated_at:string}>(sql`
+ with base as (
+  select l.id,l.reference,l.state,l.company_id,c.legal_name as company_name,l.employment_id,p.full_name as employee_name,e.employee_code,
+   org.department_id,coalesce(nullif(trim(d.label),''),nullif(trim(d.description),''),d.name) as department_name,org.ambiguous as organisation_ambiguous,v.category,v.name as title,
+   l.created_at,l.submitted_at,l.approved_at,l.issued_at,l.voided_at,
+   case when l.stage_index=0 then l.submitted_at else (select decision.created_at from letter_approval_decision decision where decision.revision_id=l.current_revision_id and decision.stage_index=l.stage_index-1 and decision.action='approve') end as stage_entered_at,
+   (policy.policy->>'approvalDueHours')::integer as approval_due_hours,(policy.policy->>'acknowledgementDueDays')::integer as acknowledgement_due_days,
+   policy.policy->>'acknowledgement' as acknowledgement_mode,recipient.viewed_at,recipient.acknowledged_at
+  from letter_record l join company c on c.id=l.company_id and c.tenant_id=l.tenant_id
+  join employment e on e.id=l.employment_id and e.tenant_id=l.tenant_id join person p on p.id=e.person_id and p.tenant_id=l.tenant_id
+  join letter_generation_batch b on b.id=l.batch_id and b.tenant_id=l.tenant_id join letter_template_version v on v.id=b.template_version_id and v.tenant_id=l.tenant_id
+  join letter_policy_version policy on policy.id=b.policy_version_id and policy.tenant_id=l.tenant_id
+  left join letter_artifact artifact on artifact.letter_id=l.id and artifact.revision_id=l.current_revision_id and artifact.tenant_id=l.tenant_id
+  left join lateral (select min(action.created_at) filter(where action.kind='viewed') as viewed_at,
+   min(action.created_at) filter(where action.kind=case when policy.policy->>'acknowledgement'='signature' then 'signed' when policy.policy->>'acknowledgement'='acknowledge' then 'acknowledged' else null end) as acknowledged_at
+   from letter_recipient_event action where action.artifact_id=artifact.id and action.tenant_id=l.tenant_id) recipient on true
+  left join lateral (select case when count(*)=1 then min(a.department_id::text)::uuid else null end as department_id,count(*)>1 as ambiguous
+   from assignment a where a.employment_id=l.employment_id and a.tenant_id=l.tenant_id and a.valid_from<=(b.selection->>'sourceAsOfDate')::date and (a.valid_to is null or a.valid_to>(b.selection->>'sourceAsOfDate')::date)) org on true
+  left join department d on d.id=org.department_id and d.tenant_id=l.tenant_id
+  where app.letter_permission(l.company_id,'report') and app.letter_permission(l.company_id,'read')
+   and (l.created_at at time zone 'Asia/Kuala_Lumpur')::date between ${input.from}::date and ${input.to}::date
+   and (${input.companyId??null}::uuid is null or l.company_id=${input.companyId??null}::uuid)
+   and (${input.departmentId??null}::uuid is null or org.department_id=${input.departmentId??null}::uuid)
+ ), facts as (
+  select base.*,case when state='submitted' then stage_entered_at+approval_due_hours*interval '1 hour' else null end as approval_due_at,
+   case when state='issued' and acknowledgement_mode<>'none' then issued_at+acknowledgement_due_days*interval '1 day' else null end as acknowledgement_due_at,
+   state='issued' and acknowledgement_mode<>'none' and acknowledged_at is null as pending_acknowledgement,
+   coalesce(state='submitted' and stage_entered_at+approval_due_hours*interval '1 hour'<statement_timestamp(),false) as approval_overdue,
+   coalesce(state='issued' and acknowledgement_mode<>'none' and acknowledged_at is null and issued_at+acknowledgement_due_days*interval '1 day'<statement_timestamp(),false) as acknowledgement_overdue,
+   case when approved_at>=submitted_at then extract(epoch from approved_at-submitted_at)/3600 else null end as approval_hours,
+   case when issued_at>=created_at then extract(epoch from issued_at-created_at)/3600 else null end as issue_hours,
+   case when acknowledged_at>=issued_at then extract(epoch from acknowledged_at-issued_at)/3600 else null end as acknowledgement_hours
+  from base
+ ), summary as (
+  select count(*) as total,count(*) filter(where state='issued') as issued,count(*) filter(where state='void') as void,
+   count(*) filter(where issued_at is not null) as "historicalIssued",count(*) filter(where state='submitted') as "pendingApproval",
+   count(*) filter(where pending_acknowledgement) as "pendingAcknowledgement",count(*) filter(where approval_overdue) as "approvalOverdue",count(*) filter(where acknowledgement_overdue) as "acknowledgementOverdue",
+   avg(approval_hours) as "meanApprovalHours",avg(issue_hours) as "meanIssueHours",avg(acknowledgement_hours) as "meanAcknowledgementHours" from facts
+ ), page as (select * from facts where (${cursor}::uuid is null or id>${cursor}::uuid) order by id limit ${limit+1})
+ select coalesce((select jsonb_agg(to_jsonb(page) order by page.id) from page),'[]'::jsonb) as rows,(select to_jsonb(summary) from summary) as summary,
+  encode(sha256(convert_to(coalesce((select string_agg(encode(sha256(convert_to(to_jsonb(facts)::text,'UTF8')),'hex'),'' order by facts.id) from facts),''),'UTF8')),'hex') as data_hash,
+  to_char(statement_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as generated_at`);
+ if(!result)throw new LetterWorkflowError('configuration','report');if(input.expectedDataHash&&input.expectedDataHash!==result.data_hash)throw new LetterWorkflowError('stale','reportChanged');
+ if(input.exportAll&&result.summary.total>50000)throw new LetterWorkflowError('configuration','reportExportLimit');
+ return {rows:result.rows.slice(0,input.exportAll?50000:limit),summary:result.summary,dataHash:result.data_hash,generatedAt:result.generated_at,generatedBy:ctx.userId!,timezone:'Asia/Kuala_Lumpur',period:{from:input.from,to:input.to},nextCursor:!input.exportAll&&result.rows.length>limit?result.rows[limit-1].id:null};
+});}

@@ -11,9 +11,12 @@ export type LetterPdfInput={
  signature:{name:string;caption:string;timestamp:string;stamp?:Uint8Array};
  letterhead?:Uint8Array;
  verification?:{url:string;caption:string};
+ /** Internal report exports may span more pages; official letters retain the smaller default. */
+ maxPages?:number;
 };
 /** Only frozen, resolved text and private validated PNG bytes enter this renderer. No fetch or HR reads. */
 export async function renderLetterPdf(input:LetterPdfInput){
+ const maxPages=input.maxPages??200;if(!Number.isInteger(maxPages)||maxPages<1||maxPages>2000)throw new Error('Invalid PDF page limit');
  const strings:string[]=[input.reference,input.title,input.signature.name,input.signature.caption,input.signature.timestamp];
  if(input.verification)strings.push(input.verification.caption);
  for(const block of input.document.blocks){
@@ -57,7 +60,7 @@ export async function renderLetterPdf(input:LetterPdfInput){
   }
   return lines;
  }
- function newPage(){if(pdf.getPageCount()>=200)throw new Error('Letter exceeds 200 pages');page=pdf.addPage([width,height]);y=height-48;}
+ function newPage(){if(pdf.getPageCount()>=maxPages)throw new Error('PDF page limit exceeded');page=pdf.addPage([width,height]);y=height-48;}
  function space(needed:number){if(y-needed<bottom)newPage();}
  function drawLine(line:Run[],x:number,baseline:number,size:number){
   let cursor=x;
