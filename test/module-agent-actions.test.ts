@@ -156,3 +156,10 @@ it('connects human Attendance review without accepting model clocks, work eviden
  for(const extra of [{employmentId:'other'},{date:'2026-01-01'},{requestedOtMinutes:60},{clockChanges:{}},{unclockedWork:{}},{intent:{}},{approved:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'confirm'})).toThrow();
 });
+
+it('connects pay-code human setup without granting model rates, classifications, assignments or payroll execution',()=>{
+ expect(getModuleAgentAction('typed_pay_components','typed_pay_components.create')).toMatchObject({owner:'payroll',outcome:'canonical_receipt_required',prepare:{status:'implemented',adapter:'module_pay_component_review_v1'},confirm:{status:'implemented',inputSchema:'PayComponentReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'typed_pay_components',action:'typed_pay_components.create',phase:'prepare'})).toEqual({kind:'prepare',module:'typed_pay_components',action:'typed_pay_components.create',adapter:'module_pay_component_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{input:{}},{code:'INVENTED'},{rule:{kind:'per_hour',rate:10}},{includedInEpf:true},{assignToEmployee:'other'},{runPayroll:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'typed_pay_components',action:'typed_pay_components.create',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'typed_pay_components',action:'typed_pay_components.create',phase:'confirm'})).toThrow();
+});

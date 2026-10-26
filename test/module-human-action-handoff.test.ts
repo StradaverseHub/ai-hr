@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
+  const connected=['typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
@@ -62,4 +62,9 @@ it('hands assigned Leave decisions to human selection without model task, decisi
 it('offers only the fixed own Attendance human page without carrying source baselines or work claims',()=>{
  const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{employmentId:'other'},{baseline:'private'},{clockChanges:{}},{requestedOtMinutes:60},{approved:true},{route:'/assistant/attendance?employee=other'}])expect(()=>checkedModuleHumanHandoffs('attendance',rows.map(row=>({...row,...extra})))).toThrow();
+});
+
+it('offers the fixed pay-code human page without model rules, classification or target assignments',()=>{
+ const rows=moduleHumanActionHandoffs('typed_pay_components');expect(rows).toEqual([{module:'typed_pay_components',action:'typed_pay_components.create',route:'/assistant/pay-codes',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ for(const extra of [{input:{}},{rule:{kind:'fixed'}},{includedInPcb:true},{employeeId:'other'},{route:'/assistant/pay-codes?code=INVENTED'}])expect(()=>checkedModuleHumanHandoffs('typed_pay_components',rows.map(row=>({...row,...extra})))).toThrow();
 });
