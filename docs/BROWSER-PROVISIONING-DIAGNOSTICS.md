@@ -125,3 +125,33 @@ migration, report verification, deployment and cleanup requirements remain manda
 rsync capability cases join mandatory controller checks. This version is not yet published to
 main/alpha or accepted as a complete representative release; a fresh controller check and full
 new-policy measurement remain required. No normal runner size or spending limit is increased.
+
+The complete v13 review run [40339649435](https://github.com/StradaverseHub/ai-hr/actions/runs/40339649435)
+then passed at exact source/controller `ec0359c2b169c0b6e3e78c2660c447af98f17a0f`:
+1,972 Node/DOM files, 54 browser file executions and 28,096 assertions across50complete unit
+reports. All59jobs terminated (58success, only optional runner diagnostic skipped). Independent
+API/ZIP/source-plan/raw-report verification matched the actual emitted receipt exactly; every
+database resource/cleanup proof passed. Actual submission14:26:17.471→last job14:33:32 was
+434.529seconds (7m14.5s). This review controller is deliberately refused by trusted release-origin
+validation; this result is complete CI evidence, not deployment or an under-ten-minute release.
+
+A private prefetch prototype staged all55immutable archives while that same gate ran. Final API
+IDs/digests/sizes were independently revalidated before safe extraction and report acceptance.
+The initial52downloads overlapped CI and took31.359seconds. The prototype never emitted a release
+acceptance or changed branches/server state; durable normal-operator prefetch integration is not
+implemented. Its raw observations remain under this worktree's ignored `scratchpad` directory.
+
+## Next measured serial test boundary
+
+The v13 tail contains individual files, not merely oversized batches:
+`attendance-policy-storage-attested-financial.test.ts` took236.198seconds, and
+`r395-write-path-equivalence.test.ts` took223.202seconds. Reducing a batch's file cap cannot
+split either duration. The prepared financial change registers the exact original matrix in two
+independent files (cash9/TOIL9), preserving the complete callback, date/money/TOIL guards, imports,
+per-case reset and live fixture getters against the original frozen32case source oracle. No
+production code, SQL or assertion changes. A registration-level probe executes the actual table
+expression and verifies the disjoint exact18row union; source checks refuse missing/duplicated
+partitions, changed filters, assertions, clock values or resets. An initial misplaced filter was
+caught by that functional probe and corrected before Linux execution; a subsequent probe-boundary
+selection error was repaired only in that failed probe. Ten source controls and the repaired
+registration probe pass; actual new Linux financial-file execution is still pending.
