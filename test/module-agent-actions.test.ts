@@ -149,3 +149,10 @@ it('connects assigned Leave decisions without granting models decision inputs or
  for(const extra of [{leaveRequestId:'other'},{currentStepId:null},{decision:'approved'},{rejectReason:'invented'},{confirmAssignedDecision:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'confirm'})).toThrow();
 });
+
+it('connects human Attendance review without accepting model clocks, work evidence or approvals',()=>{
+ expect(getModuleAgentAction('attendance','attendance.correction.request')).toMatchObject({owner:'attendance',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_attendance_review_v1'},confirm:{status:'implemented',inputSchema:'AttendanceCorrectionReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'prepare'})).toEqual({kind:'prepare',module:'attendance',action:'attendance.correction.request',adapter:'module_attendance_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{employmentId:'other'},{date:'2026-01-01'},{requestedOtMinutes:60},{clockChanges:{}},{unclockedWork:{}},{intent:{}},{approved:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'confirm'})).toThrow();
+});
