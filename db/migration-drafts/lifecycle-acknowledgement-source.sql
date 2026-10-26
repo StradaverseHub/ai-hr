@@ -69,3 +69,22 @@ $$;
 REVOKE ALL ON FUNCTION app.lc_my_daa_submit_reviewed(jsonb,uuid,text,text),app.lc_my_daa_review_source(),app.lc_my_daa_reference(uuid,uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.lc_my_daa_submit_reviewed(jsonb,uuid,text,text),app.lc_my_daa_review_source(),app.lc_my_daa_reference(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- The SAME native email/person owner, including unlinked prehire cases. No fabricated employment.
+-- Case→distribution-step ownership is available both before submission and for completed retries.
+CREATE FUNCTION app.lc_my_daa_custody_source(p_case uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_case;selected uuid;
+BEGIN
+ IF p_case IS NULL OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' OR app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ selected:=app.lc_my_case_id();IF selected IS DISTINCT FROM p_case THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO c FROM public.lc_case WHERE id=selected AND tenant_id=app.current_tenant_id() FOR UPDATE NOWAIT;
+ IF NOT FOUND OR c.status NOT IN ('in_progress','completed') OR NOT c.laptop_required OR selected IS DISTINCT FROM app.lc_my_case_id() THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ IF c.person_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.person p WHERE p.id=c.person_id AND p.tenant_id=c.tenant_id) THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ IF c.employment_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id AND (c.person_id IS NULL OR e.person_id=c.person_id)) THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ PERFORM 1 FROM public.lc_case_step WHERE case_id=c.id AND tenant_id=c.tenant_id AND step_key='laptop_dist' AND done FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Acknowledgement unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('caseId',c.id,'caseNumber',c.number,'casePersonId',c.person_id,'employmentId',c.employment_id,'companyId',c.company_id);
+END $$;
+REVOKE ALL ON FUNCTION app.lc_my_daa_custody_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_my_daa_custody_source(uuid) TO ai_hr_app;

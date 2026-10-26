@@ -6,16 +6,17 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {normalizeMyAcknowledgement,submitReviewedMyAcknowledgementTx} from '../lifecycle-self';
-import {readOwnLeaveActorTx} from './own-leave-actor';
+import {assertAiPrincipalTx} from '../ai-principal';
+import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled} from '../entitlements';
+import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
 import {OwnLifecycleAcknowledgementHumanContent as Human,OwnLifecycleAcknowledgementConfirmation as Confirmation,OwnLifecycleAcknowledgementPreparedSource as Prepared,OwnLifecycleAcknowledgementSourceReceipt as Receipt} from '../../lib/assistant-actions/own-lifecycle-acknowledgement-contract';
 export class OwnLifecycleAcknowledgementUnavailable extends Error{constructor(){super('Your equipment acknowledgement is unavailable.');this.name='OwnLifecycleAcknowledgementUnavailable';}}
 const Source=z.object({caseId:z.uuid(),caseNumber:z.string().min(1).max(100),caseRevision:z.string().regex(/^\d+$/),distributionRevision:z.string().regex(/^\d+$/)}).strict();
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await readOwnLeaveActorTx(tx,ctx);if(!fresh)throw new OwnLifecycleAcknowledgementUnavailable();assertModuleEnabled(fresh,'lifecycle');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertOwnLifecycleAcknowledgementActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'lifecycle');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
 async function prepare(tx:Tx,ctx:SessionContext,humanValue:unknown){
- const fresh=await actor(tx,ctx),human=Human.parse(humanValue),normalized=normalizeMyAcknowledgement(human);
+ const fresh=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),human=Human.parse(humanValue),normalized=normalizeMyAcknowledgement(human);
  const [row]=await tx.execute<{source:unknown}>(sql`select app.lc_my_daa_review_source() as source`),source=Source.parse(row?.source);
  if(source.caseId!==human.caseId)throw new OwnLifecycleAcknowledgementUnavailable();
  const content=Human.parse({...human,...normalized}),reviewedDigest=createHash('sha256').update(JSON.stringify(['own-lifecycle-acknowledgement:v1',{tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId},source,content])).digest('hex');
@@ -37,5 +38,11 @@ export async function confirmOwnLifecycleAcknowledgementSourceTx(tx:Tx,supplied:
  * own case refuses; the adapter never recreates or resubmits from an old completed reference. */
 export async function reconcileOwnLifecycleAcknowledgementSourceTx(tx:Tx,supplied:SessionContext,value:unknown):Promise<z.infer<typeof Receipt>>{
  const ctx=capture(supplied);
- try{const reference=z.union([z.object({caseId:z.uuid(),submittedEventId:z.uuid()}).strict(),Receipt]).parse(structuredClone(value));await actor(tx,ctx);const [row]=await tx.execute<{reference:unknown}>(sql`select app.lc_my_daa_reference(${reference.caseId}::uuid,${reference.submittedEventId}::uuid) as reference`);return Receipt.parse({...(row?.reference as object),kind:'acknowledgement_submitted',replayed:true});}catch{throw new OwnLifecycleAcknowledgementUnavailable();}
+ try{const reference=z.union([z.object({caseId:z.uuid(),submittedEventId:z.uuid()}).strict(),Receipt]).parse(structuredClone(value));await assertOwnLifecycleAcknowledgementActorTx(tx,ctx);const [row]=await tx.execute<{reference:unknown}>(sql`select app.lc_my_daa_reference(${reference.caseId}::uuid,${reference.submittedEventId}::uuid) as reference`);return Receipt.parse({...(row?.reference as object),kind:'acknowledgement_submitted',replayed:true});}catch{throw new OwnLifecycleAcknowledgementUnavailable();}
+}
+
+/** Native own-case interval before shared custody. This is NOT the pending-only review reader:
+ * already submitted cases can reconcile, but cancelled/replaced/relinked sources cannot retarget. */
+export async function withOwnLifecycleAcknowledgementIntervalTx<T>(tx:Tx,supplied:SessionContext,caseId:string,work:(fresh:SessionContext,source:{caseId:string;caseNumber:string;casePersonId:string|null;employmentId:string|null;companyId:string|null})=>Promise<T>):Promise<T>{
+ const ctx=capture(supplied),id=z.uuid().parse(caseId);try{const fresh=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),[row]=await tx.execute<{source:unknown}>(sql`select app.lc_my_daa_custody_source(${id}::uuid) as source`),source=z.object({caseId:z.uuid(),caseNumber:z.string().min(1).max(100),casePersonId:z.uuid().nullable(),employmentId:z.uuid().nullable(),companyId:z.uuid().nullable()}).strict().parse(row?.source);if(source.caseId!==id)throw new OwnLifecycleAcknowledgementUnavailable();return await work(fresh,source);}catch{throw new OwnLifecycleAcknowledgementUnavailable();}
 }
