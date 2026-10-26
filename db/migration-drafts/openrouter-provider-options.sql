@@ -1,6 +1,6 @@
--- Centrally reserved source-only: 0623_openrouter_provider_options, journal idx 616, timestamp 1793023949846.
+-- Centrally reserved source-only filename tag: 0623_openrouter_provider_options; journal index/timestamp DEFERRED.
 -- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
--- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 ALTER TYPE ai_provider ADD VALUE IF NOT EXISTS 'openrouter';
 --> statement-breakpoint

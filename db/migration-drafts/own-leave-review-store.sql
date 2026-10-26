@@ -1,6 +1,6 @@
--- Centrally reserved source-only: 0622_own_leave_review_store, journal idx 615, timestamp 1793023949845.
+-- Centrally reserved source-only filename tag: 0622_own_leave_review_store; journal index/timestamp DEFERRED.
 -- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
--- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
  action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save')),

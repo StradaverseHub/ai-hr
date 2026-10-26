@@ -1,6 +1,6 @@
--- Centrally reserved source-only: 0621_ai_action_controls, journal idx 614, timestamp 1793023949844.
+-- Centrally reserved source-only filename tag: 0621_ai_action_controls; journal index/timestamp DEFERRED.
 -- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
--- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
  RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER

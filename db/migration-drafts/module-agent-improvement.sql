@@ -1,6 +1,6 @@
--- Centrally reserved source-only: 0627_module_agent_improvement, journal idx 620, timestamp 1793023949850.
+-- Centrally reserved source-only filename tag: 0627_module_agent_improvement; journal index/timestamp DEFERRED.
 -- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
--- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE public.ai_agent_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),

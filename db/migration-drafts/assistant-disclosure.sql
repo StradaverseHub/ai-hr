@@ -1,6 +1,6 @@
--- Centrally reserved source-only: 0624_assistant_disclosure, journal idx 617, timestamp 1793023949847.
+-- Centrally reserved source-only filename tag: 0624_assistant_disclosure; journal index/timestamp DEFERRED.
 -- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
--- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 ALTER TABLE public.assistant_exchange ADD COLUMN disclosure_receipt text;
 ALTER TABLE public.assistant_exchange ADD CONSTRAINT assistant_exchange_disclosure_size_ck
