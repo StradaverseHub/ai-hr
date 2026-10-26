@@ -1,5 +1,11 @@
 /** Candidate authenticated human browser binding; no model executor or posted session/identity. */
 import 'server-only';
+import {PayComponentActionChoices} from '../../lib/assistant-actions/module-action-http';
+import {withReviewedPayComponentIntervalTx} from './reviewed-pay-component-source';
+import {reviewedPayComponentReferenceChoicesTx,ROUNDING_METHODS,PAY_DISPLAY_CATEGORIES} from '../pay-components';
+import {countryPacks} from '../../localization/registry';
+import {preparePayComponentReview,confirmPayComponentReview,reopenPayComponentReview,discardPayComponentReview,listPayComponentReviews} from './pay-component-review-store';
+
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
 import {AttendanceActionChoices,AttendanceClockSelection,AttendanceClockSource,AssignedLeaveActionChoices,ToilRequestActionChoices,LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
@@ -119,6 +125,7 @@ async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typ
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  payComponent:{list:session=>listPayComponentReviews(session.ctx),prepare:(session,input)=>preparePayComponentReview(session.ctx,input),reopen:(session,id)=>reopenPayComponentReview(session.ctx,id),confirm:(session,input)=>confirmPayComponentReview(session.ctx,input),discard:(session,input)=>discardPayComponentReview(session.ctx,input)},
   attendance:{clockSource:(session,input)=>readAttendanceCorrectionModuleClockSource(session.ctx,input),list:session=>listAttendanceCorrectionReviews(session.ctx),prepare:(session,input)=>prepareAttendanceCorrectionReview(session.ctx,input),reopen:(session,id)=>reopenAttendanceCorrectionReview(session.ctx,id),confirm:(session,input)=>confirmAttendanceCorrectionReview(session.ctx,input),discard:(session,input)=>discardAttendanceCorrectionReview(session.ctx,input)},
   assignedDecision:{list:session=>listLeaveDecisionReviews(session.ctx),prepare:(session,input)=>prepareLeaveDecisionReview(session.ctx,input),reopen:(session,id)=>reopenLeaveDecisionReview(session.ctx,id),confirm:(session,input)=>confirmLeaveDecisionReview(session.ctx,input),discard:(session,input)=>discardLeaveDecisionReview(session.ctx,input)},
   toil:{list:session=>listToilRequestReviews(session.ctx),prepare:(session,input)=>prepareToilRequestReview(session.ctx,input),reopen:(session,id)=>reopenToilRequestReview(session.ctx,id),confirm:(session,input)=>confirmToilRequestReview(session.ctx,input),discard:(session,input)=>discardToilRequestReview(session.ctx,input)},
@@ -136,4 +143,14 @@ export async function handleConfiguredModuleActionBrowserCommand(request:Request
   confirm:async(session,input)=>confirmModuleActionReview(session.ctx,input,await resolveOwnNotificationServerIdentity()),
   discard:(session,input)=>discardModuleActionReview(session.ctx,input),
  },{publicOrigin})(request);
+}
+
+/** No employee query or amount preview. Native catalogue admin + actual Assistant/module/pause
+ * gates run before any vocabulary projection in this same interval. Empty catalogue is valid. */
+export async function readPayComponentModuleActionChoices(supplied:SessionContext){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ try{return await withTenant(ctx,tx=>withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{
+ const references=await reviewedPayComponentReferenceChoicesTx(tx,fresh),eaLines=countryPacks().flatMap(pack=>pack.eaReporting??[]).filter(line=>line.active).map(line=>({code:line.code,label:line.label}));
+ const result=PayComponentActionChoices.parse({kind:'choices',references,roundingMethods:[...ROUNDING_METHODS],displayCategories:[...PAY_DISPLAY_CATEGORIES],eaLines:Array.from(new Map(eaLines.map(line=>[line.code,line])).values())});if(Buffer.byteLength(JSON.stringify(result))>49152)throw Error();return result;
+ }));}catch{return PayComponentActionChoices.parse({kind:'unavailable'});}
 }

@@ -59,6 +59,8 @@ export type PayItemOption = { code: string; name: string };
 export type PreviewEmployeeOption = { employmentId: string; name: string; employeeCode: string | null };
 
 type Props = {
+  /** Human catalogue review: no employee preview/search or AI requests. Legacy default unchanged. */
+  catalogueOnly?: boolean;
   code: string;
   kind: string;
   prorates: boolean;
@@ -188,6 +190,7 @@ export function PayRuleEditor({
   aiEnabled,
   payItems,
   previewEmployees,
+  catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
   const tc = useTranslations('payComponents');
@@ -289,12 +292,13 @@ export function PayRuleEditor({
 
   // Debounced server-side employee search. 250ms so a fast typist issues one query, not eight.
   useEffect(() => {
+    if (catalogueOnly) return;
     const q = empQuery.trim();
     const timer = setTimeout(() => {
       startSearch(async () => setFound(await searchPreviewEmployeesAction(q)));
     }, 250);
     return () => clearTimeout(timer);
-  }, [empQuery]);
+  }, [empQuery, catalogueOnly]);
 
   /** The dropdown's options: what the search returned, with the CURRENT selection kept in the list even when
    *  it no longer matches — narrowing a search must never silently re-point the preview at someone else. */
@@ -326,6 +330,7 @@ export function PayRuleEditor({
   }
 
   function onAssist() {
+    if (catalogueOnly) return;
     startTransition(async () => {
       const res = await draftPayRuleAction({ description, componentCode: code || null, componentProrates: prorates });
       if (res.error) {
@@ -341,7 +346,7 @@ export function PayRuleEditor({
   }
 
   function onPreview() {
-    if (!previewEmp) return;
+    if (catalogueOnly || !previewEmp) return;
     startPreview(async () => {
       const res = await previewPayRuleAction({
         code,
@@ -361,7 +366,7 @@ export function PayRuleEditor({
 
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionTitle')}</h4>
-        {aiEnabled && (
+        {!catalogueOnly && aiEnabled && (
           <Button type="button" variant="secondary" size="sm" onClick={() => setAiOpen(true)} className="shrink-0">
             <Sparkles className="size-3.5" />
             {t('assistButton')}
@@ -535,7 +540,7 @@ export function PayRuleEditor({
       {/* ── Check against an employee ──────────────────────────────────────────────────────────────
           The server evaluates the CANDIDATE rule with the same function the payroll run uses, against this
           employee's real basic / hours / other pay items. Nothing is written. */}
-      {kind !== 'fixed' && (
+      {!catalogueOnly && kind !== 'fixed' && (
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
           <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('previewTitle')}</h5>
           <p className="text-xs text-muted-foreground">{t('previewHint')}</p>
@@ -673,7 +678,7 @@ export function PayRuleEditor({
         )}
       </div>
 
-      <AlertDialog.Root open={aiOpen} onOpenChange={setAiOpen}>
+      {!catalogueOnly && <AlertDialog.Root open={aiOpen} onOpenChange={setAiOpen}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
@@ -699,7 +704,7 @@ export function PayRuleEditor({
             </div>
           </AlertDialog.Content>
         </AlertDialog.Portal>
-      </AlertDialog.Root>
+      </AlertDialog.Root>}
     </div>
   );
 }

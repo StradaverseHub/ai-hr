@@ -665,6 +665,16 @@ async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,inp
   {tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},captured,review,catalog])).digest('hex');
  return {ctx,p,review,reviewedDigest};
 }
+/** Same-Tx reviewed catalogue vocabulary, never employee data. A large catalogue refuses honestly
+ * rather than presenting a silently incomplete reference picker. Native save still owns graph checks. */
+export async function reviewedPayComponentReferenceChoicesTx(tx:Tx,supplied:SessionContext){
+ const ctx=capturePayCatalogContext(supplied);await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const rows=await tx.select({code:payComponent.code,name:payComponent.name,label:payComponent.label,kind:payComponent.kind}).from(payComponent)
+  .where(and(eq(payComponent.tenantId,ctx.tenantId),isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind))).orderBy(payComponent.code).limit(257);
+ if(rows.length>256)throw new Error('Pay catalogue choices unavailable');
+ const result=rows.filter(row=>!isStatutoryComponent(row.code,row.kind)).map(row=>({code:row.code,name:row.label||row.name}));
+ if(Buffer.byteLength(JSON.stringify(result))>32768)throw new Error('Pay catalogue choices unavailable');return result;
+}
 export async function prepareReviewedPayComponentCreateTx(tx:Tx,ctx:SessionContext,input:PayComponentInput){
  const prepared=await reviewedPayComponentPreflightTx(tx,ctx,input);return {review:prepared.review,reviewedDigest:prepared.reviewedDigest};
 }
