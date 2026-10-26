@@ -51,6 +51,10 @@ it('does not let an ordinary approver enumerate a different owner’s signatures
  await expect(listLetterSettingAssets(reviewer,{companyId:b.companyId,kind:'signature',ownerUserId:signerId})).rejects.toMatchObject({code:'permission'});expect(await withTenant(reviewer,tx=>tx.execute(sql`select * from app.letter_setting_asset_page(${b.companyId}::uuid,'signature',${signerId}::uuid,null,null,25)`))).toHaveLength(0);
 });
 
+it('reports entitlement resolution failures at the service boundary instead of silently hiding destinations',async()=>{
+ await expect(letterNavigation({...ctx,entitlements:undefined,entitlementsExempt:undefined,entitlementsError:'fixture entitlement lookup failed'},[b.companyId])).rejects.toMatchObject({name:'EntitlementsResolutionFailedError'});
+});
+
 it('resolves real navigation permissions only in the selected company and immediately removes revoked access',async()=>{
  expect(await letterNavigation(ctx,[b.companyId])).toEqual(['/letters/templates','/letters/fields','/letters/generate','/letters/approval','/letters/register','/letters/reports','/letters/settings']);
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional scoped configuration user',primaryEmail:'nav-settings@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other company'}).returning();

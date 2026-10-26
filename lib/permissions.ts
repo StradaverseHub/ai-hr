@@ -113,7 +113,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
   {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
   {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
-  {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy'],hasScopeNote:true},
+  {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy','/letters/settings/automation'],hasScopeNote:true},
   {screenKey:'letterRegister',href:'/letters/register',labelKey:'letters.register.title',guard:'scopedSession',routes:['/letters/register','/letters/register/[letterId]'],hasScopeNote:true},
   {screenKey:'letterApproval',href:'/letters/approval',labelKey:'letters.approval.title',guard:'scopedSession',routes:['/letters/approval','/letters/approval/[letterId]'],hasScopeNote:true},
   {screenKey:'letterGenerate',href:'/letters/generate',labelKey:'letters.generate.page.title',guard:'scopedSession',routes:['/letters/generate','/letters/generate/new','/letters/generate/[batchId]'],hasScopeNote:true},
