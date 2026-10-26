@@ -443,7 +443,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  (app.letter_permission(co,'approve') AND (
   EXISTS(SELECT 1 FROM public.letter_generation_batch b JOIN public.letter_policy_version p ON p.id=b.policy_version_id,
    LATERAL jsonb_array_elements(p.policy->'stages') stage
-   WHERE b.id=batch AND b.tenant_id=app.current_tenant_id() AND b.company_id=co AND p.tenant_id=b.tenant_id AND stage->'userIds' ? app.current_user_id()::text)
+   WHERE b.id=batch AND b.tenant_id=app.current_tenant_id() AND b.company_id=co AND p.tenant_id=b.tenant_id AND (stage->'userIds' ? app.current_user_id()::text OR p.policy->>'escalationUserId'=app.current_user_id()::text))
   OR EXISTS(SELECT 1 FROM public.letter_approval_decision d WHERE d.letter_id=subject AND d.tenant_id=app.current_tenant_id() AND d.action='delegate' AND d.delegated_to=app.current_user_id())))
 $$;
 REVOKE ALL ON FUNCTION app.letter_staff_scope(uuid,uuid,uuid,uuid) FROM PUBLIC;

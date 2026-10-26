@@ -27,6 +27,19 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('lets the configured escalation reviewer inspect the frozen letter without deciding an unassigned stage',async()=>{
+  const [existing]=await owner.db.select().from(s.letterPolicyVersion);
+  const [escalationPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional escalation reviewer'}).returning(),escalationId=await createAppUser(b.tenantId,escalationPerson.id,'employee'),escalation={...await entitledCtx(b,['employee']),userId:escalationId,personId:escalationPerson.id};
+  for(const capability of ['read','approve'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'employee',allowed:true});
+  const unrelated=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[1]],customValues:custom([employees[1]]),operationKey:randomUUID()});
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,escalationUserId:escalationId}});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);
+  const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0],other=(await getLetterGenerationBatch(ctx,unrelated.batchId))!.rows[0];
+  expect(await getStaffLetter(escalation,row.record.id)).toMatchObject({canAct:false,canDelegate:false,record:{id:row.record.id}});expect(await getStaffLetter(escalation,other.record.id)).toBeNull();expect((await listLetterApprovalQueue(escalation,{companyId:b.companyId})).rows).toHaveLength(0);
+  await expect(decideLetter(escalation,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve',comment:'Must remain assigned to the signatory',confirmSignature:true}})).rejects.toMatchObject({code:'permission'});
+  await saveLetterPermission(ctx,{companyId:b.companyId,capability:'approve',role:'employee',allowed:false});expect(await getStaffLetter(escalation,row.record.id)).toBeNull();
+ });
+
  it('moves pending stage jobs to the delegated reviewer without restarting the deadline and cancels obsolete work',async()=>{
   const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional reminder delegate',primaryEmail:'reminder-delegate@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'hr_admin'),delegate={...ctx,userId:delegateId,personId:delegatePerson.id};
