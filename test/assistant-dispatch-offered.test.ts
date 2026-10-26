@@ -92,12 +92,19 @@ async function employeeWithReleasedPayslip(payroll: boolean): Promise<{ ctx: Ses
 
   const userId = await createAppUser(base.tenantId, E.personId, 'employee');
   await setModule(base.tenantId, 'assistant', 'active');
-  if (!payroll) await setModule(base.tenantId, 'payroll', null);
   await grantAssistant(a, { appUserId: userId });
 
   const snap = await entitledCtx(base, ['employee']);
   const ctx: SessionContext = { ...snap, userId, personId: E.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
-  return { ctx, net: String(Number(slip.net)) };
+  const net=String(Number(slip.net));
+  if(!payroll){
+    // Non-vacuity is established while the actual Assistant grant AND paid module are active.
+    const direct=await ASSISTANT_TOOLS.find(tool=>tool.spec.name==='my_payslip_summary')!.run(ctx,{limit:12});
+    expect(JSON.stringify(direct)).toContain(net);
+    await setModule(base.tenantId,'payroll',null);
+    return {ctx:{...ctx,entitlements:(await entitledCtx(base,['employee'])).entitlements},net};
+  }
+  return {ctx,net};
 }
 
 /** Everything the loop sent to the provider, across every turn. */
@@ -122,10 +129,9 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
   it('tenant WITHOUT payroll: my_payslip_summary is refused not_offered and the payslip never reaches the model', async () => {
     const { ctx, net } = await employeeWithReleasedPayslip(false);
 
-    // The data is REAL and reachable: the tool itself, run directly for this caller, returns the
-    // sentinel. So its absence below is the dispatch refusing, not an empty read.
-    const direct = await ASSISTANT_TOOLS.find((t) => t.spec.name === 'my_payslip_summary')!.run(ctx, { limit: 12 });
-    expect(JSON.stringify(direct)).toContain(net);
+    // The fixture proved actual reachability before the paid grant lapsed. A direct reader must now
+    // refuse as well: offered-set filtering cannot bypass the canonical module guard.
+    await expect(ASSISTANT_TOOLS.find(t=>t.spec.name==='my_payslip_summary')!.run(ctx,{limit:12})).rejects.toThrow('data access');
     expect(toolsFor(ctx).map((t) => t.spec.name)).not.toContain('my_payslip_summary');
 
     converse

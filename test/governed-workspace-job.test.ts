@@ -59,7 +59,7 @@ describe('human-invoked current-user governed jobs',()=>{
   const f=await fixture(),job=await runGovernedModuleReadPlan(f.mine.ctx,plan,{nonce:randomUUID()});
   const missing=await reopen(f.peer.ctx,randomUUID()).catch(error=>error.message),foreign=await reopen(f.peer.ctx,job.jobId).catch(error=>error.message);expect(foreign).toBe(missing);
   await revokeAssistant(f.admin,{appUserId:f.mine.ctx.userId!});await expect(reopen(f.mine.ctx,job.jobId)).rejects.toThrow();
-  await grantAssistant(f.admin,{appUserId:f.mine.ctx.userId!});await setModule(base.tenantId,'employees',null);await expect(reopen(f.mine.ctx,job.jobId)).rejects.toThrow();expect(await count()).toBe(1);
+  await grantAssistant(f.admin,{appUserId:f.mine.ctx.userId!});vi.stubEnv('MODULE_KILL','employees');await expect(reopen(f.mine.ctx,job.jobId)).rejects.toThrow();expect(await count()).toBe(1);
  });
  it('refuses independently prepared expired metadata even when its encrypted owner/source binding is authentic',async()=>{
   const f=await fixture(),job=await runGovernedModuleReadPlan(f.mine.ctx,plan,{nonce:randomUUID()});

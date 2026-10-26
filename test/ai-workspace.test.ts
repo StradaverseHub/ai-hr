@@ -9,6 +9,7 @@ import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import { assistantSourceDigest, sealAssistantDisclosure } from '../lib/ai/assistant-disclosure';
 import { hireEmployee } from '../core/org';
 import { AI_WORKSPACE_TASKS } from '../lib/ai/workspace-tasks';
+import { MODULE_AGENT_CAPABILITIES } from '../lib/ai/module-agents';
 import { MODULE_CATALOG } from '../packs/catalog';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -175,7 +176,10 @@ describe('actual AI workspace source read', () => {
     for (const task of AI_WORKSPACE_TASKS) {
       expect(modules.has(task.module)).toBe(true);
       for (const name of task.requiredTools) expect(ASSISTANT_TOOLS.find(tool => tool.spec.name === name)).toBeTruthy();
-      expect(task.requiredTools.some(name => ASSISTANT_TOOLS.find(tool => tool.spec.name === name)?.module === task.module)).toBe(true);
+      expect(task.requiredTools.some(name => {const tool=ASSISTANT_TOOLS.find(row=>row.spec.name===name)!;
+        // The generic closed module tool resolves its module argument inside the current carrier.
+        return tool.module===task.module||(tool.spec.name==='my_module_work'&&tool.module===null&&MODULE_AGENT_CAPABILITIES.some(([code])=>code===task.module));
+      })).toBe(true);
     }
   });
 });

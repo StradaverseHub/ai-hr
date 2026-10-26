@@ -19,6 +19,7 @@ describe('Mine leave disclosure respects actual canonical ESS keys',()=>{
  });
  it('keeps exact visible values, including the canonical prorated displayed entitlement, without arithmetic',()=>{
   const row=breakdown(),result=projectMineLeaveEntitlement(row);
+  if(!('eligibleDays' in result)||!('transactions' in result))throw Error('Visible Mine projection must retain its documented decomposition.');
   expect(result.displayEntitlementDays).toBe(1102);expect(result.eligibleDays).toBe(1101);expect(result.totalAvailable).toBe(9901);
   expect(result.transactions?.rows[0].days).toBe(2201);expect(result.withheld).toBe(false);
  });

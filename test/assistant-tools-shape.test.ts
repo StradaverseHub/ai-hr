@@ -613,7 +613,8 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
     await setModule(base.tenantId, 'claims', 'active');
     const withPayroll = await entitledCtx(base);
     expect(toolsFor(withPayroll).map((t) => t.spec.name)).toContain('my_payslip_summary');
-    expect(toolsFor(withPayroll)).toHaveLength(11);
+    expect(toolsFor(withPayroll)).toHaveLength(12);
+    expect(toolsFor(withPayroll).map(t=>t.spec.name)).toContain('my_module_work');
     expect(toolsFor(withPayroll).map(t => t.spec.name)).toContain('my_claim_statuses');
 
     await setModule(base.tenantId, 'payroll', null);
@@ -622,13 +623,15 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
     expect(offered).not.toContain('my_payslip_summary');
     // ADR-0074 item 5 is payroll-gated too, so turning payroll off now drops TWO tools, not one.
     expect(offered).not.toContain('my_pay_change');
-    expect(offered).toHaveLength(9);
+    expect(offered).toHaveLength(10);
+    expect(offered).toContain('my_module_work');
     expect(offered).toContain('my_claim_statuses');
     // The specs the gateway would send match the tools, and stay in registry order.
     expect(specsFor(without).map((s) => s.name)).toEqual(offered);
     await setModule(base.tenantId, 'claims', null);
     const neither = toolsFor(await entitledCtx(base));
-    expect(neither).toHaveLength(8);
+    expect(neither).toHaveLength(9);
+    expect(neither.map(t=>t.spec.name)).toContain('my_module_work');
     expect(neither.map(t => t.spec.name)).not.toContain('my_claim_statuses');
   });
 

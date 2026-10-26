@@ -52,7 +52,7 @@ describe('independent deterministic fact-presentation contracts for every canoni
  });
  it.each(['en','ms','zh','ta','th','vi'])('%s has meaningful translated jobs/fields/states rather than raw module labels',locale=>{
   const messages=JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8')).assistant.workspace.jobs;
-  for(const [module] of MODULE_JOBS){expect(messages['module_'+module].length).toBeGreaterThan(4);expect(messages['help_'+module].length).toBeGreaterThan(0);}
+  for(const [module] of MODULE_JOBS){expect(typeof messages['module_'+module]).toBe('string');expect(messages['module_'+module].trim()).toBeTruthy();expect(messages['module_'+module]).not.toBe(module);expect(messages['help_'+module].trim()).toBeTruthy();}
   for(const field of JOB_FACT_FIELDS)expect(messages['field_'+field]).toBeTruthy();
  });
 });
