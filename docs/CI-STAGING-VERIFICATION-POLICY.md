@@ -24,6 +24,8 @@ Version8 sets duration-first ordering only for normal DB units. The installed Vi
 
 Version8 controller-only40278854626 passed301 controls and independently matched all1,958 tracked Node/DOM files at1bef9069a. The real installed-Vitest integration40280567574 passed both parent checks plus both unchanged cases in each private child phase at28dc3c84c, including exact queue/start order, effective worker count, complete membership, inherited sharding and cleanup. Neither diagnostic executes application/database coverage or supplies a full witness. Subsequent merge7f47701bb includes the published Mobile alpha; focused combined reset verification40281355998 passed22/22 with real blocked-lock recovery and owned cleanup. Whole compiler/full release validation remain pending, and older evidence retains its actual origin. See [measured scope and preserved failures](RELEASE-PERFORMANCE.md#real-sequencing-integration-and-released-alpha-reconciliation--26-october-myt).
 
+Integrated long-file source73b99f1fc has controller-only40285906774 proof of all1,965tracked Node/DOM files (993DB/972no-DB),16/4units,three engines and316pure controls. Actual focused91-case write and32-case financial split results retain their earlier exacte9b/7b origins and do not supply a full witness. Complete compiler and whole current-policy validation are pending; the new compiler was not dispatched after actual included allowance fell to2minutes. Main/staging enable flags were checked false by the successful deployment-hold job. See [current evidence and allowance](RELEASE-PERFORMANCE.md#integrated-source-verified-compiler-held-at-included-allowance--26-october-myt).
+
 ## Operator route
 
 From the frozen candidate directory, using its installed toolchain:
