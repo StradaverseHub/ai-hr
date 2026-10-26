@@ -1,4 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
 /**
@@ -728,9 +729,12 @@ async function releaseReservedNumber(
  * Business failure rolls back all activation owners while committing the attempted Draft for reopening.
  * Throw only AFTER the outer save commits; a failed savepoint rollback aborts the outer transaction. */
 export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number}):Promise<{employmentId:string}> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
   const outcome=await withTenant(ctx,async tx=>{
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
     const saved=await saveEmployeeDraft(ctx,p,tx);
     try {
@@ -754,12 +758,16 @@ export async function completeEmployeeDraft(
   ctx: SessionContext,
   id: string,
 ): Promise<{ employmentId: string }> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(!UUID_RE.test(id))throw new DraftActivationValidationError('draft_unavailable',[]);
   return withTenant(ctx,tx=>completeEmployeeDraftTx(tx,ctx,id));
 }
 
 async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promise<{employmentId:string}> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
   if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);

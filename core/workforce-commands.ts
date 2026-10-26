@@ -16,7 +16,7 @@ export function hireEmployee(ctx:SessionContext,p:Parameters<typeof org.hireEmpl
  // The canonical hire owner now admits every caller before its first Criteria/data lock.
  return org.hireEmployee(ctx,p,outerTx);
 }
-export function setEmploymentInfo(ctx:SessionContext,p:Parameters<typeof org.setEmploymentInfo>[1],outerTx?:Tx){return maintain(ctx,p.employmentId,tx=>org.setEmploymentInfo(ctx,p,tx),outerTx);}
+export async function setEmploymentInfo(ctx:SessionContext,p:Parameters<typeof org.setEmploymentInfo>[1],outerTx?:Tx){ctx=captureCommandContext(ctx);p=structuredClone(p);return maintain(ctx,p.employmentId,tx=>org.setEmploymentInfo(ctx,p,tx),outerTx);}
 export function setEmploymentGrade(ctx:SessionContext,p:Parameters<typeof org.setEmploymentGrade>[1],outerTx?:Tx){return maintain(ctx,p.employmentId,tx=>org.setEmploymentGrade(ctx,p,tx),outerTx);}
 export async function setEmploymentAssignment(ctx:SessionContext,p:Parameters<typeof org.setEmploymentAssignment>[1],outerTx?:Tx){ctx=captureCommandContext(ctx);p=structuredClone(p);return maintain(ctx,p.employmentId,tx=>org.setEmploymentAssignment(ctx,p,tx),outerTx);}
 export function setEmploymentBlacklist(ctx:SessionContext,p:Parameters<typeof org.setEmploymentBlacklist>[1],outerTx?:Tx){return maintain(ctx,p.employmentId,tx=>org.setEmploymentBlacklist(ctx,p,tx),outerTx);}

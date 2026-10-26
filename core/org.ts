@@ -2810,6 +2810,8 @@ export async function setEmploymentInfo(
    *  the flat columns disagreeing with each other. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can edit employment information.');
@@ -2914,6 +2916,8 @@ export async function setEmploymentInfo(
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [before] = await tx
       .select({
