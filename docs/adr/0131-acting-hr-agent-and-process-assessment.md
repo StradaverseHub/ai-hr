@@ -2263,3 +2263,40 @@ AST syntax and diff review only; executable tests and the compiler remain UNRUN
 while Mobile owns the complete runtime window. All twenty module workflows,
 independent agent evaluations, remaining source revocation/disclosure ownership,
 workspace UI and the combined release proof remain outstanding.
+
+
+### Claims specialist canonical read (source only)
+
+The actual Assistant registry appends `my_claim_statuses` under the Claims module.
+The module service owns the new `ownClaimStatuses` reader: captured caller context,
+current actual principal under Access ownership, freshly resolved Claims entitlement,
+actual own-employment inventory, and an explicit current person predicate on the
+claim query. Group-wide HR visibility does not widen this self-only reader. Input
+contains only a validated limit, never a subject selector. The single claim query
+uses deterministic newest-first ordering with a limit-plus-one sentinel; at most 25
+records are projected in total, with honest truncation and no fabricated full count.
+It selects only canonical IDs, type label, recorded status and dates. It never selects
+claim amounts, quantities, tax flags, private descriptions, custom answers, receipt
+metadata or file content. Creation time is not relabelled submission time: a saved
+draft stays a draft, and approved is not paid. No mutation, approval or payment path
+is exposed to the model. Existing Claims business bodies were independently compared
+byte-identical after removing only the two imports and new reader.
+
+The registry source guard now permits exactly the named own-status reader through
+the Claims service facade, with its import binding pinned. Database handles, session
+construction and command paths remain forbidden. Its append-only prefix and separate
+Claims/payroll offering gates are updated rather than broadly relaxing shape checks.
+Five actual DB/service/Assistant-tool cases are authored UNRUN: minimal projection
+including real private receipt content exclusion despite broad HR visibility; bounded
+complete/truncated results and input retarget refusal; draft timestamps; retained
+entitlement snapshot revocation/restoration; forged person/tenant, login relinking and
+role revocation. Only static AST syntax, diff and source-body comparison have run.
+This is one implemented module reader, not all twenty module agents or a full
+revocation/disclosure proof. Prepared data-to-provider version binding, universal
+relevant writer participation, workspace experience, governed improvement/evaluations
+and the other outstanding stage requirements remain release blocking.
+
+Migration coordination also confirms Operator 0601 remains an isolated unapplied
+draft without a verified rollout date or retirement/reallocation approval. Reserved
+AI 0602–0604 remain unjournaled/unapplied until that actual ordering is resolved;
+no peer migration or fixture is changed to work around it.

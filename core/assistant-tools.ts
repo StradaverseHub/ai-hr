@@ -1,8 +1,7 @@
 /**
  * The assistant's read-only tool registry (ADR-0082 §2.3).
  *
- * Every tool is a thin wrapper over a function that already exists on core/read.ts and is already used
- * by a screen, called with the CALLER'S OWN SessionContext threaded through unchanged. The security
+ * Every tool is a thin wrapper over a canonical scoped reader in core/read.ts or a named module service, called with the CALLER'S OWN SessionContext threaded through unchanged. The security
  * property is INHERITED, not invented: the same policies that decide what the caller's own pages show
  * decide what the assistant can see, because it is literally the same query in the same session.
  *
@@ -41,6 +40,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // core/payroll and dragging the engine into every assistant caller.
 import { storedComponentLines } from './payslip-earning-lines';
 import { isModuleEnabled } from './entitlements';
+import { ownClaimStatuses } from '../packs/claims/service';
 import {
   awayTodayCount,
   employeeDetail,
@@ -942,6 +942,30 @@ const myPayChange: AssistantTool = {
   },
 };
 
+/** Claims specialist read: server-owned self selection and minimal canonical status fields. */
+const myClaimStatuses: AssistantTool = {
+  module: 'claims',
+  sensitivity: 'ordinary',
+  spec: {
+    name: 'my_claim_statuses',
+    description: 'Return the asking user’s own latest claim statuses across their employments. ' +
+      'This does not read someone else’s claims, amounts, descriptions, receipts or attachments. ' +
+      'Quote recorded status and dates exactly; pending is not approved, draft is not submitted, ' +
+      'approved is not paid, and no payment date can be predicted. A truncated list is incomplete. ' +
+      'This cannot submit, cancel, approve or pay a claim. Limit is 1 to 25 records in total.',
+    inputSchema: schema({ limit: { type: 'integer', minimum: 1, maximum: 25 } }),
+  },
+  async run(ctx, input) {
+    const object = asObject(input);
+    if (Object.keys(object).some(key => key !== 'limit')) return refuse('invalid_input', 'Only a record limit is accepted.');
+    const limit = intArg(object, 'limit', 1, 25);
+    if (limit === null) return refuse('invalid_input', 'Limit must be an integer from 1 to 25.');
+    const result = await ownClaimStatuses(ctx, limit);
+    if (!result.hasEmployment) return refuse('no_employment', 'The asking user has no employee record.');
+    return { ok: true, claims: result.claims, returnedRows: result.claims.length, truncated: result.truncated };
+  },
+};
+
 /** APPEND ONLY — see the prefix-caching note above. */
 export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   myLeaveBalances,
@@ -955,6 +979,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   myPayslipSummary,
   // ADR-0074 item 5. APPENDED, never inserted — one reordered byte invalidates the cached prefix.
   myPayChange,
+  myClaimStatuses,
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -967,12 +992,10 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
  * Filtered BY MODULE ONLY — never by user — so the cacheable prefix stays stable per (tenant, role)
  * exactly as ADR-0082 §2.2 requires, and the per-user grant costs nothing per question.
  *
- * WORTH KNOWING BEFORE RELYING ON IT: eight of the nine name a CORE module, and a core module answers
- * enabled without consulting any snapshot. Only `my_payslip_summary` is actually gated today. So the
- * offered list varies by exactly one axis — whether the tenant holds payroll — which is per-tenant and
- * therefore cacheable. ADR-0082 §2.8 reads as though this gating works everywhere; today it works for
- * one tool, and the other eight `module` fields are a statement of ownership that becomes load-bearing
- * only if one of those modules ever stops being core.
+ * Eight tools name core modules; two payslip tools require payroll, and own claim status
+ * requires claims. This selection only determines the offered catalogue. The Claims source
+ * reader independently rechecks its actual entitlement and principal before projecting data.
+ * An offered name is never an authorization capability or an effect command.
  *
  * `isModuleEnabled` can throw for an exempt context; that is not caught here and cannot arise in
  * practice, because an exchange is gated by assertMayUseAssistant() first and `assistant` is itself

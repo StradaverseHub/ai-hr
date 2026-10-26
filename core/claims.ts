@@ -41,6 +41,8 @@ import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {myOwnEmploymentSubjectsTx} from './read';
+import { assertAiPrincipalTx } from './ai-principal';
+import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
@@ -3099,6 +3101,45 @@ export async function listClaimsForEmployment(ctx: SessionContext, employmentId:
       .orderBy(desc(claimRequest.createdAt));
     const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
     return rows.map((r) => toRow(r, atts));
+  });
+}
+
+/** Own-only minimal status projection for the module Assistant. This is not an approval,
+ * reimbursement calculation or receipt reader. Broader HR scope never selects another claimant.
+ * The canonical claim status and dates are projected unchanged; no second workflow state exists.
+ */
+export async function ownClaimStatuses(ctx: SessionContext, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Claim lookup limit is invalid.');
+  const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  return withTenant(captured, async tx => {
+    await assertAiPrincipalTx(tx, captured);
+    // The offered registry used a session snapshot. Recheck actual entitlement at the source read.
+    const entitlements = await resolveEntitlementsTx(tx, captured.tenantId);
+    assertModuleEnabled({ ...captured, entitlements }, 'claims');
+    const own = await myOwnEmploymentSubjectsTx(tx, captured);
+    if (!own.length || !captured.personId) return { hasEmployment: false, claims: [], truncated: false };
+    const rows = await tx.select({
+      id: claimRequest.id, employmentId: claimRequest.employmentId,
+      claimType: claimType.name, status: claimRequest.status, incurredOn: claimRequest.incurredOn,
+      createdAt: claimRequest.createdAt, decidedAt: claimRequest.decidedAt, paidAt: claimRequest.paidAt,
+    }).from(claimRequest)
+      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+      .where(and(eq(claimRequest.tenantId, captured.tenantId),
+        inArray(claimRequest.employmentId, own.map(subject => subject.employmentId)),
+        eq(employment.personId, captured.personId)))
+      .orderBy(desc(claimRequest.createdAt), desc(claimRequest.id)).limit(limit + 1);
+    return {
+      hasEmployment: true,
+      claims: rows.slice(0, limit).map(row => ({
+        id: row.id, employmentId: row.employmentId, claimType: row.claimType,
+        status: row.status, incurredOn: row.incurredOn,
+        // createdAt is the record creation time, not proof a saved draft was submitted.
+        createdAt: row.createdAt.toISOString(),
+        decidedAt: row.decidedAt?.toISOString() ?? null, paidAt: row.paidAt?.toISOString() ?? null,
+      })),
+      truncated: rows.length > limit,
+    };
   });
 }
 
