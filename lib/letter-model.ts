@@ -30,6 +30,10 @@ const valueSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('date'),value:z.string().refine(isCalendarDate)}).strict(),
  z.object({kind:z.literal('currency'),value:decimal,currency:z.string().refine(code=>CURRENCIES.some(currency=>currency.code===code))}).strict().refine(value=>(value.value.split('.')[1]?.length??0)<=currencyMinorScale(value.currency)),
 ]);
+/** Shared typed input boundary for preview/correction forms and deterministic merge evaluation. */
+export function parseLetterValue(input:unknown,path='value'):LetterValue{
+ const parsed=valueSchema.safeParse(input);if(!parsed.success)throw new LetterModelError('invalid',path);return parsed.data;
+}
 const marks=z.array(z.enum(['bold','italic','underline'])).max(3).optional();
 const inlineSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('text'),text:z.string().max(20000),marks}).strict(),
@@ -96,7 +100,7 @@ export function renderLetterDocument(input:unknown,fieldInput:unknown,values:Rea
   if(field.sensitive&&!options.allowSensitive)throw new LetterModelError('confidential',key);
   used.add(key);const value=values[key];
   if(value==null||value.kind==='text'&&!value.value.trim()){if(required||field.required)throw new LetterModelError('missingField',key);return null;}
-  const parsed=valueSchema.safeParse(value);if(!parsed.success||value.kind!==field.kind)throw new LetterModelError('invalid',key);return parsed.data;
+  const parsed=parseLetterValue(value,key);if(value.kind!==field.kind)throw new LetterModelError('invalid',key);return parsed;
  }
  function cents(value:string){const negative=value.startsWith('-'),[whole,fraction='']=value.replace(/^-/, '').split('.');const amount=BigInt(whole+fraction.padEnd(3,'0'));return negative?-amount:amount;}
  function condition(test:LetterCondition):boolean{
@@ -121,5 +125,9 @@ export function renderLetterDocument(input:unknown,fieldInput:unknown,values:Rea
   if(item.type==='if')return blocks(condition(item.condition)?item.then:item.otherwise);
   if(item.type==='list')return [{...item,items:item.items.map(inline)}];if(item.type==='table')return [{...item,rows:item.rows.map(row=>row.map(inline))}];return [{...item,content:inline(item.content)}];
  });}
- return {document:{version:1,language:document.language,blocks:blocks(document.blocks)},usedFields:[...used].sort()};
+ const resolved={version:1 as const,language:document.language,blocks:blocks(document.blocks)};
+ // A small source template can repeat a large merge value many times. Refuse it during readiness,
+ // before approvals or an artifact render, using the same resource bound as authored content.
+ assertLetterStructureBound(resolved);
+ return {document:resolved,usedFields:[...used].sort()};
 }

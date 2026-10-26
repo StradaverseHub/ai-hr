@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {renderLetterDocument,validateLetterDocument,validateLetterFields,usedLetterFields,type LetterField,type LetterDocument} from '../lib/letter-model';
+import {renderLetterDocument,parseLetterValue,validateLetterDocument,validateLetterFields,usedLetterFields,type LetterField,type LetterDocument} from '../lib/letter-model';
 const fields:LetterField[]=[{key:'employeeName',label:'Employee',description:'Canonical employee name',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},{key:'allowance',label:'Allowance',description:'Explicit letter amount',kind:'currency',source:'custom.currency',required:false,editable:true,sensitive:true},{key:'startDate',label:'Start date',description:'Employment start',kind:'date',source:'employment.hiredOn',required:true,editable:false,sensitive:false}];
 const document:LetterDocument={version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Dear ',marks:['bold']},{type:'field',key:'employeeName'}]},{type:'if',condition:{type:'present',field:'allowance'},then:[{type:'table',rows:[[[{type:'text',text:'Allowance'}],[{type:'field',key:'allowance'}]]]}],otherwise:[]}]};
 const values={employeeName:{kind:'text' as const,value:'Fictional Employee'},allowance:{kind:'currency' as const,value:'1200.50',currency:'MYR'}};
@@ -12,6 +12,14 @@ describe('versionable deterministic letter templates',()=>{
   expect(()=>renderLetterDocument(document,fields,{...values,employeeName:null},{allowSensitive:true})).toThrow('missingField: employeeName');
   expect(()=>renderLetterDocument(document,fields,values,{allowSensitive:false})).toThrow('confidential: allowance');
   expect(renderLetterDocument(document,fields,{...values,allowance:null},{allowSensitive:true}).document.blocks).toHaveLength(1);
+ });
+
+ it('shares typed form validation and refuses merge expansion beyond the authored resource bound',()=>{
+  expect(parseLetterValue({kind:'currency',value:'12.345',currency:'KWD'},'amount')).toEqual({kind:'currency',value:'12.345',currency:'KWD'});
+  expect(()=>parseLetterValue({kind:'currency',value:'12.345',currency:'MYR'},'amount')).toThrow('invalid: amount');
+  expect(()=>parseLetterValue({kind:'date',value:'2024-02-30'},'date')).toThrow('invalid: date');
+  const repeated:LetterDocument={version:1,language:'en',blocks:[{type:'paragraph',content:Array.from({length:40},()=>({type:'field' as const,key:'employeeName'}))}]};
+  expect(()=>renderLetterDocument(repeated,fields,{employeeName:{kind:'text',value:'x'.repeat(10000)}},{allowSensitive:true})).toThrow('limit: document');
  });
  it('limits field mappings and editable data to the supported canonical sources',()=>{
   expect(()=>validateLetterFields([{...fields[0],source:'SELECT salary FROM compensation'}])).toThrow('invalid: fields');expect(()=>validateLetterFields([{...fields[0],editable:true}])).toThrow('invalid: employeeName');expect(()=>validateLetterFields([{...fields[1],sensitive:false}])).toThrow('invalid: allowance');

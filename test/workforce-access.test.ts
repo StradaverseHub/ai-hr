@@ -16,7 +16,7 @@ import {toCsv} from '../lib/csv';
 import {setCompensation} from '../core/comp';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
-import {listEmployees,listWorkforcePickOptions,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
+import {listEmployees,listWorkforcePickOptions,listWorkforcePickPageTx,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
 import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
@@ -67,6 +67,16 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await page(admin())).toEqual(await listEmployeesPage(admin(),{companyIds:[b.companyId],limit:25,offset:0}));
   expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toEqual(await employeeDetail(admin(),subject.employmentId));
   expect(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]},'workforce')).toEqual(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]}));
+ });
+
+ it('pages the canonical picker with stable equal-name order, current search cursors and fresh denials',async()=>{
+  const first=await hire('Fictional Same'),second=await hire('Fictional Same');await activate();
+  const ids=[first.employmentId,second.employmentId].sort(),ctx=admin();
+  const pick=(after?:string,companyIds=[b.companyId])=>withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{companyIds,q:'Fictional Same',after,limit:1}));
+  const one=await pick();expect(one.rows.map(row=>row.employmentId)).toEqual([ids[0]]);expect(one.nextCursor).toBe(ids[0]);
+  const two=await pick(one.nextCursor!);expect(two.rows.map(row=>row.employmentId)).toEqual([ids[1]]);expect(two.nextCursor).toBeNull();
+  expect(await pick(randomUUID())).toEqual({rows:[],nextCursor:null});expect(await pick(undefined,[])).toEqual({rows:[],nextCursor:null});
+  await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await pick()).toEqual({rows:[],nextCursor:null});
  });
  it('uses the same filters, status ladder, paging and column values through the bounded projection',async()=>{
   const a=await hire('Fictional Alpha'),z=await hire('Fictional Zulu');

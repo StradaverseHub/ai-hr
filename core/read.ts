@@ -423,17 +423,29 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
 
 /** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
  * picker or transfer its person/card identifiers into a new grant's screen props. */
+function workforcePickerColumns(){return {
+  employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+  employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+  company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+  terminatedOn: workforceListValue<string | null>('terminatedOn'),
+};}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    return tx.select({
-      employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
-      employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
-      company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
-      terminatedOn: workforceListValue<string | null>('terminatedOn'),
-    }).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
+    return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
+}
+/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
+ * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
+export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number}){
+  if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const where=workforceListWhere({companyIds:input.companyIds,q:input.q},workforceListColumns()),columns=workforcePickerColumns();
+  const [cursor]=input.after?await tx.select({name:columns.name}).from(workforceListSource).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
+  if(input.after&&!cursor)return {rows:[],nextCursor:null};
+  const rows=await tx.select(columns).from(workforceListSource).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
+  return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
 }
 
 

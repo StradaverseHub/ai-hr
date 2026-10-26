@@ -17,6 +17,7 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
 import {assertWorkforceEmploymentTx} from './workforce-access';
+import {listWorkforcePickPageTx} from './read';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
 function text(value:string,max:number){const result=value.trim();if(!result||result.length>max)throw new LetterWorkflowError('invalid','text');return result;}
@@ -48,6 +49,10 @@ export function letterCompanyAccess(ctx:SessionContext){return letters(ctx,false
 export function listLetterTemplateHeads(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
  await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
  const rows=await tx.select({id:letterAsset.id,name:letterAsset.name}).from(letterAsset).where(and(eq(letterAsset.companyId,input.companyId),eq(letterAsset.kind,'letterhead'),input.cursor?gt(letterAsset.id,input.cursor):undefined,needle?ilike(letterAsset.name,needle):undefined)).orderBy(asc(letterAsset.id)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+export function listLetterEmployeeChoices(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ await anyPermission(tx,input.companyId,['template','generate']);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit);if((input.search?.length??0)>200)throw new LetterWorkflowError('invalid','search');
+ return listWorkforcePickPageTx(ctx,tx,{companyIds:[input.companyId],q:input.search,after:input.cursor,limit});
 });}
 export function listLetterSignatories(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
  await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;

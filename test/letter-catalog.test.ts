@@ -2,7 +2,7 @@ import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess,listLetterTemplates,getLetterTemplate,listLetterTemplateVersions,previewLetterTemplate,letterFieldDependencies,letterPolicyHistory,getLetterField,letterFieldHistory,listLetterTemplateHeads,listLetterSignatories} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess,listLetterTemplates,getLetterTemplate,listLetterTemplateVersions,previewLetterTemplate,letterFieldDependencies,letterPolicyHistory,getLetterField,letterFieldHistory,listLetterTemplateHeads,listLetterSignatories,listLetterEmployeeChoices} from '../core/letters';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
@@ -21,6 +21,7 @@ beforeEach(async()=>{
 describe('versioned Letters configuration and template owner',()=>{
  it('previews a draft from canonical employee information without creating a letter or audit mutation',async()=>{
   const template=await draft(),hired=await hireEmployee(author,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(),employeeCode:'PREVIEW-1',person:{fullName:'Fictional preview employee',primaryEmail:'preview@fixture.test'}}),before=await owner.db.select().from(s.domainEvent);
+  const choices=await listLetterEmployeeChoices(author,{companyId:b.companyId,search:'Fictional preview employee',limit:1});expect(choices.rows.map(row=>row.employmentId)).toEqual([hired.employmentId]);
   const preview=await previewLetterTemplate(author,{templateVersionId:template.versionId,employmentId:hired.employmentId});expect(JSON.stringify(preview.document)).toContain('Fictional preview employee');expect(await owner.db.select().from(s.domainEvent)).toHaveLength(before.length);expect(await owner.db.select().from(s.letterRecord)).toHaveLength(0);expect(await owner.db.select().from(s.letterCounter)).toHaveLength(0);
  });
  it('does not expose or bind confidential fields through a template-only permission grant',async()=>{

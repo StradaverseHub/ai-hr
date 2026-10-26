@@ -24230,7 +24230,17 @@
         "invalidField": "Trường trộn không xác định hoặc chưa liên kết",
         "state": "Trạng thái phiên bản đã thay đổi. Hãy tải lại trước khi thử tiếp.",
         "selfApproval": "Tác giả không thể duyệt hoặc từ chối phiên bản của chính mình.",
-        "reasonRequired": "Nhập lý do từ chối."
+        "reasonRequired": "Nhập lý do từ chối.",
+        "missingField": "Thiếu thông tin nhân viên hoặc thông tin tùy chỉnh bắt buộc",
+        "limit": "Nội dung vượt quá kích thước tài liệu được hỗ trợ."
+      },
+      "preview": {
+        "title": "Xem trước theo nhân viên",
+        "employee": "Nhân viên",
+        "button": "Xem trước phiên bản đã lưu",
+        "working": "Đang chuẩn bị bản xem trước…",
+        "select": "Chọn nhân viên.",
+        "help": "Lưu thay đổi thành bản nháp mới trước khi xem trước. Bản xem trước dùng phiên bản đã lưu và nhân viên đã chọn. Để trống giá trị tùy chỉnh chưa có; hệ thống sẽ báo dữ liệu bắt buộc còn thiếu."
       }
     }
   }

@@ -24230,7 +24230,17 @@
         "invalidField": "Medan cantuman tidak diketahui atau tidak terikat",
         "state": "Status versi ini telah berubah. Muat semula sebelum mencuba lagi.",
         "selfApproval": "Pengarang tidak boleh meluluskan atau menolak versinya sendiri.",
-        "reasonRequired": "Masukkan sebab penolakan."
+        "reasonRequired": "Masukkan sebab penolakan.",
+        "missingField": "Maklumat pekerja atau tersuai yang diwajibkan tiada",
+        "limit": "Kandungan melebihi saiz dokumen yang disokong."
+      },
+      "preview": {
+        "title": "Pratonton pekerja",
+        "employee": "Pekerja",
+        "button": "Pratonton versi tersimpan",
+        "working": "Menyediakan pratonton…",
+        "select": "Pilih pekerja.",
+        "help": "Simpan perubahan sebagai draf baharu sebelum pratonton. Pratonton ini menggunakan versi tersimpan dan pekerja yang dipilih. Biarkan nilai tersuai yang tidak tersedia kosong; data wajib yang tiada akan dilaporkan."
       }
     }
   }

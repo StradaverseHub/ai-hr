@@ -24230,7 +24230,17 @@
         "invalidField": "Unknown or unbound merge field",
         "state": "This version has changed state. Refresh before trying again.",
         "selfApproval": "The author cannot approve or reject their own version.",
-        "reasonRequired": "Enter a reason for rejection."
+        "reasonRequired": "Enter a reason for rejection.",
+        "missingField": "Required employee or custom information is missing",
+        "limit": "The content exceeds the supported document size."
+      },
+      "preview": {
+        "title": "Employee preview",
+        "employee": "Employee",
+        "button": "Preview saved version",
+        "working": "Preparing preview…",
+        "select": "Select an employee.",
+        "help": "Save changes as a new draft before previewing. This preview uses the saved version and the selected employee. Leave unavailable custom values blank; missing required data will be reported."
       }
     }
   }
