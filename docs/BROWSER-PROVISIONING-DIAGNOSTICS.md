@@ -67,3 +67,23 @@ and source cwd. Those invocation failures remain separate from passing capabilit
 transport boundaries on a free standard runner, with the actual frozen candidate release helper.
 It does not rerun browser installation, application tests, compiler/build or deployment.
 This operator change is prepared source, not yet normal-workflow or staging-release verified.
+
+## Official preinstalled image alternative
+
+The first five authenticated mirror measurements on image `20261023.334.3` showed Firefox
+runner/primary 25.858/35.059 seconds and WebKit 37.304/68.126 seconds, with byte-identical
+paired package inventories and equal browser versions. Chromium primary took46.777 seconds;
+its runner comparison was still installing after twelve minutes. A universal primary-mirror
+speedup is therefore unproven. Normal release transport remains unchanged.
+
+`probe_scope=browser-image` measures the official Playwright 1.62.1 Noble image, matching the
+frozen lockfile and pinned to OCI index digest
+`sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e`.
+The public Microsoft registry returned that digest over HTTPS on26October2026. Three independent
+free standard Ubuntu jobs retain actual container initialization/pull timing in their GitHub
+job records, install the same frozen web/mobile dependencies with Node22.23.3/pnpm10.33.2,
+and run the same native browser/raster probes. The image contains all three engines and system
+dependencies, so the diagnostic performs no APT installation. This tests a different provisioning
+method; it does not claim application/browser-suite equivalence or release authority. A successful
+tooling result still requires complete original browser coverage and resource/cleanup evidence
+before normal adoption. See [official image guidance](https://playwright.dev/docs/docker).
