@@ -10977,3 +10977,7 @@ export const letterJob=pgTable('letter_job',{
 export const letterCounter=pgTable('letter_counter',{
  tenantId:tenantId(),year:text('year').notNull(),nextValue:bigint('next_value',{mode:'bigint'}).notNull(),
 },t=>[primaryKey({columns:[t.tenantId,t.year]})]);
+// Anonymous purpose-bound verification counters contain neither tenant identities nor letter contents.
+export const letterVerificationRate=pgTable('letter_verification_rate',{
+ scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
+},t=>[primaryKey({columns:[t.scope,t.bucket]})]);

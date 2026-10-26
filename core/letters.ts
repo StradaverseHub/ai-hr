@@ -11,6 +11,7 @@ import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue} from '../lib/letter-model';
 import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
 import {renderLetterPdf} from '../lib/letter-pdf';
+import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verification';
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
@@ -57,6 +58,7 @@ export function letterAssetChoices(ctx:SessionContext,co:string){return letters(
 export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string;enabled:boolean;policy:unknown}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);const policy=validateLetterPolicy(input.policy),category=text(input.category,100);
  if(typeof input.enabled!=='boolean')throw new LetterWorkflowError('invalid','enabled');
+ if(input.enabled)try{letterVerificationUrl('A'.repeat(43),'en');}catch{throw new LetterWorkflowError('configuration','publicOrigin');}
  if((policy.portalNotifications||policy.emailNotifications)&&!isModuleEnabled(ctx,'notifications',input.companyId))throw new LetterWorkflowError('configuration','notifications');
  const users=[...new Set(policy.stages.flatMap(stage=>stage.userIds).concat(policy.escalationUserId?[policy.escalationUserId]:[]))];
  for(const userId of users){const [row]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${userId}::uuid,${input.companyId}::uuid,'approve') as ok`);if(!row?.ok)throw new LetterWorkflowError('configuration','approver');}
@@ -261,9 +263,10 @@ export function decideLetter(ctx:SessionContext,input:{letterId:string;expectedR
   const stamp=await asset(policy.signatureAssetId,'signature'),letterhead=await asset(policy.letterheadAssetId,'letterhead');
   if(policy.signingMode==='stamp'&&!stamp)throw new LetterWorkflowError('configuration','signatureAsset');
   const language=revision.document.language,timestamp=new Intl.DateTimeFormat(language,{dateStyle:'long',timeStyle:'long',timeZone:'Asia/Kuala_Lumpur'}).format(decision.createdAt);
-  const rendered=await renderLetterPdf({document:revision.document,reference:record.reference,title:template.name,signature:{name:signer.name,caption:signingCaptions[language],timestamp,stamp},letterhead});
+  const verificationToken=randomBytes(32).toString('base64url'),verificationUrl=letterVerificationUrl(verificationToken,language);
+  const rendered=await renderLetterPdf({document:revision.document,reference:record.reference,title:template.name,signature:{name:signer.name,caption:signingCaptions[language],timestamp,stamp},letterhead,verification:{url:verificationUrl,caption:letterVerificationWords[language].caption}});
   const bytes=Buffer.from(rendered.bytes);if(bytes.length>10*1024*1024)throw new LetterWorkflowError('configuration','artifactSize');
-  const [artifact]=await tx.insert(letterArtifact).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,content:bytes,contentHash:hash(bytes),signatoryUserId:ctx.userId!,signingMode:policy.signingMode,authenticityTokenHash:hash(randomBytes(32)),createdAt:decision.createdAt}).returning({id:letterArtifact.id});artifactId=artifact.id;
+  const [artifact]=await tx.insert(letterArtifact).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,content:bytes,contentHash:hash(bytes),signatoryUserId:ctx.userId!,signingMode:policy.signingMode,authenticityTokenHash:hash(verificationToken),createdAt:decision.createdAt}).returning({id:letterArtifact.id});artifactId=artifact.id;
  }
  await tx.update(letterRecord).set({state:next.state,stageIndex:next.stageIndex,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex);

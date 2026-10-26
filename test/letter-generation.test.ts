@@ -1,10 +1,11 @@
-import {afterAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import {and,asc,eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
 import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter} from '../core/letters';
 import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} from '../core/employee-documents';
+import {client} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
@@ -13,6 +14,7 @@ let b:Base,ctx:SessionContext,reviewer:SessionContext,templateId:string,template
 const today=()=>todayInKualaLumpur();
 const custom=(ids:string[])=>Object.fromEntries(ids.map(id=>[id,{effectiveDate:{kind:'date' as const,value:today()}}]));
 beforeEach(async()=>{
+ vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://letters.fixture.test/callback');
  await resetDb();b=await seedBase();ctx=await entitledCtx(b);
  const [reviewerPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional signatory',primaryEmail:'letter-signatory@fixture.test'}).returning();const userId=await createAppUser(b.tenantId,reviewerPerson.id,'hr_admin');reviewer={...ctx,userId,personId:reviewerPerson.id};
  employees=[];for(const index of [1,2]){const hired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${Number(today().slice(0,4))-1}-01-01`,employeeCode:'LETTER-000'+index,person:{fullName:'Fictional subject '+index,primaryEmail:`letter-subject-${index}@fixture.test`}});employees.push(hired.employmentId);}
@@ -22,7 +24,7 @@ beforeEach(async()=>{
  await decideLetterTemplate(ctx,{versionId:templateVersionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:templateVersionId,expectedStatus:'submitted',action:'approve'});
  const policy:LetterPolicy={version:1,stages:[{key:'signatory',label:'Authorised signatory',userIds:[reviewer.userId!],allowDelegation:false}],signatoryUserId:reviewer.userId!,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false};
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
-});afterAll(closeAll);
+});afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
  it('seals the current approved revision only after a personally confirmed final signatory decision',async()=>{
   const created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,created.batchId);
@@ -30,8 +32,10 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   await expect(decideLetter(ctx,input)).rejects.toMatchObject({code:'selfApproval'});await expect(decideLetter(reviewer,{...input,expectedLockVersion:input.expectedLockVersion-1})).rejects.toMatchObject({code:'stale'});await expect(decideLetter(reviewer,{...input,decision:{...input.decision,confirmSignature:false}})).rejects.toMatchObject({code:'signatureRequired'});expect(await owner.db.select().from(s.letterApprovalDecision)).toHaveLength(0);
   const result=await decideLetter(reviewer,input);expect(result.state).toBe('approved');expect(result.artifactId).toBeTruthy();
   const [artifact]=await owner.db.select().from(s.letterArtifact).where(eq(s.letterArtifact.id,result.artifactId!));expect(artifact.revisionId).toBe(row.revision!.id);expect(artifact.signatoryUserId).toBe(reviewer.userId);expect(artifact.content.subarray(0,5).toString()).toBe('%PDF-');expect(artifact.contentHash).toBe(createHash('sha256').update(artifact.content).digest('hex'));
+  const verify=async()=>client.unsafe('select app.verify_letter_status($1) as status',[artifact.authenticityTokenHash]);expect((await verify())[0]).toEqual({status:'invalid'});
   await expect(decideLetter(reviewer,input)).rejects.toMatchObject({code:'stale'});expect(await owner.db.select().from(s.letterApprovalDecision)).toHaveLength(1);expect(await owner.db.select().from(s.letterArtifact)).toHaveLength(1);
   const issue={letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:result.lockVersion};expect(await issueLetter(ctx,issue)).toMatchObject({alreadyIssued:false});expect(await issueLetter(ctx,issue)).toMatchObject({alreadyIssued:true});
+  expect((await verify())[0]).toEqual({status:'valid'});
   const documents=await owner.db.select().from(s.employeeDocument).where(eq(s.employeeDocument.letterArtifactId,artifact.id));expect(documents).toHaveLength(1);expect(documents[0].content.length).toBe(0);expect(documents[0].sizeBytes).toBe(artifact.content.length);
   expect((await getEmployeeDocument(ctx,documents[0].id,employees[0]))?.content).toEqual(artifact.content);expect(await getEmployeeDocument(ctx,documents[0].id,employees[1])).toBeNull();
   await expect(updateEmployeeDocumentMeta(ctx,{documentId:documents[0].id,title:'Cannot overwrite the sealed letter'})).rejects.toMatchObject({cause:{code:'23514'}});await expect(deleteEmployeeDocument(ctx,{documentId:documents[0].id})).rejects.toMatchObject({cause:{code:'23514'}});
@@ -41,6 +45,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   const acknowledgement={letterId:row.record.id,expectedArtifactHash:artifact.contentHash,action:'acknowledge' as const,intent:'I acknowledge this exact fictional letter'};await expect(acknowledgeMyLetter(self,{...acknowledgement,expectedArtifactHash:'0'.repeat(64)})).rejects.toMatchObject({code:'stale'});
   const recorded=await acknowledgeMyLetter(self,acknowledgement);expect(recorded.alreadyRecorded).toBe(false);expect(await acknowledgeMyLetter(self,acknowledgement)).toEqual({at:recorded.at,alreadyRecorded:true});expect((await owner.db.select().from(s.letterRecipientEvent).where(eq(s.letterRecipientEvent.kind,'acknowledged')))).toHaveLength(1);
   await voidLetter(ctx,{letterId:row.record.id,expectedLockVersion:result.lockVersion+1,reason:'Fictional original has been superseded'});expect(await getEmployeeDocument(ctx,documents[0].id)).toBeNull();expect(await owner.db.select().from(s.letterArtifact)).toHaveLength(1);await expect(issueLetter(ctx,issue)).rejects.toMatchObject({code:'stale'});
+  expect((await verify())[0]).toEqual({status:'invalid'});
   await expect(downloadMyLetter(self,{letterId:row.record.id,token:access.token})).rejects.toMatchObject({code:'state'});expect(await getMyLetter(self,row.record.id)).toMatchObject({record:{state:'void'}});
  });
  it('returns with a required reason and cannot submit the old revision again',async()=>{

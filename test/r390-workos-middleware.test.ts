@@ -47,6 +47,10 @@ afterEach(() => {
 
 describe('real sign-in on, signed out (real SDK)', () => {
   beforeEach(() => setEnv(REAL_AUTH));
+  it('permits only the opaque letter verification handler anonymously',async()=>{
+    const middleware=await loadMiddleware(),token='A'.repeat(43);expect(passedThrough(await middleware(req('/letters/verify/'+token)))).toBe(true);
+    for(const path of ['/letters/settings','/letters/verify/'+token+'/download'])expect(passedThrough(await middleware(req(path)))).toBe(false);
+  });
 
   it.each(['/', '/leave', '/login'])('a page (%s) redirects to AuthKit with our client and PUBLIC callback, and sets the PKCE cookie', async (path) => {
     const res = await (await loadMiddleware())(req(path));

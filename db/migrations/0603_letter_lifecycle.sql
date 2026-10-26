@@ -1,5 +1,11 @@
 -- Letters: versioned configuration and content, ordered decisions, sealed artifacts and private recipients.
 -- Existing employee/employment/company and DomainEvent owners remain authoritative.
+CREATE TABLE letter_verification_rate (
+ scope text NOT NULL CHECK(scope='global' OR scope ~ '^[0-9a-f]{64}$'),bucket bigint NOT NULL,hits integer NOT NULL CHECK(hits>0),PRIMARY KEY(scope,bucket)
+);
+ALTER TABLE letter_verification_rate ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON letter_verification_rate FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE letter_capability_grant (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),
  capability text NOT NULL CHECK(capability IN ('read','template','generate','approve','issue','report','settings')),role text NOT NULL,allowed boolean NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),
@@ -466,3 +472,24 @@ BEGIN
  RETURN NEW;
 END $$;
 CREATE TRIGGER letter_job_identity BEFORE UPDATE ON letter_job FOR EACH ROW EXECUTE FUNCTION app.letter_job_identity();
+--> statement-breakpoint
+CREATE FUNCTION app.verify_letter_status(token_hash text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE current_bucket bigint:=floor(extract(epoch FROM clock_timestamp())/60)::bigint;counted integer;
+BEGIN
+ -- A shared ceiling bounds both enumeration attempts and the number of anonymous counters retained.
+ PERFORM pg_advisory_xact_lock(hashtextextended('letter-public-verification',0));
+ DELETE FROM public.letter_verification_rate WHERE bucket<current_bucket-2;
+ INSERT INTO public.letter_verification_rate(scope,bucket,hits) VALUES('global',current_bucket,1)
+ ON CONFLICT(scope,bucket) DO UPDATE SET hits=least(public.letter_verification_rate.hits+1,121) RETURNING hits INTO counted;
+ IF counted>120 THEN RETURN 'limited';END IF;
+ IF token_hash IS NULL OR token_hash !~ '^[0-9a-f]{64}$' THEN RETURN 'invalid';END IF;
+ INSERT INTO public.letter_verification_rate(scope,bucket,hits) VALUES(token_hash,current_bucket,1)
+ ON CONFLICT(scope,bucket) DO UPDATE SET hits=least(public.letter_verification_rate.hits+1,21) RETURNING hits INTO counted;
+ IF counted>20 THEN RETURN 'limited';END IF;
+ IF EXISTS(SELECT 1 FROM public.letter_artifact a JOIN public.letter_record l ON l.id=a.letter_id AND l.tenant_id=a.tenant_id
+  WHERE a.authenticity_token_hash=token_hash AND l.state='issued' AND a.revision_id=l.current_revision_id) THEN RETURN 'valid';END IF;
+ RETURN 'invalid';
+END $$;
+REVOKE ALL ON FUNCTION app.verify_letter_status(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.verify_letter_status(text) TO ai_hr_app;

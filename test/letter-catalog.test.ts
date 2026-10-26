@@ -1,4 +1,4 @@
-import {afterAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -12,11 +12,15 @@ const document={version:1,language:'en',blocks:[{type:'paragraph',content:[{type
 async function draft(){const definition=await saveLetterField(author,{companyId:b.companyId,definition:field,active:true});return saveLetterTemplate(author,{companyId:b.companyId,code:'CONFIRMATION',name:'Fictional confirmation',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document,fieldVersionIds:[definition.id]});}
 function policy():LetterPolicy{return {version:1,stages:[{key:'signatory',label:'Authorised Signatory',userIds:[approver.userId!],allowDelegation:false}],signatoryUserId:approver.userId!,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false};}
 beforeEach(async()=>{
+ vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://letters.fixture.test/callback');
  await resetDb();b=await seedBase();author=await entitledCtx(b);
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional letter approver',primaryEmail:'letter-approver@fixture.test'}).returning();
  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');approver={...author,userId,personId:person.id};
-});afterAll(closeAll);
+});afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('versioned Letters configuration and template owner',()=>{
+ it('requires a configured public verification origin before enabling an issuance policy',async()=>{
+  vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','');await expect(saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy()})).rejects.toMatchObject({code:'configuration',detail:'publicOrigin'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);
+ });
  it('requires a separate template approver and preserves the exact approved version when editing',async()=>{
   const first=await draft();expect((await owner.db.select().from(s.letterTemplateVersion))[0].status).toBe('draft');
   await decideLetterTemplate(author,{versionId:first.versionId,expectedStatus:'draft',action:'submit'});await expect(decideLetterTemplate(author,{versionId:first.versionId,expectedStatus:'submitted',action:'approve'})).rejects.toMatchObject({code:'selfApproval'});

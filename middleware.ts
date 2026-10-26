@@ -7,6 +7,7 @@ import { isAuthRoute } from '@/lib/auth-routes';
 import { appOrigin, realAuthEnabled } from '@/lib/real-auth';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
+import {isLetterVerificationRoute} from '@/lib/letter-verification';
 
 /**
  * Demo access gate (see HOSTING.md). When SHARE_PASSWORD is set, the whole app sits behind HTTP Basic
@@ -182,7 +183,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (internalSelected()) {
     if (!internalReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path)) return withPathname(req);
     if (/^[A-Za-z0-9_-]{43}$/.test(req.cookies.get(INTERNAL_SESSION_COOKIE)?.value || '')) return withPathname(req);
     if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
     const destination = new URL('/login', internalConfig().origin);
@@ -192,7 +193,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path)) return withPathname(req);
     return withKeycloakSession(req);
   }
   const password = process.env.SHARE_PASSWORD;
@@ -210,6 +211,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   // alarm. A health endpoint hoisted above that refusal would report a broken deployment as healthy,
   // which is the failure mode 1.6 exists to remove. See lib/health-route.ts.
   if (isHealthRoute(req.nextUrl.pathname)) return withPathname(req);
+  if (isLetterVerificationRoute(req.nextUrl.pathname)) return withPathname(req);
 
   // ADR-0088 — the mobile API bypasses the CHALLENGE (Basic auth and the app's bearer token both need the
   // Authorization header) but, like /health, not the refusal above. Every handler behind it accepts only

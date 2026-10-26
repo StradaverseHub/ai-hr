@@ -3,6 +3,7 @@ import {PDFDocument,PDFArray,PDFRawStream,decodePDFRawStream} from 'pdf-lib';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {renderLetterPdf,type LetterPdfInput} from '../lib/letter-pdf';
+import {letterVerificationWords} from '../lib/letter-verification';
 
 const input:LetterPdfInput={reference:'HR/2026/0001',title:'Fictional appointment',signature:{name:'Fictional Signatory',caption:'Approved through authenticated internal approval',timestamp:'26 October 2026, 21:00 MYT'},document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Dear Fictional Employee,',marks:['bold','italic','underline']}]},{type:'table',rows:[[[{type:'text',text:'Department'}],[{type:'text',text:'Fictional operations'}]]]},{type:'list',ordered:true,items:[[{type:'text',text:'First condition'}],[{type:'text',text:'Second condition'}]]}]}};
 describe('sealed letter PDF layout',()=>{
@@ -22,7 +23,7 @@ describe('sealed letter PDF layout',()=>{
  it.each(['en','ms','zh','ta','th','vi'] as const)('embeds the committed script fonts for %s without replacement characters',async language=>{
   const samples={en:'Fictional Employee',ms:'Pekerja Rekaan',zh:'虚构员工',ta:'கற்பனை ஊழியர்',th:'พนักงานสมมติ',vi:'Nhân viên giả định'};
   // A cross-script name must retain every script, including on an English letter.
-  const result=await renderLetterPdf({...input,document:{version:1,language,blocks:[{type:'paragraph',content:[{type:'text',text:samples[language]}]},...input.document.blocks]}});expect((await PDFDocument.load(result.bytes)).getPageCount()).toBe(1);
+  const result=await renderLetterPdf({...input,verification:{url:'https://letters.fixture.test/letters/verify/'+'A'.repeat(43),caption:letterVerificationWords[language].caption},document:{version:1,language,blocks:[{type:'paragraph',content:[{type:'text',text:samples[language]}]},...input.document.blocks]}});expect((await PDFDocument.load(result.bytes)).getPageCount()).toBe(1);
   if(process.env.CI&&process.env.RUNNER_TEMP){const dir=join(process.env.RUNNER_TEMP,'aihr-focused','letter-pdf-fixtures');await mkdir(dir,{recursive:true});await writeFile(join(dir,`fictional-letter-${language}.pdf`),result.bytes);}
  });
  it('refuses unresolved values and unsupported glyphs rather than sealing fabricated or substituted text',async()=>{
