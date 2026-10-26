@@ -1,3 +1,5 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {sql} from 'drizzle-orm';
 /** HR Workforce entry points compose the capability owner with existing canonical writers.
  * Independent approval/posting services keep importing their existing owner, never a manufactured HR role.
  */
@@ -31,7 +33,9 @@ export async function setReportingLine(ctx:SessionContext,p:Parameters<typeof or
 /** Direct HR compliance edits are distinct from an approved ESS proposal. Check both the selected
  * employment and the shared person before reusing the canonical validation/event writer. */
 export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof writeComplianceFields>[1],outerTx?:Tx){
+ ctx=captureCommandContext(ctx);p=structuredClone(p);
  return maintain(ctx,p.employmentId,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
   if(!subject)throw new Error('Employment not found (or not visible).');
   await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');

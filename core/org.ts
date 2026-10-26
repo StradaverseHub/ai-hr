@@ -1474,7 +1474,11 @@ async function writePersonProfile(
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx:Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockProfileValueWritesTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({
@@ -1568,12 +1572,16 @@ async function writePersonProfile(
 
 /** Existing full form contract, including its established omitted-phone clear semantics. */
 export function updatePerson(ctx:SessionContext,p:{personId:string;fullName:string;primaryEmail:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
- const run=async(tx:Tx)=>{await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ const run=async(tx:Tx)=>{await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 /** Canonical partial profile adapter. Omitted trio values retain exact stored nullable data.
  * Required-name/email validation applies when supplied, rather than forcing an unrelated legacy repair. */
 export function updatePersonProfilePartial(ctx:SessionContext,p:{personId:string;fullName?:string;primaryEmail?:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(p.primaryEmail!==undefined&&p.primaryEmail.trim()){const field=personnelField('profile.contact_and_permanent_address.primaryemail');if(!field||personnelScalarIssue(field,p.primaryEmail))throw new Error('Email is invalid');}
  return writePersonProfile(ctx,p,outerTx);
 }

@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
@@ -357,8 +358,10 @@ export async function requestProfileChange(
   p:{employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal},
   outerTx?:Tx,
 ){
+ p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!ctx.personId)throw new EssProfileError('permission');
  const run=async(tx:Tx)=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
   const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
   await ownProfileSubjectTx(tx,ctx,p.employmentId);
@@ -391,9 +394,11 @@ export async function decideProfileChange(
     reason?: string | null;
   },
 ) {
+  p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
@@ -531,6 +536,8 @@ export async function setPersonComplianceFields(
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can set gender / marital status.');
@@ -558,6 +565,8 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockProfileValueWritesTx(tx,ctx.tenantId);
     // Resolve the person from the employment (RLS confines this select to admin scope).
     const [emp] = await tx

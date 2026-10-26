@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
@@ -136,6 +137,8 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
 export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
+ raw=structuredClone(raw); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){
@@ -293,6 +296,7 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
 }
 /** No-op/cancel do not call this owner. Omitted facts retain; explicit clears are validated. */
 export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown}){
+ p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  return withTenant(ctx,async tx=>{
   const prepared=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposal);
   const immediate=prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='immediate');

@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * PDPA erasure-equivalent service (ADR-0030 §2 erasePersonPii). Malaysia has NO GDPR-style erasure right,
  * so this is Retention-Principle destruction + breach minimisation, NOT a blanket delete:
@@ -53,7 +54,11 @@ export async function erasePersonPii(
   ctx: SessionContext,
   p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
 ): Promise<ErasureReport> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
     // wrapper adds only private greeting content and binds even an otherwise empty erasure to its audit.
     const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.home_greeting_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
