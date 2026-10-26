@@ -40,6 +40,7 @@ import { converse } from '../lib/ai';
 import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
+import { withAssistantRead } from './assistant-read-session';
 import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
 
 /**
@@ -210,6 +211,8 @@ export async function askAssistant(
   ctx: SessionContext,
   p: { question: string; now?: Date },
 ): Promise<AssistantAnswer> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={question:p.question,...(p.now?{now:new Date(p.now.getTime())}:{})};
   // The grant is the gate, and it is checked before anything else — including before we look at whether
   // the tenant even has a provider, so an ungranted user cannot probe the configuration.
   await assertMayUseAssistant(ctx);
@@ -355,11 +358,9 @@ export async function askAssistant(
 }
 
 /**
- * Execute one turn's tool calls CONCURRENTLY and return one result per call, in the same order.
- *
- * Concurrency is safe because every wrapped read opens its own transaction against the caller's session
- * and none of them writes. The order is preserved so a provider that correlates positionally as well as
- * by id cannot be confused.
+ * Execute one bounded model batch in a single caller-owned read transaction. Promises may queue
+ * concurrently, but every canonical query uses that same connection and source authority boundary.
+ * Result order remains the request order. No provider call happens inside this transaction.
  */
 async function runTools(
   ctx: SessionContext,
@@ -367,7 +368,7 @@ async function runTools(
   calls: readonly AiToolCall[],
   audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[],
 ): Promise<AiToolResult[]> {
-  return Promise.all(
+  return withAssistantRead(ctx, null, session => Promise.all(
     calls.map(async (call): Promise<AiToolResult> => {
       const tool = offered.find((t) => t.spec.name === call.name);
       if (!tool) {
@@ -387,7 +388,7 @@ async function runTools(
         return { id: call.id, name: call.name, content: 'Arguments could not be read.', isError: true };
       }
       try {
-        const outcome = await tool.run(ctx, call.input);
+        const outcome = await tool.run(ctx, call.input, session);
         const content = serializeAgentReadResult(outcome);
         const rowCount = rowCountOf(outcome);
         audit.push({
@@ -406,7 +407,7 @@ async function runTools(
         return { id: call.id, name: call.name, content: 'That lookup failed.', isError: true };
       }
     }),
-  );
+  ));
 }
 
 /** Write the audit row and roll the period counter, in ONE transaction so usage can never be recorded

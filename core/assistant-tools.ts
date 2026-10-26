@@ -1,7 +1,8 @@
 /**
  * The assistant's read-only tool registry (ADR-0082 §2.3).
  *
- * Every tool is a thin wrapper over a canonical scoped reader in core/read.ts or a named module service, called with the CALLER'S OWN SessionContext threaded through unchanged. The security
+ * Every tool enters the explicit canonical read facade with the CALLER'S OWN SessionContext.
+ * The facade binds the actual read transaction; the registry receives only named read methods. The security
  * property is INHERITED, not invented: the same policies that decide what the caller's own pages show
  * decide what the assistant can see, because it is literally the same query in the same session.
  *
@@ -12,11 +13,11 @@
  *   1. NO TOOL BUILDS ITS OWN SESSION. `ctx` arrives and is passed on. A tool that assembled one, widened
  *      its authority, or reached for the owner/migration pool would defeat the entire design in a way
  *      every individual tool test would still pass. This file therefore imports SessionContext as a TYPE
- *      ONLY — at runtime it holds no database handle at all and cannot open a transaction, so there is no
+ *      ONLY — at runtime it holds no database handle at all; its read facade owns the transaction, with no
  *      seam through which raw SQL could be smuggled in beside a read.
- *   2. NO TOOL CHANGES ANYTHING. Not behind a confirmation — none. The transaction helper would happily
- *      run a mutation for an admin session, so the guarantee cannot come from the database; it comes from
- *      this file containing no such path, and from the guard proving it.
+ *   2. NO TOOL CHANGES ANYTHING. Not behind a confirmation — none. The closed facade exposes no
+ *      mutation, and its transaction enforces database read-only mode. The source guard independently
+ *      refuses effect-capable imports and write paths in this registry.
  *   3. NO TOOL RESULT SELECTS OR AUTHORISES ANOTHER TOOL. Output is data. The loop lets the MODEL pick
  *      the next call, and the model's calls are constrained to this registry.
  *
@@ -40,23 +41,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // core/payroll and dragging the engine into every assistant caller.
 import { storedComponentLines } from './payslip-earning-lines';
 import { isModuleEnabled } from './entitlements';
-import { ownClaimStatuses } from '../packs/claims/service';
-import {
-  awayTodayCount,
-  employeeDetail,
-  holidayDatesForEmployment,
-  leaveBalances,
-  leaveEntitlementBreakdown,
-  leaveRequestsFor,
-  myEmployment,
-  myEmploymentIdsAll,
-  myEmployments,
-  myPayslips,
-  plannedAbsences,
-  reportingLinesFor,
-  subordinateLeaveSummary,
-  upcomingHolidays,
-} from './read';
+import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
  * The refusal vocabulary
@@ -96,10 +81,10 @@ export type ToolOutcome =
 export type AssistantTool = {
   spec: AiToolSpec;
   /**
-   * Runs against the CALLER's context, never a constructed or elevated one. The wrapper opens no
-   * transaction of its own — each wrapped read opens its own, scoped to the session handed in here.
+   * Runs against the CALLER's context, never a constructed or elevated one. The wrapper receives no
+   * query handle. The read facade owns one caller-bound transaction or an explicitly supplied session.
    */
-  run(ctx: SessionContext, input: unknown): Promise<ToolOutcome>;
+  run(ctx: SessionContext, input: unknown, readSession?: AssistantReadSession): Promise<ToolOutcome>;
   /**
    * The module this tool's data belongs to; not offered when the tenant does not hold it (ADR-0077).
    *
@@ -262,8 +247,9 @@ const myLeaveBalances: AssistantTool = {
       'reports to them, use team_leave_summary.',
     inputSchema: schema({}),
   },
-  async run(ctx) {
-    const emps = await myEmployments(ctx);
+  async run(ctx, _input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'leave', async (read): Promise<ToolOutcome> => {
+    const emps = await read.myEmployments();
     if (emps.length === 0) {
       return refuse('no_employment', 'The asking user has no employee record, so they hold no leave balance.');
     }
@@ -278,7 +264,7 @@ const myLeaveBalances: AssistantTool = {
       // answers an EMPLOYEE about their own leave, so it must return the list their own screen returns.
       // An assistant that named a Maternity balance a man was never eligible for would be reintroducing
       // the reported defect through a channel with no card to look at.
-      const rows = await leaveBalances(ctx, e.employmentId, undefined, { includeArchived: false });
+      const rows = await read.leaveBalances(e.employmentId, undefined, { includeArchived: false });
       employments.push({
         employmentId: e.employmentId,
         company: e.company,
@@ -296,6 +282,8 @@ const myLeaveBalances: AssistantTool = {
       });
     }
     return { ok: true, employments };
+
+    }, readSession);
   },
 };
 
@@ -319,16 +307,17 @@ const myLeaveRequests: AssistantTool = {
       },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'leave', async (read): Promise<ToolOutcome> => {
     const limit = intArg(asObject(input), 'limit', 1, 25);
     if (limit === null) return refuse('invalid_input', '`limit` must be a whole number between 1 and 25.');
-    const emps = await myEmployments(ctx);
+    const emps = await read.myEmployments();
     if (emps.length === 0) {
       return refuse('no_employment', 'The asking user has no employee record, so they have no leave applications.');
     }
     const merged = [];
     for (const e of emps) {
-      for (const r of await leaveRequestsFor(ctx, e.employmentId)) {
+      for (const r of await read.leaveRequestsFor(e.employmentId)) {
         merged.push({
           leaveTypeId: r.leaveTypeId,
           leaveType: r.leaveType,
@@ -352,6 +341,8 @@ const myLeaveRequests: AssistantTool = {
     // HERE rather than in core/read.ts, whose screen callers legitimately want the whole set.
     merged.sort((a, b) => (a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0));
     return { ok: true, ...cap(merged, limit) };
+
+    }, readSession);
   },
 };
 
@@ -375,13 +366,14 @@ const leaveEntitlementExplain: AssistantTool = {
       as_of: { type: 'string', description: 'The date to explain the figure as at, YYYY-MM-DD.' },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'leave', async (read): Promise<ToolOutcome> => {
     const o = asObject(input);
     const leaveTypeId = idArg(o, 'leave_type_id');
     if (!leaveTypeId) return refuse('invalid_input', '`leave_type_id` must be an id from a my_leave_balances result.');
     const asOf = o.as_of;
     if (!isIsoDate(asOf)) return refuse('invalid_input', '`as_of` must be a real calendar date in YYYY-MM-DD form.');
-    const emps = await myEmployments(ctx);
+    const emps = await read.myEmployments();
     if (emps.length === 0) {
       return refuse('no_employment', 'The asking user has no employee record, so they hold no entitlement.');
     }
@@ -394,7 +386,7 @@ const leaveEntitlementExplain: AssistantTool = {
     // returns one breakdown per employment and lets the model name the company it is quoting.
     const breakdowns = [];
     for (const e of emps) {
-      const row = await leaveEntitlementBreakdown(ctx, e.employmentId, leaveTypeId, asOf);
+      const row = await read.leaveEntitlementBreakdown(e.employmentId, leaveTypeId, asOf);
       if (row) breakdowns.push({ employment: e, breakdown: row });
     }
     if (breakdowns.length === 0) {
@@ -442,6 +434,8 @@ const leaveEntitlementExplain: AssistantTool = {
         transactions: cap(b.transactions, 20),
       })),
     };
+
+    }, readSession);
   },
 };
 
@@ -460,13 +454,14 @@ const upcomingHolidaysTool: AssistantTool = {
       limit: { type: 'integer', minimum: 1, maximum: 20, description: 'How many holidays to return.' },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'org', async (read): Promise<ToolOutcome> => {
     const o = asObject(input);
     const from = o.from;
     if (!isIsoDate(from)) return refuse('invalid_input', '`from` must be a real calendar date in YYYY-MM-DD form.');
     const limit = intArg(o, 'limit', 1, 20);
     if (limit === null) return refuse('invalid_input', '`limit` must be a whole number between 1 and 20.');
-    const me = await myEmployment(ctx);
+    const me = await read.myEmployment();
     if (!me) {
       return refuse(
         'no_employment',
@@ -477,10 +472,10 @@ const upcomingHolidaysTool: AssistantTool = {
     // DATE and nothing else — so it supplies NAMES and an ordering; `holidayDatesForEmployment` resolves
     // what this employment actually observes and supplies the FILTER. Over-fetch the candidates because
     // the filter removes an unknown fraction of them.
-    const candidates = await upcomingHolidays(ctx, { from, limit: limit * 4 });
+    const candidates = await read.upcomingHolidays({ from, limit: limit * 4 });
     if (candidates.length === 0) return { ok: true, employmentId: me.employmentId, holidays: [] };
     const observed = new Set(
-      await holidayDatesForEmployment(ctx, {
+      await read.holidayDatesForEmployment({
         employmentId: me.employmentId,
         from,
         to: candidates[candidates.length - 1].date,
@@ -499,6 +494,8 @@ const upcomingHolidaysTool: AssistantTool = {
     // with a caveat in the description — is worse, because the model relays the list and the caveat
     // competes with it for attention.
     return { ok: true, employmentId: me.employmentId, holidays };
+
+    }, readSession);
   },
 };
 
@@ -519,7 +516,8 @@ const whoIsAway: AssistantTool = {
       to: { type: 'string', description: 'End of the window, inclusive, YYYY-MM-DD.' },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'leave', async (read): Promise<ToolOutcome> => {
     const o = asObject(input);
     const from = o.from;
     const to = o.to;
@@ -535,7 +533,7 @@ const whoIsAway: AssistantTool = {
     // array there matches a sentinel id and would silently return zero people rather than everyone.
     // `today` is omitted on purpose: supplying it makes the read resolve per-employment working-date sets
     // for a cancellation affordance this tool discards, at a round trip per employment.
-    const people = await plannedAbsences(ctx, undefined, { from, to });
+    const people = await read.plannedAbsences(undefined, { from, to });
     // THE READ RETURNS EVERY VISIBLE PERSON, INCLUDING THOSE WITH NO LEAVE IN THE WINDOW — the calendar it
     // was built for needs the empty rows to draw them. Without this filter the tool would answer "who is
     // away" with the whole headcount, and its count branch would trip on tenant size rather than on
@@ -548,7 +546,7 @@ const whoIsAway: AssistantTool = {
         from,
         to,
         personCount: away.length,
-        approvedOnFromDate: await awayTodayCount(ctx, undefined, from),
+        approvedOnFromDate: await read.awayTodayCount(undefined, from),
       };
     }
     return {
@@ -574,6 +572,8 @@ const whoIsAway: AssistantTool = {
         })),
       ),
     };
+
+    }, readSession);
   },
 };
 
@@ -596,7 +596,8 @@ const teamLeaveSummary: AssistantTool = {
       },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'leave', async (read): Promise<ToolOutcome> => {
     const employmentId = idArg(asObject(input), 'employment_id');
     if (!employmentId) {
       return refuse('invalid_input', '`employment_id` must be an id from a previous tool result.');
@@ -605,7 +606,7 @@ const teamLeaveSummary: AssistantTool = {
     // what counts as upcoming. This read's own gate is NARROWER than the database's — self, plain HR
     // admins and heads of department all get nothing — and that is correct for a manager affordance. It
     // must not be "fixed" by falling back to a wider balance read.
-    const rows = await subordinateLeaveSummary(ctx, employmentId, todayInKualaLumpur());
+    const rows = await read.subordinateLeaveSummary(employmentId, todayInKualaLumpur());
     if (rows === null) {
       return refuse('not_your_report', 'That person does not report to the asking user, so their leave is not shown.');
     }
@@ -623,6 +624,8 @@ const teamLeaveSummary: AssistantTool = {
         })),
       ),
     };
+
+    }, readSession);
   },
 };
 
@@ -668,12 +671,13 @@ const employeeProfile: AssistantTool = {
       },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'employees', async (read): Promise<ToolOutcome> => {
     const employmentId = idArg(asObject(input), 'employment_id');
     if (!employmentId) {
       return refuse('invalid_input', '`employment_id` must be an id from a previous tool result.');
     }
-    const d = await employeeDetail(ctx, employmentId);
+    const d = await read.employeeDetail(employmentId);
     // ONE sentence for "you may not see this person" and for "no such employment". Telling them apart
     // would let the model enumerate which ids exist across the whole tenant, one refusal at a time.
     if (!d) {
@@ -694,6 +698,8 @@ const employeeProfile: AssistantTool = {
         terminatedOn: d.terminatedOn,
       },
     };
+
+    }, readSession);
   },
 };
 
@@ -714,8 +720,9 @@ const myReportingLine: AssistantTool = {
       'suggest they check their profile page rather than asserting they have none.',
     inputSchema: schema({}),
   },
-  async run(ctx) {
-    const me = await myEmployment(ctx);
+  async run(ctx, _input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'org', async (read): Promise<ToolOutcome> => {
+    const me = await read.myEmployment();
     if (!me) {
       return refuse('no_employment', 'The asking user has no employee record, so they have no reporting line.');
     }
@@ -734,7 +741,7 @@ const myReportingLine: AssistantTool = {
     // over it (there is no ctx-first self-superior read to paper over it WITH); the description tells the
     // model what an empty list does and does not mean, because the failure mode otherwise is a confident,
     // wrong "you report to nobody".
-    const lines = await reportingLinesFor(ctx, me.employmentId);
+    const lines = await read.reportingLinesFor(me.employmentId);
     return {
       ok: true,
       employmentId: me.employmentId,
@@ -749,6 +756,8 @@ const myReportingLine: AssistantTool = {
         lineType: r.lineType,
       })),
     };
+
+    }, readSession);
   },
 };
 
@@ -768,16 +777,17 @@ const myPayslipSummary: AssistantTool = {
       limit: { type: 'integer', minimum: 1, maximum: 12, description: 'How many recent payslips to return.' },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'payroll', async (read): Promise<ToolOutcome> => {
     const limit = intArg(asObject(input), 'limit', 1, 12);
     if (limit === null) return refuse('invalid_input', '`limit` must be a whole number between 1 and 12.');
     // Leaver-safe on purpose: a resigned employee asking for their pay history is exactly the caller this
     // serves, and the narrower active-only resolver would answer nothing for them.
-    const ids = (await myEmploymentIdsAll(ctx)).map((e) => e.employmentId);
+    const ids = (await read.myEmploymentIdsAll()).map((e) => e.employmentId);
     if (ids.length === 0) {
       return refuse('no_employment', 'The asking user has no employee record, so they have no payslips.');
     }
-    const rows = await myPayslips(ctx, ids);
+    const rows = await read.myPayslips(ids);
     // THE RELEASE FILTER IS MANDATORY AND LIVES HERE. `myPayslips` does not enforce the self-service
     // release gate — it STAMPS a flag and lets the caller filter, and its own comment says the employee's
     // payslip section is what filters on it. Without this line the assistant would quote an unreleased
@@ -794,6 +804,8 @@ const myPayslipSummary: AssistantTool = {
         net: num(r.net),
       }));
     return { ok: true, ...cap(released, limit) };
+
+    }, readSession);
   },
 };
 
@@ -848,17 +860,18 @@ const myPayChange: AssistantTool = {
       },
     }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'payroll', async (read): Promise<ToolOutcome> => {
     const period = strArg(asObject(input), 'period');
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       return refuse('invalid_input', '`period` must be a month in YYYY-MM form, for example 2026-08.');
     }
-    const ids = (await myEmploymentIdsAll(ctx)).map((e) => e.employmentId);
+    const ids = (await read.myEmploymentIdsAll()).map((e) => e.employmentId);
     if (ids.length === 0) {
       return refuse('no_employment', 'The asking user has no employee record, so they have no payslips.');
     }
 
-    const released = (await myPayslips(ctx, ids)).filter((r) => r.released);
+    const released = (await read.myPayslips(ids)).filter((r) => r.released);
     if (released.length === 0) return refuse('no_data', 'The asking user has no released payslips.');
 
     // Sum each period across its runs — see the header on why a month, not a payslip, is the unit.
@@ -939,6 +952,8 @@ const myPayChange: AssistantTool = {
       net: { current: round2(current.net), previous: round2(prev.net), change: round2(current.net - prev.net) },
       ...cap(lines, 25),
     };
+
+    }, readSession);
   },
 };
 
@@ -955,14 +970,17 @@ const myClaimStatuses: AssistantTool = {
       'This cannot submit, cancel, approve or pay a claim. Limit is 1 to 25 records in total.',
     inputSchema: schema({ limit: { type: 'integer', minimum: 1, maximum: 25 } }),
   },
-  async run(ctx, input) {
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    return withAssistantRead(ctx, 'claims', async (read): Promise<ToolOutcome> => {
     const object = asObject(input);
     if (Object.keys(object).some(key => key !== 'limit')) return refuse('invalid_input', 'Only a record limit is accepted.');
     const limit = intArg(object, 'limit', 1, 25);
     if (limit === null) return refuse('invalid_input', 'Limit must be an integer from 1 to 25.');
-    const result = await ownClaimStatuses(ctx, limit);
+    const result = await read.ownClaimStatuses(limit);
     if (!result.hasEmployment) return refuse('no_employment', 'The asking user has no employee record.');
     return { ok: true, claims: result.claims, returnedRows: result.claims.length, truncated: result.truncated };
+
+    }, readSession);
   },
 };
 

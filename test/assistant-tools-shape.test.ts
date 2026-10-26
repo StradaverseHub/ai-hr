@@ -37,13 +37,14 @@ import {
 // Test-only lookup over the whole registry. Production has none: dispatch resolves from toolsFor(ctx).
 const toolByName = (name: string): AssistantTool | undefined => ASSISTANT_TOOLS.find((t) => t.spec.name === name);
 import { hireEmployee, setReportingLine } from '../core/org';
+import { grantAssistant } from '../core/assistant-grant';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import {
   adminCtx,
   closeAll,
-  createAppUser,
+  createAppUser as createRawAppUser,
   entitledCtx,
   migrateTestDb,
   owner,
@@ -125,14 +126,12 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
     const dataImports = [...SOURCE.matchAll(/^import[\s\S]*?from '([^']+)';$/gm)]
       .map((m) => m[1])
       .filter((s) => s.startsWith('.'));
-    // entitlements is the module gate; read is the data; hr-date is the clock; ai/types is the contract.
-    // payslip-earning-lines is the fifth and does NOT weaken the property: it has ZERO imports of its own
-    // and no query surface at all — pure functions that read `statutory.componentLines` by SHAPE. It is
-    // how my_pay_change gets per-item figures without importing core/payroll and dragging the kernel into
-    // every assistant caller. The Claims facade adds one explicitly pinned own-status reader; no command binding is allowed.
-    expect(SOURCE.match(/^import .* from '\.\.\/packs\/claims\/service';$/gm)).toEqual(["import { ownClaimStatuses } from '../packs/claims/service';"]);
+    // Only the explicit read facade enters source services. Its opaque method set exposes no
+    // database handle, SQL builder, model caller or command. Pin this binding rather than allowing
+    // arbitrary service imports into tool implementations.
+    expect(SOURCE.match(/^import .* from '\.\/assistant-read-session';$/gm)).toEqual(["import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';"]);
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './read', '../packs/claims/service'].sort(),
+      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session'].sort(),
     );
   });
 });
@@ -241,6 +240,12 @@ const hire = (name: string) =>
  * tenant's, not the admin's) — the identity fields are all overridden, so this is an ordinary employee
  * in every way the policies can observe.
  */
+async function createAppUser(...args: Parameters<typeof createRawAppUser>) {
+  const id = await createRawAppUser(...args);
+  await grantAssistant(adminCtx(base), { appUserId: id });
+  return id;
+}
+
 function sessionFor(userId: string, personId: string, roles: string[]): SessionContext {
   return { ...adminCtx(base), userId, personId, roles };
 }
@@ -266,6 +271,8 @@ describe('ADR-0082 §5 — a tool cannot see what its caller cannot see', () => 
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    await setModule(base.tenantId, 'assistant', 'active');
+    await grantAssistant(adminCtx(base), { appUserId: base.adminUserId });
   });
 
   it('employee_profile: a peer is refused with not_visible, and the SAME code covers a nonexistent id', async () => {
@@ -597,6 +604,8 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    await setModule(base.tenantId, 'assistant', 'active');
+    await grantAssistant(adminCtx(base), { appUserId: base.adminUserId });
   });
 
   it('independently drops payroll and claims tools when their module is off', async () => {

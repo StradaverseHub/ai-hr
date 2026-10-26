@@ -29,6 +29,7 @@ import {
   setEmploymentPayComponent,
 } from '../core/pay-components';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
+import { grantAssistant } from '../core/assistant-grant';
 import type { SessionContext } from '../db/client';
 
 const tool = () => ASSISTANT_TOOLS.find((t) => t.spec.name === 'my_pay_change')!;
@@ -41,6 +42,8 @@ describe('ADR-0074 item 5 — my_pay_change', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    await setModule(base.tenantId, 'assistant', 'active');
+    await grantAssistant(adminCtx(base), { appUserId: base.adminUserId });
     await setModule(base.tenantId, 'typed_pay_components', 'active');
   });
   afterAll(async () => {
@@ -65,6 +68,7 @@ describe('ADR-0074 item 5 — my_pay_change', () => {
     // ctx.personId, and the whole point of a self-bound tool is that it answers about whoever is asking —
     // testing it from an admin context would exercise a caller this tool can never actually have.
     const appUserId = await createAppUser(base.tenantId, e.personId, 'employee');
+    await grantAssistant(a, { appUserId });
     const asker: SessionContext = {
       ...(await entitledCtx(base, ['employee'])),
       userId: appUserId,

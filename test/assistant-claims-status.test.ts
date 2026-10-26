@@ -5,12 +5,13 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { ownClaimStatuses, createClaimType, submitClaim, saveClaimDraft, addClaimAttachment } from '../packs/claims/service';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
+import { grantAssistant } from '../core/assistant-grant';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);
-beforeEach(async () => { await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'claims', 'active'); });
+beforeEach(async () => { await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'claims', 'active'); await setModule(base.tenantId, 'assistant', 'active'); });
 afterAll(closeAll);
 const tool = ASSISTANT_TOOLS.find(item => item.spec.name === 'my_claim_statuses')!;
 
@@ -21,6 +22,7 @@ async function fixture() {
   const mine = await hire('Fictional Claim Reader');
   const other = await hire('Fictional Other Claimant');
   const userId = await createAppUser(base.tenantId, mine.personId, 'hr_admin');
+  await grantAssistant(a, { appUserId: userId });
   const snapshot = await entitledCtx(base, ['hr_admin']);
   // Deliberately broad HR visibility: own identity must still constrain this tool.
   const ctx: SessionContext = { ...snapshot, userId, personId: mine.personId, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: null }] };

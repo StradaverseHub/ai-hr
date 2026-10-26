@@ -3108,10 +3108,10 @@ export async function listClaimsForEmployment(ctx: SessionContext, employmentId:
  * reimbursement calculation or receipt reader. Broader HR scope never selects another claimant.
  * The canonical claim status and dates are projected unchanged; no second workflow state exists.
  */
-export async function ownClaimStatuses(ctx: SessionContext, limit: number) {
+export async function ownClaimStatuses(ctx: SessionContext, limit: number, existingTx?: Tx) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Claim lookup limit is invalid.');
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(captured, async tx => {
+  const read = async (tx: Tx) => {
     await assertAiPrincipalTx(tx, captured);
     // The offered registry used a session snapshot. Recheck actual entitlement at the source read.
     const entitlements = await resolveEntitlementsTx(tx, captured.tenantId);
@@ -3140,7 +3140,8 @@ export async function ownClaimStatuses(ctx: SessionContext, limit: number) {
       })),
       truncated: rows.length > limit,
     };
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(captured, read);
 }
 
 /** Pending claims the caller may decide (RLS scopes: manager → reports, admin → all) — the approvals inbox. */

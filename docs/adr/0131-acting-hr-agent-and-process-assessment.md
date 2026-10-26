@@ -2443,3 +2443,36 @@ combined exact-candidate final gate and one verified deployment. Source provenan
 historical-answer current authorization, actual read-owner consumers, provider
 capability/account-policy/settlement and governed independent agent evaluations
 remain unfinished; the compiler result does not replace them.
+
+
+### Actual Assistant tool read owner (runtime verification pending)
+
+The eleven existing read tools now consume a closed canonical method set, rather than
+opening independent source transactions. The actual Assistant tool batch owns one
+Read Committed transaction, sets it READ ONLY before source work, and checks actual
+login/tenant/current principal, live Assistant grant/module, each tool module and
+nonadmitting feature pause. Each nested tool explicitly receives the same privately
+registered method set. Forged copies, cross-principal reuse and use after callback
+completion refuse. No transaction/query handle, effect or provider caller is exposed.
+The own-claims projection can explicitly join that same actual transaction; its
+ordinary entry still owns its existing scoped path. Caller context/question/time are
+captured before asynchronous work. Tool specs/order and canonical projections stay
+unchanged; AST reversal of only owner/method binding reproduces all eleven original
+tool bodies. No provider call runs inside this read callback.
+
+Six real-database cases are authored for shared backend/read-only/current actor,
+peer RLS refusal, escaped/forged session refusal, actual denied DML with a positive
+ordinary-write control, observed Access-lock waiting and retained-context mutation,
+grant revocation ordering, and pause refusal without provider admission. Existing
+actual tool fixtures now acquire legitimate Assistant grants/module activation.
+ALL these cases are UNRUN. Eight changed TypeScript files parsed without syntax
+diagnostics. Initial diff checking caught trailing whitespace, which was repaired.
+Normal complete-set compiler admission refused occupied/uncertain leases while
+holding no slots; no compiler process or database job started. The earlier compiler
+PASS remains evidence for its earlier input only, not this changed source.
+
+This read owner is necessary but does not prove current authorization of previously
+stored answers or prepared provider fields. Historical canonical provenance/replay,
+remaining relevant writer protection, retention/erasure and authenticated own-leave
+exposure, provider capability/settlement evaluations and all-module governed agents
+remain required. No final gate, deployment or production-readiness claim is made.
