@@ -1,6 +1,7 @@
 import {isDeepStrictEqual} from 'node:util';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockPayrollPeriodsTx,lockPayrollBatchPeriodTx} from './payroll-period-lock';
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
@@ -8477,22 +8478,35 @@ function payrollCloseSourceValue(value:unknown):unknown{
  if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,payrollCloseSourceValue((value as Record<string,unknown>)[key])]));
  return value;
 }
-async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,batchId:string){
- const ctx=capturePayrollCloseContext(supplied),id=batchId.toLowerCase();
- // The strict source actor owns current Access before this owner. lockPayrollBatchPeriodTx repeats
- // actual USER/financial proof and canonical UUID/month binding; no posted context or new role exists.
- const nominee=await reviewedPayrollCloseAuthorityTx(tx,ctx,id);
+/** Canonical CLOSE-only prefix BEFORE custody. Completed reconciliation may name an unlocked or
+ * still-closed run, so processed-only business preflight remains separate and is never used to replay. */
+export async function withReviewedPayrollCloseIntervalTx<T>(tx:Tx,supplied:SessionContext,batchId:string,run:(ctx:SessionContext,source:{id:string;companyId:string;payPeriodId:string;payPeriod:string})=>Promise<T>):Promise<T>{
+ const ctx=capturePayrollCloseContext(supplied),id=batchId.toLowerCase(),nominee=await reviewedPayrollCloseAuthorityTx(tx,ctx,id);
  await lockPayrollBatchPeriodTx(tx,ctx,id,true);
  const current=await reviewedPayrollCloseAuthorityTx(tx,ctx,id);if(JSON.stringify(current)!==JSON.stringify(nominee))throw new Error('Payroll close binding changed');
+ await lockPayrollOvertimeBatchContextTx(tx,ctx,id);
+ const [locked]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1).for('update',{noWait:true});
+ if(!locked||JSON.stringify(locked)!==JSON.stringify(current))throw new Error('Payroll close binding changed');
+ return run(ctx,locked);
+}
+async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,batchId:string){
+ return withReviewedPayrollCloseIntervalTx(tx,supplied,batchId,async(ctx,source)=>{
+ const id=source.id;
  const prepared=await preparePayrollCloseTx(tx,ctx,{batchId:id},true);
  const [header]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,payrollCycleId:payrollBatch.payrollCycleId,status:payrollBatch.status,employeeCount:payrollBatch.employeeCount}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
  if(!header)throw new Error('Payroll close header unavailable');
+ const [reviewCompany]=await tx.select({name:company.legalName}).from(company).where(eq(company.id,header.companyId)).limit(1);if(!reviewCompany?.name)throw new Error('Payroll close company unavailable.');
  const siblings=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).where(eq(payrollBatch.payPeriodId,header.payPeriodId)).orderBy(payrollBatch.id);
  const [cycle]=header.payrollCycleId?await tx.select({name:payrollCycle.name}).from(payrollCycle).where(eq(payrollCycle.id,header.payrollCycleId)):[];
- const review={batchId:id,companyId:header.companyId,payPeriodId:header.payPeriodId,payPeriod:header.payPeriod,runType:header.runType,runSeq:header.runSeq,cycleName:cycle?.name??null,status:'processed' as const,
+ // Same native release resolver; bind only material day/timing policy semantics, not every
+ // passing millisecond. A scheduled→immediate or KL release-day change requires another review.
+ const releaseAt=payslipReleaseAt(prepared.closedAt,prepared.batch.payPeriod,prepared.cpc?.payDay??null,prepared.cpc?.payslipRelease??null)??prepared.closedAt;
+ const releasePolicy=prepared.cpc?.payslipRelease;
+ const releaseTiming={mode:releasePolicy?.mode??'immediate',payDay:prepared.cpc?.payDay??null,day:releasePolicy?.mode==='fixed_day'?(releasePolicy.day??null):null,offsetDays:releasePolicy?.mode==='relative'?(releasePolicy.offsetDays??null):null,effectiveReleaseDay:todayInKualaLumpur(releaseAt),timing:releaseAt.getTime()>prepared.closedAt.getTime()?'scheduled_not_before' as const:'immediate_on_close' as const};
+ const review={batchId:id,companyId:header.companyId,companyName:reviewCompany.name,payPeriodId:header.payPeriodId,payPeriod:header.payPeriod,runType:header.runType,runSeq:header.runSeq,cycleName:cycle?.name??null,status:'processed' as const,
   recordedEmployeeCount:header.employeeCount,visiblePayslipCount:prepared.proof.closingEmploymentIds.length,siblingRunCount:siblings.length,
   otherUnclosedRuns:siblings.filter(row=>row.id!==id&&row.status!=='closed').length,
-  releaseConfigurationPresent:prepared.cpc?.payslipRelease!=null,
+  releaseConfigurationPresent:prepared.cpc?.payslipRelease!=null,releaseTiming,
   consequence:'close_this_run_apply_configured_payslip_release_parent_closes_when_all_runs_closed' as const};
  const priorBatchId=prepared.proof.circuitProof?.source.priorBatchId??null;
  const coverageIds=[...new Set([...prepared.proof.closingEmploymentIds,...prepared.proof.coverageEmploymentIds])];
@@ -8507,12 +8521,16 @@ async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,bat
   (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${coverageIds}::uuid[])) as employments,
   (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.assignment a where a.employment_id=any(${coverageIds}::uuid[])) as assignments,
   (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.attendance a where a.employment_id=any(${prepared.proof.closingEmploymentIds}::uuid[]) and a.attendance_date between ${prepared.proof.closeWindow.start}::date and ${prepared.proof.closeWindow.end}::date) as attendance`);
- const reviewedDigest=createHash('sha256').update(JSON.stringify(payrollCloseSourceValue(['reviewed-payroll-close:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},id,header,siblings,prepared.batch,prepared.cpc,prepared.proof,versions,review]))).digest('hex');
- return{ctx,id,prepared,review,reviewedDigest};
+ const [privacy]=await tx.execute<{people:string[]}>(sql`select app.payroll_close_source_people(${id}::uuid,${priorBatchId}::uuid,${[...coverageIds].sort()}::uuid[]) as people`);
+ const erasurePersonIds=privacy?.people;if(!Array.isArray(erasurePersonIds))throw new Error('Payroll source privacy unavailable.');
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(payrollCloseSourceValue(['reviewed-payroll-close:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},id,header,siblings,prepared.batch,prepared.cpc,prepared.proof,versions,erasurePersonIds,review]))).digest('hex');
+ return{ctx,id,prepared,review,reviewedDigest,erasurePersonIds,erasureSource:{priorBatchId,coverageEmploymentIds:[...coverageIds].sort()}};
+ });
 }
+
 /** INTERNAL prepared fingerprint; future shared custody must keep it encrypted and bind a separate
  * secret-nonce/keyed public review commitment. No model receives source facts or this fingerprint. */
-export async function prepareReviewedPayrollCloseTx(tx:Tx,ctx:SessionContext,batchId:string){const prepared=await reviewedPayrollClosePreflightTx(tx,ctx,batchId);return{review:prepared.review,reviewedDigest:prepared.reviewedDigest};}
+export async function prepareReviewedPayrollCloseTx(tx:Tx,ctx:SessionContext,batchId:string){const prepared=await reviewedPayrollClosePreflightTx(tx,ctx,batchId);return{review:prepared.review,reviewedDigest:prepared.reviewedDigest,erasurePersonIds:prepared.erasurePersonIds,erasureSource:prepared.erasureSource};}
 export async function closeReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,batchId:string,reviewedDigest:string){
  const prepared=await reviewedPayrollClosePreflightTx(tx,ctx,batchId);if(prepared.reviewedDigest!==reviewedDigest)throw new Error('Payroll close review changed');
  const effect=await applyPayrollCloseTx(tx,prepared.ctx,{batchId:prepared.id},prepared.prepared,true);if(!effect?.closedEventId)throw new Error('Payroll close event unavailable');

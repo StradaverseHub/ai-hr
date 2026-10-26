@@ -4,7 +4,7 @@
 -- actual function owner can read these tables as their owner or with existing BYPASSRLS.
 DO $$ BEGIN
  IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE n.nspname='public' AND c.relname IN ('domain_event','payroll_batch','payroll_anomaly_verdict','payslip','company_payroll_config')
+  WHERE n.nspname='public' AND c.relname IN ('domain_event','payroll_batch','payroll_anomaly_verdict','payslip','company_payroll_config','employment','person','assignment')
    AND NOT EXISTS(SELECT 1 FROM pg_roles r WHERE r.rolname=current_user
     AND (r.rolsuper OR r.rolbypassrls OR (c.relowner=r.oid AND NOT c.relforcerowsecurity))))
  THEN RAISE EXCEPTION 'Payroll close receipt owner unavailable'; END IF;
@@ -98,3 +98,42 @@ CREATE FUNCTION app.payroll_close_configuration(p_batch uuid)
 $$;
 REVOKE ALL ON FUNCTION app.payroll_close_configuration(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_close_configuration(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- INTERNAL affected-person projection for the ACTUAL selected current/prior/coverage source union.
+-- No fresh prior selection: ties validate as candidates of the original latest-earlier-month selector.
+-- Relationship checks bound supplied coverage to this run's source graph; trusted canonical source
+-- still owns exact selection/provenance (arbitrary SQL cannot prove it used that engine).
+CREATE FUNCTION app.payroll_close_source_people(p_batch uuid,p_prior uuid,p_coverage uuid[]) RETURNS uuid[]
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b public.payroll_batch%ROWTYPE;ids uuid[];sources uuid[];
+BEGIN
+ SELECT * INTO b FROM public.payroll_batch WHERE id=p_batch AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE
+  OR app.can_admin_payroll_for(b.company_id) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=b.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
+ IF p_coverage IS NULL OR array_position(p_coverage,NULL) IS NOT NULL OR
+  coalesce((SELECT array_agg(DISTINCT q ORDER BY q) FROM unnest(p_coverage) q),'{}'::uuid[]) IS DISTINCT FROM p_coverage
+ THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
+ IF p_prior IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.payroll_batch prior
+  WHERE prior.id=p_prior AND prior.tenant_id=b.tenant_id AND prior.company_id=b.company_id AND prior.pay_period<b.pay_period
+   AND NOT EXISTS(SELECT 1 FROM public.payroll_batch newer WHERE newer.company_id=b.company_id AND newer.pay_period<b.pay_period AND newer.pay_period>prior.pay_period))
+ THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM unnest(p_coverage) selected(id) LEFT JOIN public.employment e ON e.id=selected.id AND e.tenant_id=b.tenant_id
+  WHERE e.id IS NULL OR NOT(EXISTS(SELECT 1 FROM public.payslip slip WHERE slip.batch_id=b.id AND slip.employment_id=e.id AND slip.tenant_id=b.tenant_id)
+   OR (b.run_type='regular' AND e.hired_on<=((b.pay_period||'-01')::date+interval '1 month' - interval '1 day')::date AND (e.terminated_on IS NULL OR e.terminated_on>=(b.pay_period||'-01')::date)
+    -- Membership assertion only, matching entityChangedDuring/employedByCompanyDuring in
+    -- core/employment-company.ts and the unchanged closeOwed tenure predicate. No new nomination.
+    AND EXISTS(SELECT 1 FROM public.assignment changed WHERE changed.employment_id=e.id AND changed.tenant_id=b.tenant_id AND changed.superseded_at IS NULL AND changed.company_id IS NOT NULL AND changed.company_id<>e.company_id AND changed.valid_from<=((b.pay_period||'-01')::date+interval '1 month' - interval '1 day')::date AND (changed.valid_to IS NULL OR changed.valid_to>(b.pay_period||'-01')::date))
+    AND (e.company_id=b.company_id OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=b.tenant_id AND a.company_id=b.company_id AND a.superseded_at IS NULL AND a.valid_from<=((b.pay_period||'-01')::date+interval '1 month' - interval '1 day')::date AND (a.valid_to IS NULL OR a.valid_to>(b.pay_period||'-01')::date))))))
+ THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(DISTINCT id ORDER BY id),'{}'::uuid[]) INTO sources FROM (
+  SELECT slip.employment_id AS id FROM public.payslip slip WHERE slip.batch_id IN (p_batch,p_prior) AND slip.tenant_id=b.tenant_id
+  UNION ALL SELECT unnest(p_coverage)
+ ) q;
+ IF EXISTS(SELECT 1 FROM unnest(sources) q(id) LEFT JOIN public.employment e ON e.id=q.id AND e.tenant_id=b.tenant_id LEFT JOIN public.person p ON p.id=e.person_id AND p.tenant_id=b.tenant_id WHERE e.id IS NULL OR p.id IS NULL)
+ THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(DISTINCT e.person_id ORDER BY e.person_id),'{}'::uuid[]) INTO ids FROM public.employment e WHERE e.id=ANY(sources) AND e.tenant_id=b.tenant_id;
+ RETURN ids;
+END $$;
+REVOKE ALL ON FUNCTION app.payroll_close_source_people(uuid,uuid,uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_close_source_people(uuid,uuid,uuid[]) TO ai_hr_app;
