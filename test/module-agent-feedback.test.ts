@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { recordOwnAgentFeedback, eraseOwnAgentFeedback } from '../core/module-agent-feedback';
+import { recordOwnAgentFeedback, eraseOwnAgentFeedback, purgeExpiredAgentFeedback } from '../core/module-agent-feedback';
 import { hireEmployee } from '../core/org';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -40,6 +40,16 @@ describe('private feedback remains opinion and explicit own-user custody', () =>
     await expect(recordOwnAgentFeedback(admin, { exchangeId, outcome: 'helpful', consented: true })).rejects.toThrow();
     await expect(recordOwnAgentFeedback(ctx, { exchangeId, outcome: 'helpful', consented: false } as never)).rejects.toThrow();
     expect(await rows()).toEqual([]);
+  });
+  it('purges only expired metadata under the actual current group administrator and a bounded batch', async () => {
+    const { admin, ctx, exchangeId } = await fixture();
+    await recordOwnAgentFeedback(ctx, { exchangeId, outcome: 'helpful', consented: true });
+    await owner.db.execute(sql`update public.ai_agent_feedback set created_at=now()-interval '31 days',expires_at=now()-interval '1 day'`);
+    await expect(purgeExpiredAgentFeedback(ctx, 1)).rejects.toThrow();
+    expect(await rows()).toHaveLength(1);
+    expect(await purgeExpiredAgentFeedback(admin, 1)).toEqual({removed:1});
+    expect(await rows()).toEqual([]);
+    await expect(purgeExpiredAgentFeedback(admin, 101)).rejects.toThrow();
   });
   it('removes only the current owner feedback and permits erasure after grant revocation', async () => {
     const { admin, ctx, userId, exchangeId } = await fixture();

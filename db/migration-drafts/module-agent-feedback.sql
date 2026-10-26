@@ -26,3 +26,27 @@ CREATE POLICY ai_agent_feedback_own ON public.ai_agent_feedback FOR ALL TO ai_hr
 REVOKE ALL ON public.ai_agent_feedback FROM PUBLIC;
 --> statement-breakpoint
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.ai_agent_feedback TO ai_hr_app;
+
+--> statement-breakpoint
+-- The FORCE-RLS table owner receives only an expired/current-tenant maintenance policy.
+-- Ordinary application calls cannot acquire this policy: current_user remains ai_hr_app.
+CREATE POLICY ai_agent_feedback_expiry_owner ON public.ai_agent_feedback FOR ALL TO PUBLIC
+ USING(current_user=pg_get_userbyid((SELECT c.relowner FROM pg_class c WHERE c.oid='public.ai_agent_feedback'::regclass))
+  AND tenant_id=app.current_tenant_id() AND expires_at<=now() AND app.is_group_admin() AND app.principal_snapshot_current())
+ WITH CHECK(false);
+--> statement-breakpoint
+CREATE FUNCTION app.purge_expired_agent_feedback(wanted_limit integer DEFAULT 100) RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE removed integer;
+BEGIN
+ IF wanted_limit IS NULL OR wanted_limit<1 OR wanted_limit>100 OR app.current_tenant_id() IS NULL
+  OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() OR NOT app.is_group_admin()
+  OR current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'Feedback maintenance unavailable';END IF;
+ DELETE FROM public.ai_agent_feedback WHERE id IN(SELECT id FROM public.ai_agent_feedback
+  WHERE tenant_id=app.current_tenant_id() AND expires_at<=now() ORDER BY expires_at,id LIMIT wanted_limit FOR UPDATE SKIP LOCKED);
+ GET DIAGNOSTICS removed=ROW_COUNT;
+ RETURN removed;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.purge_expired_agent_feedback(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.purge_expired_agent_feedback(integer) TO ai_hr_app;
