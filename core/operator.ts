@@ -23,6 +23,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
 import { isOperator } from '../lib/authz-model';
 import { isDemoDeployment } from '../lib/demo-mode';
+import { organizationCode } from '../lib/organization-code';
+import { internalSelected } from '../lib/internal-auth/config';
 import { countryPacks } from '../localization/registry';
 import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
 import { PROVISION_STEPS, type ProvisionStep } from '../db/provision';
@@ -36,6 +38,7 @@ export type ProvisionStatus = (typeof PROVISION_STATUSES)[number];
 export type ProvisionRequestRow = {
   id: string;
   customerName: string;
+  organizationCode?: string | null;
   adminEmail: string;
   status: string;
   country: string;
@@ -90,6 +93,7 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
       .select({
         id: tenantProvisionRequest.id,
         customerName: tenantProvisionRequest.customerName,
+        organizationCode: tenantProvisionRequest.organizationCode,
         adminEmail: tenantProvisionRequest.adminEmail,
         status: tenantProvisionRequest.status,
         country: tenantProvisionRequest.country,
@@ -124,6 +128,7 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
 
 export type CreateProvisionRequestInput = {
   customerName: string;
+  organizationCode?: string | null;
   adminEmail: string;
   /** ISO alpha-2. Validated against the REGISTERED country packs — see the note in the body. */
   country?: string;
@@ -149,6 +154,8 @@ export async function createProvisionRequest(
   assertOperator(ctx);
   const customerName = input.customerName.trim();
   const adminEmail = input.adminEmail.trim().toLowerCase();
+  const code = input.organizationCode ? organizationCode(input.organizationCode) : null;
+  if (internalSelected() && !code) throw new Error('An organization code is required for customer sign-in.');
   if (!customerName) throw new Error('A customer name is required.');
   if (!adminEmail || !adminEmail.includes('@')) throw new Error('A valid admin email is required.');
   const country = (input.country ?? 'MY').trim().toUpperCase();
@@ -188,9 +195,17 @@ export async function createProvisionRequest(
   }
 
   return withTenant(ctx, async (tx) => {
+    if (code) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:org:' + code},0))`);
+      const used = await tx.execute(sql`select 1 from app.internal_auth_read(${'org:' + code},false)`);
+      if (used.length) throw new Error('This organization code is already in use. Choose another code.');
+      const reserved = await tx.select({id:tenantProvisionRequest.id}).from(tenantProvisionRequest)
+        .where(sql`${tenantProvisionRequest.organizationCode}=${code} and ${tenantProvisionRequest.status} <> 'failed'`).limit(1);
+      if (reserved.length) throw new Error('This organization code is already in use. Choose another code.');
+    }
     const [row] = await tx
       .insert(tenantProvisionRequest)
-      .values({ customerName, adminEmail, country, plan, requestedBy: ctx.userId ?? null })
+      .values({ customerName, organizationCode: code, adminEmail, country, plan, requestedBy: ctx.userId ?? null })
       .returning({ id: tenantProvisionRequest.id });
     if (modules.length) {
       await tx

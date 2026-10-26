@@ -79,7 +79,7 @@ async function reclaimStale(db: ReturnType<typeof createDb>['db']): Promise<numb
  */
 async function claimNext(
   db: ReturnType<typeof createDb>['db'],
-): Promise<{ id: string; customerName: string; adminEmail: string; country: string; modules: string[] } | null> {
+): Promise<{ id: string; customerName: string; adminEmail: string; country: string; organizationCode: string | null; modules: string[] } | null> {
   const {tenantProvisionRequest,tenantProvisionRequestModule}=await import('../db/schema');
   const {and,eq,sql}=await import('drizzle-orm');
   const rows = await db
@@ -105,6 +105,7 @@ async function claimNext(
       // SELECT them. Every hop in this chain previously dropped everything but name + email, so a
       // widened form alone would have changed nothing observable.
       country: tenantProvisionRequest.country,
+      organizationCode: tenantProvisionRequest.organizationCode,
     });
   const claimed = rows[0];
   if (!claimed) return null;
@@ -182,7 +183,7 @@ async function markFailed(
  */
 async function provisionOne(
   owner: ReturnType<typeof createDb>,
-  req: { id: string; customerName: string; adminEmail: string; country: string; modules: string[] },
+  req: { id: string; customerName: string; adminEmail: string; country: string; organizationCode: string | null; modules: string[] },
 ): Promise<void> {
   const {ProvisionStepError,provisionTenant}=await import('../db/provision');
   const {tenantProvisionRequest}=await import('../db/schema');
@@ -198,11 +199,14 @@ async function provisionOne(
   }
 
   try {
+    const {internalSelected} = await import('../lib/internal-auth/config');
+    if (internalSelected() && !req.organizationCode) throw new Error('An organization code is required. Retry with a new customer request including its code.');
     await owner.db.transaction(async (tx) => {
       const result = await provisionTenant(tx, {
         name: req.customerName,
         adminEmail: req.adminEmail,
         country: req.country,
+        organizationCode: req.organizationCode,
         modules: req.modules,
       });
       await tx
@@ -332,6 +336,9 @@ export async function runProvisionTick(owner: ReturnType<typeof createDb>): Prom
   const claimed = await claimNext(owner.db);
   if (claimed) await provisionOne(owner, claimed);
   const reissued = await reissuePass(owner);
+  // The installed provisioning timer is the owner-role executor for both operator intent queues.
+  const {runModuleChangeTick} = await import('./module-change-runner');
+  await runModuleChangeTick(owner);
   return { reclaimed, provisioned: Boolean(claimed), reissued };
 }
 
