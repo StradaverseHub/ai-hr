@@ -129,6 +129,33 @@ source restoration returned all eleven Play tests to PASS with no diff. Existing
 this adapter. Android key-attestation verification, enrolled-key ownership, stored one-use challenges,
 atomic receipts/counters and live Google/Play-distributed device evidence are still required.
 
+Persistent challenge substrate at `8523ab7c0`: three affected database/API suites passed 49 tests,
+including fourteen new lifecycle cases, migration-journal ordering and existing mobile journeys. Root
+TypeScript exited 0. Migration `0622_mobile_integrity_challenges` was appended after the previous journal
+watermark and exercised only on fresh, disposable local test databases. This is not a rehearsal from the
+live staging baseline, a full gate or a staging migration. No existing applied SQL was edited.
+
+Coverage proves one original nonce under concurrent issuance, immutable request bindings, current own
+subject/RLS isolation, active capacity/shared budget behavior, terminal expiry without nonce replacement,
+atomic callback/audit rollback, stable consumed receipts and application write/delete restrictions.
+The first checkpoint `f281e35d1` failed test loading because of an extra parenthesis; no tests ran in that
+attempt. The repair preserves driver Date precision and explicit types; the initial eight-case pass and
+later expanded checks are retained separately. [Lifecycle decision](../../adr/0148-mobile-integrity-challenge-lifecycle.md).
+
+The first row-lock mutation at `ceff87e57` unexpectedly passed its ordinary concurrent test (and passed
+after restoration), exposing a coverage gap. A deterministic test now holds one consumer inside its
+transaction until the other owned database connection is observably waiting for a lock. At `03ce947b4`,
+removing `FOR UPDATE` caused that test to fail; exact restoration returned it to PASS (one selected case,
+twelve skipped). The tests do not infer overlap merely from two promises being started.
+
+A further write-veto test installs and removes a trigger only in its disposable database. The service
+requires an actual returned transition row before any callback/audit. At `8523ab7c0`, ignoring that guard
+caused the selected test to fail; exact source restoration passed (one selected case, thirteen skipped).
+Both successful mutation harnesses reported `mutation=1 restored=0 exact=0`. These prove local replay and
+transaction safety, not vendor/key ownership or attendance acceptance. Stored keys, canonical enrollment
+assembly, proof-to-challenge binding, revocation, versioned APIs/native integration and full release/device
+verification remain unfinished; the generic challenge functions are not exposed as public routes.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
