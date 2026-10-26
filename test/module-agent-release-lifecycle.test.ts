@@ -2,12 +2,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import { hireEmployee } from '../core/org';
 import { grantAssistant } from '../core/assistant-grant';
 import { AGENT_MODULE_CODES } from '../lib/ai/module-agents';
 import { createRoutingAgentCandidate,evaluateRoutingAgentCandidate,promoteRoutingAgentCandidate,
- rollbackRoutingAgent,runGovernedModuleReadPlan,maintainModuleAgentReleases } from '../core/module-agent-releases';
+ rollbackRoutingAgent,runGovernedModuleReadPlan,reopenGovernedModuleReadJobTx,maintainModuleAgentReleases } from '../core/module-agent-releases';
 import { adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base } from './harness';
 let base:Base,oldSecret:string|undefined;
 beforeAll(async()=>{oldSecret=process.env.AI_CONFIG_SECRET;process.env.AI_CONFIG_SECRET='fictional-agent-receipt-unit-passphrase';await migrateTestDb();});
@@ -39,29 +39,36 @@ describe('durable non-vacuous independent routing evaluation',()=>{
  it('actually consumes the candidate order, atomically bounds jobs, records receipts and restores baseline',async()=>{
   const a=await verified();await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:1,hours:1});
   const plan={version:1,modules:['employees','ess']};
-  const first=await runGovernedModuleReadPlan(a.author,plan);
+  const first=await runGovernedModuleReadPlan(a.author,plan,{nonce:randomUUID()});
   expect(first.mode).toBe('promoted');expect(first.results.map(row=>row.module)).toEqual(['ess','employees']);
-  const second=await runGovernedModuleReadPlan(a.author,plan);
+  const second=await runGovernedModuleReadPlan(a.author,plan,{nonce:randomUUID()});
   expect(second.mode).toBe('baseline');expect(second.results.map(row=>row.module)).toEqual(['employees','ess']);
   const [rows]=await owner.db.execute<{jobs:number;used:number}>(sql`select(select count(*)::int from public.ai_agent_job_receipt) as jobs,(select used_jobs from public.ai_agent_promotion limit 1) as used`);
-  expect(rows).toEqual({jobs:1,used:1});expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:1});
+  expect(rows).toEqual({jobs:2,used:1});expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:1});
+ });
+ it('a lost redirect or duplicate POST nonce cannot consume a second promoted permit',async()=>{
+  const a=await verified();await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1});
+  const nonce=randomUUID(),plan={version:1,modules:['employees','ess']};const first=await runGovernedModuleReadPlan(a.author,plan,{nonce}),second=await runGovernedModuleReadPlan(a.author,plan,{nonce});
+  expect(second).toMatchObject({jobId:first.jobId,mode:'promoted',replayed:true});
+  const reopened=await withTenant(a.author,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reopenGovernedModuleReadJobTx(tx,a.author,first.jobId);});expect(reopened.mode).toBe('promoted');
+  const [row]=await owner.db.execute<{jobs:number;used:number}>(sql`select(select count(*)::int from public.ai_agent_job_receipt) as jobs,(select used_jobs from public.ai_agent_promotion limit 1) as used`);expect(row).toEqual({jobs:1,used:1});
  });
  it('persists human rollback and never lets a source-changed receipt remain active',async()=>{
   const a=await verified();const promotion=await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:4,hours:1});
   await rollbackRoutingAgent(a.second,{promotionId:promotion.promotionId,reason:'security_regression'});
-  expect((await runGovernedModuleReadPlan(a.author,{version:1,modules:['employees','ess']})).mode).toBe('baseline');
+  expect((await runGovernedModuleReadPlan(a.author,{version:1,modules:['employees','ess']},{nonce:randomUUID()})).mode).toBe('baseline');
   const next=await createRoutingAgentCandidate(a.author,{version:2,configuration:configuration()});
   await evaluateRoutingAgentCandidate(a.reviewer,next.candidateId);await evaluateRoutingAgentCandidate(a.second,next.candidateId);
   await promoteRoutingAgentCandidate(a.reviewer,{candidateId:next.candidateId,maxJobs:2,hours:1});
   await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${'0'.repeat(64)} where id=${next.candidateId}::uuid`);
-  expect((await runGovernedModuleReadPlan(a.author,{version:1,modules:['employees','ess']})).mode).toBe('baseline');
+  expect((await runGovernedModuleReadPlan(a.author,{version:1,modules:['employees','ess']},{nonce:randomUUID()})).mode).toBe('baseline');
   const reasons=await owner.db.execute<{reason:string}>(sql`select reason from public.ai_agent_rollback order by created_at,id`);
   expect(reasons.map(row=>row.reason)).toEqual(['security_regression','source_changed']);
  });
  it('rolls back permit reservation if a selected module is revoked before canonical execution',async()=>{
   const a=await verified();await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1});
   await setModule(base.tenantId,'attendance','disabled');
-  await expect(runGovernedModuleReadPlan(a.author,{version:1,modules:['attendance']})).rejects.toThrow();
+  await expect(runGovernedModuleReadPlan(a.author,{version:1,modules:['attendance']},{nonce:randomUUID()})).rejects.toThrow();
   const [row]=await owner.db.execute<{used:number}>(sql`select used_jobs as used from public.ai_agent_promotion limit 1`);
   expect(row.used).toBe(0);
  });

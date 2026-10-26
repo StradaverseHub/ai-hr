@@ -9,6 +9,8 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
  return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??'{'+field+'}'));
 }}));
+vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>{
  if(state.fail)throw Error('PRIVATE_DATABASE_ERROR_BODY');const binding=MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)!;
@@ -16,7 +18,7 @@ vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ct
 }}))}));
 import {withAssistantRead} from '../core/assistant-read-session';
 import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
-import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply} from '../components/assistant/module-jobs';
+import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer} from '../components/assistant/module-jobs';
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES} from '../lib/ai/module-agents';
 import type {SessionContext} from '../db/client';
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
@@ -63,6 +65,14 @@ describe('deterministic current-user job cards',()=>{
   render(await GroundedWorkspaceReply({reply:{...reply,mode:'unavailable',fallbackModules:['leave']},ctx}));
   expect(screen.getByText((copies[locale] as typeof en).assistant.workspace.answers.unavailable)).toBeTruthy();
   expect(screen.getByRole('link').getAttribute('href')).toBe('/assistant?job=leave');
+ });
+
+ it.each(['en','ms','zh','ta','th','vi'])('%s makes grouped execution an explicit human submit with a stable form nonce',async locale=>{
+  state.locale=locale;const result=render(await GovernedModuleJobComposer({modules:['employees','leave']}));
+  const copy=(copies[locale] as typeof en).assistant.workspace.governed;expect(screen.getByRole('button',{name:copy.run})).toBeTruthy();
+  expect(screen.getAllByRole('combobox')).toHaveLength(4);const fields=new FormData(result.container.querySelector('form')!);
+  expect(fields.get('commandNonce')).toMatch(/^[a-f0-9-]{36}$/);expect(result.container.querySelectorAll('a')).toHaveLength(0);
+  expect(withAssistantRead).not.toHaveBeenCalled();
  });
 
 });

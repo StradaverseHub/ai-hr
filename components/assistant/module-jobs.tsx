@@ -1,4 +1,7 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
+import {randomUUID} from 'node:crypto';
+import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
+import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {Card} from '../ui';
 import type {SessionContext} from '../../db/client';
@@ -73,4 +76,24 @@ export async function GroundedWorkspaceReply({reply,ctx}:{reply:GroundedWorkspac
   {reply.fallbackModules.filter(module=>MODULE_JOBS.some(([code])=>code===module)).map(module=><a key={module} href={'/assistant?job='+encodeURIComponent(module)}
    className="mr-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('openTask')}</a>)}
  </div>;
+}
+
+/** The GET chooser stays read-only. Only an explicit human POST can consume a governed job permit. */
+export async function GovernedModuleJobComposer({modules}:{modules:readonly AgentModuleCode[]}){
+ const t=await getTranslations('assistant.workspace.governed'),jobs=await getTranslations('assistant.workspace.jobs');
+ return <Card className="p-5"><h2 className="text-base font-semibold">{t('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p>
+  <form action={runGovernedPlanAction} className="mt-4 space-y-3"><input type="hidden" name="commandNonce" value={randomUUID()}/>
+   <div className="grid gap-3 sm:grid-cols-2">{[0,1,2,3].map(index=><label key={index} className="text-sm">{t('task',{n:index+1})}
+    <select name="module" required={index===0} defaultValue="" className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+     <option value="">{t(index===0?'choose':'optional')}</option>{MODULE_JOBS.filter(([module])=>modules.includes(module)).map(([module])=><option key={module} value={module}>{jobs(`module_${module}`)}</option>)}
+    </select></label>)}</div>
+   <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('run')}</button>
+  </form></Card>;
+}
+export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJobView;ctx:SessionContext}){
+ const t=await getTranslations('assistant.workspace.governed');
+ if(view.state!=='ready')return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;
+ return <section className="space-y-4" aria-label={t('result')}><p className="text-sm text-muted-foreground">{t(view.mode==='promoted'?'promoted':'baseline')}</p>
+  {view.changedSinceRun&&<p role="status" className="text-xs text-muted-foreground">{t('changed')}</p>}
+  {view.views.map(row=><CanonicalModuleJob key={row.viewId} view={row} ctx={ctx}/>)}</section>;
 }

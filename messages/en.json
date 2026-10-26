@@ -16522,9 +16522,23 @@
         "tool_my_pay_change": "Your pay changes",
         "tool_my_claim_statuses": "Your claim statuses",
         "tool_my_module_work": "Current module records"
+      },
+      "governed": {
+        "title": "Review tasks together",
+        "intro": "Choose up to four distinct tasks. Each run saves a private receipt, so a retry stays tied to the same run.",
+        "task": "Task {n}",
+        "choose": "Choose a task",
+        "optional": "Optional task",
+        "run": "Run selected tasks",
+        "result": "Your task results",
+        "baseline": "These tasks ran in your chosen order.",
+        "promoted": "An independently reviewed version ordered these tasks.",
+        "changed": "Some records changed since this run. These cards show the details you can access now.",
+        "unavailable": "This run needs a fresh look. I can’t safely reopen it right now. Run the selected tasks again."
       }
     },
-    "denied_unavailable": "A little snag on my side. Please try again in a moment."
+    "denied_unavailable": "A little snag on my side. Please try again in a moment.",
+    "err_governed_job": "That task run hit a little speed bump. Check your task choices and try again."
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",

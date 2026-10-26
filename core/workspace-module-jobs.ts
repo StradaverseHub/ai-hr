@@ -1,6 +1,7 @@
 /** Deterministic user jobs: one fresh closed Assistant carrier, no provider/model or shared cache. */
 import {randomUUID} from 'node:crypto';
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
+import {reopenGovernedModuleReadJobTx} from './module-agent-releases';
 import {withAssistantRead} from './assistant-read-session';
 import {isAgentModuleCode,MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from '../lib/ai/module-agents';
 import {toolsFor} from './assistant-tools';
@@ -48,4 +49,17 @@ export async function loadCanonicalToolJob(ctx:SessionContext,name:string,input:
   if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:name});
  }catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
+}
+
+export type GovernedWorkspaceJobView=Readonly<{state:'ready';jobId:string;mode:'baseline'|'promoted';changedSinceRun:boolean;views:readonly CanonicalModuleJobView[]}|{state:'unavailable'}>;
+/** Receipt reopening loads only fresh canonical facts in the supplied read-only source carrier. */
+export async function loadGovernedWorkspaceJobTx(ctx:SessionContext,tx:Tx,id:string):Promise<GovernedWorkspaceJobView>{
+ const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ try{const result=await reopenGovernedModuleReadJobTx(tx,current,id),views:CanonicalModuleJobView[]=[];
+  for(const row of result.results){if(!isAgentModuleCode(row.module)||row.scope!=='current-caller'||row.capability!==MODULE_AGENT_CAPABILITIES.find(binding=>binding[0]===row.module)![1])throw Error();
+   const view=Object.freeze({state:'ready' as const,presentation:presentCanonicalModuleData(row.module,row.data),checkedAt:Date.now(),viewId:randomUUID()});
+   owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});views.push(view);
+  }
+  return Object.freeze({state:'ready',jobId:result.jobId,mode:result.mode,changedSinceRun:result.changedSinceRun,views:Object.freeze(views)});
+ }catch{return Object.freeze({state:'unavailable'});}
 }

@@ -83,8 +83,14 @@ GRANT UPDATE(used_jobs) ON public.ai_agent_promotion TO ai_hr_app;
 --> statement-breakpoint
 CREATE TABLE public.ai_agent_job_receipt (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
- user_id uuid NOT NULL REFERENCES public.app_user(id),promotion_id uuid NOT NULL REFERENCES public.ai_agent_promotion(id),
- receipt text NOT NULL CHECK(length(receipt) BETWEEN 1 AND 65536),created_at timestamptz NOT NULL DEFAULT now()
+ user_id uuid NOT NULL REFERENCES public.app_user(id),promotion_id uuid REFERENCES public.ai_agent_promotion(id),
+ -- v1 synthetic/audit receipts retain NULL lifecycle metadata; only v2 commands reopen as jobs.
+ request_nonce uuid,requested_plan_digest text CHECK(requested_plan_digest~'^[a-f0-9]{64}$'),
+ expires_at timestamptz,
+ receipt text NOT NULL CHECK(length(receipt) BETWEEN 1 AND 65536),created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK((request_nonce IS NULL AND requested_plan_digest IS NULL AND expires_at IS NULL) OR
+  (request_nonce IS NOT NULL AND requested_plan_digest IS NOT NULL AND expires_at IS NOT NULL AND expires_at>created_at AND expires_at<=created_at+interval '720 hours')),
+ UNIQUE(tenant_id,user_id,request_nonce)
 );
 --> statement-breakpoint
 ALTER TABLE public.ai_agent_job_receipt ENABLE ROW LEVEL SECURITY;
@@ -93,7 +99,7 @@ CREATE POLICY ai_agent_job_own ON public.ai_agent_job_receipt FOR SELECT TO ai_h
  USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id());
 CREATE POLICY ai_agent_job_create ON public.ai_agent_job_receipt FOR INSERT TO ai_hr_app
  WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()
- AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_job_receipt.tenant_id AND p.owner_user_id=app.current_user_id()));
+ AND (promotion_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_job_receipt.tenant_id AND p.owner_user_id=app.current_user_id())));
 REVOKE ALL ON public.ai_agent_job_receipt FROM PUBLIC;
 GRANT SELECT,INSERT ON public.ai_agent_job_receipt TO ai_hr_app;
 
@@ -110,3 +116,6 @@ CREATE TRIGGER ai_agent_permit_monotonic BEFORE UPDATE ON public.ai_agent_promot
 
 --> statement-breakpoint
 CREATE INDEX ai_agent_evaluation_latest ON public.ai_agent_evaluation(candidate_id,evaluator_user_id,completed_at DESC,id DESC);
+
+--> statement-breakpoint
+CREATE INDEX ai_agent_job_expiry ON public.ai_agent_job_receipt(tenant_id,expires_at,id) WHERE expires_at IS NOT NULL;

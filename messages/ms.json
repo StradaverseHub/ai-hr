@@ -16522,9 +16522,23 @@
         "tool_my_pay_change": "Perubahan gaji anda",
         "tool_my_claim_statuses": "Status tuntutan anda",
         "tool_my_module_work": "Rekod modul semasa"
+      },
+      "governed": {
+        "title": "Semak tugasan bersama",
+        "intro": "Pilih sehingga empat tugasan berbeza. Setiap larian menyimpan resit peribadi supaya cubaan semula terikat pada larian yang sama.",
+        "task": "Tugasan {n}",
+        "choose": "Pilih tugasan",
+        "optional": "Tugasan pilihan",
+        "run": "Jalankan tugasan dipilih",
+        "result": "Keputusan tugasan anda",
+        "baseline": "Tugasan ini dijalankan mengikut susunan pilihan anda.",
+        "promoted": "Versi yang disemak secara bebas menyusun tugasan ini.",
+        "changed": "Sesetengah rekod berubah sejak larian ini. Kad ini menunjukkan butiran yang boleh anda akses sekarang.",
+        "unavailable": "Larian ini perlu disemak semula. Saya belum dapat membukanya dengan selamat. Jalankan semula tugasan dipilih."
       }
     },
-    "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti."
+    "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
+    "err_governed_job": "Larian tugasan itu tersangkut sedikit. Semak pilihan tugasan anda dan cuba lagi."
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",

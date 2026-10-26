@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import type {SessionContext} from '../db/client';
 import type {AssistantReadSession} from '../core/assistant-read-session';
 const state=vi.hoisted(()=>({allowed:true,payload:{ok:true,employee:{name:'Canonical person',employeeCode:'CANONICAL-7',company:'Current company',hiredOn:'2020-01-01'}} as unknown}));
+vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,_module:unknown,consume:(read:unknown)=>Promise<unknown>,existing:unknown)=>{
  if(!state.allowed||!existing)throw Error('PRIVATE_AUTHORIZATION_ERROR');return consume(existing);
 })}));

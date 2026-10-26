@@ -17,7 +17,7 @@ import { assertAiActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx } from './entitlements';
 import { withAssistantReadTx, withAssistantJobReadsTx, type AssistantReadSession } from './assistant-read-session';
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
-import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST } from '../lib/ai/module-agent-prompt-candidate';
+import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { governedAiConfig,withAiAdmissionCheck } from './ai-governance';
 import { executePromptHoldout,type PromptHoldoutReport } from './module-agent-prompt-harness';
@@ -164,11 +164,52 @@ export async function rollbackRoutingAgent(ctx:SessionContext,input:{promotionId
       values(${current.tenantId}::uuid,${p.promotionId}::uuid,${current.userId}::uuid,${p.reason}) on conflict(promotion_id) do nothing`);
   });}catch{return fail();}
 }
-/** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure. */
-export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown) {
-  const current=capture(ctx),plan=captureTypedModulePlan(proposed);
+export const GOVERNED_JOB_RETENTION_DAYS=30;
+type GovernedJobRow={id:string;user_id:string;promotion_id:string|null;request_nonce:string|null;requested_plan_digest:string|null;receipt:string;created_at:string;expires_at:string|null;fresh:boolean};
+const jobProjection=sql`id,user_id,promotion_id,request_nonce,requested_plan_digest,receipt,created_at::text,expires_at::text,(expires_at>now()) as fresh`;
+function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
+ if(!ctx.userId||row.user_id!==ctx.userId||!row.request_nonce||!row.expires_at||!row.fresh)return fail();
+ const proof=open('governed-job-v2',ctx.tenantId,row.id,row.receipt);
+ if(!exact(proof,['version','stage','tenantId','userId','commandNonce','mode','candidateDigest','promotionId','sourceDigest','engineDigest','policyDigest','requestedPlan','executedPlan','requestedPlanDigest','executedPlanDigest','resultDigest','createdAt','expiresAt','elapsedMs'])||
+  proof.version!==2||proof.stage!=='completed'||proof.tenantId!==ctx.tenantId||proof.userId!==ctx.userId||proof.commandNonce!==row.request_nonce||
+  proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.engineDigest!==ROUTING_ENGINE_DIGEST||proof.policyDigest!==ROUTING_POLICY_DIGEST||
+  proof.promotionId!==row.promotion_id||(proof.mode!=='baseline'&&proof.mode!=='promoted')||
+  (proof.mode==='promoted')!==Boolean(row.promotion_id)||typeof proof.candidateDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.candidateDigest)||
+  typeof proof.resultDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.resultDigest)||!Number.isSafeInteger(proof.elapsedMs)||Number(proof.elapsedMs)<0||
+  new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();
+ const requested=captureTypedModulePlan(proof.requestedPlan),executed=captureTypedModulePlan(proof.executedPlan);
+ if(routingDigest(requested)!==row.requested_plan_digest||proof.requestedPlanDigest!==row.requested_plan_digest||routingDigest(executed)!==proof.executedPlanDigest||
+  [...requested.modules].sort().join(',')!==[...executed.modules].sort().join(',')||
+  new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>GOVERNED_JOB_RETENTION_DAYS*86400000)return fail();
+ return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest};
+}
+/** Read-only replay: old v1 receipts remain audit-only. Current canonical facts are loaded afresh;
+ * the encrypted receipt nominates a bounded plan, never a stored HR fact or current permission.
+ */
+export async function reopenGovernedModuleReadJobTx(tx:Tx,ctx:SessionContext,id:string){
+ const current=capture(ctx);if(!uuid(id))return fail();
+ const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);if(mode?.readonly!=='on')return fail();
+ const fresh=await guard(tx,current,false);
+ const [row]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
+  where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+ if(!row)return fail();const proof=verifiedGovernedJob(row,current);
+ const results=await withAssistantReadTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
+ return {jobId:row.id,mode:proof.mode,changedSinceRun:assistantSourceDigest(results)!==proof.resultDigest,results};
+}
+/** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure.
+ * Every command caller supplies a retained nonce; no read or retry path invents a new command identity.
+ */
+export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string}) {
+  const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,started=Date.now();
+  if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,['nonce']))return fail();
   try{return await withTenant(current,async tx=>{
     const fresh=await guard(tx,current,false);
+    const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
+    const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
+     where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
+    if(existing){const proof=verifiedGovernedJob(existing,current);if(routingDigest(plan)!==routingDigest(proof.requested))return fail();
+     const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
+     return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:proof.mode,results,effects:[],replayed:true};}
     const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
       from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.module_code='assistant'
       and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
@@ -191,11 +232,15 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
     const results=await withAssistantJobReadsTx(fresh,tx,async read=>{
       const rows:AgentReadResult[]=[];for(const module of selected.modules)rows.push(await read.moduleWork(module));return rows;
     });
-    if(activePromotion){const id=randomUUID(),receipt=seal('job',current.tenantId,id,{version:1,candidateDigest,
-      promotionId:activePromotion.id,planDigest:routingDigest(plan),executedPlanDigest:routingDigest(selected),resultDigest:assistantSourceDigest(results)});
-      await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,receipt)
-        values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${activePromotion.id}::uuid,${receipt})`);}
-    return {version:1 as const,candidateDigest,mode:activePromotion?'promoted':'baseline',results,effects:[]};
+    const id=randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${GOVERNED_JOB_RETENTION_DAYS*86400}))::text as expires`);
+    const mode=activePromotion?'promoted' as const:'baseline' as const;
+    const receipt=seal('governed-job-v2',current.tenantId,id,{version:2,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,
+     mode,candidateDigest,promotionId:activePromotion?.id??null,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:ROUTING_ENGINE_DIGEST,policyDigest:ROUTING_POLICY_DIGEST,
+     requestedPlan:plan,executedPlan:selected,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(selected),resultDigest:assistantSourceDigest(results),
+     createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started)});
+    await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt)
+      values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${activePromotion?.id??null}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
+    return {version:1 as const,jobId:id,candidateDigest,mode,results,effects:[],replayed:false};
   });}catch{return fail();}
 }
 
@@ -215,7 +260,7 @@ export async function maintainModuleAgentReleases(ctx:SessionContext,limit=100){
 
 /** Explicit consent is for the fixed synthetic suite only; no caller-authored HR prompt is sent. */
 export type AgentSyntheticConsent=Readonly<{synthetic:true;maxRequests:number;sourceDigest:string}>;
-function captureSyntheticConsent(value:AgentSyntheticConsent,requests:number=PROMPT_HOLDOUTS.length){
+function captureSyntheticConsent(value:AgentSyntheticConsent,requests:number=PROMPT_HOLDOUT_REQUEST_LIMIT){
  if(!value||!exact(value,['synthetic','maxRequests','sourceDigest'])||value.synthetic!==true||
   value.maxRequests!==requests||value.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  return Object.freeze({synthetic:true as const,maxRequests:value.maxRequests,sourceDigest:value.sourceDigest});
@@ -281,7 +326,7 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
    await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
     values(${proof.id}::uuid,${current.tenantId}::uuid,${candidateId}::uuid,${current.userId}::uuid,${PROMPT_SUITE_DIGEST},${receipt})`);
    return {evaluationId:proof.id,coverage:report.coverage,state:report.state,attemptedRequests:report.attemptedRequests,
-    completedRequests:report.completedRequests,retainedPasses:report.retainedPasses,securityFailures:report.securityFailures,qualityFailures:report.qualityFailures};
+    completedRequests:report.completedRequests,completedCases:report.completedCases,totalCases:PROMPT_HOLDOUTS.length,retainedPasses:report.retainedPasses,retainedFailures:report.retainedFailures,securityFailures:report.securityFailures,qualityFailures:report.qualityFailures};
   });
  }catch{return fail();}
 }

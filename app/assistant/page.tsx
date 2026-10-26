@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getSession } from '@/lib/session';
 import { loadAiWorkspace } from '@/core/ai-workspace';
-import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply} from '@/components/assistant/module-jobs';
+import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
 import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
 import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
@@ -36,12 +36,12 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
-  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined,includeGovernance:sp.job===undefined,selectedExchangeId:sp.e});
+  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed});
   const access = workspace.access;
 
   if (!access.allowed) {
@@ -61,7 +61,7 @@ export default async function AssistantPage({
   }
 
   const { history } = workspace;
-  const selectedJob=sp.job===undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
+  const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
@@ -74,6 +74,8 @@ export default async function AssistantPage({
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
+      {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
+      <GovernedModuleJobComposer modules={workspace.jobModules}/>
 
       <Card className="p-5">
         <WorkspaceComposer action={askAssistantAction} tasks={tasks} labels={{
@@ -84,7 +86,7 @@ export default async function AssistantPage({
 
       {'agentReview' in workspace&&workspace.agentReview&&<ModuleAgentReview view={workspace.agentReview}/>}
 
-      {!selectedJob&&history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
+      {!selectedJob&&!workspace.governedJob&&history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
       <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>
       {history.map((h) => (
         <Card key={h.id} className={`p-5 ${h.id === sp.e ? 'ring-1 ring-primary' : ''}`}>
@@ -129,7 +131,7 @@ export default async function AssistantPage({
         <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
       </form>
       </section>}
-      {!selectedJob&&history.length === 0 && (
+      {!selectedJob&&!workspace.governedJob&&history.length === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         </Card>

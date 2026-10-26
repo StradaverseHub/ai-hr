@@ -16522,9 +16522,23 @@
         "tool_my_pay_change": "你的薪资变化",
         "tool_my_claim_statuses": "你的报销状态",
         "tool_my_module_work": "当前模块记录"
+      },
+      "governed": {
+        "title": "一起查看任务",
+        "intro": "最多选择四项不同任务。每次运行都会保存私人凭据，重试会关联到同一次运行。",
+        "task": "任务 {n}",
+        "choose": "选择任务",
+        "optional": "可选任务",
+        "run": "运行所选任务",
+        "result": "你的任务结果",
+        "baseline": "这些任务按你选择的顺序运行。",
+        "promoted": "这些任务采用了经过独立审查的版本所安排的顺序。",
+        "changed": "部分记录自运行后已更改。卡片显示你目前有权查看的详情。",
+        "unavailable": "这次运行需要重新查看。我现在无法安全地打开它。请重新运行所选任务。"
       }
     },
-    "denied_unavailable": "我这边遇到了小状况，请稍后再试。"
+    "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
+    "err_governed_job": "这次任务运行遇到了小状况，请检查任务选择后重试。"
   },
   "controlTower": {
     "howTitle": "控制塔的运作方式",

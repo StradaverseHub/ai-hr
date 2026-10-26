@@ -16522,9 +16522,23 @@
         "tool_my_pay_change": "Thay đổi lương của bạn",
         "tool_my_claim_statuses": "Trạng thái hoàn phí của bạn",
         "tool_my_module_work": "Hồ sơ mô-đun hiện tại"
+      },
+      "governed": {
+        "title": "Xem nhiều tác vụ cùng nhau",
+        "intro": "Chọn tối đa bốn tác vụ khác nhau. Mỗi lần chạy lưu một biên nhận riêng tư, để lần thử lại vẫn gắn với lần chạy đó.",
+        "task": "Tác vụ {n}",
+        "choose": "Chọn tác vụ",
+        "optional": "Tác vụ tùy chọn",
+        "run": "Chạy tác vụ đã chọn",
+        "result": "Kết quả tác vụ của bạn",
+        "baseline": "Các tác vụ chạy theo thứ tự bạn đã chọn.",
+        "promoted": "Một phiên bản được đánh giá độc lập đã sắp xếp các tác vụ này.",
+        "changed": "Một số hồ sơ đã thay đổi từ lần chạy này. Các thẻ hiển thị chi tiết bạn hiện được phép truy cập.",
+        "unavailable": "Lần chạy này cần được xem lại. Hiện tôi chưa thể mở an toàn. Hãy chạy lại các tác vụ đã chọn."
       }
     },
-    "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát."
+    "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
+    "err_governed_job": "Lần chạy gặp chút trục trặc. Kiểm tra các tác vụ đã chọn rồi thử lại."
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",
