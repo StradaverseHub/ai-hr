@@ -1832,3 +1832,18 @@ AST syntax/diff review only. This supersedes the statement that no command sourc
 exists, but NOT the absence of a mounted authenticated POST/CSRF owner, universal
 writer/authority/config protection, applied migrations or runtime/experience proof.
 Keep the command unmounted until those release-blocking requirements are demonstrated.
+
+
+Holiday/calendar configuration participants (source-only, UNRUN): national/state/
+company/group holiday create/update/delete, holiday-group create/update/delete and
+the shared group tick-list writer now own Access then exclusive leave configuration
+as their first actual transaction phase, before source validation/reference reads,
+row locks, cascades and events. Inputs/context, including state/holiday-ID arrays,
+are captured before awaits; the public tick-list wrapper captures before opening
+its transaction as well. Existing canonical business bodies remain in place.
+Seven authored actual real-employee two-connection cases hold an ordinary source
+interval, require exact unchanged holiday/group/link/event state on refusal, then
+release and require the intended canonical mutation and one event. All UNRUN.
+AST syntax/diff review only; replacement-calendar owners, assignments, country seed/
+raw writers and other earlier dependency intervals remain pending. This does not
+establish a universal installed barrier or current security/experience proof.

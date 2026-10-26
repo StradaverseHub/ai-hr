@@ -8,6 +8,7 @@ import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type 
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0077 slice 5 — the per-company install hook (see createCompany).
 import { companyInstallersFor } from './module-activation';
@@ -1689,6 +1690,8 @@ export async function createHoliday(
     active?: boolean;
   },
 ) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const country = isoCode(p.country, 'MY', 'Country');
   const name = cleanName(p.name, 'Holiday name');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
@@ -1710,6 +1713,8 @@ export async function createHoliday(
   // national and silently clear it on the next Save; better refused at the door, in the same words.
   if (state && !statesForCountries([country]).has(state)) throw new Error(`Unknown state “${state}”.`);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     let companyName: string | null = null;
     if (companyId) {
       // Cross-tenant FK guard: the FK is satisfied by any existing id, so verify the company is THIS
@@ -1822,6 +1827,8 @@ export async function updateHoliday(
     state?: string | null;
   },
 ) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   // Validate up front (before any DB work), reusing create's guards so update is no laxer than create.
   if (p.holidayDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) {
     throw new Error('Holiday date must be YYYY-MM-DD');
@@ -1830,6 +1837,8 @@ export async function updateHoliday(
   const nextType = p.holidayType !== undefined ? cleanHolidayType(p.holidayType) : undefined;
   const nextState = p.state !== undefined ? p.state?.trim() || null : undefined;
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
         country: holiday.country,
@@ -1936,7 +1945,11 @@ export async function updateHoliday(
 }
 
 export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [deleted] = await tx
       .delete(holiday)
       .where(eq(holiday.id, p.id))
@@ -2098,6 +2111,10 @@ async function setGroupHolidaysTx(
   ctx: SessionContext,
   p: { groupId: string; holidayIds: string[] },
 ): Promise<void> {
+  p = { ...p, holidayIds: p.holidayIds.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   const desired = [...new Set(p.holidayIds.map((s) => s.trim()).filter(Boolean))];
   // Validate every desired id belongs to THIS tenant's holiday set (RLS already scopes, but a clear error
   // beats a raw FK violation). Skip the query when nothing is desired.
@@ -2147,6 +2164,8 @@ async function setGroupHolidaysTx(
 
 /** 66b8f5a8 — public wrapper: set a group's ticked holidays in its own transaction. */
 export async function setGroupHolidays(ctx: SessionContext, p: { groupId: string; holidayIds: string[] }) {
+  p = { ...p, holidayIds: p.holidayIds.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, (tx) => setGroupHolidaysTx(tx, ctx, p));
 }
 
@@ -2165,6 +2184,8 @@ export async function createHolidayGroup(
     holidayIds?: string[];
   },
 ) {
+  p = { ...p, states: p.states.slice(), holidayIds: p.holidayIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const name = cleanName(p.name, 'Group name');
   const archetype = cleanArchetype(p.archetype);
   const parentGroupId = p.parentGroupId?.trim() || null;
@@ -2172,6 +2193,8 @@ export async function createHolidayGroup(
   const description = p.description?.trim() || null;
   const active = p.active ?? true;
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // Inside the tx: the vocabulary depends on which countries this tenant operates in.
     const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId, await tenantCompanyCountries(tx));
     let parentName: string | null = null;
@@ -2215,7 +2238,11 @@ export async function updateHolidayGroup(
     holidayIds?: string[];
   },
 ) {
+  p = { ...p, states: p.states?.slice(), holidayIds: p.holidayIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
         name: holidayGroup.name,
@@ -2296,7 +2323,11 @@ export async function updateHolidayGroup(
 }
 
 export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string }) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // R18 a519a96e: block deleting a PARENT while child groups still inherit from it (lock the children so
     // a concurrent re-parent can't race the guard). The ON DELETE SET NULL FK is the backstop — a bypassed
     // delete detaches children rather than orphaning them — but the friendly path is to re-parent first.
