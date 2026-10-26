@@ -1,5 +1,6 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 const m=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn(),internalIdentity:vi.fn(),workosIdentity:vi.fn(),internal:vi.fn(),keycloak:vi.fn(),policy:vi.fn(),preferences:vi.fn(),retry:vi.fn(),accountRetry:vi.fn(),emailAdmin:vi.fn()}));
+vi.mock('../core/letter-email-preferences',()=>({saveLetterEmailPreferences:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.identity}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:m.keycloak}));

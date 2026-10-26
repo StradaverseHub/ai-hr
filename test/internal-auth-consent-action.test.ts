@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { generate } from 'otplib';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const boundary=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn()}));
+vi.mock('../core/letter-email-preferences',()=>({saveLetterEmailPreferences:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:boundary.session}));
 vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:boundary.identity}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));

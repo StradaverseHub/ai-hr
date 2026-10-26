@@ -18047,6 +18047,11 @@
     }
   },
   "workflowEmail": {
+    "letterAccountTitle": "Letters for this account",
+    "letterAccountHelp": "Receive secure links to letters that need your attention. This preference also applies if your account has no employment record. Email requires company notification settings, organisation policy, and an available email service. No letter content or attachment is included.",
+    "letterAccountConsent": "Receive Letters email for this account",
+    "letterAccountLanguage": "Letters email language",
+    "letterAccountSave": "Save Letters email preference",
     "title": "Workflow email notifications",
     "description": "Choose which workflow updates may be emailed. Each employee also chooses their own email preferences.",
     "preferencesTitle": "My email notifications",

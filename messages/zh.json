@@ -18047,6 +18047,11 @@
     }
   },
   "workflowEmail": {
+    "letterAccountTitle": "此账户的信函通知",
+    "letterAccountHelp": "接收需要您处理的信函的安全链接。即使此账户没有雇佣记录，此偏好设置也适用。发送邮件须符合公司通知设置和组织政策，并有可用的邮件服务。邮件不包含信函内容或附件。",
+    "letterAccountConsent": "为此账户接收信函邮件",
+    "letterAccountLanguage": "信函邮件语言",
+    "letterAccountSave": "保存信函邮件偏好",
     "title": "工作流程邮件通知",
     "description": "选择允许通过邮件发送的工作流程更新。员工也可选择自己的邮件偏好。",
     "preferencesTitle": "我的邮件通知",

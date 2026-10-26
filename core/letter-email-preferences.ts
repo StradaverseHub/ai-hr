@@ -17,7 +17,8 @@ export async function readLetterEmailPreferences(ctx:SessionContext){
  await requireAccess(ctx);return withTenant(ctx,async tx=>{
   const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!principal?.ok)throw new NotificationEmailSettingsError('forbidden');
   const [preference]=await tx.select().from(notificationPref).where(own(ctx)),[policy]=await tx.select({enabled:notificationEmailPolicy.enabled}).from(notificationEmailPolicy).where(and(eq(notificationEmailPolicy.tenantId,ctx.tenantId),eq(notificationEmailPolicy.category,'letters')));
-  return {preference:preference??null,enabledByPolicy:policy?.enabled===true};
+  const [binding]=preference?.enabled?await tx.execute<{ok:boolean}>(sql`select app.letter_email_consent_identity(${preference.emailConsentIssuer},${preference.emailConsentSubject},${preference.emailConsentAddressHash}) as ok`):[];
+  return {preference:preference??null,current:binding?.ok===true,enabledByPolicy:policy?.enabled===true};
  });
 }
 export async function saveLetterEmailPreferences(ctx:SessionContext,input:{enabled:boolean;locale:NotificationEmailLocale},identity:EmailConsentIdentity|null){

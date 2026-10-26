@@ -12,6 +12,8 @@ vi.mock('../lib/identity/config',()=>({keycloakSelected:m.keycloak}));
 vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.keycloakIdentity}));
 vi.mock('../lib/workos',()=>({currentWorkosSession:m.workosIdentity}));
 vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:vi.fn()}));
+vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true}));
+vi.mock('../core/letter-email-preferences',()=>({readLetterEmailPreferences:async()=>({preference:null,current:false,enabledByPolicy:false})}));
 vi.mock('../core/notification-email',()=>({readNotificationEmailPreferences:m.preferences,saveNotificationEmailPreferences:m.save}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:vi.fn()}));
@@ -27,7 +29,7 @@ const identity={issuer:'https://localhost:3543/auth/fixture-tenant',subject:'int
 const preference={recipientEmploymentId:employmentId,category:'employee_master_reports',enabled:true,emailConsentUserId:userId,emailAfterSequence:42,emailLocale:'en',reportConsentVerifiedAt:new Date('2026-10-16T00:00:00Z'),reportConsentIssuer:identity.issuer,reportConsentSubject:identity.subject,reportConsentAddressHash:createHash('sha256').update(identity.email).digest('hex')};
 function view(preferences:unknown[]=[]){m.preferences.mockResolvedValue({employments:[{id:employmentId,code:'REPORT-RECIPIENT'}],preferences,policy:[{category:'employee_master_reports',enabled:true}]});}
 async function page(){render(await PreferencesPage({searchParams:Promise.resolve({})}));const checkbox=document.querySelector<HTMLInputElement>('input[name="category"][value="employee_master_reports"]');expect(checkbox).not.toBeNull();return checkbox!;}
-beforeEach(()=>{vi.clearAllMocks();m.scope.mockResolvedValue({s:{tenantId:'fixture-tenant',userId,personId:'own-person'}});m.module.mockResolvedValue(undefined);m.internal.mockReturnValue(true);m.keycloak.mockReturnValue(false);m.internalIdentity.mockResolvedValue(identity);m.keycloakIdentity.mockResolvedValue({...identity,issuer:'https://keycloak.test/realms/fixture',subject:'keycloak-subject'});m.workosIdentity.mockResolvedValue(null);view();});
+beforeEach(()=>{vi.clearAllMocks();m.scope.mockResolvedValue({s:{tenantId:'fixture-tenant',userId,personId:'own-person'},scopeIds:[]});m.module.mockResolvedValue(undefined);m.internal.mockReturnValue(true);m.keycloak.mockReturnValue(false);m.internalIdentity.mockResolvedValue(identity);m.keycloakIdentity.mockResolvedValue({...identity,issuer:'https://keycloak.test/realms/fixture',subject:'keycloak-subject'});m.workosIdentity.mockResolvedValue(null);view();});
 afterEach(cleanup);
 describe('canonical provider report-email consent page',()=>{
  it('enables actual selected-internal consent controls instead of requiring Keycloak',async()=>{

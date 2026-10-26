@@ -18047,6 +18047,11 @@
     }
   },
   "workflowEmail": {
+    "letterAccountTitle": "Thư cho tài khoản này",
+    "letterAccountHelp": "Nhận liên kết bảo mật đến thư cần bạn xử lý. Tùy chọn này cũng áp dụng khi tài khoản không có hồ sơ việc làm. Email phải tuân theo cài đặt thông báo công ty, chính sách tổ chức và cần dịch vụ email sẵn sàng. Email không chứa nội dung thư hoặc tệp đính kèm.",
+    "letterAccountConsent": "Nhận email Thư cho tài khoản này",
+    "letterAccountLanguage": "Ngôn ngữ email Thư",
+    "letterAccountSave": "Lưu tùy chọn email Thư",
     "title": "Email thông báo quy trình",
     "description": "Chọn cập nhật quy trình có thể gửi qua email. Mỗi nhân viên cũng chọn tùy chọn email riêng.",
     "preferencesTitle": "Email thông báo của tôi",

@@ -18047,6 +18047,11 @@
     }
   },
   "workflowEmail": {
+    "letterAccountTitle": "Surat untuk akaun ini",
+    "letterAccountHelp": "Terima pautan selamat kepada surat yang memerlukan perhatian anda. Pilihan ini juga terpakai jika akaun anda tiada rekod pekerjaan. E-mel memerlukan tetapan pemberitahuan syarikat, dasar organisasi dan perkhidmatan e-mel yang tersedia. Kandungan surat atau lampiran tidak disertakan.",
+    "letterAccountConsent": "Terima e-mel Surat untuk akaun ini",
+    "letterAccountLanguage": "Bahasa e-mel Surat",
+    "letterAccountSave": "Simpan pilihan e-mel Surat",
     "title": "Pemberitahuan e-mel aliran kerja",
     "description": "Pilih kemas kini aliran kerja yang boleh dihantar melalui e-mel. Setiap pekerja juga memilih keutamaan e-mel sendiri.",
     "preferencesTitle": "Pemberitahuan e-mel saya",
