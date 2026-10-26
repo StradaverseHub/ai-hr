@@ -7,6 +7,7 @@
 /lib/*
 !/lib/bounded-body.ts
 !/lib/clock-attempt.ts
+!/lib/mobile-clock-integrity.ts
 !/lib/mobile-connection.ts
 !/lib/mobile-workplace-setup.ts
 !/lib/mobile-design.ts
