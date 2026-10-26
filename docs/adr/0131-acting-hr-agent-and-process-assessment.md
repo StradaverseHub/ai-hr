@@ -2640,3 +2640,50 @@ Existing destination-specific AI source-push authorization continues to identify
 StradaverseHub/ai-hr. Only intended source changes are published; private evidence,
 fixtures, database/recovery inventories and verification logs remain outside Git.
 This does not authorize GitHub Actions/cloud work in this local-only session.
+
+
+### Manual accrual and request-decision owner integration (unverified source)
+
+The public manual accrueToil owner now captures its declared scalars, approval Date
+and calling roles/grants before awaits. Its original module gate remains; inside the
+actual transaction, Access -> exclusive leave configuration -> employment ownership
+-> TRY ownership of the existing credit key precedes canonical attendance/policy and
+credit derivation. The delegate still requires canonical decide authority. All57 other
+TOIL function declarations, including accrual/bank/calculation executors, are byte
+identical to the preceding source checkpoint.
+
+The actual decideReplacementLeaveRequest owner captures its declared inputs/Date and
+context, owns Access/exclusive configuration, nominates only a visible request subject,
+then owns employment and credit before the actual request FOR UPDATE NOWAIT. It freshly
+checks the employment binding and pending state before unchanged canonical authority,
+rejection or approval work. Approval additionally owns its actual dated lines NOWAIT
+before any derived credit or header/line update. The exclusive phase is required
+because banking can create the shared replacement catalogue entry. Original module-
+lapse rejection behaviour and self-grant/eligibility/First Schedule safeguards remain.
+AST structural reversal of only the new capture, ownership and physical query phases
+reproduces the original decision business AST; its17 other function declarations are
+byte-identical. No late lock is added to the shared banking leaf to pretend that earlier
+Attendance parents are protected.
+
+Three manual-accrual and five real request-decision two-connection cases are authored
+UNRUN. Held participating configuration, isolated employment/credit keys, the actual
+request row or a dated line must refuse without partial header/date/credit/ledger/
+catalogue/event changes. After release the canonical commands bank exactly once;
+repeating must preserve recorded state. Existing fixture paths produce real rostered
+work or human-submitted two-date claims, not invented accrual rows. Only static syntax,
+diff and source comparison checks ran; compiler/DB/runtime/security proof is pending.
+
+Source tracing found four automatic Attendance parents: checkOutTx, attendance-correction
+decision, approved-plan application and imported-punch batches. Their earlier source
+reads and locks still require owner integration, as do other remaining dependencies.
+These changes are partial participation, not universal protection or fresh principal
+revocation proof, and do not expose Assistant effects.
+
+The human explicitly authorized parallel subagents. Three guard-created isolated
+source checkouts now own lifecycle/privacy/browser binding, provider evaluation/readiness,
+and workspace/module agents/read seams respectively; the parent owns shared integration,
+remaining ordinary writer protection and the one combined final gate. Future DB namespaces
+are distinct but no worker database or runtime job has been created. Source-only commits
+remain unverified until the shared checks are genuinely run. The human also explicitly
+authorized AI source-only publication to the now-public repository; private evidence,
+logs, fixtures and credentials remain outside Git.

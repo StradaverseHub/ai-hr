@@ -31,7 +31,7 @@ import {
 } from './harness';
 import { hireEmployee } from '../core/org';
 import { withTenant } from '../db/client';
-import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
@@ -497,4 +497,44 @@ describe('replacement-leave policy configuration participant', () => {
     expect(after.types.filter(type => type.code === 'REPLACEMENT')).toHaveLength(1);
     expect(after.events.filter(event => event.eventType === 'toil-policy.updated')).toHaveLength(1);
   });
+});
+
+
+/** Actual command ownership cases, authored UNRUN. */
+describe('manual TOIL accrual dependency interval', () => {
+  for (const kind of ['configuration', 'employment', 'credit'] as const) {
+    it(`refuses held ${kind} without accrual/ledger/events, then banks exactly once`, async () => {
+      const actor = await toilOnCtx(), { employmentId } = await hireWithWorkedRestDay(5000);
+      await setToilPolicy(actor, policy(b.companyId));
+      const snapshot = async () => ({
+        accruals: await owner.db.select().from(schema.toilAccrual).orderBy(schema.toilAccrual.id),
+        ledger: await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id),
+        types: await owner.db.select().from(schema.leaveType).orderBy(schema.leaveType.id),
+        events: await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id),
+      });
+      const before = await snapshot();
+      let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+      const entered = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; });
+      const held = new Promise<void>(resolve => { release = resolve; }), watchdog = setTimeout(release, 10_000);
+      const holder = withTenant(actor, async tx => {
+        if (kind === 'configuration') await lockLeaveDependenciesTx(tx, b.tenantId, [employmentId]);
+        if (kind === 'employment') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'leave-dependency-employment:' + b.tenantId + ':' + employmentId},0))`);
+        if (kind === 'credit') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId + ':' + employmentId},0))`);
+        ready(); await held;
+      });
+      void holder.catch(failed);
+      try {
+        await entered;
+        await expect(accrueToil(actor, { employmentId, workedDate: REST_DAY, approvedOn: APPROVED_ON })).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
+        expect(await snapshot()).toEqual(before);
+      } finally { release(); clearTimeout(watchdog); await holder; }
+      const result = await accrueToil(actor, { employmentId, workedDate: REST_DAY, approvedOn: APPROVED_ON });
+      expect(result.daysCredited).toBe(1);
+      const credits = await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, employmentId));
+      expect(credits).toHaveLength(1); expect(credits[0].expiresOn).toBe('2026-10-04');
+      const after = await snapshot();
+      await expect(accrueToil(actor, { employmentId, workedDate: REST_DAY, approvedOn: APPROVED_ON })).rejects.toBeInstanceOf(ToilAlreadyAccruedError);
+      expect(await snapshot()).toEqual(after);
+    });
+  }
 });

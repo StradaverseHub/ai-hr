@@ -45,6 +45,8 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependencyConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
@@ -894,16 +896,29 @@ export async function decideReplacementLeaveRequest(
   ctx: SessionContext,
   p: { requestId: string; decision: 'approved' | 'rejected'; note?: string; decidedAt?: Date },
 ): Promise<DecideReplacementRequestResult> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { requestId: p.requestId, decision: p.decision, note: p.note,
+    decidedAt: p.decidedAt ? new Date(p.decidedAt.getTime()) : undefined };
   // The module gate applies to APPROVAL too, because approval is what mints the credit. Rejection is left
   // reachable on purpose — refusing to let an admin clear a pending queue after the module lapses would
   // strand the request, and a rejection grants nothing.
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx
-      .select()
-      .from(replacementLeaveRequest)
-      .where(eq(replacementLeaveRequest.id, p.requestId))
-      .limit(1);
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    // Approval may create the shared replacement catalogue entry; own the exclusive phase first.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    const [nominated] = await tx.select({ employmentId: replacementLeaveRequest.employmentId }).from(replacementLeaveRequest)
+      .where(eq(replacementLeaveRequest.id, p.requestId)).limit(1);
+    if (!nominated) throw new ReplacementRequestInvalidError('Replacement leave request not found.');
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+    const [credit] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + nominated.employmentId},0)) as acquired`);
+    if (credit?.acquired !== true) throw new LeaveDependencyUnavailable();
+    let req: typeof replacementLeaveRequest.$inferSelect | undefined;
+    try {
+      [req] = await tx.select().from(replacementLeaveRequest).where(eq(replacementLeaveRequest.id, p.requestId))
+        .limit(1).for('update', { of: replacementLeaveRequest, noWait: true });
+    } catch { throw new LeaveDependencyUnavailable(); }
     if (!req) throw new ReplacementRequestInvalidError('Replacement leave request not found.');
+    if (req.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
     if (req.status !== 'pending') throw new ReplacementRequestNotPendingError();
 
     // Line-manager-or-admin, with the self-grant ban. The plan is explicit that this is the whole approval
@@ -932,11 +947,13 @@ export async function decideReplacementLeaveRequest(
     // Approving MINTS credits, so the add-on must be live for this half.
     assertModuleEnabled(ctx, 'toil');
 
-    const lines = await tx
-      .select()
-      .from(replacementLeaveRequestDate)
-      .where(eq(replacementLeaveRequestDate.requestId, p.requestId))
-      .orderBy(replacementLeaveRequestDate.workedDate);
+    let lines: (typeof replacementLeaveRequestDate.$inferSelect)[];
+    try {
+      lines = await tx.select().from(replacementLeaveRequestDate)
+        .where(eq(replacementLeaveRequestDate.requestId, p.requestId))
+        .orderBy(replacementLeaveRequestDate.workedDate)
+        .for('update', { of: replacementLeaveRequestDate, noWait: true });
+    } catch { throw new LeaveDependencyUnavailable(); }
 
     let granted = 0;
     let daysCredited = 0;

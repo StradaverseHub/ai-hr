@@ -13,10 +13,11 @@
  * code under test — which would pass for a wrong implementation.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { withTenant, type SessionContext } from '../db/client';
+import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setRestDay } from '../core/roster';
@@ -663,4 +664,53 @@ describe('The employee path reaches the same register the manager path writes (2
       'replacement-leave-request.submitted',
     ]);
   });
+});
+
+
+/** Actual parent command before the credit executors, authored UNRUN. */
+describe('replacement-request decision dependency interval', () => {
+  for (const heldKind of ['configuration', 'employment', 'credit', 'request', 'line'] as const) {
+    it(`refuses held ${heldKind} with no partial approval or credits, then approves once`, async () => {
+      const employmentId = await hire();
+      await setToilPolicy(ctx, policy(b.companyId));
+      for (const date of [WORKED_A, WORKED_B]) await setRestDay(ctx, { employmentId, shiftDate: date });
+      const { requestId } = await submitReplacementLeaveRequest(ctx, { employmentId, unit: 'day',
+        lines: [{ workedDate: WORKED_A, days: 1 }, { workedDate: WORKED_B, days: 1 }], today: TODAY });
+      const snapshot = async () => ({
+        requests: await owner.db.select().from(schema.replacementLeaveRequest).orderBy(schema.replacementLeaveRequest.id),
+        lines: await owner.db.select().from(schema.replacementLeaveRequestDate).orderBy(schema.replacementLeaveRequestDate.id),
+        credits: await owner.db.select().from(schema.toilAccrual).orderBy(schema.toilAccrual.id),
+        ledger: await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id),
+        types: await owner.db.select().from(schema.leaveType).orderBy(schema.leaveType.id),
+        events: await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id),
+      });
+      const before = await snapshot(); expect(before.requests.find(row => row.id === requestId)?.status).toBe('pending');
+      let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+      const entered = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; });
+      const held = new Promise<void>(resolve => { release = resolve; }), watchdog = setTimeout(release, 10_000);
+      const holder = withTenant(ctx, async tx => {
+        if (heldKind === 'configuration') await lockLeaveDependenciesTx(tx, b.tenantId, [employmentId]);
+        if (heldKind === 'employment') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'leave-dependency-employment:' + b.tenantId + ':' + employmentId},0))`);
+        if (heldKind === 'credit') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId + ':' + employmentId},0))`);
+        if (heldKind === 'request') await tx.select({ id: schema.replacementLeaveRequest.id }).from(schema.replacementLeaveRequest)
+          .where(eq(schema.replacementLeaveRequest.id, requestId)).for('update');
+        if (heldKind === 'line') await tx.select({ id: schema.replacementLeaveRequestDate.id }).from(schema.replacementLeaveRequestDate)
+          .where(eq(schema.replacementLeaveRequestDate.requestId, requestId)).for('update');
+        ready(); await held;
+      });
+      void holder.catch(failed);
+      try {
+        await entered;
+        await expect(decideReplacementLeaveRequest(ctx, { requestId, decision: 'approved', decidedAt: DECIDED_AT })).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
+        expect(await snapshot()).toEqual(before);
+      } finally { release(); clearTimeout(watchdog); await holder; }
+      expect(await decideReplacementLeaveRequest(ctx, { requestId, decision: 'approved', decidedAt: DECIDED_AT })).toMatchObject({ status: 'approved', granted: 2, daysCredited: 2 });
+      expect(await replacementBalance(employmentId)).toBe(2);
+      expect(await accrualsFor(employmentId)).toHaveLength(2);
+      const after = await snapshot();
+      expect(after.events.filter(event => event.aggregateId === requestId && event.eventType === 'replacement-leave-request.approved')).toHaveLength(1);
+      await expect(decideReplacementLeaveRequest(ctx, { requestId, decision: 'approved', decidedAt: DECIDED_AT })).rejects.toThrow();
+      expect(await snapshot()).toEqual(after);
+    });
+  }
 });

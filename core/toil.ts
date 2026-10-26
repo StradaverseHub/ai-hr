@@ -1321,8 +1321,18 @@ export async function accrueToil(
   ctx: SessionContext,
   p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean; approvedOn?: Date },
 ): Promise<AccrueToilResult> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { employmentId: p.employmentId, workedDate: p.workedDate, firstScheduleConsent: p.firstScheduleConsent,
+    approvedOn: p.approvedOn ? new Date(p.approvedOn.getTime()) : undefined };
   if (!toilEnabled(ctx)) throw new ToilDisabledError();
-  return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
+  return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    const [credit] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId},0)) as acquired`);
+    if (credit?.acquired !== true) throw new LeaveDependencyUnavailable();
+    return accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true });
+  });
 }
 
 /**
