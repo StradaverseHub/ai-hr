@@ -1,5 +1,7 @@
 # CI staging verification policy
 
+Latest prepared implementation: **aihr-staging-ci/v11**. Version10's complete49-unit/28,005-case pilot passed at its exact8dd source; a later explicit-connection preflight repair has two-case Linux and actual read-only ledger proof. The new v11 setup retains all PDF tools/native rendering and refreshes package indexes only after an actual existing-index install failure. Current integrated source includes the handed-back Operator application baseline. A fresh complete representative witness is required for this changed setup/new integrated candidate; no old pass is relabelled. See [current measured evidence and remaining work](RELEASE-PERFORMANCE.md). This supersedes older implementation-status notes below without rewriting their original evidence.
+
 Policy identifier: `aihr-staging-ci/v8`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. Version6 introduced the reviewed build-once installer contract; version7 retains it and binds duration-balanced DB grouping; version8 retains complete membership and adds duration-first within-job ordering. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
 
 ## Evidence authority

@@ -71,7 +71,7 @@ jobs:
           CONTROL: ${{ github.workflow_sha }}
         run: test "$DIAGNOSTICS_ONLY" = true && test "$EVENT" = workflow_dispatch && test "$EXPECTED" = "$CONTROL"
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs
+        run: node --experimental-strip-types --test .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
@@ -460,11 +460,7 @@ jobs:
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: PDF test tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq poppler-utils python3-venv
-          python3 -m venv "$RUNNER_TEMP/pdf-tools"
-          "$RUNNER_TEMP/pdf-tools/bin/pip" install --quiet pymupdf
-          echo "$RUNNER_TEMP/pdf-tools/bin" >> "$GITHUB_PATH"
+          node ../automation/.github/ci/pdf-tools.mjs
       - name: Preserve suite headroom after PDF tooling
         if: ${{ github.run_attempt == 1 }}
         run: bash ../automation/.github/ci/prepare-runner.sh
@@ -472,6 +468,13 @@ jobs:
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
         env: {UNIT: '${{ matrix.unit }}'}
+      - name: Retain actual PDF setup diagnostics with the unit evidence
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/pdf-tools-setup.json" ]; then
+            mkdir -p "$RUNNER_TEMP/aihr-ci"
+            cp "$RUNNER_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/aihr-ci/pdf-tools-setup.json"
+          fi
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

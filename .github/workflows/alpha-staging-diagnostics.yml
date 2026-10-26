@@ -22,6 +22,11 @@ on:
         default: full
         type: choice
         options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup]
+      pdf_tools_probe:
+        description: Validate disposable standard-runner PDF setup only; no app tests, database, compiler, build, SSH or deployment
+        required: false
+        default: false
+        type: boolean
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -819,6 +824,41 @@ jobs:
             ${{ runner.temp }}/staging-official-helpers.log
             ${{ runner.temp }}/staging-environment-cleanup.log
             ${{ runner.temp }}/cleanup-install.log
+          if-no-files-found: error
+          retention-days: 3
+
+  pdf-tools-setup:
+    if: ${{ inputs.pdf_tools_probe && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env: {AIHR_CI_HEAD: '${{ github.workflow_sha }}'}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind exact private tool-setup diagnostic selection
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.pdf_tools_probe===true&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
+          for(const [key,value] of Object.entries(p))if(!['pdf_tools_probe','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':key==='installer_fixture_phase'?value==='full':value===false||value==='');
+          NODE
+      - name: Verify missing-package, cache-miss, native failure and no-omission controls
+        run: node --test --test-reporter=spec .github/ci/pdf-tools.test.mjs
+      - name: Prepare and validate the actual standard Linux PDF toolchain
+        run: node .github/ci/pdf-tools.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-pdf-tools-setup
+          path: ${{ runner.temp }}/pdf-tools-setup.json
           if-no-files-found: error
           retention-days: 3
 
