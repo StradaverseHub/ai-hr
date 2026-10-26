@@ -1,7 +1,7 @@
 /** Trusted source owner for immutable governed routing evidence. Not mounted as a model tool.
  * Candidate kinds without an actual fixed evaluator are refused, not labelled evaluated.
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isGroupAdmin } from '../lib/authz-model';
@@ -41,12 +41,12 @@ async function guard(tx: Tx, ctx: SessionContext, admin: boolean, admission = tr
 }
 type CandidateRow = { id: string; owner_user_id: string; author_user_id: string; module_code: string; version: number; kind:'typed_route_priority_v1'|'read_plan_prompt_v1';
   configuration: unknown; candidate_digest: string; baseline_digest: string; source_digest: string;
-  engine_digest: string; policy_digest: string; input_digest: string };
+  engine_digest: string; policy_digest: string; input_digest: string;signal_refs:unknown;signal_receipt:string|null };
 function binding(row: CandidateRow) {
   const configuration = row.kind==='read_plan_prompt_v1'?capturePromptPlanCandidate(row.configuration):captureTypedRouteCandidate(row.configuration);
   return { ownerUserId: row.owner_user_id, authorUserId: row.author_user_id, module: row.module_code,
     version: row.version, configuration, baselineDigest: row.baseline_digest, sourceDigest: row.source_digest,
-    engineDigest: row.engine_digest, policyDigest: row.policy_digest, inputDigest: row.input_digest };
+    engineDigest: row.engine_digest, policyDigest: row.policy_digest, inputDigest: row.input_digest,signalDigest:routingDigest(captureSignalRefs(row.signal_refs)) };
 }
 function assertCurrent(row: CandidateRow) {
   const prompt=row.kind==='read_plan_prompt_v1';
@@ -59,10 +59,11 @@ function assertCurrent(row: CandidateRow) {
 }
 async function candidateTx(tx: Tx, ctx: SessionContext, id: string, validate = true) {
   if (!uuid(id)) return fail();
-  const [row] = await tx.execute<CandidateRow>(sql`select id,owner_user_id,author_user_id,module_code,version,kind,configuration,
-    candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest from public.ai_agent_candidate
-    where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
-  if (!row) return fail(); if (validate) assertCurrent(row); return row;
+  const [row] = await tx.execute<CandidateRow>(sql`select c.id,c.owner_user_id,c.author_user_id,c.module_code,c.version,c.kind,c.configuration,
+    c.candidate_digest,c.baseline_digest,c.source_digest,c.engine_digest,c.policy_digest,c.input_digest,p.refs as signal_refs,p.receipt as signal_receipt from public.ai_agent_candidate c
+    left join public.ai_agent_candidate_provenance p on p.candidate_id=c.id and p.tenant_id=c.tenant_id
+    where c.id=${id}::uuid and c.tenant_id=${ctx.tenantId}::uuid`);
+  if (!row) return fail(); if (validate){assertCurrent(row);await assertCandidateSignalsTx(tx,ctx,row);} return row;
 }
 const aad = (kind: string, tenant: string, id: string) => JSON.stringify(['ai-hr.module-agent.v1',kind,tenant,id]);
 function seal(kind: string, tenant: string, id: string, value: unknown) {
@@ -77,20 +78,66 @@ function open(kind: string, tenant: string, id: string, token: string): Record<s
     return value as Record<string, unknown>;
   } catch { return fail(); }
 }
-export async function createRoutingAgentCandidate(ctx: SessionContext, input: { version: number; configuration: unknown }) {
-  const current = capture(ctx), configuration = captureTypedRouteCandidate(input.configuration), version = input.version;
-  if (!exact(input, ['version','configuration']) || !Number.isSafeInteger(version) || version < 1) return fail();
+type SignalRef=Readonly<{id:string;jobId:string;receiptDigest:string;jobReceiptDigest:string}>;
+const rawReceiptDigest=(value:string)=>createHash('sha256').update(value,'utf8').digest('hex');
+export const GOVERNED_JOB_FEEDBACK_OUTCOMES=['helpful','needs_correction','incorrect'] as const;
+function captureSignalIds(value:unknown):readonly string[]{
+ if(value===undefined)return Object.freeze([]);if(!Array.isArray(value)||value.length>10||value.some(id=>typeof id!=='string'||!uuid(id)))return fail();
+ const ids=value.map(id=>String(id).toLowerCase());if(new Set(ids).size!==ids.length)return fail();return Object.freeze(ids.sort());
+}
+function captureSignalRefs(value:unknown):readonly SignalRef[]{
+ if(!Array.isArray(value)||value.length>10)return fail();const refs:SignalRef[]=[];
+ for(const item of value){if(!item||typeof item!=='object'||Array.isArray(item)||!exact(item,['id','jobId','receiptDigest','jobReceiptDigest'])||typeof item.id!=='string'||!uuid(item.id)||typeof item.jobId!=='string'||!uuid(item.jobId)||
+  typeof item.receiptDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.receiptDigest)||typeof item.jobReceiptDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.jobReceiptDigest))return fail();
+  refs.push(Object.freeze({id:item.id.toLowerCase(),jobId:item.jobId.toLowerCase(),receiptDigest:item.receiptDigest,jobReceiptDigest:item.jobReceiptDigest}));}
+ if(new Set(refs.map(row=>row.id)).size!==refs.length)return fail();return Object.freeze(refs.sort((a,b)=>a.id.localeCompare(b.id)));
+}
+class AgentSignalBusy extends Error{}
+async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusive=false){
+ const key='agent-signals:'+ctx.tenantId+':'+ownerId;const [row]=await tx.execute<{owned:boolean}>(exclusive?
+  sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`:sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as owned`);if(row?.owned!==true)throw new AgentSignalBusy('Agent review could not be confirmed.');
+}
+async function assertCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){
+ await signalIntervalTx(tx,ctx,candidate.owner_user_id);const refs=captureSignalRefs(candidate.signal_refs);
+ if(!candidate.signal_receipt)return fail();const proof=open('candidate-signals',ctx.tenantId,candidate.id,candidate.signal_receipt);
+ if(!exact(proof,['version','candidateDigest','ownerId','sourceDigest','refs'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||proof.ownerId!==candidate.owner_user_id||
+  proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||routingDigest(captureSignalRefs(proof.refs))!==routingDigest(refs))return fail();
+ const [current]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_signals_current(${candidate.id}::uuid) as allowed`);if(current?.allowed!==true)return fail();return refs.length;
+}
+async function persistCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){
+ const refs=captureSignalRefs(candidate.signal_refs),receipt=seal('candidate-signals',ctx.tenantId,candidate.id,{version:1,candidateDigest:candidate.candidate_digest,ownerId:candidate.owner_user_id,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,refs});
+ await tx.execute(sql`insert into public.ai_agent_candidate_provenance(candidate_id,tenant_id,owner_user_id,refs,receipt)
+  values(${candidate.id}::uuid,${ctx.tenantId}::uuid,${candidate.owner_user_id}::uuid,${JSON.stringify(refs)}::jsonb,${receipt})`);
+}
+async function ownSignalRefsTx(tx:Tx,ctx:SessionContext,ids:readonly string[]){
+ await signalIntervalTx(tx,ctx,ctx.userId!);const refs:SignalRef[]=[];
+ for(const id of ids){const [feedback]=await tx.execute<{id:string;job_id:string;receipt:string;outcome:string;created_at:string;expires_at:string;fresh:boolean}>(sql`select id,job_id,receipt,outcome,created_at::text,expires_at::text,(expires_at>now()) as fresh
+   from public.ai_agent_job_feedback where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);if(!feedback?.fresh)return fail();
+  const [job]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${feedback.job_id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);if(!job)return fail();
+  const completed=verifiedGovernedJob(job,ctx),proof=open('job-feedback',ctx.tenantId,feedback.id,feedback.receipt);
+  if(!exact(proof,['version','userId','jobId','jobReceiptDigest','candidateDigest','resultDigest','sourceDigest','outcome','consented','createdAt','expiresAt'])||proof.version!==1||proof.userId!==ctx.userId||proof.jobId!==job.id||
+   proof.jobReceiptDigest!==rawReceiptDigest(job.receipt)||proof.candidateDigest!==completed.candidateDigest||proof.resultDigest!==completed.resultDigest||proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.outcome!==feedback.outcome||proof.consented!==true||
+   new Date(String(proof.createdAt)).getTime()!==new Date(feedback.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(feedback.expires_at).getTime())return fail();
+  refs.push(Object.freeze({id:feedback.id,jobId:job.id,receiptDigest:rawReceiptDigest(feedback.receipt),jobReceiptDigest:rawReceiptDigest(job.receipt)}));
+ }
+ return captureSignalRefs(refs);
+}
+
+export async function createRoutingAgentCandidate(ctx: SessionContext, input: { version: number; configuration: unknown;signalIds?:readonly string[] }) {
+  const current = capture(ctx), configuration = captureTypedRouteCandidate(input.configuration), version = input.version,signalIds=captureSignalIds(input.signalIds);
+  if (!exact(input, input.signalIds===undefined?['version','configuration']:['version','configuration','signalIds']) || !Number.isSafeInteger(version) || version < 1) return fail();
   try { return await withTenant(current, async tx => {
     await guard(tx, current, true);
-    const id = randomUUID();
+    const id = randomUUID(),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
     const row: CandidateRow = { id, owner_user_id: current.userId!, author_user_id: current.userId!, module_code: 'assistant',
       version, kind:'typed_route_priority_v1', configuration, candidate_digest: '', baseline_digest: baselineDigest, source_digest: MODULE_AGENT_SOURCE_DIGEST,
-      engine_digest: ROUTING_ENGINE_DIGEST, policy_digest: ROUTING_POLICY_DIGEST, input_digest: ROUTING_INPUT_DIGEST };
+      engine_digest: ROUTING_ENGINE_DIGEST, policy_digest: ROUTING_POLICY_DIGEST, input_digest: ROUTING_INPUT_DIGEST,signal_refs,signal_receipt:null };
     row.candidate_digest = routingDigest(binding(row));
     await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,
       configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
       values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,'assistant',${version},'typed_route_priority_v1',
       ${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${baselineDigest},${MODULE_AGENT_SOURCE_DIGEST},${ROUTING_ENGINE_DIGEST},${ROUTING_POLICY_DIGEST},${ROUTING_INPUT_DIGEST})`);
+    await persistCandidateSignalsTx(tx,current,row);
     return { candidateId: id, candidateDigest: row.candidate_digest, state: 'unevaluated' as const };
   }); } catch { return fail(); }
 }
@@ -183,6 +230,35 @@ function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
   new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>GOVERNED_JOB_RETENTION_DAYS*86400000)return fail();
  return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest};
 }
+async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>){
+ if(!job.promotion_id)return;const [promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);
+ if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id);if(candidate.candidate_digest!==completed.candidateDigest)return fail();
+}
+/** Human opinion only, independently tied to an actual completed command and unchanged current facts. */
+export async function recordOwnGovernedJobFeedback(ctx:SessionContext,input:{jobId:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];consented:true}){
+ const current=capture(ctx),p={jobId:input.jobId,outcome:input.outcome,consented:input.consented};
+ if(!exact(input,['jobId','outcome','consented'])||!uuid(p.jobId)||!GOVERNED_JOB_FEEDBACK_OUTCOMES.includes(p.outcome)||p.consented!==true)return fail();
+ try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,false);await signalIntervalTx(tx,current,current.userId!,true);
+  const [job]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${p.jobId}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!job)return fail();
+  const completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed);
+  const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of completed.executed.modules)rows.push(await read.moduleWork(module));return rows;});
+  if(assistantSourceDigest(results)!==completed.resultDigest)return fail();
+  const [previous]=await tx.execute<{id:string;outcome:string;receipt:string}>(sql`select id,outcome,receipt from public.ai_agent_job_feedback where job_id=${job.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid for update nowait`);
+  if(previous?.outcome===p.outcome){await ownSignalRefsTx(tx,current,[previous.id]);return {feedbackId:previous.id};}
+  const id=previous?.id??randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,least(${job.expires_at}::timestamptz,now()+interval '720 hours')::text as expires`);
+  const receipt=seal('job-feedback',current.tenantId,id,{version:1,userId:current.userId,jobId:job.id,jobReceiptDigest:rawReceiptDigest(job.receipt),candidateDigest:completed.candidateDigest,resultDigest:completed.resultDigest,
+   sourceDigest:MODULE_AGENT_SOURCE_DIGEST,outcome:p.outcome,consented:true,createdAt:clock.now,expiresAt:clock.expires});
+  if(previous)await tx.execute(sql`update public.ai_agent_job_feedback set outcome=${p.outcome},receipt=${receipt},created_at=${clock.now}::timestamptz,expires_at=${clock.expires}::timestamptz where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+  else await tx.execute(sql`insert into public.ai_agent_job_feedback(id,tenant_id,user_id,job_id,outcome,consented,receipt,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${job.id}::uuid,${p.outcome},true,${receipt},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);
+  return {feedbackId:id};
+ });}catch{return fail();}
+}
+/** Own erasure remains available after Assistant grant/module removal; no model or service identity. */
+export async function eraseOwnGovernedJobFeedback(ctx:SessionContext){const current=capture(ctx);try{return await withTenant(current,async tx=>{
+ await assertAiPrincipalTx(tx,current);if(!current.userId)return fail();await signalIntervalTx(tx,current,current.userId,true);
+ const rows=await tx.execute<{id:string}>(sql`delete from public.ai_agent_job_feedback where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid returning id`);return {erased:rows.length};
+ });}catch{return fail();}}
+
 /** Read-only replay: old v1 receipts remain audit-only. Current canonical facts are loaded afresh;
  * the encrypted receipt nominates a bounded plan, never a stored HR fact or current permission.
  */
@@ -192,9 +268,12 @@ export async function reopenGovernedModuleReadJobTx(tx:Tx,ctx:SessionContext,id:
  const fresh=await guard(tx,current,false);
  const [row]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
   where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
- if(!row)return fail();const proof=verifiedGovernedJob(row,current);
+ if(!row)return fail();const proof=verifiedGovernedJob(row,current);await assertGovernedJobCandidateTx(tx,current,row,proof);
  const results=await withAssistantReadTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
- return {jobId:row.id,mode:proof.mode,changedSinceRun:assistantSourceDigest(results)!==proof.resultDigest,results};
+ const [feedback]=await tx.execute<{id:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]}>(sql`select id,outcome from public.ai_agent_job_feedback where job_id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and expires_at>now()`);
+ let feedbackOutcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]|null=null;
+ if(feedback){try{await ownSignalRefsTx(tx,current,[feedback.id]);feedbackOutcome=feedback.outcome;}catch(error){if(error instanceof AgentSignalBusy)throw error;}}
+ return {jobId:row.id,mode:proof.mode,changedSinceRun:assistantSourceDigest(results)!==proof.resultDigest,results,feedbackOutcome};
 }
 /** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure.
  * Every command caller supplies a retained nonce; no read or retry path invents a new command identity.
@@ -207,7 +286,7 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
     const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
     const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
      where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
-    if(existing){const proof=verifiedGovernedJob(existing,current);if(routingDigest(plan)!==routingDigest(proof.requested))return fail();
+    if(existing){const proof=verifiedGovernedJob(existing,current);if(routingDigest(plan)!==routingDigest(proof.requested))return fail();await assertGovernedJobCandidateTx(tx,current,existing,proof);
      const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
      return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:proof.mode,results,effects:[],replayed:true};}
     const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
@@ -216,7 +295,7 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
       order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
     let selected=plan,candidateDigest=baselineDigest;let activePromotion:typeof promotion|undefined=promotion;
     if(promotion){const candidate=await candidateTx(tx,current,promotion.candidate_id,false);
-      let currentSource=true;try{assertCurrent(candidate);}catch{currentSource=false;}
+      let currentSource=true;try{assertCurrent(candidate);await assertCandidateSignalsTx(tx,current,candidate);}catch(error){if(error instanceof AgentSignalBusy)throw error;currentSource=false;}
       if(!currentSource){
         await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
           values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'source_changed') on conflict(promotion_id) do nothing`);
@@ -265,19 +344,21 @@ function captureSyntheticConsent(value:AgentSyntheticConsent,requests:number=PRO
   value.maxRequests!==requests||value.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  return Object.freeze({synthetic:true as const,maxRequests:value.maxRequests,sourceDigest:value.sourceDigest});
 }
-export async function createPromptAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown}){
- const current=capture(ctx),configuration=capturePromptPlanCandidate(input.configuration),version=input.version;
- if(!exact(input,['version','configuration'])||!Number.isSafeInteger(version)||version<1)return fail();
+export async function createPromptAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[]}){
+ const current=capture(ctx),configuration=capturePromptPlanCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds);
+ if(!exact(input,input.signalIds===undefined?['version','configuration']:['version','configuration','signalIds'])||!Number.isSafeInteger(version)||version<1)return fail();
  try{return await withTenant(current,async tx=>{
   await guard(tx,current,true);const id=randomUUID(),base=routingDigest(['no-model-plan-baseline-v1',PROMPT_ENGINE_DIGEST]);
+  const signal_refs=await ownSignalRefsTx(tx,current,signalIds);
   const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:'assistant',kind:'read_plan_prompt_v1',
    version,configuration,candidate_digest:'',baseline_digest:base,source_digest:MODULE_AGENT_SOURCE_DIGEST,
-   engine_digest:PROMPT_ENGINE_DIGEST,policy_digest:PROMPT_POLICY_DIGEST,input_digest:PROMPT_INPUT_DIGEST};
+   engine_digest:PROMPT_ENGINE_DIGEST,policy_digest:PROMPT_POLICY_DIGEST,input_digest:PROMPT_INPUT_DIGEST,signal_refs,signal_receipt:null};
   row.candidate_digest=routingDigest(binding(row));
   await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,
    candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
    values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,'assistant',${version},'read_plan_prompt_v1',
    ${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${base},${MODULE_AGENT_SOURCE_DIGEST},${PROMPT_ENGINE_DIGEST},${PROMPT_POLICY_DIGEST},${PROMPT_INPUT_DIGEST})`);
+  await persistCandidateSignalsTx(tx,current,row);
   return {candidateId:id,candidateDigest:row.candidate_digest,state:'unevaluated' as const};
  });}catch{return fail();}
 }
@@ -375,11 +456,11 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
     order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
    if(!promotion)return fail();const candidate=await candidateTx(tx,current,promotion.candidate_id,false);
    const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
-   let confirmed=true;try{assertCurrent(candidate);const proof=open('prompt-promotion',current.tenantId,promotion.id,promotion.receipt);
+   let confirmed=true;try{assertCurrent(candidate);await assertCandidateSignalsTx(tx,current,candidate);const proof=open('prompt-promotion',current.tenantId,promotion.id,promotion.receipt);
     if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
      proof.providerFingerprint!==snapshot.fingerprint||proof.maxJobs!==promotion.max_jobs||
      new Date(String(proof.expiresAt)).getTime()!==new Date(promotion.expires_at).getTime())confirmed=false;
-   }catch{confirmed=false;}
+   }catch(error){if(error instanceof AgentSignalBusy)throw error;confirmed=false;}
    if(!confirmed){await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
     values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'source_changed') on conflict(promotion_id) do nothing`);return null;}
    const jobId=randomUUID();await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
@@ -425,6 +506,14 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
  }catch{return fail();}
 }
 
+async function ownSignalChoicesTx(tx:Tx,ctx:SessionContext){
+ const rows=await tx.execute<{id:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];createdAt:string}>(sql`select id,outcome,created_at::text as "createdAt" from public.ai_agent_job_feedback
+  where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and expires_at>now() order by created_at desc,id desc limit 10`);
+ const choices:{id:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];createdAt:string}[]=[];
+ for(const row of rows){try{await ownSignalRefsTx(tx,ctx,[row.id]);choices.push({id:row.id,outcome:row.outcome,createdAt:row.createdAt});}catch(error){if(error instanceof AgentSignalBusy)throw error;/* Unknown/corrupt/retired evidence is not an advertised signal. */}}
+ return choices;
+}
+
 type PromptEvaluationProgress=Readonly<{completedCases:number;totalCases:number;state:'complete'|'incomplete';retainedFailures:number;knownFailures:number}>;
 /** Current evaluator progress only. Authentication and current source/provider binding precede counts. */
 async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,providerFingerprint:string):Promise<PromptEvaluationProgress|null>{
@@ -452,6 +541,8 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   (select count(*)::int from public.ai_agent_evaluation e where e.candidate_id=c.id and e.tenant_id=c.tenant_id) as attempts
   from public.ai_agent_candidate c where c.tenant_id=${ctx.tenantId}::uuid order by c.created_at desc,c.id desc limit 20`);
  let providerFingerprint:string|null=null;try{providerFingerprint=(await resolveAiProviderSnapshotTx(tx,ctx))?.fingerprint??null;}catch{/* No current issued provider means progress is unknown, never0. */}
+ const verifiedSignalCount=new Map<string,number|null>();for(const row of rows){try{const candidate=await candidateTx(tx,ctx,row.id);verifiedSignalCount.set(row.id,captureSignalRefs(candidate.signal_refs).length);}catch{verifiedSignalCount.set(row.id,null);}}
+ const ownSignalChoices=await ownSignalChoicesTx(tx,ctx);
  const progress=new Map<string,PromptEvaluationProgress|null>();for(const row of rows){progress.set(row.id,row.kind==='read_plan_prompt_v1'&&!row.own&&providerFingerprint?await promptEvaluationProgressTx(tx,ctx,row.id,providerFingerprint):null);}
  const promotions=await tx.execute<{id:string;version:number;kind:string;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,c.version,c.kind,
   p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) as retired
@@ -469,7 +560,7 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||!PROMPT_HOLDOUTS.some(row=>row.id===proof.fixtureId))throw Error();
   lastTrial={state:proof.stage==='reserved'?'pending':proof.stage==='completed'?'completed':proof.stage==='refused'?'refused':'unavailable',fixtureId:String(proof.fixtureId)};
  }catch{lastTrial={state:'unavailable',fixtureId:null};}}
- return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,
-  candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null})),
+ return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,
+  candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null,verifiedSignalCount:verifiedSignalCount.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
 }

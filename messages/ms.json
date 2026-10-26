@@ -16538,7 +16538,14 @@
         "baseline": "Tugasan ini dijalankan mengikut susunan pilihan anda.",
         "promoted": "Versi yang disemak secara bebas menyusun tugasan ini.",
         "changed": "Sesetengah rekod berubah sejak larian ini. Kad ini menunjukkan butiran yang boleh anda akses sekarang.",
-        "unavailable": "Larian ini perlu disemak semula. Saya belum dapat membukanya dengan selamat. Jalankan semula tugasan dipilih."
+        "unavailable": "Larian ini perlu disemak semula. Saya belum dapat membukanya dengan selamat. Jalankan semula tugasan dipilih.",
+        "signalConsent": "Gunakan penilaian ini sebagai isyarat peribadi untuk versi calon yang saya pilih untuk cadangkan. Ia bukan bukti ketepatan atau kebenaran akses. Penyemak bebas hanya melihat kesahihan dan bilangan bukti.",
+        "signal_helpful": "Membantu",
+        "signal_needs_correction": "Perlu pembetulan",
+        "signal_incorrect": "Tidak tepat",
+        "signalChanged": "Rekod ini berubah. Jalankan tugasan semula sebelum menilai keputusan baharu.",
+        "eraseSignals": "Padam penilaian tugasan saya",
+        "signalSaved": "Penilaian terdahulu anda bagi larian ini: {rating}."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

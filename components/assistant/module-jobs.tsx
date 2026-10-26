@@ -1,5 +1,6 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import {randomUUID} from 'node:crypto';
+import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
 import {getLocale,getTranslations} from 'next-intl/server';
@@ -95,5 +96,13 @@ export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJob
  if(view.state!=='ready')return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;
  return <section className="space-y-4" aria-label={t('result')}><p className="text-sm text-muted-foreground">{t(view.mode==='promoted'?'promoted':'baseline')}</p>
   {view.changedSinceRun&&<p role="status" className="text-xs text-muted-foreground">{t('changed')}</p>}
-  {view.views.map(row=><CanonicalModuleJob key={row.viewId} view={row} ctx={ctx}/>)}</section>;
+  {view.views.map(row=><CanonicalModuleJob key={row.viewId} view={row} ctx={ctx}/>)}
+  {view.feedbackOutcome&&<p role="status" className="text-xs text-muted-foreground">{t('signalSaved',{rating:t(`signal_${view.feedbackOutcome}`)})}</p>}
+  {!view.changedSinceRun?<form action={saveGovernedJobFeedbackAction} className="space-y-3 rounded-lg border p-4"><input type="hidden" name="jobId" value={view.jobId}/>
+   <label className="flex items-start gap-2 text-xs"><input type="checkbox" name="consented" value="yes" required className="mt-0.5"/><span>{t('signalConsent')}</span></label>
+   <div className="flex flex-wrap gap-2">{(['helpful','needs_correction','incorrect'] as const).map(outcome=><button key={outcome} type="submit" name="outcome" value={outcome}
+    className="min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`signal_${outcome}`)}</button>)}</div>
+  </form>:<p className="text-xs text-muted-foreground">{t('signalChanged')}</p>}
+  <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('eraseSignals')}</button></form>
+ </section>;
 }

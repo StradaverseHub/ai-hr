@@ -9,6 +9,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
  return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??'{'+field+'}'));
 }}));
+vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
 vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));

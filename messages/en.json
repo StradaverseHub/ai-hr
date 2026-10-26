@@ -16538,7 +16538,14 @@
         "baseline": "These tasks ran in your chosen order.",
         "promoted": "An independently reviewed version ordered these tasks.",
         "changed": "Some records changed since this run. These cards show the details you can access now.",
-        "unavailable": "This run needs a fresh look. I can’t safely reopen it right now. Run the selected tasks again."
+        "unavailable": "This run needs a fresh look. I can’t safely reopen it right now. Run the selected tasks again.",
+        "signalConsent": "Use this rating as a private signal for candidate versions I choose to propose. It does not prove correctness or grant access. Independent reviewers see only evidence authenticity and counts.",
+        "signal_helpful": "Helpful",
+        "signal_needs_correction": "Needs a correction",
+        "signal_incorrect": "Incorrect",
+        "signalChanged": "These records changed. Run the tasks again before rating the new result.",
+        "eraseSignals": "Erase my task ratings",
+        "signalSaved": "Your previous rating for this run: {rating}."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

@@ -51,7 +51,7 @@ export async function loadCanonicalToolJob(ctx:SessionContext,name:string,input:
  owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
 }
 
-export type GovernedWorkspaceJobView=Readonly<{state:'ready';jobId:string;mode:'baseline'|'promoted';changedSinceRun:boolean;views:readonly CanonicalModuleJobView[]}|{state:'unavailable'}>;
+export type GovernedWorkspaceJobView=Readonly<{state:'ready';jobId:string;mode:'baseline'|'promoted';changedSinceRun:boolean;feedbackOutcome:'helpful'|'needs_correction'|'incorrect'|null;views:readonly CanonicalModuleJobView[]}|{state:'unavailable'}>;
 /** Receipt reopening loads only fresh canonical facts in the supplied read-only source carrier. */
 export async function loadGovernedWorkspaceJobTx(ctx:SessionContext,tx:Tx,id:string):Promise<GovernedWorkspaceJobView>{
  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -60,6 +60,6 @@ export async function loadGovernedWorkspaceJobTx(ctx:SessionContext,tx:Tx,id:str
    const view=Object.freeze({state:'ready' as const,presentation:presentCanonicalModuleData(row.module,row.data),checkedAt:Date.now(),viewId:randomUUID()});
    owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});views.push(view);
   }
-  return Object.freeze({state:'ready',jobId:result.jobId,mode:result.mode,changedSinceRun:result.changedSinceRun,views:Object.freeze(views)});
+  return Object.freeze({state:'ready',jobId:result.jobId,mode:result.mode,changedSinceRun:result.changedSinceRun,feedbackOutcome:result.feedbackOutcome,views:Object.freeze(views)});
  }catch{return Object.freeze({state:'unavailable'});}
 }

@@ -16538,7 +16538,14 @@
         "baseline": "Các tác vụ chạy theo thứ tự bạn đã chọn.",
         "promoted": "Một phiên bản được đánh giá độc lập đã sắp xếp các tác vụ này.",
         "changed": "Một số hồ sơ đã thay đổi từ lần chạy này. Các thẻ hiển thị chi tiết bạn hiện được phép truy cập.",
-        "unavailable": "Lần chạy này cần được xem lại. Hiện tôi chưa thể mở an toàn. Hãy chạy lại các tác vụ đã chọn."
+        "unavailable": "Lần chạy này cần được xem lại. Hiện tôi chưa thể mở an toàn. Hãy chạy lại các tác vụ đã chọn.",
+        "signalConsent": "Dùng đánh giá này làm tín hiệu riêng tư cho các phiên bản ứng viên tôi chọn đề xuất. Đánh giá không chứng minh tính đúng đắn hay cấp quyền truy cập. Người đánh giá độc lập chỉ thấy tính xác thực và số lượng bằng chứng.",
+        "signal_helpful": "Hữu ích",
+        "signal_needs_correction": "Cần sửa",
+        "signal_incorrect": "Không đúng",
+        "signalChanged": "Hồ sơ đã thay đổi. Chạy lại tác vụ trước khi đánh giá kết quả mới.",
+        "eraseSignals": "Xóa đánh giá tác vụ của tôi",
+        "signalSaved": "Đánh giá trước đó của bạn cho lần chạy này: {rating}."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

@@ -9,6 +9,7 @@ import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { askAssistantAction } from './actions';
+import {eraseGovernedJobFeedbackAction} from './job-feedback-actions';
 import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-actions';
 
 /**
@@ -55,6 +56,7 @@ export default async function AssistantPage({
           <form action={eraseAgentFeedbackAction} className="mt-4">
             <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
           </form>
+          <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
         </Card>
       </div>
     );

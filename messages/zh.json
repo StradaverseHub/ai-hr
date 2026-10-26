@@ -16538,7 +16538,14 @@
         "baseline": "这些任务按你选择的顺序运行。",
         "promoted": "这些任务采用了经过独立审查的版本所安排的顺序。",
         "changed": "部分记录自运行后已更改。卡片显示你目前有权查看的详情。",
-        "unavailable": "这次运行需要重新查看。我现在无法安全地打开它。请重新运行所选任务。"
+        "unavailable": "这次运行需要重新查看。我现在无法安全地打开它。请重新运行所选任务。",
+        "signalConsent": "将此评分用作我选择提议的候选版本的私人信号。它不证明正确性，也不授予访问权限。独立审查者只能看到证据是否真实及其数量。",
+        "signal_helpful": "有帮助",
+        "signal_needs_correction": "需要修正",
+        "signal_incorrect": "不正确",
+        "signalChanged": "这些记录已更改。请重新运行任务后再评价新结果。",
+        "eraseSignals": "删除我的任务评分",
+        "signalSaved": "你对此次运行的上次评分：{rating}。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
