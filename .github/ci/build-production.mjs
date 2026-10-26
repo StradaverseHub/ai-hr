@@ -31,6 +31,18 @@ export function assertBuildInvocation(environment){
  if(!/^StradaverseHub\/ai-hr\/\.github\/workflows\/alpha-staging\.yml@refs\/heads\/(main|alpha)$/.test(environment.GITHUB_WORKFLOW_REF??''))fail('workflow/candidate/controller identity');
  return true;
 }
+// CI candidate builds include review dispatches and same-repository PR checks.
+// This does not widen the release verifier trusted branch rules.
+export function assertCiCandidateBuildInvocation(e){
+ assertBuildIdentity(e);
+ if(e.CI!=='true'||e.RUNNER_ENVIRONMENT!=='github-hosted'||e.GITHUB_JOB!=='build'
+  ||!['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME)
+  ||!/^StradaverseHub\/ai-hr\/\.github\/workflows\/alpha-staging\.yml@refs\/(?:heads\/[A-Za-z0-9_./-]+|pull\/[1-9][0-9]*\/merge)$/.test(e.GITHUB_WORKFLOW_REF??''))fail('CI candidate build identity');
+ if(e.GITHUB_EVENT_NAME==='push'&&(e.GITHUB_REF!=='refs/heads/alpha'||e.AIHR_CI_HEAD!==e.AIHR_CI_CONTROL_HEAD))fail('CI candidate alpha push identity');
+ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])
+  if(e[key]!=='postgres://nobody:nothing@127.0.0.1:1/no_database')fail('CI candidate build database must remain closed');
+ return true;
+}
 export function assertDiagnosticBuildInvocation(environment){
  assertBuildIdentity(environment);
  const original=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.AIHR_NEXT_BUILD_CACHE_MODE===undefined;
@@ -77,8 +89,8 @@ function assertDotenvCompileKeys(source){
 export async function produceBuild({source=process.cwd(),output,purpose='release'}){
  const environment=process.env;
  source=resolve(source);output=resolve(output);
- if(!['release','diagnostic'].includes(purpose))fail('unknown build purpose');
- if(purpose==='release')assertBuildInvocation(environment);else assertDiagnosticBuildInvocation(environment);
+ if(!['release','ci','diagnostic'].includes(purpose))fail('unknown build purpose');
+ if(purpose==='release')assertBuildInvocation(environment);else if(purpose==='ci')assertCiCandidateBuildInvocation(environment);else assertDiagnosticBuildInvocation(environment);
  if(realpathSync(source)!==source)fail('source must be a real checkout');
  const load=async relative=>{const raw=await import(pathToFileURL(join(source,relative)).href);return {...(raw.default??{}),...raw};};
  const next=JSON.parse(readFileSync(join(source,'node_modules/next/package.json'),'utf8')).version;
@@ -116,12 +128,13 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD
   ||!testing.readPublishedTestingBuild(directory,{sourceRef:environment.AIHR_CI_HEAD,buildRecordId}).bytes.equals(preparedBytes)
   ||!bytes(observationPath,1024*1024).equals(observationBytes))fail('source or build evidence changed during packaging');
- const provenance={format:1,kind:purpose==='release'?'ci-system-testing-build-candidate':'diagnostic-system-testing-build-not-release',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
+ const provenance={format:1,kind:purpose==='diagnostic'?'diagnostic-system-testing-build-not-release':'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
   repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:Number(environment.GITHUB_RUN_ID),runAttempt:1,
   workflowRef:environment.GITHUB_WORKFLOW_REF,runtime,buildRecordId,nextBuildId:buildId,
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),
   preparedSha256:hash(preparedBytes),successfulObservationSha256:hash(observationBytes),manifestSha256:hash(manifestBytes),
   archiveSha256:manifest.archiveSha256,archiveBytes:manifest.archiveBytes,releaseAuthorized:false};
+ if(purpose!=='diagnostic')provenance.buildSourcePath=source;
  if(purpose==='diagnostic'){
   provenance.diagnosticRunner={name:environment.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
   provenance.diagnosticDurations={canonicalBuildMs:endedAt-startedAt,packMs:packEndedAt-packStartedAt};
@@ -130,7 +143,7 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  return provenance;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const diagnostic=process.argv[2]==='--diagnostic';
- if(process.argv.length!==(diagnostic?4:3))throw Error('Usage: pnpm exec tsx build-production.mjs [--diagnostic] NEW_OUTPUT_DIRECTORY');
- produceBuild({output:process.argv[diagnostic?3:2],purpose:diagnostic?'diagnostic':'release'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error);process.exitCode=1;});
+ const mode=process.argv[2],selected=['--diagnostic','--ci'].includes(mode);
+ if(process.argv.length!==(selected?4:3))throw Error('Usage: pnpm exec tsx build-production.mjs [--diagnostic|--ci] NEW_OUTPUT_DIRECTORY');
+ produceBuild({output:process.argv[selected?3:2],purpose:mode==='--diagnostic'?'diagnostic':mode==='--ci'?'ci':'release'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error);process.exitCode=1;});
 }

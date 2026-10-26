@@ -1,6 +1,6 @@
 # CI build efficiency and deployment boundaries
 
-The isolated branch now has independently verified canonical Linux build-byte transport and Next application compiler-state reuse. Normal authenticated promotion and complete release adoption remain unfinished. The original optional Turbopack cache below has no measured cold/warm result; it is separate from the newly verified application TypeScript state.
+The isolated branch now has independently verified canonical Linux build-byte transport and Next application compiler-state reuse. The normal review workflow now prepares a mandatory canonical build packet under [policy v4](CI-CANONICAL-BUILD-PROTOCOL.md). That source integration is not yet exercised as a complete normal gate. Normal authenticated promotion and complete release adoption remain unfinished. The original optional Turbopack cache below has no measured cold/warm result; it is separate from the newly verified application TypeScript state.
 
 ## Current measured application compiler result — 26 October 2026 MYT
 
@@ -12,7 +12,7 @@ The candidate and installed framework are Next.js 16.3.8. Its installed document
 
 The repository cache API observation returned three entries totaling 662,708,199 bytes. All three were pnpm dependency caches in separate branch scopes; none was a Next compiler cache. This is a dated observation, not a permanent cache inventory. No storage limit, billing setting or existing cache was changed.
 
-The build job currently verifies a Linux production build. The standard local `scripts/improve/release.ts` path checks complete TypeScript locally before invoking the remote deployment build. The CI operator path instead validates the complete CI witness, including its compiler job, and invokes the canonical remote build through the frozen source's official helpers. These are distinct environments and claims. Removing a build or copying output between them requires validated replacement evidence; a successful generic CI build does not establish staging build identity or arrival.
+The review build job now produces a canonical System Testing Linux build packet; earlier normal generic-build runs did not establish that identity. The standard local `scripts/improve/release.ts` path checks complete TypeScript locally before invoking the remote deployment build. The CI operator path instead validates the complete CI witness, including its compiler job, and invokes the canonical remote build through the frozen source's official helpers. These are distinct environments and claims. Removing a build or copying output between them requires validated replacement evidence; a successful generic CI build does not establish staging build identity or arrival.
 
 ## Prepared optional compiler cache
 
@@ -44,6 +44,6 @@ The source has an explicit build-identity boundary:
 3. `runTestingProductionBuild` in `scripts/improve/system-testing-build-cli.ts` derives the official build environment from the validated record, invokes canonical `pnpm build`, requires a fresh Next build ID and publishes the successful observation only after completion.
 4. `scripts/improve/system-testing-next-config.ts` verifies the selected owned record before exposing its five compile values. An ordinary CI build without the official selector gets explicit empty substitutions.
 
-Consequently, the current generic CI build is not the official staging build. Artifact promotion would need a reviewed build-once path that establishes the correct staging compile context before compilation, authenticates candidate/controller/run/artifact bytes and platform/runtime/dependencies, preserves this record/observation boundary, and proves the installed build and running service match. It must also retain audit preflights, migrations, catalog work, restart, health and source/build arrival. Merely restoring `.next` or bypassing the canonical build would lose these claims.
+Consequently, the historical generic CI build was not the official staging build. The new review producer preserves the canonical record/observation boundary, but has not established a deployed staging build. Artifact promotion would need a reviewed build-once path that establishes the correct staging compile context before compilation, authenticates candidate/controller/run/artifact bytes and platform/runtime/dependencies, preserves this record/observation boundary, and proves the installed build and running service match. It must also retain audit preflights, migrations, catalog work, restart, health and source/build arrival. Merely restoring `.next` or bypassing the canonical build would lose these claims.
 
 Artifact promotion is not implemented by the cache change. Keep that work separate from Board 3's frozen release and validate it under a versioned release policy before changing deployment authority.

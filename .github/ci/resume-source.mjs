@@ -1,11 +1,12 @@
 /** Offline source-integrity assessment. Never a receipt, API authentication or release authority. */
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, readdirSync, rmSync, realpathSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {requiredEvidence} from './manifest.mjs';
+import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiBuildPacket} from './build-artifact.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {COMPILER_STATE_ARTIFACT,COMPILER_PACKET_MEMBERS} from './compiler-cache-protocol.mjs';
 import {REPOSITORY, REPOSITORY_ID, WORKFLOW_ID, WORKFLOW_PATH, verifyArtifactBytes} from './release-policy.mjs';
@@ -87,7 +88,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
     const w = artifact?.workflow_run;
     if ((!topology.artifacts.includes(artifact?.name) && artifact?.name !== COMPILER_STATE_ARTIFACT) || artifactByName.has(artifact.name)
       || !positiveId(artifact.id) || artifactIds.has(artifact.id) || artifact.expired !== false
-      || !positiveId(artifact.size_in_bytes) || artifact.size_in_bytes > maxArchiveBytes
+      || !positiveId(artifact.size_in_bytes) || artifact.size_in_bytes > (artifact.name===BUILD_ARTIFACT?BUILD_ZIP_MAX:maxArchiveBytes)
       || !/^sha256:[a-f0-9]{64}$/.test(artifact.digest ?? '') || !archives.has(artifact.name))
       fail('invalid, foreign, duplicate or expired artifact');
     if (w?.id !== run.id || w.repository_id !== REPOSITORY_ID || w.head_repository_id !== REPOSITORY_ID
@@ -106,6 +107,21 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
     if (!job || job.conclusion === 'skipped' || when < timestamp(job.started_at) || when > timestamp(job.completed_at))
       fail('artifact outside producing job: ' + artifact.name);
     return archiveJson(artifact, archives.get(artifact.name), filename, members);
+  }
+  const buildArtifact=artifactByName.get(BUILD_ARTIFACT);
+  if(buildArtifact){
+    const job=byName.get('build'),when=timestamp(buildArtifact.created_at),bytes=archives.get(BUILD_ARTIFACT);
+    if(job.conclusion!=='success'||when<timestamp(job.started_at)||when>timestamp(job.completed_at)
+      ||!Buffer.isBuffer(bytes)||bytes.length!==buildArtifact.size_in_bytes||bytes.length>BUILD_ZIP_MAX)fail('build packet producing job or byte size differs');
+    verifyArtifactBytes(buildArtifact,bytes);
+    const temporary=realpathSync(mkdtempSync(join(tmpdir(),'aihr-resume-build-')));
+    try{
+      const archive=join(temporary,'build.zip'),packet=join(temporary,'packet');
+      writeFileSync(archive,bytes,{flag:'wx',mode:0o600});
+      execFileSync('python3',[fileURLToPath(new URL('./build-transport-extract.py',import.meta.url)),archive,packet,buildArtifact.digest.slice(7)],{timeout:60000,stdio:'pipe'});
+      inspectCiBuildPacket(packet,{...expected,controllerBranch:run.head_branch,producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
+    }finally{rmSync(temporary,{recursive:true,force:true});}
+    // This supplies no reusable test unit and never waives a fresh canonical build.
   }
   const supplemental = artifactByName.get(COMPILER_STATE_ARTIFACT);
   if(supplemental){

@@ -73,3 +73,16 @@ test('supplemental compiler graph is authenticated but never supplies test-unit 
  const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert.equal(result.releaseAuthorized,false);assert(result.freshPrerequisites.includes('typecheck'));
  const bytes=Buffer.from(f.archives.get(cache.name));bytes[bytes.length-1]^=1;f.archives.set(cache.name,bytes);assert.throws(()=>assessResumeSource(f));
 });
+
+test('binary build packet integrity is checked without creating reusable build or test coverage',async()=>{
+ const {buildPacketFixture}=await import('./build-artifact-test-fixture.mjs');
+ const f=fixture(),job=f.jobs.find(j=>j.name==='build');
+ const packet=buildPacketFixture({...f.expected,controllerBranch:'main',producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
+ const entries=Object.fromEntries(Object.entries(packet.entries).map(([name,bytes])=>[name,bytes.toString()]));
+ put(f,'production-build-v1','build-provenance.json',JSON.parse(entries['build-provenance.json']),Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='build-provenance.json')));
+ const result=assessResumeSource(f);
+ assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert.equal(result.releaseAuthorized,false);
+ const changed=JSON.parse(entries['build-provenance.json']);changed.kind='diagnostic-system-testing-build-not-release';
+ put(f,'production-build-v1','build-provenance.json',changed,Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='build-provenance.json')));
+ assert.throws(()=>assessResumeSource(f),/canonical build provenance/);
+});

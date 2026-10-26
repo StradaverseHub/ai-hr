@@ -9,7 +9,7 @@ test('Actual pilot scale produces complete bounded batches without a fixed unit 
  assert.equal(db.length,Math.ceil(981/DB_BATCH_FILES));assert.equal(nodb.length,Math.ceil(963/NODB_BATCH_FILES));
  assert.deepEqual(p.units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),p.suite);
  assert.ok(db.every(u=>u.files.length>0&&u.files.length<=64));
- assert.equal(requiredEvidence(p).units.length,23);assert.equal(requiredEvidence(p).jobs.length,31);assert.equal(requiredEvidence(p).artifacts.length,25);
+ assert.equal(requiredEvidence(p).units.length,23);assert.equal(requiredEvidence(p).jobs.length,31);assert.equal(requiredEvidence(p).artifacts.length,26);
 });
 test('Batch membership and content identity survive different input ordering',()=>{
  const p=fixture(),db=p.units.filter(u=>u.kind==='db').flatMap(u=>u.files),nodb=p.units.filter(u=>u.kind==='nodb').flatMap(u=>u.files);

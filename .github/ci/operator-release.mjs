@@ -31,12 +31,12 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  const ssh=(command,options={})=>execFileSync('ssh',official.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
  const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
  const baseline=baselineRules.readyProductionBaseline(current());
- const evidence=verifyCi({candidatePath,runId,baseline});
+ const evidence=await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,execute});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==evidence.controller)throw Error('Verified source changed');};
- frozen();revalidateCi(evidence);
+ frozen();await revalidateCi(evidence);
  if(baselineRules.readyProductionBaseline(current())!==baseline)throw Error('Staging baseline moved before deployment');
  const build=testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:evidence.sha,buildRecordId:randomUUID()});
  const localDirectory=testing.systemTestingBuildDirectory('local');testing.ensurePrivateReleaseDirectory(localDirectory);testing.publishSystemTestingBuild(build,localDirectory);

@@ -33,5 +33,5 @@ export function requiredEvidence(expectedPlan){
  const browser=expectedPlan.units.find(u=>u.kind==='browser')?.files;
  if(JSON.stringify(buildUnits(expectedPlan.suite,groups,browser))!==JSON.stringify(expectedPlan.units))throw Error('Incomplete or altered manifest topology');
  const units=expectedPlan.units.map(u=>u.id);
- return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence',...units.map(id=>`unit-${id}`)]};
+ return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence','production-build-v1',...units.map(id=>`unit-${id}`)]};
 }

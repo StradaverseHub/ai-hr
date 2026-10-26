@@ -1,4 +1,4 @@
-"""Private, bounded binary diagnostic artifact extraction; never release authority."""
+"""Private, bounded build packet extraction; normal or diagnostic bytes never grant release authority."""
 import importlib.util
 import os
 from pathlib import Path

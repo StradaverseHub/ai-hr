@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {assertBuildRuntime,assertBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
 test('Only the observed staging tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
@@ -42,4 +42,20 @@ test('new canonical-build diagnostic cannot satisfy release or unrelated diagnos
  for(const mode of ['cold','warm','recover'])assert.equal(assertDiagnosticBuildInvocation({...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}),true);
  assert.throws(()=>assertBuildInvocation(e));
  for(const changes of [{GITHUB_JOB:'build'},{AIHR_NEXT_BUILD_CACHE_MODE:'unknown'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>assertDiagnosticBuildInvocation({...e,...changes}));
+});
+
+test('normal build-only context accepts review/PR production compilation but cannot authorize release',()=>{
+ const e={...environment,CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_JOB:'build',GITHUB_EVENT_NAME:'workflow_dispatch',
+ GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/review',
+ ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ assert.equal(assertCiCandidateBuildInvocation(e),true);assert.throws(()=>assertBuildInvocation(e));
+ const pr={...e,GITHUB_EVENT_NAME:'pull_request',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/pull/7/merge'};
+ assert.equal(assertCiCandidateBuildInvocation(pr),true);assert.throws(()=>assertBuildInvocation(pr));
+ const push={...e,GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/alpha',AIHR_CI_HEAD:e.AIHR_CI_CONTROL_HEAD,GITHUB_WORKFLOW_REF:environment.GITHUB_WORKFLOW_REF};
+ assert.equal(assertCiCandidateBuildInvocation(push),true);
+ for(const change of [{GITHUB_JOB:'test'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_EVENT_NAME:'schedule'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY_ID:'9'},{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('alpha-staging.yml','other.yml')},
+ {DATABASE_URL:'postgres://live'},{MIGRATION_DATABASE_URL:'postgres://live'},{TEST_DATABASE_URL:undefined},{TEST_MIGRATION_DATABASE_URL:undefined}])
+  assert.throws(()=>assertCiCandidateBuildInvocation({...e,...change}));
+ assert.throws(()=>assertCiCandidateBuildInvocation({...push,GITHUB_REF:'refs/heads/main'}));
+ assert.throws(()=>assertCiCandidateBuildInvocation({...push,AIHR_CI_HEAD:'f'.repeat(40)}));
 });
