@@ -17,9 +17,11 @@ function literalEnvironment(bytes){
 export function parsePrivateEnvironment(bytes,{cwd=process.cwd()}={}){
  const text=literalEnvironment(bytes),keys=[...new Set([...text.matchAll(/^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=/gm)].map(m=>m[1]))];
  assert(keys.length<=4096&&keys.every(k=>k.length<=160),'Bounded private environment names required');
- const script='set -eu\nset -a\n. /dev/stdin\nset +a\nwhile [ "$#" -gt 0 ]; do builtin printf "%s\\0" "${!1}"; shift; done';
+ // Bash reads validated assignments directly: reopening a Node socket-backed stdin fails on Linux.
+ // Private bytes stay on stdin, never in argv or a temporary file.
+ const script='set -eu\nset -a\n'+text+'\nset +a\nwhile [ "$#" -gt 0 ]; do builtin printf "%s\\0" "${!1}"; shift; done';
  let raw;
- try{raw=execFileSync('/bin/bash',['--noprofile','--norc','-c',script,'aihr-private-environment',...keys],{cwd,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},input:bytes,timeout:5000,maxBuffer:2*1024**2,stdio:['pipe','pipe','pipe']});}
+ try{raw=execFileSync('/bin/bash',['--noprofile','--norc','-s','--',...keys],{cwd,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},input:script,timeout:5000,maxBuffer:2*1024**2,stdio:['pipe','pipe','pipe']});}
  catch{throw Error('Private environment could not be evaluated safely; no values returned');}
  const fields=raw.toString('utf8').split('\0');assert(fields.pop()===''&&fields.length===keys.length,'Private environment output differs');
  const values=Object.fromEntries(keys.map((key,index)=>[key,fields[index]]));
@@ -39,29 +41,32 @@ export function proposeCustomerEnvironment(original,{parse=parsePrivateEnvironme
  const newline=text.includes('\r\n')?'\r\n':'\n';
  const proposed=Buffer.from(retained+(retained&&!retained.endsWith('\n')?newline:'')+'AUDIT_HASH_CHAIN_ENABLED=true'+newline);
  const before=parse(original),after=parse(proposed);
- assert(before.AUTH_PROVIDER==='internal'&&before.ALLOW_DEMO_SESSION!=='true','Current internal customer auth must already be active');
+ assert(before.NODE_ENV==='production','Current production runtime mode required');
+ assert(before.AUTH_PROVIDER==='internal'&&[undefined,'','false'].includes(before.ALLOW_DEMO_SESSION),'Current internal customer auth must already be active');
  assert(typeof before.AUTH_SESSION_KEY==='string'&&/^[a-f0-9]{64}$/i.test(before.AUTH_SESSION_KEY)&&typeof before.AUTH_PUBLIC_ORIGIN==='string'&&before.AUTH_PUBLIC_ORIGIN.startsWith('https://'),'Existing origin/key required; proposal never invents them');
  assert(!Object.hasOwn(after,'DEV_TENANT_ID')&&!Object.hasOwn(after,'DEV_USER_ID')&&after.AUDIT_HASH_CHAIN_ENABLED==='true','Exact allowed customer delta required');
  const unaffected=values=>Object.fromEntries(Object.entries(values).filter(([key])=>!CUSTOMER_ENV_DELTA_KEYS.includes(key)).sort(([a],[b])=>a.localeCompare(b)));
  assert(isDeepStrictEqual(unaffected(before),unaffected(after)),'Proposal changed an unrelated effective value');
  return {kind:'PRIVATE_CUSTOMER_ENV_PROPOSAL_NOT_APPLIED',originalSha256:hash(original),proposedSha256:hash(proposed),bytes:proposed,removedKeys:[...new Set(removed)].sort(),setKeys:['AUDIT_HASH_CHAIN_ENABLED'],nonTargetValuesPreserved:true,releaseAuthorized:false};
 }
-export function proposeCustomerUnit({descriptor,runtimePath,environmentFilePathOverrideAbsent,ordinaryExecStartProved}){
+export function proposeCustomerUnit({descriptor,runtimePath,environmentFilePathOverrideAbsent,ordinaryExecStartProved,pathUnsetAbsent,auditFlagUnsetAbsent}){
  assert(environmentFilePathOverrideAbsent===true,'Effective environment-file PATH precedence must be proved');
  assert(ordinaryExecStartProved===true,'Original unit executable flags must be proved ordinary');
+ assert(pathUnsetAbsent===true,'Existing UnsetEnvironment removes or may remove PATH');
+ assert(auditFlagUnsetAbsent===true,'Existing UnsetEnvironment removes or may remove the audit flag');
  assert(typeof descriptor==='string'&&descriptor.length<16384,'Bounded actual unit descriptor required');
  const starts=[...descriptor.matchAll(/(?:^|[;{])\s*path=([^;]+?)\s*;/g)],argv=[...descriptor.matchAll(/argv\[\]=([^;]+?)\s*;/g)];
  assert(starts.length===1&&argv.length===1&&starts[0][1]==='/opt/node20/bin/node','Exact old service executable required');
- const oldArgv=argv[0][1];assert(oldArgv.startsWith('/opt/node20/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start ')&&/^[A-Za-z0-9_./ :\-]+$/.test(oldArgv),'Unreviewed existing service arguments');
+ const oldArgv=argv[0][1],checkedArgv=oldArgv.replace(/ -p \$\{PORT\}(?= |$)/,' -p PORT');assert(oldArgv.startsWith('/opt/node20/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start ')&&/^[A-Za-z0-9_./ :\-]+$/.test(checkedArgv),'Unreviewed existing service arguments');
  assert(typeof runtimePath==='string'&&runtimePath.length>0&&runtimePath.length<=16384,'Actual service PATH required');
  const components=runtimePath.split(':');assert(components.length<=256&&components.every(p=>path.isAbsolute(p)&&path.normalize(p)===p&&/^\/[A-Za-z0-9_./-]+$/.test(p)),'Unsupported PATH component');
  const targetPath=[...new Set(['/opt/node22/bin',...components])].join(':'),newArgv=oldArgv.replace('/opt/node20/bin/node','/opt/node22/bin/node');
- const bytes=Buffer.from('[Service]\nExecStart=\nExecStart='+newArgv+'\nEnvironment="PATH='+targetPath+'"\nUnsetEnvironment=DEV_TENANT_ID DEV_USER_ID\n');
- return {kind:'PRIVATE_CUSTOMER_UNIT_PROPOSAL_NOT_APPLIED',bytes,sha256:hash(bytes),oldExecutable:'/opt/node20/bin/node',newExecutable:'/opt/node22/bin/node',existingArgumentsPreserved:true,pathPrefixOnly:true,existingEnvironmentSourcesAndHardeningUnchanged:true,releaseAuthorized:false};
+ const bytes=Buffer.from('[Service]\nExecStart=\nExecStart='+newArgv+'\nEnvironment="PATH='+targetPath+'"\nUnsetEnvironment=DEV_TENANT_ID DEV_USER_ID MIGRATION_DATABASE_URL\n');
+ return {kind:'PRIVATE_CUSTOMER_UNIT_PROPOSAL_NOT_APPLIED',bytes,sha256:hash(bytes),oldExecutable:'/opt/node20/bin/node',newExecutable:'/opt/node22/bin/node',existingArgumentsPreserved:true,pathPrefixOnly:true,otherUnitSettingsUnchanged:true,migrationCredentialExcludedFromWebService:true,releaseAuthorized:false};
 }
 /** Only this redacted summary belongs in a planning record; private bytes stay in the operator. */
 export function summarizeCustomerProposal(environment,unit){
  assert(environment?.kind==='PRIVATE_CUSTOMER_ENV_PROPOSAL_NOT_APPLIED'&&unit?.kind==='PRIVATE_CUSTOMER_UNIT_PROPOSAL_NOT_APPLIED'&&environment.releaseAuthorized===false&&unit.releaseAuthorized===false,'Actual private proposals required');
  assert(hash(environment.bytes)===environment.proposedSha256&&hash(unit.bytes)===unit.sha256,'Proposed private bytes changed');
- return {kind:'CUSTOMER_RUNTIME_PROPOSAL_NOT_APPLIED',environment:{originalSha256:environment.originalSha256,proposedSha256:environment.proposedSha256,remove:['DEV_TENANT_ID','DEV_USER_ID'],set:{AUDIT_HASH_CHAIN_ENABLED:'true'},nonTargetValuesPreserved:true},unit:{sha256:unit.sha256,oldExecutable:unit.oldExecutable,newExecutable:unit.newExecutable,existingArgumentsPreserved:true,existingEnvironmentSourcesAndHardeningUnchanged:true},tenantAuditSettingsChanged:false,historicalAuditCoverageClaimed:false,requiresMatchedTrustedFullWitness:true,requiresHumanMaintenanceGrant:true,releaseAuthorized:false};
+ return {kind:'CUSTOMER_RUNTIME_PROPOSAL_NOT_APPLIED',environment:{originalSha256:environment.originalSha256,proposedSha256:environment.proposedSha256,remove:['DEV_TENANT_ID','DEV_USER_ID'],set:{AUDIT_HASH_CHAIN_ENABLED:'true'},nonTargetValuesPreserved:true},unit:{sha256:unit.sha256,oldExecutable:unit.oldExecutable,newExecutable:unit.newExecutable,existingArgumentsPreserved:true,otherUnitSettingsUnchanged:true,migrationCredentialExcludedFromWebService:true},tenantAuditSettingsChanged:false,historicalAuditCoverageClaimed:false,requiresMatchedTrustedFullWitness:true,requiresHumanMaintenanceGrant:true,releaseAuthorized:false};
 }
