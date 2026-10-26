@@ -136,7 +136,7 @@ describe('pending own-leave review custody', () => {
   });
 
   it('bounds pending reviews per login and frees pending capacity only when a review retires', async () => {
-    const reviews = [];
+    const reviews: Awaited<ReturnType<typeof prepare>>[] = [];
     for (let index = 0; index < 5; index++) reviews.push(await prepare());
     const before = await counts();
     expect(before).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
@@ -330,7 +330,7 @@ async function canonicalSubmission(tx: Tx) {
     date: nomination.date, days: c.deductionDays, availableBalance: outcome.privateAvailableBalance,
     holidayWarnings: c.holidayWarnings });
   if (!result.submittedEventId) throw new Error('Missing canonical source event');
-  return { requestId: result.requestId, eventId: result.submittedEventId };
+  return { requestId: result.leaveRequestId, eventId: result.submittedEventId };
 }
 async function completeReference(tx: Tx, review: Awaited<ReturnType<typeof prepare>>, refs: { requestId: string; eventId: string }) {
   const [row] = await tx.execute<{ review: { metadata: { state: string }; sealed: null; receipt: {

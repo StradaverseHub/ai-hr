@@ -15,7 +15,7 @@ const bytes = (value: string) => new TextEncoder().encode(value).byteLength;
  * A malformed batch is terminal, with no partial dispatch or guessed/repaired correlation IDs.
  */
 export function captureAgentReadBatch(value: unknown): readonly AiToolCall[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > AGENT_READ_BATCH_LIMITS.calls) invalid();
+  if (!Array.isArray(value) || value.length === 0 || value.length > AGENT_READ_BATCH_LIMITS.calls) return invalid();
   if (Object.getPrototypeOf(value) !== Array.prototype) invalid();
   const batchDescriptors = Object.getOwnPropertyDescriptors(value);
   if (Reflect.ownKeys(batchDescriptors).length !== value.length + 1) invalid();

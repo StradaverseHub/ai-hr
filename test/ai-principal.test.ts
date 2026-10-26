@@ -25,7 +25,7 @@ describe('current AI calling principal prerequisite',()=>{
   await expect(withTenant(ctx,tx=>assertAiPrincipalTx(tx,ctx))).rejects.toThrow();
  });
  it('refuses an old no-person binding after the login is relinked',async()=>{
-  const ctx=adminCtx(b),[person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Relinked Principal'}).returning({id:schema.person.id});
+  const ctx=adminCtx(b),[person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Relinked Principal',primaryEmail:'fictional-relinked@fixture.test'}).returning({id:schema.person.id});
   await owner.db.update(schema.appUser).set({personId:person.id}).where(eq(schema.appUser.id,b.adminUserId));
   await expect(withTenant(ctx,tx=>assertAiPrincipalTx(tx,ctx))).rejects.toThrow();
  });

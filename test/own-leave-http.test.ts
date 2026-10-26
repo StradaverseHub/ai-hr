@@ -28,9 +28,10 @@ describe('own-leave browser transport owner', () => {
     const f=fixture(), response=await f.run(new Request('https://hr.example/api/assistant/own-leave',{method}));
     expect(response.status).toBe(405); expect(response.headers.get('allow')).toBe('POST'); expect(f.owners.authenticate).not.toHaveBeenCalled();
   });
-  it.each([{ origin: 'https://foreign.example' }, { origin: '' }, { origin: 'null' },
+  const browserAuthorityCases: Record<string,string>[] = [{ origin: 'https://foreign.example' }, { origin: '' }, { origin: 'null' },
     { 'sec-fetch-site': 'cross-site' }, { 'sec-fetch-site': 'same-site' },
-    { origin: 'https://foreign.example', 'x-forwarded-host': 'foreign.example' }, { host: 'hr.example,foreign.example' }])
+    { origin: 'https://foreign.example', 'x-forwarded-host': 'foreign.example' }, { host: 'hr.example,foreign.example' }];
+  it.each(browserAuthorityCases)
   ('refuses foreign/missing/ambiguous browser authority %j before reading session', async headers => {
     const f=fixture(), response=await f.run(request({operation:'confirm',confirmation},headers));
     expect(response.status).toBe(403); expect(f.owners.authenticate).not.toHaveBeenCalled(); expect(f.owners.confirm).not.toHaveBeenCalled();

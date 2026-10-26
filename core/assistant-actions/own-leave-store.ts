@@ -195,9 +195,9 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
       if (!written.submittedEventId || written.days !== candidate.deductionDays)
         throw new OwnLeaveContentUnavailable();
       const recorded = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_complete(
-        ${m.actionId}::uuid,${m.reviewedDigest},${written.requestId}::uuid,${written.submittedEventId}::uuid) as review`);
+        ${m.actionId}::uuid,${m.reviewedDigest},${written.leaveRequestId}::uuid,${written.submittedEventId}::uuid) as review`);
       if (recorded.metadata.actionId !== m.actionId || recorded.receipt?.state !== 'completed'
-        || recorded.receipt.leaveRequestId !== written.requestId
+        || recorded.receipt.leaveRequestId !== written.leaveRequestId
         || recorded.receipt.submissionEventId !== written.submittedEventId) throw new OwnLeaveContentUnavailable();
       return completed(tx, actor, recorded);
     });

@@ -2391,3 +2391,55 @@ permissions. Those provenance/revocation requirements remain separate release bl
 as do all remaining own-leave, provider evaluation/settlement, twenty-module agent and
 feedback/held-out evaluation requirements. All three stages still precede one combined
 final gate and one verified deployment. No H passing coverage is rerun.
+
+
+### Explicit reader transaction seams and first local compiler result
+
+Mobile explicitly returned both test slots and devdb after its verified release and
+fixture restoration. Normal atomic complete-set admission was acquired for each P
+development compiler attempt; owned leases were released at termination. No test,
+application, database connection, fixture reset, migration, native build or provider
+request was part of these compiler jobs. H checks were not repeated.
+
+Fourteen canonical Assistant reader entry points now accept an explicit optional
+caller transaction: absence/count/calendar/profile, balances/derivation/requests,
+reporting/self-employment inventory and released payslip readers. A supplied seam
+checks the actual current principal and transaction carrier before its source reads;
+ordinary calls retain their original transaction path. The subordinate summary
+propagates the same supplied transaction into its balance read. Targeted AST reversal
+confirmed all previous default-path bodies and unrelated source byte-identical after
+removing only the new signatures/wrappers, guard and child propagation. These are
+foundations for an explicit disclosure/history read owner; the Assistant registry is
+not yet using all these seams, and historical-answer revocation is NOT closed.
+Caller-Tx runtime/RLS/interleaving cases are still required; no implicit transaction
+joining or raw query capability is given to a model.
+
+The first strict local compiler completed on the current 7,102-input development
+snapshot with raw process exit 0. Exact source/dependency input content hashes matched
+before and after. Its private input, command, raw log and terminal result remain in
+owned scratchpad `ai-local-development-20261026/compiler-06`. This is a TypeScript
+PASS for that input, NOT an executable-test, security, experience, final-gate or
+release PASS. TypeScript's valid incremental cache was retained.
+
+Earlier failures are preserved: offline pnpm refused missing outer-workspace patch
+configuration (exit1, compiler unrun); default4GiB and repository-release6GiB Node
+attempts exhausted heap (raw child -6, controller1). The successful root dependency
+clone had a byte-identical installed lock. Mobile dependencies were separately cloned
+from an existing real tree with matching manifest/lock and noble2.4.0; no download,
+lockfile rewrite or lifecycle script ran. The local8GiB setting matches the existing
+whole-root compiler configuration; physical memory was read as18GiB. No cloud runner
+or OS swap change was used. Completed8GiB checks exposed actual diagnostics, repaired
+without exclusions or weaker assertions: the public canonical result field is
+`leaveRequestId` (not the private insertion helper's `id` or invented `requestId`),
+invalid-batch flow explicitly returns its never-result for narrowing, ES2017 tests use
+`BigInt(1)`, a fixture supplies its required fictional email, and review/header arrays
+have explicit types. The final failed-check repair reused valid dependencies and
+file-selection evidence, then the strict compiler passed.
+
+All runtime/security/concurrency/erasure/experience suites remain unrun. Reserved
+0602–0604 remain unjournaled/unapplied while actual0601 ordering is unresolved.
+Complete own-leave, provider and all-module workspace/agent requirements before one
+combined exact-candidate final gate and one verified deployment. Source provenance,
+historical-answer current authorization, actual read-owner consumers, provider
+capability/account-policy/settlement and governed independent agent evaluations
+remain unfinished; the compiler result does not replace them.

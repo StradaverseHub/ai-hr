@@ -33,7 +33,7 @@ describe('shared agent read proposal boundary', () => {
     expect(reads).toBe(0);
   });
   it('refuses extra capability fields, opaque objects, sparse arrays and non-JSON values', () => {
-    for (const value of [new Date(), NaN, Infinity, 1n, () => {}, [undefined], Array(1), { hidden: undefined }]) {
+    for (const value of [new Date(), NaN, Infinity, BigInt(1), () => {}, [undefined], Array(1), { hidden: undefined }]) {
       expect(() => captureAgentReadBatch([call(value)])).toThrow();
     }
     expect(() => captureAgentReadBatch([{ ...call(), session: { roles: ['admin'] } }])).toThrow();
