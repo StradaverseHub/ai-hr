@@ -12,6 +12,8 @@ from unittest.mock import patch
 import types
 import sys
 import subprocess
+import shlex
+import ast
 
 spec = importlib.util.spec_from_file_location("maintenance_agent", Path(__file__).with_name("maintenance_agent.py"))
 m = importlib.util.module_from_spec(spec)
@@ -350,10 +352,10 @@ class FreshSourceTests(unittest.TestCase):
         self.assertNotIn("restore_configuration", host.calls)
 
     def test_real_adapter_refuses_stale_or_changed_ledger_receipt(self):
-        plan = plan_fixture(); plan["baselineSourceProof"]["ledger"] = {"rows": 3, "sha256": "original"}
+        plan = plan_fixture(); plan["baselineSourceProof"]["ledger"] = {"rows": 3, "sha256": "original"}; plan["baselineSourceProof"]["retainedSourceTree"] = "f" * 40
         for change in ("source", "ledger", "stale"):
             proof = {"kind": "CANONICAL_READ_ONLY_BASELINE_SOURCE_AND_LEDGER", "baseline": plan["baseline"],
-                     "checksumOutput": "", "ledger": plan["baselineSourceProof"]["ledger"],
+                     "checksumOutput": "", "retainedSourceRef": plan["baseline"], "retainedSourceTree": "f" * 40, "ledger": plan["baselineSourceProof"]["ledger"],
                      "hostWrites": False, "dataWrites": False, "observedAt": dt.datetime.now(dt.timezone.utc).isoformat()}
             if change == "source": proof["checksumOutput"] = ">f changed app file"
             if change == "ledger": proof["ledger"] = {"rows": 4}
@@ -365,6 +367,58 @@ class FreshSourceTests(unittest.TestCase):
 
 
 class OperatorTests(unittest.TestCase):
+    def test_real_database_observer_drops_uid_gid_and_supplementary_groups(self):
+        plan = plan_fixture(); plan["snapshot"]["configuration"] = {"serviceUser": "fixture"}
+        host = object.__new__(m.RealHost); host.plan = plan
+        account = types.SimpleNamespace(pw_uid=1001, pw_gid=1002)
+        result = types.SimpleNamespace(stdout=b'{}')
+        with patch.object(m.pwd, "getpwnam", return_value=account), patch.object(m.subprocess, "run", return_value=result) as runner:
+            self.assertEqual(host.database(), {})
+            kwargs = runner.call_args.kwargs
+            self.assertEqual((kwargs["user"], kwargs["group"], kwargs["extra_groups"]), (1001, 1002, []))
+            self.assertEqual(kwargs["env"], {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+            self.assertEqual(kwargs["input"], plan["databaseProgram"].encode())
+
+    def test_root_private_preflight_parent_keeps_privilege_without_app_imports(self):
+        host = object.__new__(m.RealHost); host.plan = plan_fixture()
+        host.assert_proposed_configuration = lambda: None
+        report = {"operatorErrors": [], "webErrors": [], "node": m.VERSION, "abi": "127"}
+        with patch.object(m.subprocess, "run", return_value=types.SimpleNamespace(stdout=m.encoded(report))) as runner:
+            host.actual_preflight()
+            self.assertNotIn("user", runner.call_args.kwargs)
+            self.assertEqual(runner.call_args.kwargs["env"], {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+
+    def operator(self):
+        spec = importlib.util.spec_from_file_location("maintenance_operator", Path(__file__).with_name("operator.py"))
+        value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
+        return value
+
+    def test_actual_bootstrap_ignores_poisoned_cwd_pythonpath_and_pythonoptimize(self):
+        operator = self.operator()
+        command = shlex.split(operator.bootstrap_command(["INVALID", "prepare"] + ["0" * 64] * 4 + ["source-proof-12345678-1234-4123-8123-123456789abc.json", "0" * 64]))
+        self.assertEqual(command[:3], ["sudo", "/usr/bin/python3", "-I"])
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "json.py").write_text("raise RuntimeError('POISONED_LOCAL_JSON_MODULE')\n")
+            result = subprocess.run([sys.executable, *command[2:]], cwd=directory,
+                                    env={**os.environ, "PYTHONPATH": directory, "PYTHONOPTIMIZE": "2"},
+                                    capture_output=True, text=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("AssertionError", result.stderr)  # invalid operation guard BEFORE any host writes
+            self.assertNotIn("POISONED_LOCAL_JSON_MODULE", result.stderr)
+
+    def test_root_agent_interpreter_also_isolated_from_poisoned_module_search(self):
+        operator = self.operator()
+        call = next(n for n in ast.walk(ast.parse(operator.BOOTSTRAP)) if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute) and n.func.attr == "execv")
+        self.assertEqual([n.value for n in call.args[1].elts[:2]], ["python3", "-I"])
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "json.py").write_text("raise RuntimeError('POISONED_LOCAL_JSON_MODULE')\n")
+            result = subprocess.run([sys.executable, "-I", str(Path(m.__file__).resolve()), "--help"], cwd=directory,
+                                    env={**os.environ, "PYTHONPATH": directory, "PYTHONOPTIMIZE": "2"},
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0)
+            self.assertNotIn("POISONED_LOCAL_JSON_MODULE", result.stderr)
+
     def test_changed_source_stops_terminal_wrapper_before_any_upload_or_sudo(self):
         spec = importlib.util.spec_from_file_location("maintenance_operator", Path(__file__).with_name("operator.py"))
         operator = importlib.util.module_from_spec(spec); spec.loader.exec_module(operator)

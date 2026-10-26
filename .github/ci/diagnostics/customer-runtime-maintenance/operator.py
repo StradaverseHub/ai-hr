@@ -66,8 +66,12 @@ fd=os.open(temporary,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
 with os.fdopen(fd,'wb') as f:f.write(source);f.flush();os.fsync(f.fileno())
 os.replace(temporary,root/'fresh-source-proof.json')
 fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);os.fsync(fd);os.close(fd)
-os.execv('/usr/bin/python3',['python3',str(root/'maintenance_agent.py'),phase,'--plan',str(root/'approved-plan.json'),'--plan-sha256',plan_sha,'--human-approval',str(root/'human-approval.json'),'--archive',str(root/'node.tar.xz'),'--source-proof-sha256',source_sha])
+os.execv('/usr/bin/python3',['python3','-I',str(root/'maintenance_agent.py'),phase,'--plan',str(root/'approved-plan.json'),'--plan-sha256',plan_sha,'--human-approval',str(root/'human-approval.json'),'--archive',str(root/'node.tar.xz'),'--source-proof-sha256',source_sha])
 '''
+
+
+def bootstrap_command(arguments):
+    return "sudo /usr/bin/python3 -I -c " + shlex.quote(BOOTSTRAP) + " " + " ".join(map(shlex.quote, arguments))
 
 
 def main():
@@ -127,7 +131,7 @@ def main():
                     "aihr-staging:" + upload + "/" + source_name], check=True)
     argv = [operation, args.phase, inputs["maintenance_agent.py"], inputs["approved-plan.json"],
             inputs["human-approval.json"], inputs["node.tar.xz"], source_name, hashlib.sha256(source_data).hexdigest()]
-    command = "sudo /usr/bin/python3 -c " + shlex.quote(BOOTSTRAP) + " " + " ".join(map(shlex.quote, argv))
+    command = bootstrap_command(argv)
     # stdin/stdout inherit the private terminal. No password handling, logging or interception.
     subprocess.run(ssh + ["-tt", "aihr-staging", command], check=True)
 

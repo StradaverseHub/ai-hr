@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import pwd
 import stat
 import subprocess
 import tarfile
@@ -238,19 +239,28 @@ class RealHost:
                 and os.path.realpath(self.root) == str(self.root), "Root-owned private operation directory required")
         self.state_file = self.root / "phase.json"
 
-    def command(self, args, *, input=None, env=None, timeout=30):
+    def command(self, args, *, input=None, env=None, timeout=30, run_as_service=False):
+        privileges = {}
+        if run_as_service:
+            user = self.plan["snapshot"]["configuration"]["serviceUser"]
+            require(re.fullmatch(r"[a-z_][a-z0-9_-]*", user), "Reviewed service account required")
+            account = pwd.getpwnam(user)
+            require(account.pw_uid > 0 and account.pw_gid > 0, "Observer must not run as root")
+            privileges = {"user": account.pw_uid, "group": account.pw_gid, "extra_groups": []}
         try:
             return subprocess.run(args, input=input, env=env or {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
                                   cwd="/opt/ai-hr", stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  check=True, timeout=timeout).stdout
+                                  check=True, timeout=timeout, **privileges).stdout
         except (subprocess.SubprocessError, OSError):
             raise Refused("Host operation failed; private subprocess output withheld") from None
 
-    def node(self, program):
-        return json.loads(self.command(["/opt/node20/bin/node", "--input-type=module"], input=program.encode(), timeout=60))
+    def node(self, program, *, run_as_service=False):
+        executable = "/opt/node20/bin/node" if run_as_service else "/opt/node22/bin/node"
+        return json.loads(self.command([executable, "--input-type=module"], input=program.encode(), timeout=60,
+                                       run_as_service=run_as_service))
 
     def proposals(self):
-        return self.node(self.plan["proposalProgram"])
+        return self.node(self.plan["proposalProgram"], run_as_service=True)
 
     def fresh_source_guard(self):
         # The approved terminal wrapper executes the real canonical rsync checksum
@@ -265,11 +275,15 @@ class RealHost:
         expected = self.plan["baselineSourceProof"]
         require(proof.get("kind") == "CANONICAL_READ_ONLY_BASELINE_SOURCE_AND_LEDGER"
                 and proof.get("baseline") == self.plan["baseline"] and proof.get("checksumOutput") == ""
+                and proof.get("retainedSourceRef") == self.plan["baseline"]
+                and proof.get("retainedSourceTree") == expected["retainedSourceTree"]
                 and proof.get("ledger") == expected["ledger"] and proof.get("hostWrites") is False
                 and proof.get("dataWrites") is False, "Current source/migration custody differs")
 
     def database(self):
-        return self.node(self.plan["databaseProgram"])
+        # postgres is an app dependency in an unprivileged writable installation.
+        # Its code must never be imported by an OS-root observer.
+        return self.node(self.plan["databaseProgram"], run_as_service=True)
 
     def phase(self):
         try:
