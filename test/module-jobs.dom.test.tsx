@@ -40,14 +40,14 @@ describe('deterministic current-user job cards',()=>{
   expect(screen.getAllByRole('link')).toHaveLength(21);expect(withAssistantRead).not.toHaveBeenCalled();
   const action=screen.getByRole('link',{name:en.ownLeaveReview.workflow.title});expect(action.getAttribute('href')).toBe('/assistant/leave');
   expect(action.parentElement?.textContent).toContain(en.assistant.workspace.jobs.module_leave);
-  for(const link of view.container.querySelectorAll('a[href^="/assistant?job="]')){const url=new URL(link.href);expect([...url.searchParams.keys()]).toEqual(['job']);expect(AGENT_MODULE_CODES).toContain(url.searchParams.get('job'));}
+  for(const link of view.container.querySelectorAll<HTMLAnchorElement>('a[href^="/assistant?job="]')){const url=new URL(link.href);expect([...url.searchParams.keys()]).toEqual(['job']);expect(AGENT_MODULE_CODES).toContain(url.searchParams.get('job'));}
   expect(view.container.querySelector('[aria-current="page"]')?.textContent).toContain(en.assistant.workspace.jobs.module_leave);
  });
  it.each(['en','ms','zh','ta','th','vi'])('%s keeps own-leave inside the Leave agent and omits its entry when the module is unavailable',async locale=>{
   state.locale=locale;const copy=(copies[locale] as typeof en).ownLeaveReview.workflow;
   const visible=render(await ModuleJobChooser({modules:['leave'],selected:'leave'}));
   expect(screen.getByRole('link',{name:copy.title}).getAttribute('href')).toBe('/assistant/leave');
-  expect(visible.container.querySelectorAll('a[href^="/assistant?job="]')).toHaveLength(1);visible.unmount();
+  expect(visible.container.querySelectorAll<HTMLAnchorElement>('a[href^="/assistant?job="]')).toHaveLength(1);visible.unmount();
   render(await ModuleJobChooser({modules:['employees']}));expect(screen.queryByRole('link',{name:copy.title})).toBeNull();
   expect(withAssistantRead).not.toHaveBeenCalled();
  });

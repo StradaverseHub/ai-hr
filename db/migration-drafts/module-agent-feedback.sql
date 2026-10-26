@@ -44,7 +44,7 @@ CREATE POLICY ai_agent_feedback_own ON public.ai_agent_feedback FOR ALL TO ai_hr
   AND EXISTS (SELECT 1 FROM public.assistant_exchange e WHERE e.id=exchange_id
    AND e.tenant_id=app.current_tenant_id() AND e.app_user_id=app.current_user_id()));
 --> statement-breakpoint
-REVOKE ALL ON public.ai_agent_feedback FROM PUBLIC;
+REVOKE ALL ON public.ai_agent_feedback FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.ai_agent_feedback TO ai_hr_app;
 

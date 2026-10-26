@@ -32,6 +32,9 @@ CREATE TABLE public.personnel_import_assistance_attempt (
   (state='completed' AND receipt IS NOT NULL AND completed_at IS NOT NULL) OR (state='failed' AND receipt IS NULL AND completed_at IS NOT NULL))
 );
 --> statement-breakpoint
+-- Remove bootstrap default CRUD grants before granting only the intended columns below.
+REVOKE ALL ON public.personnel_import_assistance_attempt FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 ALTER TABLE public.personnel_import_assistance_attempt ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.personnel_import_assistance_attempt FORCE ROW LEVEL SECURITY;
@@ -95,6 +98,9 @@ CREATE TABLE public.employee_import_evaluation_attempt (
   (state='committed' AND commit_nonce IS NOT NULL AND event_id IS NOT NULL AND canonical_counts IS NOT NULL AND jsonb_typeof(canonical_counts)='object' AND write_started_at IS NOT NULL AND completion_marked_at IS NOT NULL))
 );
 --> statement-breakpoint
+-- Remove bootstrap default CRUD grants before granting only the intended columns below.
+REVOKE ALL ON public.employee_import_evaluation_attempt FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 ALTER TABLE public.employee_import_evaluation_attempt ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.employee_import_evaluation_attempt FORCE ROW LEVEL SECURITY;
@@ -127,6 +133,9 @@ CREATE TABLE public.employee_import_evaluation_run_membership(
  ai_run_id uuid PRIMARY KEY REFERENCES public.ai_model_run(id),evaluation_id uuid NOT NULL REFERENCES public.employee_import_evaluation_attempt(id) ON DELETE CASCADE,
  evaluation_version integer NOT NULL CHECK(evaluation_version BETWEEN 1 AND 1000000),slot integer NOT NULL CHECK(slot BETWEEN 1 AND 128),tenant_id uuid NOT NULL REFERENCES public.tenant(id),user_id uuid NOT NULL REFERENCES public.app_user(id),company_id uuid NOT NULL REFERENCES public.company(id),header_attempt_id uuid NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(evaluation_id,slot)
 );
+--> statement-breakpoint
+-- Remove bootstrap default CRUD grants before granting only the intended columns below.
+REVOKE ALL ON public.employee_import_evaluation_run_membership FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE public.employee_import_evaluation_run_membership ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint

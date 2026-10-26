@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createOwnLeaveBrowserHandler, type OwnLeaveOriginPolicy } from '../lib/assistant-actions/own-leave-http';
 const PUBLIC='https://hr.fixture.test';
 function fixture(policy:OwnLeaveOriginPolicy={publicOrigin:PUBLIC}){
- const authenticate=vi.fn(async()=>({opaque:'fictional session'})),operation=vi.fn(async()=>({kind:'unavailable'}));
+ const authenticate=vi.fn(async()=>({opaque:'fictional session'})),operation=vi.fn(async()=>({kind:'review_index',reviews:[]}));
  const handler=createOwnLeaveBrowserHandler({authenticate,list:operation,prepare:operation,reopen:operation,confirm:operation,discard:operation},policy);
  return{handler,authenticate,operation};
 }

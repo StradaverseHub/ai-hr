@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fixture=vi.hoisted(()=>({origin:undefined as string|undefined,throws:false,
  authenticate:vi.fn(async()=>({ctx:{opaque:'fictional'},locale:'en'})),
- operation:vi.fn(async()=>({kind:'unavailable'})),policies:[] as ({publicOrigin:string|undefined}|undefined)[]}));
+ operation:vi.fn(async()=>({kind:'review_index',reviews:[]})),policies:[] as ({publicOrigin:string|undefined}|undefined)[]}));
 vi.mock('server-only',()=>({}));
 vi.mock('../lib/real-auth',()=>({appOrigin:()=>{if(fixture.throws)throw Error('PRIVATE configured identity diagnostics');return fixture.origin;}}));
 vi.mock('../core/assistant-actions/own-leave-server',()=>({authenticateOwnLeaveBrowserSession:fixture.authenticate}));

@@ -76,7 +76,7 @@ CREATE POLICY ai_agent_rollback_create ON public.ai_agent_rollback FOR INSERT TO
  WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id()
  AND (app.is_group_admin() OR (reason='source_changed' AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_rollback.tenant_id AND p.owner_user_id=app.current_user_id()))));
 --> statement-breakpoint
-REVOKE ALL ON public.ai_agent_candidate,public.ai_agent_evaluation,public.ai_agent_promotion,public.ai_agent_rollback FROM PUBLIC;
+REVOKE ALL ON public.ai_agent_candidate,public.ai_agent_evaluation,public.ai_agent_promotion,public.ai_agent_rollback FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON public.ai_agent_candidate,public.ai_agent_evaluation,public.ai_agent_promotion,public.ai_agent_rollback TO ai_hr_app;
 GRANT UPDATE(used_jobs) ON public.ai_agent_promotion TO ai_hr_app;
 
@@ -100,7 +100,7 @@ CREATE POLICY ai_agent_job_own ON public.ai_agent_job_receipt FOR SELECT TO ai_h
 CREATE POLICY ai_agent_job_create ON public.ai_agent_job_receipt FOR INSERT TO ai_hr_app
  WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()
  AND (promotion_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_agent_promotion p WHERE p.id=promotion_id AND p.tenant_id=ai_agent_job_receipt.tenant_id AND p.owner_user_id=app.current_user_id())));
-REVOKE ALL ON public.ai_agent_job_receipt FROM PUBLIC;
+REVOKE ALL ON public.ai_agent_job_receipt FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON public.ai_agent_job_receipt TO ai_hr_app;
 
 --> statement-breakpoint
@@ -151,7 +151,7 @@ CREATE POLICY ai_agent_provenance_read ON public.ai_agent_candidate_provenance F
 CREATE POLICY ai_agent_provenance_create ON public.ai_agent_candidate_provenance FOR INSERT TO ai_hr_app
  WITH CHECK(tenant_id=app.current_tenant_id() AND owner_user_id=app.current_user_id() AND app.is_group_admin() AND EXISTS(
   SELECT 1 FROM public.ai_agent_candidate c WHERE c.id=candidate_id AND c.tenant_id=ai_agent_candidate_provenance.tenant_id AND c.owner_user_id=app.current_user_id() AND c.author_user_id=app.current_user_id()));
-REVOKE ALL ON public.ai_agent_job_feedback,public.ai_agent_candidate_provenance FROM PUBLIC;
+REVOKE ALL ON public.ai_agent_job_feedback,public.ai_agent_candidate_provenance FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT,DELETE ON public.ai_agent_job_feedback TO ai_hr_app;
 GRANT UPDATE(outcome,receipt,created_at,expires_at) ON public.ai_agent_job_feedback TO ai_hr_app;
 GRANT SELECT,INSERT ON public.ai_agent_candidate_provenance TO ai_hr_app;
@@ -256,7 +256,7 @@ CREATE POLICY ai_agent_plan_update ON public.ai_agent_plan_proposal FOR UPDATE T
  AND (consumed_job_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_agent_job_receipt j WHERE j.id=consumed_job_id AND j.tenant_id=ai_agent_plan_proposal.tenant_id AND j.user_id=app.current_user_id())));
 CREATE POLICY ai_agent_plan_erase ON public.ai_agent_plan_proposal FOR DELETE TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id());
-REVOKE ALL ON public.ai_agent_plan_proposal FROM PUBLIC;
+REVOKE ALL ON public.ai_agent_plan_proposal FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT,DELETE ON public.ai_agent_plan_proposal TO ai_hr_app;
 GRANT UPDATE(state,receipt,consumed_job_id) ON public.ai_agent_plan_proposal TO ai_hr_app;
 CREATE INDEX ai_agent_plan_expiry ON public.ai_agent_plan_proposal(tenant_id,expires_at,id);
