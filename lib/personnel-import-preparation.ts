@@ -3,7 +3,7 @@
  * every review; unsupported prose/oversized inputs require manual preparation rather than truncation.
  */
 import {personnelImportHeaderCandidates,personnelImportField,personnelImportFields,personnelColumnLabel,normalizePersonnelImportValue,personnelScalarIssue,type PersonnelImportHeaderOptions} from './personnel-import-contract';
-import {buildPersonnelCsv,parseStrictPersonnelCsvWithSource} from './personnel-csv';
+import {buildPersonnelCsv,parseStrictPersonnelCsvWithSource,parsePersonnelCsv,PERSONNEL_CSV_FRAME} from './personnel-csv';
 import {MAX_IMPORT_CSV_BYTES} from './import-file';
 import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
 export const PERSONNEL_PREPARATION_LIMITS=Object.freeze({rows:500,columns:128,cells:16000,bytes:MAX_IMPORT_CSV_BYTES});
@@ -83,7 +83,7 @@ export function preparePersonnelImportText(input:{revisionId:string;text:string}
  const pipes=lines.filter(line=>line.trim()).map(line=>line.split('|').length),aligned=lines.filter(line=>line.trim()).map(line=>line.split(/ {2,}/).length);
  if(pipes.length>=2&&pipes.every(width=>width>=2&&width===pipes[0]))return preparePersonnelImportMatrix({revisionId:input.revisionId,matrix:lines.map(line=>line.split('|')),text:input.text,coordinateKind:'text_line'},options);
  if(aligned.length>=2&&aligned.every(width=>width>=2&&width===aligned[0]))return preparePersonnelImportMatrix({revisionId:input.revisionId,matrix:lines.map(line=>line.split(/ {2,}/)),text:input.text,coordinateKind:'text_line'},options);
- try{const source=parseStrictPersonnelCsvWithSource(input.text);return preparePersonnelImportMatrix({revisionId:input.revisionId,matrix:source.rows,rowNumbers:source.rowNumbers,text:input.text,coordinateKind:'csv_record'},options);}catch{return deep({state:'manual',sourceRevisionId:input.revisionId,reason:'unsupported_structure'});}
+ try{const source=parseStrictPersonnelCsvWithSource(input.text),framed=source.rows[0]?.[0]===PERSONNEL_CSV_FRAME;return preparePersonnelImportMatrix({revisionId:input.revisionId,matrix:framed?parsePersonnelCsv(input.text,'employee'):source.rows,rowNumbers:framed?source.rowNumbers.slice(1):source.rowNumbers,text:input.text,coordinateKind:'csv_record'},options);}catch{return deep({state:'manual',sourceRevisionId:input.revisionId,reason:'unsupported_structure'});}
 }
 /** Only explicit human decisions create a new revision. No canonical preview/commit runs here. */
 export function applyPersonnelImportPreparation(preparation:PersonnelPreparation,expectedRevision:string,decisions:PreparationDecisions,nextRevisionId:string,mode:'create'|'update'='create'){
