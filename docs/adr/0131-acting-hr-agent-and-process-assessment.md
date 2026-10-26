@@ -2589,3 +2589,54 @@ uncertain operator leases, holding none and starting no compiler/tests/DB/applic
 No migrations, provider calls, cloud jobs, staging changes or foreign leases/signals
 were touched. Earlier passing compiler evidence is retained for its older input only.
 All three stages remain incomplete before one combined final gate and deployment.
+
+
+### Actual TOIL wind-down sweep ownership (unverified source)
+
+Both public settlement owners, runToilExpiry and closeReplacementLeaveYear, now capture
+scalar input and calling roles/grants before awaits. They preserve the original early
+admin refusal and deliberately ungated statutory wind-down behaviour. Their actual
+transaction acquires Access, then EXCLUSIVE leave dependency configuration before
+protected discovery: the shared settlement executor can create a replacement leave
+catalogue row, so a shared phase followed by a late upgrade would be insufficient.
+Visible settleable lot IDs/employment IDs are nominated without reading amounts, then
+the complete captured employment set is locked in order. The same ordered subjects
+join the existing Attendance/Payroll credit advisory key using TRY locks, without
+hidden waits/retries. Fresh lot rows are owned FOR UPDATE OF toil_accrual NOWAIT in
+employment/lot order, never accidentally locking joined company/employment tuples.
+Exact lot/subject membership is reread and compared; changed membership refuses the
+whole transaction rather than adding an unprotected subject or silently retargeting.
+
+The existing cash/statutory settlement executor is BYTE-IDENTICAL. AST reversal of
+only new capture, ownership, nomination and query-lock phases reproduces both prior
+canonical owner bodies, including marker grain, carry-forward, scoped residue counts,
+calendar/anniversary handling, calculations, ledger/status/event and re-fire rules.
+Production callers are the existing two admin actions, each entering the canonical
+owner's own transaction. Query lock refusal is bounded; it exposes no raw DB body.
+Partial employee/credit/lot acquisition requires the outer transaction to roll back.
+
+Eight actual two-connection cases are authored UNRUN in the existing replacement
+controls suite. Each banks two real credits through canonical attendance/accrual paths
+and proves nonzero starting balances. Held shared configuration, an isolated later
+employment key, the existing later credit key, or the actual later lot row must refuse
+without changes to credits/ledger/catalogue/events. While the holder remains, earlier
+partial configuration/employee/credit/lot ownership must already be released. After
+release, the actual command must settle both once, zero their replacement balances,
+record exactly one conversion per credit and preserve state on a repeated invocation.
+Isolated key tests deliberately do not hold shared config, which would otherwise only
+test the earlier exclusive-config refusal and make partial-subject coverage vacuous.
+
+Only static AST syntax/diff/source comparison has run here. All eight cases, full
+changed-input compiler, app-role/lock-order/security/concurrency and affected TOIL/
+Payroll/Attendance/leave consumers remain UNRUN. No database, application, provider,
+build, staging or cloud job ran. Automatic accrual/banking parents and other remaining
+owners still need integration; these sweeps are NOT universal dependency or fresh
+principal/revocation proof. Assistant confirmation remains unexposed, and all three
+stages still require completion before the one combined final gate/deployment.
+
+Repository context changed during this source work: the owner made the repository
+public; read-only GitHub API metadata independently confirmed its public visibility.
+Existing destination-specific AI source-push authorization continues to identify
+StradaverseHub/ai-hr. Only intended source changes are published; private evidence,
+fixtures, database/recovery inventories and verification logs remain outside Git.
+This does not authorize GitHub Actions/cloud work in this local-only session.

@@ -3791,6 +3791,30 @@ async function expireAccrualsTx(
  */
 const SETTLEABLE_BY_CALLER = sql`app.can_admin_employment(${toilAccrual.employmentId})`;
 
+type ToilSweepSubject = { id: string; employmentId: string };
+/** The sweep owner already holds Access and exclusive configuration before nomination. Capture the
+ * complete ordered subject set before any wait, then join the existing Attendance/Payroll credit key
+ * without waiting or retries. Partial acquisition requires the enclosing sweep transaction rollback.
+ */
+async function lockToilSweepSubjectsTx(tx: Tx, ctx: SessionContext, nominated: readonly ToilSweepSubject[]) {
+  const employees = [...new Set(nominated.map(row => row.employmentId))].sort();
+  if (!employees.length) return;
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, employees);
+  for (const employmentId of employees) {
+    const [row] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + employmentId},0)) as acquired`);
+    if (row?.acquired !== true) throw new LeaveDependencyUnavailable();
+  }
+}
+function assertToilSweepSubjectsUnchanged(nominated: readonly ToilSweepSubject[], fresh: readonly ToilSweepSubject[]) {
+  const keys = (rows: readonly ToilSweepSubject[]) => rows.map(row => `${row.employmentId}:${row.id}`).sort();
+  if (JSON.stringify(keys(nominated)) !== JSON.stringify(keys(fresh))) throw new LeaveDependencyUnavailable();
+}
+/** NOWAIT refusal and database error bodies never escape as raw row/query details. */
+async function lockedToilSweepRows<T>(read: () => PromiseLike<T>): Promise<T> {
+  try { return await read(); } catch { throw new LeaveDependencyUnavailable(); }
+}
+
+
 /**
  * Expire active TOIL accruals whose expiry date has arrived. Each follows its FROZEN expiry_action via
  * `expireAccrualsTx`. Only the still-unspent remainder (`daysCredited − daysTaken`) is debited — consumed days
@@ -3818,9 +3842,17 @@ const SETTLEABLE_BY_CALLER = sql`app.can_admin_employment(${toilAccrual.employme
  * second one should have been answered here all along.
  */
 export async function runToilExpiry(ctx: SessionContext, p: { today: string }): Promise<ToilExpiryResult> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { today: p.today };
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
-    const due = await tx
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    // The shared executor may create the replacement catalogue entry, so this owner is exclusive.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
+      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER));
+    await lockToilSweepSubjectsTx(tx, ctx, nominated);
+    const due = await lockedToilSweepRows(() => tx
       .select({
         id: toilAccrual.id,
         employmentId: toilAccrual.employmentId,
@@ -3835,7 +3867,10 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
         workedDayKind: toilAccrual.workedDayKind,
       })
       .from(toilAccrual)
-      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER));
+      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER))
+      .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
+      .for('update', { of: toilAccrual, noWait: true }));
+    assertToilSweepSubjectsUnchanged(nominated, due);
     const rows: SweepRow[] = due.map((d) => ({
       id: d.id,
       employmentId: d.employmentId,
@@ -3911,8 +3946,12 @@ export async function closeReplacementLeaveYear(
   ctx: SessionContext,
   p: { asOf: string },
 ): Promise<CloseReplacementYearResult> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { asOf: p.asOf };
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const empty: CloseReplacementYearResult = {
       processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0,
       alreadyClosed: false, carriedForward: 0,
@@ -3940,7 +3979,10 @@ export async function closeReplacementLeaveYear(
     // The leave cycle drives the boundary, and it is PER-COMPANY: a mixed-cycle tenant must sweep each
     // company at its OWN boundary. Join `company` so each accrual carries its own employment's leave cycle
     // (the previous single-company SELECT applied one arbitrary company's cycle tenant-wide — bug #19).
-    const active = await tx
+    const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
+      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER));
+    await lockToilSweepSubjectsTx(tx, ctx, nominated);
+    const active = await lockedToilSweepRows(() => tx
       .select({
         id: toilAccrual.id,
         employmentId: toilAccrual.employmentId,
@@ -3961,7 +4003,10 @@ export async function closeReplacementLeaveYear(
       .from(toilAccrual)
       .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER));
+      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER))
+      .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
+      .for('update', { of: toilAccrual, noWait: true }));
+    assertToilSweepSubjectsUnchanged(nominated, active);
 
     // Companies this caller can actually see accruals for. A company with no visible active accrual is
     // NOT in scope and gets no marker — that is what stops a partial sweep from claiming the group.

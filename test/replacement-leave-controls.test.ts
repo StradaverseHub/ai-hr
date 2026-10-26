@@ -47,6 +47,7 @@ import {
   type Base,
 } from './harness';
 import { withTenant, type SessionContext } from '../db/client';
+import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection } from '../core/attendance';
@@ -1279,4 +1280,74 @@ describe('20e759a0 · company filter — the save redirect carries the selection
     expect(url).not.toContain('company=');
     expect(url.split('?').length).toBe(2);
   });
+});
+
+
+/** Authored UNRUN: actual banked credits and real two-connection settlement refusals. */
+describe('TOIL settlement dependency participation', () => {
+  async function state() {
+    const [credits, ledger, types, events] = await Promise.all([
+      owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.tenantId, b.tenantId)).orderBy(schema.toilAccrual.id),
+      owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.tenantId, b.tenantId)).orderBy(schema.leaveLedger.id),
+      owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.tenantId, b.tenantId)).orderBy(schema.leaveType.id),
+      owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    ]);
+    return { credits, ledger, types, events };
+  }
+  async function partialLocksAreFree(employmentId: string, accrualId: string) {
+    await withTenant(ctx, async tx => {
+      const [configuration] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'leave-dependency-configuration:' + b.tenantId},0)) as acquired`);
+      expect(configuration?.acquired).toBe(true);
+      const [employment] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'leave-dependency-employment:' + b.tenantId + ':' + employmentId},0)) as acquired`);
+      const [credit] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${b.tenantId + ':' + employmentId},0)) as acquired`);
+      expect(employment?.acquired).toBe(true); expect(credit?.acquired).toBe(true);
+      expect(await tx.select({ id: schema.toilAccrual.id }).from(schema.toilAccrual).where(eq(schema.toilAccrual.id, accrualId))
+        .for('update', { of: schema.toilAccrual, noWait: true })).toHaveLength(1);
+    });
+  }
+  for (const kind of ['expiry', 'yearEnd'] as const) {
+    for (const heldKind of ['configuration', 'employment', 'credit', 'row'] as const) {
+      it(`${kind}: held ${heldKind} refuses without credit/ledger/catalogue/event effects, then settles once`, async () => {
+        const first = await accrueRestDay(5000), second = await accrueRestDay(5000);
+        const ordered = [first, second].sort((a, b) => a.employmentId < b.employmentId ? -1 : a.employmentId > b.employmentId ? 1 : 0);
+        const early = ordered[0], late = ordered[1];
+        expect(await replacementBalance(early.employmentId)).toBe(1);
+        expect(await replacementBalance(late.employmentId)).toBe(1);
+        const before = await state();
+        let entered!: () => void, failed!: (error: unknown) => void, release!: () => void;
+        const started = new Promise<void>((resolve, reject) => { entered = resolve; failed = reject; });
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const watchdog = setTimeout(release, 10_000);
+        const holder = withTenant(ctx, async tx => {
+          if (heldKind === 'configuration') await lockLeaveDependenciesTx(tx, b.tenantId, [late.employmentId]);
+          // Isolate the later exact key: including shared config here would only test the earlier
+          // exclusive-config refusal, never partial ordered employment/credit acquisition.
+          if (heldKind === 'employment') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'leave-dependency-employment:' + b.tenantId + ':' + late.employmentId},0))`);
+          if (heldKind === 'credit') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId + ':' + late.employmentId},0))`);
+          if (heldKind === 'row') await tx.select({ id: schema.toilAccrual.id }).from(schema.toilAccrual)
+            .where(eq(schema.toilAccrual.id, late.accrualId)).for('update');
+          entered(); await held;
+        });
+        void holder.catch(failed);
+        const settle = () => kind === 'expiry' ? runToilExpiry(ctx, { today: '2027-01-01' }) : closeReplacementLeaveYear(ctx, { asOf: '2026-12-31' });
+        try {
+          await started;
+          await expect(settle()).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
+          expect(await state()).toEqual(before);
+          await partialLocksAreFree(early.employmentId, early.accrualId);
+        } finally { release(); clearTimeout(watchdog); await holder; }
+        const done = await settle();
+        expect(done).toMatchObject({ processed: 2, converted: 2, lapsed: 0, convertedDays: 2 });
+        expect(await replacementBalance(early.employmentId)).toBe(0);
+        expect(await replacementBalance(late.employmentId)).toBe(0);
+        for (const credit of ordered) {
+          expect((await accrualRow(credit.accrualId)).status).toBe('converted_to_pay');
+          expect((await eventTypesFor(b.tenantId, credit.accrualId)).filter(type => type === 'toil.converted')).toHaveLength(1);
+        }
+        const after = await state();
+        expect(await settle()).toMatchObject({ processed: 0 });
+        expect(await state()).toEqual(after);
+      });
+    }
+  }
 });
