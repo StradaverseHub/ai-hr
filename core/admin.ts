@@ -425,6 +425,7 @@ export async function createCompany(
     nonStatutory?: boolean;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
   // ADR-0080 D-14 — F7's blanket refusal is REPLACED by the two-tier model it always pointed at.
@@ -444,6 +445,8 @@ export async function createCompany(
   // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
   const defaultPayrollCycle = resolveDefaultCycleName(p.defaultPayrollCycle);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(company)
       .values({
@@ -4926,6 +4929,7 @@ export async function updateCompany(
     fax?: string | null;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
   const currency = currencyCode(p.currency);
@@ -4950,6 +4954,8 @@ export async function updateCompany(
   };
   const nextCore = { legalName, registrationNo: p.registrationNo?.trim() || null, country, currency };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // F7, the other half. createCompany gained requirePackFor above, but EDIT is the easier route into
     // the same state: the add-company form is a free-text 2-letter box, while the company panel renders
     // a select over the COMPLETE ISO list (components/company-panel.tsx:625, deliberately so since
@@ -5003,8 +5009,11 @@ export async function updateCompany(
 /** ADR-0040 2D-2: set a company's earned-accrual cycle ('calendar' | 'anniversary'). RLS (the company
  *  update policy) already requires admin-for-company, same as updateCompany. */
 export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: string; cycle: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const cycle = p.cycle === 'anniversary' ? 'anniversary' : 'calendar';
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(company).set({ leaveCycle: cycle }).where(eq(company.id, p.companyId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -5021,7 +5030,10 @@ export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: 
  *  day. RLS (the company update policy) already requires admin-for-company, same as updateCompany. Frozen at
  *  submission (D6) — flipping this does not recompute already-submitted/approved leave. */
 export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ enabled: company.leaveHalfDayFullDeduction })
       .from(company)
@@ -5068,8 +5080,11 @@ export async function setLeaveHalfDayFullDeductionCompanies(
   ctx: SessionContext,
   p: { companyIds: string[] },
 ): Promise<{ enabled: string[]; disabled: string[]; unchanged: number }> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const wanted = new Set(p.companyIds);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const candidates = await tx
       .select({ id: company.id, enabled: company.leaveHalfDayFullDeduction })
       .from(company)
@@ -5193,7 +5208,10 @@ export async function getCompanyLogo(
 }
 
 export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: p.archived ? 'company.archived' : 'company.unarchived', actor: actorOf(ctx), payload: {} });
   });
@@ -5260,7 +5278,10 @@ export class CompanyNotFoundError extends Error {
  * logged on the server, never shown.
  */
 export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx.execute(sql`
       select company.legal_name as "legalName", company.company_label as "code",
              company.registration_no as "registrationNo",
