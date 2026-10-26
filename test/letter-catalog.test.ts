@@ -86,6 +86,17 @@ describe('versioned Letters configuration and template owner',()=>{
   await expect(saveLetterTemplate(author,{...input,code:'STALE'})).rejects.toMatchObject({code:'configuration'});
   expect(await owner.db.select().from(s.letterTemplateVersion)).toHaveLength(1);
  });
+
+ it('saves and submits one immutable draft atomically and refuses invalid submitted content before writing',async()=>{
+  const mapping=await saveLetterField(author,{companyId:b.companyId,definition:field,active:true});
+  const input={companyId:b.companyId,code:'ATOMIC',name:'Atomic submitted draft',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document,fieldVersionIds:[mapping.id],submit:true};
+  const saved=await saveLetterTemplate(author,input);
+  expect(await getLetterTemplate(author,saved.versionId)).toMatchObject({version:{status:'submitted',approvedBy:null}});
+  const events=await owner.db.select({type:s.domainEvent.eventType}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,saved.templateId)).orderBy(asc(s.domainEvent.sequence));
+  expect(events.map(event=>event.type)).toEqual(['letter.template.versioned','letter.template.submitted']);
+  await expect(saveLetterTemplate(author,{...input,code:'INVALID-ATOMIC',fieldVersionIds:[]})).rejects.toMatchObject({code:'unknownField'});
+  expect(await owner.db.select().from(s.letterTemplateVersion)).toHaveLength(1);expect(await owner.db.select().from(s.letterTemplate)).toHaveLength(1);
+ });
  it('rejects unknown merge fields before creating a template and prevents deactivating a referenced field',async()=>{
   await expect(saveLetterTemplate(author,{companyId:b.companyId,code:'INVALID',name:'Invalid',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document,fieldVersionIds:[]})).rejects.toMatchObject({code:'unknownField'});expect(await owner.db.select().from(s.letterTemplate)).toHaveLength(0);
   const saved=await draft();await expect(saveLetterField(author,{companyId:b.companyId,definition:field,active:false,expectedOrdinal:1})).rejects.toMatchObject({code:'conflict'});

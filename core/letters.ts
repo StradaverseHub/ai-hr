@@ -103,9 +103,9 @@ async function templateFields(tx:Tx,ids:string[],co:string):Promise<{id:string;d
  if(rows.some(row=>row.definition.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}return rows;
 }
 type LetterTemplateContent={document:unknown;editor?:never;language?:never}|{editor:unknown;language:LetterDocument['language'];document?:never};
-export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[];presentation?:unknown}&LetterTemplateContent){return letters(ctx,true,async tx=>{
+export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[];presentation?:unknown;submit?:boolean}&LetterTemplateContent){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);if(!isCalendarDate(input.effectiveFrom))throw new LetterWorkflowError('invalid','effectiveFrom');
- if('editor' in input&&'document' in input)throw new LetterWorkflowError('invalid','document');
+ if(('editor' in input&&'document' in input)||(input.submit!==undefined&&typeof input.submit!=='boolean'))throw new LetterWorkflowError('invalid','document');
  const presentation=input.presentation===undefined?null:validateLetterTemplatePresentation(input.presentation);
  if(presentation){
   const [signer]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${presentation.signatoryUserId}::uuid,${input.companyId}::uuid,'read') and app.letter_permission_for_user(${presentation.signatoryUserId}::uuid,${input.companyId}::uuid,'approve') as ok`);if(!signer?.ok)throw new LetterWorkflowError('configuration','signatory');
@@ -121,7 +121,9 @@ export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;te
  const [version]=await tx.insert(letterTemplateVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:root.id,ordinal:(latest?.ordinal??0)+1,name:text(input.name,200),category:text(input.category,100),document,presentation,effectiveFrom:input.effectiveFrom,createdBy:ctx.userId!}).returning();
  const bindings=fields.filter(field=>used.has(field.definition.key));if(bindings.length)await tx.insert(letterTemplateField).values(bindings.map(field=>({tenantId:ctx.tenantId,templateVersionId:version.id,fieldVersionId:field.id})));
  await tx.update(letterTemplate).set({revision:root.revision+1}).where(eq(letterTemplate.id,root.id));
- await event(tx,ctx,root.id,'template.versioned',{companyId:input.companyId,versionId:version.id,ordinal:version.ordinal});return {templateId:root.id,versionId:version.id,revision:root.revision+1};
+ await event(tx,ctx,root.id,'template.versioned',{companyId:input.companyId,versionId:version.id,ordinal:version.ordinal});
+ if(input.submit){await tx.update(letterTemplateVersion).set({status:'submitted'}).where(eq(letterTemplateVersion.id,version.id));await event(tx,ctx,root.id,'template.submitted',{versionId:version.id});}
+ return {templateId:root.id,versionId:version.id,revision:root.revision+1};
 });}
 export function decideLetterTemplate(ctx:SessionContext,input:{versionId:string;expectedStatus:'draft'|'submitted';action:'submit'|'approve'|'reject';reason?:string}){return letters(ctx,true,async tx=>{
  if(!['submit','approve','reject'].includes(input.action))throw new LetterWorkflowError('invalid','action');
