@@ -114,9 +114,13 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
         if case .malformedProof? = failure(result) {} else { throw Synthetic.failure("bounded native proof") }
         try require(try store.snapshot(keyId: "sdk-A", hash: hash) == .requested, "malformed artifact grants no retry")
       }
-      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory), maximum = Data(repeating: 8, count: 65536)
-      store.request(keyId: String(repeating: "k", count: 512), hash: hash, retryable: retryable, vendor: { $0(.success(maximum)) }, completion: { _ in })
-      try require(try store.snapshot(keyId: String(repeating: "k", count: 512), hash: hash) == .completed(maximum), "maximum proof fits bounded record"); checks += 1
+      for byte: UInt8 in [8, 255] {
+        let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory), maximum = Data(repeating: byte, count: 65536)
+        let keyId = String(repeating: "\u{1}", count: 512)
+        store.request(keyId: keyId, hash: hash, retryable: retryable, vendor: { $0(.success(maximum)) }, completion: { _ in })
+        try require(try store.snapshot(keyId: keyId, hash: hash) == .completed(maximum), "maximum proof fits bounded record with worst-case JSON bytes")
+      }
+      checks += 1
     }
     do {
       let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
