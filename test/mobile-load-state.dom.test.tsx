@@ -15,13 +15,18 @@ function fixture(){
       ActivityIndicator:()=> <span role="progressbar"/>,Pressable:({children,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{children}</button>},
     './design':{DesignText:({children}:React.PropsWithChildren)=><span>{children}</span>,TenantBrand:()=>null,
       useTenantDesign:()=>({design:{schemaVersion:1,corners:'soft'},palette:{text:'black',muted:'gray',accent:'blue'}})},
-    './errors':{UnavailableError},'./i18n':{t:(key:string,values?:{seconds:number})=>key+(values?.seconds?' '+values.seconds:'')},
+    './errors':{UnavailableError},'./i18n':{t:(key:string,values?:{seconds?:number;id?:string})=>key+(values?.seconds?' '+values.seconds:values?.id?' '+values.id:'')},
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/ui.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
     {module:output,exports:output.exports,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
   return output.exports.LoadState;
 }
 afterEach(cleanup);
+it('shows a safe support reference without displaying private error messages',()=>{
+  const View=fixture(),reference='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  render(<View loading={false} error={new UnavailableError('SYNTHETIC_PRIVATE_HR_VALUE',undefined,reference)} onRetry={()=>{}}/>);
+  expect(screen.getByText('supportReference '+reference)).toBeTruthy();expect(screen.queryByText('SYNTHETIC_PRIVATE_HR_VALUE')).toBeNull();
+});
 it('distinguishes first loading from refreshing retained information',()=>{
   const View=fixture(),ui=render(<View loading error={null} onRetry={()=>{}}/>);expect(screen.getByRole('progressbar')).toBeTruthy();
   ui.rerender(<View loading hasData error={null} onRetry={()=>{}}/>);expect(screen.queryByRole('progressbar')).toBeNull();expect(screen.getByText('refreshing')).toBeTruthy();

@@ -353,6 +353,11 @@ the shared request. Completed response bodies are not kept in a global cache. Va
 hints (up to one hour) delay repeated reads using a monotonic cooldown, with an explicit retry message
 and no automatic background retry. Refresh and stale-data labels distinguish retained data from a
 fresh response. Writes retain explicit immutable retry behavior.
+Unexpected API failures return an optional support reference. The native client accepts only a
+bounded UUID and can show it without displaying the server's raw error. The API wrapper's general
+failure logs contain only a fixed stage/event and that reference; error objects, SQL parameters,
+schema messages, URLs and HR payloads are not included. Expected authentication/rate refusals do not
+create a per-request failure log. The reference grants no access and proves no attendance outcome.
 Multipart attachments expose actual file bytes with their declared MIME, as required by Expo fetch;
 URI-only React Native file parts are not accepted by that transport. Verify this on signed binaries
 and through required/optional photo and document flows before distribution.

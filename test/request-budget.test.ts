@@ -5,6 +5,7 @@ import {sql} from 'drizzle-orm';
 import {client} from '../db/client';
 import {createRequestAdmission,createScopedAdmission,RequestBudgetExceeded,takeRequestBudget,trustedRequestSource} from '../lib/request-budget';
 import {mobileRoute} from '../lib/mobile-api/handler';
+import {AuthRequiredError} from '../lib/auth-errors';
 import {closeAll,migrateTestDb,owner,resetDb} from './harness';
 beforeAll(migrateTestDb);
 beforeEach(resetDb);
@@ -40,6 +41,30 @@ describe('shared request token buckets',()=>{
 });
 
 describe('request boundaries',()=>{
+  it('does not amplify expected authentication or rate refusals into failure logs',async()=>{
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    try{
+      const unauthorized=await mobileRoute(z.object({ok:z.boolean()}),async()=>({ok:true}),async()=>{throw new AuthRequiredError('SYNTHETIC_PRIVATE_AUTH_DETAIL');},async()=>{})(new Request('https://hr.test/api/mobile/v1/me'));
+      expect(unauthorized.status).toBe(401);expect(unauthorized.headers.has('x-aihr-support-id')).toBe(false);
+      const limited=await mobileRoute(z.object({ok:z.boolean()}),async()=>({ok:true}),async()=>({tenantId:'tenant',userId:'actor'}),async()=>{throw new RequestBudgetExceeded(10);})(new Request('https://hr.test/api/mobile/v1/me'));
+      expect(limited.status).toBe(429);expect(limited.headers.has('x-aihr-support-id')).toBe(false);expect(log).not.toHaveBeenCalled();
+    }finally{log.mockRestore();}
+  });
+  it.each(['session','handler','contract','admission'] as const)('does not log private failure details at the %s boundary',async(stage)=>{
+    const secret='SYNTHETIC_PRIVATE_HR_VALUE',failure=Object.assign(new Error(secret),{parameters:[secret],cause:{credential:secret}});
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    try{
+      const schema=stage==='contract'?z.object({ok:z.boolean().refine(()=>false,{message:secret})}):z.object({ok:z.boolean()});
+      const resolve=async()=>{if(stage==='session')throw failure;return {tenantId:'tenant',userId:'actor'};};
+      const execute=async()=>{if(stage==='handler')throw failure;return {ok:true};};
+      const response=await mobileRoute(schema,execute,resolve,async()=>{if(stage==='admission')throw failure;})(new Request('https://hr.test/api/mobile/v1/clock?private='+secret));
+      const logged=log.mock.calls.flatMap(args=>args.map(value=>String(value)+' '+JSON.stringify(value))).join(' ');
+      expect(logged).not.toContain(secret);expect(response.status).toBe(stage==='session'||stage==='admission'?503:500);
+      const reference=response.headers.get('x-aihr-support-id');expect(reference).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+      expect(log.mock.calls).toEqual([['[mobile-api]',{event:'request_failed',stage,supportId:reference}]]);
+      expect(logged).toContain(reference!);expect(await response.json()).toEqual({error:stage==='session'||stage==='admission'?'unavailable':'internal'});
+    }finally{log.mockRestore();}
+  });
   it('ignores spoofable forwarding/source headers unless the operator enables the trusted ingress',()=>{
     const req=new Request('https://hr.test',{headers:{'x-forwarded-for':'198.51.100.8','x-aihr-request-source':'198.51.100.9'}});
     vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE','0');expect(trustedRequestSource(req)).toBeNull();

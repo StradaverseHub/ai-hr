@@ -54,6 +54,7 @@ const responses = {
 };
 const commands = {'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
+const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
@@ -78,7 +79,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
       assertCurrent();
       if (!response.ok) {
         void response.body?.cancel().catch(()=>{});
-        return {status:response.status, data:undefined,retryAfter:retryAfterSeconds(response.headers.get('retry-after'))};
+        return {status:response.status, data:undefined,retryAfter:retryAfterSeconds(response.headers.get('retry-after')),supportId:supportReference(response.headers.get('x-aihr-support-id'))};
       }
       const bytes = await readBoundedBody(response, 1024 * 1024, 15_000, controller.signal);
       assertCurrent();
@@ -101,7 +102,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
     if (signal?.aborted) throw new UnavailableError();
     if (res.status === 401) throw new SignInRequiredError();
     if (res.status === 429) throw new UnavailableError(undefined,res.retryAfter);
-    if (res.status >= 500) throw new UnavailableError(undefined,res.retryAfter);
+    if (res.status >= 500) throw new UnavailableError(undefined,res.retryAfter,res.supportId);
     if (res.status < 200 || res.status >= 300) throw new RequestRejectedError(res.status);
     return res.data as T;
   }catch(error){assertCurrent();throw error;}

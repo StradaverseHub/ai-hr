@@ -43,6 +43,15 @@ function clientFixture() {
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it('retains only a bounded UUID support reference from server failures',async()=>{
+    const f=clientFixture(),reference='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    f.response.mockResolvedValueOnce(new Response('',{status:500,headers:{'x-aihr-support-id':reference.toUpperCase()}}));
+    await expect(f.api.apiGet('me')).rejects.toMatchObject({supportId:reference});
+    for(const value of ['private@email.test','x'.repeat(1000),'cccccccc-cccc-0ccc-8ccc-cccccccccccc']){
+      f.response.mockResolvedValueOnce(new Response('',{status:503,headers:{'x-aihr-support-id':value}}));
+      await expect(f.api.apiGet('me')).rejects.toMatchObject({supportId:undefined});
+    }
+  });
   it('does not start a queued read under a different language than its scoped key',async()=>{
     const f=clientFixture();const pending=f.api.apiGet('me');f.changeLocale();
     await expect(pending).rejects.toBeInstanceOf(SessionChangedError);expect(f.response).not.toHaveBeenCalled();

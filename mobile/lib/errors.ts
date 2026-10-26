@@ -12,7 +12,7 @@ export class SignInRequiredError extends Error {
 }
 
 export class UnavailableError extends Error {
-  constructor(message = 'The service is unavailable right now.',public readonly retryAfter?:number) {
+  constructor(message = 'The service is unavailable right now.',public readonly retryAfter?:number,public readonly supportId?:string) {
     super(message);
     this.name = 'UnavailableError';
   }

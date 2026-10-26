@@ -186,3 +186,21 @@ These remain local implementation results. Complete CI/publication approval, the
 migration rehearsal, signed-device process-termination and keychain acceptance, attestation and
 offline adjudication are still required. Cold-offline identity restoration and automatic punch
 replay remain disabled. This follow-up adds no migration beyond the inherited 0621 geofence change.
+
+Native TypeScript and both Hermes exports then passed at `0ec515055`; maps contain 1,328 iOS and 1,459
+Android sources, including the shared attempt schema and no database/attendance/auth server modules,
+Drizzle client, node-forge or nested Zod 3. These exports do not establish signed-device behavior.
+
+## Private mobile failure diagnostics
+
+Three deliberate reproduction cases showed synthetic private values entering raw session, handler
+and response-contract error logs. The wrapper now logs a closed failure-stage/event record and a
+generated support UUID, while preserving v1 error bodies and no-store behavior. It returns the UUID
+in an additive header. Native transport accepts only a bounded v4 UUID and the common load-state UI
+can show it without exposing an error's private message. Rate/authentication refusals avoid creating
+per-request failure logs; a separate aggregate abuse metric remains future observability work.
+
+Affected revalidation passed 74 server/database/budget cases and 59 native transport/screen/recovery
+cases, plus native TypeScript. The original three failed reproduction cases remain separate from the
+passing repair, which also covers admission failures. Final compiler/platform and expected-refusal
+checks are recorded separately once terminal. This is not a complete CI or staging release claim.

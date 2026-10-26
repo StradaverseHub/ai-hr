@@ -97,6 +97,7 @@ export function LoadState({ loading, error, onRetry,hasData=false }: { loading: 
         <Text style={[styles.body, { color: palette.text }]}>{error instanceof UnavailableError ? t('unavailable') : t('genericError')}</Text>
         {hasData&&<Muted>{t('staleData')}</Muted>}
         {error instanceof UnavailableError&&!!error.retryAfter&&<Muted>{t(error.retryAfter<=1?'retryAfterOne':'retryAfter',{seconds:Math.ceil(error.retryAfter)})}</Muted>}
+        {error instanceof UnavailableError&&!!error.supportId&&<Muted>{t('supportReference',{id:error.supportId})}</Muted>}
         <Button title={t('retry')} onPress={onRetry} kind="quiet" />
       </Card>
     );

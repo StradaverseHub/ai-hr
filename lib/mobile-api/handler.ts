@@ -15,7 +15,7 @@ import type { z } from 'zod';
 import type { SessionContext } from '@/db/client';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { getMobileSession } from '@/lib/session';
-import { JwksUnavailableError } from './jwt';
+import {randomUUID} from 'node:crypto';
 import type { ErrorResponse } from './contract';
 import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '../request-budget';
 
@@ -32,8 +32,17 @@ export function mobileJson(status: number, body: unknown): Response {
   return Response.json(body, { status, headers: HEADERS });
 }
 
-function mobileError(status: number, error: ErrorResponse['error']): Response {
-  return mobileJson(status, { error } satisfies ErrorResponse);
+function mobileError(status: number, error: ErrorResponse['error'],supportId?:string): Response {
+  const response=mobileJson(status,{error} satisfies ErrorResponse);
+  if(supportId)response.headers.set('x-aihr-support-id',supportId);
+  return response;
+}
+
+/** Error objects/causes, SQL parameters, schema messages and URLs may contain private HR or credentials. */
+function privateFailure(status:500|503,error:ErrorResponse['error'],stage:'session'|'handler'|'contract'|'admission'){
+  const supportId=randomUUID();
+  console.error('[mobile-api]',{event:'request_failed',stage,supportId});
+  return mobileError(status,error,supportId);
 }
 
 /** Thrown by a handler for input it refuses; answered 400 with no detail. */
@@ -68,8 +77,7 @@ export function mobileRoute<S extends z.ZodType>(
       } catch (e) {
         if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
         // WorkOS keys unreachable, or the database behind principal_by_subject: an availability fault.
-        console.error('[mobile-api] session resolution failed', e instanceof JwksUnavailableError ? e.message : e);
-        return mobileError(503, 'unavailable');
+        return privateFailure(503,'unavailable','session');
       }
       const write = req.method !== 'GET' && req.method !== 'HEAD';
       releaseActor = admitActor(JSON.stringify([s.tenantId, s.userId ?? s.personId ?? 'unbound']));
@@ -82,14 +90,12 @@ export function mobileRoute<S extends z.ZodType>(
         if (e instanceof RequestBudgetExceeded) throw e;
         if (e instanceof MobileBadRequest) return mobileError(400, 'bad_request');
         if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
-        console.error(`[mobile-api] ${new URL(req.url).pathname} failed`, e);
-        return mobileError(500, 'internal');
+        return privateFailure(500,'internal','handler');
       }
       const parsed = schema.safeParse(out);
       if (!parsed.success) {
         // Contract drift between core and the published shape. Never send the unparsed body.
-        console.error(`[mobile-api] ${new URL(req.url).pathname} response broke its contract`, parsed.error.issues);
-        return mobileError(500, 'internal');
+        return privateFailure(500,'internal','contract');
       }
       return mobileJson(200, parsed.data);
     } catch (error) {
@@ -97,8 +103,7 @@ export function mobileRoute<S extends z.ZodType>(
         status: 429, headers: { ...HEADERS, 'retry-after': String(error.retryAfter) },
       });
       // A failed budget store must never grant an unmetered request.
-      console.error('[mobile-api] request admission unavailable');
-      return mobileError(503, 'unavailable');
+      return privateFailure(503,'unavailable','admission');
     } finally { releaseActor?.(); releaseSource?.(); release?.(); }
   };
 }
