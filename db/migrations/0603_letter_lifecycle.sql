@@ -52,7 +52,7 @@ CREATE TABLE letter_record (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),employment_id uuid NOT NULL REFERENCES employment(id),batch_id uuid NOT NULL REFERENCES letter_generation_batch(id),
  reference text NOT NULL CHECK(length(reference) BETWEEN 1 AND 200),created_by uuid NOT NULL REFERENCES app_user(id),current_revision_id uuid,
  state text NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','submitted','returned','rejected','approved','issued','void','withdrawn')),stage_index integer NOT NULL DEFAULT 0 CHECK(stage_index BETWEEN 0 AND 9),lock_version integer NOT NULL DEFAULT 1 CHECK(lock_version>0),confidential boolean NOT NULL,
- original_letter_id uuid REFERENCES letter_record(id),legal_hold boolean NOT NULL DEFAULT false,retain_until date NOT NULL,submitted_at timestamptz,approved_at timestamptz,issued_at timestamptz,voided_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_reference_uq UNIQUE(tenant_id,reference)
+ original_letter_id uuid REFERENCES letter_record(id),legal_hold boolean NOT NULL DEFAULT false,retain_until date NOT NULL,submitted_at timestamptz,approved_at timestamptz,issued_at timestamptz,voided_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_reference_uq UNIQUE(tenant_id,reference),CONSTRAINT letter_record_batch_employment_uq UNIQUE(tenant_id,batch_id,employment_id)
 );
 --> statement-breakpoint
 CREATE TABLE letter_revision (
@@ -306,7 +306,7 @@ BEGIN
   IF NEW.source_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.id=NEW.source_event_id AND e.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Letter source event mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_record' THEN
   SELECT * INTO b FROM public.letter_generation_batch WHERE id=NEW.batch_id;
-  IF b.id IS NULL OR b.tenant_id<>NEW.tenant_id OR b.company_id<>NEW.company_id OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.company_id=NEW.company_id) THEN RAISE EXCEPTION 'Letter employment or batch identity mismatch';END IF;
+  IF b.id IS NULL OR b.tenant_id<>NEW.tenant_id OR b.company_id<>NEW.company_id OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.company_id=NEW.company_id) OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(b.selection->'employmentIds') selected(value) WHERE selected.value::uuid=NEW.employment_id) THEN RAISE EXCEPTION 'Letter employment or batch identity mismatch';END IF;
   IF NEW.original_letter_id IS NOT NULL AND (NOT app.letter_permission(NEW.company_id,'issue') OR NOT app.letter_can_read(NEW.original_letter_id) OR NOT EXISTS(SELECT 1 FROM public.letter_record original WHERE original.id=NEW.original_letter_id AND original.tenant_id=NEW.tenant_id AND original.company_id=NEW.company_id AND original.employment_id=NEW.employment_id AND original.state IN ('issued','void'))) THEN RAISE EXCEPTION 'Reissue requires an authorised original for the same employee';END IF;
   IF NEW.state<>'draft' OR NEW.current_revision_id IS NOT NULL OR NEW.stage_index<>0 OR NEW.lock_version<>1 OR NEW.submitted_at IS NOT NULL OR NEW.approved_at IS NOT NULL OR NEW.issued_at IS NOT NULL OR NEW.voided_at IS NOT NULL THEN RAISE EXCEPTION 'New letters must start as drafts';END IF;
   IF NEW.original_letter_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_record prior WHERE prior.id=NEW.original_letter_id AND prior.tenant_id=NEW.tenant_id AND prior.company_id=NEW.company_id AND prior.employment_id=NEW.employment_id AND prior.state IN ('issued','void')) THEN RAISE EXCEPTION 'Reissue identity mismatch';END IF;
@@ -580,3 +580,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_template_appearance(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_template_appearance(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE INDEX letter_batch_author_created_idx ON letter_generation_batch(tenant_id,company_id,created_by,created_at DESC,id DESC);

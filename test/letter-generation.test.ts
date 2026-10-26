@@ -4,9 +4,9 @@ import {and,asc,eq} from 'drizzle-orm';
 import {PDFDocument,PDFRawStream,PDFName} from 'pdf-lib';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate,readLetterReport,saveLetterPermission,letterReportDepartments,addLetterAsset} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate,readLetterReport,saveLetterPermission,letterReportDepartments,addLetterAsset,listLetterGenerationBatches,delegateLetterApproval} from '../core/letters';
 import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} from '../core/employee-documents';
-import {client} from '../db/client';
+import {client,withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
@@ -28,6 +28,27 @@ beforeEach(async()=>{
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
 
+
+ it('paginates a complete batch without narrowing readiness totals or partially submitting it',async()=>{
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom([employees[0]]),operationKey:randomUUID()});
+  const one=(await getLetterGenerationBatch(ctx,made.batchId,{limit:1}))!;expect(one.rows).toHaveLength(1);expect(one).toMatchObject({total:2,ready:1,needsCorrection:1,states:{draft:2}});expect(one.nextCursor).toBeTruthy();
+  const two=(await getLetterGenerationBatch(ctx,made.batchId,{limit:1,cursor:one.nextCursor!}))!;expect(two.rows).toHaveLength(1);expect(two).toMatchObject({total:2,ready:1,needsCorrection:1,nextCursor:null});expect(new Set([...one.rows,...two.rows].map(row=>row.record.id)).size).toBe(2);
+  await expect(getLetterGenerationBatch(ctx,made.batchId,{cursor:randomUUID()})).rejects.toMatchObject({code:'invalid'});
+  await expect(submitLetterBatch(ctx,made.batchId)).rejects.toMatchObject({code:'configuration',detail:'missingFields'});expect((await owner.db.select().from(s.letterRecord)).every(row=>row.state==='draft')).toBe(true);
+  const batches=await listLetterGenerationBatches(ctx,{companyId:b.companyId,limit:1});expect(batches.rows).toMatchObject([{id:made.batchId,total:2,drafts:2}]);expect(Object.keys(batches.rows[0])).not.toContain('selection');expect((await listLetterGenerationBatches(reviewer,{companyId:b.companyId})).rows).toEqual([]);
+  const record=one.rows[0].record;await expect(withTenant(ctx,tx=>tx.insert(s.letterRecord).values({...record,id:randomUUID(),reference:'DUPLICATE/'+randomUUID(),currentRevisionId:null,lockVersion:1}))).rejects.toMatchObject({cause:{code:'23505'}});
+ });
+ it('keeps a delegated individual readable without treating that permission as access to its entire batch',async()=>{
+  const [existingPolicy]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existingPolicy.policy,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...existingPolicy.policy.stages]}});
+  const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional scoped delegate',primaryEmail:'scoped-delegate@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'employee'),delegate={...await entitledCtx(b,['employee']),userId:delegateId,personId:delegatePerson.id};
+  for(const capability of ['read','approve','generate'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'employee',allowed:true});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);const data=(await getLetterGenerationBatch(ctx,made.batchId))!,row=data.rows[0];
+  await delegateLetterApproval(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,delegateUserId:delegateId,reason:'Review this individual only'});
+  const individual=await getStaffLetter(delegate,row.record.id);expect(individual).toMatchObject({record:{id:row.record.id}});expect(Object.keys(individual!.batch)).not.toContain('selection');
+  await expect(getLetterGenerationBatch(delegate,made.batchId)).rejects.toMatchObject({code:'permission'});await expect(submitLetterBatch(delegate,made.batchId)).rejects.toMatchObject({code:'permission'});
+  expect((await owner.db.select().from(s.letterRecord)).every(record=>record.state==='submitted')).toBe(true);
+ });
  it('preserves approved presentation while taking current workflow settings and refuses a changed final signatory',async()=>{
   const original=(await getLetterTemplate(ctx,templateVersionId))!,presentation={letterheadAssetId:null,signatoryUserId:reviewer.userId!};
   const next=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:original.root.code,name:original.version.name,category:original.version.category,effectiveFrom:today(),document:original.version.document,fieldVersionIds:original.fields.map(field=>field.id),presentation});

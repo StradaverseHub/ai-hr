@@ -10940,14 +10940,14 @@ export const letterGenerationBatch=pgTable('letter_generation_batch',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),policyVersionId:uuid('policy_version_id').notNull().references(()=>letterPolicyVersion.id),
  selection:jsonb('selection').notNull().$type<{employmentIds:string[];customValues:Record<string,Record<string,import('../lib/letter-model').LetterValue|null>>;sourceAsOfDate:string}>(),inputHash:text('input_hash').notNull(),
  createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),createdAt:createdAt(),
-},t=>[uniqueIndex('letter_batch_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('letter_batch_source_event_uq').on(t.tenantId,t.sourceEventId,t.templateVersionId)]);
+},t=>[uniqueIndex('letter_batch_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('letter_batch_source_event_uq').on(t.tenantId,t.sourceEventId,t.templateVersionId),index('letter_batch_author_created_idx').on(t.tenantId,t.companyId,t.createdBy,t.createdAt.desc(),t.id.desc())]);
 export const letterRecord=pgTable('letter_record',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),batchId:uuid('batch_id').notNull().references(()=>letterGenerationBatch.id),
  reference:text('reference').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),currentRevisionId:uuid('current_revision_id').references(():AnyPgColumn=>letterRevision.id),
  state:text('state').notNull().$type<import('../lib/letter-workflow').LetterState>().default('draft'),stageIndex:integer('stage_index').notNull().default(0),lockVersion:integer('lock_version').notNull().default(1),confidential:boolean('confidential').notNull(),
  originalLetterId:uuid('original_letter_id').references(():AnyPgColumn=>letterRecord.id),legalHold:boolean('legal_hold').notNull().default(false),retainUntil:date('retain_until').notNull(),
  submittedAt:timestamp('submitted_at',{withTimezone:true}),approvedAt:timestamp('approved_at',{withTimezone:true}),issuedAt:timestamp('issued_at',{withTimezone:true}),voidedAt:timestamp('voided_at',{withTimezone:true}),createdAt:createdAt(),
-},t=>[uniqueIndex('letter_reference_uq').on(t.tenantId,t.reference),index('letter_record_scope_idx').on(t.tenantId,t.companyId,t.employmentId)]);
+},t=>[uniqueIndex('letter_reference_uq').on(t.tenantId,t.reference),uniqueIndex('letter_record_batch_employment_uq').on(t.tenantId,t.batchId,t.employmentId),index('letter_record_scope_idx').on(t.tenantId,t.companyId,t.employmentId)]);
 export const letterRevision=pgTable('letter_revision',{
  id:id(),tenantId:tenantId(),letterId:uuid('letter_id').notNull().references(()=>letterRecord.id),ordinal:integer('ordinal').notNull(),
  document:jsonb('document').notNull().$type<ReturnType<typeof import('../lib/letter-model').renderLetterDocument>['document']>(),

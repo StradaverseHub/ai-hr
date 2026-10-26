@@ -244,16 +244,37 @@ export function refreshLetterDraft(ctx:SessionContext,input:{letterId:string;exp
  for(const [key,value]of Object.entries(input.customValues??{})){const field=template.fields.find(field=>field.definition.key===key)?.definition;if(!field||!field.source.startsWith('custom.')||current&&!field.editable)throw new LetterWorkflowError('invalid','editableField');custom[key]=value;}
  const snapshot=await snapshotLetter(tx,ctx,record.companyId,record.employmentId,template,batch.policyVersionId,custom,batch.selection.sourceAsOfDate);return newLetterRevision(tx,ctx,record,snapshot,custom);
 });}
-export function getLetterGenerationBatch(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
- const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch)return null;await permission(tx,batch.companyId,'read');
- const template=await generationTemplate(tx,batch.companyId,batch.templateVersionId,false),records=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.reference));
- const rows=[];
- for(const record of records){const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[];let issue:{code:string;field?:string}|null=null,sourceChanged=false;
+function assertLetterBatchCohort(batch:typeof letterGenerationBatch.$inferSelect,records:(typeof letterRecord.$inferSelect)[]){
+ const ids=batch.selection.employmentIds;
+ if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string'||!UUID.test(id)))throw new LetterWorkflowError('configuration','batchSelection');
+ const expected=new Set(ids.map(id=>id.toLowerCase())),actual=new Set(records.map(row=>row.employmentId));
+ if(!ids.length||expected.size!==ids.length||actual.size!==records.length||records.length!==ids.length||records.some(row=>!expected.has(row.employmentId)))throw new LetterWorkflowError('permission');
+}
+/** A displayed page never narrows the cohort checked for readiness or submission. */
+export function getLetterGenerationBatch(ctx:SessionContext,id:string,input:{cursor?:string;limit?:number}={}){return letters(ctx,false,async tx=>{
+ const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch)return null;await permission(tx,batch.companyId,'read');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
+ const template=await generationTemplate(tx,batch.companyId,batch.templateVersionId,false),records=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.reference),asc(letterRecord.id));assertLetterBatchCohort(batch,records);
+ const cursor=input.cursor?records.findIndex(row=>row.id===input.cursor):-1;if(input.cursor&&cursor<0)throw new LetterWorkflowError('invalid','cursor');const start=cursor+1,end=start+limit;
+ const rows=[];let ready=0,needsCorrection=0;const states:Record<string,number>={};
+ for(const [index,record]of records.entries()){
+  const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[];let issue:{code:string;field?:string}|null=null,sourceChanged=false;
   if(['draft','returned','rejected'].includes(record.state))try{const fresh=await snapshotLetter(tx,ctx,batch.companyId,record.employmentId,template,batch.policyVersionId,revision?.editableValues??batch.selection.customValues[record.employmentId]??{},batch.selection.sourceAsOfDate);sourceChanged=revision?.sourceHash!==fresh.sourceHash;}catch(error){if(!(error instanceof LetterModelError)&&!(error instanceof LetterWorkflowError))throw error;issue={code:error.code,...(error instanceof LetterModelError?{field:error.path}:{})};}
-  rows.push({record,revision:revision??null,issue,sourceChanged,ready:record.state==='draft'&&Boolean(revision)&&!issue&&!sourceChanged&&template.active});
+  const eligible=record.state==='draft'&&Boolean(revision)&&!issue&&!sourceChanged&&template.active;states[record.state]=(states[record.state]??0)+1;if(eligible)ready++;if(['draft','returned','rejected'].includes(record.state)&&!eligible)needsCorrection++;
+  if(index>=start&&index<end)rows.push({record,revision:revision??null,issue,sourceChanged,ready:eligible});
  }
- return {batch,rows,templateActive:template.active,ready:rows.filter(row=>row.ready).length,needsCorrection:rows.filter(row=>['draft','returned','rejected'].includes(row.record.state)&&!row.ready).length};
+ return {batch,rows,templateActive:template.active,ready,needsCorrection,total:records.length,states,nextCursor:end<records.length?records[end-1].id:null};
 });}
+export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'generate');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
+ const visible=and(eq(letterGenerationBatch.companyId,input.companyId),eq(letterGenerationBatch.createdBy,ctx.userId!),sql`(select count(*) from letter_record r where r.batch_id=${letterGenerationBatch.id})=case when jsonb_typeof(${letterGenerationBatch.selection}->'employmentIds')='array' then jsonb_array_length(${letterGenerationBatch.selection}->'employmentIds') else -1 end`);
+ const [cursor]=input.cursor?await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(visible,eq(letterGenerationBatch.id,input.cursor))).limit(1):[];if(input.cursor&&!cursor)throw new LetterWorkflowError('invalid','cursor');
+ const rows=await tx.select({id:letterGenerationBatch.id,createdAt:letterGenerationBatch.createdAt,templateVersionId:letterTemplateVersion.id,title:letterTemplateVersion.name,category:letterTemplateVersion.category,
+  total:sql<number>`(select count(*)::integer from letter_record r where r.batch_id=${letterGenerationBatch.id})`,
+  drafts:sql<number>`(select count(*)::integer from letter_record r where r.batch_id=${letterGenerationBatch.id} and r.state in ('draft','returned','rejected'))`
+ }).from(letterGenerationBatch).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterGenerationBatch.templateVersionId)).where(and(visible,cursor?sql`(${letterGenerationBatch.createdAt},${letterGenerationBatch.id})<(select batch_cursor.created_at,batch_cursor.id from letter_generation_batch batch_cursor where batch_cursor.id=${input.cursor}::uuid)`:undefined)).orderBy(desc(letterGenerationBatch.createdAt),desc(letterGenerationBatch.id)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+
 async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,stageIndex:number){
  if(!policy.portalNotifications&&!policy.emailNotifications)return;
  for(const userId of policy.stages[stageIndex].userIds.filter(userId=>userId!==record.createdBy)){
@@ -266,7 +287,7 @@ async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRec
 export function submitLetterBatch(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
  const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch)throw new LetterWorkflowError('permission');await permission(tx,batch.companyId,'generate');
  const template=await generationTemplate(tx,batch.companyId,batch.templateVersionId),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
- const rows=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.id)).for('update');if(!rows.length)throw new LetterWorkflowError('state');
+ const rows=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.id)).for('update');if(!rows.length)throw new LetterWorkflowError('state');assertLetterBatchCohort(batch,rows);
  const selected=rows.filter(row=>row.state!=='withdrawn');if(!selected.length||selected.some(row=>['returned','rejected'].includes(row.state)))throw new LetterWorkflowError('state');const drafts=selected.filter(row=>row.state==='draft');
  for(const row of drafts){await assertLetterChain(tx,batch.companyId,policy,row.createdBy);if(!row.currentRevisionId)throw new LetterWorkflowError('configuration','missingFields');const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,row.currentRevisionId));const fresh=await snapshotLetter(tx,ctx,batch.companyId,row.employmentId,template,batch.policyVersionId,revision.editableValues,batch.selection.sourceAsOfDate);if(fresh.sourceHash!==revision.sourceHash)throw new LetterWorkflowError('stale','sourceChanged');}
  for(const row of drafts){await tx.update(letterRecord).set({state:'submitted',stageIndex:0,lockVersion:row.lockVersion+1}).where(eq(letterRecord.id,row.id));await queueLetterStage(tx,ctx,row,policy,row.currentRevisionId!,0);await event(tx,ctx,row.id,'submitted',{revisionId:row.currentRevisionId});}
@@ -412,7 +433,7 @@ export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:str
 });}
 export function getStaffLetter(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(id)));if(!record)return null;await permission(tx,record.companyId,'read');
- const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[],[batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,record.batchId)),[policy]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId));
+ const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[],[batch]=await tx.select({id:letterGenerationBatch.id,companyId:letterGenerationBatch.companyId,templateVersionId:letterGenerationBatch.templateVersionId,policyVersionId:letterGenerationBatch.policyVersionId,sourceAsOfDate:sql<string>`${letterGenerationBatch.selection}->>'sourceAsOfDate'`}).from(letterGenerationBatch).where(eq(letterGenerationBatch.id,record.batchId)),[policy]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId));
  const decisions=record.currentRevisionId?await tx.select().from(letterApprovalDecision).where(eq(letterApprovalDecision.revisionId,record.currentRevisionId)).orderBy(asc(letterApprovalDecision.createdAt),asc(letterApprovalDecision.id)).limit(101):[];
  return {record,revision:revision??null,batch,policy:validateLetterPolicy(policy.policy),decisions:decisions.slice(0,100),moreDecisions:decisions.length>100};
 });}
