@@ -849,6 +849,7 @@ export async function createJobGrade(
   p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean },
   existingTx?: Tx,
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const code = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
   if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(code)) {
     throw new Error('Grade code must be letters, digits or underscores (e.g. EXEC, G1)');
@@ -859,6 +860,8 @@ export async function createJobGrade(
   // the database rather than one storing '' and the other NULL.
   const description = p.description?.trim() ? p.description.trim() : null;
   return tenantMutation(ctx, existingTx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r224 — RESTORE INSTEAD OF DUPLICATE. Both grade uniqueness indexes are PARTIAL —
     // job_grade_code_uq (0090) and job_grade_name_uq (0183) are `... WHERE archived_at IS NULL` — so an
     // archived grade does NOT hold its code and this insert would SUCCEED, leaving the tenant with two
@@ -932,6 +935,7 @@ export async function updateJobGrade(
   p: { id: string; name: string; rank?: number; code?: string; reason?: string | null; description?: string | null },
   existingTx?: Tx,
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
   const reason = normalizeReason(p.reason);
@@ -947,6 +951,8 @@ export async function updateJobGrade(
           return c;
         })();
   return tenantMutation(ctx, existingTx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
     // events that predate this change keep their new-values-only payload; the log is append-only).
     const [prev] = await tx
@@ -1010,7 +1016,10 @@ export async function updateJobGrade(
  * reproduce closed years through them, so a historical rule's grade is still load-bearing.
  */
 export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [g] = await tx
       .select({ code: jobGrade.code, name: jobGrade.name })
       .from(jobGrade)
@@ -1056,7 +1065,10 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
  * that was already pointing at it.
  */
 export async function archiveJobGrade(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
       .update(jobGrade)
       .set({ archivedAt: p.archived ? sql`now()` : null })
