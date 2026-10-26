@@ -1,6 +1,7 @@
 'use client';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import {PersonnelImportEvaluationSummary} from './personnel-import-evaluation-summary';
 import { Button, Field, inputCls } from './ui';
 import { beginEmployeeImportEvaluationAction, prepareEmployeeImportEvaluationCommitAction, reopenEmployeeImportEvaluationAction, recordEmployeeImportEvaluationTelemetryAction, associateReusedEmployeeImportHeaderAction } from '@/app/admin/personnel/import/actions';
 import { EmployeeImportEvaluationReceiptSchema, type EmployeeImportEvaluationBinding, type EmployeeImportEvaluationReceipt, type EmployeeImportEvaluationTelemetry } from '@/lib/personnel-import-evaluation';
@@ -42,7 +43,8 @@ export const PersonnelImportEvaluationPanel = forwardRef<PersonnelImportEvaluati
     onStatus: (status: PersonnelImportEvaluationStatus) => void;
     onStarted?: () => void;
 }>(function PersonnelImportEvaluationPanel({ companyId, sourceEpoch, baselineAvailable, getSource, canBegin, disabled, onStatus, onStarted }, ref) {
-    const t = useTranslations('people.import.measurement'), [mode, setMode] = useState<'baseline' | 'assisted'>('baseline'), [group, setGroup] = useState('new'), [history, setHistory] = useState<EmployeeImportEvaluationReceipt[]>([]), [receipt, setReceipt] = useState<EmployeeImportEvaluationReceipt | null>(null), [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [observe, setObserve] = useState(false), [attestedMinutes, setAttestedMinutes] = useState('');
+    const t = useTranslations('people.import.measurement'), [mode, setMode] = useState<'baseline' | 'assisted'>('baseline'), [group, setGroup] = useState('new'), [historyWindow, setHistoryWindow] = useState<{rows:EmployeeImportEvaluationReceipt[];truncated:boolean}>({rows:[],truncated:false}), [receipt, setReceipt] = useState<EmployeeImportEvaluationReceipt | null>(null), [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [observe, setObserve] = useState(false), [attestedMinutes, setAttestedMinutes] = useState('');
+    const history=historyWindow.rows;
     const [quality, setQuality] = useState({ verifiedCommittedRows: '', errorRows: '', duplicateRows: '', reworkRows: '' }), [qualityConfirmed, setQualityConfirmed] = useState(false);
     const active = useRef<EmployeeImportEvaluationReceipt | null>(null), pending = useRef(false), uncertain = useRef<'begin' | 'preparation' | 'commit' | null>(null), epoch = useRef({ companyId, sourceEpoch }), clock = useRef(personnelImportFocusClock()), mounted = useRef(true), beginBinding = useRef<{
         operationNonce: string;
@@ -57,7 +59,7 @@ export const PersonnelImportEvaluationPanel = forwardRef<PersonnelImportEvaluati
     const save = (next: EmployeeImportEvaluationReceipt) => { const previous = active.current; if (previous && (previous.attemptId !== next.attemptId || previous.companyId !== next.companyId || previous.cohortId !== next.cohortId || previous.mode !== next.mode || previous.attemptVersion > next.attemptVersion))
         throw Error(); active.current = next; if (mounted.current) {
         setReceipt(next);
-        setHistory(old => [next, ...old.filter(row => row.attemptId !== next.attemptId)].slice(0, 32));
+        setHistoryWindow(old=>{const rows=[next,...old.rows.filter(row=>row.attemptId!==next.attemptId)];return{rows:rows.slice(0,32),truncated:old.truncated||rows.length>32};});
     } publish(); };
     const current = (captured: {
         companyId: string;
@@ -212,5 +214,6 @@ export const PersonnelImportEvaluationPanel = forwardRef<PersonnelImportEvaluati
  {receipt.state === 'committed' && <details><summary className="cursor-pointer text-sm">{t('outcome')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">{(Object.keys(quality) as (keyof typeof quality)[]).map(key => <Field key={key} label={t(key)}><input className={inputCls} type="number" min="0" max="1000000" value={quality[key]} onChange={e => { setQuality(old => ({ ...old, [key]: e.target.value })); setQualityConfirmed(false); }}/></Field>)}</div><label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={qualityConfirmed} onChange={e => setQualityConfirmed(e.target.checked)}/><span>{t('attestOutcome')}</span></label><Button type="button" disabled={disabled || busy || !qualityConfirmed || !quality.verifiedCommittedRows.trim()} onClick={() => void record({ kind: 'outcome', origin: 'human_attested', ...Object.fromEntries(Object.entries(quality).map(([key, value]) => [key, value.trim() ? Number(value) : null])) } as EmployeeImportEvaluationTelemetry['stage'])}>{t('saveObservation')}</Button></details>}
  <Button type="button" variant="ghost" disabled={disabled || busy || !!uncertain.current || receipt.state !== 'committed'} onClick={() => { active.current = null; setReceipt(null); setObserve(false); setAttestedMinutes(''); setNotice(''); prepared.current = null; publish(); }}>{t('newWorkflow')}</Button></>}
  {uncertain.current === 'begin' && !receipt && <Button type="button" variant="outline" disabled={disabled || busy} onClick={() => { uncertain.current = null; beginBinding.current = null; setNotice(t('oldMetadataUnknown')); publish(); }}>{t('newMetadataRequest')}</Button>}
- {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}</section>;
+ {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+ <PersonnelImportEvaluationSummary receipts={history} companyId={companyId} activeCohortId={receipt?.cohortId} windowIncomplete={historyWindow.truncated}/></section>;
 });
