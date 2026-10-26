@@ -55,7 +55,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
       return history;
     }):[];
     const agentReview=includeGovernance?await agentReviewWorkspaceTx(tx,fresh):null;
-    const jobModules=MODULE_JOBS.filter(([code])=>isModuleEnabled(fresh,code)&&(!['system_explorer','system_testing'].includes(code)||isAdmin(fresh))).map(([code])=>code);
+    const jobModules=MODULE_JOBS.filter(([code])=>isModuleEnabled(fresh,code)&&(code!=='system_explorer'||isAdmin(fresh))).map(([code])=>code);
     return { access, taskIds, history,agentReview,jobModules,governedJob,proposal,planningPermit };
   });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,governedJob:null,proposal:null,planningPermit:null};}
 }

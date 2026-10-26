@@ -16818,7 +16818,16 @@
         "field_personCount": "ผู้ที่ลาในช่วงนี้",
         "field_approvedOnFromDate": "ผู้ที่ได้รับอนุมัติลาในวันเริ่มต้น",
         "reviewAction": "ตรวจสอบการดำเนินการ",
-        "humanReviewNote": "เลือกรายละเอียดในหน้าตรวจสอบ การเปิดหน้านี้จะไม่ส่งคำขอหรือเปลี่ยนแปลงข้อมูลบุคลากร"
+        "humanReviewNote": "เลือกรายละเอียดในหน้าตรวจสอบ การเปิดหน้านี้จะไม่ส่งคำขอหรือเปลี่ยนแปลงข้อมูลบุคลากร",
+        "field_testingInstructionVersion": "รุ่นคำแนะนำที่เผยแพร่",
+        "testing_state_not_started": "ได้รับมอบหมาย ยังไม่เริ่ม",
+        "testing_state_in_progress": "ผู้ทดสอบรายงานว่ากำลังดำเนินการ",
+        "testing_state_passed": "ผู้ทดสอบรายงานว่าผ่าน ไม่ใช่การยืนยันอย่างอิสระ",
+        "testing_state_failed": "ผู้ทดสอบรายงานว่าไม่ผ่าน ไม่ใช่การยืนยันอย่างอิสระ",
+        "testing_state_blocked": "ผู้ทดสอบรายงานว่าติดขัด",
+        "testing_state_retest_required": "ต้องทดสอบใหม่ ผลสังเกตเดิมไม่ยืนยันคำแนะนำปัจจุบัน",
+        "testing_state_not_applicable": "ผู้ทดสอบรายงานว่าไม่เกี่ยวข้อง",
+        "testing_state_partial": "ผู้ทดสอบรายงานผลบางส่วน"
       },
       "module_overview_label": "สำรวจขั้นตอนงานของฉัน",
       "module_overview_prompt": "ฉันใช้ความสามารถของโมดูล Assistant ใดได้บ้าง ใช้ my_module_work สำหรับ assistant และอธิบายขอบเขตโดยไม่อ่านข้อมูลที่ไม่เกี่ยวข้อง",

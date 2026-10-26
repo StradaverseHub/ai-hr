@@ -23,7 +23,7 @@ import { getMyOnboarding } from './lifecycle-self';
 import { listRewardUnits } from '../packs/rewards/service';
 import { ownClaimStatuses } from '../packs/claims/service';
 import { listSchemaTables } from './schema-explorer';
-import { listTestCases } from './system-testing';
+import {ownTestingWorkStatusesTx} from './system-testing-workspace';
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const storedAmount = (value: unknown): string | number | null => typeof value === 'number' && Number.isFinite(value) ? value :
@@ -118,9 +118,8 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
         const result = await listSchemaTables(fresh, tx);
         data = { tables: bounded(result.tables.map(row => ({ table: row.table, module: row.moduleCode }))), withheldTables: result.withheldTables }; break;
       }
-      case 'system_testing': data = bounded((await listTestCases(fresh, {}, tx)).map(row => ({ caseNo: row.caseNo,
-        moduleCode: row.moduleCode, latestOutcome: row.latestOutcome, latestRunAt: row.latestRunAt, runCount: row.runCount }))); break;
-      case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(!['system_explorer','system_testing'].includes(code)||isAdmin(fresh)))
+      case 'system_testing': data = await ownTestingWorkStatusesTx(tx,fresh,25); break;
+      case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(code!=='system_explorer'||isAdmin(fresh)))
         .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only' }; break;
       default: return unavailable();
     }

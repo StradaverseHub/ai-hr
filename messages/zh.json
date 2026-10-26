@@ -16818,7 +16818,16 @@
         "field_personCount": "此期间休假人数",
         "field_approvedOnFromDate": "起始日期已批准休假人数",
         "reviewAction": "审核操作",
-        "humanReviewNote": "请在审核页面选择具体信息。打开页面不会提交申请或更改人事记录。"
+        "humanReviewNote": "请在审核页面选择具体信息。打开页面不会提交申请或更改人事记录。",
+        "field_testingInstructionVersion": "已发布的说明版本",
+        "testing_state_not_started": "已分配，尚未开始",
+        "testing_state_in_progress": "测试人员报告正在进行",
+        "testing_state_passed": "测试人员报告通过，并非独立验证",
+        "testing_state_failed": "测试人员报告失败，并非独立验证",
+        "testing_state_blocked": "测试人员报告受阻",
+        "testing_state_retest_required": "需要重新测试；以往观察不能验证当前说明",
+        "testing_state_not_applicable": "测试人员报告不适用",
+        "testing_state_partial": "测试人员报告部分结果"
       },
       "module_overview_label": "探索我的工作流程",
       "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",

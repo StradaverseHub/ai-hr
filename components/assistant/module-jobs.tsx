@@ -38,6 +38,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
   if(fact.format==='blocks'&&typeof fact.value==='string')return t(`blocks_${fact.value}`);
   if(presentation.module==='rewards'&&fact.field==='status'&&typeof fact.value==='string'&&['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn'].includes(fact.value))return rewardStage(fact.value);
   if(presentation.module==='rewards'&&fact.field==='rewardKind'&&typeof fact.value==='string'&&['annual','adhoc','midyear'].includes(fact.value))return rewardKind(fact.value);
+  if(fact.format==='testingStatus'&&typeof fact.value==='string'&&['not_started','in_progress','passed','failed','blocked','retest_required','not_applicable','partial'].includes(fact.value))return t(`testing_state_${fact.value}`);
   if(fact.format==='status'&&typeof fact.value==='string'&&knownStates.has(fact.value))return t(`state_${fact.value}`);
   if(fact.format==='date'&&typeof fact.value==='string'){
    const date=new Date(fact.value.length===10?fact.value+'T00:00:00Z':fact.value);

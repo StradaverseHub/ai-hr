@@ -16818,7 +16818,16 @@
         "field_personCount": "Người nghỉ trong khoảng này",
         "field_approvedOnFromDate": "Người nghỉ được duyệt vào ngày bắt đầu",
         "reviewAction": "Xem lại thao tác",
-        "humanReviewNote": "Chọn thông tin trên trang xem lại. Việc mở trang không gửi yêu cầu hay thay đổi hồ sơ nhân sự."
+        "humanReviewNote": "Chọn thông tin trên trang xem lại. Việc mở trang không gửi yêu cầu hay thay đổi hồ sơ nhân sự.",
+        "field_testingInstructionVersion": "Phiên bản hướng dẫn đã công bố",
+        "testing_state_not_started": "Đã giao, chưa bắt đầu",
+        "testing_state_in_progress": "Người kiểm thử báo đang thực hiện",
+        "testing_state_passed": "Người kiểm thử báo đạt — chưa được xác minh độc lập",
+        "testing_state_failed": "Người kiểm thử báo không đạt — chưa được xác minh độc lập",
+        "testing_state_blocked": "Người kiểm thử báo bị chặn",
+        "testing_state_retest_required": "Cần kiểm thử lại; quan sát cũ không xác minh hướng dẫn hiện tại",
+        "testing_state_not_applicable": "Người kiểm thử báo không áp dụng",
+        "testing_state_partial": "Người kiểm thử báo kết quả một phần"
       },
       "module_overview_label": "Khám phá quy trình của tôi",
       "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",

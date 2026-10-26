@@ -9,10 +9,10 @@ export const MODULE_JOBS=[
 export const JOB_FACT_FIELDS=['personCount','approvedOnFromDate','grade','holidayCalendar','workState','joinDate','relationship','leaveType','displayEntitlementDays','earnedEntitlement','broughtForward','adjustments','totalEntitlement','forfeited','asOf','cycleStart','employeeCode','company','hiredOn','terminatedOn','workStatus','manager','reportingKind','available','taken','pending','period','status',
  'hasRejectedDates','from','to','hours','durationType','days','date','workedMinutes','otMinutes','gross','deductions','net','currency','runType','runSequence','cycle','claimType','incurredOn','createdAt','decidedAt','paidAt',
  'framework','artifact','released','periodEnd','rewardKind','year','revision','progressDone','progressTotal','progressPercent','completed','activeCredit','usedCredit','expiredCredit','payConvertedCredit',
- 'creditUnit','expiry','credited','remaining','notificationReadAt','notificationCreated','table','module','withheldTables','testCase','lastOutcome','lastRun','runCount',
+ 'creditUnit','expiry','credited','remaining','notificationReadAt','notificationCreated','table','module','withheldTables','testCase','testingInstructionVersion','lastOutcome','lastRun','runCount',
  'amount','itemCode','category','rewardUnit','gapCount','readyRecords','checkedRecords','blockingEffect','capability'] as const;
 export type JobFactField=typeof JOB_FACT_FIELDS[number];
-export type JobFact=Readonly<{field:JobFactField;value:string|number|boolean|null;format:'text'|'number'|'date'|'status'|'boolean'|'money'|'module'|'gap'|'blocks'|'performanceFramework'|'performanceArtifact'}>;
+export type JobFact=Readonly<{field:JobFactField;value:string|number|boolean|null;format:'text'|'number'|'date'|'status'|'boolean'|'money'|'module'|'gap'|'blocks'|'performanceFramework'|'performanceArtifact'|'testingStatus'}>;
 export type JobCard=Readonly<{title:Readonly<{kind:'text';value:string}|{kind:'record';number:number}|{kind:'gap';code:string}|{kind:'module';module:AgentModuleCode}>;
  facts:readonly JobFact[];href?:string;linkPurpose?:'human_review';withheld?:boolean}>;
 export type JobPresentation=Readonly<{module:AgentModuleCode;cards:readonly JobCard[];truncated:boolean;hasEmployment?:boolean}>;

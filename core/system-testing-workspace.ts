@@ -8,7 +8,10 @@ import { isAdmin } from '../lib/authz';
 import { SCREENS } from '../lib/permissions';
 import { executionInputSchema, legacyOutcomeFor, parseInstruction, parseInstructionDraft, parsePublishedInstruction, TestingRefusal, TESTING_LIMITS, testingUuid, testingAccountId, testingHash, testingSourceRef, testingSemanticId, type ExecutionInput, type ExecutionStatus, type InstructionDefinition } from '../lib/system-testing/model';
 import { testingDigest } from '../lib/system-testing/hash';
-import { assertModuleEnabled } from './entitlements';
+import { assertModuleEnabled,resolveEntitlementsTx } from './entitlements';
+import {assertAiPrincipalTx} from './ai-principal';
+import {assertMayUseAssistant} from './assistant-grant';
+import {assertAiActionUnpausedTx} from './ai-governance';
 import { submitFeedback } from './feedback';
 import { isTestableModule, listTestableModules, nextTestCaseNoTx, SYSTEM_TESTING_MODULE } from './system-testing';
 
@@ -178,6 +181,21 @@ function assignmentRowsSql(ctx: SessionContext,p: AssignmentReadFilter,tester: s
       LEFT JOIN LATERAL(SELECT x.* FROM test_execution x WHERE x.assignment_id=a.id AND x.version_id=a.target_version_id ORDER BY x.attempt_no DESC LIMIT 1)e ON true
       LEFT JOIN test_run r ON r.id=e.current_run_id AND r.execution_id=e.id
       WHERE a.tenant_id=${ctx.tenantId} AND (${tester}::uuid IS NULL OR a.tester_user_id=${tester}::uuid) AND (${p.moduleCode ?? null}::text IS NULL OR v.definition->>'moduleCode'=${p.moduleCode ?? null}::text) AND (${p.functionKey??null}::text IS NULL OR v.definition->>'functionKey'=${p.functionKey??null}::text) AND (${p.category??null}::text IS NULL OR coalesce(v.definition->>'category',v.definition->>'testType')=${p.category??null}::text) AND (${p.priority??null}::text IS NULL OR v.definition->>'priority'=${p.priority??null}::text))`;
+}
+/** Assistant own work metadata from the SAME native assignment/status CTE. Caller user, never
+ * person/employment or admin team scope, determines ownership. No list locks/preparations/writes,
+ * instructions, tester names or human narratives leave this read; reported passes are not gates. */
+export async function ownTestingWorkStatusesTx(tx:Tx,supplied:SessionContext,limit=25){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ if(!Number.isInteger(limit)||limit<1||limit>25)throw new TestingRefusal('invalid');
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');const actor=participant(fresh);testingAccountId.parse(actor);
+ const found=await tx.execute<{assignment_id:string;case_id:string;case_no:number;title:string;module_code:string;version_id:string;ordinal:number;execution_id:string|null;status:ExecutionStatus;updated_at:Date|string}>(sql`${assignmentRowsSql(fresh,{},actor)}
+ SELECT assignment_id,case_id,case_no,title,module_code,version_id,ordinal,execution_id,status,updated_at FROM rows
+ WHERE active AND EXISTS(SELECT 1 FROM test_case current_case WHERE current_case.id=rows.case_id AND current_case.tenant_id=${fresh.tenantId}::uuid AND current_case.current_version_id=rows.version_id)
+ AND (definition->>'format'<>'1' OR definition->>'active'='true')
+ ORDER BY case_no,assignment_id LIMIT ${limit+1}`);
+ const rows=Array.from(found).slice(0,limit).map(row=>{const updatedAt=new Date(row.updated_at);if(!Number.isFinite(updatedAt.getTime()))throw new TestingRefusal('not_found');return{assignmentId:row.assignment_id,caseId:row.case_id,caseNo:row.case_no,title:row.title,moduleCode:row.module_code,versionId:row.version_id,ordinal:row.ordinal,executionId:row.execution_id,status:row.status,updatedAt:updatedAt.toISOString()};});
+ return{rows,truncated:found.length>limit};
 }
 export type TestingAssignmentRow = { assignmentId: string; caseId: string; caseNo: number; title: string; moduleCode: string; versionId: string; ordinal: number; testerUserId: string; testerName: string | null; updatedAt: Date; functionKey: string | null; category: string | null; priority: string | null; assignmentRevision: number; active: boolean; executionId: string | null; executionRevision: number | null; status: ExecutionStatus; definition: ReturnType<typeof parsePublishedInstruction> };
 export async function listTestingAssignments(ctx: SessionContext, p: { team?: boolean; testerUserId?: string; moduleCode?: string; functionKey?: string; category?: string; priority?: string; status?: ExecutionStatus; page?: number } = {}): Promise<{ rows: TestingAssignmentRow[]; total: number; page: number; summary: {status:ExecutionStatus;n:number}[] }> {

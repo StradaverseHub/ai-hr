@@ -16818,7 +16818,16 @@
         "field_personCount": "Orang bercuti dalam tempoh ini",
         "field_approvedOnFromDate": "Cuti diluluskan pada tarikh mula",
         "reviewAction": "Semak tindakan",
-        "humanReviewNote": "Pilih butiran di halaman semakan. Membukanya tidak menghantar permohonan atau mengubah rekod HR."
+        "humanReviewNote": "Pilih butiran di halaman semakan. Membukanya tidak menghantar permohonan atau mengubah rekod HR.",
+        "field_testingInstructionVersion": "Versi arahan diterbitkan",
+        "testing_state_not_started": "Ditugaskan, belum bermula",
+        "testing_state_in_progress": "Penguji melaporkan kerja sedang berjalan",
+        "testing_state_passed": "Penguji melaporkan lulus — bukan pengesahan bebas",
+        "testing_state_failed": "Penguji melaporkan gagal — bukan pengesahan bebas",
+        "testing_state_blocked": "Penguji melaporkan halangan",
+        "testing_state_retest_required": "Ujian semula diperlukan; pemerhatian lama tidak mengesahkan arahan semasa",
+        "testing_state_not_applicable": "Penguji melaporkan tidak berkenaan",
+        "testing_state_partial": "Penguji melaporkan keputusan separa"
       },
       "module_overview_label": "Terokai aliran kerja saya",
       "module_overview_prompt": "Apakah keupayaan modul Assistant yang tersedia untuk saya? Gunakan my_module_work untuk assistant. Jelaskan skop dan had tanpa membaca rekod yang tidak berkaitan.",

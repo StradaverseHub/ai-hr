@@ -16818,7 +16818,16 @@
         "field_personCount": "People away in this period",
         "field_approvedOnFromDate": "Approved away on the start date",
         "reviewAction": "Review an action",
-        "humanReviewNote": "Choose the details on the review page. Opening it does not submit or change an HR record."
+        "humanReviewNote": "Choose the details on the review page. Opening it does not submit or change an HR record.",
+        "field_testingInstructionVersion": "Published instruction version",
+        "testing_state_not_started": "Assigned, not started",
+        "testing_state_in_progress": "Tester reports work in progress",
+        "testing_state_passed": "Tester reported pass — not independent verification",
+        "testing_state_failed": "Tester reported failure — not independent verification",
+        "testing_state_blocked": "Tester reported a blocker",
+        "testing_state_retest_required": "Retest required; earlier observations do not verify current instructions",
+        "testing_state_not_applicable": "Tester reported not applicable",
+        "testing_state_partial": "Tester reported a partial result"
       },
       "module_overview_label": "Explore my workflows",
       "module_overview_prompt": "Which current Assistant module capabilities are available to me? Use my_module_work for assistant. Explain the scope and limits without reading unrelated records.",
