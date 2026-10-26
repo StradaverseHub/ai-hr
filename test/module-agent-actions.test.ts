@@ -183,3 +183,10 @@ it('keeps the Country specialist a literal human statutory-section handoff witho
  expect(getModuleAgentAction('country-my','country-my.statutory.update')).toMatchObject({owner:'country_pack_my',prepare:{status:'implemented'},confirm:{status:'implemented',inputSchema:'CountryStatutoryReviewConfirmation'}});
  for(const extra of [{employmentId:'other'},{personId:'other'},{country:'MY'},{input:{}},{epfEmployeeRate:13},{bankAccountNo:'private'},{taxNumber:'private'},{confirmSharedPersonWrite:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'country-my',action:'country-my.statutory.update',phase:'prepare',...extra})).toThrow();
 });
+
+it('offers human additional-run creation without model dates, cycles, company scope, salaries or confirmation',()=>{
+ expect(getModuleAgentAction('multi_cycle_payroll','multi_cycle_payroll.create_run')).toMatchObject({owner:'payroll',outcome:'canonical_receipt_required',prepare:{status:'implemented',adapter:'module_multi_cycle_run_review_v1'},confirm:{status:'implemented',inputSchema:'MultiCycleRunReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'multi_cycle_payroll',action:'multi_cycle_payroll.create_run',phase:'prepare'})).toEqual({kind:'prepare',module:'multi_cycle_payroll',action:'multi_cycle_payroll.create_run',adapter:'module_multi_cycle_run_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{input:{}},{companyId:'other'},{scope:{}},{payPeriod:'2026-01'},{paymentDate:'2026-01-28'},{payrollCycleId:'other'},{runType:'bonus'},{salary:100},{confirmDraftCreation:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'multi_cycle_payroll',action:'multi_cycle_payroll.create_run',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'multi_cycle_payroll',action:'multi_cycle_payroll.create_run',phase:'confirm'})).toThrow();
+});

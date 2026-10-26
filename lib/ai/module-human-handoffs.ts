@@ -4,6 +4,7 @@ import {EMPLOYEE_IMPORT_HUMAN_HANDOFF_SCHEMA,employeeImportHumanHandoff} from '.
 import {getModuleAgentAction,parseModuleAgentActionNomination} from './module-agent-actions';
 import type {AgentModuleCode} from './module-agents';
 const routes=[
+ {module:'multi_cycle_payroll',action:'multi_cycle_payroll.create_run',route:'/assistant/payroll-runs'},
  {module:'country-my',action:'country-my.statutory.update',route:'/assistant/statutory'},
  {module:'payroll',action:'payroll.close',route:'/assistant/payroll-close'},
  {module:'rewards',action:'rewards.post',route:'/assistant/rewards'},
@@ -23,8 +24,8 @@ const routes=[
  {module:'performance',action:'performance.review.acknowledge',route:'/assistant/performance'},
  {module:'performance',action:'performance.onehr.plan.acknowledge',route:'/assistant/performance'},
 ] as const;
-const Handoff=z.object({module:z.enum(['country-my','payroll','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['country-my.statutory.update','payroll.close','rewards.post','typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
- route:z.enum(['/assistant/statutory','/assistant/payroll-close','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/toil','/assistant/lifecycle','/assistant/knowledge-base','/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
+const Handoff=z.object({module:z.enum(['multi_cycle_payroll','country-my','payroll','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['multi_cycle_payroll.create_run','country-my.statutory.update','payroll.close','rewards.post','typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
+ route:z.enum(['/assistant/payroll-runs','/assistant/statutory','/assistant/payroll-close','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/toil','/assistant/lifecycle','/assistant/knowledge-base','/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
 const AnyHandoff=z.union([Handoff,EMPLOYEE_IMPORT_HUMAN_HANDOFF_SCHEMA]);
 export type ModuleHumanHandoff=z.infer<typeof AnyHandoff>;
 /** Called only after actual canonical read admission. It retrieves no HR values or choices. The
@@ -42,7 +43,7 @@ export function moduleHumanActionHandoffs(module:AgentModuleCode):readonly Modul
  * read outcomes without handoff metadata keep their original presentation. */
 export function checkedModuleHumanHandoffs(module:AgentModuleCode,value:unknown):readonly ModuleHumanHandoff[]{
  if(value===undefined)return Object.freeze([]);
- const actual=z.array(AnyHandoff).max(19).parse(value),expected=moduleHumanActionHandoffs(module);
+ const actual=z.array(AnyHandoff).max(20).parse(value),expected=moduleHumanActionHandoffs(module);
  if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('Human review options unavailable.');
  return Object.freeze(actual.map(row=>Object.freeze(row)));
 }
