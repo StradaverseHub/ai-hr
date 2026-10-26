@@ -1,3 +1,4 @@
+import {captureStatutoryContext,statutoryWriteIntervalMYTx} from './statutory-write-lock';
 import {savedTaxCircumstance} from './tax-circumstance';
 /** The Income Tax Resident field owns the scoped scheme; legacy approvals are conversion evidence only. */
 import {and,eq,isNull,sql} from 'drizzle-orm';
@@ -52,16 +53,18 @@ async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;person
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);return existing;
 }
 export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,payrollBatchId?:string,options?:{tx:Tx;readOnly:true}){
- const read=async(tx:Tx)=>{const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId,options?.readOnly===true);
+ ctx=captureStatutoryContext(ctx);const readOnly=options?.readOnly===true,snapshotTx=options?.tx;
+ const read=async(tx:Tx)=>{if(!readOnly)await statutoryWriteIntervalMYTx(tx,ctx);const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId,readOnly);
  const query=tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
- const [profile]=await (options?.readOnly?query:query.for('share'));
- if(!options?.readOnly)await lock(tx,ctx.tenantId,e.employmentId);
+ const [profile]=await (readOnly?query:query.for('share'));
+ if(!readOnly)await lock(tx,ctx.tenantId,e.employmentId);
  let [selection]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);
- if(!selection&&!options?.readOnly){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
+ if(!selection&&!readOnly){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
  return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};};
- return options?read(options.tx):withTenant(ctx,read);
+ return snapshotTx?read(snapshotTx):withTenant(ctx,read);
 }
 export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx);
  if(p.scheme!=='none'&&!selectedSchemeOk(p.scheme))throw new TaxSelectionError('invalid_scheme');
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true,p.payrollBatchId);
  if(p.personId&&p.personId!==e.personId)throw new TaxSelectionError('not_found');
@@ -76,7 +79,7 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:after.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:after.id,before:{scheme:before.scheme,transitionState:before.transitionState,version:before.version},after:{scheme:after.scheme,transitionState:after.transitionState,version:after.version},eligibilityDecision:p.scheme==='none'?'person_not_subject_to_income_tax':'income_tax_resident_selection',taxApplicabilityEpoch:profile?.epoch??0,effectiveScheme:p.scheme}});
  return after;
 }
-export async function saveTaxSelectionMY(ctx:SessionContext,p:Parameters<typeof saveTaxSelectionMYTx>[2]){return withTenant(ctx,tx=>saveTaxSelectionMYTx(tx,ctx,p));}
+export async function saveTaxSelectionMY(ctx:SessionContext,p:Parameters<typeof saveTaxSelectionMYTx>[2]){ctx=captureStatutoryContext(ctx);p=structuredClone(p);return withTenant(ctx,tx=>saveTaxSelectionMYTx(tx,ctx,p));}
 export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentId:string;companyId:string;payPeriod:string;legacyScheme?:string|null;resident?:boolean;epfCitizenship?:string|null}):Promise<{scheme:PcbCalculationScheme|'none';declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance:ReturnType<typeof savedTaxCircumstance>}>{
  if(!periodOk(p.payPeriod))throw new TaxSelectionError('invalid_period');
  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,p.tenantId))).limit(1);
@@ -99,6 +102,7 @@ export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentI
 }
 /** Hiring supplies explicit initial normal/nonresident intent in the SAME employment transaction. */
 export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;companyId:string;scheme:'resident'|'non_resident'}){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx);
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true);
  if(e.companyId!==p.companyId)throw new TaxSelectionError('stale_context');
  const [profile]=await tx.select({epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
@@ -110,6 +114,7 @@ export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p
 
 /** Canonical company writers supply their locked before-company after writing the new dated relation. */
 export async function initializeTransferredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;fromCompanyId:string;companyId:string}){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx);
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true);
  if(e.companyId!==p.companyId||p.fromCompanyId===p.companyId||!idOk(p.fromCompanyId))throw new TaxSelectionError('stale_context');
  const permitted=await tx.execute(sql`SELECT app.is_admin_for(${p.fromCompanyId}::uuid) AND app.is_admin_for(${p.companyId}::uuid) AS ok`);

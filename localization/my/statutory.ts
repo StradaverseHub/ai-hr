@@ -1,3 +1,4 @@
+import {captureStatutoryContext,statutoryWriteIntervalMYTx} from './statutory-write-lock';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
@@ -444,10 +445,11 @@ async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInp
 }
 
 export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   // Preserve the ordinary API and native defaults, event fields, SYSTEM/bootstrap admission and math.
   const input=structuredClone(p);
   const normalized=normalizeStatutoryInputMY(input);
-  const run=async(tx:Tx)=>{const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
+  const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
@@ -477,6 +479,7 @@ export type Tp3Input = {
  * otherwise. Appends an `employee.tp3.updated` DomainEvent (before/after) per substrate discipline.
  */
 export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const money = (v: number | null | undefined) =>
     v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
   const values = {
@@ -486,6 +489,7 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
     tp3PcbPaid: money(p.tp3PcbPaid),
   };
   return withTenant(ctx, async (tx) => {
+    await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -556,6 +560,7 @@ export type BankInput = {
 export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -579,6 +584,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     customHolderId: enableId ? holderId : null,
   };
   const run = async (tx:Tx) => {
+    await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -647,8 +653,10 @@ export type OthersStatutoryInput = {
  * discipline, so an auditor can reconstruct who toggled HRDF subjectivity and when, from the log alone.
  */
 export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput,outerTx?:Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const subjectToHrdf = typeof p.subjectToHrdf === 'boolean' ? p.subjectToHrdf : null;
   const run=async(tx:Tx)=>{
+    await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, subjectToHrdf: employeeStatutoryMy.subjectToHrdf })
       .from(employeeStatutoryMy)
@@ -726,8 +734,10 @@ export async function correctAccidentalHrdfOptOutsMY(
   ctx: SessionContext,
   p: { companyId: string; apply?: boolean },
 ) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const apply = p.apply === true;
   return withTenant(ctx, async (tx) => {
+    if(apply)await statutoryWriteIntervalMYTx(tx,ctx);
     // 1. The company's HRDF band today + every audited change to it, oldest first.
     const [coStat] = await tx
       .select({ hrdfStatus: companyStatutoryMy.hrdfStatus })
@@ -947,6 +957,7 @@ export async function setIcProfileMY(
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx,
 ) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const ic = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber) : null;
   /**
    * e4b541c6 — the CP39's `No. K/P Lama`. FREE TEXT, and deliberately NOT put through `isValidIC`: the
@@ -959,6 +970,7 @@ export async function setIcProfileMY(
   if (!ic && !oldIc) return { id: null };
   if (ic && !isValidIC(ic)) throw new InvalidICError();
   const run = async (tx:Tx) => {
+    await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
@@ -1048,6 +1060,7 @@ export function validatePassportProfileMY(p:PassportInput,nationality:string|nul
 export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1068,6 +1081,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportIssuingCountryCode: issuingCountryCode,
   };
   const run = async (tx:Tx) => {
+    await statutoryWriteIntervalMYTx(tx,ctx);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
     const [subject] = await tx
       .select({ nationality: person.nationality })
@@ -1199,6 +1213,7 @@ export type TaxWriteProvenance = 'auto_child_relief';
 export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
@@ -1225,6 +1240,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
   const run = async (tx:Tx) => {
+    await statutoryWriteIntervalMYTx(tx,ctx);
     if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
     const [existing] = await tx
       .select({
@@ -1384,11 +1400,13 @@ export function getStatutoryEditSnapshotMY(ctx: SessionContext, personId: string
 
 /** Partial registration-number write. Never routes a narrow import through the full statutory overwrite. */
 export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:string;epfNumber?:string|null;socsoNumber?:string|null},outerTx?:Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const values:{epfNumber?:string|null;socsoNumber?:string|null}={};
   if(p.epfNumber!==undefined)values.epfNumber=p.epfNumber?.trim()||null;
   if(p.socsoNumber!==undefined)values.socsoNumber=p.socsoNumber?.trim()||null;
   if(!Object.keys(values).length)throw new Error('Nothing to change.');
   const run=async(tx:Tx)=>{
+    await statutoryWriteIntervalMYTx(tx,ctx);
     const [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
     if(!before)throw new NoStatutoryProfileError();
     const fields=Object.entries(values).filter(([field,value])=>before[field as 'epfNumber'|'socsoNumber']!==value).map(([field])=>field);
@@ -1414,6 +1432,7 @@ export const reviewedStatutoryInputSchemaMY=z.object({
  zakatActive:z.boolean().optional(),zakatState:z.string().max(512).nullable().optional(),zakatMethod:z.enum(['percent_of_pcb','fixed']).nullable().optional(),zakatPercent:z.number().finite().nullable().optional(),zakatFixed:z.number().finite().nullable().optional(),zakatEffectiveFrom:z.string().max(512).nullable().optional(),zakatEffectiveTo:z.string().max(512).nullable().optional(),
 }).strict();
 async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ if(!ctx.userId)throw new Error('Statutory review unavailable');
  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.is_admin() and app.can_see_person(${personId}::uuid) and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' as ok`);
  if(allowed?.ok!==true)throw new Error('Statutory review unavailable');
  const [subject]=await tx.select({id:person.id}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
@@ -1422,6 +1441,7 @@ async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId
  return snapshot??null;
 }
 export async function prepareReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown){
+ ctx=captureStatutoryContext(ctx);
  const input=reviewedStatutoryInputSchemaMY.parse(structuredClone(value));if(Buffer.byteLength(JSON.stringify(input))>24576)throw new Error('Statutory review unavailable');
  const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,input.personId),prepared=await prepareStatutoryProfileMYTx(tx,input);
  const review={personId:input.personId,scope:'shared_person_across_employments' as const,operation:'full_native_write_set' as const,after:prepared.values,omittedInput:'native_defaults_and_clears_are_shown_in_after' as const,untouched:'columns_outside_native_write_set_remain_unchanged' as const};
@@ -1429,12 +1449,14 @@ export async function prepareReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionConte
  return {input,review,reviewedDigest};
 }
 export async function confirmReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown,expectedDigest:string){
+ ctx=captureStatutoryContext(ctx);
  const source=await prepareReviewedStatutoryProfileMYTx(tx,ctx,value);if(!/^[a-f0-9]{64}$/.test(expectedDigest)||source.reviewedDigest!==expectedDigest)throw new Error('Statutory review unavailable');
  const prepared=await prepareStatutoryProfileMYTx(tx,source.input),native=await writeStatutoryProfileMYTx(tx,ctx,source.input,prepared);
  return {statutoryId:native.id,eventId:native.eventId,personId:source.input.personId,eventType:prepared.existing?'statutory.my.updated' as const:'statutory.my.created' as const};
 }
 /** Historical human native event plus CURRENT same-person record, not original values/latest event. */
 export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;statutoryId:string;eventId:string}){
+ ctx=captureStatutoryContext(ctx);
  const ref=z.object({personId:z.uuid(),statutoryId:z.uuid(),eventId:z.uuid()}).strict().parse(structuredClone(p));
  const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,ref.personId);if(!snapshot||snapshot.profile.id!==ref.statutoryId)throw new Error('Statutory review unavailable');
  const [event]=await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,ref.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employee-statutory-my'),eq(domainEvent.aggregateId,ref.statutoryId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),sql`${domainEvent.eventType} in ('statutory.my.created','statutory.my.updated')`));
