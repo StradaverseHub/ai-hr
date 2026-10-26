@@ -21,7 +21,7 @@ on:
         required: false
         default: full
         type: choice
-        options: [full, source-proof-followup, environment, source-transfer-followup]
+        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup]
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -727,7 +727,7 @@ jobs:
           retention-days: 3
 
   filesystem-activation:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -819,6 +819,41 @@ jobs:
             ${{ runner.temp }}/staging-official-helpers.log
             ${{ runner.temp }}/staging-environment-cleanup.log
             ${{ runner.temp }}/cleanup-install.log
+          if-no-files-found: error
+          retention-days: 3
+
+  ledger-connection-followup:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'ledger-connection-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false, fetch-depth: 2}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind the exact ledger-only repair to its complete original source
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='ledger-connection-followup'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          for(const [key,value] of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          const changed=execFileSync('git',['diff','--name-only','8ddccd78b3d0d85273c80a013a4b15d458dfccfb',e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+          assert.deepEqual(changed,['.github/ci/staging-migration-ledger.mjs','.github/ci/staging-migration-ledger.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          NODE
+      - name: Retest only the actual failed connection contract and empty-connection refusal
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=spec --test-name-pattern='actual shell receiver|empty private connection' .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/ledger-connection-followup.log"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-ledger-connection-followup
+          path: ${{ runner.temp }}/ledger-connection-followup.log
           if-no-files-found: error
           retention-days: 3
 

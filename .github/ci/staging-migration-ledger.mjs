@@ -31,7 +31,8 @@ export function expectedBaselineMigrationLedger(source,baseline){
 }
 export const stagingLedgerProbeCommand=()=>[
  'set -eu','cd /opt/ai-hr','set -a','. ./.env.production','set +a',
- 'PGDATABASE="$MIGRATION_DATABASE_URL" PGCONNECT_TIMEOUT=5 PGOPTIONS='+"'-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000'"+' psql -X -q -A -t --no-password -v ON_ERROR_STOP=1',
+ 'test -n "${MIGRATION_DATABASE_URL:-}"',
+ 'PGCONNECT_TIMEOUT=5 PGOPTIONS='+"'-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000'"+' psql --dbname="$MIGRATION_DATABASE_URL" -X -q -A -t --no-password -v ON_ERROR_STOP=1',
 ].join('\n');
 export function validateMigrationLedgerRows(expected,rows){
  assert(Array.isArray(expected)&&expected.length>0&&Array.isArray(rows)&&rows.length===expected.length,'Full migration ledger count differs');
@@ -56,8 +57,8 @@ export function collectMigrationLedger(source='/opt/ai-hr'){
  const expected=expectedMigrationLedger(source);
  let bytes;
  try{
-  bytes=execFileSync('psql',['-X','-q','-A','-t','--no-password','-v','ON_ERROR_STOP=1'],{encoding:'utf8',timeout:20000,maxBuffer:4*1024**2,
-   input:LEDGER_QUERY,env:{...process.env,PGDATABASE:process.env.MIGRATION_DATABASE_URL,PGCONNECT_TIMEOUT:'5',PGOPTIONS:'-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000'}});
+  bytes=execFileSync('psql',['--dbname',process.env.MIGRATION_DATABASE_URL,'-X','-q','-A','-t','--no-password','-v','ON_ERROR_STOP=1'],{encoding:'utf8',timeout:20000,maxBuffer:4*1024**2,
+   input:LEDGER_QUERY,env:{...process.env,PGCONNECT_TIMEOUT:'5',PGOPTIONS:'-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000'}});
  }catch{throw Error('Bounded read-only staging migration-ledger query failed');}
  const result=validateMigrationLedgerRows(expected,JSON.parse(bytes));
  // Refuse a source rewrite while the snapshot was being read.

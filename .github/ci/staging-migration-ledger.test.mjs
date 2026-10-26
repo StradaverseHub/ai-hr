@@ -1,10 +1,10 @@
 /** Exact ledger pure fixtures; no PostgreSQL process/connection is started. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {expectedMigrationLedger,validateMigrationLedgerRows,LEDGER_QUERY,expectedBaselineMigrationLedger,verifyBaselineMigrationPreflight,stagingLedgerProbeCommand} from './staging-migration-ledger.mjs';
 const wanted=[{tag:'001_a',created_at:'2000',hash:'a'.repeat(64)},{tag:'003_b',created_at:'1000',hash:'b'.repeat(64)}];
@@ -59,4 +59,23 @@ test('baseline missing rows, tampered applied hash or failed bounded query canno
  const f=baselineFixture(t);for(const actual of [[],[{...f.rows[0],hash:'f'.repeat(64)}],[{...f.rows[0],created_at:'3000'}]])assert.throws(()=>verifyBaselineMigrationPreflight({candidatePath:f.source,baseline:f.baseline,ssh:()=>JSON.stringify(actual)}));
  assert.throws(()=>verifyBaselineMigrationPreflight({candidatePath:f.source,baseline:f.baseline,ssh:()=>{throw Error('read-only query failed');}}));
  const command=stagingLedgerProbeCommand();assert.match(command,/default_transaction_read_only=on/);assert.match(command,/lock_timeout=3000/);assert.doesNotMatch(command,/\b(UPDATE|INSERT|DELETE|ALTER|TRUNCATE|DROP)\b/);
+});
+
+// Exercises the real shell command/argv boundary. The receiver is private and never opens a database.
+function ledgerShellFixture(t,url){
+ const dir=mkdtempSync(join(tmpdir(),'ledger-shell-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ writeFileSync(join(dir,'.env.production'),'MIGRATION_DATABASE_URL='+JSON.stringify(url)+'\n');
+ const receiver=join(dir,'psql');writeFileSync(receiver,`#!/bin/sh
+exec "$LEDGER_TEST_NODE" -e 'require("node:fs").writeFileSync(process.env.LEDGER_TEST_RECEIPT,JSON.stringify({args:process.argv.slice(1),options:process.env.PGOPTIONS,timeout:process.env.PGCONNECT_TIMEOUT}))' -- "$@"
+`,{mode:0o700});
+ const command=stagingLedgerProbeCommand();assert.equal((command.match(/cd \/opt\/ai-hr/g)||[]).length,1);
+ return {dir,command:command.replace('cd /opt/ai-hr','cd "$LEDGER_TEST_ROOT"'),env:{...process.env,PATH:dir+':'+process.env.PATH,LEDGER_TEST_NODE:process.execPath,LEDGER_TEST_RECEIPT:join(dir,'receipt.json'),LEDGER_TEST_ROOT:dir}};
+}
+test('actual shell receiver gets an explicit connection URI rather than PGDATABASE default-connection fallback',t=>{
+ const url='postgresql://private_fixture:dummy@127.0.0.1:1/never_connected?sslmode=disable',f=ledgerShellFixture(t,url);
+ assert(!f.command.includes(url));execFileSync('sh',['-c',f.command],{env:f.env,input:LEDGER_QUERY});
+ const got=JSON.parse(readFileSync(join(f.dir,'receipt.json')));assert(got.args.includes('--dbname='+url));assert(got.args.includes('--no-password'));assert.match(got.options,/default_transaction_read_only=on/);assert.equal(got.timeout,'5');
+});
+test('empty private connection refuses before launching the shell receiver',t=>{
+ const f=ledgerShellFixture(t,'');const child=spawnSync('sh',['-c',f.command],{env:f.env,input:LEDGER_QUERY});assert.notEqual(child.status,0);assert.throws(()=>readFileSync(join(f.dir,'receipt.json')),{code:'ENOENT'});
 });
