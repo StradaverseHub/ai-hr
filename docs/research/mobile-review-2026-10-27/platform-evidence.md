@@ -63,6 +63,28 @@ certificate, an issued challenge, atomic counter consumption or an accepted atte
 routes remain unchanged and do not use the primitive. Persistent enrollment/challenge owners and
 cryptographic vendor verifiers remain required before this protocol can be enabled.
 
+Server assertion proof follow-up: at `6bf77e07e`, four focused integrity suites passed 34 tests and root
+TypeScript exited 0. The checker interoperates with the public assertion/public-key/client-data fixture
+from `uebelack/node-app-attest@f16c4bb71b737466872bc8b8a7dfd215364eaa83`; that fixture and its MIT license
+are preserved under `test/fixtures/mobile-integrity/`. This is independent sample compatibility, not
+proof of that sample's hardware origin, a valid employee enrollment or a vendor certificate chain.
+[Upstream fixture](https://github.com/uebelack/node-app-attest/blob/f16c4bb71b737466872bc8b8a7dfd215364eaa83/test/verifyAssertion.test.js),
+[Apple validation rules](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server).
+
+The server pins `cbor@10.0.12`; its decoder/tag-conversion source matched the reviewed installed 10.0.11
+source. Decoding is capped at 8 KiB with finite depth, duplicate/trailing-data refusal and no semantic
+tag conversion. Tests cover changed payload/key/app, unsigned counters through `0xffffffff`, forged or
+reused counters, malformed configuration, malformed/extra fields and unknown authenticator suffixes.
+The initial compiler failure at `ec65e565c` was unknown-value narrowing after an inferred helper;
+`fa93e99d8` repaired it with a declared never-returning function, without weakening input types.
+
+A controlled local mutation at `fa93e99d8` bypassed the signature check: two tests failed and seven
+passed. Restoring the committed source exactly returned all nine assertion tests to PASS (`git diff`
+exit 0). The later configuration check adds refusal coverage without changing that signature path.
+No production process or API used the mutation. Certificate-chain attestation, registered-key ownership,
+stored challenge issuance/consumption, atomic counter updates, Android vendor verification and attendance
+adjudication are still required. The pure checker returns a next counter and deliberately persists nothing.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
