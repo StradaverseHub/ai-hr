@@ -50,7 +50,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   const [evaluating, startEvaluation] = useTransition();
   const [accountReview, setAccountReview] = useState(false);
   const [consent, setConsent] = useState(false);
-  const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string } | null>(null);
+  const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string } | null>(null);
   const [evaluationFailed, setEvaluationFailed] = useState(false);
   const evaluationSequence = useRef(0);
   function invalidateEvaluation() { evaluationSequence.current++; setEvaluation(null); setEvaluationFailed(false); }
@@ -72,17 +72,18 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     });
   }
 
-  const savedCandidateUnchanged = p.candidateSaved && key === '' && model === p.model && Boolean(options) &&
+  const savedCandidateUnchanged = p.candidateSaved && Boolean(p.candidateId && p.candidateVersion) && key === '' && model === p.model && Boolean(options) &&
     JSON.stringify(options) === JSON.stringify(p.providerOptions);
-  const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Date.now() && savedCandidateUnchanged && accountReview && consent;
+  const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Date.now() && savedCandidateUnchanged && accountReview && consent && evaluation.candidateId === p.candidateId && evaluation.candidateVersion === p.candidateVersion;
   function onEvaluate() {
-    if (!savedCandidateUnchanged || !accountReview || !consent) return;
-    const sequence = ++evaluationSequence.current;
+    if (!savedCandidateUnchanged || !accountReview || !consent || !p.candidateId || !p.candidateVersion) return;
+    const sequence = ++evaluationSequence.current, candidateId = p.candidateId, candidateVersion = p.candidateVersion;
     setEvaluation(null); setEvaluationFailed(false);
     startEvaluation(async () => {
-      const result = await evaluateProviderCandidateAction({ accountReview: true, consent: true });
+      const result = await evaluateProviderCandidateAction({ accountReview: true, consent: true, candidateId, candidateVersion });
       if (sequence !== evaluationSequence.current) return;
-      if (result.ok) setEvaluation({ receipt: result.receipt, expiresAt: result.expiresAt });
+      if (result.ok && result.candidateId === candidateId && result.candidateVersion === candidateVersion)
+        setEvaluation({ receipt: result.receipt, expiresAt: result.expiresAt, candidateId, candidateVersion });
       else setEvaluationFailed(true);
     });
   }

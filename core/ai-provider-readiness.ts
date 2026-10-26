@@ -52,10 +52,10 @@ export async function saveOpenRouterCandidateTx(tx: Tx, ctx: SessionContext,
   } catch { return unavailable(); }
 }
 
-const Consent = z.object({ provider: z.literal('openrouter'), review: z.object({ version: z.literal(1),
+const Consent = z.object({ provider: z.literal('openrouter'), candidateId: z.string().uuid(), candidateVersion: z.string().uuid(), review: z.object({ version: z.literal(1),
   accountDefaultsReviewed: z.literal(true), externalProcessingReviewed: z.literal(true) }).strict(), syntheticProbeConsent: z.literal(true) }).strict();
 export type ProviderEvaluationConsent = z.infer<typeof Consent>;
-export type ProviderEvaluationResult = Readonly<{ receipt: string; expiresAt: string; summary: ProviderProtocolSummary }>;
+export type ProviderEvaluationResult = Readonly<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string; summary: ProviderProtocolSummary }>;
 
 /** User explicitly consents to three billed synthetic requests. This owner supplies ALL prompt/tool
  * bytes and uses a candidate-purpose snapshot through canonical admission/allowance/settlement.
@@ -68,7 +68,11 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
   const snapshot = await withTenant(ctx, async tx => {
     await authority(tx, ctx);
     if (!isSecretStorable()) return unavailable();
-    return resolveAiProviderCandidateSnapshotTx(tx, ctx, consent.data.provider);
+    const candidate = await resolveAiProviderCandidateSnapshotTx(tx, ctx, consent.data.provider);
+    const binding = candidate.candidate;
+    if (!binding || binding.id !== consent.data.candidateId || binding.version !== consent.data.candidateVersion)
+      throw new AiProviderReadinessError('candidate_required');
+    return candidate;
   });
   const cfg = governedAiConfig(ctx, snapshot, 'provider_evaluation');
   let summary: ProviderProtocolSummary;
@@ -92,7 +96,7 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
       await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-evaluation', aggregateId: evaluationId,
         eventType: 'ai-provider-evaluation.protocol-verified', actor: actorOf(ctx),
         payload: { provider: 'openrouter', model: cfg.model, suiteVersion: 1, accountReviewVersion: 1, summary } });
-      return Object.freeze({ receipt, expiresAt, summary });
+      return Object.freeze({ receipt, expiresAt, candidateId: current.candidate.id, candidateVersion: current.candidate.version, summary });
     } catch { return unavailable(); }
   });
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { getBrowserCommandSession } from '@/lib/session';
 import {
   AiConfigError,
   disableAi,
@@ -17,7 +17,7 @@ import { getTranslations } from 'next-intl/server';
 import { ASSESSMENT_AI_FEATURES, setAssessmentAiSwitch, type AssessmentAiFeature } from '@/packs/performance/service';
 
 export async function setAssessmentAiSwitchAction(formData: FormData) {
-  const s = await getSession();
+  const s = await getBrowserCommandSession();
   const t = await getTranslations('admin.ai.assessment');
   const feature = String(formData.get('feature')) as AssessmentAiFeature;
   const on = String(formData.get('on'));
@@ -54,7 +54,7 @@ function back(error?: string, toast?: string): never {
 }
 
 export async function saveAiProviderConfigAction(formData: FormData) {
-  const s = await getSession();
+  const s = await getBrowserCommandSession();
   try {
     await saveAiProviderConfig(s, {
       provider: String(formData.get('provider')),
@@ -70,7 +70,7 @@ export async function saveAiProviderConfigAction(formData: FormData) {
 }
 
 export async function setActiveProviderAction(formData: FormData) {
-  const s = await getSession();
+  const s = await getBrowserCommandSession();
   try {
     await setActiveProvider(s, { provider: String(formData.get('provider')), evaluationReceipt: str(formData.get('evaluationReceipt')) });
   } catch (e) {
@@ -80,7 +80,7 @@ export async function setActiveProviderAction(formData: FormData) {
 }
 
 export async function disableAiAction() {
-  const s = await getSession();
+  const s = await getBrowserCommandSession();
   try {
     await disableAi(s);
   } catch (e) {
@@ -90,7 +90,7 @@ export async function disableAiAction() {
 }
 
 export async function removeAiProviderConfigAction(formData: FormData) {
-  const s = await getSession();
+  const s = await getBrowserCommandSession();
   try {
     await removeAiProviderConfig(s, { provider: String(formData.get('provider')) });
   } catch (e) {
@@ -109,21 +109,20 @@ export async function testConnectionAction(input: {
   apiKey?: string;
   providerOptions?: unknown;
 }): Promise<{ ok: boolean; error?: string }> {
-  const s = await getSession();
-  try{return await testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined, providerOptions:input.providerOptions });}
+  try{const s = await getBrowserCommandSession();return await testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined, providerOptions:input.providerOptions });}
   catch{return {ok:false,error:(await getTranslations('admin.ai'))('testFail')};}
 }
 
 /** Explicit synthetic evaluation only: never accepts client prompts, model outputs or readiness flags. */
-export async function evaluateProviderCandidateAction(input: { accountReview: boolean; consent: boolean }): Promise<
-  { ok: true; receipt: string; expiresAt: string } | { ok: false }> {
-  const reviewed = input?.accountReview === true, consent = input?.consent === true;
-  const s = await getSession();
+export async function evaluateProviderCandidateAction(input: { accountReview: boolean; consent: boolean; candidateId: string; candidateVersion: string }): Promise<
+  { ok: true; receipt: string; expiresAt: string; candidateId: string; candidateVersion: string } | { ok: false }> {
+  const reviewed = input?.accountReview === true, consent = input?.consent === true, candidateId = input?.candidateId, candidateVersion = input?.candidateVersion;
   try {
+    const s = await getBrowserCommandSession();
     if (!reviewed || !consent) return { ok: false };
-    const result = await evaluateProviderCandidate(s, { provider: 'openrouter', review: {
+    const result = await evaluateProviderCandidate(s, { provider: 'openrouter', candidateId, candidateVersion, review: {
       version: 1, accountDefaultsReviewed: true, externalProcessingReviewed: true,
     }, syntheticProbeConsent: true });
-    return { ok: true, receipt: result.receipt, expiresAt: result.expiresAt };
+    return { ok: true, receipt: result.receipt, expiresAt: result.expiresAt, candidateId: result.candidateId, candidateVersion: result.candidateVersion };
   } catch { return { ok: false }; }
 }

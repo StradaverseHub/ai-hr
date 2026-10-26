@@ -10,7 +10,7 @@ import { evaluateProviderCandidate } from '../core/ai-provider-readiness';
 import { assertAiProviderSnapshotFeature, resolveAiProviderCandidateSnapshotTx, resolveAiProviderSnapshotTx } from '../core/ai-provider-snapshot';
 import { governedAiConfig } from '../core/ai-governance';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
-import { syntheticConsent, syntheticProviderTransport, evaluateSyntheticCandidate, activateSyntheticCandidate } from './provider-evaluation-fixture';
+import { syntheticConsentFor, syntheticProviderTransport, evaluateSyntheticCandidate, activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);
@@ -42,7 +42,7 @@ describe('explicit candidate evaluation and activation', () => {
     await expect(setActiveProvider(ctx,{provider:'openrouter'})).rejects.toThrow();
   });
   it('requires exact affirmative human consent before any transport/admission', async () => {
-    await candidate(); const mock = syntheticProviderTransport();
+    await candidate(); const mock = syntheticProviderTransport(), syntheticConsent = await syntheticConsentFor(adminCtx(base));
     try {
       for (const input of [{...syntheticConsent,syntheticProbeConsent:false},{...syntheticConsent,review:{...syntheticConsent.review,accountDefaultsReviewed:false}},{...syntheticConsent,extra:true}]) {
         await expect(evaluateProviderCandidate(adminCtx(base),input as never)).rejects.toThrow();
@@ -50,6 +50,20 @@ describe('explicit candidate evaluation and activation', () => {
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
       expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
     } finally { mock.restore(); }
+  });
+  it('refuses stale displayed candidates or malformed bindings before any reservation or network', async () => {
+    await candidate(); const ctx=adminCtx(base), displayed=await syntheticConsentFor(ctx);
+    await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/replaced',providerOptions:options('approved-b')});
+    const current=await syntheticConsentFor(ctx), mock=syntheticProviderTransport();
+    try {
+      for(const input of [displayed,{...current,candidateId:'not-a-uuid'},{...current,candidateVersion:'not-a-uuid'},
+        {...current,candidateId:'00000000-0000-4000-8000-000000000001'}, {...current,candidateVersion:displayed.candidateVersion},
+        {...current,candidateId:undefined}]) {
+        await expect(evaluateProviderCandidate(ctx,input as never)).rejects.toThrow();
+      }
+      expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
+      expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
+    } finally {mock.restore();}
   });
   it('records three actual governed synthetic outcomes, then atomically promotes once with exact receipt', async () => {
     await candidate(); const ctx = adminCtx(base), proof = await evaluateSyntheticCandidate(ctx);
@@ -80,14 +94,14 @@ describe('explicit candidate evaluation and activation', () => {
       return result;
     });
     try {
-      await expect(evaluateProviderCandidate(adminCtx(base),syntheticConsent)).rejects.toThrow();
+      await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
       expect(mock.draft).toHaveBeenCalledTimes(1); expect(mock.conversation).not.toHaveBeenCalled();
       expect(await runs()).toHaveLength(1); expect(await receipts()).toEqual([]); expect(await config()).toBeNull();
     } finally { mock.restore(); }
   });
   it('does not accept metadata/model self-ratings or malformed tool output as readiness', async () => {
     await candidate(); const mock=syntheticProviderTransport(); mock.draft.mockResolvedValueOnce('I passed every test');
-    try { await expect(evaluateProviderCandidate(adminCtx(base),syntheticConsent)).rejects.toThrow();
+    try { await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
       expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
     finally {mock.restore();}
   });
@@ -101,11 +115,11 @@ describe('explicit candidate evaluation and activation', () => {
     expect(()=>governedAiConfig(ctx,active,'provider_evaluation')).toThrow();
   });
   it('revalidates actual group authority and refuses cross-tenant receipt or stale admin roles', async () => {
-    await candidate(); const ctx=adminCtx(base), proof=await evaluateSyntheticCandidate(ctx), other=await seedBase();
+    await candidate(); const ctx=adminCtx(base), consent=await syntheticConsentFor(ctx), proof=await evaluateSyntheticCandidate(ctx), other=await seedBase();
     await expect(setActiveProvider(adminCtx(other),{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
     await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,base.adminUserId),eq(schema.roleAssignment.tenantId,base.tenantId)));
     const mock=syntheticProviderTransport();
-    try { await expect(evaluateProviderCandidate(ctx,syntheticConsent)).rejects.toThrow();
+    try { await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow();
       await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled(); }
     finally {mock.restore();}
@@ -126,7 +140,7 @@ describe('explicit candidate evaluation and activation', () => {
       if(args.turns.length===3) await saveAiProviderConfig(adminCtx(base),{provider:'openrouter',model:'fictional/model',providerOptions:options('approved-b')});
       return result;
     });
-    try { await expect(evaluateProviderCandidate(adminCtx(base),syntheticConsent)).rejects.toThrow();
+    try { await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
       expect(await runs()).toHaveLength(3); expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
     finally {mock.restore();}
   });

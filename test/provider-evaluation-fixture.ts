@@ -18,10 +18,17 @@ export function syntheticProviderTransport() {
   return { draft, conversation, restore() { draft.mockRestore(); conversation.mockRestore(); } };
 }
 export const syntheticConsent = { provider: 'openrouter', review: { version: 1, accountDefaultsReviewed: true, externalProcessingReviewed: true }, syntheticProbeConsent: true } as const;
+export async function syntheticConsentFor(ctx: SessionContext) {
+  const { withTenant } = await import('../db/client');
+  const { providerCandidatesTx } = await import('../core/ai-provider-readiness');
+  const candidate = await withTenant(ctx, async tx => (await providerCandidatesTx(tx, ctx))[0]);
+  if (!candidate) throw Error('Missing actual fixture candidate');
+  return { ...syntheticConsent, candidateId: candidate.id, candidateVersion: candidate.version };
+}
 export async function evaluateSyntheticCandidate(ctx: SessionContext) {
   const { evaluateProviderCandidate } = await import('../core/ai-provider-readiness');
   const mock = syntheticProviderTransport();
-  try { return await evaluateProviderCandidate(ctx, syntheticConsent); }
+  try { return await evaluateProviderCandidate(ctx, await syntheticConsentFor(ctx)); }
   finally { mock.restore(); }
 }
 export async function activateSyntheticCandidate(ctx: SessionContext) {
