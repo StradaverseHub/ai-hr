@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getSession } from '@/lib/session';
 import { loadAiWorkspace } from '@/core/ai-workspace';
+import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -74,6 +75,8 @@ export default async function AssistantPage({
           placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
         }} />
       </Card>
+
+      {'agentReview' in workspace&&workspace.agentReview&&<ModuleAgentReview view={workspace.agentReview}/>}
 
       {history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
       <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>

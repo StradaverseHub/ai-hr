@@ -4,7 +4,7 @@ CREATE TABLE public.ai_agent_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  owner_user_id uuid NOT NULL REFERENCES public.app_user(id), author_user_id uuid NOT NULL REFERENCES public.app_user(id),
  module_code text NOT NULL, version integer NOT NULL CHECK(version>0),
- kind text NOT NULL CHECK(kind='typed_route_priority_v1'), configuration jsonb NOT NULL,
+ kind text NOT NULL CHECK(kind IN('typed_route_priority_v1','read_plan_prompt_v1')), configuration jsonb NOT NULL,
  candidate_digest text NOT NULL CHECK(candidate_digest~'^[a-f0-9]{64}$'),
  baseline_digest text NOT NULL CHECK(baseline_digest~'^[a-f0-9]{64}$'),
  source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),
@@ -21,8 +21,7 @@ CREATE TABLE public.ai_agent_evaluation (
  suite_digest text NOT NULL CHECK(suite_digest~'^[a-f0-9]{64}$'),
  receipt text NOT NULL CHECK(length(receipt) BETWEEN 1 AND 65536),
  completed_at timestamptz NOT NULL DEFAULT now(),
- FOREIGN KEY(candidate_id,tenant_id) REFERENCES public.ai_agent_candidate(id,tenant_id),
- UNIQUE(candidate_id,evaluator_user_id)
+ FOREIGN KEY(candidate_id,tenant_id) REFERENCES public.ai_agent_candidate(id,tenant_id)
 );
 --> statement-breakpoint
 CREATE TABLE public.ai_agent_promotion (
@@ -105,3 +104,6 @@ END $$;
 REVOKE ALL ON FUNCTION app.guard_agent_permit_increment() FROM PUBLIC;
 CREATE TRIGGER ai_agent_permit_monotonic BEFORE UPDATE ON public.ai_agent_promotion
  FOR EACH ROW EXECUTE FUNCTION app.guard_agent_permit_increment();
+
+--> statement-breakpoint
+CREATE INDEX ai_agent_evaluation_latest ON public.ai_agent_evaluation(candidate_id,evaluator_user_id,completed_at DESC,id DESC);

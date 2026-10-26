@@ -1,4 +1,5 @@
-/** Deterministic governed candidate lifecycle, not a model evaluator or permission grant.
+/** Pure contract helper, not runtime activation authority. Runtime custody lives in core/module-agent-releases.
+ * Deterministic governed candidate lifecycle, not a model evaluator or permission grant.
  * Server owners supply authenticated identities and independently verified evaluation receipts.
  * This engine has no network, database, deployment credentials, raw feedback or learning corpus.
  */

@@ -8,6 +8,7 @@ import { resolveEntitlementsTx } from './entitlements';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
 import { withAssistantReadTx } from './assistant-read-session';
+import { agentReviewWorkspaceTx } from './module-agent-releases';
 import { assistantHistoryReplay } from './assistant-disclosure-read';
 
 export async function loadAiWorkspace(ctx: SessionContext) {
@@ -45,6 +46,7 @@ export async function loadAiWorkspace(ctx: SessionContext) {
       }
       return history;
     });
-    return { access, taskIds, history };
+    const agentReview=await agentReviewWorkspaceTx(tx,fresh);
+    return { access, taskIds, history,agentReview };
   });
 }
