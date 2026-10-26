@@ -1,3 +1,5 @@
+import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
+import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -2084,6 +2086,21 @@ export async function createAdditionalRunTx(tx:Tx,supplied:SessionContext,input:
     return options.returnCreatedEventId?{batchId:row.id,createdEventId}:{batchId:row.id};
 }
 
+/** Native additional-run ownership prefix BEFORE custody. Current actual filing-read authority is
+ * required, but an existing completed receipt is NOT required to remain unfiled/open/active-cycle.
+ * The selected cycle is SHARE NOWAIT only if still present; pending preflight owns its active rule. */
+export async function withReviewedAdditionalRunIntervalTx<T>(tx:Tx,supplied:SessionContext,selection:{companyId:string;payPeriod:string;payrollCycleId:string},run:(ctx:SessionContext,source:{companyId:string;payPeriod:string;payrollCycleId:string})=>Promise<T>):Promise<T>{
+ const p=structuredClone(selection),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};assertModuleGate(ctx,'payroll');
+ if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
+ await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const [owned]=await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}],true);
+ // Reuse the actual canonical filing reader's company/Admin authority; filed=true is deliberately
+ // not refused here. Only NEW pending creation calls refuseIfPeriodFiled below.
+ await periodFiledTx(tx,{companyId:owned.companyId,periodKey:owned.payPeriod});
+ await tx.select({id:payrollCycle.id}).from(payrollCycle).where(and(eq(payrollCycle.id,p.payrollCycleId),eq(payrollCycle.tenantId,ctx.tenantId),eq(payrollCycle.companyId,owned.companyId))).for('share',{noWait:true});
+ return run(ctx,{companyId:owned.companyId,payPeriod:owned.payPeriod,payrollCycleId:p.payrollCycleId.toLowerCase()});
+}
+
 /** No-effect canonical metadata preflight for human additional-run creation. The existing native
  * period/company permission is authority, never a role union or invented Workforce write grant.
  * Selected-cycle row SHARE is NOWAIT: cycle writers do not acquire period locks (their delete
@@ -2091,8 +2108,7 @@ export async function createAdditionalRunTx(tx:Tx,supplied:SessionContext,input:
 export async function prepareReviewedAdditionalRunTx(tx:Tx,supplied:SessionContext,input:AdditionalRunInput&{payrollCycleId:string}){
  const p=structuredClone(input),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};assertModuleGate(ctx,'payroll');
  if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
- await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}],true);
+ return withReviewedAdditionalRunIntervalTx(tx,ctx,p,async()=>{
  // Native filed-period truth requires actual app.is_admin_for(company), even when the
  // period owner accepts a Payroll partner. Reuse that exact guard BEFORE source labels.
  await refuseIfPeriodFiled(tx,{companyId:p.companyId,payPeriod:p.payPeriod,what:'Adding another payroll run'});
@@ -2107,14 +2123,18 @@ export async function prepareReviewedAdditionalRunTx(tx:Tx,supplied:SessionConte
  // Scope is the native future-processing restriction, not a salary snapshot. Only current
  // RLS-visible references are admitted; a stale/foreign ID refuses, never silently widens to all.
  const employeeIds=scope?.employmentIds??[],departmentIds=scope?.departmentIds??[];
- const employees=employeeIds.length?await tx.select({id:employment.id,version:sql<string>`${employment}.xmin::text`}).from(employment).where(and(inArray(employment.id,employeeIds),eq(employment.companyId,p.companyId))).orderBy(employment.id):[];
- const departments=departmentIds.length?await tx.select({id:department.id,version:sql<string>`${department}.xmin::text`}).from(department).where(and(inArray(department.id,departmentIds),or(eq(department.companyId,p.companyId),eq(department.isGlobal,true)))).orderBy(department.id):[];
+ const employees=employeeIds.length?await tx.select({id:employment.id,personId:employment.personId,version:sql<string>`${employment}.xmin::text`}).from(employment).where(and(inArray(employment.id,employeeIds),eq(employment.companyId,p.companyId))).orderBy(employment.id):[];
+ const departments=departmentIds.length?await tx.select({id:department.id,version:sql<string>`${department}.xmin::text`}).from(department).where(and(inArray(department.id,departmentIds),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[p.companyId]))).orderBy(department.id):[];
  if(new Set(employees.map(row=>row.id)).size!==new Set(employeeIds).size||new Set(departments.map(row=>row.id)).size!==new Set(departmentIds).size)throw new Error('The selected payroll scope changed.');
+ const scopeLabels=await readReviewedPayrollRunScopeLabelsTx(tx,ctx,{companyId:p.companyId,scope});
  const openingVersion=period?.statutoryVersion??(period?null:await openingStatutoryVersion(tx,p.companyId,p.payPeriod));
- const review={companyId:co.id,companyName:co.name,payPeriod:p.payPeriod,runType:p.runType,payrollCycleId:cycle.id,cycleName:cycle.name,cycleCode:cycle.code,paymentDate:configured.batchDate,remarks:p.remarks||null,scope,runSeq:configured.nextSeq,periodWillOpen:!period,selection:scope?'selected_scope_native_at_processing' as const:'whole_company_dynamic_at_processing' as const,consequence:'draft_additional_run_only_no_calculation_payment_or_payslip' as const};
+ const review={companyId:co.id,companyName:co.name,payPeriod:p.payPeriod,runType:p.runType,payrollCycleId:cycle.id,cycleName:cycle.name,cycleCode:cycle.code,paymentDate:configured.batchDate,remarks:p.remarks||null,scope,scopeLabels,runSeq:configured.nextSeq,periodWillOpen:!period,selection:scope?'selected_scope_native_at_processing' as const:'whole_company_dynamic_at_processing' as const,consequence:'draft_additional_run_only_no_calculation_payment_or_payslip' as const};
+ const erasurePersonIds=[...new Set(employees.map(row=>row.personId))].sort();
  const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-additional-run:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},p,review,co,cycle,period??null,runs,employees,departments,openingVersion])).digest('hex');
- return {review,reviewedDigest,openingVersion};
+ return {review,reviewedDigest,openingVersion,erasurePersonIds,erasureEmploymentIds:employees.map(row=>row.id)};
+ });
 }
+
 /** Refusal-only review match BEFORE the native effect. There is no separate execution ledger;
  * future custody must serialize NEW creation and own this actual top-level transaction. */
 export async function createReviewedAdditionalRunTx(tx:Tx,supplied:SessionContext,input:AdditionalRunInput&{payrollCycleId:string},expectedDigest:string){

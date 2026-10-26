@@ -3,7 +3,7 @@
 -- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
- action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close','country-my.statutory.update')),
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close','country-my.statutory.update','multi_cycle_payroll.create_run')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
@@ -16,7 +16,7 @@ CREATE TABLE app.assistant_own_leave_review (
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind IN ('knowledge_base.article.create','typed_pay_components.create') THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='country-my.statutory.update' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
-  WHEN action_kind IN ('rewards.post','payroll.close') THEN employment_id IS NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
+  WHEN action_kind IN ('rewards.post','payroll.close','multi_cycle_payroll.create_run') THEN employment_id IS NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='approvals.leave.decide' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   ELSE person_id IS NOT NULL AND employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL END),
@@ -48,6 +48,13 @@ CREATE TABLE app.assistant_own_leave_review (
  country_statutory_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,country_statutory_id uuid,country_statutory_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='country-my.statutory.update' THEN country_statutory_person_id IS NOT NULL AND country_statutory_id IS NOT NULL AND ((state='completed')=(country_statutory_event_id IS NOT NULL))
   ELSE country_statutory_person_id IS NULL AND country_statutory_id IS NULL AND country_statutory_event_id IS NULL END),
+ multi_cycle_pay_period text,multi_cycle_cycle_id uuid,multi_cycle_run_type text,
+ multi_cycle_batch_id uuid UNIQUE,multi_cycle_created_event_id uuid UNIQUE,multi_cycle_review_employment_ids uuid[],multi_cycle_review_person_ids uuid[],
+ CHECK(CASE WHEN action_kind='multi_cycle_payroll.create_run' THEN multi_cycle_pay_period IS NOT NULL AND multi_cycle_pay_period ~ '^\d{4}-(0[1-9]|1[0-2])$' AND multi_cycle_cycle_id IS NOT NULL AND multi_cycle_run_type IS NOT NULL AND multi_cycle_run_type IN ('off_cycle','bonus','adjustment') AND ((state='completed')=(multi_cycle_batch_id IS NOT NULL AND multi_cycle_created_event_id IS NOT NULL))
+  ELSE multi_cycle_pay_period IS NULL AND multi_cycle_cycle_id IS NULL AND multi_cycle_run_type IS NULL AND multi_cycle_batch_id IS NULL AND multi_cycle_created_event_id IS NULL AND multi_cycle_review_employment_ids IS NULL AND multi_cycle_review_person_ids IS NULL END),
+ CHECK((multi_cycle_batch_id IS NULL)=(multi_cycle_created_event_id IS NULL)),
+ CHECK(multi_cycle_review_employment_ids IS NULL OR array_position(multi_cycle_review_employment_ids,NULL) IS NULL),
+ CHECK(multi_cycle_review_person_ids IS NULL OR array_position(multi_cycle_review_person_ids,NULL) IS NULL),
  pay_component_id uuid UNIQUE,pay_component_created_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='typed_pay_components.create' THEN ((state='completed')=(pay_component_id IS NOT NULL AND pay_component_created_event_id IS NOT NULL)) ELSE pay_component_id IS NULL AND pay_component_created_event_id IS NULL END),
  CHECK((pay_component_id IS NULL)=(pay_component_created_event_id IS NULL)),
@@ -90,7 +97,7 @@ CREATE TABLE app.assistant_own_leave_review (
   WHEN action_kind='toil.replacement.request' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='knowledge_base.article.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
-  WHEN action_kind IN ('rewards.post','payroll.close','country-my.statutory.update') THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
+  WHEN action_kind IN ('rewards.post','payroll.close','country-my.statutory.update','multi_cycle_payroll.create_run') THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='typed_pay_components.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='claims.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
@@ -392,7 +399,7 @@ BEGIN
   RAISE EXCEPTION 'Review erasure already prepared' USING ERRCODE='40001';END IF;
  -- Capture every current actor/subject/pending manager association before clearing pointers.
  SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO ids FROM app.assistant_own_leave_review r
-  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id
+  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR i.person_id=ANY(r.multi_cycle_review_person_ids) OR app._assistant_multi_cycle_review_person(r.multi_cycle_review_employment_ids,i.person_id,i.tenant_id) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id
    OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id);
  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
  GET DIAGNOSTICS total=ROW_COUNT;
@@ -414,7 +421,7 @@ BEGIN
   AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND person_id=NEW.aggregate_id;
  IF NOT FOUND THEN
   IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.country_statutory_person_id=NEW.aggregate_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,NEW.aggregate_id,NEW.tenant_id)) OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR NEW.aggregate_id=ANY(r.rewards_review_person_ids) OR NEW.aggregate_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=NEW.aggregate_id OR r.decision_applicant_person_id=NEW.aggregate_id OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
+   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.country_statutory_person_id=NEW.aggregate_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,NEW.aggregate_id,NEW.tenant_id)) OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR NEW.aggregate_id=ANY(r.rewards_review_person_ids) OR NEW.aggregate_id=ANY(r.payroll_review_person_ids) OR NEW.aggregate_id=ANY(r.multi_cycle_review_person_ids) OR app._assistant_multi_cycle_review_person(r.multi_cycle_review_employment_ids,NEW.aggregate_id,NEW.tenant_id) OR r.decision_subject_person_id=NEW.aggregate_id OR r.decision_applicant_person_id=NEW.aggregate_id OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
    OR coalesce(NEW.payload->'erasedFields' ? 'assistantPreparedReviews',false) THEN
    RAISE EXCEPTION 'Review erasure admission unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
@@ -447,10 +454,10 @@ BEGIN
  IF NOT FOUND OR i.event_id IS NULL OR i.xact_id IS DISTINCT FROM pg_current_xact_id()
   OR i.tenant_id IS DISTINCT FROM app.current_tenant_id() OR i.user_id IS DISTINCT FROM app.current_user_id()
   OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(i.employment_id) IS NOT TRUE
-  OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND (id=ANY(i.review_ids) OR person_id=i.person_id OR lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(rewards_review_person_ids) OR i.person_id=ANY(payroll_review_person_ids) OR decision_subject_person_id=i.person_id OR decision_applicant_person_id=i.person_id OR org_subject_person_id=i.person_id OR org_manager_person_id=i.person_id OR org_previous_manager_person_id=i.person_id)
+  OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND (id=ANY(i.review_ids) OR person_id=i.person_id OR lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(rewards_review_person_ids) OR i.person_id=ANY(payroll_review_person_ids) OR i.person_id=ANY(multi_cycle_review_person_ids) OR app._assistant_multi_cycle_review_person(multi_cycle_review_employment_ids,i.person_id,i.tenant_id) OR decision_subject_person_id=i.person_id OR decision_applicant_person_id=i.person_id OR org_subject_person_id=i.person_id OR org_manager_person_id=i.person_id OR org_previous_manager_person_id=i.person_id)
    AND (intent_digest IS NOT NULL OR reviewed_digest IS NOT NULL))
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
+   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR i.person_id=ANY(r.multi_cycle_review_person_ids) OR app._assistant_multi_cycle_review_person(r.multi_cycle_review_employment_ids,i.person_id,i.tenant_id) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
   RAISE EXCEPTION 'Review erasure incomplete' USING ERRCODE='42501';END IF;
  -- Do not remove the current-xact barrier here: SET CONSTRAINTS IMMEDIATE must not permit a later
  -- preparation in the same transaction. A later authorized custody call prunes the completed marker.
@@ -2696,3 +2703,176 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_country_statutory_reviews_index() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Native additional-run custody, one physical review lifecycle; no calculation/payment.
+CREATE FUNCTION app._assistant_multi_cycle_run_review_identity(p_person uuid,p_bind boolean DEFAULT true,p_write boolean DEFAULT true) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR current_setting('transaction_isolation')<>'read committed' OR (p_write AND current_setting('transaction_read_only')<>'off') THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id() AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND (p_bind IS NOT TRUE OR a.person_id IS NOT DISTINCT FROM p_person) AND (a.person_id IS NULL OR EXISTS(SELECT 1 FROM public.person actual WHERE actual.id=a.person_id AND actual.tenant_id=a.tenant_id))) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_multi_cycle_run_review_identity(uuid,boolean,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_multi_cycle_review_person(p_employees uuid[],p_person uuid,p_tenant uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_tenant=app.current_tenant_id() AND p_person IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=ANY(p_employees) AND e.tenant_id=p_tenant AND e.person_id=p_person)
+$$;
+REVOKE ALL ON FUNCTION app._assistant_multi_cycle_review_person(uuid[],uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_multi_cycle_run_review_source(p_person uuid,p_company uuid,p_period text,p_cycle uuid,p_type text) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(p_person);
+ IF p_period IS NULL OR p_period !~ '^\d{4}-(0[1-9]|1[0-2])$' OR p_cycle IS NULL OR p_type IS NULL OR p_type NOT IN ('off_cycle','bonus','adjustment') OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id() AND app.is_admin_for(c.id)) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_multi_cycle_run_review_source(uuid,uuid,text,uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_multi_cycle_run_review_people(p_company uuid,p_employees uuid[]) RETURNS uuid[]
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE people uuid[];
+BEGIN
+ IF p_employees IS NULL OR cardinality(p_employees)>256 OR array_position(p_employees,NULL) IS NOT NULL OR coalesce((SELECT array_agg(DISTINCT id ORDER BY id) FROM unnest(p_employees) q(id)),'{}'::uuid[]) IS DISTINCT FROM p_employees THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM unnest(p_employees) q(id) LEFT JOIN public.employment e ON e.id=q.id AND e.tenant_id=app.current_tenant_id() AND e.company_id=p_company LEFT JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id WHERE e.id IS NULL OR p.id IS NULL) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(DISTINCT e.person_id ORDER BY e.person_id),'{}'::uuid[]) INTO people FROM public.employment e WHERE e.id=ANY(p_employees) AND e.tenant_id=app.current_tenant_id() AND e.company_id=p_company;
+ RETURN people;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_multi_cycle_run_review_people(uuid,uuid[]) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_multi_cycle_run_review_json(p_id uuid) RETURNS jsonb
+ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',jsonb_build_object('actionId',r.id,'action',r.action_kind,'contractVersion',1,
+ 'binding',jsonb_build_object('tenantId',r.tenant_id,'userId',r.user_id,'personId',r.person_id,'employmentId',r.employment_id,'companyId',r.company_id,'payPeriod',r.multi_cycle_pay_period,'payrollCycleId',r.multi_cycle_cycle_id,'runType',r.multi_cycle_run_type),
+ 'intentDigest',r.intent_digest,'reviewedDigest',r.reviewed_digest,'state',r.state,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+ 'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object('formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
+ 'eventId',r.multi_cycle_created_event_id,'batchId',r.multi_cycle_batch_id)
+ FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id WHERE r.id=p_id AND r.action_kind='multi_cycle_payroll.create_run';
+$$;
+REVOKE ALL ON FUNCTION app._assistant_multi_cycle_run_review_json(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_subject(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='multi_cycle_payroll.create_run';
+ IF NOT FOUND THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_multi_cycle_run_review_identity(r.person_id);RETURN jsonb_build_object('companyId',r.company_id,'payPeriod',r.multi_cycle_pay_period,'payrollCycleId',r.multi_cycle_cycle_id,'runType',r.multi_cycle_run_type);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_subject(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_subject(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_peek(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='multi_cycle_payroll.create_run';
+ IF NOT FOUND THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_multi_cycle_run_review_source(r.person_id,r.company_id,r.multi_cycle_pay_period,r.multi_cycle_cycle_id,r.multi_cycle_run_type);
+ IF r.state='awaiting_confirmation' AND (r.multi_cycle_review_employment_ids IS NULL OR r.multi_cycle_review_person_ids IS NULL OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id)) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('review',app._assistant_multi_cycle_run_review_json(r.id),'pendingExpired',r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_peek(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_peek(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_read(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='multi_cycle_payroll.create_run' FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_multi_cycle_run_review_source(r.person_id,r.company_id,r.multi_cycle_pay_period,r.multi_cycle_cycle_id,r.multi_cycle_run_type);
+ IF r.state='awaiting_confirmation' AND (r.multi_cycle_review_employment_ids IS NULL OR r.multi_cycle_review_person_ids IS NULL OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id)) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at THEN UPDATE app.assistant_own_leave_review SET state='expired',intent_digest=NULL,reviewed_digest=NULL,multi_cycle_review_person_ids=NULL,multi_cycle_review_employment_ids=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a WHERE c.action_id=a.id AND a.id=r.id AND a.state<>'awaiting_confirmation';
+ RETURN app._assistant_multi_cycle_run_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='multi_cycle_payroll.create_run' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL,multi_cycle_review_person_ids=NULL,multi_cycle_review_employment_ids=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','multi_cycle_payroll.create_run','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.action_kind='multi_cycle_payroll.create_run' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_prepare(p_id uuid,p_person uuid,p_company uuid,p_period text,p_cycle uuid,p_type text,p_employees uuid[],p_people uuid[],p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();at_time timestamptz;people uuid[];
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_source(p_person,p_company,p_period,p_cycle,p_type);
+ IF NOT EXISTS(SELECT 1 FROM public.payroll_cycle c WHERE c.id=p_cycle AND c.tenant_id=t AND c.company_id=p_company AND c.archived_at IS NULL AND c.run_type::text=p_type) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ people:=app._assistant_multi_cycle_run_review_people(p_company,p_employees);
+ IF p_people IS NULL OR p_people IS DISTINCT FROM people THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=p_person OR i.person_id=ANY(people))) OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=p_person OR i.person_id=ANY(people))) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$' OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$' OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512 OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND state='awaiting_confirmation' AND expires_at>at_time)>=5 OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND created_at>at_time-interval '10 minutes')>=20 THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,multi_cycle_pay_period,multi_cycle_cycle_id,multi_cycle_run_type,multi_cycle_review_employment_ids,multi_cycle_review_person_ids,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES('multi_cycle_payroll.create_run',p_id,t,u,p_person,NULL,p_company,p_period,p_cycle,p_type,p_employees,people,p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);
+ RETURN app._assistant_multi_cycle_run_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_prepare(uuid,uuid,uuid,text,uuid,text,uuid[],uuid[],text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_prepare(uuid,uuid,uuid,text,uuid,text,uuid[],uuid[],text,text,text,text,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_review_complete(p_id uuid,p_reviewed_digest text,p_batch uuid,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='multi_cycle_payroll.create_run' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR p_event IS NULL OR p_batch IS NULL THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_multi_cycle_run_review_source(r.person_id,r.company_id,r.multi_cycle_pay_period,r.multi_cycle_cycle_id,r.multi_cycle_run_type);
+ IF r.state='completed' THEN
+  IF r.multi_cycle_created_event_id IS DISTINCT FROM p_event OR r.multi_cycle_batch_id IS DISTINCT FROM p_batch THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF r.reviewed_digest IS DISTINCT FROM p_reviewed_digest OR r.multi_cycle_review_person_ids IS NULL OR r.multi_cycle_review_employment_ids IS NULL OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id) THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.payroll_batch b JOIN public.pay_period p ON p.id=b.pay_period_id AND p.tenant_id=b.tenant_id AND p.company_id=b.company_id AND p.period=b.pay_period JOIN public.domain_event d ON d.tenant_id=b.tenant_id AND d.aggregate_id=b.id
+   WHERE b.id=p_batch AND b.tenant_id=t AND b.company_id=r.company_id AND b.pay_period=r.multi_cycle_pay_period AND b.payroll_cycle_id=r.multi_cycle_cycle_id AND b.run_type::text=r.multi_cycle_run_type AND b.status='draft' AND p.status='open'
+    AND b.xmin=pg_current_xact_id()::xid AND d.id=p_event AND d.xmin=pg_current_xact_id()::xid
+    AND d.aggregate_type='payroll-batch' AND d.event_type='payroll-batch.run-added' AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id IS NULL
+    AND (d.payload->>'companyId')::uuid=b.company_id AND d.payload->>'payPeriod'=b.pay_period AND (d.payload->>'payPeriodId')::uuid=b.pay_period_id
+    AND (d.payload->>'runSeq')::integer=b.run_seq AND d.payload->>'runType'=b.run_type::text AND d.payload->>'paymentDate'=b.batch_date::text
+    AND (d.payload->>'payrollCycleId')::uuid=b.payroll_cycle_id AND (d.payload->'scope') IS NOT DISTINCT FROM coalesce(b.scope,'null'::jsonb)
+    AND (d.payload->>'remarks') IS NOT DISTINCT FROM b.remarks)
+  THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+  -- Top-level new row/event refs do not prove arbitrary SQL used the canonical native engine.
+  UPDATE app.assistant_own_leave_review SET state='completed',intent_digest=NULL,reviewed_digest=NULL,multi_cycle_batch_id=p_batch,multi_cycle_created_event_id=p_event,multi_cycle_review_employment_ids=NULL,multi_cycle_review_person_ids=NULL WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_multi_cycle_run_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_complete(uuid,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_complete(uuid,text,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_multi_cycle_run_body_retired() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.assistant_own_leave_review SET multi_cycle_review_person_ids=NULL,multi_cycle_review_employment_ids=NULL WHERE id=OLD.action_id AND action_kind='multi_cycle_payroll.create_run' AND (multi_cycle_review_person_ids IS NOT NULL OR multi_cycle_review_employment_ids IS NOT NULL);
+ RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_body_retired() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assistant_multi_cycle_run_body_retired AFTER DELETE ON app.assistant_own_leave_review_content FOR EACH ROW EXECUTE FUNCTION app.assistant_multi_cycle_run_body_retired();
