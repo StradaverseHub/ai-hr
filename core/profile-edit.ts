@@ -99,8 +99,8 @@ function addressNeedsReview(master:typeof person.$inferSelect){
  });
 }
 /** Private workspace contains explicitly visible fields only; no admin-row spread crosses RSC. */
-export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy):Promise<EssWorkspace>{
- return withTenant(ctx,async tx=>{
+export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy,existingTx?:Tx):Promise<EssWorkspace>{
+ const run=async(tx:Tx)=>{
   const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
   const rows=await mastersTx(tx,policy.ctx,subject);
   const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
@@ -132,7 +132,8 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
   return {visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
- });
+ };
+ return existingTx?run(existingTx):withTenant(ctx,run);
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
