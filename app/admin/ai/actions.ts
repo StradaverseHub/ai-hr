@@ -12,18 +12,16 @@ import {
   testConnection,
 } from '@/core/ai-config';
 import { evaluateProviderCandidate } from '@/core/ai-provider-readiness';
-import { SecretConfigError } from '@/lib/ai';
 import { getTranslations } from 'next-intl/server';
 import { ASSESSMENT_AI_FEATURES, setAssessmentAiSwitch, type AssessmentAiFeature } from '@/packs/performance/service';
 
 export async function setAssessmentAiSwitchAction(formData: FormData) {
-  const s = await getBrowserCommandSession();
   const t = await getTranslations('admin.ai.assessment');
-  const feature = String(formData.get('feature')) as AssessmentAiFeature;
-  const on = String(formData.get('on'));
-  if (!ASSESSMENT_AI_FEATURES.includes(feature) || !['true', 'false'].includes(on)) back(t('failed'));
-  try { await setAssessmentAiSwitch(s, feature, on === 'true'); }
-  catch { back(t('failed')); }
+  try {
+    const feature=String(formData.get('feature')) as AssessmentAiFeature,on=String(formData.get('on'));
+    if(!ASSESSMENT_AI_FEATURES.includes(feature)||!['true','false'].includes(on))throw Error();
+    const s=await getBrowserCommandSession();await setAssessmentAiSwitch(s,feature,on==='true');
+  }catch{await commandFailure();}
   revalidatePath('/performance', 'layout');
   back(undefined, t('saved'));
 }
@@ -39,13 +37,9 @@ function providerOptions(value: string | undefined): unknown {
   try{return JSON.parse(value);}catch{throw new AiConfigError('Approved AI routing configuration is required.');}
 }
 
-/** Only our own, user-safe error messages reach the browser; a raw Postgres/RLS error (e.g. a write
- *  blocked by the FORCE-RLS policy, or a constraint violation) is mapped to a generic string so no
- *  internal SQL/schema text is disclosed in the ErrorBanner. */
-function safeError(e: unknown): string {
-  if (e instanceof AiConfigError || e instanceof SecretConfigError) return e.message;
-  return 'Could not update AI configuration. Please try again.';
-}
+/** Error constructors are not a disclosure boundary. Even typed provider/configuration errors
+ * can carry arbitrary details; only code-owned translated copy reaches redirects. */
+async function commandFailure():Promise<never>{const t=await getTranslations('admin.ai');return back(t('commandFailed'));}
 
 function back(error?: string, toast?: string): never {
   if (error) redirect(`/admin/ai?error=${encodeURIComponent(error)}`);
@@ -54,47 +48,44 @@ function back(error?: string, toast?: string): never {
 }
 
 export async function saveAiProviderConfigAction(formData: FormData) {
-  const s = await getBrowserCommandSession();
   try {
-    await saveAiProviderConfig(s, {
+    const input={
       provider: String(formData.get('provider')),
       model: String(formData.get('model')),
       apiKey: str(formData.get('apiKey')),
       makeActive: formData.get('makeActive') != null,
       providerOptions: providerOptions(str(formData.get('providerOptions'))),
-    });
-  } catch (e) {
-    back(safeError(e));
+    };const s=await getBrowserCommandSession();await saveAiProviderConfig(s,input);
+  } catch {
+    await commandFailure();
   }
   back(undefined, 'AI configuration saved');
 }
 
 export async function setActiveProviderAction(formData: FormData) {
-  const s = await getBrowserCommandSession();
   try {
-    await setActiveProvider(s, { provider: String(formData.get('provider')), evaluationReceipt: str(formData.get('evaluationReceipt')) });
-  } catch (e) {
-    back(safeError(e));
+    const input={provider:String(formData.get('provider')),evaluationReceipt:str(formData.get('evaluationReceipt'))};
+    const s=await getBrowserCommandSession();await setActiveProvider(s,input);
+  } catch {
+    await commandFailure();
   }
   back(undefined, 'Active provider updated');
 }
 
 export async function disableAiAction() {
-  const s = await getBrowserCommandSession();
   try {
-    await disableAi(s);
-  } catch (e) {
-    back(safeError(e));
+    const s=await getBrowserCommandSession();await disableAi(s);
+  } catch {
+    await commandFailure();
   }
   back(undefined, 'AI drafting turned off');
 }
 
 export async function removeAiProviderConfigAction(formData: FormData) {
-  const s = await getBrowserCommandSession();
   try {
-    await removeAiProviderConfig(s, { provider: String(formData.get('provider')) });
-  } catch (e) {
-    back(safeError(e));
+    const input={provider:String(formData.get('provider'))};const s=await getBrowserCommandSession();await removeAiProviderConfig(s,input);
+  } catch {
+    await commandFailure();
   }
   back(undefined, 'Provider removed');
 }
@@ -109,8 +100,9 @@ export async function testConnectionAction(input: {
   apiKey?: string;
   providerOptions?: unknown;
 }): Promise<{ ok: boolean; error?: string }> {
-  try{const s = await getBrowserCommandSession();return await testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined, providerOptions:input.providerOptions });}
-  catch{return {ok:false,error:(await getTranslations('admin.ai'))('testFail')};}
+  try{const captured=structuredClone(input),s=await getBrowserCommandSession();const result=await testConnection(s,{provider:captured.provider,model:captured.model,apiKey:captured.apiKey?.trim()||undefined,providerOptions:captured.providerOptions});if(result.ok===true)return{ok:true};}
+  catch{/* Raw owner/session/provider reasons never reach this RPC result. */}
+  return {ok:false,error:(await getTranslations('admin.ai'))('testFail')};
 }
 
 /** Explicit synthetic evaluation only: never accepts client prompts, model outputs or readiness flags. */

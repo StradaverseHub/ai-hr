@@ -66,9 +66,10 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
       try {
         if (!cfg.governance) throw unavailable();
         const result = await transport(configuration(cfg), { system: [args.system], turns: [{ role: 'user', content: args.prompt }],
-          tools: [], maxTokens: args.maxTokens ?? 2048, ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }) }, args.signal);
-        if (result.completion.usageReported) args.onUsage?.(result.completion.usage);
-        args.onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:result.accounting.usage,accountCostCredits:result.accounting.accountCostCredits,elapsedMs:result.elapsedMs}));
+          tools: [], maxTokens: args.maxTokens ?? 2048, ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }) }, args.signal,terminal=>{
+          if(terminal.accounting.usage)args.onUsage?.(terminal.accounting.usage);
+          args.onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:terminal.accounting.usage,accountCostCredits:terminal.accounting.accountCostCredits,elapsedMs:terminal.elapsedMs}));
+        });
         if (result.completion.stop !== 'end' || result.completion.toolCalls.length || !result.completion.text.trim()) throw unavailable();
         return result.completion.text.trim();
       } catch { throw unavailable(); }
@@ -77,8 +78,9 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
       try {
         if (!cfg.governance) throw unavailable();
         const {onObservation,...request}=args;
-        const result=await transport(configuration(cfg),request);
-        onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:result.accounting.usage,accountCostCredits:result.accounting.accountCostCredits,elapsedMs:result.elapsedMs}));
+        const result=await transport(configuration(cfg),request,undefined,terminal=>{
+          onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:terminal.accounting.usage,accountCostCredits:terminal.accounting.accountCostCredits,elapsedMs:terminal.elapsedMs}));
+        });
         return result.completion;
       } catch { throw unavailable(); }
     },

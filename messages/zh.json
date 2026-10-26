@@ -10772,7 +10772,8 @@
       "evaluationFailed": "评估遇到了一点小状况。请检查已保存的候选配置后重试。",
       "evaluationActivate": "使用已评估的候选配置",
       "evaluationSaveFirst": "请先保存更改再评估。",
-      "evaluationExpired": "评估已过期或候选配置已更改。请重新评估。"
+      "evaluationExpired": "评估已过期或候选配置已更改。请重新评估。",
+      "commandFailed": "AI 设置遇到一点小状况。请检查权限和已保存的设置，然后重试。"
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",

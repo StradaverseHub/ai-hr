@@ -10772,7 +10772,8 @@
       "evaluationFailed": "The evaluation hit a little snag. Please check the saved candidate and try again.",
       "evaluationActivate": "Use evaluated candidate",
       "evaluationSaveFirst": "Save your changes before evaluating.",
-      "evaluationExpired": "The evaluation expired or the candidate changed. Evaluate again."
+      "evaluationExpired": "The evaluation expired or the candidate changed. Evaluate again.",
+      "commandFailed": "The AI settings hit a little snag. Please check your access and saved settings, then try again."
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",

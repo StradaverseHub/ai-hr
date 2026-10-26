@@ -27,6 +27,7 @@ import {
   AiGatewayError,
   type AiAdapter,
   type AiProvider,
+  type AiRunObservation,
   type ConverseArgs,
   type ConverseResult,
   type GenerateArgs,
@@ -145,7 +146,13 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async(record,observe)=>{const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:observe}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async(record,observe)=>{let terminalObserved=false;const terminal:{usage:AiRunObservation['usage']}={usage:null};const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:(observation:AiRunObservation)=>{
+   terminalObserved=true;terminal.usage=observation.usage;observe?.(observation);if(observation.usage)record(observation.usage);
+  }}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});
+  if(terminalObserved){const usage=terminal.usage,reported=result.usageReported===true;if(reported?(!usage||usage.inputTokens!==result.usage.inputTokens||usage.outputTokens!==result.usage.outputTokens||usage.cachedInputTokens!==result.usage.cachedInputTokens):usage!==null)throw new AiGatewayError('The AI provider usage could not be confirmed.');}
+  // A charged-but-rejected completion may never return. Actual terminal usage is already recorded
+  // by the trusted adapter callback; do not double-record successful OpenRouter counters.
+  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;});
 }
 
 /**

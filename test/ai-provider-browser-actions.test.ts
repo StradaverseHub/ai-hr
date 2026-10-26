@@ -13,6 +13,8 @@ vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key)}))
 vi.mock('../core/ai-config',()=>({AiConfigError:class extends Error{},saveAiProviderConfig:owners.save,setActiveProvider:owners.activate,disableAi:owners.disable,removeAiProviderConfig:owners.remove,testConnection:owners.metadata}));
 vi.mock('../core/ai-provider-readiness',()=>({evaluateProviderCandidate:owners.evaluate}));
 vi.mock('../packs/performance/service',()=>({ASSESSMENT_AI_FEATURES:['review_summary'],setAssessmentAiSwitch:owners.assessment}));
+import {redirect} from 'next/navigation';
+import {AiConfigError} from '../core/ai-config';
 import { getSession } from '../lib/session';
 import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, setAssessmentAiSwitchAction, testConnectionAction } from '../app/admin/ai/actions';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -48,4 +50,11 @@ describe('provider browser selected-session boundary',()=>{
     expect(owners.evaluate.mock.calls[0][0]).toMatchObject({tenantId:base.tenantId,userId:base.adminUserId});
     expect(owners.evaluate.mock.calls[0][1]).toEqual({provider:'openrouter',candidateId,candidateVersion,review:{version:1,accountDefaultsReviewed:true,externalProcessingReviewed:true},syntheticProbeConsent:true});
   });
+});
+
+/** Authored UNRUN: typed error constructors never authorize arbitrary browser disclosure. */
+describe('provider commands keep bounded localized failure boundaries',()=>{
+ it('maps absent strict sessions to a friendly settings redirect without calling any owner',async()=>{browser.selected=undefined;vi.mocked(redirect).mockClear();await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/admin/ai?error=commandFailed');expect(owners.save).not.toHaveBeenCalled();});
+ it.each(['typed','raw'] as const)('never exposes %s owner error messages, API-key text or causes in redirects',async kind=>{browser.selected=base.adminUserId;owners.save.mockRejectedValueOnce(kind==='typed'?new AiConfigError('PRIVATE provider-key SECRET'):Error('PRIVATE SQL credential'));await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/admin/ai?error=commandFailed');expect(JSON.stringify(vi.mocked(redirect).mock.calls)).not.toContain('PRIVATE');});
+ it('never forwards a returned metadata reason or exception message to the RPC browser result',async()=>{browser.selected=base.adminUserId;owners.metadata.mockResolvedValueOnce({ok:false,error:'PRIVATE provider response'});expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});owners.metadata.mockRejectedValueOnce(Error('PRIVATE network'));expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});});
 });

@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { converse, generateDraft } from './index';
 import { captureAiConfig } from './governance';
 import { readOpenRouterOptions } from './providers/openrouter-configuration';
-import { AiGatewayError, type AiUsage, type AiToolSpec, type ResolvedAiConfig } from './types';
+import { AiGatewayError, type AiUsage,type AiRunObservation, type AiToolSpec, type ResolvedAiConfig } from './types';
 export const PROVIDER_PROTOCOL_SUITE_VERSION = 1;
 export const PROVIDER_PROTOCOL_LIMITS = Object.freeze({ calls: 3, outputTokens: 1024, perCallMs: 15_000, totalMs: 60_000 });
 export type ProviderProtocolSummary = Readonly<{ calls: 3; elapsedMs: number; usageReportedCalls: number;
@@ -28,16 +28,16 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
   const started = performance.now(), observations: (AiUsage | null)[] = [];
   const inTime = () => { if (performance.now() - started >= PROVIDER_PROTOCOL_LIMITS.totalMs) return unavailable(); };
   const cfg: ResolvedAiConfig = Object.freeze({ ...configuration, governance: Object.freeze({
-    async run<T>(request: Parameters<typeof governance.run>[0], call: (record: (usage: AiUsage) => void) => Promise<T>, outgoing: ResolvedAiConfig = configuration): Promise<T> {
+    async run<T>(request: Parameters<typeof governance.run>[0], call: (record: (usage: AiUsage) => void,observe?: (observation:AiRunObservation)=>void) => Promise<T>, outgoing: ResolvedAiConfig = configuration): Promise<T> {
       inTime(); const usage: AiUsage[] = [];
       try {
-        return await governance.run(request, async record => {
+        return await governance.run(request, async (record,observe) => {
           // Admission may have waited: never start a late provider request after the evaluation deadline.
           if (performance.now() - started >= PROVIDER_PROTOCOL_LIMITS.totalMs) {
             record({ inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 });
             return unavailable();
           }
-          return call(value => { usage.push({ ...value }); record(value); });
+          return call(value => { usage.push({ ...value }); record(value); },observe);
         }, outgoing);
       } finally { observations.push(usage.length === 1 && validUsage(usage[0]) ? usage[0] : null); }
     },

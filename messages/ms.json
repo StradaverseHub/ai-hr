@@ -10772,7 +10772,8 @@
       "evaluationFailed": "Penilaian menghadapi sedikit masalah. Sila semak calon tersimpan dan cuba lagi.",
       "evaluationActivate": "Gunakan calon yang dinilai",
       "evaluationSaveFirst": "Simpan perubahan anda sebelum menilai.",
-      "evaluationExpired": "Penilaian telah tamat tempoh atau calon telah berubah. Nilai semula."
+      "evaluationExpired": "Penilaian telah tamat tempoh atau calon telah berubah. Nilai semula.",
+      "commandFailed": "Tetapan AI tersangkut sedikit. Semak akses dan tetapan tersimpan anda, kemudian cuba lagi."
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",

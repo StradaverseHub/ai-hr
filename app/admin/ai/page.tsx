@@ -1,4 +1,5 @@
-import { getTranslations } from 'next-intl/server';
+import {createHash} from 'node:crypto';
+import {getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getAiConfigView } from '@/core/ai-config';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -11,10 +12,13 @@ export default async function AiConfigPage({
 }: {
   searchParams: Promise<{ error?: string; toast?: string }>;
 }) {
-  const s = await requireAdmin();
+  const source=await requireAdmin(),s={...source,roles:source.roles?.slice(),grants:source.grants?.map(grant=>({...grant}))};
+  const principal=createHash('sha256').update(JSON.stringify([s.tenantId,s.userId,s.personId??null,[...(s.roles??[])].sort(),(s.grants??[]).map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])).digest('hex');
+  const locale=await getLocale();
   const t = await getTranslations('admin.ai');
-  const { error } = await searchParams;
+  const query=await searchParams,error=Object.prototype.hasOwnProperty.call(query,'error')?t('commandFailed'):undefined;
   const config = await getAiConfigView(s);
+  const formKey=createHash('sha256').update(JSON.stringify([principal,locale,config])).digest('hex');
   const envLabel = config.envFallback
     ? config.providers.find((p) => p.provider === config.envFallback!.provider)?.label ?? config.envFallback.provider
     : null;
@@ -38,7 +42,7 @@ export default async function AiConfigPage({
 
       <Card className="p-4 text-xs text-muted-foreground">{t('privacyNote')}</Card>
 
-      <AiConfigForm config={config} />
+      <AiConfigForm key={formKey} config={config} />
       {isModuleEnabledOrFalse(s, 'performance') && <AssessmentAiSettings session={s}/>}
     </div>
   );

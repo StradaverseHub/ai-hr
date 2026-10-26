@@ -7,7 +7,7 @@
  * plaintext key is sent to a server action that encrypts it before it touches the DB and is never
  * echoed back. "Test" returns only ok/generic-reason.
  */
-import { useState, useTransition, useId, useRef } from 'react';
+import { useState, useTransition, useId, useRef, useEffect } from 'react';
 import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/providers/openrouter-configuration';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -52,8 +52,11 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   const [consent, setConsent] = useState(false);
   const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string } | null>(null);
   const [evaluationFailed, setEvaluationFailed] = useState(false);
-  const evaluationSequence = useRef(0);
-  function invalidateEvaluation() { evaluationSequence.current++; setEvaluation(null); setEvaluationFailed(false); }
+  const [receiptClock,setReceiptClock]=useState(()=>Date.now());
+  useEffect(()=>{setReceiptClock(Date.now());if(!evaluation)return;const expiry=Date.parse(evaluation.expiresAt);if(!Number.isFinite(expiry))return;const timer=setTimeout(()=>setReceiptClock(Date.now()),Math.min(2147483647,Math.max(0,expiry-Date.now()+1)));return()=>clearTimeout(timer);},[evaluation?.receipt,evaluation?.expiresAt]);
+  const evaluationSequence=useRef(0),metadataSequence=useRef(0),evaluationFlight=useRef(false),metadataFlight=useRef(false),alive=useRef(true);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;evaluationSequence.current++;metadataSequence.current++;};},[]);
+  function invalidateEvaluation(){evaluationSequence.current++;metadataSequence.current++;setEvaluation(null);setEvaluationFailed(false);}
 
   const router=p.provider==='openrouter', routeId=useId();
   const [routes,setRoutes]=useState(p.providerOptions?.routing.allowedProviders.join('\n')??'');
@@ -65,28 +68,32 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
 
 
   function onTest() {
-    startTest(async () => {
-      const res = await testConnectionAction({ provider: p.provider, model, apiKey: key, ...(router?{providerOptions:options}:{}) });
-      if (res.ok) toast.success(t(router?'metadataOk':'testOk'));
-      else toast.error(res.error ?? t('testFail'));
+    if(metadataFlight.current)return;metadataFlight.current=true;const sequence=++metadataSequence.current;
+    startTest(async()=>{
+      try{const res=await testConnectionAction({provider:p.provider,model,apiKey:key,...(router?{providerOptions:options}:{})});
+        if(!alive.current||sequence!==metadataSequence.current)return;
+        if(res.ok===true)toast.success(t(router?'metadataOk':'testOk'));else toast.error(t('testFail'));
+      }catch{if(alive.current&&sequence===metadataSequence.current)toast.error(t('commandFailed'));}
+      finally{metadataFlight.current=false;}
     });
   }
 
   const savedCandidateUnchanged = p.candidateSaved && Boolean(p.candidateId && p.candidateVersion) && key === '' && model === p.model && Boolean(options) &&
     JSON.stringify(options) === JSON.stringify(p.providerOptions);
-  const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Date.now() && savedCandidateUnchanged && accountReview && consent && evaluation.candidateId === p.candidateId && evaluation.candidateVersion === p.candidateVersion;
+  const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Math.max(receiptClock,Date.now()) && savedCandidateUnchanged && accountReview && consent && evaluation.candidateId === p.candidateId && evaluation.candidateVersion === p.candidateVersion;
   function onEvaluate() {
-    if (!savedCandidateUnchanged || !accountReview || !consent || !p.candidateId || !p.candidateVersion) return;
-    const sequence = ++evaluationSequence.current, candidateId = p.candidateId, candidateVersion = p.candidateVersion;
-    setEvaluation(null); setEvaluationFailed(false);
-    startEvaluation(async () => {
-      const result = await evaluateProviderCandidateAction({ accountReview: true, consent: true, candidateId, candidateVersion });
-      if (sequence !== evaluationSequence.current) return;
-      if (result.ok && result.candidateId === candidateId && result.candidateVersion === candidateVersion)
-        setEvaluation({ receipt: result.receipt, expiresAt: result.expiresAt, candidateId, candidateVersion });
-      else setEvaluationFailed(true);
+    if(evaluationFlight.current||!savedCandidateUnchanged||!accountReview||!consent||!p.candidateId||!p.candidateVersion)return;
+    evaluationFlight.current=true;const sequence=++evaluationSequence.current,candidateId=p.candidateId,candidateVersion=p.candidateVersion;
+    setEvaluation(null);setEvaluationFailed(false);
+    startEvaluation(async()=>{
+      try{const result=await evaluateProviderCandidateAction({accountReview:true,consent:true,candidateId,candidateVersion});
+        if(!alive.current||sequence!==evaluationSequence.current)return;
+        if(result.ok&&result.candidateId===candidateId&&result.candidateVersion===candidateVersion)setEvaluation({receipt:result.receipt,expiresAt:result.expiresAt,candidateId,candidateVersion});else setEvaluationFailed(true);
+      }catch{if(alive.current&&sequence===evaluationSequence.current)setEvaluationFailed(true);}
+      finally{evaluationFlight.current=false;}
     });
   }
+
   const canSave = (storable || p.configured) && (!router || Boolean(options&&model.trim())); // need the secret set to store a NEW key
   const canTest = !testing && (Boolean(key) || p.isActive || router && p.candidateSaved) && (!router || Boolean(options&&model.trim())); // typed key, or test the active stored key
 
@@ -112,7 +119,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('model')}>
             {router?<input name="model" required value={model} onChange={e=>{invalidateEvaluation();setModel(e.target.value);}}
-              autoComplete="off" spellCheck={false} className={inputCls+' min-h-11'} aria-describedby={routeId+'-model-help'}/>:<select name="model" value={model} onChange={(e) => setModel(e.target.value)} className={inputCls}>
+              autoComplete="off" spellCheck={false} className={inputCls+' min-h-11'} aria-describedby={routeId+'-model-help'}/>:<select name="model" value={model} onChange={(e)=>{invalidateEvaluation();setModel(e.target.value);}} className={inputCls}>
               {p.models.map((m) => (
                 <option key={m} value={m}>
                   {m}

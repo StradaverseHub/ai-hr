@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { AiGatewayError, type ConverseArgs } from '../types';
 import { buildOpenRouterRoutingPolicy } from './openrouter-policy';
 import { readOpenRouterCompletion } from './openrouter-completion';
-import { readOpenRouterAccounting } from './openrouter-accounting';
+import { readOpenRouterAccounting,type OpenRouterAccounting } from './openrouter-accounting';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -120,8 +120,9 @@ export async function readOpenRouterJsonResponse(response: Response, signal: Abo
 /** Fetch implementation is a server/test dependency, never a posted transport option. Factory
  * holds no credentials or tenant state. Exactly one fixed-endpoint request, no redirect or retry.
  * Deadline/cancellation covers headers AND bounded body reading, even if a test transport stalls. */
+export type OpenRouterTerminalObservation=Readonly<{accounting:OpenRouterAccounting;elapsedMs:number}>;
 export function createOpenRouterTransport(fetcher: typeof fetch) {
-  return async (configuration: unknown, args: ConverseArgs, signal?: AbortSignal) => {
+  return async (configuration: unknown, args: ConverseArgs, signal?: AbortSignal,onTerminal?:(observation:OpenRouterTerminalObservation)=>void) => {
     if (signal?.aborted) throw unavailable();
     let cfg: z.infer<typeof OpenRouterTransportConfiguration>, body: string;
     try { cfg = OpenRouterTransportConfiguration.parse(configuration); body = buildOpenRouterRequest({ model: cfg.model, routing: cfg.routing }, args); }
@@ -144,9 +145,14 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
           body, signal: controller.signal });
         const value = await readOpenRouterJsonResponse(response, controller.signal, () => performance.now() - started >= timeoutMs);
         if (controller.signal.aborted || performance.now() - started >= timeoutMs) throw unavailable();
-        const completion = readOpenRouterCompletion(value);
         const usage = value && typeof value === 'object' ? (value as Record<string, unknown>).usage : undefined;
-        return { completion, accounting: readOpenRouterAccounting(usage), elapsedMs: performance.now() - started };
+        const accounting=readOpenRouterAccounting(usage),elapsedMs=performance.now()-started;
+        // Complete bounded HTTP200 JSON may report a charge even when choices/error fields refuse
+        // completion. Observe exactly once BEFORE content parsing; never expose the body/cause.
+        // Official: /docs/cookbook/administration/usage-accounting and /docs/api_reference/errors-and-debugging.
+        onTerminal?.(Object.freeze({accounting,elapsedMs}));
+        const completion = readOpenRouterCompletion(value);
+        return { completion, accounting, elapsedMs };
       };
       return await Promise.race([run(), cancelled]);
     } catch { throw unavailable(); }

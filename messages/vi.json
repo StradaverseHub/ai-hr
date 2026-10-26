@@ -10772,7 +10772,8 @@
       "evaluationFailed": "Đánh giá gặp một trục trặc nhỏ. Hãy kiểm tra cấu hình đã lưu và thử lại.",
       "evaluationActivate": "Dùng cấu hình đã được đánh giá",
       "evaluationSaveFirst": "Lưu thay đổi trước khi đánh giá.",
-      "evaluationExpired": "Đánh giá đã hết hạn hoặc cấu hình đã thay đổi. Hãy đánh giá lại."
+      "evaluationExpired": "Đánh giá đã hết hạn hoặc cấu hình đã thay đổi. Hãy đánh giá lại.",
+      "commandFailed": "Cài đặt AI hơi trục trặc. Hãy kiểm tra quyền và cài đặt đã lưu rồi thử lại."
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",
