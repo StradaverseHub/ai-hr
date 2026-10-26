@@ -1977,3 +1977,22 @@ release and intended update. ALL UNRUN; AST syntax/diff only. Dated shift arrang
 master shift/rule/rotation edits, generator source planning and other earlier writers
 remain pending. Existing bulk/backfill consumers still require verification. This is
 not universal protection, a runtime security pass or readiness to expose own-leave.
+
+
+### Dated shift arrangement interval (26 October 2026; source only)
+
+Both `assignEmployeeShiftDated` and `removeShiftArrangement` capture scalar input
+and actor context before awaiting. Their first transaction operations now take the
+existing Access workforce-write barrier followed by shared leave configuration and
+employment ownership, before any period/shift/eligibility/cache source read. Original
+period replacement, date constraints, removal refusals, cache refresh and events are
+unchanged. No employment is nominated from a posted arrangement ID: removal retains
+its original exact employment/arrangement binding and live-period guards.
+Two actual real-employee held-subject regressions are authored in the roster
+participation suite: unchanged periods/employment/events on refusal, then release,
+intended future assignment or newest-period removal, exact one event and unchanged
+today cache. Both are UNRUN, as are the affected existing arrangement/roster suites.
+Static AST syntax and scoped diff only; no compiler, app, test, database, build or
+provider execution. Master shifts/rules/rotations and generator earlier planning,
+TOIL/org/module/authority/retention and server exposure prerequisites remain pending.
+This does not establish universal writer coverage or runtime concurrency/security.

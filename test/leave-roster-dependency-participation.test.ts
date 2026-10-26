@@ -9,6 +9,7 @@ import { ensureStandardRule } from '../core/attendance-rule';
 import { saveScheduleGroupControl } from '../core/schedule-group-controls';
 import { createShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
+import { assignEmployeeShiftDated, removeShiftArrangement } from '../core/shift-arrangement';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b: Base;
@@ -106,6 +107,52 @@ describe('employment schedule source participants', () => {
     else {
       const changed = command === 'group-bulk' ? ids : [last];
       for (const id of changed) expect(after.employments.find(row => row.id === id)?.attendanceRuleId).toBe(rule.id);
+    }
+  });
+});
+
+/** Dated ladder owners must protect earlier period/cache reads, not merely the final update. UNRUN. */
+describe('dated shift arrangement source participants', () => {
+  it.each(['assign', 'remove'] as const)
+  ('%s refuses without period/cache/event changes while the actual employee is held, then applies after release', async command => {
+    const ctx = adminCtx(b), today = todayInKualaLumpur(), tomorrow = addDays(today, 1);
+    const rule = await ensureStandardRule(ctx);
+    const shift = await createShift(ctx, { name: 'Fictional Dated Backup', code: 'FDB', companyId: b.companyId,
+      startTime: '09:00', endTime: '18:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
+    const { employmentId } = await hireEmployee(ctx, { person: { fullName: 'Fictional Dated Subject',
+      primaryEmail: `dated-subject-${randomUUID()}@t.local` }, companyId: b.companyId, departmentId: b.deptA,
+      employmentType: 'full_time', hiredOn: today });
+    await assignEmployeeShiftDated(ctx, { employmentId, shiftType: 'fixed', shiftId: shift.id, effectiveFrom: today });
+    if (command === 'remove') await assignEmployeeShiftDated(ctx, { employmentId, shiftType: 'roster', shiftId: shift.id, effectiveFrom: tomorrow });
+    const state = async () => ({
+      periods: await owner.db.select().from(schema.employmentShiftArrangement)
+        .where(eq(schema.employmentShiftArrangement.employmentId, employmentId)).orderBy(schema.employmentShiftArrangement.id),
+      employments: await owner.db.select().from(schema.employment).where(eq(schema.employment.id, employmentId)),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state(), newest = before.periods.find(row => row.validFrom === tomorrow && !row.supersededAt);
+    if (command === 'remove') expect(newest).toBeDefined();
+    const mutate = () => command === 'assign'
+      ? assignEmployeeShiftDated(ctx, { employmentId, shiftType: 'roster', shiftId: shift.id, effectiveFrom: tomorrow })
+      : removeShiftArrangement(ctx, { employmentId, arrangementId: newest!.id });
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned dated arrangement handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started; await expect(mutate()).rejects.toThrow('Leave source is unavailable'); expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await mutate(); const after = await state();
+    expect(after.events.length).toBe(before.events.length + 1);
+    expect(after.employments).toEqual(before.employments); // Future period keeps today's canonical cache.
+    if (command === 'assign') {
+      expect(after.periods.filter(row => !row.supersededAt)).toHaveLength(2);
+      expect(after.periods.find(row => row.validFrom === tomorrow && !row.supersededAt)).toMatchObject({ shiftType: 'roster', shiftId: shift.id });
+      expect(after.periods.find(row => row.validFrom === today && !row.supersededAt)?.validTo).toBe(today);
+    } else {
+      expect(after.periods.find(row => row.id === newest!.id)?.supersededAt).not.toBeNull();
+      expect(after.periods.find(row => row.validFrom === today && !row.supersededAt)?.validTo).toBeNull();
     }
   });
 });
