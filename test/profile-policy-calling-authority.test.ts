@@ -12,7 +12,12 @@ import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,type ProfileRouteRule} from '../lib/profile-routing-policy';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base;
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(closeAll);
+// seedBase installs this actual group-wide assignment; flattened roles alone are not group authority.
+const groupCtx=():SessionContext=>({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]});
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();
+ const [authority]=await withTenant(groupCtx(),tx=>tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`));
+ expect(authority?.allowed).toBe(true);
+});afterAll(closeAll);
 const state=async()=>({settings:await owner.db.select().from(schema.tenantSetting).where(eq(schema.tenantSetting.tenantId,base.tenantId)).orderBy(schema.tenantSetting.key),requests:await owner.db.select().from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.tenantId,base.tenantId)).orderBy(schema.profileChangeRequest.id),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.id)});
 const policy=()=>({version:3 as const,fields:Object.fromEntries(essVisibleFields().map(field=>[field.id,'viewOnly' as 'viewOnly'|'editable'|'hide'])),primaryOnly:[] as string[]});
 function command(kind:'edit'|'visibility'|'photo'|'routing',ctx:SessionContext){
@@ -35,7 +40,7 @@ async function heldAccess(){
  let ready!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;
  const started=new Promise<void>((yes,no)=>{ready=yes;failed=no;}),finish=new Promise<void>(yes=>{release=yes;});
  const watchdog=setTimeout(()=>{failed(Error('owned profile policy handshake timed out'));release();},10000);
- const holder=withTenant(adminCtx(base),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await finish;});void holder.catch(failed);
+ const holder=withTenant(groupCtx(),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await finish;});void holder.catch(failed);
  await started;return{async close(){release();clearTimeout(watchdog);await holder;}};
 }
 async function observeWait(failed:()=>unknown){
@@ -48,13 +53,13 @@ async function observeWait(failed:()=>unknown){
 }
 describe('fresh calling authority before administrative profile-policy facts',()=>{
  it.each(['edit','visibility','photo','routing'] as const)('%s refuses revoked actual group authority without policy/request/event changes',async kind=>{
-  const ctx=adminCtx(base),operation=command(kind,ctx),before=await state();
+  const ctx=groupCtx(),operation=command(kind,ctx),before=await state();
   await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));
   await expect(operation.run()).rejects.toMatchObject(kind==='routing'?{code:'unauthorized'}:{reason:'not_group_admin'});
   expect(await state()).toEqual(before);
  });
  it.each(['edit','visibility','photo','routing'] as const)('%s owns Access before effect and does not retarget retained nested inputs or actor',async kind=>{
-  const ctx=adminCtx(base),operation=command(kind,ctx),before=await state(),holder=await heldAccess();let failure:unknown;
+  const ctx=groupCtx(),operation=command(kind,ctx),before=await state(),holder=await heldAccess();let failure:unknown;
   const writing=operation.run();void writing.catch(error=>{failure=error;});
   try{await observeWait(()=>failure);expect(await state()).toEqual(before);operation.mutate();ctx.userId=randomUUID();ctx.roles!.splice(0,ctx.roles!.length,'employee');}
   finally{await holder.close();await writing;}
@@ -64,16 +69,16 @@ describe('fresh calling authority before administrative profile-policy facts',()
   expect(after.events.at(-1)).toMatchObject({actorId:base.adminUserId,eventType:'tenant-setting.changed',payload:{key:operation.key}});
  });
  it('refuses authority revoked while waiting, before touching profile policy or withdrawing requests',async()=>{
-  const ctx=adminCtx(base),operation=command('visibility',ctx),before=await state(),holder=await heldAccess();let failure:unknown;
+  const ctx=groupCtx(),operation=command('visibility',ctx),before=await state(),holder=await heldAccess();let failure:unknown;
   const writing=operation.run();void writing.catch(error=>{failure=error;});
   try{await observeWait(()=>failure);await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));}
   finally{await holder.close();}
   await expect(writing).rejects.toMatchObject({reason:'not_group_admin'});expect(await state()).toEqual(before);
  });
  it('does not add a group-admin requirement to ordinary employee profile presentation reads',async()=>{
-  const hired=await hireEmployee(adminCtx(base),{person:{fullName:'Fictional Profile Reader',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+  const hired=await hireEmployee(groupCtx(),{person:{fullName:'Fictional Profile Reader',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const userId=await createAppUser(base.tenantId,hired.personId,'employee');
-  const ctx:SessionContext={...adminCtx(base),userId,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const ctx:SessionContext={...groupCtx(),userId,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   const result=await readProfilePresentationPolicy(ctx);expect(result.ctx.userId).toBe(userId);expect(result.visible.size).toBeGreaterThan(0);
  });
 });
