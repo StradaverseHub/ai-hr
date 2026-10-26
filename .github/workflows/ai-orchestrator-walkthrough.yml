@@ -1,82 +1,51 @@
-name: ai-orchestrator-walkthrough
-run-name: Production renderer only · ${{ inputs.candidate_ref }}
+name: users-walkthrough
 on:
   workflow_dispatch:
     inputs:
-      candidate_ref:
-        description: Existing same-repository harness candidate branch
-        required: true
-        type: string
-      expected_sha:
-        description: Exact clean candidate SHA; no staging deployment
-        required: true
-        type: string
-permissions:
-  contents: read
-  actions: read
-concurrency:
-  group: ai-orchestrator-renderer-${{ inputs.candidate_ref }}
-  cancel-in-progress: false
+      candidate_ref: {required: true, type: string}
+      expected_sha: {required: true, type: string}
+permissions: {contents: read, actions: read}
 env:
   TZ: Asia/Kuala_Lumpur
-  LANG: en_US.UTF-8
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   AIHR_CI_PG_MEMORY_GIB: '2'
   AIHR_CI_PG_JIT: 'on'
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.workflow_sha }}
-          persist-credentials: false
-      - run: node --test .github/ci/orchestrator-browser.test.mjs
-      - name: Resolve frozen candidate
-        id: candidate
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - id: candidate
         run: node .github/ci/resolve.mjs
         env:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
-  production-renderer:
+  walkthrough:
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: source
+    timeout-minutes: 35
+    defaults: {run: {working-directory: source}}
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: automation
-          persist-credentials: false
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          path: source
-          persist-credentials: false
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
-        with:
-          node: '20'
+        with: {node: '20'}
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Build and walk through the actual production renderer on fresh fictional data
-        run: node ../automation/.github/ci/orchestrator-browser.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
-      - name: Ensure owned database cleanup after interrupted walkthrough
-        if: always()
+      - run: node ../automation/.github/ci/users-browser.mjs
+      - if: always()
         run: bash ../automation/.github/ci/postgres.sh stop
-        env:
-          AIHR_CI_UNIT: db-1
+        env: {AIHR_CI_UNIT: db-1}
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: orchestrator-production-renderer-development-evidence
-          path: ${{ runner.temp }}/orchestrator-production-renderer/
+          name: users-real-page-development-evidence
+          path: ${{ runner.temp }}/users-browser-evidence/
           if-no-files-found: error
           retention-days: 14
