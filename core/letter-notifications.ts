@@ -44,7 +44,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
   if(kind==='acknowledgementReminder'){
    if(policy.acknowledgement==='none')return cancel();
    const [confirmed]=await tx.select({id:letterRecipientEvent.id}).from(letterRecipientEvent).where(and(eq(letterRecipientEvent.artifactId,artifact.id),eq(letterRecipientEvent.tenantId,ctx.tenantId),eq(letterRecipientEvent.kind,policy.acknowledgement==='signature'?'signed':'acknowledged'))).limit(1);if(confirmed)return cancel();
-   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select issued_at+${policy.acknowledgementDueDays}*interval '1 day' as due_at from letter_record where id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
+   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select issued_at+${policy.acknowledgementDueDays}*interval '1 day' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
   }
  }else{
   if(record.state!=='submitted'||job.payload.revisionId!==record.currentRevisionId||job.payload.stageIndex!==record.stageIndex||sourcePayload?.revisionId!==record.currentRevisionId||!['notification','approvalReminder','escalation'].includes(job.kind))return cancel();
@@ -63,10 +63,10 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
   const key=kind==='escalation'?`${record.id}:${record.currentRevisionId}:${record.stageIndex}:escalation${suffix}`:`${record.id}:${record.currentRevisionId}:stage:${record.stageIndex}:${job.recipientUserId}${suffix}${kind==='approvalReminder'?':reminder':''}`;
   if(job.dedupeKey!==key)return cancel();
   if(kind!=='approval'){
-   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select ${letterStageEnteredAt(sql`stage_index`,sql`submitted_at`,sql`current_revision_id`)}+${kind==='escalation'?policy.approvalDueHours:policy.reminderHours}*interval '1 hour' as due_at from letter_record where id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
+   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select ${letterStageEnteredAt(sql`stage_clock.stage_index`,sql`stage_clock.submitted_at`,sql`stage_clock.current_revision_id`)}+${kind==='escalation'?policy.approvalDueHours:policy.reminderHours}*interval '1 hour' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
   }
  }
- if(dueAt){const [clock]=await tx.execute<{pending:boolean}>(sql`select ${dueAt}::timestamptz>now() as pending`);if(clock?.pending){await tx.update(letterJob).set({dueAt,lastError:null}).where(eq(letterJob.id,id));return {created:0,cancelled:0,deferredEmail:0};}}
+ if(dueAt){const [clock]=await tx.execute<{pending:boolean}>(sql`select ${dueAt.toISOString()}::timestamptz>now() as pending`);if(clock?.pending){await tx.update(letterJob).set({dueAt,lastError:null}).where(eq(letterJob.id,id));return {created:0,cancelled:0,deferredEmail:0};}}
  else if(['approvalReminder','escalation','acknowledgementReminder'].includes(kind))return cancel();
  let created=0;
  if(policy.portalNotifications){

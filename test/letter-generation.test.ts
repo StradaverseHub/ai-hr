@@ -29,6 +29,15 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('keeps a later stage reminder anchored to the preceding approval rather than an unqualified decision column',async()=>{
+  await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...existing.policy.stages]}});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0];
+  await decideLetter(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve',comment:'Pass to the final stage',confirmSignature:false}});
+  const [reminder]=await owner.db.select().from(s.letterJob).where(and(eq(s.letterJob.letterId,row.record.id),eq(s.letterJob.kind,'approvalReminder'),eq(s.letterJob.status,'queued')));await owner.db.update(s.letterJob).set({dueAt:sq`now()`}).where(eq(s.letterJob.id,reminder.id));
+  expect(await projectLetterNotificationsFromSweep({tenantId:b.tenantId,roles:[]},owner)).toMatchObject({created:1,cancelled:0,failed:0});const [current]=await owner.db.select().from(s.letterJob).where(eq(s.letterJob.id,reminder.id));expect(current.status).toBe('queued');expect(current.dueAt).toEqual(reminder.dueAt);
+ });
+
  it('delivers issued-letter portal links only to their employee and cancels acknowledged or void reminder work',async()=>{
   await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});
