@@ -1,4 +1,9 @@
 import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
 import importlib.util
 from pathlib import Path
 import stat
@@ -50,4 +55,19 @@ class Extraction(unittest.TestCase):
             with self.assertRaises(ValueError):module.extract(self.archive,self.output,digest)
         finally:module.LIMITS["system-testing.json"]=original
         self.assertFalse(self.output.exists())
+    def test_real_cli_does_not_dirty_controller_with_local_import_bytecode(self):
+        digest=self.archive_with()
+        frozen=json.loads((Path(__file__).parent/"fixtures/build-extractor-bytecode-original.json").read_text())
+        self.assertEqual(frozen["source"],"2b22122911aa3e2e5ea9c5175c5bc24144742ef7")
+        clean_env={k:v for k,v in os.environ.items() if k not in {"PYTHONDONTWRITEBYTECODE","PYTHONPYCACHEPREFIX"}}
+        observed=[]
+        for label,code in [("original",frozen["code"]),("current",Path(module.__file__).read_text())]:
+            controller=self.root/label;controller.mkdir(mode=0o700)
+            entry=controller/"build-transport-extract.py";entry.write_text(code)
+            shutil.copyfile(Path(module.__file__).with_name("build-bundle.py"),controller/"build-bundle.py")
+            result=subprocess.run([sys.executable,str(entry),str(self.archive),str(controller/"out"),digest],env=clean_env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            observed.append((controller/"__pycache__").exists())
+        self.assertEqual(observed,[True,False],"Old CLI dirties checkout; repaired CLI must not create bytecode even without caller flags")
+
 if __name__=="__main__":unittest.main()

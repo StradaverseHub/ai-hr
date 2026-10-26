@@ -37,6 +37,10 @@ test('real shell skips all SDK operations with enough capacity and fails closed 
   const managedOk=spawnSync('/bin/bash',[script],{env:managedEnv,encoding:'utf8'});assert.equal(managedOk.status,0,managedOk.stderr);assert(managedOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
   const buildEnv={...env,AIHR_CI_CAPACITY_PROFILE:'bounded-next-build-diagnostic',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',GITHUB_RUN_ATTEMPT:'1',AIHR_NEXT_BUILD_CACHE_MODE:'cold',AIHR_BUILD_DIAGNOSTIC:'transport-producer',...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
   const buildOk=spawnSync('/bin/bash',[script],{env:buildEnv,encoding:'utf8'});assert.equal(buildOk.status,0,buildOk.stderr);assert(buildOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
+  const normalBuildEnv={...buildEnv,CI:'true',AIHR_CI_CAPACITY_PROFILE:'bounded-canonical-build',GITHUB_JOB:'build',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main',
+   AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'c'.repeat(40),GITHUB_SHA:'c'.repeat(40),GITHUB_RUN_ID:'123'};
+  const normalBuildOk=spawnSync('/bin/bash',[script],{env:normalBuildEnv,encoding:'utf8'});assert.equal(normalBuildOk.status,0,normalBuildOk.stderr);assert(normalBuildOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
+  const badNormal=spawnSync('/bin/bash',[script],{env:{...normalBuildEnv,GITHUB_JOB:'test'},encoding:'utf8'});assert.equal(badNormal.status,2);assert(!existsSync(trace));
   for(const [changes,expected] of [[{AIHR_DF_FAIL:'1'},1],[{GITHUB_WORKFLOW_REF:'other'},2],[{AIHR_CI_CAPACITY_PROFILE:'unknown'},2]]){const r=spawnSync('/bin/bash',[script],{env:{...env,...changes},encoding:'utf8'});assert.equal(r.status,expected,r.stderr);assert(!existsSync(trace));}
  }finally{rmSync(dir,{recursive:true});}
 });

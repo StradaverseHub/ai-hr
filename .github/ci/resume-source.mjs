@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {requiredEvidence} from './manifest.mjs';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiBuildPacket} from './build-artifact.mjs';
+import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {COMPILER_STATE_ARTIFACT,COMPILER_PACKET_MEMBERS} from './compiler-cache-protocol.mjs';
 import {REPOSITORY, REPOSITORY_ID, WORKFLOW_ID, WORKFLOW_PATH, verifyArtifactBytes} from './release-policy.mjs';
@@ -31,7 +32,7 @@ function archiveJson(artifact, bytes, filename, members = null) {
     execFileSync('python3', [fileURLToPath(new URL('./extract-artifact.py', import.meta.url)), archive, extracted],
       {timeout: 10000, stdio: 'pipe'});
     if(members&&!isDeepStrictEqual(readdirSync(extracted).sort(),members))fail('supplemental compiler packet members differ');
-    return JSON.parse(readFileSync(join(extracted, filename), 'utf8'));
+    return filename===null?new Map(readdirSync(extracted).map(name=>[name,readFileSync(join(extracted,name))])):JSON.parse(readFileSync(join(extracted, filename), 'utf8'));
   } finally {
     rmSync(temporary, {recursive: true, force: true});
   }
@@ -86,7 +87,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   const artifactByName = new Map(), artifactIds = new Set();
   for (const artifact of artifacts) {
     const w = artifact?.workflow_run;
-    if ((!topology.artifacts.includes(artifact?.name) && artifact?.name !== COMPILER_STATE_ARTIFACT) || artifactByName.has(artifact.name)
+    if ((!topology.artifacts.includes(artifact?.name) && artifact?.name !== COMPILER_STATE_ARTIFACT && artifact?.name !== NEXT_APPLICATION_STATE && artifact?.name !== NEXT_APPLICATION_FAILURE) || artifactByName.has(artifact.name)
       || !positiveId(artifact.id) || artifactIds.has(artifact.id) || artifact.expired !== false
       || !positiveId(artifact.size_in_bytes) || artifact.size_in_bytes > (artifact.name===BUILD_ARTIFACT?BUILD_ZIP_MAX:maxArchiveBytes)
       || !/^sha256:[a-f0-9]{64}$/.test(artifact.digest ?? '') || !archives.has(artifact.name))
@@ -122,6 +123,21 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
       inspectCiBuildPacket(packet,{...expected,controllerBranch:run.head_branch,producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
     }finally{rmSync(temporary,{recursive:true,force:true});}
     // This supplies no reusable test unit and never waives a fresh canonical build.
+  }
+  const applicationFailure=artifactByName.get(NEXT_APPLICATION_FAILURE);
+  if(applicationFailure){
+    if(byName.get('build').conclusion==='success')fail('failure diagnostic attached to successful build job');
+    const report=fromJob(applicationFailure,'build','comparison.json',['comparison.json']);
+    if(report.kind!=='CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE'||report.releaseAuthorized!==false
+      ||report.source!==expected.candidate||report.controller!==expected.controller||report.runId!==String(run.id)||report.attempt!=='1')fail('build failure diagnostic identity differs');
+    // Job failure remains authoritative. This diagnostic supplies no reusable result.
+  }
+  const applicationState=artifactByName.get(NEXT_APPLICATION_STATE);
+  if(applicationState){
+    const files=fromJob(applicationState,'build',null,NEXT_APPLICATION_MEMBERS);
+    const checked=inspectNextStatePacket({files,run,job:byName.get('build'),now});
+    if(byName.get('build').conclusion!=='success'||checked.producer.source!==expected.candidate||checked.producer.controller!==expected.controller)fail('application state candidate/job differs');
+    // Still no reusable build, compiler or test coverage.
   }
   const supplemental = artifactByName.get(COMPILER_STATE_ARTIFACT);
   if(supplemental){

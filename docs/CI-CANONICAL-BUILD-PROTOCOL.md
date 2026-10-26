@@ -1,4 +1,4 @@
-# Canonical CI build packet — version 4 source integration
+# Canonical CI build packet — version 5 source integration
 
 Status: prepared in the isolated performance review branch. Pure/private integrity and typed-helper probes have run; this revised normal workflow has not run a complete release gate, promoted an artifact, or established a new release baseline. Main/live deployment stays disabled.
 
@@ -14,19 +14,19 @@ The mandatory production-build-v1 artifact contains exactly:
 - bytes/build-bundle-files.json
 - bytes/build-bundle.tar.gz
 
-The packet is uploaded without ZIP recompression because the bundle is already gzip-compressed. It expires after one day, matching the verifier's maximum witness age. Upload and build failures remain blocking. Existing optional Turbopack cache behavior is retained; normal application TypeScript graph reuse and bounded build capacity are separate unfinished integrations.
+The packet is uploaded without ZIP recompression because the bundle is already gzip-compressed. It expires after one day, matching the verifier's maximum witness age. Upload and build failures remain blocking. Existing optional Turbopack cache behavior is retained; normal application TypeScript graph reuse and bounded build capacity are now wired in source; see [normal application cache](NORMAL-NEXT-APPLICATION-CACHE.md). Actual normal execution remains unverified.
 
 A build-only invocation can compile review dispatches and same-repository PR checks admitted by the normal resolution guard. Its output always declares releaseAuthorized:false. The release verifier still requires a complete successful first-attempt normal run controlled by main or alpha; diagnostic, review-controller and PR builds cannot authorize deployment.
 
 ## Authenticated operator boundary
 
-Policy aihr-staging-ci/v4 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with a280MiB compressed ZIP limit and256MiB inner archive limit. The optional whole-compiler-state packet cannot replace either the build or any required test report.
+Policy aihr-staging-ci/v5 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with a280MiB compressed ZIP limit and256MiB inner archive limit. The optional whole-compiler-state and next-application-state-v1 packets cannot replace either the build or any required test report. Version5 adds the second fixed optional namespace; it does not weaken required coverage.
 
 The operator authenticates the repository/run/controller/job/artifact through GitHub APIs, checks downloaded ZIP length and digest, and uses the existing exact-inventory bounded binary extractor. It then verifies source/controller/runtime/build UUID/BUILD_ID, original successful observation times inside the producing job, every bound record/manifest digest, and the actual archive length/digest. It independently regenerates the canonical System Testing preparation from the unchanged candidate and checks exact preparation bytes plus package/lock hashes. Immediately before any existing operator transfer, fresh API revalidation also reopens local packet bytes and rechecks canonical source.
 
 The source/record binding is asynchronous because it imports the actual candidate's typed helpers. Both operator verification calls await it. Use the installed candidate toolchain, for example node --import tsx .../.github/ci/operator-release.mjs verify CANDIDATE RUN_ID; plain Node20 cannot import these typed helpers.
 
-A resumable source assessment checks any present binary packet's provenance, bytes and producing job, but still requires a fresh build and supplies no additional reusable test unit. A failed or incomplete normal run remains failed/incomplete. Version3 witnesses cannot be relabelled version4.
+A resumable source assessment checks any present binary packet's provenance, bytes and producing job, but still requires a fresh build and supplies no additional reusable test unit. A failed or incomplete normal run remains failed/incomplete. Older policy witnesses cannot be relabelled version5.
 
 ## What remains before build-once deployment
 
@@ -38,4 +38,4 @@ The earlier independently verified build-byte transport and application cache ex
 
 ## Source verification checkpoint
 
-The exact updated resolve-controller command passed191 private controller checks. The existing fake-transport operator probes passed5, the tiny typed-source binding probe passed1 and the bounded ZIP extractor probes passed6. These are203 integrity/protocol checks, not application cases or a full release gate. YAML parsed successfully; structural comparison changed only resolution checks, controller checks and the normal build job. Test/browser/compiler/migration/receipt/deployment-hold jobs, triggers and permissions remain identical. The first packet probe had2 failures caused by the macOS temporary-path alias; the fixture now canonicalizes its owned path without relaxing the verifier, and the current checks pass.
+The prior version4 resolve-controller command passed191 private controller checks. The existing fake-transport operator probes passed5, the tiny typed-source binding probe passed1 and the bounded ZIP extractor probes passed6. These are203 integrity/protocol checks, not application cases or a full release gate. YAML parsed successfully; structural comparison changed only resolution checks, controller checks and the normal build job. Test/browser/compiler/migration/receipt/deployment-hold jobs, triggers and permissions remain identical. The first packet probe had2 failures caused by the macOS temporary-path alias; the fixture now canonicalizes its owned path without relaxing the verifier, and the current checks pass.

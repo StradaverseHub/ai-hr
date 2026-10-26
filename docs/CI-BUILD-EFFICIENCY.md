@@ -1,6 +1,6 @@
 # CI build efficiency and deployment boundaries
 
-The isolated branch now has independently verified canonical Linux build-byte transport and Next application compiler-state reuse. The normal review workflow now prepares a mandatory canonical build packet under [policy v4](CI-CANONICAL-BUILD-PROTOCOL.md). That source integration is not yet exercised as a complete normal gate. Normal authenticated promotion and complete release adoption remain unfinished. The original optional Turbopack cache below has no measured cold/warm result; it is separate from the newly verified application TypeScript state.
+The isolated branch now has independently verified canonical Linux build-byte transport and Next application compiler-state reuse. The normal review workflow now prepares a mandatory canonical build packet under [policy v5](CI-CANONICAL-BUILD-PROTOCOL.md). That source integration is not yet exercised as a complete normal gate. The [normal application compiler cache](NORMAL-NEXT-APPLICATION-CACHE.md) and bounded build capacity are now also integrated in source, with actual normal execution still pending. Normal authenticated promotion and complete release adoption remain unfinished. The original optional Turbopack cache below has no measured cold/warm result; it is separate from the newly verified application TypeScript state.
 
 ## Current measured application compiler result — 26 October 2026 MYT
 

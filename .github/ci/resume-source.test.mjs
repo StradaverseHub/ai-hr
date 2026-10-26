@@ -86,3 +86,23 @@ test('binary build packet integrity is checked without creating reusable build o
  put(f,'production-build-v1','build-provenance.json',changed,Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='build-provenance.json')));
  assert.throws(()=>assessResumeSource(f),/canonical build provenance/);
 });
+
+test('optional normal application graph is authenticated but never waives a fresh build/compiler or supplies test units',async()=>{
+ const {applicationStateFixture}=await import('./next-application-test-fixtures.mjs');
+ const f=fixture(),job=f.jobs.find(j=>j.name==='build');
+ const state=applicationStateFixture({...f.expected,controllerBranch:'main',producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
+ const entries=Object.fromEntries([...state.files].map(([name,bytes])=>[name,bytes.toString()]));
+ const extra=Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='producer.json'));
+ put(f,'next-application-state-v1','producer.json',JSON.parse(entries['producer.json']),extra);
+ const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert(result.freshPrerequisites.includes('typecheck'));assert.equal(result.releaseAuthorized,false);
+ put(f,'next-application-state-v1','producer.json',{...JSON.parse(entries['producer.json']),workingStateRemoved:false},extra);
+ assert.throws(()=>assessResumeSource(f),/cleanup/);
+});
+
+test('failed-build diagnostic stays non-authoritative and cannot prevent retaining unrelated passing test units',()=>{
+ const f=fixture(),job=f.jobs.find(j=>j.name==='build');job.conclusion='failure';
+ const diagnostic={kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:f.expected.candidate,controller:f.expected.controller,runId:String(f.run.id),attempt:'1',exitCode:1};
+ put(f,'next-application-build-failure','comparison.json',diagnostic);
+ const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert.equal(result.releaseAuthorized,false);
+ job.conclusion='success';assert.throws(()=>assessResumeSource(f),/failure diagnostic attached/);
+});

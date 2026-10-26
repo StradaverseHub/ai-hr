@@ -6,6 +6,9 @@ import stat
 import sys
 import zipfile
 
+# Import the local bundle primitive without dirtying the frozen controller checkout.
+sys.dont_write_bytecode = True
+
 spec = importlib.util.spec_from_file_location("bundle", Path(__file__).with_name("build-bundle.py"))
 bundle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bundle)

@@ -11,6 +11,7 @@ export const WORKFLOW_PATH='.github/workflows/alpha-staging.yml';
 import {requiredEvidence} from './manifest.mjs';
 import {COMPILER_STATE_ARTIFACT} from './compiler-cache-protocol.mjs';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX} from './build-artifact.mjs';
+import {NEXT_APPLICATION_STATE} from './next-application-cache-protocol.mjs';
 const sha=value=>typeof value==='string'&&/^[0-9a-f]{40}$/.test(value);
 const reject=message=>{throw Error('CI release refused: '+message);};
 export const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
@@ -38,11 +39,11 @@ export function validateJobs(jobs,expectedPlan){
 }
 export function validateArtifacts(artifacts,p,expectedPlan){
  const REQUIRED_ARTIFACTS=requiredEvidence(expectedPlan).artifacts;
- if(!Array.isArray(artifacts)||artifacts.length<REQUIRED_ARTIFACTS.length||artifacts.length>REQUIRED_ARTIFACTS.length+1)reject('artifact set is incomplete or unexpected');
+ if(!Array.isArray(artifacts)||artifacts.length<REQUIRED_ARTIFACTS.length||artifacts.length>REQUIRED_ARTIFACTS.length+2)reject('artifact set is incomplete or unexpected');
  const names=new Set();
  for(const a of artifacts){
   const w=a.workflow_run;
-  if((!REQUIRED_ARTIFACTS.includes(a.name)&&a.name!==COMPILER_STATE_ARTIFACT)||names.has(a.name)||!Number.isSafeInteger(a.id)||a.id<1||a.expired||!Number.isSafeInteger(a.size_in_bytes)||a.size_in_bytes<1||a.size_in_bytes>(a.name===BUILD_ARTIFACT?BUILD_ZIP_MAX:64*1024*1024)||!/^sha256:[0-9a-f]{64}$/.test(a.digest??''))reject('invalid, duplicated or expired artifact');
+  if((!REQUIRED_ARTIFACTS.includes(a.name)&&a.name!==COMPILER_STATE_ARTIFACT&&a.name!==NEXT_APPLICATION_STATE)||names.has(a.name)||!Number.isSafeInteger(a.id)||a.id<1||a.expired||!Number.isSafeInteger(a.size_in_bytes)||a.size_in_bytes<1||a.size_in_bytes>(a.name===BUILD_ARTIFACT?BUILD_ZIP_MAX:64*1024*1024)||!/^sha256:[0-9a-f]{64}$/.test(a.digest??''))reject('invalid, duplicated or expired artifact');
   if(w?.id!==p.runId||w.repository_id!==REPOSITORY_ID||w.head_repository_id!==REPOSITORY_ID||w.head_sha!==p.controller||w.head_branch!==(p.controllerBranch??'main'))reject('artifact provenance mismatch');
   names.add(a.name);
  }

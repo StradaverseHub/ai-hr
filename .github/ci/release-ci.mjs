@@ -1,10 +1,11 @@
 /** Authenticate and revalidate a complete CI witness against the unchanged source. */
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
+import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
 import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
@@ -44,6 +45,13 @@ export async function verifyCi({candidatePath,runId,baseline}){
   if(bytes.length!==artifact.size_in_bytes)throw Error('Artifact API/archive byte size differs');
   const binary=artifact.name===BUILD_ARTIFACT;
   execFileSync('python3',[fileURLToPath(new URL(binary?'./build-transport-extract.py':'./extract-artifact.py',import.meta.url)),path,join(dir,artifact.name),...(binary?[artifact.digest.slice(7)]:[])],{stdio:'inherit',timeout:60000});
+ }
+ if(artifacts.some(a=>a.name===NEXT_APPLICATION_STATE)){
+  if(!isDeepStrictEqual(readdirSync(join(dir,NEXT_APPLICATION_STATE)).sort(),NEXT_APPLICATION_MEMBERS))throw Error('Application state packet inventory differs');
+  const job=jobs.find(j=>j.name==='build');
+  const files=new Map(NEXT_APPLICATION_MEMBERS.map(name=>[name,readFileSync(join(dir,NEXT_APPLICATION_STATE,name))]));
+  const state=inspectNextStatePacket({files,run,job});
+  if(state.producer.source!==candidate||state.producer.controller!==controller)throw Error('Supplemental application state candidate differs');
  }
  const json=(name,file)=>JSON.parse(readFileSync(join(dir,name,file),'utf8'));
  const plan=json('gate-plan','ci-plan.json'),receipt=json('gate-evidence','ci-receipt.json');
