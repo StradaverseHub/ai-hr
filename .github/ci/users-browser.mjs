@@ -53,12 +53,12 @@ try{
  page=await context.newPage();page.on('pageerror',e=>report.browserErrors.push(String(e)));page.on('console',m=>{if(m.type()==='error')report.consoleErrors.push(m.text());});
  const messages=JSON.parse(readFileSync('messages/en.json','utf8')).admin.users;
  const main=()=>page.getByRole('main');
- const directory=()=>main().locator('[data-tour="admin-users"]');
- const navigate=async()=>{const r=await page.goto(origin+'/admin/users');assert.equal(r.status(),200);await directory().waitFor();assert(!new URL(page.url()).searchParams.has('error'),page.url());};
+ const directory=()=>main().locator('[data-tour="admin-users"]:visible');
+ const navigate=async()=>{const r=await page.goto(origin+'/admin/users');assert.equal(r.status(),200);(report.navigationSamples??=[]).push(await page.locator('[data-tour="admin-users"]').evaluateAll(elements=>elements.map(e=>({visible:e.getClientRects().length>0,inMain:!!e.closest('main')}))));await directory().waitFor();assert(!new URL(page.url()).searchParams.has('error'),page.url());};
  await navigate();
  await page.getByRole('dialog',{name:'Product tour'}).getByRole('button',{name:'Skip',exact:true}).click();
  report.phases.push('first-use product tour dismissed through its visible control');
- const form=main().locator('#manual-account-setup form').first();
+ const form=main().locator('#manual-account-setup:visible form').first();
  await form.locator('[name="accountType"][value="standalone"]').check();
  await form.locator('[name="fullName"]').fill('Alexandra Consultant');await form.locator('[name="email"]').fill('alexandra@example.test');
  await form.locator('[name="username"]').fill('alexandra.consultant');await form.locator('[name="password"]').fill('Temporary consultant passphrase 2026!');
@@ -83,7 +83,7 @@ try{
  await directory().getByRole('combobox',{name:messages.statusColumn,exact:true}).selectOption('archived');await directory().getByRole('searchbox').fill('alexandra@example.test');await row().waitFor();
  await row().getByRole('button',{name:messages.directory.manage,exact:true}).click();await main().getByRole('region',{name:messages.directory.accessFor.replace('{name}','Alexandra Consultant')}).getByRole('button',{name:messages.restore,exact:true}).click();
  await page.waitForLoadState('networkidle');await navigate();await directory().getByRole('searchbox').fill('alexandra@example.test');await row().waitFor();report.phases.push('archive and restore saved and reopened');
- const invite=main().locator('#invite-user').locator('..').locator('form');
+ const invite=main().locator('#invite-user:visible').locator('..').locator('form');
  await invite.locator('[name="accountType"][value="standalone"]').check();await invite.locator('[name="fullName"]').fill('Invited Consultant');await invite.locator('[name="email"]').fill('invitee@example.test');await invite.locator('[name="role"]').selectOption('employee');await invite.locator('[name="companyId"]').selectOption('group');await invite.getByRole('button',{name:messages.inviteSubmit,exact:true}).click();
  await page.waitForLoadState('networkidle');await navigate();await directory().getByRole('searchbox').fill('invitee@example.test');await directory().locator('[data-directory-row]').filter({hasText:'Invited Consultant'}).waitFor();
  assert.equal(query('select count(*) from employment'),before);report.phases.push('invitation saved and reopened without employment');
