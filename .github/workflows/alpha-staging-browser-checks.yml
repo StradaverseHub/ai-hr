@@ -1,27 +1,25 @@
-name: alpha-staging-browser-checks
-run-name: Diagnostic only · ${{ inputs.candidate_ref }}
+name: browser-provisioning-diagnostics
+run-name: Tooling transport only · ${{ inputs.candidate_ref }}
 on:
   workflow_dispatch:
     inputs:
       candidate_ref:
-        description: Frozen candidate branch; diagnostic results cannot authorize release
+        description: Existing frozen source branch; this workflow cannot authorize release
         required: true
         type: string
       expected_sha:
-        description: Exact candidate commit
+        description: Exact source commit
         required: true
         type: string
 permissions: {contents: read, actions: read}
 concurrency:
-  group: alpha-original-browser-${{ inputs.candidate_ref }}
+  group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
-  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
-  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
     runs-on: ubuntu-24.04
@@ -36,42 +34,56 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
         run: node .github/ci/resolve.mjs
-  browser:
+  tooling:
     needs: resolve
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-    timeout-minutes: 30
+      ENGINE: ${{ matrix.engine }}
+      VARIANT: ${{ matrix.variant }}
     strategy:
       fail-fast: false
-      matrix: {engine: [chromium, firefox, webkit]}
+      matrix:
+        engine: [chromium, firefox, webkit]
+        variant: [runner, primary-https]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: automation
-          persist-credentials: false
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          path: source
-          fetch-depth: 0
-          persist-credentials: false
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
-      - run: pnpm exec playwright install --with-deps "$ENGINE"
-        env: {ENGINE: '${{ matrix.engine }}'}
-      - run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
-        env: {ENGINE: '${{ matrix.engine }}'}
-      - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {capacity_profile: bounded-suite-setup}
+      - name: Retain original source bindings and transport-only configuration
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser-tooling"
+          git rev-parse HEAD > "$RUNNER_TEMP/browser-tooling/source-sha.txt"
+          sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/browser-tooling/lockfile-sha256.txt"
+          node ../automation/.github/ci/ubuntu-browser-mirror.mjs "$VARIANT" "$RUNNER_TEMP/browser-tooling/archive-transport.json"
+      - name: Original complete Playwright installation with measured wall time
+        shell: bash
+        run: |
+          set +e
+          started=$(date +%s%3N)
+          pnpm exec playwright install --with-deps "$ENGINE" 2>&1 | tee "$RUNNER_TEMP/browser-tooling/install.log"
+          status=${PIPESTATUS[0]}
+          finished=$(date +%s%3N)
+          printf '{"kind":"TOOLING_INSTALL_NOT_TEST_OR_RELEASE_PASS","engine":"%s","variant":"%s","startedMs":%s,"finishedMs":%s,"elapsedMs":%s,"exitCode":%s,"releaseAuthorized":false}\n' "$ENGINE" "$VARIANT" "$started" "$finished" "$((finished-started))" "$status" > "$RUNNER_TEMP/browser-tooling/install.json"
+          exit "$status"
+      - name: Native browser launch and multilingual raster probe
+        run: node ../automation/.github/ci/browser-tooling-probe.mjs "$ENGINE" "$RUNNER_TEMP/browser-tooling"
+      - name: Installed package inventory
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser-tooling"
+          dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' > "$RUNNER_TEMP/browser-tooling/installed-packages.tsv"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
-          name: development-browser-${{ matrix.engine }}
-          include-hidden-files: true
-          path: |
-            ${{ runner.temp }}/aihr-ci/
-            source/.vitest-attachments/
+          name: tooling-${{ matrix.engine }}-${{ matrix.variant }}
+          path: ${{ runner.temp }}/browser-tooling/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
