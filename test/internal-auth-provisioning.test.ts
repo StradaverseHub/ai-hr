@@ -14,7 +14,7 @@ import {credentialByLogin,readSession,startLogin,verifyMfa,type Organization} fr
 import {closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 const password='A confidential first login phrase 884!';
 const provision=(name='Fresh Customer',email='first@example.test')=>owner.db.transaction(tx=>provisionTenant(tx,{name,adminEmail:email,baseUrl:'https://hr.test'}));
-const token=(url:string)=>new URL(url).pathname.split('/invite/')[1];
+const token=(url:string)=>new URL(url,'https://hr.test').pathname.split('/invite/')[1];
 beforeAll(migrateTestDb);
 beforeEach(async()=>{
   await resetDb();
@@ -56,9 +56,10 @@ describe('internal authentication on the real customer provisioning path',()=>{
     expect(login.step).toBe('mfa');
   });
   it('rolls organization records and audit back when a later provisioning step fails',async()=>{
+    const tenantsBefore=(await owner.client`select id from tenant order by id`).map(row=>row.id);
     await expect(owner.db.transaction(tx=>provisionTenant(tx,{name:'Rollback Customer',adminEmail:'rollback@example.test',country:'ZZ'}))).rejects.toThrow();
     expect(await owner.client`select record_key from app_internal_auth_record where record_key like 'org:%' or record_key like 'tenant:%'`).toHaveLength(0);
-    expect(await owner.db.select().from(schema.tenant)).toHaveLength(0);
+    expect((await owner.client`select id from tenant order by id`).map(row=>row.id)).toEqual(tenantsBefore);
     expect(await owner.client`select id from domain_event where event_type='tenant.internal-login-organization-initialized'`).toHaveLength(0);
   });
   it('keeps same-name customers in separate login organizations without replacing either mapping',async()=>{
