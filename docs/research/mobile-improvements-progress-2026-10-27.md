@@ -204,3 +204,8 @@ Affected revalidation passed 74 server/database/budget cases and 59 native trans
 cases, plus native TypeScript. The original three failed reproduction cases remain separate from the
 passing repair, which also covers admission failures. Final compiler/platform and expected-refusal
 checks are recorded separately once terminal. This is not a complete CI or staging release claim.
+
+The expected-refusal check passed separately: 401/429 responses create neither a support UUID nor a
+failure log. Frozen `138a1897b` then passed both compilers and both platform exports. Source-map review
+retained 1,328 iOS and 1,459 Android modules and found no mobile server wrapper, database/attendance/
+auth server modules, Drizzle client, node-forge or nested Zod 3. No publication or deployment followed.
