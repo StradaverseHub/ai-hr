@@ -3,19 +3,19 @@
  * pushes plans / deployment status back. psql runs ON THE SERVER (sourcing its own .env.production), so
  * the DB credentials never leave the box — only SQL goes up and JSON/rows come back, over key-based SSH.
  *
- * Configure the host via env (defaults match the gated demo): IMPROVE_SSH_HOST / _PORT / _USER, and
+ * Configure OpenSSH privately (default alias aihr-staging), or override via env: IMPROVE_SSH_HOST / _PORT / _USER, and
  * IMPROVE_REMOTE_DIR (the app dir on the server, default /opt/ai-hr).
  *
  * NOTE: requires the feedback module (migrations 0093/0094) to be deployed on the server first — until
  * then there is no feedback_request table to pull from.
  */
 import { execFileSync } from 'node:child_process';
+import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 
-const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
-const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
-const USER = process.env.IMPROVE_SSH_USER ?? 'ubuntu';
-const DIR = process.env.IMPROVE_REMOTE_DIR ?? '/opt/ai-hr';
+const SSH = operatorSsh();
+const TARGET = SSH.target;
+const DIR = SSH.remoteDir;
 
 /**
  * What the board shows as the reporter for an item the improvement loop raised (0348).
@@ -106,7 +106,7 @@ export function assertMoved(id: string, want: string, out: string, why: string):
 /** Run a remote shell command (psql sources the server's own .env.production). `stdin` feeds `psql -f -`. */
 function remote(cmd: string, stdin?: string): string {
   const full = `cd ${DIR} && set -a; . ./.env.production; set +a; ${cmd}`;
-  return execFileSync('ssh', ['-p', PORT, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', `${USER}@${HOST}`, full], {
+  return execFileSync('ssh', [...SSH.options, TARGET, full], {
     input: stdin,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,

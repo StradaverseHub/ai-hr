@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyReports} from './verify-shards.mjs';
@@ -25,3 +26,18 @@ test('Dispatch selects explicit frozen pilot branch, not controller main',()=>{a
 test('Reject branch injection and malformed commit',()=>{for(const candidate_ref of ['../main','alpha\nmain','-bad','a//b'])assert.throws(()=>candidateRequest(event,{candidate_ref,expected_sha:sha}));assert.throws(()=>candidateRequest(event,{candidate_ref:'alpha',expected_sha:'HEAD'}));});
 test('Reject foreign repository and non-alpha push',()=>{assert.throws(()=>candidateRequest({...event,repository:{full_name:'other/repo'}}));assert.throws(()=>candidateRequest({repository:event.repository,ref:'refs/heads/main'}));});
 test('Reject fork, draft and wrong-target PRs',()=>{const pr={draft:false,head:{repo:{full_name:repository},ref:'feature',sha},base:{ref:'alpha',sha:base}};for(const patch of [{draft:true},{head:{...pr.head,repo:{full_name:'fork/repo'}}},{base:{...pr.base,ref:'main'}}])assert.throws(()=>candidateRequest({repository:event.repository,pull_request:{...pr,...patch}}));});
+
+test('manual workflow input inventories stay nonempty, unique and within GitHub 25-input limit',()=>{
+ for(const name of ['alpha-staging.yml','alpha-staging-diagnostics.yml']){
+  const source=readFileSync(new URL('../workflows/'+name,import.meta.url),'utf8'),start=source.indexOf('    inputs:\n'),end=source.indexOf('\npermissions:',start);
+  assert(start>=0&&end>start+50,'Complete manual-input source boundary required');
+  const names=[...source.slice(start,end).matchAll(/^      ([A-Za-z_][A-Za-z0-9_]*):$/gm)].map(m=>m[1]);
+  assert(names.length>0&&names.length<=25,'Manual workflow exceeds GitHub input limit: '+name);assert.equal(new Set(names).size,names.length);
+ }
+});
+
+test('independent v12 report verification rejects absent or foreign per-unit dependency setup proof',()=>{
+ const {plan,report}=sample();plan.pdfTooling={strategy:'audited-external-pdf-suite-v1'};plan.units[0].pdfTools=false;assert.throws(()=>verifyReports(plan,[report]));
+ report.pdfToolSetup={kind:'NO_EXTERNAL_PDF_TOOLS_REQUIRED_FOR_COMPLETE_UNIT',candidate:plan.sha,controller:plan.controller,fingerprint:plan.fingerprint,unit:plan.units[0].id,pdfToolsRequired:false,steps:[],releaseAuthorized:false};assert.equal(verifyReports(plan,[report]).tests,1);
+ for(const key of ['candidate','controller','fingerprint','unit']){const wrong=structuredClone(report);wrong.pdfToolSetup[key]='foreign';assert.throws(()=>verifyReports(plan,[wrong]));}
+});

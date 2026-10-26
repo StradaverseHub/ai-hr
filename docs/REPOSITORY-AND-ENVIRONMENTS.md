@@ -10,17 +10,23 @@ Until the owner revokes this instruction, integrate each verified release into b
 
 ## Repository
 
-The sole canonical repository is **https://github.com/StradaverseHub/ai-hr** (private, GitHub organization `StradaverseHub`, repository ID `1333414856`). The earlier `zenlam/ai-hr` and personal-account `stradaverse-hub/ai-hr` locations are historical; use the organization URL for every new clone, push, pull request and CI integration.
+The sole canonical repository is **https://github.com/StradaverseHub/ai-hr** (public, GitHub organization `StradaverseHub`, repository ID `1333414856`). The earlier `zenlam/ai-hr` and personal-account `stradaverse-hub/ai-hr` locations are historical; use the organization URL for every new clone, push, pull request and CI integration.
 
 ```sh
 git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
 ```
 
+## Public-repository Actions capacity
+
+On 26 October 2026 the owner made this repository public; authenticated GitHub metadata confirmed `visibility=PUBLIC` and `isPrivate=false`. [Standard GitHub-hosted Actions are free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions), so the earlier private included-minute hold is superseded for these runs. Use standard runners only: larger runners remain separately billed, and artifact/cache storage has separate allowances. No paid capacity or billing-setting change is authorized by this visibility change.
+
+[Standard public Ubuntu runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) provide four CPUs and 16 GB RAM. Record actual execution resources and timings; results from the earlier private runners do not prove current performance. The existing complete-coverage, release-coordination and staging/main deployment rules remain in force.
+
 ## Branch and environment roles
 
 | Branch | Environment | Target |
 |---|---|---|
-| `alpha` | Staging / internal acceptance | The existing server, previously called production: `ubuntu@203.142.6.241:8288`, application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
+| `alpha` | Staging / internal acceptance | The existing server, previously called production: SSH alias `aihr-staging` (connection settings are private; see [Operator access](../deploy/OPERATOR-ACCESS.md)), application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
 | `main` | New production / live | Reserved for the separate live installation that the owner will set up. Its host, URL, database, credentials and deployment integration are not established by this decision. |
 | `codex/*` and other work branches | Isolated development | Target `alpha` for staging integration; promote a verified release to `main` for the future live environment. |
 
@@ -29,6 +35,11 @@ Keep `main` as the repository default branch. Reserving it for production does n
 The name `.env.production`, Next.js production build mode, an old runbook saying "production", and a healthy running service do not identify the new live environment. The existing host is now designated **staging** by the owner. Preserve its existing database and data while changing this designation.
 
 ## Transition and release coordination
+
+**Owner deployment rule — 26 October 2026.** Deploy verified changes to staging first and verify
+staging acceptance. Production deployment requires a subsequent explicit request from the owner.
+A staging deployment, successful checks, branch alignment, tag or package publication does not
+authorize production deployment. After staging verification, stop and report the result.
 
 - `alpha` starts from the existing host's verified deployed application commit **`c98bfed60f6330b57f5a67d959ce6e3757df3b53`**, not from an unshipped development candidate. Read-only server evidence on 25 October 2026 showed `ref=built_ref` at that commit, build ID `dhL_pFtVUIgHtI832fI05` and `stale_build=0`. This is the initial baseline, not a permanent claim about the current deployment. Documentation commits may advance `alpha` without deploying application code.
 - Board 3 owns the in-flight verification, server release and Mac resource window. Coordinate its eventual deployment to the existing host as a **staging / alpha** release. Its owner will reconcile the alpha ref and local WIP before integrating the verified candidate; the former automatic merge-to-main step is superseded by this branch decision.

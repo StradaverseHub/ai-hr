@@ -5,6 +5,8 @@ export type MobileConnection = {
 };
 export type CompanyProfile = MobileConnection & {
   id: string; name: string; hosting: 'cloud' | 'on-premise'; notBefore: number; expiresAt: number;
+  /** Operator-signed login namespace, never a tenant ID or an access grant. Older setup files omit it. */
+  organization?: string;
 };
 export function connectionEndpoints(profile: Pick<MobileConnection, 'issuer'>) {
   const base = profile.issuer + '/protocol/openid-connect/';
@@ -14,7 +16,7 @@ export function validCompanyProfile(input: unknown, now = Date.now() / 1000): Co
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid company setup file.');
   const p = input as Record<string, unknown>;
   const fields = ['connectionVersion','apiVersion','authProvider','apiOrigin','issuer','clientId','audience','id','name','hosting','notBefore','expiresAt'];
-  if (Object.keys(p).length !== fields.length || Object.keys(p).some(k=>!fields.includes(k)) || fields.some(k => !Object.hasOwn(p,k)) ||
+  if (Object.keys(p).some(k=>!fields.includes(k) && k !== 'organization') || fields.some(k => !Object.hasOwn(p,k)) ||
       p.connectionVersion !== 1 || p.apiVersion !== 'v1' || !['keycloak', 'internal'].includes(String(p.authProvider)) ||
       !['cloud','on-premise'].includes(String(p.hosting)) ||
       !['id','name','apiOrigin','issuer','clientId','audience'].every(k => typeof p[k] === 'string' && (p[k] as string).length > 0 && (p[k] as string).length <= 300) ||
@@ -22,6 +24,8 @@ export function validCompanyProfile(input: unknown, now = Date.now() / 1000): Co
       !Number.isSafeInteger(p.notBefore) || !Number.isSafeInteger(p.expiresAt) ||
       (p.notBefore as number) > now || (p.expiresAt as number) <= now ||
       (p.expiresAt as number) - (p.notBefore as number) > 366 * 86400) throw new Error('Invalid, expired or unsupported company setup file.');
+  if (Object.hasOwn(p, 'organization') && (p.authProvider !== 'internal' || typeof p.organization !== 'string' ||
+      !/^[a-z0-9][a-z0-9-]{1,63}$/.test(p.organization))) throw new Error('Invalid workplace organization code.');
   const origin = new URL(p.apiOrigin as string), issuer = new URL(p.issuer as string);
   for (const u of [origin, issuer]) if (u.protocol !== 'https:' || !u.hostname || u.username || u.password || u.search || u.hash) throw new Error('Company connections require trusted HTTPS.');
   if (origin.origin !== p.apiOrigin || origin.pathname !== '/' || issuer.href !== p.issuer ||

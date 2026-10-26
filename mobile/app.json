@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI HR Test",
     "slug": "ai-hr-test",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "android": {
       "blockedPermissions": [
@@ -34,7 +34,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "ai.stradaverse.aihr.test",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"

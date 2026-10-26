@@ -8,8 +8,8 @@ import { manualIdentityError } from '@/lib/identity/manual-model';
 export async function createManualAccountAction(form:FormData) {
   const ctx=await requireManualIdentityAdmin();
   try {
-    await createManualAccount(ctx,{id:String(form.get('id')??''),personId:String(form.get('personId')??''),username:String(form.get('username')??''),
-      email:String(form.get('email')??''),role:String(form.get('role')??''),companyId:String(form.get('companyId')??'')||null,
+    await createManualAccount(ctx,{id:String(form.get('id')??''),personId:form.get('accountType')==='standalone'?null:String(form.get('personId')??''),fullName:String(form.get('fullName')??''),username:String(form.get('username')??''),
+      email:String(form.get('email')??''),role:String(form.get('role')??''),companyId:form.get('companyId')==='group'?null:String(form.get('companyId')??'')||null,
       password:String(form.get('password')??''),ownershipAttested:form.get('ownershipAttested')==='true'});
   } catch(e) {redirect(`/admin/users?manualError=${manualIdentityError(e).code}`);}
   revalidatePath('/admin/users');redirect('/admin/users?manualSuccess=created');

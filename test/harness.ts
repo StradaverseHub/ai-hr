@@ -1,3 +1,4 @@
+import {profileTestPhase} from './profile';
 import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
 import type { OrgCriteria } from '../core/org-criteria';
@@ -10,6 +11,7 @@ import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import type { EntitlementSnapshot } from '../core/entitlement-types';
+import { isFixtureResetLockError } from './harness-reset-errors';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -230,13 +232,18 @@ async function truncateAllTables(): Promise<void> {
       // the extended protocol, which refuses multiple commands.
       await owner.db.transaction(async (tx) => {
         await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+        // Fixture-only reset emits thousands of expected cascade NOTICEs. Keep WARNING/ERROR visible;
+        // LOCAL restores the original message level before any test or migration assertion runs.
+        await tx.execute(sql`SET LOCAL client_min_messages = 'warning'`);
+        // Refuse a lingering transaction before TRUNCATE holds a partial lock set.
+        // Both statements stay in this transaction, so successful locks survive through the reset.
+        await tx.execute(sql.raw(`LOCK TABLE ${ALL_TABLES.join(', ')} IN ACCESS EXCLUSIVE MODE NOWAIT`));
         await tx.execute(sql.raw(sqlText));
       });
       return;
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      const lockish = /lock_timeout|deadlock detected|canceling statement/i.test(msg);
-      if (!lockish || attempt === ATTEMPTS) throw e;
+      // DrizzleQueryError.message contains SQL; only the underlying lock conflict is retryable.
+      if (!isFixtureResetLockError(e) || attempt === ATTEMPTS) throw e;
       // Last try: clear anything else still attached to this database, then go again.
       if (attempt === ATTEMPTS - 1) {
         await owner.db
@@ -251,7 +258,9 @@ async function truncateAllTables(): Promise<void> {
   }
 }
 
-export async function resetDb() {
+export async function resetDb() { return profileTestPhase('reset', resetDbImpl); }
+
+async function resetDbImpl() {
   // Overrides are per-test state; leaking them across files is the ADR-0071 isolation bug in a new coat.
   clearHarnessEntitlementOverrides();
   await truncateAllTables();
@@ -265,7 +274,9 @@ export async function resetDb() {
   );
 }
 
-export async function closeAll() {
+export async function closeAll() { return profileTestPhase('close', closeAllImpl); }
+
+async function closeAllImpl() {
   await appClient.end({ timeout: 5 });
   await owner.client.end({ timeout: 5 });
 }
@@ -281,7 +292,9 @@ export type Base = {
   adminUserId: string;
 };
 
-export async function seedBase(): Promise<Base> {
+export async function seedBase(): Promise<Base> { return profileTestPhase('seed', seedBaseImpl); }
+
+async function seedBaseImpl(): Promise<Base> {
   const [t] = await owner.db
     .insert(schema.tenant)
     .values({ workosOrgId: `org_${randomUUID()}`, name: 'Acme Group' })

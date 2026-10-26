@@ -12,6 +12,7 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vietnamese from '../messages/vi.json';
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 const save = vi.hoisted(() => vi.fn(async () => ({ status: 'saved', revision: 1 })));
 vi.mock('../app/admin/settings/login/actions', () => ({ saveLoginPresentationAction: (...args: unknown[]) => save(...args as []) }));
 const wrap = (child: React.ReactNode, locale = 'en', messages = en) => render(<NextIntlClientProvider locale={locale} messages={messages} onError={e => { throw e; }}>{child}</NextIntlClientProvider>);

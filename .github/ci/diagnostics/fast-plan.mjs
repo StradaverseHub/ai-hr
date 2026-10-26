@@ -1,0 +1,28 @@
+/** Plan equivalence only: no tests, no gate receipt and no deployment authority. */
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {mkdirSync,writeFileSync,readFileSync,readdirSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createPlan} from '../plan.mjs';
+assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.platform,'linux');
+assert.equal(process.env.AIHR_CI_CLASSIFIER_RUNTIME,'native');
+const referenceRun=40186100073,referenceController='a5fdad8842e397128adda084b9ff164b668b4d22';
+const api=path=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+path],{encoding:'utf8',maxBuffer:4*1024**2}));
+const out=join(process.env.RUNNER_TEMP,'diagnostic-fast-plan');mkdirSync(out,{recursive:true});
+const started=Date.now(),nativePlan=createPlan();const planElapsedMs=Date.now()-started;
+assert.equal(nativePlan.sha,'ba2142efbc2e181134d30d1e45740a36d55e29e8');
+const run=api('actions/runs/'+referenceRun);assert.equal(run.repository.id,1333414856);assert.equal(run.repository.full_name,'StradaverseHub/ai-hr');assert.equal(run.head_sha,referenceController);assert.equal(run.workflow_id,395777276);
+const artifacts=api(`actions/runs/${referenceRun}/artifacts?per_page=100`).artifacts.filter(a=>a.name==='gate-plan');assert.equal(artifacts.length,1);
+const artifact=artifacts[0];assert(!artifact.expired);assert.equal(artifact.workflow_run.id,referenceRun);assert.equal(artifact.workflow_run.head_sha,referenceController);
+const bytes=execFileSync('gh',['api',`repos/StradaverseHub/ai-hr/actions/artifacts/${artifact.id}/zip`],{maxBuffer:16*1024**2});
+assert.equal('sha256:'+createHash('sha256').update(bytes).digest('hex'),artifact.digest);
+const zip=join(out,'reference-plan.zip');writeFileSync(zip,bytes,{flag:'wx'});
+const extracted=join(out,'reference-plan');execFileSync('python3',[fileURLToPath(new URL('../extract-artifact.py',import.meta.url)),zip,extracted],{stdio:'inherit'});
+assert.deepEqual(readdirSync(extracted),['ci-plan.json']);const reference=JSON.parse(readFileSync(join(extracted,'ci-plan.json'),'utf8'));
+for(const key of ['schemaVersion','policyVersion','sha','migrationBase','execution','suite','units'])assert.deepEqual(nativePlan[key],reference[key],`Native plan differs in ${key}`);
+assert.equal(nativePlan.runtime.platform,'linux');assert.equal(nativePlan.runtime.arch,'x64');assert(nativePlan.runtime.node.startsWith('22.'));
+writeFileSync(join(out,'native-plan.json'),JSON.stringify(nativePlan,null,2)+'\n',{flag:'wx'});
+const report={kind:'PLAN_EQUIVALENCE_DIAGNOSTIC_NOT_RELEASE_EVIDENCE',candidate:nativePlan.sha,controller:nativePlan.controller,referenceRun,referenceController,referenceArtifact:{id:artifact.id,digest:artifact.digest},matchedFields:['schemaVersion','policyVersion','sha','migrationBase','execution','suite','units'],planElapsedMs,node:nativePlan.runtime.node,suiteFiles:nativePlan.suite.length,units:nativePlan.units.length,nodeModulesPresent:existsSync('node_modules'),localEnvPresent:existsSync('.env.local'),packagesInstalled:false};
+writeFileSync(join(out,'comparison.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});console.log(JSON.stringify(report));
