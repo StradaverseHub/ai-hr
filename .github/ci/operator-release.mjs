@@ -5,8 +5,10 @@ import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {verifyCi,revalidateCi,cleanHead,controllerRoot} from './release-ci.mjs';
 import {STAGING,bindStaging,stagingTransport,strictPendingCommand} from './staging-transport.mjs';
-import {stagingInstallerCommand,transferAndLaunchCiBuild,installationGrantFromVerifiedFiles,validateInstalledArrival,validatePrelaunchState} from './staging-ci-promotion.mjs';
+import {stagingInstallerCommand,transferAndLaunchCiBuild,installationGrantFromVerifiedFiles,validateInstalledArrival,validatePrelaunchState,validateFinalCleanup} from './staging-ci-promotion.mjs';
 import {expectedMigrationLedger} from './staging-migration-ledger.mjs';
+import {stagingEnvironmentProbeCommand} from './staging-environment.mjs';
+import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 export {STAGING,bindStaging};
 export function followStagingDeployment(official,ssh,observation={}){
  return official.followDeploy({...observation,run:offset=>ssh(official.buildFollowCommand(offset),{encoding:null,stdio:['ignore','pipe','inherit']})});
@@ -15,8 +17,6 @@ export function requireSuccessfulBuild(official,status,sha){
  if(!official.isSuccessState(status.state??'unknown')||status.built_ref!==sha||status.stale_build!=='0')throw Error('Remote build/migration failed; no arrival or deployed board state claimed');
  return status;
 }
-const SNAPSHOT_COMMAND="cd /opt/ai-hr && /opt/node20/bin/node --input-type=module -e "+
- "'import {readFileSync} from \"node:fs\";import {createHash} from \"node:crypto\";console.log(JSON.stringify({baselineBuildId:readFileSync(\".next/BUILD_ID\",\"utf8\").trim(),environmentSha256:createHash(\"sha256\").update(readFileSync(\".env.production\")).digest(\"hex\")}));'";
 export async function operatorRelease({candidatePath,runId,execute=false}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.
@@ -35,7 +35,7 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==evidence.controller)throw Error('Verified source changed');};
  const revalidate=async({announced=false}={})=>{await revalidateCi(evidence);validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});};
  frozen();await revalidate();
- const snapshot=JSON.parse(ssh(SNAPSHOT_COMMAND));
+ const snapshot=JSON.parse(ssh(stagingEnvironmentProbeCommand()));
  if(Object.keys(snapshot).sort().join(',')!=='baselineBuildId,environmentSha256'||snapshot.baselineBuildId!==initial.built_build_id)throw Error('Actual baseline build differs from ready deployment state');
  const grant=installationGrantFromVerifiedFiles({evidence,run:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'run.json'))),
   jobs:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'jobs.json'))),...snapshot});
@@ -47,20 +47,28 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  if(status.built_build_id!==grant.build.nextBuildId)throw Error('Actual installed build differs from original CI build');
  frozen();
  const checksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
- save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum});
+ const checksumCheckedAt=new Date().toISOString();
+ save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum,checkedAt:checksumCheckedAt});
  if(checksum.length!==0)throw Error('Source checksum arrival differs; owned previous build retained for explicit recovery');
  frozen();
  const installed=JSON.parse(ssh(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),{timeout:60000}));
- const arrival=validateInstalledArrival(installed,grant,expectedMigrationLedger(candidatePath));save('installed-arrival.json',{...arrival,fullSourceChecksumVerified:true});frozen();
+ const expectedLedger=expectedMigrationLedger(candidatePath);
+ const initialArrival=validateInstalledArrival(installed,grant,expectedLedger);save('installed-arrival.json',{...initialArrival,fullSourceChecksumVerified:true});frozen();
+ const cleanupRequest=createCleanupRequest(grant,{output:checksum,checkedAt:checksumCheckedAt,arrival:initialArrival});
+ const cleaned=JSON.parse(ssh(stagingInstallerCommand('cleanup',grant.source,grant.installId,grant.build.buildRecordId),{input:JSON.stringify(cleanupRequest),timeout:180000}));
+ const arrival=validateFinalCleanup(cleaned,{grant,installed,expectedLedger});save('owned-cleanup.json',cleaned);frozen();
+ const finalChecksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
+ save('final-source-arrival.json',{source:evidence.sha,checksum:true,output:finalChecksum,checkedAt:new Date().toISOString()});
+ if(finalChecksum.length!==0)throw Error('Final source checksum differs after cleanup; owner intervention required');frozen();
  // Preserve official learning only after actual service/build/source/ledger arrival.
  try{
   const record=recordReleaseLearning({worktree:candidatePath,sha:evidence.sha,buildId:status.built_build_id,previousRef:baseline,receipt:{...evidence,tier:'ci',result:'PASS'},status,
    mirror:record=>ssh('cd /opt/ai-hr && AIHR_IMPACT_STATE_DIR=/var/tmp/aihr-deploy/impact-learning /opt/node20/bin/node --import tsx scripts/gate-learning-cli.ts record-release',{input:JSON.stringify(record)})});
   save('release-learning.json',record);
  }catch(error){save('release-learning-warning.json',{error:String(error)});console.warn('Release learning requires retry; arrival evidence is retained: '+String(error));}
- // Coordinating owner still performs alpha/board handback. Retained old bytes are not silently deleted.
+ // Coordinating owner still performs alpha/board handback. Immutable original CI/audit evidence is retained.
  return {...evidence,remoteBuild:status,installId:grant.installId,testingBuildRecordId:grant.build.buildRecordId,arrival,
-  arrivalVerified:true,ownedResourceCleanupVerified:false,releaseHandbackVerified:false};
+  arrivalVerified:true,ownedResourceCleanupVerified:true,releaseHandbackVerified:false};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,candidatePath,runId]=process.argv.slice(2);

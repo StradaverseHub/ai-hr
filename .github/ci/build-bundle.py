@@ -306,7 +306,7 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
         owned.close()
 
 
-def verify_directory(destination, manifest_path, runtime_source, producer_source=None):
+def verify_directory(destination, manifest_path, runtime_source, producer_source=None, allow_runtime_cache=False):
     """Read-only full installed inventory/package verification; no cached PASS or activation."""
     destination, manifest_path, runtime_source = map(lambda p:Path(p).absolute(), [destination,manifest_path,runtime_source])
     require(destination.resolve()==destination and destination.is_dir() and not destination.is_symlink(), "canonical installed build required")
@@ -329,6 +329,9 @@ def verify_directory(destination, manifest_path, runtime_source, producer_source
                 require(relative in targets and path.resolve(strict=True)==targets[relative], "unexpected or changed installed alias")
                 seen_aliases.add(relative)
             elif stat.S_ISDIR(before.st_mode):
+                if allow_runtime_cache and relative=="cache":
+                    require(stat.S_IMODE(before.st_mode)&0o022==0,"unsafe runtime-generated cache directory")
+                    continue
                 require(relative in directories and before.st_uid==os.getuid() and stat.S_IMODE(before.st_mode)&0o022==0, "unexpected installed directory")
                 seen_dirs.add(relative);walk(path)
             else:
@@ -350,8 +353,8 @@ def verify_directory(destination, manifest_path, runtime_source, producer_source
 if __name__=='__main__':
     try:
         mode,*args=sys.argv[1:]
-        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5) or (mode=='verify-directory' and len(args)==4),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE | verify-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE PRODUCER_SOURCE')
-        result=pack(*args) if mode=='pack' else verify_directory(*args) if mode=='verify-directory' else unpack(*args)
-        print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False}))
+        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5) or (mode in {'verify-directory','verify-active-directory'} and len(args)==4),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE | verify-directory|verify-active-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE PRODUCER_SOURCE')
+        result=pack(*args) if mode=='pack' else verify_directory(*args,allow_runtime_cache=mode=='verify-active-directory') if mode in {'verify-directory','verify-active-directory'} else unpack(*args)
+        print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False,**({'runtimeCacheExcluded':True} if mode=='verify-active-directory' else {})}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:
         print(str(error),file=sys.stderr);sys.exit(1)

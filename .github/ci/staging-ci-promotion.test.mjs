@@ -53,7 +53,7 @@ test('ready and pending deployment facts remain distinct without relaxing baseli
 test('fresh actual build/service/source/ledger tuple is mandatory; a health200 alone is insufficient',()=>{
  const {grant}=seams(),expected=[{tag:'001_fixture',hash:'f'.repeat(64),created_at:'1'}],base={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,authorizationSha256:ack(grant).authorizationSha256};
  const value={releaseAuthorized:false,authorizationSha256:base.authorizationSha256,verified:{...base},activated:{...base,afterActivationMonotonicUs:100},
-  runtime:{...base,healthStatus:200,pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
+  runtime:{...base,healthStatus:200,compiledByteInventory:{kind:'next-build-byte-bundle',files:4,releaseAuthorized:false,runtimeCacheExcluded:true},pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
  assert.equal(validateInstalledArrival(value,grant,expected).nextBuildId,grant.build.nextBuildId);
  for(const mutate of [v=>v.runtime.nextBuildId='other',v=>v.runtime.healthStatus=401,v=>v.runtime.pid='0',v=>v.runtime.startedMonotonicUs=99,
   v=>v.runtime.verifiedAt=new Date(Date.now()-61000).toISOString(),v=>v.runtime.migrationLedger.rows=0,v=>v.runtime.migrationLedger.expectedSha256='b'.repeat(64),
@@ -64,6 +64,7 @@ test('fresh actual build/service/source/ledger tuple is mandatory; a health200 a
 test('operator commands cannot request stage/activate or interpolate unknown identifiers',()=>{
  const {grant}=seams();assert.match(stagingInstallerCommand('initialize'),/node .* initialize$/);
  assert.match(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),/node --env-file=.env.production --import tsx/);
- for(const mode of ['stage','activate','cleanup','other'])assert.throws(()=>stagingInstallerCommand(mode,grant.source,grant.installId,grant.build.buildRecordId));
+ assert.match(stagingInstallerCommand('cleanup',grant.source,grant.installId,grant.build.buildRecordId),/staging-build-install.mjs cleanup /);
+ for(const mode of ['stage','activate','other'])assert.throws(()=>stagingInstallerCommand(mode,grant.source,grant.installId,grant.build.buildRecordId));
  assert.throws(()=>stagingInstallerCommand('status',';exit',grant.installId,grant.build.buildRecordId));
 });

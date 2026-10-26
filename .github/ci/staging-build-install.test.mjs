@@ -108,3 +108,17 @@ test('CI deployment refuses invalid/reseed/partial inputs before private env or 
  assert.deepEqual(readdirSync(root).sort(),['deploy','state-events']);
  assert.equal(readFileSync(join(root,'state-events'),'utf8').split('\n').filter(x=>x.startsWith('finish ')).length,5);
 });
+
+test('a substituted packet directory and missing-packet cleanup scope cannot authorize ordinary staging',t=>{
+ const home=privateFixture(t),{grant}=fixture();initializePrivateInstall(grant,{home});
+ const p=readPrivateInstall(grant.installId,{home}),original=p.packet+'.original';renameSync(p.packet,original);mkdirSync(p.packet,{mode:0o700});
+ assert.throws(()=>readPrivateInstall(grant.installId,{home}));rmSync(p.packet,{recursive:true});renameSync(original,p.packet);
+ rmSync(p.packet,{recursive:true});
+ assert.throws(()=>readPrivateInstall(grant.installId,{home}));
+ assert.throws(()=>readPrivateInstall(grant.installId,{home,allowCleanup:true}));
+ const authority={kind:'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL',authorizationSha256:p.authorizationSha256,source:grant.source,installId:grant.installId,
+  buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,directory:{device:statSync(p.directory).dev,inode:statSync(p.directory).ino}};
+ writeFileSync(join(p.directory,'cleanup-authorized.json'),JSON.stringify(authority),{mode:0o600});
+ assert.equal(readPrivateInstall(grant.installId,{home,allowCleanup:true}).allowCleanup,true);
+ assert.throws(()=>readPrivateInstall(grant.installId,{home})); // Never becomes activation authority.
+});

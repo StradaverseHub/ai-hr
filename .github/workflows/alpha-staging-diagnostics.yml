@@ -754,6 +754,8 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/deploy.sh
+          node --test --test-reporter=spec .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          python3 .github/ci/cleanup-install.test.py -v 2>&1 | tee "$RUNNER_TEMP/cleanup-install.log"
           node --test --test-reporter=spec .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-ci-promotion.log"
           node --test --test-reporter=spec .github/ci/staging-build-install.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-build-install.log"
           python3 .github/ci/build-bundle.test.py -v 2>&1 | tee "$RUNNER_TEMP/build-bundle.log"
@@ -777,5 +779,7 @@ jobs:
             ${{ runner.temp }}/build-bundle.log
             ${{ runner.temp }}/staging-ci-promotion.log
             ${{ runner.temp }}/staging-official-helpers.log
+            ${{ runner.temp }}/staging-environment-cleanup.log
+            ${{ runner.temp }}/cleanup-install.log
           if-no-files-found: error
           retention-days: 3

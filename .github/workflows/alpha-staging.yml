@@ -58,7 +58,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/manifest.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs
+        run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/manifest.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
@@ -208,6 +208,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
+      - name: Owned Linux install cleanup and immutable byte inventory controls
+        run: |
+          python3 ../automation/.github/ci/cleanup-install.test.py -v
+          python3 ../automation/.github/ci/build-bundle.test.py -v
       - name: Exercise actual official detached-deploy helpers with shim transport
         run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs ../automation/.github/ci/build-source-binding.test.mjs ../automation/.github/ci/next-build-launcher.test.mjs ../automation/.github/ci/staging-source-transfer.test.mjs ../automation/.github/ci/staging-launcher.test.mjs
   plan:

@@ -282,4 +282,20 @@ class BundleTests(unittest.TestCase):
         self.assertEqual((self.destination/'foreign').read_text(),'preserve')
         self.assertTrue((moved/'BUILD_ID').exists())
 
+
+    def test_active_inventory_allows_only_real_generated_cache_and_still_hashes_every_compiled_byte(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        (self.destination/'cache').mkdir(mode=0o700);(self.destination/'cache/generated').write_text('runtime cache is not immutable build output')
+        with self.assertRaises(ValueError):bundle.verify_directory(self.destination,manifest,self.target,str(self.source))
+        self.assertEqual(bundle.verify_directory(self.destination,manifest,self.target,str(self.source),allow_runtime_cache=True),m)
+        (self.destination/'server/app/page.js').write_text('changed compiled code')
+        with self.assertRaises(ValueError):bundle.verify_directory(self.destination,manifest,self.target,str(self.source),allow_runtime_cache=True)
+
+    def test_active_inventory_does_not_follow_a_generated_cache_symlink(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        outside=self.root/'outside-cache';outside.mkdir();(outside/'preserve').write_text('private')
+        (self.destination/'cache').symlink_to(outside,target_is_directory=True)
+        with self.assertRaises(ValueError):bundle.verify_directory(self.destination,manifest,self.target,str(self.source),allow_runtime_cache=True)
+        self.assertEqual((outside/'preserve').read_text(),'private')
+
 if __name__=='__main__':unittest.main()
