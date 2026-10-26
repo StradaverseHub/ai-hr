@@ -3569,13 +3569,13 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
   if (p.requestKind && ((p.requestKind === 'self_overtime') !== (!clockChanges && !checkIn && !checkOut && hasOt))) throw new Error('The application type does not match the requested clock or overtime changes.');
   const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
- return {p,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
+ return {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
 }
 /** Full canonical preflight with no correction/workflow/event INSERT. Infrastructure policy-epoch
  * initialization remains the existing canonical barrier, not a request or an approval effect. */
 export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
- const {p,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
+ const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!subject)throw Error('Attendance subject is unavailable.');
  p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
