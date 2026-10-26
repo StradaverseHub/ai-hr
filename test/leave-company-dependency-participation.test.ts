@@ -5,7 +5,7 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
-import {createCompany,updateCompany,archiveCompany,deleteCompany,setCompanyLeaveCycle,setLeaveHalfDayFullDeduction,setLeaveHalfDayFullDeductionCompanies} from '../core/admin';
+import {createCompany,updateCompany,archiveCompany,deleteCompany,setCompanyLeaveCycle,setCompanyParent,setCompanyDefaultPayrollCycle,setLeaveHalfDayFullDeduction,setLeaveHalfDayFullDeductionCompanies} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {lockLeaveDependenciesTx} from '../packs/leave/service';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -35,9 +35,10 @@ async function held(employeeId:string,work:()=>Promise<void>){
  try{await start;await work();}finally{release();clearTimeout(timer);await holder;}
 }
 describe('canonical company dependency configuration owners',()=>{
- it.each(['create','update','archive','delete','cycle','half','half-set'] as const)('%s refuses before company/seed/catalogue/policy/graph/event effects while a real employee interval is held, then performs the original mutation',async command=>{
-  const ctx=adminCtx(b),subject=await employee();let target=b.companyId;
-  if(command==='delete'||command==='half-set')target=(await createCompany(ctx,{legalName:'Fictional unused dependency company',companyLabel:'FICT-UNUSED',country:'MY',currency:'MYR'})).id;
+ it.each(['create','update','archive','delete','cycle','half','half-set','parent','default-cycle'] as const)('%s refuses before company/seed/catalogue/policy/graph/event effects while a real employee interval is held, then performs the original mutation',async command=>{
+  const ctx=adminCtx(b),subject=await employee();let target=b.companyId,cycleName='';
+  if(command==='delete'||command==='half-set'||command==='parent'||command==='default-cycle')target=(await createCompany(ctx,{legalName:'Fictional unused dependency company',companyLabel:'FICT-UNUSED',country:'MY',currency:'MYR'})).id;
+  if(command==='default-cycle'){const [current]=await owner.db.select().from(s.company).where(eq(s.company.id,target));const cycles=await owner.db.select().from(s.payrollCycle).where(eq(s.payrollCycle.companyId,target));const next=cycles.find(row=>row.archivedAt===null&&row.name!==current.defaultPayrollCycle);if(!next)throw Error('Fictional alternative payroll cycle missing');cycleName=next.name;}
   if(command==='half-set')await setLeaveHalfDayFullDeduction(ctx,{companyId:target,enabled:true});
   const mutate=()=>{
    switch(command){
@@ -47,6 +48,8 @@ describe('canonical company dependency configuration owners',()=>{
     case 'delete':return deleteCompany(ctx,{id:target});
     case 'cycle':return setCompanyLeaveCycle(ctx,{companyId:b.companyId,cycle:'anniversary'});
     case 'half':return setLeaveHalfDayFullDeduction(ctx,{companyId:b.companyId,enabled:true});
+    case 'parent':return setCompanyParent(ctx,{companyId:b.companyId,parentCompanyId:target});
+    case 'default-cycle':return setCompanyDefaultPayrollCycle(ctx,{companyId:target,cycleName});
     case 'half-set':return setLeaveHalfDayFullDeductionCompanies(ctx,{companyIds:[b.companyId]});
    }
   };
@@ -59,6 +62,8 @@ describe('canonical company dependency configuration owners',()=>{
    case 'delete':expect(after.companies.some(row=>row.id===target)).toBe(false);expect(after.cycles.some(row=>row.companyId===target)).toBe(false);break;
    case 'cycle':expect(after.companies.find(row=>row.id===b.companyId)?.leaveCycle).toBe('anniversary');break;
    case 'half':expect(after.companies.find(row=>row.id===b.companyId)?.leaveHalfDayFullDeduction).toBe(true);break;
+   case 'parent':expect(after.companies.find(row=>row.id===b.companyId)?.parentCompanyId).toBe(target);break;
+   case 'default-cycle':expect(after.companies.find(row=>row.id===target)?.defaultPayrollCycle).toBe(cycleName);break;
    case 'half-set':expect(after.companies.find(row=>row.id===b.companyId)?.leaveHalfDayFullDeduction).toBe(true);expect(after.companies.find(row=>row.id===target)?.leaveHalfDayFullDeduction).toBe(false);break;
   }
  });

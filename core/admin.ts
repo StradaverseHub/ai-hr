@@ -522,9 +522,12 @@ export async function setCompanyDefaultPayrollCycle(
   ctx: SessionContext,
   p: { companyId: string; cycleName: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const cycleName = (p.cycleName ?? '').replace(/\s+/g, ' ').trim();
   if (!cycleName) throw new Error('Choose a payroll cycle.');
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ defaultPayrollCycle: company.defaultPayrollCycle })
       .from(company)
@@ -562,7 +565,10 @@ export async function setCompanyParent(
   ctx: SessionContext,
   p: { companyId: string; parentCompanyId: string | null },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
       .update(company)
       .set({ parentCompanyId: p.parentCompanyId })
