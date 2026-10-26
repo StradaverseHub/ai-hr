@@ -560,7 +560,7 @@ CREATE FUNCTION app.letter_signatory_choices(co uuid,after_id uuid,wanted_search
 RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT u.id,p.full_name FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
  WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
- AND (app.letter_permission(co,'template') OR app.letter_permission(co,'read'))
+ AND (app.letter_permission(co,'template') OR app.letter_permission(co,'read') OR app.letter_permission(co,'settings'))
  AND app.letter_permission_for_user(u.id,co,'read') AND app.letter_permission_for_user(u.id,co,'approve')
  AND (after_id IS NULL OR u.id>after_id) AND (wanted_search IS NULL OR p.full_name ILIKE wanted_search)
  ORDER BY u.id LIMIT greatest(1,least(coalesce(row_limit,101),101))
