@@ -16631,7 +16631,7 @@
         "employment_inactive": "这项雇佣记录为非在职；请以原有流程中的实际状态为准。",
         "choose_actual_employment": "请选择您实际要查看的雇佣关系。",
         "reporting_recorded": "这些是已记录的汇报关系。",
-        "administrative_manager_missing": "此结果未记录行政直属经理。",
+        "administrative_manager_missing": "当前权限范围内未显示可访问的行政直属经理。",
         "leave_available_recorded": "可用假期余额是已记录的数值，并非此处新计算或授予的额度。",
         "leave_pending_not_approved": "待审批的假期并非已获批的假期。",
         "readiness_gaps": "当前就绪检查记录了需要在原有流程中跟进的缺项。",

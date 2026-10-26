@@ -16631,7 +16631,7 @@
         "employment_inactive": "This employment is recorded as inactive; use its actual native status.",
         "choose_actual_employment": "Choose the actual employment you intend to review.",
         "reporting_recorded": "These are the recorded reporting relationships.",
-        "administrative_manager_missing": "No administrative manager is recorded in this result.",
+        "administrative_manager_missing": "No permitted administrative manager is shown in this current scope.",
         "leave_available_recorded": "The available leave balance is a recorded value, not a new calculation or grant.",
         "leave_pending_not_approved": "Pending leave is not approved leave.",
         "readiness_gaps": "The current readiness check records gaps that need native follow-up.",

@@ -16631,7 +16631,7 @@
         "employment_inactive": "Quan hệ lao động này được ghi nhận không hoạt động; hãy xem trạng thái thực tế trong quy trình gốc.",
         "choose_actual_employment": "Chọn đúng quan hệ lao động bạn muốn xem xét.",
         "reporting_recorded": "Đây là các mối quan hệ báo cáo đã được ghi nhận.",
-        "administrative_manager_missing": "Kết quả này không ghi nhận quản lý hành chính trực tiếp.",
+        "administrative_manager_missing": "Không có quản lý hành chính được phép xem nào hiển thị trong phạm vi hiện tại.",
         "leave_available_recorded": "Số dư phép khả dụng là giá trị đã ghi nhận, không phải phép tính hay khoản cấp mới.",
         "leave_pending_not_approved": "Phép đang chờ xử lý chưa phải là phép đã được duyệt.",
         "readiness_gaps": "Kiểm tra mức độ sẵn sàng hiện tại ghi nhận các thiếu sót cần xử lý trong quy trình gốc.",

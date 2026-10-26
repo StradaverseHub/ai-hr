@@ -16631,7 +16631,7 @@
         "employment_inactive": "Rekod pekerjaan ini berstatus tidak aktif; rujuk status sebenar dalam aliran asal.",
         "choose_actual_employment": "Pilih rekod pekerjaan sebenar yang ingin anda semak.",
         "reporting_recorded": "Ini ialah hubungan pelaporan yang direkodkan.",
-        "administrative_manager_missing": "Tiada pengurus pentadbiran direkodkan dalam hasil ini.",
+        "administrative_manager_missing": "Tiada pengurus pentadbiran yang dibenarkan dipaparkan dalam skop semasa ini.",
         "leave_available_recorded": "Baki cuti tersedia ialah nilai yang direkodkan, bukan pengiraan atau pemberian baharu.",
         "leave_pending_not_approved": "Cuti yang masih menunggu bukan cuti yang telah diluluskan.",
         "readiness_gaps": "Semakan kesediaan semasa merekodkan jurang yang perlu disusuli dalam aliran asal.",
