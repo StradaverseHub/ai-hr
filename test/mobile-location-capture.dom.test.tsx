@@ -3,12 +3,13 @@ import {runInNewContext} from 'node:vm';
 import {ModuleKind,transpileModule} from 'typescript';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {LocationCaptureError} from '../mobile/lib/errors';
+import {ClockLocationCommand} from '../lib/mobile-api/contract';
 function fixture(){
   const state={currentState:'active'};
   const permission={status:'granted',canAskAgain:true,ios:{accuracy:'full'},android:{accuracy:'fine'}};
   const fix={timestamp:Date.now(),mocked:false,coords:{latitude:3,longitude:101,accuracy:5}};
   const location={requestForegroundPermissionsAsync:vi.fn(async()=>permission),hasServicesEnabledAsync:vi.fn(async()=>true),getCurrentPositionAsync:vi.fn(async()=>fix),Accuracy:{High:4}};
-  const module={exports:{} as {capturePosition:()=>Promise<unknown>}};
+  const module={exports:{} as {capturePosition:()=>Promise<{lat:number;lng:number;accuracy:number;sampledAt:number;permissionAccuracy:string}>}};
   const code=transpileModule(readFileSync('mobile/lib/capture.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
   runInNewContext(code,{exports:module.exports,module,Date,setTimeout,clearTimeout,require:(id:string)=>{
     if(id==='expo-location')return location;
@@ -22,6 +23,11 @@ function fixture(){
 }
 afterEach(()=>vi.useRealTimers());
 describe('foreground location quality',()=>{
+  it('normalizes the installed iOS SDK fractional-millisecond timestamp to the published command contract',async()=>{
+    const f=fixture();f.fix.timestamp=Date.now()-.375;const result=await f.capture();
+    expect(result.sampledAt).toBe(Math.trunc(f.fix.timestamp));expect(f.fix.timestamp-result.sampledAt).toBeLessThan(1);
+    expect(ClockLocationCommand.safeParse({lat:result.lat,lng:result.lng,accuracy:result.accuracy,sampledAt:result.sampledAt}).success).toBe(true);
+  });
   it('distinguishes denied and blocked permission before any position request',async()=>{
     const f=fixture();f.permission.status='denied';
     await expect(f.capture()).rejects.toMatchObject({issue:'permission_denied'});f.permission.canAskAgain=false;

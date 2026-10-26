@@ -29,7 +29,9 @@ export async function capturePosition(){
   if(accuracy==null||![lat,lng,accuracy,fix.timestamp].every(Number.isFinite)||Math.abs(lat)>90||Math.abs(lng)>180||accuracy<0||fix.timestamp<=0)
     throw new LocationCaptureError('invalid_fix',t('locationInvalid'));
   if(Math.abs(Date.now()-fix.timestamp)>120000)throw new LocationCaptureError(fix.timestamp>Date.now()?'future_fix':'stale_fix',t(fix.timestamp>Date.now()?'locationFuture':'locationExpired'));
-  return {lat,lng,accuracy,sampledAt:fix.timestamp,permissionAccuracy};
+  // Expo iOS emits a Double in milliseconds. The published v1 command uses whole milliseconds;
+  // truncation changes representation by less than 1 ms and never determines attendance time.
+  return {lat,lng,accuracy,sampledAt:Math.trunc(fix.timestamp),permissionAccuracy};
 }
 export async function capturePhoto():Promise<LocalAttachment|null>{
   const permission=await ImagePicker.requestCameraPermissionsAsync();
