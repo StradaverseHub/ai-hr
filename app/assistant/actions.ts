@@ -31,7 +31,7 @@ export async function askAssistantAction(formData: FormData) {
   }
 
   revalidatePath('/assistant');
-  // `e` highlights the new exchange in the list; the ANSWER itself is read back from the audit row, so
-  // the screen cannot show a sentence that differs from the one recorded.
+  // `e` selects the recorded exchange. The screen reauthorizes its sealed tool plan and renders
+  // current canonical cards; raw model prose remains audit-only.
   redirect(`/assistant?e=${encodeURIComponent(exchangeId)}`);
 }

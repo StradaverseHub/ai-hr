@@ -86,11 +86,10 @@ export class AssistantError extends Error {
   }
 }
 
-/** What a screen needs to render the outcome, including the outcomes that are not an answer. */
+/** Submission metadata only. Raw model prose stays in audit custody; display consumers must reopen
+ * the exchange through current canonical grounding, rather than treating a model reply as HR truth. */
 export type AssistantAnswer = {
   exchangeId: string;
-  /** Empty when the model refused or stopped without producing text — never a fabricated apology. */
-  answer: string;
   stop: AiStop;
   /** Provider round trips actually made. */
   turns: number;
@@ -211,7 +210,7 @@ async function spentThisPeriod(tx: Tx, ctx: SessionContext, period: string): Pro
 const tokensIn = (u: AiUsage) => u.inputTokens + u.outputTokens + u.cachedInputTokens;
 
 /**
- * Ask the assistant one question and return its answer.
+ * Ask the assistant one question and return its recorded exchange metadata.
  *
  * `now` is injected rather than read from the clock so the daily cap and the usage period are testable
  * without freezing time globally — the same reason core/payroll takes its dates.
@@ -368,7 +367,7 @@ export async function askAssistant(
     sourceReads: sourcesComplete ? sourceReads : undefined,
   });
 
-  return { exchangeId, answer, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
+  return { exchangeId, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
 }
 
 /**
