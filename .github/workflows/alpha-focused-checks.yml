@@ -90,7 +90,6 @@ jobs:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
-      AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -107,6 +106,8 @@ jobs:
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
+        env:
+          AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
       - name: Summarize opt-in harness phase timings
         if: ${{ always() && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
