@@ -2374,7 +2374,28 @@
         "aiLimit": "Choose up to 32 distinct, valid headings. Review the exact heading packet below.",
         "aiSelected": "Headings to send",
         "aiStale": "The source or company changed. Open review again before using suggestions.",
-        "aiPrepareUnknown": "I couldn’t confirm that the request was saved. Nothing will be resent automatically. Keep mapping locally, or explicitly start a new request."
+        "aiPrepareUnknown": "I couldn’t confirm that the request was saved. Nothing will be resent automatically. Keep mapping locally, or explicitly start a new request.",
+        "workbook": {
+          "title": "Choose the sheets for this import",
+          "description": "Review one employee sheet at a time. Only explicitly assigned sheets will reach canonical validation; other sheets remain local for separate review.",
+          "sheet": "Original worksheet",
+          "rows": "Nonempty rows",
+          "role": "Use this sheet as",
+          "employee": "Employee master",
+          "family": "Family companion",
+          "allocations": "Cost-allocation companion",
+          "qualification": "Qualification companion",
+          "emergency": "Emergency-contact companion",
+          "unassigned": "Unassigned — review separately",
+          "excluded": "Exclude from this import",
+          "acknowledge": "I acknowledge that unassigned and excluded nonempty sheets will not be imported in this run and need separate review.",
+          "apply": "Review selected employee data",
+          "cancel": "Cancel",
+          "incomplete": "Choose exactly one employee sheet, assign each companion role at most once, and acknowledge omitted sheets.",
+          "prepareToggle": "Prepare messy files locally",
+          "prepareHint": "Opt in before choosing a messy file. Review sheets, structure and proposed cleaning locally before any canonical preview. Nothing is imported automatically.",
+          "prepareText": "Prepare pasted or current text"
+        }
       },
       "preparation": {
         "title": "Review and prepare your data",

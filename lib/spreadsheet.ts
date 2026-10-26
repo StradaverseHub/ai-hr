@@ -1,4 +1,5 @@
-import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
+import {MAX_IMPORT_CSV_BYTES} from './import-file';
+import type {PersonnelWorksheetSource,PersonnelWorkbookSource} from './personnel-import-assistance-source';
 /**
  * Spreadsheet (.xlsx / .xls) support for the Leave Data Import & Migration Tool.
  *
@@ -95,7 +96,8 @@ export async function workbookToCsvTexts(
   includeFirstNamed=false,
   allowedSheetNames?:readonly string[],
   captureSource=false,
-): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource }> {
+  preparePersonnel=false,
+): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
   // callers handing us File.arrayBuffer() output OR raw bytes (and to SheetJS's own type drift).
@@ -105,6 +107,17 @@ export async function workbookToCsvTexts(
   const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
   const firstName = wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
+  // The explicit preparation path checks every worksheet range before materializing any CSV rows.
+  // Default recognized-file decoding keeps its established behavior and output contract.
+  if(preparePersonnel){
+    if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    let ranged=0;
+    for(const name of wb.SheetNames){const ref=wb.Sheets[name]?.['!ref'];if(!ref)continue;
+      const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+      if(!Number.isSafeInteger(height)||!Number.isSafeInteger(width)||height<1||width<1||height>10000||width>256)throw Error('FILE_TOO_LARGE');
+      ranged+=height*width;if(ranged>200000)throw Error('FILE_TOO_LARGE');
+    }
+  }
 
   const sheetCsv = (sheetName: string): string => {
     const ws = wb.Sheets[sheetName];
@@ -129,14 +142,14 @@ export async function workbookToCsvTexts(
   };
 
   const first = sheetCsv(firstName);
-  if (first === '') throw new Error('EMPTY_SHEET');
+  if (first === ''&&!preparePersonnel) throw new Error('EMPTY_SHEET');
 
   const key = (s: string) => s.trim().toLowerCase();
   const byKey = new Map(wb.SheetNames.map((n) => [key(n), n]));
-  if(allowedSheetNames) {
-    if(byKey.size!==wb.SheetNames.length || !includeFirstNamed && extraSheetNames.some(name=>key(name)===key(firstName)))throw new Error('UNEXPECTED_SHEET');
-    const allowed=new Set(allowedSheetNames.map(key));
-    for(const name of wb.SheetNames)if(name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
+  if(allowedSheetNames||preparePersonnel) {
+    if(byKey.size!==wb.SheetNames.length || !preparePersonnel && !includeFirstNamed && extraSheetNames.some(name=>key(name)===key(firstName)))throw new Error('UNEXPECTED_SHEET');
+    const allowed=new Set((allowedSheetNames??[]).map(key));
+    for(const name of wb.SheetNames)if(!preparePersonnel && name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
   }
   const extra: Record<string, string> = {};
   for (const wanted of extraSheetNames) {
@@ -150,26 +163,39 @@ export async function workbookToCsvTexts(
   // Opt-in metadata comes from the SAME decoded workbook, never a second workbook parser. Bounds
   // prevent a sparse worksheet range allocating unbounded client memory. Legacy decode still works
   // if provenance exceeds these assistance-only bounds; no fictional physical coordinates are made.
-  let source:PersonnelWorksheetSource|undefined;
-  const firstSheet=wb.Sheets[firstName],ref=firstSheet?.['!ref'];
-  if(captureSource&&ref){
+  const captureSheet=(sheetName:string,required=false,remaining=200000):{source:PersonnelWorksheetSource;rangeCells:number;metadataBytes:number}|undefined=>{
+    const sheet=wb.Sheets[sheetName],ref=sheet?.['!ref'];if(!ref)return{source:{sheetName,rows:[]},rangeCells:0,metadataBytes:0};
     const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
-    if(height<=10000&&width<=256&&height*width<=200000){
-      const captured=[];
-      for(let row=range.s.r;row<=range.e.r;row++){
-        const cells=[];
-        for(let column=range.s.c;column<=range.e.c;column++){
-          const cell=firstSheet[XLSX.utils.encode_cell({r:row,c:column})],value=cell?.v;
-          const decoded=value instanceof Date?toIsoDate(value):typeof value==='number'?numberToPlainString(value):value==null?'':String(value);
-          cells.push({column:column+1,raw:value instanceof Date?value.toISOString():typeof value==='number'||typeof value==='boolean'||typeof value==='string'?value:null,
-            display:cell?.w??String(value??''),decoded,kind:cell?.t??'blank',...(typeof cell?.f==='string'?{formula:cell.f}:{})});
-        }
-        if(cells.some(cell=>cell.decoded.trim()!==''))captured.push({row:row+1,cells});
+    if(height>10000||width>256||height*width>remaining){if(required)throw Error('FILE_TOO_LARGE');return;}
+    const captured=[];let metadataBytes=0;
+    for(let row=range.s.r;row<=range.e.r;row++){
+      const cells=[];
+      for(let column=range.s.c;column<=range.e.c;column++){
+        const cell=sheet[XLSX.utils.encode_cell({r:row,c:column})],value=cell?.v;
+        const decoded=value instanceof Date?toIsoDate(value):typeof value==='number'?numberToPlainString(value):value==null?'':String(value);
+        cells.push({column:column+1,raw:value instanceof Date?(Number.isFinite(value.getTime())?value.toISOString():String(value)):typeof value==='number'||typeof value==='boolean'||typeof value==='string'?value:null,
+          display:cell?.w??String(value??''),decoded,kind:cell?.t??'blank',...(typeof cell?.f==='string'?{formula:cell.f}:{})});
+        if(required){for(const text of new Set([decoded,cell?.w??'',typeof cell?.f==='string'?cell.f:''])){if(text.length>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');metadataBytes+=new TextEncoder().encode(text).byteLength;}if(metadataBytes>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');}
       }
-      source={sheetName:firstName,rows:captured};
+      if(cells.some(cell=>required?(cell.raw!==null&&String(cell.raw)!==''||cell.formula!==undefined):cell.decoded.trim()!==''))captured.push({row:row+1,cells});
     }
+    return{source:{sheetName,rows:captured},rangeCells:height*width,metadataBytes};
+  };
+  let source:PersonnelWorksheetSource|undefined,preparation:PersonnelWorkbookSource|undefined;
+  if(captureSource)source=captureSheet(firstName)?.source;
+  if(preparePersonnel){
+    if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    const sheets=[];let decodedBytes=0,rangeCells=0;
+    for(const sheetName of wb.SheetNames){
+      const captured=captureSheet(sheetName,true,200000-rangeCells)!;rangeCells+=captured.rangeCells;
+      const text=sheetCsv(sheetName);decodedBytes+=new TextEncoder().encode(text).byteLength+captured.metadataBytes;
+      if(decodedBytes>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');
+      if(text.trim()||captured.source.rows.length)sheets.push({sheetName,text,source:captured.source});
+    }
+    if(!sheets.length)throw Error('EMPTY_SHEET');
+    preparation={sheets,decodedBytes,rangeCells};
   }
-  return { first, extra,...source?{source}:{} };
+  return { first, extra,...source?{source}:{},...preparation?{preparation}:{} };
 }
 
 /**

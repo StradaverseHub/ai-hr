@@ -1,4 +1,4 @@
-import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
+import type {PersonnelWorksheetSource,PersonnelWorkbookSource} from './personnel-import-assistance-source';
 /**
  * Import file reader — the FILE → CSV-TEXT step of an import, and nothing else.
  *
@@ -80,6 +80,8 @@ export type ImportFileRead = {
   extraTexts?:Record<string,string>;
   /** Opt-in client-local worksheet provenance, never an action argument. */
   source?:PersonnelWorksheetSource;
+  /** Explicit preparation only: all bounded nonempty sheets, browser memory only. */
+  preparation?:PersonnelWorkbookSource;
 };
 
 /** True when the name looks like a CSV. Extension-based on purpose: browsers report wildly
@@ -110,7 +112,7 @@ export async function readImportFile(
   file: File,
   /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
    *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
-  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean },
+  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean;preparePersonnel?:boolean },
 ): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
@@ -119,7 +121,7 @@ export async function readImportFile(
   let text: string;
   let dependentsText = '';
   let extraTexts:Record<string,string>|undefined;
-  let source:PersonnelWorksheetSource|undefined;
+  let source:PersonnelWorksheetSource|undefined,preparation:PersonnelWorkbookSource|undefined;
   if (format === 'csv') {
     if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
     try {
@@ -132,14 +134,14 @@ export async function readImportFile(
     const wanted = opts?.extraSheets ?? [];
     let extra: Record<string, string> = {};
     try {
-      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource);
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource,opts?.preparePersonnel);
       text = decoded.first;
-      source=decoded.source;
+      source=decoded.source;preparation=decoded.preparation;
       extra = decoded.extra;
     } catch (e) {
       // The decoder's one meaningful failure is a workbook whose first sheet holds nothing; it is a
       // user-fixable mistake and deserves its own message rather than "could not read that file".
-      throw new ImportFileError((e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : (e as Error)?.message==='UNEXPECTED_SHEET'?'UNEXPECTED_SHEET':'FILE_READ_FAILED');
+      throw new ImportFileError((e as Error)?.message==='FILE_TOO_LARGE'?'FILE_TOO_LARGE':(e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : (e as Error)?.message==='UNEXPECTED_SHEET'?'UNEXPECTED_SHEET':'FILE_READ_FAILED');
     }
     dependentsText = wanted.length > 0 ? (extra[wanted[0]] ?? '') : '';
     if(wanted.length>1)extraTexts=extra;
@@ -149,9 +151,9 @@ export async function readImportFile(
     // that protects it is the ceiling on their sum.
     if (new Blob([text,...Object.values(extra)]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
   }
-  if (text.trim() === '') throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
+  if (text.trim() === ''&&!preparation?.sheets.length) throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 
-  return { name: file.name, format, text, dependentsText,...extraTexts?{extraTexts}:{},...source?{source}:{} };
+  return { name: file.name, format, text, dependentsText,...extraTexts?{extraTexts}:{},...source?{source}:{},...preparation?{preparation}:{} };
 }
 
 /** Error code → i18n key under the importer's namespace. Exported (rather than inlined in the

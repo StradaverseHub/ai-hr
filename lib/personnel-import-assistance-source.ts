@@ -7,6 +7,7 @@ import {personnelColumnLabel,personnelImportHeaderCandidates,type PersonnelImpor
 export type PersonnelSourceCell=Readonly<{column:number;raw:string|number|boolean|null;display:string;decoded:string;kind:string;formula?:string}>;
 export type PersonnelSourceRow=Readonly<{row:number;cells:readonly PersonnelSourceCell[]}>;
 export type PersonnelWorksheetSource=Readonly<{sheetName:string;rows:readonly PersonnelSourceRow[]}>;
+export type PersonnelWorkbookSource=Readonly<{sheets:readonly Readonly<{sheetName:string;text:string;source:PersonnelWorksheetSource}>[];decodedBytes:number;rangeCells:number}>;
 export type PersonnelImportSource=Readonly<{revisionId:string;originalText:string;currentText:string;acceptedDestinations?:readonly string[];fileName:string|null;format:ImportFileFormat|'paste';sheetName:string|null;
  matrix:readonly (readonly string[])[];rowNumbers:readonly number[];coordinateKind:'worksheet_row'|'csv_record'|'decoded_row';provenance?:PersonnelWorksheetSource}>;
 export function capturePersonnelImportSource(input:{text:string;fileName?:string|null;format:ImportFileFormat|'paste';source?:PersonnelWorksheetSource},revisionId:string):PersonnelImportSource {
@@ -46,4 +47,30 @@ export async function preparePersonnelHeaderAssistancePacket(input:{companyId:st
  const packet=PersonnelImportHeaderAssistanceRequestSchema.parse({version:1,companyId:captured.companyId,operationNonce:captured.operationNonce,
   headers,registryDigest,sourceRevision,mode:'ai',consent:{headersReviewed:true,sendHeadingsOnly:captured.sendHeadingsOnly}});
  return Object.freeze({...packet,headers:Object.freeze(packet.headers.map(header=>Object.freeze({...header}))),consent:Object.freeze({...packet.consent})});
+}
+
+/** Remove only metadata padding for physically absent trailing cells, never explicit empty strings,
+ * whitespace, formulas or a recorded raw value. Original full cell coordinates remain in source. */
+export function personnelWorksheetMatrixRows(source:PersonnelWorksheetSource):string[][] {
+ return source.rows.map(row=>{let end=row.cells.length;
+  while(end>0){const cell=row.cells[end-1];if(cell.kind!=='blank'||cell.raw!==null||cell.decoded!==''||cell.formula!==undefined)break;end--;}
+  return row.cells.slice(0,end).map(cell=>cell.decoded);
+ });
+}
+
+export type PersonnelSheetRole='employee'|'family'|'allocations'|'qualification'|'emergency'|'unassigned'|'excluded';
+/** All original worksheet evidence is client-local. This is a human scope decision, never an
+ * automatic all-workbook discovery or a new parser for companion record kinds. */
+export function reviewPersonnelWorkbookRoles(workbook:PersonnelWorkbookSource,roles:Readonly<Record<string,PersonnelSheetRole>>,acknowledgedExcluded:boolean){
+ const allowed:readonly PersonnelSheetRole[]=['employee','family','allocations','qualification','emergency','unassigned','excluded'];
+ if(workbook.sheets.length<1||workbook.sheets.length>32||new Set(workbook.sheets.map(sheet=>sheet.sheetName)).size!==workbook.sheets.length
+  ||Object.keys(roles).some(name=>!workbook.sheets.some(sheet=>sheet.sheetName===name)))throw Error('Workbook review unavailable.');
+ const selections=workbook.sheets.map(sheet=>({sheet,role:roles[sheet.sheetName]??'unassigned'}));
+ if(selections.some(item=>!allowed.includes(item.role)))throw Error('Workbook review unavailable.');
+ const employees=selections.filter(item=>item.role==='employee');
+ const omitted=selections.filter(item=>item.role==='unassigned'||item.role==='excluded');
+ const assigned=selections.filter(item=>item.role!=='unassigned'&&item.role!=='excluded');
+ if(employees.length!==1||new Set(assigned.map(item=>item.role)).size!==assigned.length||omitted.length&&!acknowledgedExcluded)throw Error('Workbook review unavailable.');
+ return Object.freeze({employee:employees[0].sheet,companions:Object.freeze(Object.fromEntries(['family','allocations','qualification','emergency'].map(role=>[role,selections.find(item=>item.role===role)?.sheet.text??''])) as Record<'family'|'allocations'|'qualification'|'emergency',string>),
+  excluded:Object.freeze(omitted.map(item=>item.sheet.sheetName)),roles:Object.freeze(Object.fromEntries(selections.map(item=>[item.sheet.sheetName,item.role]))),excludedAcknowledged:acknowledgedExcluded,original:workbook});
 }

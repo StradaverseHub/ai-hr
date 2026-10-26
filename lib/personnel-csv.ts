@@ -49,7 +49,11 @@ export function buildPersonnelCsv(sheet:PersonnelImportSheet,rows:readonly (read
   ...rows.map(row=>row.map(value=>encodePersonnelCsvCell(value==null?'':String(value))))]);
 }
 export function parsePersonnelCsv(text:string,sheet:PersonnelImportSheet):string[][] {
- const rows=parseStrictPersonnelCsv(text);if(rows[0]?.[0]!==PERSONNEL_CSV_FRAME)return rows;
+ return decodePersonnelCsvRows(parseStrictPersonnelCsv(text),sheet);
+}
+/** Same frame decoder for already-decoded worksheet rows, preserving physical blank/formula rows. */
+export function decodePersonnelCsvRows(rows:string[][],sheet:PersonnelImportSheet):string[][] {
+ if(rows[0]?.[0]!==PERSONNEL_CSV_FRAME)return rows;
  const [frame,...data]=rows;
  if(frame[1]!==PERSONNEL_CSV_VERSION)throw new PersonnelCsvError('Unsupported Personnel CSV version. Download a new template.');
  if(!SHEETS.some(allowed=>allowed===sheet) || !SHEETS.some(allowed=>allowed===frame[2]) || frame[2]!==sheet)throw new PersonnelCsvError('This Personnel CSV belongs to another worksheet. Choose its matching import section.');

@@ -2374,7 +2374,28 @@
         "aiLimit": "Pilih sehingga 32 tajuk berbeza yang sah. Semak tajuk tepat di bawah.",
         "aiSelected": "Tajuk untuk dihantar",
         "aiStale": "Sumber atau syarikat telah berubah. Buka semula semakan sebelum menggunakan cadangan.",
-        "aiPrepareUnknown": "Simpanan permintaan tidak dapat dipastikan. Tiada penghantaran semula automatik. Teruskan padanan setempat atau mulakan permintaan baharu secara jelas."
+        "aiPrepareUnknown": "Simpanan permintaan tidak dapat dipastikan. Tiada penghantaran semula automatik. Teruskan padanan setempat atau mulakan permintaan baharu secara jelas.",
+        "workbook": {
+          "title": "Pilih lembaran untuk import ini",
+          "description": "Semak satu lembaran pekerja pada satu masa. Hanya lembaran yang ditetapkan dihantar untuk pengesahan kanonik; lembaran lain kekal setempat untuk semakan berasingan.",
+          "sheet": "Lembaran asal",
+          "rows": "Baris tidak kosong",
+          "role": "Gunakan lembaran sebagai",
+          "employee": "Induk pekerja",
+          "family": "Lembaran keluarga",
+          "allocations": "Lembaran agihan kos",
+          "qualification": "Lembaran kelayakan",
+          "emergency": "Lembaran hubungan kecemasan",
+          "unassigned": "Belum ditetapkan — semak berasingan",
+          "excluded": "Kecualikan daripada import ini",
+          "acknowledge": "Saya mengakui lembaran tidak kosong yang belum ditetapkan atau dikecualikan tidak akan diimport dalam proses ini dan perlu disemak berasingan.",
+          "apply": "Semak data pekerja terpilih",
+          "cancel": "Batal",
+          "incomplete": "Pilih tepat satu lembaran pekerja, tetapkan setiap jenis lembaran tambahan sekali sahaja dan akui lembaran yang tidak diimport.",
+          "prepareToggle": "Sediakan fail tidak tersusun secara setempat",
+          "prepareHint": "Pilih sebelum membuka fail tidak tersusun. Semak lembaran, struktur dan cadangan pembersihan secara setempat sebelum pratonton kanonik. Tiada import automatik.",
+          "prepareText": "Sediakan teks ditampal atau teks semasa"
+        }
       },
       "preparation": {
         "title": "Semak dan sediakan data",
