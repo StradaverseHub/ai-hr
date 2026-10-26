@@ -40,7 +40,7 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { holidayCalendarFactsByEmployment } from './holidays';
-import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
+import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
@@ -783,6 +783,8 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
 }
 
 export async function createShift(ctx: SessionContext, p: ShiftInput) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
   // r429 (f6819e19) · D1 — a brand-new shift has nothing to preserve and nothing was ever asked for one:
   // undefined collapses to NO_WEEK (null / [] / []), not to whatever the caller happened to omit.
@@ -797,6 +799,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const flexibleBreakEnabled = n.flexibleBreakEnabled ?? false;
   const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertRotationPoolWriteTx(tx,null,n.ruleId);
     let row: { id: string };
     try {
@@ -877,8 +881,12 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
 // created once and assignable to any employee. Use createShift (tenant-global).
 
 export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r429 (f6819e19) · D4 — READ THE STORED SWITCH FIRST. Two things need it, and neither can be answered
     // by this request's own input alone: (1) "turning it ON" is a REFUSAL, and whether this save turns it
     // on depends on what it was a moment ago; (2) when the stored switch is (or stays) ON, every break row
@@ -1018,7 +1026,11 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
  * where the operator changes the times that made them copy in the first place.
  */
 export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
 
@@ -1165,7 +1177,11 @@ export class ShiftInUseError extends Error {
  * about the SET NULL on that column and still holds; this guard is what keeps the same promise for the ladder.
  */
 export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, companyId: shift.companyId, name: shift.name, code: shift.code })
       .from(shift)
@@ -1223,7 +1239,11 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
 // everywhere else (leave types, pay components, business units). deleteShift (above, R17) is the hard path,
 // allowed only for an unreferenced template.
 export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(shift).set({ archivedAt: new Date(), updatedAt: new Date() }).where(eq(shift.id, p.shiftId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1252,7 +1272,11 @@ export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) 
  * Idempotent: un-archiving a shift that is already active is a no-op, not an error.
  */
 export async function unarchiveShift(ctx: SessionContext, p: { shiftId: string }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, name: shift.name, code: shift.code, archivedAt: shift.archivedAt })
       .from(shift)

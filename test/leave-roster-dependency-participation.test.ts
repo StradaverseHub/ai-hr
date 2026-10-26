@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { ensureStandardRule } from '../core/attendance-rule';
 import { saveScheduleGroupControl } from '../core/schedule-group-controls';
-import { createShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
+import { createShift, updateShift, copyShift, deleteShift, archiveShift, unarchiveShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { assignEmployeeShiftDated, removeShiftArrangement } from '../core/shift-arrangement';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -154,5 +154,52 @@ describe('dated shift arrangement source participants', () => {
       expect(after.periods.find(row => row.id === newest!.id)?.supersededAt).not.toBeNull();
       expect(after.periods.find(row => row.validFrom === today && !row.supersededAt)?.validTo).toBeNull();
     }
+  });
+});
+
+/** Six canonical master owners: configuration ownership precedes source/rotation row locks. UNRUN. */
+describe('master shift configuration participants', () => {
+  it.each(['create', 'update', 'copy', 'delete', 'archive', 'unarchive'] as const)
+  ('%s refuses without catalogue/membership/event effects during an employee interval, then executes after release', async command => {
+    const ctx = adminCtx(b), today = todayInKualaLumpur();
+    const { employmentId } = await hireEmployee(ctx, { person: { fullName: 'Fictional Shift Config Subject',
+      primaryEmail: `shift-config-${randomUUID()}@t.local` }, companyId: b.companyId, departmentId: b.deptA,
+      employmentType: 'full_time', hiredOn: today });
+    // An unused shift has no group membership or historical assignment; delete's original guards remain valid.
+    const input = { name: 'Fictional Master Shift', code: 'FMS', companyId: b.companyId,
+      startTime: '09:00', endTime: '18:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] };
+    const shift = await createShift(ctx, input);
+    if (command === 'unarchive') await archiveShift(ctx, { shiftId: shift.id });
+    const mutate = () => {
+      switch (command) {
+        case 'create': return createShift(ctx, { ...input, name: 'Fictional Additional Shift', code: 'FAS' });
+        case 'update': return updateShift(ctx, { ...input, shiftId: shift.id, name: 'Fictional Revised Shift' });
+        case 'copy': return copyShift(ctx, { shiftId: shift.id });
+        case 'delete': return deleteShift(ctx, { shiftId: shift.id });
+        case 'archive': return archiveShift(ctx, { shiftId: shift.id });
+        case 'unarchive': return unarchiveShift(ctx, { shiftId: shift.id });
+      }
+    };
+    const state = async () => ({
+      shifts: await owner.db.select().from(schema.shift).where(eq(schema.shift.tenantId, b.tenantId)).orderBy(schema.shift.id),
+      memberships: await owner.db.select().from(schema.attendanceRuleShift).where(eq(schema.attendanceRuleShift.tenantId, b.tenantId)).orderBy(schema.attendanceRuleShift.shiftId),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned master shift handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started; await expect(mutate()).rejects.toThrow('Leave source is unavailable'); expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await mutate(); const after = await state();
+    expect(after.events.length).toBe(before.events.length + 1);
+    if (command === 'create' || command === 'copy') expect(after.shifts.length).toBe(before.shifts.length + 1);
+    if (command === 'update') expect(after.shifts.find(row => row.id === shift.id)?.name).toBe('Fictional Revised Shift');
+    if (command === 'delete') expect(after.shifts.find(row => row.id === shift.id)).toBeUndefined();
+    if (command === 'archive') expect(after.shifts.find(row => row.id === shift.id)?.archivedAt).not.toBeNull();
+    if (command === 'unarchive') expect(after.shifts.find(row => row.id === shift.id)?.archivedAt).toBeNull();
   });
 });

@@ -1996,3 +1996,23 @@ Static AST syntax and scoped diff only; no compiler, app, test, database, build 
 provider execution. Master shifts/rules/rotations and generator earlier planning,
 TOIL/org/module/authority/retention and server exposure prerequisites remain pending.
 This does not establish universal writer coverage or runtime concurrency/security.
+
+
+### Master shift catalogue interval (26 October 2026; source only)
+
+The six canonical create/update/copy/delete/archive/unarchive shift owners now
+snapshot their scalar/nested input and actor context before awaiting, then take
+Access configuration ownership followed by exclusive leave configuration as the
+first transaction operations. This precedes original source reads, rotation-pool
+rule row locks, membership changes and catalogue/events. Existing normalization,
+date/week/break/eligibility/deletion/uniqueness and copy logic remain unchanged;
+static removal of the six entry additions reproduces the prior file exactly.
+Six real-employee two-connection cases are authored in the roster participation
+suite. Each holds an ordinary employee interval and requires identical shift,
+membership and event state on refusal; after release the original master command
+must succeed and append exactly one event. These and affected shift/rotation/roster
+consumers are UNRUN. Only two-file AST syntax and scoped diff checked; no compiler,
+app, tests, database, build, provider call or release. Other direct rule/week/rotation
+writers, generator earlier source planning and remaining authority/configuration
+owners still require integration. This is partial source coverage, not proof of a
+universal barrier, canonical app-role behavior, security or production readiness.
