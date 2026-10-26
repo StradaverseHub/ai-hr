@@ -19,7 +19,8 @@ It has no staging credentials, database service, application test selection or g
 Its results cannot authorize release.
 
 The transport helper accepts only the expected Ubuntu 24.04 deb822 archive configuration.
-It changes only Azure archive URI values to `https://archive.ubuntu.com/ubuntu`, preserving
+It changes only Azure archive URI values (including GitHub's exact three-entry
+`mirror+file:/etc/apt/apt-mirrors.txt` configuration) to `https://archive.ubuntu.com/ubuntu/`, preserving
 the existing suites, components and explicit Ubuntu archive keyring. Unknown layouts and
 signature/freshness overrides refuse the experiment. No packages, fonts, engine, assertion,
 dependency version or verification requirement are removed. The original signature chain
@@ -34,6 +35,13 @@ resolved the candidate but all six tooling jobs refused before installation: the
 suite capacity profile correctly rejected this separately named diagnostic. The original failure
 is retained. The repair uses the existing browser diagnostic's supported `legacy` preparation;
 the capacity guard is unchanged. Only the six unexecuted comparisons need execution.
+
+The second attempt 40330361736 completed dependency setup but refused before browser installation:
+the expected direct Azure URI is represented by GitHub's mirror-list indirection. The official
+[runner image source](https://github.com/actions/runner-images/blob/main/images/ubuntu/scripts/build/configure-apt-sources.sh)
+defines that exact file and three ordered official endpoints. The repair recognizes only that
+bounded layout, preserves a separate security-pocket stanza and captures original sources before
+validation. Both actual failed attempts remain failures, with no browser performance claim.
 
 The mirror comparison has not yet produced measurements. A faster diagnostic is not proof of a faster complete
 release: normal-workflow adoption requires measured results, source review, coverage and
