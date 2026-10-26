@@ -678,15 +678,15 @@ REVOKE ALL ON FUNCTION app.letter_approval_actor_label(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_approval_actor_label(uuid,uuid) TO ai_hr_app;
 
 --> statement-breakpoint
-CREATE FUNCTION app.letter_audit_actor_label(subject uuid,actor text) RETURNS text
+CREATE FUNCTION app.letter_audit_actor_label(subject uuid,actor uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT p.full_name FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
- WHERE u.id::text=actor AND u.tenant_id=app.current_tenant_id() AND app.letter_can_read(subject)
+ WHERE u.id=actor AND u.tenant_id=app.current_tenant_id() AND app.letter_can_read(subject)
  AND EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=u.tenant_id AND app.letter_permission(l.company_id,'read'))
  AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=u.tenant_id AND e.aggregate_type='letter' AND e.aggregate_id=subject AND e.actor_type='user' AND e.actor_id=actor)
 $$;
-REVOKE ALL ON FUNCTION app.letter_audit_actor_label(uuid,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.letter_audit_actor_label(uuid,text) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.letter_audit_actor_label(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_audit_actor_label(uuid,uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 -- Generation inputs belong to the full cohort. A delegated reviewer receives only the metadata
