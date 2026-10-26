@@ -14,6 +14,7 @@
  */
 import { captureAiConfig,governed,textReservation } from './governance';
 import { captureConversationInput, conversationInputDigest } from './conversation-input';
+import {draftInputDigest} from './draft-input';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
@@ -66,9 +67,10 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
+  args=Object.freeze({...args,system:args.system,prompt:args.prompt,maxTokens:args.maxTokens??2048});
   cfg=captureAiConfig(cfg);
   if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
-  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},(record,observe)=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
+  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens),inputDigest:draftInputDigest(args)},(record,observe)=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
 }
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
