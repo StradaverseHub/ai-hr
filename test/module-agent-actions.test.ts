@@ -89,7 +89,9 @@ it('keeps ESS human selection distinct from requests for approval and refuses mo
 it('keeps Claims submission pending separately from draft saving and declares the modern Performance acknowledgement separately',()=>{
  expect(MODULE_AGENT_ACTIONS.claims.actions.map(row=>row.id)).toEqual(['claims.submit','claims.draft.save']);expect(getModuleAgentAction('claims','claims.submit')?.prepare.status).toBe('pending_adapter');
  expect(MODULE_AGENT_ACTIONS.performance.actions.map(row=>row.id)).toEqual(['performance.review.acknowledge','performance.onehr.plan.acknowledge']);
- for(const [module,action] of [['claims','claims.draft.save']])expect(()=>parseModuleAgentActionNomination({module,action,phase:'prepare'})).toThrow();
+ expect(parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare'})).toEqual({kind:'prepare',module:'claims',action:'claims.draft.save',adapter:'module_claim_draft_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{enteredAmount:100},{draftId:'posted'},{expectedDraftRevision:'1'},{fieldValues:{private:'posted'}},{confirm:true}])expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'confirm'})).toThrow();
 });
 
 it('routes both Performance acknowledgement kinds only to human source selection, never model ratings or effects',()=>{
