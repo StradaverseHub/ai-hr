@@ -11,6 +11,11 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      filesystem_activation_probe:
+        description: Private Linux directory activation/recovery only; no app tests, build, DB, SSH or staging
+        required: false
+        default: false
+        type: boolean
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -131,6 +136,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
+    if: ${{ !inputs.filesystem_activation_probe }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -711,5 +717,46 @@ jobs:
           path: |
             ${{ runner.temp }}/diagnostic-next-build-cache/
             !${{ runner.temp }}/diagnostic-next-build-cache/canonical-build/bytes/build-bundle.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
+  filesystem-activation:
+    if: ${{ inputs.filesystem_activation_probe && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Require an exact frozen filesystem-only selection
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
+          for(const [key,value]of Object.entries(p)){
+            if(['filesystem_activation_probe','candidate_ref','expected_sha'].includes(key))continue;
+            assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='', 'No unrelated diagnostic allowed: '+key);
+          }
+          NODE
+      - name: Actual private Linux exchanges and strict fake staging transport
+        run: |
+          set -euo pipefail
+          python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
+          node --test --test-reporter=spec .github/ci/staging-transport.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-transport.log"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-filesystem-activation
+          path: |
+            ${{ runner.temp }}/filesystem-activation.json
+            ${{ runner.temp }}/filesystem-activation.log
+            ${{ runner.temp }}/staging-transport.log
           if-no-files-found: error
           retention-days: 3

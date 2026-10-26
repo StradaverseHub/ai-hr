@@ -89,7 +89,7 @@ export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOS
     '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
-    '--exclude', '.vitest-attachments',
+    '--exclude', '.vitest-attachments', '--exclude', '/.improve/',
     // Local acceptance dumps/downloads and credentials never ship; protect any existing server copy.
     '--exclude', '/scratchpad/',
     // Native builds ship independently. Gradle intermediates can contain signing configuration.

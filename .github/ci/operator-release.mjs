@@ -5,12 +5,8 @@ import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {verifyCi,revalidateCi,cleanHead,controllerRoot} from './release-ci.mjs';
-export const STAGING=Object.freeze({host:'203.142.6.241',port:'8288',user:'ubuntu',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
-export function bindStaging(env){
- const values={IMPROVE_SSH_HOST:STAGING.host,IMPROVE_SSH_PORT:STAGING.port,IMPROVE_SSH_USER:STAGING.user,IMPROVE_REMOTE_DIR:STAGING.directory,AIHR_DEPLOY_STATE_DIR:STAGING.stateDirectory};
- for(const [key,value] of Object.entries(values)){if(env[key]&&env[key]!==value)throw Error('Staging target mismatch: '+key);env[key]=value;}
- return values;
-}
+import {STAGING,bindStaging,stagingTransport,strictPendingCommand} from './staging-transport.mjs';
+export {STAGING,bindStaging};
 export function followStagingDeployment(official,ssh,observation={}){
  return official.followDeploy({...observation,run:offset=>ssh(official.buildFollowCommand(offset),{encoding:null,stdio:['ignore','pipe','inherit']})});
 }
@@ -28,7 +24,8 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  const testing=await load('scripts/improve/system-testing-manifest.ts');
  const {stableTestingJson}=await load('lib/system-testing/hash.ts');
  const {recordReleaseLearning}=await load('scripts/improve/release-learning.ts');
- const ssh=(command,options={})=>execFileSync('ssh',official.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
+ const transport=stagingTransport(candidatePath,process.env);
+ const ssh=(command,options={})=>execFileSync('ssh',transport.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
  const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
  const baseline=baselineRules.readyProductionBaseline(current());
  const evidence=await verifyCi({candidatePath,runId,baseline});
@@ -43,8 +40,8 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  frozen();
  if(stableTestingJson(testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:evidence.sha,buildRecordId:build.identity.buildRecordId}))!==stableTestingJson(build))throw Error('System Testing source changed');
  // Strict announcement, canonical rsync filter, immutable record transfer, detached launch and poll.
- ssh(official.buildPendingCommand(evidence.sha),{stdio:'inherit'});
- frozen();execFileSync('rsync',official.deploymentRsyncArgs(candidatePath),{stdio:'inherit'});
+ ssh(strictPendingCommand(evidence.sha),{stdio:'inherit'});
+ frozen();execFileSync('rsync',transport.rsyncArgs(official,candidatePath),{stdio:'inherit'});
  ssh(official.buildTestingRecordCommand(evidence.sha,build.identity.buildRecordId),{input:stableTestingJson(build)+'\n',stdio:['pipe','inherit','inherit']});
  const launch=ssh(official.buildLaunchCommand(evidence.sha,STAGING.directory,STAGING.stateDirectory,build.identity.buildRecordId));
  save('launch.json',{output:launch,testingBuildRecordId:build.identity.buildRecordId});
