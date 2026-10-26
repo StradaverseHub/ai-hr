@@ -31,7 +31,7 @@ export function AiConfigForm({ config }: { config: AiConfigView }) {
       {anyActive && (
         <form action={disableAiAction} className="flex justify-end">
           <Button type="submit" variant="ghost" size="sm">
-            {t('turnOff')}
+            {t('deactivateTenantConfig')}
           </Button>
         </form>
       )}

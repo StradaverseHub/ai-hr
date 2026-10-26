@@ -10759,6 +10759,8 @@
       "useThis": "使用此提供商",
       "remove": "移除",
       "turnOff": "关闭 AI 起草",
+      "deactivateTenantConfig": "停用租户服务商",
+      "providerDeactivated": "租户服务商已停用。已配置的平台备用服务商仍可能适用。",
       "assessment": {
         "title": "绩效 AI 辅助",
         "description": "选择可使用 AI 的评估功能。这些设置适用于所有公司，且需要已配置的 AI 服务。",

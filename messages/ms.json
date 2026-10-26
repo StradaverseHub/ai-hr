@@ -10759,6 +10759,8 @@
       "useThis": "Guna penyedia ini",
       "remove": "Buang",
       "turnOff": "Matikan drafan AI",
+      "deactivateTenantConfig": "Nyahaktifkan penyedia penyewa",
+      "providerDeactivated": "Penyedia penyewa dinyahaktifkan. Penyedia sandaran platform yang dikonfigurasi mungkin masih digunakan.",
       "assessment": {
         "title": "Bantuan AI prestasi",
         "description": "Pilih ciri penilaian yang boleh menggunakan AI. Tetapan ini terpakai kepada semua syarikat. Penyedia AI yang dikonfigurasi diperlukan.",

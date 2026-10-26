@@ -10759,6 +10759,8 @@
       "useThis": "Use this provider",
       "remove": "Remove",
       "turnOff": "Turn off AI drafting",
+      "deactivateTenantConfig": "Deactivate tenant provider",
+      "providerDeactivated": "Tenant provider deactivated. A configured platform fallback may still apply.",
       "assessment": {
         "title": "Performance AI assistance",
         "description": "Choose which assessment features may use AI. These settings apply to all companies. A configured AI provider is required.",

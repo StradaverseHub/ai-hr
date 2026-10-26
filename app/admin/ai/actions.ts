@@ -78,7 +78,7 @@ export async function disableAiAction() {
   } catch {
     await commandFailure();
   }
-  back(undefined, 'AI drafting turned off');
+  back(undefined, (await getTranslations('admin.ai'))('providerDeactivated'));
 }
 
 export async function removeAiProviderConfigAction(formData: FormData) {

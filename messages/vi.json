@@ -10759,6 +10759,8 @@
       "useThis": "Dùng nhà cung cấp này",
       "remove": "Xóa",
       "turnOff": "Tắt soạn thảo bằng AI",
+      "deactivateTenantConfig": "Tắt nhà cung cấp của tổ chức",
+      "providerDeactivated": "Đã tắt nhà cung cấp của tổ chức. Nhà cung cấp dự phòng được cấu hình ở nền tảng vẫn có thể được dùng.",
       "assessment": {
         "title": "Hỗ trợ AI cho hiệu suất",
         "description": "Chọn các tính năng đánh giá được phép dùng AI. Cài đặt áp dụng cho mọi công ty và cần nhà cung cấp AI đã cấu hình.",
