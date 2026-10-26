@@ -19,8 +19,10 @@ import { withAssistantReadTx, withAssistantJobReadsTx, type AssistantReadSession
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
-import { governedAiConfig,withAiAdmissionCheck } from './ai-governance';
+import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle } from './ai-governance';
 import { executePromptHoldout,type PromptHoldoutReport } from './module-agent-prompt-harness';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
 import { assistantSourceDigest } from '../lib/ai/assistant-disclosure';
 type AgentReadResult=Awaited<ReturnType<AssistantReadSession['moduleWork']>>;
@@ -226,7 +228,7 @@ const jobProjection=sql`id,user_id,promotion_id,request_nonce,requested_plan_dig
 function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
  if(!ctx.userId||row.user_id!==ctx.userId||!row.request_nonce||!row.expires_at||!row.fresh)return fail();
  const proof=open('governed-job-v2',ctx.tenantId,row.id,row.receipt);
- if(!exact(proof,['version','stage','tenantId','userId','commandNonce','mode','candidateDigest','promotionId','sourceDigest','engineDigest','policyDigest','requestedPlan','executedPlan','requestedPlanDigest','executedPlanDigest','resultDigest','createdAt','expiresAt','elapsedMs'])||
+ if(!exact(proof,['version','stage','tenantId','userId','commandNonce','mode','candidateDigest','promotionId','sourceDigest','engineDigest','policyDigest','requestedPlan','executedPlan','requestedPlanDigest','executedPlanDigest','resultDigest','createdAt','expiresAt','elapsedMs',...(proof.planning===undefined?[]:['planning'])])||
   proof.version!==2||proof.stage!=='completed'||proof.tenantId!==ctx.tenantId||proof.userId!==ctx.userId||proof.commandNonce!==row.request_nonce||
   proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.engineDigest!==ROUTING_ENGINE_DIGEST||proof.policyDigest!==ROUTING_POLICY_DIGEST||
   proof.promotionId!==row.promotion_id||(proof.mode!=='baseline'&&proof.mode!=='promoted')||
@@ -237,9 +239,11 @@ function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
  if(routingDigest(requested)!==row.requested_plan_digest||proof.requestedPlanDigest!==row.requested_plan_digest||routingDigest(executed)!==proof.executedPlanDigest||
   [...requested.modules].sort().join(',')!==[...executed.modules].sort().join(',')||
   new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>GOVERNED_JOB_RETENTION_DAYS*86400000)return fail();
- return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest};
+ const planning=proof.planning===undefined?undefined:capturePlanningBinding(proof.planning);
+ return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest,planning};
 }
 async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>){
+ if(completed.planning)await currentPlanningBindingTx(tx,ctx,completed.planning);
  if(!job.promotion_id)return;const [promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);
  if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id);if(candidate.candidate_digest!==completed.candidateDigest)return fail();
 }
@@ -287,17 +291,19 @@ export async function reopenGovernedModuleReadJobTx(tx:Tx,ctx:SessionContext,id:
 /** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure.
  * Every command caller supplies a retained nonce; no read or retry path invents a new command identity.
  */
-export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string}) {
-  const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,started=Date.now();
-  if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,['nonce']))return fail();
+export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}) {
+  const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,proposalId=command?.proposalId,started=Date.now();
+  if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,proposalId===undefined?['nonce']:['nonce','proposalId'])||(proposalId!==undefined&&!uuid(proposalId)))return fail();
   try{return await withTenant(current,async tx=>{
     const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
     const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
+    const reviewed=proposalId?await checkedOwnPlanProposalTx(tx,current,proposalId,plan):null;
     const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
      where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
-    if(existing){const proof=verifiedGovernedJob(existing,current);if(routingDigest(plan)!==routingDigest(proof.requested))return fail();await assertGovernedJobCandidateTx(tx,current,existing,proof);
+    if(existing){const proof=verifiedGovernedJob(existing,current);if((reviewed?.row.consumed_job_id??null)!==(proposalId?existing.id:null)||proof.planning?.proposalId!==(proposalId??undefined))return fail();if(routingDigest(plan)!==routingDigest(proof.requested))return fail();await assertGovernedJobCandidateTx(tx,current,existing,proof);
      const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
      return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:proof.mode,results,effects:[],replayed:true};}
+    if(reviewed?.row.consumed_job_id)return fail();
     const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
       from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.module_code='assistant'
       and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
@@ -325,9 +331,10 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
     const receipt=seal('governed-job-v2',current.tenantId,id,{version:2,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,
      mode,candidateDigest,promotionId:activePromotion?.id??null,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:ROUTING_ENGINE_DIGEST,policyDigest:ROUTING_POLICY_DIGEST,
      requestedPlan:plan,executedPlan:selected,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(selected),resultDigest:assistantSourceDigest(results),
-     createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started)});
+     createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started),...(reviewed?{planning:reviewed.binding}:{})});
     await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt)
       values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${activePromotion?.id??null}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
+    if(reviewed){const linked=await tx.execute<{id:string}>(sql`update public.ai_agent_plan_proposal set consumed_job_id=${id}::uuid where id=${reviewed.row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and consumed_job_id is null returning id`);if(linked.length!==1||linked[0].id!==reviewed.row.id)return fail();}
     return {version:1 as const,jobId:id,candidateDigest,mode,results,effects:[],replayed:false};
   });}catch{return fail();}
 }
@@ -337,13 +344,13 @@ export async function maintainModuleAgentReleases(ctx:SessionContext,limit=100){
  const current=capture(ctx);if(!Number.isSafeInteger(limit)||limit<1||limit>100)return fail();
  try{return await withTenant(current,async tx=>{await guard(tx,current,true,false);
   const rows=await tx.execute<{id:string;owner_user_id:string}>(sql`select p.id,p.owner_user_id from public.ai_agent_promotion p
-   where p.tenant_id=${current.tenantId}::uuid and(p.expires_at<=now() or p.used_jobs>=p.max_jobs)
+   where p.tenant_id=${current.tenantId}::uuid and(p.expires_at<=now() or (p.used_jobs>=p.max_jobs and exists(select 1 from public.ai_agent_candidate c where c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1')))
    and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
    order by p.owner_user_id,p.created_at,p.id limit ${limit}`);
   let retired=0;
   for(const row of rows){if(!await agentReleaseIntervalTx(tx,current,row.owner_user_id,true,false))continue;
    const [fresh]=await tx.execute<{id:string;reason:'expired'|'exhausted'}>(sql`select p.id,case when p.expires_at<=now() then 'expired' else 'exhausted' end as reason from public.ai_agent_promotion p
-    where p.id=${row.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${row.owner_user_id}::uuid and(p.expires_at<=now() or p.used_jobs>=p.max_jobs)
+    where p.id=${row.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${row.owner_user_id}::uuid and(p.expires_at<=now() or (p.used_jobs>=p.max_jobs and exists(select 1 from public.ai_agent_candidate c where c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1')))
     and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
    if(!fresh)continue;const inserted=await tx.execute<{id:string}>(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
     values(${current.tenantId}::uuid,${fresh.id}::uuid,${current.userId}::uuid,${fresh.reason}) on conflict(promotion_id) do nothing returning id`);retired+=inserted.length;
@@ -405,7 +412,7 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
    });
    const [previous]=await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select id,evaluator_user_id,suite_digest,receipt
     from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidateId}::uuid
-    and evaluator_user_id=${current.userId}::uuid order by completed_at desc,id desc limit 1`);
+    and evaluator_user_id=${current.userId}::uuid and suite_digest=${PROMPT_SUITE_DIGEST} order by completed_at desc,id desc limit 1`);
    let retained:PromptHoldoutReport|undefined;
    if(previous)try{retained=authenticatedPromptReport(previous,candidate,current.tenantId,snapshot.fingerprint);}catch{/* Changed binding is not reusable passing evidence. */}
    return {candidate,cfg,providerFingerprint:snapshot.fingerprint,retained};
@@ -434,7 +441,7 @@ export async function promotePromptAgentCandidate(ctx:SessionContext,input:{cand
   if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
   const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
   const rows=await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,suite_digest,receipt
-   from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidate.id}::uuid
+   from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidate.id}::uuid and suite_digest=${PROMPT_SUITE_DIGEST}
    order by evaluator_user_id,completed_at desc,id desc`);
   if(rows.length<2||rows.length>8||new Set(rows.map(row=>row.evaluator_user_id)).size!==rows.length)return fail();
   const checked=rows.map(row=>{const report=authenticatedPromptReport(row,candidate,current.tenantId,snapshot.fingerprint);
@@ -578,4 +585,154 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
  return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,
   candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null,verifiedSignalCount:verifiedSignalCount.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
+}
+
+/** Human-question planning is separate from synthetic evaluation and never retrieves HR records.
+ * A proposal nominates labels only; a second explicit human command owns all canonical reads.
+ */
+export const MODULE_PLAN_PROPOSAL_TTL_SECONDS=900;
+const questionLocales=['en','ms','zh','ta','th','vi'] as const;
+type QuestionLocale=typeof questionLocales[number];
+type PlanningBinding=Readonly<{proposalId:string;candidateId:string;candidateDigest:string;promotionId:string;providerFingerprint:string;sourceDigest:string;engineDigest:string;policyDigest:string;suiteDigest:string;humanSuiteDigest:string}>;
+type PlanProposalRow={id:string;user_id:string;request_nonce:string;promotion_id:string;state:'reserved'|'ready'|'refused'|'failed';receipt:string;created_at:string;expires_at:string;fresh:boolean;consumed_job_id:string|null};
+const proposalProjection=sql`id,user_id,request_nonce,promotion_id,state,receipt,created_at::text,expires_at::text,expires_at>now() as fresh,consumed_job_id`;
+function capturePlanningBinding(input:unknown):PlanningBinding{
+ if(!input||typeof input!=='object'||Array.isArray(input)||!exact(input,['proposalId','candidateId','candidateDigest','promotionId','providerFingerprint','sourceDigest','engineDigest','policyDigest','suiteDigest','humanSuiteDigest']))return fail();
+ const row=input as Record<string,unknown>;
+ for(const field of ['proposalId','candidateId','promotionId'])if(typeof row[field]!=='string'||!uuid(row[field] as string))return fail();
+ for(const field of ['candidateDigest','sourceDigest','engineDigest','policyDigest','suiteDigest','humanSuiteDigest'])if(typeof row[field]!=='string'||!/^[a-f0-9]{64}$/.test(row[field] as string))return fail();
+ if(typeof row.providerFingerprint!=='string'||!row.providerFingerprint||row.providerFingerprint.length>1024||row.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||row.engineDigest!==PROMPT_ENGINE_DIGEST||row.policyDigest!==PROMPT_POLICY_DIGEST||row.suiteDigest!==PROMPT_SUITE_DIGEST||row.humanSuiteDigest!==HUMAN_PLAN_SUITE_DIGEST)return fail();
+ return Object.freeze(row) as PlanningBinding;
+}
+/** Historical sealed binding nominates; fresh issued provider and actual principal remain authority. */
+async function currentPlanningBindingTx(tx:Tx,ctx:SessionContext,binding:PlanningBinding){
+ const fresh=await guard(tx,ctx,false);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');
+ await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
+ const candidate=await candidateTx(tx,ctx,binding.candidateId);
+ if(candidate.owner_user_id!==ctx.userId||candidate.kind!=='read_plan_prompt_v1'||candidate.candidate_digest!==binding.candidateDigest)return fail();
+ const [promotion]=await tx.execute<{receipt:string;max_jobs:number;expires_at:string}>(sql`select receipt,max_jobs,expires_at::text from public.ai_agent_promotion p where p.id=${binding.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.candidate_id=${candidate.id}::uuid and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
+ if(!promotion)return fail();const proof=open('prompt-promotion',ctx.tenantId,binding.promotionId,promotion.receipt);
+ const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);
+ if(!snapshot||snapshot.fingerprint!==binding.providerFingerprint||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(bindingOfCandidate(candidate))||proof.providerFingerprint!==snapshot.fingerprint||proof.maxJobs!==promotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(promotion.expires_at).getTime())return fail();
+ await assertHumanPlanEvaluationsTx(tx,ctx,candidate,snapshot.fingerprint);
+ return {fresh,candidate,snapshot};
+}
+// Avoid shadowing the existing candidate binding owner with historical proposal bindings.
+const bindingOfCandidate=binding;
+function openProposal(row:PlanProposalRow,ctx:SessionContext){
+ if(!ctx.userId||row.user_id!==ctx.userId||!row.fresh)return fail();const proof=open('human-plan',ctx.tenantId,row.id,row.receipt);
+ if(proof.version!==1||proof.userId!==ctx.userId||proof.nonce!==row.request_nonce||proof.state!==row.state||typeof proof.questionDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.questionDigest)||
+  !questionLocales.includes(proof.locale as QuestionLocale)||new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime()||
+  new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>MODULE_PLAN_PROPOSAL_TTL_SECONDS*1000)return fail();
+ const checked=capturePlanningBinding(proof.binding);if(checked.proposalId!==row.id||checked.promotionId!==row.promotion_id)return fail();
+ return {proof,binding:checked};
+}
+async function proposalNonceTx(tx:Tx,ctx:SessionContext,nonce:string){
+ const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-plan:'+ctx.tenantId+':'+ctx.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
+}
+async function checkedOwnPlanProposalTx(tx:Tx,ctx:SessionContext,id:string,plan:ReturnType<typeof captureTypedModulePlan>){
+ if(!uuid(id))return fail();const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);if(!row)return fail();
+ await proposalNonceTx(tx,ctx,row.request_nonce);const opened=openProposal(row,ctx);await currentPlanningBindingTx(tx,ctx,opened.binding);
+ if(row.state!=='ready'||routingDigest(captureTypedModulePlan(opened.proof.plan))!==routingDigest(plan))return fail();return {row,binding:opened.binding};
+}
+export type OwnModulePlanView=Readonly<{state:'ready';proposalId:string;modules:ReturnType<typeof captureTypedModulePlan>['modules'];consumedJobId:string|null;expiresAt:string}|{state:'reserved'|'refused'|'failed';proposalId:string;expiresAt:string}>;
+/** GET reopening never consumes quota, writes metadata, calls a provider or reads canonical HR facts. */
+export async function reopenOwnModulePlanTx(tx:Tx,ctx:SessionContext,id:string):Promise<OwnModulePlanView>{
+ const current=capture(ctx);if(!uuid(id))return fail();const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);if(mode?.readonly!=='on')return fail();
+ await guard(tx,current,false);const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row)return fail();
+ const opened=openProposal(row,current);await currentPlanningBindingTx(tx,current,opened.binding);
+ if(row.state==='ready')return Object.freeze({state:'ready',proposalId:row.id,modules:captureTypedModulePlan(opened.proof.plan).modules,consumedJobId:row.consumed_job_id,expiresAt:row.expires_at});
+ return Object.freeze({state:row.state,proposalId:row.id,expiresAt:row.expires_at});
+}
+/** No question or provider text is persisted. Even request digests remain inside authenticated ciphertext. */
+export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{nonce:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}){
+ const current=capture(ctx),nonce=input.nonce,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
+ if(!exact(input,['nonce','question','locale','consent'])||!uuid(nonce)||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
+ const questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();
+ try{
+  const prepared=await withTenant(current,async tx=>{
+   const fresh=await guard(tx,current,false);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);await proposalNonceTx(tx,current,nonce);
+   const [existing]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
+   if(existing){const prior=openProposal(existing,current);await currentPlanningBindingTx(tx,current,prior.binding);if(prior.proof.questionDigest!==questionDigest||prior.proof.locale!==locale||!Number.isSafeInteger(prior.proof.duplicateReplays)||Number(prior.proof.duplicateReplays)<0)return fail();await tx.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,existing.id,{...prior.proof,duplicateReplays:Number(prior.proof.duplicateReplays)+1})} where id=${existing.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);return {replayed:true as const,id:existing.id};}
+   const [promotion]=await tx.execute<{id:string;candidate_id:string}>(sql`select p.id,p.candidate_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='read_plan_prompt_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
+   if(!promotion)return {unavailable:true as const};
+   const candidate=await candidateTx(tx,current,promotion.candidate_id),snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();const id=randomUUID();
+   const bound=capturePlanningBinding({proposalId:id,candidateId:candidate.id,candidateDigest:candidate.candidate_digest,promotionId:promotion.id,providerFingerprint:snapshot.fingerprint,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:PROMPT_ENGINE_DIGEST,policyDigest:PROMPT_POLICY_DIGEST,suiteDigest:PROMPT_SUITE_DIGEST,humanSuiteDigest:HUMAN_PLAN_SUITE_DIGEST});
+   await currentPlanningBindingTx(tx,current,bound);
+   const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${MODULE_PLAN_PROPOSAL_TTL_SECONDS}))::text as expires`);
+   const proof={version:1,userId:current.userId,nonce,state:'reserved',questionDigest,locale,binding:bound,createdAt:clock.now,expiresAt:clock.expires,runId:null,tokens:null,cost:null,elapsedMs:null,outcome:'pending',duplicateReplays:0};
+   await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
+   await tx.execute(sql`insert into public.ai_agent_plan_proposal(id,tenant_id,user_id,request_nonce,promotion_id,state,receipt,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${nonce}::uuid,${promotion.id}::uuid,'reserved',${seal('human-plan',current.tenantId,id,proof)},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);
+   return {replayed:false as const,id,candidate,bound};
+  });
+  if('unavailable' in prepared)return {state:'chooser' as const};if(prepared.replayed)return {state:'replayed' as const,proposalId:prepared.id};
+  const outbound=Object.freeze({system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(question,locale),maxTokens:384,timeoutMs:15000}),expectedInputDigest=draftInputDigest(outbound);
+  // Fresh provider configuration is issued only after durable reservation. No transaction spans network.
+  const cfg=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const checked=await currentPlanningBindingTx(tx,current,prepared.bound);
+   const admitted=withAiAdmissionCheck(governedAiConfig(checked.fresh,checked.snapshot,'module_agent_planning'),'module_agent_planning',async carrier=>{
+    await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||openProposal(row,current).proof.state!=='reserved')return fail();
+   });
+   return withAiAdmissionLifecycle(admitted,'module_agent_planning',{
+    admitted:async(carrier,event)=>{
+     await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);
+     const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+     if(!row||event.request.operation!=='draft'||event.request.inputDigest!==expectedInputDigest)return fail();const {proof}=openProposal(row,current);if(row.state!=='reserved'||proof.runId!==null)return fail();
+     await carrier.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,row.id,{...proof,runId:event.runId})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+    },
+    settled:async(carrier,event)=>{
+     // Settlement remains honest even if authority was revoked after admission or personal custody erased.
+     await assertAiPrincipalTx(carrier,current);await proposalNonceTx(carrier,current,nonce);
+     const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row)return;
+     const proof=open('human-plan',current.tenantId,row.id,row.receipt);if(proof.userId!==current.userId||proof.nonce!==nonce||proof.runId!==event.runId||row.state!=='reserved')return fail();
+     await carrier.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,row.id,{...proof,tokens:event.actualTokens,cost:event.accounting.openrouterAccountCostCredits,costUnit:event.accounting.openrouterAccountCostCredits===null?null:'openrouter-account-credit',accounting:event.accounting,settled:event.succeeded})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+    },
+   });
+  });
+  let text:string|undefined;try{text=await generateDraft(cfg,outbound);}catch{/* Reserved request is terminally failed; it is never automatically sent again. */}
+  let plan:ReturnType<typeof adjudicatePromptReadPlan>|undefined;try{if(text!==undefined)plan=adjudicatePromptReadPlan(text);}catch{/* Malformed prose never becomes a plan. */}
+  await withTenant(current,async tx=>{await currentPlanningBindingTx(tx,current,prepared.bound);await proposalNonceTx(tx,current,nonce);
+   const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||row.state!=='reserved')return fail();const {proof}=openProposal(row,current);
+   const state=text===undefined||proof.settled!==true||typeof proof.runId!=='string'?'failed':plan?.decision==='read'?'ready':'refused';
+   await tx.execute(sql`update public.ai_agent_plan_proposal set state=${state},receipt=${seal('human-plan',current.tenantId,row.id,{...proof,state,plan:state==='ready'?{version:1,modules:plan!.modules}:null,outputDigest:text===undefined?null:routingDigest(text),elapsedMs:Math.max(0,Date.now()-started),outcome:state})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+  });return {state:'completed' as const,proposalId:prepared.id};
+ }catch{return fail();}
+}
+/** Personal proposal erasure survives Assistant grant loss; no raw question or other user's data read. */
+export async function eraseOwnModulePlanProposals(ctx:SessionContext){const current=capture(ctx);try{return await withTenant(current,async tx=>{
+ await assertAiPrincipalTx(tx,current);if(!current.userId)return fail();await agentReleaseIntervalTx(tx,current,current.userId);const rows=await tx.execute<{id:string}>(sql`delete from public.ai_agent_plan_proposal where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid returning id`);return {erased:rows.length};
+ });}catch{return fail();}}
+
+function checkedHumanEvaluation(row:{id:string;evaluator_user_id:string;receipt:string},candidate:CandidateRow,ctx:SessionContext,fingerprint:string){
+ const proof=open('human-plan-evaluation',ctx.tenantId,row.id,row.receipt);
+ if(proof.version!==1||proof.suiteDigest!==HUMAN_PLAN_SUITE_DIGEST||proof.candidateDigest!==candidate.candidate_digest||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==fingerprint||routingDigest(proof.binding)!==routingDigest(binding(candidate))||!Array.isArray(proof.cases)||proof.cases.length>HUMAN_PLAN_HOLDOUTS.length)return fail();
+ const seen=new Set<string>();for(const item of proof.cases){if(!item||typeof item.id!=='string'||seen.has(item.id)||!HUMAN_PLAN_HOLDOUTS.some(f=>f.id===item.id)||!['passed','failed','unavailable'].includes(item.state)||item.state!=='unavailable'&&(typeof item.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.outputDigest)))return fail();seen.add(item.id);}return proof;
+}
+async function assertHumanPlanEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,fingerprint:string){
+ // Group-admin-only evaluation RLS is unchanged. Learned candidates are never lent to other owners.
+ const rows=await tx.execute<{id:string;evaluator_user_id:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,receipt from public.ai_agent_evaluation where tenant_id=${ctx.tenantId}::uuid and candidate_id=${candidate.id}::uuid and suite_digest=${HUMAN_PLAN_SUITE_DIGEST} order by evaluator_user_id,completed_at desc,id desc`);
+ if(rows.length<2||rows.length>8)return fail();for(const row of rows){if(row.evaluator_user_id===candidate.author_user_id)return fail();const proof=checkedHumanEvaluation(row,candidate,ctx,fingerprint);if(proof.state!=='complete'||proof.cases.length!==HUMAN_PLAN_HOLDOUTS.length||proof.cases.some((item:{state:string})=>item.state!=='passed'))return fail();}
+}
+/** Additional synthetic-only consent, independent from permission to send a human question. */
+export async function evaluateHumanQuestionPlannerCandidate(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
+ const current=capture(ctx),candidateId=input.candidateId;captureSyntheticConsent(input.consent,HUMAN_PLAN_HOLDOUTS.length);if(!exact(input,['candidateId','consent']))return fail();
+ try{const prepared=await withTenant(current,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');const candidate=await candidateTx(tx,current,candidateId);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
+  const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
+  const cfg=withAiAdmissionCheck(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),'module_agent_evaluation',async carrier=>{await guard(carrier,current,true);const again=await candidateTx(carrier,current,candidateId);if(again.candidate_digest!==candidate.candidate_digest||again.author_user_id===current.userId)return fail();});
+  const [prior]=await tx.execute<{id:string;evaluator_user_id:string;receipt:string}>(sql`select id,evaluator_user_id,receipt from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidateId}::uuid and evaluator_user_id=${current.userId}::uuid and suite_digest=${HUMAN_PLAN_SUITE_DIGEST} order by completed_at desc,id desc limit 1`);
+  let retained:Record<string,unknown>|null=null;try{if(prior)retained=checkedHumanEvaluation(prior,candidate,current,snapshot.fingerprint);}catch{/* Changed provenance is genuinely unrun input. */}
+  return {candidate,cfg,fingerprint:snapshot.fingerprint,retained};
+ });
+ const cases:{id:string;state:'passed'|'failed'|'unavailable';outputDigest?:string;retained?:boolean}[]=[];let attempted=0,unavailable=0;
+ const priorCases=Array.isArray(prepared.retained?.cases)?prepared.retained.cases:[];
+ for(const fixture of HUMAN_PLAN_HOLDOUTS){const prior=priorCases.find(row=>row.id===fixture.id&&row.state==='passed');if(prior){cases.push({...prior,retained:true});continue;}attempted++;
+  let text:string;try{text=await generateDraft(prepared.cfg,{system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(fixture.question,fixture.locale),maxTokens:384,timeoutMs:15000});}catch{unavailable++;const failed=priorCases.find(row=>row.id===fixture.id&&row.state==='failed');cases.push(failed?{...failed,retained:true}:{id:fixture.id,state:'unavailable'});continue;}
+  let passed=false;try{const plan=adjudicatePromptReadPlan(text);passed=plan.decision===fixture.decision&&[...plan.modules].sort().join(',')===[...fixture.modules].sort().join(',');}catch{/* Typed refusal is not an invented success. */}
+  cases.push({id:fixture.id,state:passed?'passed':'failed',outputDigest:routingDigest(text)});
+ }
+ const state=unavailable?'incomplete':'complete';return await withTenant(current,async tx=>{await guard(tx,current,true,false);const candidate=await candidateTx(tx,current,candidateId);const snapshot=await resolveAiProviderSnapshotTx(tx,current);if(candidate.candidate_digest!==prepared.candidate.candidate_digest||snapshot?.fingerprint!==prepared.fingerprint)return fail();
+  const id=randomUUID(),receipt=seal('human-plan-evaluation',current.tenantId,id,{version:1,suiteDigest:HUMAN_PLAN_SUITE_DIGEST,candidateDigest:candidate.candidate_digest,binding:binding(candidate),evaluatorId:current.userId,providerFingerprint:prepared.fingerprint,state,cases});
+  await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt) values(${id}::uuid,${current.tenantId}::uuid,${candidateId}::uuid,${current.userId}::uuid,${HUMAN_PLAN_SUITE_DIGEST},${receipt})`);
+  return {state,attempted,completedCases:cases.filter(row=>row.state!=='unavailable').length,totalCases:HUMAN_PLAN_HOLDOUTS.length,knownFailures:cases.filter(row=>row.state==='failed').length,retainedPasses:cases.filter(row=>row.retained).length};
+ });}catch{return fail();}
 }

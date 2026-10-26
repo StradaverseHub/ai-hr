@@ -10,14 +10,14 @@ import { resolveEntitlementsTx,isModuleEnabled } from './entitlements';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
 import { withAssistantReadTx } from './assistant-read-session';
-import { agentReviewWorkspaceTx } from './module-agent-releases';
+import { agentReviewWorkspaceTx,reopenOwnModulePlanTx,type OwnModulePlanView } from './module-agent-releases';
 import {loadGovernedWorkspaceJobTx} from './workspace-module-jobs';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 
-export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string;governedJobId?:string}={}) {
-  const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId,governedJobId=options.governedJobId;
+export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string;governedJobId?:string;proposalId?:string}={}) {
+  const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId,governedJobId=options.governedJobId,proposalId=options.proposalId;
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null };
+  if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null,proposal:null };
   const userId = captured.userId;
   try{return await withTenant(captured, async tx => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
@@ -25,8 +25,9 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     const entitlements = await resolveEntitlementsTx(tx, captured.tenantId);
     const fresh = { ...captured, entitlements };
     const access = await mayUseAssistant(fresh, tx);
-    if (!access.allowed) return { access, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null };
+    if (!access.allowed) return { access, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null,proposal:null };
     const governedJob=governedJobId?await loadGovernedWorkspaceJobTx(fresh,tx,governedJobId):null;
+    let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await reopenOwnModulePlanTx(tx,fresh,proposalId);}catch{/* Bounded current-owner refusal; no existence oracle. */}
     const taskIds = workspaceTasksFor(toolsFor(fresh).map(tool => tool.spec.name));
     // HR visibility is broader than personal conversation custody. Keep the explicit actual-user
     // predicate even when RLS could let an administrator read other users' exchange rows.
@@ -54,6 +55,6 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     }):[];
     const agentReview=includeGovernance?await agentReviewWorkspaceTx(tx,fresh):null;
     const jobModules=MODULE_JOBS.filter(([code])=>isModuleEnabled(fresh,code)&&(!['system_explorer','system_testing'].includes(code)||isAdmin(fresh))).map(([code])=>code);
-    return { access, taskIds, history,agentReview,jobModules,governedJob };
-  });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,governedJob:null};}
+    return { access, taskIds, history,agentReview,jobModules,governedJob,proposal };
+  });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,governedJob:null,proposal:null};}
 }

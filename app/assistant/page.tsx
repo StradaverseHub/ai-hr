@@ -4,6 +4,8 @@ import { getSession } from '@/lib/session';
 import { loadAiWorkspace } from '@/core/ai-workspace';
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
 import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
+import {ModuleQuestionPlanner,HumanPlannerEvaluation} from '@/components/assistant/module-plan';
+import {eraseModuleProposalsAction} from './module-plan-actions';
 import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
@@ -37,12 +39,12 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
-  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed});
+  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   if (!access.allowed) {
@@ -56,6 +58,7 @@ export default async function AssistantPage({
           <form action={eraseAgentFeedbackAction} className="mt-4">
             <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
           </form>
+          <form action={eraseModuleProposalsAction}><button type="submit" className="min-h-11 text-xs underline">{t('workspace.planning.erase')}</button></form>
           <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
         </Card>
       </div>
@@ -78,6 +81,8 @@ export default async function AssistantPage({
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
+      <ModuleQuestionPlanner view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
+      {workspace.agentReview&&<HumanPlannerEvaluation candidates={workspace.agentReview.candidates}/>}
 
       <Card className="p-5">
         <WorkspaceComposer action={askAssistantAction} tasks={tasks} labels={{

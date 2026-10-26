@@ -208,3 +208,72 @@ END $$;
 REVOKE ALL ON FUNCTION app.agent_candidate_signals_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.agent_candidate_signals_current(uuid) TO ai_hr_app;
 CREATE INDEX ai_agent_job_feedback_expiry ON public.ai_agent_job_feedback(tenant_id,expires_at,id);
+
+--> statement-breakpoint
+-- Human-authored questions are never stored here. The authenticated encrypted receipt contains
+-- only digests, typed proposed modules, source/provider bindings and honest request observations.
+CREATE TABLE public.ai_agent_plan_proposal (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ user_id uuid NOT NULL REFERENCES public.app_user(id),request_nonce uuid NOT NULL,
+ promotion_id uuid NOT NULL REFERENCES public.ai_agent_promotion(id),
+ state text NOT NULL CHECK(state IN('reserved','ready','refused','failed')),
+ receipt text NOT NULL CHECK(length(receipt) BETWEEN 1 AND 65536),
+ created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,
+ consumed_job_id uuid REFERENCES public.ai_agent_job_receipt(id) ON DELETE CASCADE,
+ CHECK(expires_at>created_at AND expires_at<=created_at+interval '15 minutes'),
+ CHECK(consumed_job_id IS NULL OR state='ready'),UNIQUE(tenant_id,user_id,request_nonce)
+);
+--> statement-breakpoint
+ALTER TABLE public.ai_agent_plan_proposal ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_agent_plan_proposal FORCE ROW LEVEL SECURITY;
+CREATE POLICY ai_agent_plan_own ON public.ai_agent_plan_proposal FOR SELECT TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id());
+CREATE POLICY ai_agent_plan_create ON public.ai_agent_plan_proposal FOR INSERT TO ai_hr_app
+ WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()
+ AND EXISTS(SELECT 1 FROM public.ai_agent_promotion p JOIN public.ai_agent_candidate c ON c.id=p.candidate_id AND c.tenant_id=p.tenant_id
+  WHERE p.id=promotion_id AND p.tenant_id=ai_agent_plan_proposal.tenant_id AND p.owner_user_id=app.current_user_id() AND c.kind='read_plan_prompt_v1'));
+CREATE POLICY ai_agent_plan_update ON public.ai_agent_plan_proposal FOR UPDATE TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id())
+ WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()
+ AND (consumed_job_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_agent_job_receipt j WHERE j.id=consumed_job_id AND j.tenant_id=ai_agent_plan_proposal.tenant_id AND j.user_id=app.current_user_id())));
+CREATE POLICY ai_agent_plan_erase ON public.ai_agent_plan_proposal FOR DELETE TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id());
+REVOKE ALL ON public.ai_agent_plan_proposal FROM PUBLIC;
+GRANT SELECT,INSERT,DELETE ON public.ai_agent_plan_proposal TO ai_hr_app;
+GRANT UPDATE(state,receipt,consumed_job_id) ON public.ai_agent_plan_proposal TO ai_hr_app;
+CREATE INDEX ai_agent_plan_expiry ON public.ai_agent_plan_proposal(tenant_id,expires_at,id);
+--> statement-breakpoint
+CREATE FUNCTION app.guard_agent_plan_transition() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN
+ IF OLD.state<>'reserved' AND NEW.state<>OLD.state THEN RAISE EXCEPTION 'Agent plan transition refused';END IF;
+ IF OLD.consumed_job_id IS NOT NULL AND NEW.consumed_job_id IS DISTINCT FROM OLD.consumed_job_id THEN RAISE EXCEPTION 'Agent plan replay refused';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_agent_plan_transition() FROM PUBLIC;
+CREATE TRIGGER ai_agent_plan_transition BEFORE UPDATE ON public.ai_agent_plan_proposal FOR EACH ROW EXECUTE FUNCTION app.guard_agent_plan_transition();
+
+--> statement-breakpoint
+-- Physical owner/session only: never an app SECURITY DEFINER cleanup identity.
+CREATE POLICY ai_agent_job_receipt_expired_connection_read ON public.ai_agent_job_receipt FOR SELECT TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_receipt'::regclass)) AND coalesce(expires_at,created_at+interval '720 hours')<=now());
+CREATE POLICY ai_agent_job_receipt_expired_connection_delete ON public.ai_agent_job_receipt FOR DELETE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_receipt'::regclass)) AND coalesce(expires_at,created_at+interval '720 hours')<=now());
+CREATE POLICY ai_agent_job_receipt_expired_connection_lock ON public.ai_agent_job_receipt FOR UPDATE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_receipt'::regclass)) AND coalesce(expires_at,created_at+interval '720 hours')<=now()) WITH CHECK(false);
+CREATE POLICY ai_agent_job_feedback_expired_connection_read ON public.ai_agent_job_feedback FOR SELECT TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_feedback'::regclass)) AND expires_at<=now());
+CREATE POLICY ai_agent_job_feedback_expired_connection_delete ON public.ai_agent_job_feedback FOR DELETE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_feedback'::regclass)) AND expires_at<=now());
+CREATE POLICY ai_agent_job_feedback_expired_connection_lock ON public.ai_agent_job_feedback FOR UPDATE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_feedback'::regclass)) AND expires_at<=now()) WITH CHECK(false);
+CREATE POLICY ai_agent_candidate_provenance_expired_connection_read ON public.ai_agent_candidate_provenance FOR SELECT TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_candidate_provenance'::regclass)) AND created_at+interval '720 hours'<=now());
+CREATE POLICY ai_agent_candidate_provenance_expired_connection_delete ON public.ai_agent_candidate_provenance FOR DELETE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_candidate_provenance'::regclass)) AND created_at+interval '720 hours'<=now());
+CREATE POLICY ai_agent_candidate_provenance_expired_connection_lock ON public.ai_agent_candidate_provenance FOR UPDATE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_candidate_provenance'::regclass)) AND created_at+interval '720 hours'<=now()) WITH CHECK(false);
+CREATE POLICY ai_agent_plan_proposal_expired_connection_read ON public.ai_agent_plan_proposal FOR SELECT TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_plan_proposal'::regclass)) AND expires_at<=now());
+CREATE POLICY ai_agent_plan_proposal_expired_connection_delete ON public.ai_agent_plan_proposal FOR DELETE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_plan_proposal'::regclass)) AND expires_at<=now());
+CREATE POLICY ai_agent_plan_proposal_expired_connection_lock ON public.ai_agent_plan_proposal FOR UPDATE TO PUBLIC
+ USING(current_user=session_user AND session_user<>'ai_hr_app' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_plan_proposal'::regclass)) AND expires_at<=now()) WITH CHECK(false);
