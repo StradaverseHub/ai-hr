@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { generate } from 'otplib';
-import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { client, type SessionContext } from '../db/client';
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { changeInitialPassword, credentialByLogin, startLogin, verifyMfa } from '../lib/internal-auth/service';
@@ -60,7 +60,8 @@ it('uses the internal credential and shared consent/lease rules, holds missing-S
 
 it('delivers an account-only Letter through the actual internal credential, summary and nonce wrappers',async()=>{
  const author=adminCtx(base),[person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional account-only signatory',primaryEmail:'internal-letter@fixture.test'}).returning();
- const userId=await createManualAccount(author,{id:randomUUID(),personId:person.id,username:'letter.signer',email:'internal-letter@fixture.test',role:'hr_admin',companyId:null,password:temporary,ownershipAttested:true});
+ // Employee enrollment deliberately requires employment. Account-only administrators use the existing operator-owned enrollment path.
+ const userId=await createAppUser(base.tenantId,person.id,'hr_admin');await bootstrapInternalOwner(owner.client,{appUserId:userId,organization:'alpha',username:'letter.signer',email:'internal-letter@fixture.test',password:temporary,installationOperator:false});
  const login=await startLogin({organization:'alpha',username:'letter.signer',password:temporary,native:false});if(login.step!=='password')throw Error('Expected password change');const setup=await changeInitialPassword(login.challenge,password);if(setup.step!=='enroll'||!setup.secret)throw Error('Expected MFA setup');await verifyMfa(setup.challenge,await generate({secret:setup.secret}));
  const credential=(await credentialByLogin('alpha','letter.signer'))!,signer:SessionContext={tenantId:base.tenantId,userId,personId:person.id,roles:['hr_admin'],entitlements:harnessSnapshot(base.tenantId)};
  await saveNotificationEmailPolicy(author,['letters']);await saveLetterEmailPreferences(signer,{enabled:true,locale:'en'},{issuer:credential.issuer,subject:credential.subject,email:credential.email,emailVerified:true});await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'letters-fixture',drafts:{}},null);
