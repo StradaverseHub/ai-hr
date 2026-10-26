@@ -18,6 +18,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { companyPayrollConfig, payrollPolicy, type PayslipRelease } from '../db/schema';
 import { cleanPayslipRelease } from './payroll-policy-config';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 
 /** Thrown when the chosen company-default payroll policy is not a valid (same-company, active) policy. */
 export class InvalidDefaultPolicyError extends Error {
@@ -50,6 +51,7 @@ export type PayrollConfigInput = {
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const rawDefaultPolicy = (p.defaultPayrollPolicyId ?? '').trim() || null;
   const payslipRelease = cleanPayslipRelease(p.payslipRelease);
   const values = {
@@ -63,6 +65,13 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     payslipRelease,
   };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+      where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+       and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+       and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+       and exists(select 1 from public.company c where c.id=${p.companyId}::uuid and c.tenant_id=u.tenant_id and app.is_admin_for(c.id))) as allowed`);
+    if(authority?.allowed!==true)throw new Error('Payroll configuration unavailable.');
     // Step 1 — the chosen default policy MUST be an active policy in THIS company (RLS is tenant-wide, so a
     // same-tenant cross-company or inactive policy would otherwise slip through). Validate before the write.
     if (rawDefaultPolicy) {

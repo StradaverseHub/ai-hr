@@ -56,8 +56,7 @@ import { encashableDaysForEmployment } from './leave-encashment';
 import { leaveDaysAreThisSystems } from './leave-charge';
 import { packFor } from '../localization/registry';
 import {
-  anomalyEvaluated,
-  evaluateCircuitBreaker,
+  evaluateCircuitBreakerForCloseTx,
   openBlockingVerdicts,
   supersedeVerdictsForEmployments,
 } from './payroll-anomaly';
@@ -1147,11 +1146,14 @@ export function defaultPaymentDate(payPeriod: string, payDay: number | null | un
  * config + no default policy resolves every window to the plain calendar month, so the kernel reads that swap
  * their hard-coded `[M-01 … M-end]` for the resolved window stay byte-identical. Derived read ⇒ no DomainEvent.
  */
+type BatchCutOffConfigRow=Pick<typeof companyPayrollConfig.$inferSelect,'cutOffDay'|'overtimeCutOffDay'|'claimCutOffDay'|'unpaidLeaveCutOffDay'|'attendanceCutOffDay'|'defaultPayrollPolicyId'>;
+type PayrollCloseConfigRow=BatchCutOffConfigRow&Pick<typeof companyPayrollConfig.$inferSelect,'payDay'|'payslipRelease'>;
 async function loadBatchCutOffSchedule(
   tx: Tx,
   companyId: string,
+  closeOwnedConfig?:BatchCutOffConfigRow|null,
 ): Promise<{ companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null }> {
-  const [cpc] = await tx
+  const [cpc] = closeOwnedConfig!==undefined?[closeOwnedConfig]:await tx
     .select({
       cutOffDay: companyPayrollConfig.cutOffDay,
       overtimeCutOffDay: companyPayrollConfig.overtimeCutOffDay,
@@ -8096,10 +8098,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     return { payslips: emps.length, totalNet: totals.net, skipped: skippedEmployees };
 }
 
-export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
-  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
-  return withTenant(ctx, async (tx) => {
-    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
+async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},reviewed=false){
     await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -8116,11 +8115,13 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1)
-      .for('update');
+      .for('update',reviewed?{noWait:true}:undefined);
     if (!batch) throw new Error('batch not found');
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotCloseableError();
+    const [parent]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId)).limit(1);
+    if(parent?.status!=='open')throw new Error('This pay period is closed or unavailable.');
     // 49e7e0a2 — a run whose one-off transactions changed after it was processed is NOT closeable until
     // those employees have been recalculated. Close is the point of no return: it releases payslips to
     // employees and cascades the pay period shut, so finalising figures that no longer match their inputs
@@ -8129,27 +8130,39 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     if (batch.needsRecalcAt != null) {
       throw new BatchNeedsRecalculationError(asIdArray(batch.recalcEmploymentIds));
     }
-    await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
-    const closeSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    // Fixed CLOSE-only scope returns just the native cutoff/release inputs. Payroll partners must
+    // not silently fall back to immediate release/default windows because config RLS is HR-admin-only.
+    const [closeConfiguration]=await tx.execute<{batch_id:string;company_id:string;config:PayrollCloseConfigRow|null;source_version:string}>(sql`select * from app.payroll_close_configuration(${p.batchId}::uuid)`);
+    if(!closeConfiguration||closeConfiguration.batch_id!==p.batchId.toLowerCase()||closeConfiguration.company_id!==batch.companyId)throw new Error('Payroll close configuration unavailable.');
+    const cashProof=await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
+    const closeSchedule = await loadBatchCutOffSchedule(tx, batch.companyId,closeConfiguration.config);
     const closeWindow = await unionTypeWindow(tx, closeSchedule, batch.companyId, 'overtime', batch.payPeriod);
     const closingEmployees = await tx.select({ id: payslip.employmentId }).from(payslip).where(eq(payslip.batchId, p.batchId));
-    await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId, from: closeWindow.start, to: closeWindow.end,
+    const overtimeProof=await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId, from: closeWindow.start, to: closeWindow.end,
       employmentIds: closingEmployees.map(r => r.id), refuseUnresolved: true, payPeriod: batch.payPeriod });
     // ADR-0076 slice 3 — refuse while unresolved BLOCK anomalies stand against this run. Thrown BEFORE any
     // write, for the same reason as the check above: a refused close must change nothing. A batch with no
     // verdict rows returns an empty list here and is unaffected.
+    // Fixed-purpose canonical flags include RLS-hidden transferred-out verdicts without exposing
+    // their identities/notes. Granular close authority above remains a prerequisite, not SQL output.
+    const [anomalyGate]=await tx.execute<{blocking:boolean;evaluated:boolean;source_version:string}>(sql`select * from app.payroll_close_anomaly_gate(${p.batchId}::uuid)`);
+    if(!anomalyGate)throw new Error('Payroll anomaly close gate unavailable.');
     const blocking = await openBlockingVerdicts(tx, p.batchId);
     if (blocking.length > 0) {
       throw new BatchHasBlockingAnomaliesError(blocking.map((b) => b.employmentId));
     }
+    if(anomalyGate.blocking)throw new Error('This payroll run has unresolved blocking anomalies.');
     // THE CIRCUIT BREAKER ONLY APPLIES ONCE THIS BATCH HAS ACTUALLY BEEN EVALUATED, and that condition is
     // what keeps the whole slice additive. Unlike the per-employee guard above, the breaker is RECOMPUTED
     // from payslip totals rather than read from stored verdicts — so without this gate it would fire on
     // batches that predate the anomaly layer entirely, and a legitimate bonus month on an un-evaluated run
     // would suddenly refuse to close. `anomalyEvaluated` is true only when the evaluator has written
     // verdicts for this batch, i.e. when the operator is deliberately using the layer.
-    if (await anomalyEvaluated(tx, p.batchId)) {
-      const swing = await evaluateCircuitBreaker(tx, ctx.tenantId, p.batchId);
+    const evaluated=anomalyGate.evaluated;
+    let circuitProof:Awaited<ReturnType<typeof evaluateCircuitBreakerForCloseTx>>|null=null;
+    if (evaluated) {
+      circuitProof=await evaluateCircuitBreakerForCloseTx(tx,ctx.tenantId,p.batchId);
+      const swing=circuitProof.verdict;
       if (swing.tripped) throw new BatchSwingTooLargeError(swing.movementPct ?? 0, swing.thresholdPct);
     }
 
@@ -8223,6 +8236,8 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // counterpart before WRITING slips, which is about not creating an unrecoverable state, not about
     // finalising a month — and in the healthy split it is silent, because the counterpart's slip already
     // claims exactly its segment.
+    let transferProof:Awaited<ReturnType<typeof segmentedCoverage>>|null=null;
+    let coverageEmploymentIds:string[]=[];
     if (batch.runType === 'regular') {
       const closePeriodStart = `${batch.payPeriod}-01`;
       const [cy, cm] = batch.payPeriod.split('-').map(Number);
@@ -8279,6 +8294,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
           ),
         );
       const closeIds = [...new Set([...closeSlips.map((s) => s.employmentId), ...closeOwed.map((e) => e.id)])];
+      coverageEmploymentIds=closeIds;
       if (closeIds.length > 0) {
         const closeCurrentCompany = new Map(
           (
@@ -8296,6 +8312,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
           currentCompanyById: closeCurrentCompany,
           partialClaimIds: closeSlips.filter((s) => s.partial).map((s) => s.employmentId),
         });
+        transferProof=closeCoverage;
         // THREE ARMS, BECAUSE THE MONTH CAN FAIL TO ADD UP IN THREE DIFFERENT SHAPES and the calendar test
         // alone sees only two of them:
         //
@@ -8325,24 +8342,25 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
     // NULL config ⇒ immediate ⇒ releasedAt = closedAt (today's behaviour). The ESS reads gate on released_at.
     const closedAt = new Date();
-    const [cpc] = await tx
-      .select({ payDay: companyPayrollConfig.payDay, payslipRelease: companyPayrollConfig.payslipRelease })
-      .from(companyPayrollConfig)
-      .where(eq(companyPayrollConfig.companyId, batch.companyId))
-      .limit(1);
+    const cpc=closeConfiguration.config;
+    return{batch,cpc,closedAt,proof:{closeConfigurationVersion:closeConfiguration.source_version,cashProof,overtimeProof,blocking,anomalyGate,evaluated,circuitProof,transferProof,coverageEmploymentIds,closingEmploymentIds:closingEmployees.map(row=>row.id),closeSchedule,closeWindow}};
+}
+
+async function applyPayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},prepared:Awaited<ReturnType<typeof preparePayrollCloseTx>>,returnEventId=false){
+ const {batch,cpc,closedAt}=prepared;
     const releasedAt = payslipReleaseAt(closedAt, batch.payPeriod, cpc?.payDay ?? null, cpc?.payslipRelease ?? null) ?? closedAt;
     await tx
       .update(payrollBatch)
       .set({ status: 'closed', closedAt: sql`now()`, releasedAt })
       .where(eq(payrollBatch.id, p.batchId));
-    await appendEvent(tx, {
+    const closedEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.closed',
       actor: actorOf(ctx),
       payload: { releasedAt: releasedAt.toISOString() },
-    });
+    },{returnId:returnEventId});
 
     // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
     // month becomes immutable. A single-run month closes its period when that run closes.
@@ -8361,7 +8379,89 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
         payload: {},
       });
     }
+    return returnEventId?{closedEventId}:undefined;
+}
+
+export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
+    const prepared=await preparePayrollCloseTx(tx,ctx,p);
+    await applyPayrollCloseTx(tx,ctx,p,prepared);
+
   });
+}
+
+const capturePayrollCloseContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+/** No employee self row, salary, payslip total or anomaly details is exposed before this exact native
+ * financial scope AND configurable close permission. A nominated visible batch alone is insufficient. */
+async function reviewedPayrollCloseAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
+ const [nominee]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod})
+  .from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);if(!nominee)throw new Error('Payroll close source unavailable');
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.company c where c.id=${nominee.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(c.id)) as allowed`);
+ if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
+ await assertPayrollPermission(tx,ctx,'payroll.close',nominee.companyId);return nominee;
+}
+/** Only deterministic representation, never payroll computation. Map/Set observations stay private. */
+function payrollCloseSourceValue(value:unknown):unknown{
+ if(value instanceof Date)return value.toISOString();
+ if(value instanceof Map)return [...value.entries()].sort(([a],[b])=>String(a).localeCompare(String(b))).map(([key,entry])=>[key,payrollCloseSourceValue(entry)]);
+ if(value instanceof Set)return [...value].sort().map(payrollCloseSourceValue);
+ if(Array.isArray(value))return value.map(payrollCloseSourceValue);
+ if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,payrollCloseSourceValue((value as Record<string,unknown>)[key])]));
+ return value;
+}
+async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,batchId:string){
+ const ctx=capturePayrollCloseContext(supplied),id=batchId.toLowerCase();
+ // The strict source actor owns current Access before this owner. lockPayrollBatchPeriodTx repeats
+ // actual USER/financial proof and canonical UUID/month binding; no posted context or new role exists.
+ const nominee=await reviewedPayrollCloseAuthorityTx(tx,ctx,id);
+ await lockPayrollBatchPeriodTx(tx,ctx,id,true);
+ const current=await reviewedPayrollCloseAuthorityTx(tx,ctx,id);if(JSON.stringify(current)!==JSON.stringify(nominee))throw new Error('Payroll close binding changed');
+ const prepared=await preparePayrollCloseTx(tx,ctx,{batchId:id},true);
+ const [header]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,payrollCycleId:payrollBatch.payrollCycleId,status:payrollBatch.status,employeeCount:payrollBatch.employeeCount}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
+ if(!header)throw new Error('Payroll close header unavailable');
+ const siblings=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).where(eq(payrollBatch.payPeriodId,header.payPeriodId)).orderBy(payrollBatch.id);
+ const [cycle]=header.payrollCycleId?await tx.select({name:payrollCycle.name}).from(payrollCycle).where(eq(payrollCycle.id,header.payrollCycleId)):[];
+ const review={batchId:id,companyId:header.companyId,payPeriodId:header.payPeriodId,payPeriod:header.payPeriod,runType:header.runType,runSeq:header.runSeq,cycleName:cycle?.name??null,status:'processed' as const,
+  recordedEmployeeCount:header.employeeCount,visiblePayslipCount:prepared.proof.closingEmploymentIds.length,siblingRunCount:siblings.length,
+  otherUnclosedRuns:siblings.filter(row=>row.id!==id&&row.status!=='closed').length,
+  releaseConfigurationPresent:prepared.cpc?.payslipRelease!=null,
+  consequence:'close_this_run_apply_configured_payslip_release_parent_closes_when_all_runs_closed' as const};
+ const priorBatchId=prepared.proof.circuitProof?.source.priorBatchId??null;
+ const coverageIds=[...new Set([...prepared.proof.closingEmploymentIds,...prepared.proof.coverageEmploymentIds])];
+ const versions=await tx.execute(sql`select
+  (select jsonb_agg(jsonb_build_array(b.id,b.xmin::text) order by b.id) from public.payroll_batch b where b.id=${id}::uuid or b.pay_period_id=${header.payPeriodId}::uuid or b.id=${priorBatchId}::uuid or (b.pay_period=${header.payPeriod} and b.run_type='regular')) as batches,
+  (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.pay_period p where p.id=${header.payPeriodId}::uuid) as period,
+  (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.batch_id=${id}::uuid or p.batch_id=${priorBatchId}::uuid or (b.pay_period=${header.payPeriod} and b.run_type='regular' and p.employment_id=any(${coverageIds}::uuid[]))) as slips,
+  (select jsonb_agg(jsonb_build_array(v.id,v.xmin::text) order by v.id) from public.payroll_anomaly_verdict v where v.batch_id=${id}::uuid) as verdicts,
+  (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.payroll_anomaly_config c where c.id=${prepared.proof.circuitProof?.source.configId??null}::uuid) as circuit_config,
+  (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.company_payroll_config c where c.company_id=${header.companyId}::uuid) as company_config,
+  (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.payroll_policy p where p.company_id=${header.companyId}::uuid and p.status='active') as policies,
+  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${coverageIds}::uuid[])) as employments,
+  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.assignment a where a.employment_id=any(${coverageIds}::uuid[])) as assignments,
+  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.attendance a where a.employment_id=any(${prepared.proof.closingEmploymentIds}::uuid[]) and a.attendance_date between ${prepared.proof.closeWindow.start}::date and ${prepared.proof.closeWindow.end}::date) as attendance`);
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(payrollCloseSourceValue(['reviewed-payroll-close:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},id,header,siblings,prepared.batch,prepared.cpc,prepared.proof,versions,review]))).digest('hex');
+ return{ctx,id,prepared,review,reviewedDigest};
+}
+/** INTERNAL prepared fingerprint; future shared custody must keep it encrypted and bind a separate
+ * secret-nonce/keyed public review commitment. No model receives source facts or this fingerprint. */
+export async function prepareReviewedPayrollCloseTx(tx:Tx,ctx:SessionContext,batchId:string){const prepared=await reviewedPayrollClosePreflightTx(tx,ctx,batchId);return{review:prepared.review,reviewedDigest:prepared.reviewedDigest};}
+export async function closeReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,batchId:string,reviewedDigest:string){
+ const prepared=await reviewedPayrollClosePreflightTx(tx,ctx,batchId);if(prepared.reviewedDigest!==reviewedDigest)throw new Error('Payroll close review changed');
+ const effect=await applyPayrollCloseTx(tx,prepared.ctx,{batchId:prepared.id},prepared.prepared,true);if(!effect?.closedEventId)throw new Error('Payroll close event unavailable');
+ const receipt=await readReviewedPayrollCloseReferenceTx(tx,prepared.ctx,{batchId:prepared.id,closedEventId:effect.closedEventId});if(!receipt||receipt.currentStatus!=='closed')throw new Error('Canonical payroll close reference unavailable');return receipt;
+}
+/** Reconcile one historical original-actor close and explicitly CURRENT run/parent/release metadata.
+ * Native unlock/reclose can change that state. Never close again to infer the result. */
+export async function readReviewedPayrollCloseReferenceTx(tx:Tx,supplied:SessionContext,reference:{batchId:string;closedEventId:string}){
+ const ctx=capturePayrollCloseContext(supplied),p={batchId:reference.batchId.toLowerCase(),closedEventId:reference.closedEventId.toLowerCase()};const nominee=await reviewedPayrollCloseAuthorityTx(tx,ctx,p.batchId);
+ const [event]=await tx.execute<{event_id:string;batch_id:string;released_at:string}>(sql`select * from app.read_own_payroll_close_event(${p.batchId}::uuid,${p.closedEventId}::uuid)`);
+ if(!event||event.event_id!==p.closedEventId||event.batch_id!==p.batchId||typeof event.released_at!=='string')return null;
+ const [current]=await tx.select({status:payrollBatch.status,releasedAt:payrollBatch.releasedAt,payPeriodId:payrollBatch.payPeriodId,companyId:payrollBatch.companyId}).from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
+ const [parent]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,nominee.payPeriodId)).limit(1);
+ if(!current||!parent||current.companyId!==nominee.companyId||current.payPeriodId!==nominee.payPeriodId)return null;
+ return{batchId:p.batchId,closedEventId:p.closedEventId,payPeriodId:nominee.payPeriodId,currentStatus:current.status,currentPeriodStatus:parent.status,recordedReleasedAt:event.released_at,currentReleasedAt:current.releasedAt?.toISOString()??null};
 }
 
 /**
