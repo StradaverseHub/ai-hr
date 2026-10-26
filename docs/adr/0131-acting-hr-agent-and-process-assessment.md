@@ -1657,3 +1657,19 @@ Affected request, emergency/override, attachment, on-behalf, reviewed-effect, Ac
 checks remain UNRUN. Other request/approval/cancellation and dependency writers still need participation.
 The Access lock is existing authorization infrastructure; new leave barriers remain fail-fast and require
 whole-transaction rollback. This source checkpoint establishes no universal barrier or runtime proof.
+
+
+### Request approval and cancellation owners join before row ownership (unrun)
+
+Whole-request approval, single/batch date decisions, cancellation request, cancellation decision and
+HR cancellation now acquire Access and shared configuration before nominating the RLS-visible request's
+employment. They own that employment and recheck the binding before their existing request-then-
+cancellation row locks and business validation. Cancellation decision nominates the source request from
+its visible cancellation before entering that same helper. Existing approval, delegation, payroll,
+credit, compensation and event bodies are unchanged; the helper does not authorize a decision.
+
+Two additional authored real-employee cases require whole approval and HR cancellation to refuse
+without request/ledger/event changes during an employee interval, then perform their real one-day debit
+or compensation after release. All new cases and affected single/batch decisions, delegation, employee
+cancellation, split/group, Payroll and credit consumers are UNRUN. Other ledger and dependency writers
+remain pending. No universal barrier or runtime/security/effect-completion claim is established here.

@@ -5903,6 +5903,20 @@ async function decideCurrentChainStep<S extends ChainStepRow>(
   return { outcome: 'final', current };
 }
 
+/** Actual request mutation interval. Resolve only the RLS-visible subject before ownership, then
+ * reread that binding before the canonical owner takes its existing request/cancellation row locks. */
+async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+    .where(eq(leaveRequest.id, requestId)).limit(1);
+  const [nominated] = await read();
+  if (!nominated) throw new Error('leave request not found (or not visible)');
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+  const [current] = await read();
+  if (!current || current.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
+}
+
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
  *  finalizes when the last step clears; a rejection at any step is terminal. Without a chain it is a
  *  single approval (the original behavior). */
@@ -5924,6 +5938,7 @@ export async function decideLeave(
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
@@ -6085,6 +6100,7 @@ export async function decideLeaveDate(
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
@@ -6210,6 +6226,7 @@ export async function decideLeaveDates(
     throw new Error('duplicate leave date in batch');
   }
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
@@ -6573,6 +6590,7 @@ export async function requestLeaveCancellation(
 ) {
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     // r301 hand-fix (verifier defect 1) — LOCK THE LEAVE ROW. Everything below reads this row and the pending
     // cancellations on it to decide what may be given back, and an automatic approval then splits it in this
     // same transaction. Unlocked, two requests at the same moment (two tabs, or a crafted POST) each saw the
@@ -6835,6 +6853,8 @@ export async function decideLeaveCancellation(
   p: { cancellationRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
     // pressing Approve at once used to both read 'pending'; the second now waits and reads the first's outcome.
@@ -6844,6 +6864,7 @@ export async function decideLeaveCancellation(
       .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
       .limit(1);
     if (!peek) throw new Error('cancellation request not found (or not visible)');
+    await lockLeaveRequestDependenciesTx(tx, ctx, peek.leaveRequestId);
     await tx.select({ id: leaveRequest.id }).from(leaveRequest).where(eq(leaveRequest.id, peek.leaveRequestId)).for('update');
     const [cr] = await tx
       .select()
@@ -7362,6 +7383,7 @@ export async function adminCancelLeave(
   p: { leaveRequestId: string; reason?: string; cancelledByEmploymentId?: string },
 ): Promise<{ previousStatus: 'pending' | 'approved'; restoredDays: number }> {
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
     if (!isAdmin(ctx)) {
       throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee', 'admin_only');
