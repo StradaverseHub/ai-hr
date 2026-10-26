@@ -19,6 +19,17 @@ async function employee(b=base){
   return {...hired,ctx,intent};
 }
 async function events(id:string){return owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,id));}
+async function waitForOwnedChallengeLock(){
+  const deadline=Date.now()+5000;
+  while(Date.now()<deadline){
+    const rows=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_stat_activity
+      where datname=current_database() and usename='ai_hr_app' and state='active' and wait_event_type='Lock'
+      and query ilike '%mobile_integrity_challenge%') waiting`);
+    if(rows[0]?.waiting)return;
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  throw new Error('Second owned consumer did not reach its database lock');
+}
 describe('persistent own integrity challenges',()=>{
   it('keeps an installation identity across calls and returns exactly one immutable challenge on concurrent retries',async()=>{
     const e=await employee();
@@ -65,6 +76,26 @@ describe('persistent own integrity challenges',()=>{
     })).rejects.toThrow('synthetic rollback');
     expect((await issueOwnIntegrityChallenge(e.ctx,e.intent)).state).toBe('active');expect(await events(challenge.id)).toHaveLength(1);
     expect(await consumeOwnIntegrityChallenge(e.ctx,command,async()=> 'retry saved')).toMatchObject({state:'consumed',value:'retry saved'});
+  });
+  it('waits for an in-flight consumer and reconciles the committed state after that lock releases',async()=>{
+    const e=await employee(),challenge=await issueOwnIntegrityChallenge(e.ctx,e.intent),command={...e.intent,challengeId:challenge.id};
+    let entered!:()=>void,release!:()=>void,calls=0;
+    const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+    const operation=vi.fn(async()=>{calls++;if(calls===1){entered();await held;}return 'saved';});
+    const first=consumeOwnIntegrityChallenge(e.ctx,command,operation);
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+      await Promise.race([started,first.then(()=>{throw new Error('Consumer finished without entering the callback');}),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Consumer did not enter callback')),5000);})]);
+      clearTimeout(timer);
+      const second=consumeOwnIntegrityChallenge(e.ctx,command,operation),results=Promise.allSettled([first,second]);
+      try{await waitForOwnedChallengeLock();}finally{release();}
+      const outcomes=await results;
+      expect(outcomes.map(row=>row.status)).toEqual(['fulfilled','fulfilled']);
+      if(outcomes[0].status!=='fulfilled'||outcomes[1].status!=='fulfilled')throw new Error('Concurrent consumer failed');
+      expect(outcomes.map(row=>row.value.state)).toEqual(['consumed','already_consumed']);
+      expect(outcomes[0].value.consumedAt).toBe(outcomes[1].value.consumedAt);expect(operation).toHaveBeenCalledOnce();
+    }finally{clearTimeout(timer);release();await first.catch(()=>{});}
   });
   it('enforces own active employment at issue and consume, with peer/admin/tenant refusals',async()=>{
     const e=await employee(),peer=await employee(),challenge=await issueOwnIntegrityChallenge(e.ctx,e.intent);
