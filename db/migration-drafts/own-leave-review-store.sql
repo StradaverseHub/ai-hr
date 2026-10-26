@@ -118,6 +118,22 @@ END $$;
 REVOKE ALL ON FUNCTION app.assistant_own_leave_review_prepare(uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_own_leave_review_prepare(uuid,uuid,uuid,uuid,text,text,text,text,text) TO ai_hr_app;
 --> statement-breakpoint
+-- Nomination-only source reference. Access owns custody while the server command acquires its
+-- ordered leave dependency locks BEFORE locking the action row or returning encrypted content.
+CREATE FUNCTION app.assistant_own_leave_review_subject(p_id uuid) RETURNS uuid
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF t IS NULL OR u IS NULL THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
+ RETURN r.employment_id;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_own_leave_review_subject(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_own_leave_review_subject(uuid) TO ai_hr_app;
+--> statement-breakpoint
 -- Returning encrypted content is a SERVER-ONLY custody API. Do not serialize its raw JSON result.
 CREATE FUNCTION app.assistant_own_leave_review_read(p_id uuid,p_discard boolean DEFAULT false,p_reviewed_digest text DEFAULT NULL) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$

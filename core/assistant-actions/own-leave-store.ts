@@ -1,10 +1,13 @@
-/** SOURCE-ONLY review custody and completed-reference reads. No route, model tool or execution command is wired here.
+/** UNRELEASED review custody and human-confirmation command. No route or model tool calls it.
+ * Relevant source writers and security/concurrency/retention verification must be complete before exposure.
+
  * Requires the coordinated review-store and non-admitting-control migrations before runtime use.
  * One caller transaction owns authority, pause check, private row and retirement. No nested commit. */
 import { randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
-import type { SessionContext, Tx } from '../../db/client';
+import { withTenant, type SessionContext, type Tx } from '../../db/client';
+import { requestLeave, lockLeaveDependenciesTx } from '../../packs/leave/service';
 import { assertAiActionUnpausedTx } from '../ai-governance';
 import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
   type OwnLeaveFinalReceipt as Receipt, type OwnLeavePreparedReview as Card } from '../../lib/assistant-actions/own-leave-contract';
@@ -145,4 +148,62 @@ export async function expireOwnLeaveReviewsTx(tx: Tx, limit = 100): Promise<numb
   if (!row || !Number.isSafeInteger(row.expired) || row.expired < 0 || row.expired > limit)
     throw new OwnLeaveContentUnavailable();
   return row.expired;
+}
+
+/** UNMOUNTED human-confirmation owner. It owns the top-level transaction: a caught error outside
+ * this function cannot commit a request without its receipt. No model/provider call, allowance
+ * admission, posted source references or client-supplied business fields are accepted here.
+ * This source command is NOT ready for endpoint/tool exposure until all relevant dependency writers,
+ * authority/controls, storage/retention and actual security/concurrency/experience checks are verified. */
+export async function confirmOwnLeaveReview(supplied: SessionContext, confirmationValue: unknown,
+  locale?: string,
+): Promise<CompletedResult | RetiredResult> {
+  const ctx = captureContext(supplied), parsed = OwnLeaveConfirmation.safeParse(confirmationValue);
+  if (!parsed.success) throw new OwnLeaveContentUnavailable();
+  const confirmation = parsed.data;
+  try {
+    return await withTenant(ctx, async tx => {
+      const actor = await readOwnLeaveActorTx(tx, ctx);
+      if (!actor) throw new OwnLeaveContentUnavailable();
+      await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
+      const [nominated] = await tx.execute<{ subject: unknown }>(sql`select
+        app.assistant_own_leave_review_subject(${confirmation.actionId}::uuid) as subject`);
+      const subject = z.string().uuid().safeParse(nominated?.subject);
+      if (!subject.success) throw new OwnLeaveContentUnavailable();
+      await lockLeaveDependenciesTx(tx, actor.tenantId, [subject.data]);
+      const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(${confirmation.actionId}::uuid) as review`);
+      const m = stored.metadata;
+      if (m.actionId !== confirmation.actionId || m.reviewedDigest !== confirmation.reviewedDigest
+        || m.binding.tenantId !== actor.tenantId || m.binding.userId !== actor.userId
+        || m.binding.personId !== actor.personId || m.binding.employmentId !== subject.data)
+        throw new OwnLeaveContentUnavailable();
+      if (m.state === 'completed') return completed(tx, actor, stored);
+      if (m.state !== 'awaiting_confirmation') return retired(stored);
+      const saved = unsealOwnLeaveReview(m, stored.sealed), intent = saved.review.nomination;
+      const fresh = await readOwnLeaveCandidateTx(tx, actor, intent,
+        { employmentId: m.binding.employmentId, leaveTypeId: intent.leaveTypeId }, saved.review.humanText, locale);
+      if (fresh.kind !== 'candidate' || ownLeaveReviewedDigest(fresh.candidate) !== m.reviewedDigest
+        || fresh.candidate.intentDigest !== m.intentDigest || fresh.privateAvailableBalance !== saved.availableBalance)
+        throw new OwnLeaveContentUnavailable();
+      const candidate = fresh.candidate;
+      const written = await requestLeave(actor, {
+        employmentId: m.binding.employmentId, leaveTypeId: intent.leaveTypeId,
+        startDate: intent.date, endDate: intent.date, durationType: 'full_day', ...saved.review.humanText,
+      }, tx, { employmentId: m.binding.employmentId, companyId: m.binding.companyId,
+        leaveTypeId: intent.leaveTypeId, date: intent.date, days: candidate.deductionDays,
+        availableBalance: fresh.privateAvailableBalance, holidayWarnings: candidate.holidayWarnings });
+      if (!written.submittedEventId || written.days !== candidate.deductionDays)
+        throw new OwnLeaveContentUnavailable();
+      const recorded = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_complete(
+        ${m.actionId}::uuid,${m.reviewedDigest},${written.requestId}::uuid,${written.submittedEventId}::uuid) as review`);
+      if (recorded.metadata.actionId !== m.actionId || recorded.receipt?.state !== 'completed'
+        || recorded.receipt.leaveRequestId !== written.requestId
+        || recorded.receipt.submissionEventId !== written.submittedEventId) throw new OwnLeaveContentUnavailable();
+      return completed(tx, actor, recorded);
+    });
+  } catch {
+    // Source/Drizzle errors can retain private text or encrypted parameters. Bound every outward
+    // error, after withTenant has rolled back; never expose a cause or commit a partial command.
+    throw new OwnLeaveContentUnavailable();
+  }
 }

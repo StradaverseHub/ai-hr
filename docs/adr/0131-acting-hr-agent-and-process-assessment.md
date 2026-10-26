@@ -1804,3 +1804,31 @@ refusal of old committed references, and unsupported savepoint refusal. ALL UNRU
 only TypeScript syntax parsing and diff review performed. The SQL remains unallocated,
 unjournalled and unapplied. No submission/confirmation command or endpoint is mounted,
 and dependency/security/concurrency/retention/erasure acceptance remains incomplete.
+
+
+Unmounted confirmation owner source preparation (UNRUN)
+
+`confirmOwnLeaveReview` now owns a top-level `withTenant` transaction instead of
+exporting an execution callback that another caller might catch and partially
+commit. It accepts only the confirmation contract plus server session/locale,
+refreshes the actor/Assistant grant and non-admitting pause controls, nominates an
+owned stored subject without its row lock, acquires leave dependency ownership,
+then locks and rereads the review. Completed actions use canonical reconciliation;
+retired actions never execute. Pending content is decrypted only under custody.
+It freshly rebuilds the candidate from stored human selection/text, compares the
+exact reviewed/intent digests AND private balance, and calls canonical `requestLeave`
+with its refusal-only reviewed-effect precondition in the SAME transaction. Exact
+returned request/event IDs feed completion storage; a canonical current-user reread
+must succeed before returning. Every error is bounded only after transaction rollback.
+No new model admission, provider/network call or model-supplied effect fields exist.
+
+The narrow source-nomination SQL function returns only the owner's employment ID,
+under current identity/Access. Leave dependency primitives are exported through the
+existing leave service facade, preserving the pack boundary. Six additional authored
+actual command cases cover simultaneous duplicate confirmations, hidden-balance drift,
+grant/pause revocation, employee contention and a test-database completion-write fault
+that must roll back the canonical request/event and allow a later retry. ALL UNRUN;
+AST syntax/diff review only. This supersedes the statement that no command source
+exists, but NOT the absence of a mounted authenticated POST/CSRF owner, universal
+writer/authority/config protection, applied migrations or runtime/experience proof.
+Keep the command unmounted until those release-blocking requirements are demonstrated.

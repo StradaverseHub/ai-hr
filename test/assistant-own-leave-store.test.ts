@@ -8,11 +8,12 @@ import * as schema from '../db/schema';
 import { appendEvent } from '../db/events';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { setAiAllowance } from '../core/ai-management';
-import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx } from '../core/assistant-actions/own-leave-store';
+import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx, confirmOwnLeaveReview } from '../core/assistant-actions/own-leave-store';
 import { OwnLeaveContentUnavailable } from '../core/assistant-actions/own-leave-content';
 import { hireEmployee } from '../core/org';
 import { requestLeave } from '../core/leave';
 import { readOwnLeaveCandidateTx } from '../core/assistant-actions/own-leave-candidate';
+import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { erasePersonPii } from '../core/pdpa';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -389,5 +390,77 @@ describe('own-leave canonical completion-reference custody', () => {
       const refs = await canonicalSubmission(child); return completeReference(child, review, refs);
     }))).rejects.toThrow();
     expect(await counts()).toEqual(before);
+  });
+});
+
+/** Actual unmounted command acceptance, authored UNRUN. The HTTP/session/CSRF owner is separate. */
+describe('own-leave top-level confirmation owner', () => {
+  it('serializes simultaneous confirmation deliveries into one request and the same canonical receipt', async () => {
+    const review = await prepare(), posted = confirmation(review);
+    const results = await Promise.all([confirmOwnLeaveReview(ctx, posted, 'en'), confirmOwnLeaveReview(ctx, posted, 'en')]);
+    expect(results[0].kind).toBe('completed'); expect(results[1]).toEqual(results[0]);
+    expect(await counts()).toMatchObject({ requests: 1, pending: 0, bodies: 0, model_runs: 0 });
+    expect(await confirmOwnLeaveReview(ctx, posted, 'en')).toEqual(results[0]);
+    expect(await counts()).toMatchObject({ requests: 1, model_runs: 0 });
+  });
+
+  it('refuses a changed private balance even when the public ESS review hid balances', async () => {
+    await owner.db.update(schema.leaveType).set({ essViewConfig: { available: false } })
+      .where(eq(schema.leaveType.id, base.annualLeaveTypeId));
+    const review = await prepare(); expect(review.availableBalance).toBeNull();
+    await credit(subject.employmentId);
+    const before = await counts();
+    await expect(confirmOwnLeaveReview(ctx, confirmation(review), 'en')).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect(await counts()).toEqual(before);
+    expect(before).toMatchObject({ requests: 0, pending: 1, bodies: 1, model_runs: 0 });
+  });
+
+  it.each(['grant', 'pause'] as const)('refuses fresh %s revocation before creating any submission', async mode => {
+    const review = await prepare();
+    if (mode === 'grant') await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
+    else await setAiAllowance(adminCtx(base), { kind: 'user', subjectId: ctx.userId!, enabled: false,
+      dailyRequests: null, monthlyTokens: null });
+    const before = await counts();
+    await expect(confirmOwnLeaveReview(ctx, confirmation(review), 'en')).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect(await counts()).toEqual(before); expect(before.requests).toBe(0);
+  });
+
+  it('refuses an owned busy employee interval with no effect, then completes only after release', async () => {
+    const review = await prepare(), before = await counts();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned confirmation handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, base.tenantId, [subject.employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started;
+      await expect(confirmOwnLeaveReview(ctx, confirmation(review), 'en')).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+      expect(await counts()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    expect((await confirmOwnLeaveReview(ctx, confirmation(review), 'en')).kind).toBe('completed');
+    expect(await counts()).toMatchObject({ requests: 1, pending: 0, bodies: 0, model_runs: 0 });
+  });
+
+  it('rolls back the canonical write when a database failure rejects completion persistence', async () => {
+    const review = await prepare(), before = await counts();
+    // Isolated test-database fault injection; never shipped in a migration or application path.
+    await owner.db.execute(sql`create function app.fictional_own_leave_completion_failure() returns trigger
+      language plpgsql as $$ begin if NEW.state='completed' then raise exception 'Fictional completion failure';
+      end if; return NEW; end $$`);
+    try {
+      await owner.db.execute(sql`create trigger fictional_own_leave_completion_failure before update
+        on app.assistant_own_leave_review for each row execute function app.fictional_own_leave_completion_failure()`);
+      try {
+        await expect(confirmOwnLeaveReview(ctx, confirmation(review), 'en')).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+        expect(await counts()).toEqual(before);
+        const submitted = await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
+          .where(eq(schema.domainEvent.eventType, 'leave-request.submitted')).orderBy(schema.domainEvent.id);
+        expect(submitted).toEqual([]);
+      } finally {
+        await owner.db.execute(sql`drop trigger if exists fictional_own_leave_completion_failure on app.assistant_own_leave_review`);
+      }
+    } finally { await owner.db.execute(sql`drop function app.fictional_own_leave_completion_failure()`); }
+    expect((await confirmOwnLeaveReview(ctx, confirmation(review), 'en')).kind).toBe('completed');
   });
 });

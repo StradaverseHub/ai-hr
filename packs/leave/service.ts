@@ -34,6 +34,7 @@ export * from '../../core/leave-approval-policy';
 export * from '../../core/leave-approval-consolidation';
 export * from '../../core/leave-approval-template';
 export * from '../../core/leave-compute';
+export * from '../../core/leave-dependency-lock';
 export * from '../../core/leave-encashment';
 export * from '../../core/leave-escalation';
 export * from '../../core/leave-formula';
