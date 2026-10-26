@@ -1,3 +1,4 @@
+/** @vitest-environment jsdom */
 /** Authored UNRUN: isolated server composition, not actual cookie/DB/CSRF acceptance. */
 import React from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
