@@ -21,7 +21,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, employeeDocument, person } from '../db/schema';
+import { appUser, employeeDocument, person,letterArtifact,letterRecord } from '../db/schema';
 
 export class EmployeeDocumentError extends Error {
   constructor(message: string) {
@@ -352,6 +352,7 @@ export function getEmployeeDocument(
     const [row] = await tx
       .select({
         content: employeeDocument.content,
+        letterArtifactId:employeeDocument.letterArtifactId,
         fileName: employeeDocument.fileName,
         mimeType: employeeDocument.mimeType,
         employmentId: employeeDocument.employmentId,
@@ -360,6 +361,11 @@ export function getEmployeeDocument(
       .where(and(eq(employeeDocument.id, documentId), expectedEmploymentId ? eq(employeeDocument.employmentId, expectedEmploymentId) : undefined))
       .limit(1);
     if (!row) return null;
+    if(row.letterArtifactId){
+      const [sealed]=await tx.select({content:letterArtifact.content}).from(letterArtifact).innerJoin(letterRecord,and(eq(letterRecord.id,letterArtifact.letterId),eq(letterRecord.currentRevisionId,letterArtifact.revisionId),eq(letterRecord.state,'issued'))).where(eq(letterArtifact.id,row.letterArtifactId));
+      if(!sealed)return null;
+      row.content=sealed.content;
+    }
     // SUBSTRATE (documented exception): audit the download per expected_function §6.
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

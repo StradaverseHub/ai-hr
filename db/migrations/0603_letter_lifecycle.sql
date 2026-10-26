@@ -169,6 +169,31 @@ CREATE POLICY letter_record_read ON letter_record FOR SELECT USING(tenant_id=app
  ((app.letter_permission(company_id,'read') AND (NOT confidential OR app.can_admin_payroll_for(company_id))) OR
   (state IN ('issued','void') AND EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=letter_record.tenant_id AND app.is_self_person(e.person_id)))));
 CREATE POLICY letter_record_insert ON letter_record FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.letter_permission(company_id,'generate'));
+-- Scoped issuers may file an immutable artifact without gaining generic document upload permission.
+-- The folder binding trigger additionally verifies exact identity, state, byte length and PDF metadata.
+CREATE POLICY employee_document_letter_insert ON employee_document FOR INSERT WITH CHECK(
+ tenant_id=app.current_tenant_id() AND letter_artifact_id IS NOT NULL AND app.principal_snapshot_current() AND
+ EXISTS(SELECT 1 FROM letter_artifact a JOIN letter_record l ON l.id=a.letter_id WHERE a.id=employee_document.letter_artifact_id AND l.tenant_id=employee_document.tenant_id AND l.employment_id=employee_document.employment_id AND app.letter_permission(l.company_id,'issue')));
+--> statement-breakpoint
+-- Recipient reads reveal only the two bound delivery settings, never staff policy or approver identities.
+CREATE FUNCTION app.letter_recipient_mode(subject uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT p.policy->>'acknowledgement' FROM public.letter_record l
+ JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id
+ JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+ JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=l.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND l.state IN ('issued','void') AND app.principal_snapshot_current() AND app.is_self_person(e.person_id)
+$$;
+CREATE FUNCTION app.letter_recipient_link_minutes(subject uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT (p.policy->>'sensitiveLinkMinutes')::integer FROM public.letter_record l
+ JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id
+ JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+ JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=l.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND l.state='issued' AND app.principal_snapshot_current() AND app.is_self_person(e.person_id)
+$$;
+REVOKE ALL ON FUNCTION app.letter_recipient_mode(uuid),app.letter_recipient_link_minutes(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_recipient_mode(uuid),app.letter_recipient_link_minutes(uuid) TO ai_hr_app;
 CREATE POLICY letter_record_update ON letter_record FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.letter_can_read(id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.letter_can_read(id));
 GRANT SELECT,INSERT,UPDATE ON letter_record TO ai_hr_app;
 --> statement-breakpoint

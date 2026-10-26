@@ -1,15 +1,15 @@
 /** Letters use the existing employee identity, purpose access, document folder and DomainEvent owners. */
-import {createHash,randomBytes} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact} from '../db/schema';
+import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,employeeDocument,letterRecipientEvent,letterAccessToken} from '../db/schema';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue} from '../lib/letter-model';
-import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
+import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -280,4 +280,70 @@ export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string
  const [decision]=await tx.insert(letterApprovalDecision).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,stageIndex:record.stageIndex,actorId:ctx.userId!,action:'delegate',comment:reason,delegatedTo:delegate,contentHash:revision.contentHash}).returning();
  await tx.update(letterRecord).set({lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  await event(tx,ctx,record.id,'approval.delegated',{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,delegateUserId:delegate,reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
+});}
+
+export function issueLetter(ctx:SessionContext,input:{letterId:string;expectedRevisionId:string;expectedLockVersion:number}){return letters(ctx,true,async tx=>{
+ const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'issue');await permission(tx,record.companyId,'read');
+ if(record.currentRevisionId!==input.expectedRevisionId)throw new LetterWorkflowError('stale');
+ const [artifact]=await tx.select().from(letterArtifact).where(and(eq(letterArtifact.letterId,record.id),eq(letterArtifact.revisionId,input.expectedRevisionId)));if(!artifact)throw new LetterWorkflowError('state');
+ if(record.state==='issued')return {letterId:record.id,artifactId:artifact.id,alreadyIssued:true};
+ if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(record.state!=='approved')throw new LetterWorkflowError('state');
+ if(hash(artifact.content)!==artifact.contentHash)throw new LetterWorkflowError('configuration','artifactHash');
+ const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,record.batchId)),[template]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,batch.templateVersionId)),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
+ const documentId=randomUUID();
+ // A single immutable artifact owns the bytes. The employee folder stores a protected identity link.
+ await tx.insert(employeeDocument).values({id:documentId,tenantId:ctx.tenantId,employmentId:record.employmentId,letterArtifactId:artifact.id,title:template.name,category:template.category,description:record.reference,content:Buffer.alloc(0),fileName:record.reference.replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf',mimeType:'application/pdf',sizeBytes:artifact.content.length,uploadedByUserId:ctx.userId!,updatedByUserId:ctx.userId!});
+ await tx.update(letterRecord).set({state:'issued',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
+ const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,record.employmentId));const recipients=await tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.personId,subject.personId),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
+ for(const recipient of recipients){
+  const key=`${record.id}:${artifact.id}:issued:${recipient.id}`;
+  if(policy.portalNotifications||policy.emailNotifications)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,recipientUserId:recipient.id,kind:'notification',dedupeKey:key,payload:{artifactId:artifact.id,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()`}).onConflictDoNothing();
+  if(policy.acknowledgement!=='none')await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,recipientUserId:recipient.id,kind:'acknowledgementReminder',dedupeKey:key+':acknowledgement',payload:{artifactId:artifact.id},dueAt:sql`now()+${policy.acknowledgementDueDays}*interval '1 day'`}).onConflictDoNothing();
+ }
+ await event(tx,ctx,record.id,'issued',{revisionId:record.currentRevisionId,artifactId:artifact.id,artifactHash:artifact.contentHash,documentId,recipientCount:recipients.length});return {letterId:record.id,artifactId:artifact.id,alreadyIssued:false};
+});}
+export function voidLetter(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
+ const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'issue');const reason=text(input.reason,2000);if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(record.state!=='issued')throw new LetterWorkflowError('state');
+ await tx.update(letterRecord).set({state:'void',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'voided',{revisionId:record.currentRevisionId,reason});return {letterId:record.id,state:'void' as const};
+});}
+
+/** Explicit person ownership applies even when the caller is also a privileged administrator. */
+async function ownLetterTx(tx:Tx,id:string){
+ const [row]=await tx.select({record:letterRecord}).from(letterRecord).innerJoin(employment,and(eq(employment.id,letterRecord.employmentId),eq(employment.tenantId,letterRecord.tenantId))).where(and(eq(letterRecord.id,uuid(id)),inArray(letterRecord.state,['issued','void']),sql`app.is_self_person(${employment.personId})`));
+ if(!row)throw new LetterWorkflowError('permission');return row.record;
+}
+async function currentLetterArtifact(tx:Tx,record:typeof letterRecord.$inferSelect){
+ if(!record.currentRevisionId)throw new LetterWorkflowError('state');const [artifact]=await tx.select().from(letterArtifact).where(and(eq(letterArtifact.letterId,record.id),eq(letterArtifact.revisionId,record.currentRevisionId)));if(!artifact)throw new LetterWorkflowError('state');return artifact;
+}
+export function listMyLetters(ctx:SessionContext,input:{cursor?:string;limit?:number}={}){return letters(ctx,false,async tx=>{
+ const limit=input.limit??25;if(!Number.isInteger(limit)||limit<1||limit>100)throw new LetterWorkflowError('invalid','limit');if(input.cursor)uuid(input.cursor);
+ const rows=await tx.select({id:letterRecord.id,reference:letterRecord.reference,state:letterRecord.state,issuedAt:letterRecord.issuedAt,voidedAt:letterRecord.voidedAt,employmentId:letterRecord.employmentId,companyId:letterRecord.companyId}).from(letterRecord).innerJoin(employment,and(eq(employment.id,letterRecord.employmentId),eq(employment.tenantId,letterRecord.tenantId))).where(and(inArray(letterRecord.state,['issued','void']),sql`app.is_self_person(${employment.personId})`,input.cursor?gt(letterRecord.id,input.cursor):undefined)).orderBy(asc(letterRecord.id)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+export function getMyLetter(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
+ const record=await ownLetterTx(tx,id),artifact=await currentLetterArtifact(tx,record);
+ // Policy rows are staff configuration. Expose only the bound recipient mode through a narrow SQL helper.
+ const [recipient]=await tx.execute<{mode:'none'|'acknowledge'|'signature'}>(sql`select app.letter_recipient_mode(${record.id}::uuid) as mode`);
+ const events=await tx.select({kind:letterRecipientEvent.kind,at:letterRecipientEvent.createdAt,contentHash:letterRecipientEvent.contentHash}).from(letterRecipientEvent).where(and(eq(letterRecipientEvent.artifactId,artifact.id),eq(letterRecipientEvent.actorId,ctx.userId!))).orderBy(asc(letterRecipientEvent.createdAt));
+ return {record,artifact:{id:artifact.id,contentHash:artifact.contentHash},acknowledgement:recipient?.mode??'none',events};
+});}
+export function createMyLetterAccess(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
+ const record=await ownLetterTx(tx,id);if(record.state!=='issued')throw new LetterWorkflowError('state');const artifact=await currentLetterArtifact(tx,record);
+ const [settings]=await tx.execute<{minutes:number}>(sql`select app.letter_recipient_link_minutes(${record.id}::uuid) as minutes`);if(!settings?.minutes)throw new LetterWorkflowError('configuration','policy');
+ const token=randomBytes(32).toString('base64url'),[access]=await tx.insert(letterAccessToken).values({tenantId:ctx.tenantId,artifactId:artifact.id,audienceUserId:ctx.userId!,tokenHash:hash(token),expiresAt:sql`now()+${settings.minutes}*interval '1 minute'`}).returning({expiresAt:letterAccessToken.expiresAt});
+ return {token,expiresAt:access.expiresAt,artifactHash:artifact.contentHash};
+});}
+export function downloadMyLetter(ctx:SessionContext,input:{letterId:string;token:string}){return letters(ctx,true,async tx=>{
+ if(!/^[A-Za-z0-9_-]{43}$/.test(input.token))throw new LetterWorkflowError('permission');const record=await ownLetterTx(tx,input.letterId);if(record.state!=='issued')throw new LetterWorkflowError('state');const artifact=await currentLetterArtifact(tx,record);
+ const [access]=await tx.select({id:letterAccessToken.id}).from(letterAccessToken).where(and(eq(letterAccessToken.tokenHash,hash(input.token)),eq(letterAccessToken.artifactId,artifact.id),eq(letterAccessToken.audienceUserId,ctx.userId!),gt(letterAccessToken.expiresAt,sql`now()`)));if(!access)throw new LetterWorkflowError('permission');
+ await tx.insert(letterRecipientEvent).values({tenantId:ctx.tenantId,letterId:record.id,artifactId:artifact.id,actorId:ctx.userId!,kind:'viewed',contentHash:artifact.contentHash,intent:''}).onConflictDoNothing();
+ await event(tx,ctx,record.id,'downloaded',{artifactId:artifact.id,artifactHash:artifact.contentHash,audienceUserId:ctx.userId!});return {content:artifact.content,contentHash:artifact.contentHash,fileName:record.reference.replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf'};
+});}
+export function acknowledgeMyLetter(ctx:SessionContext,input:{letterId:string;expectedArtifactHash:string;action:'acknowledge'|'signature';intent:string}){return letters(ctx,true,async tx=>{
+ if(!['acknowledge','signature'].includes(input.action)||typeof input.intent!=='string'||input.intent.length>2000)throw new LetterWorkflowError('invalid','acknowledgement');
+ const record=await ownLetterTx(tx,input.letterId),artifact=await currentLetterArtifact(tx,record),[configuration]=await tx.execute<{mode:'none'|'acknowledge'|'signature'}>(sql`select app.letter_recipient_mode(${record.id}::uuid) as mode`);if(!configuration)throw new LetterWorkflowError('configuration','policy');
+ assertLetterAcknowledgement({state:record.state,mode:configuration.mode,action:input.action,artifactHash:artifact.contentHash,expectedArtifactHash:input.expectedArtifactHash});const intent=text(input.intent,2000),kind=input.action==='signature'?'signed':'acknowledged';
+ const [existing]=await tx.select().from(letterRecipientEvent).where(and(eq(letterRecipientEvent.artifactId,artifact.id),eq(letterRecipientEvent.actorId,ctx.userId!),eq(letterRecipientEvent.kind,kind)));if(existing)return {at:existing.createdAt,alreadyRecorded:true};
+ const [action]=await tx.insert(letterRecipientEvent).values({tenantId:ctx.tenantId,letterId:record.id,artifactId:artifact.id,actorId:ctx.userId!,kind,contentHash:artifact.contentHash,intent}).returning({at:letterRecipientEvent.createdAt});
+ await event(tx,ctx,record.id,'recipient.'+kind,{artifactId:artifact.id,artifactHash:artifact.contentHash,actorId:ctx.userId!,intent});return {at:action.at,alreadyRecorded:false};
 });}

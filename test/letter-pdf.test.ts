@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {PDFDocument} from 'pdf-lib';
+import {PDFDocument,PDFArray,PDFRawStream,decodePDFRawStream} from 'pdf-lib';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {renderLetterPdf,type LetterPdfInput} from '../lib/letter-pdf';
@@ -10,6 +10,9 @@ describe('sealed letter PDF layout',()=>{
   const before=JSON.stringify(input),result=await renderLetterPdf(input),pdf=await PDFDocument.load(result.bytes);
   expect(Buffer.from(result.bytes).subarray(0,5).toString()).toBe('%PDF-');expect(pdf.getPageCount()).toBe(1);expect(pdf.getTitle()).toBe(input.title);expect(pdf.getSubject()).toBe(input.reference);expect(JSON.stringify(input)).toBe(before);
   for(const box of result.bounds){expect(box.x).toBeGreaterThanOrEqual(48);expect(box.x+box.width).toBeLessThanOrEqual(548);expect(box.y).toBeGreaterThanOrEqual(58);expect(box.y+box.height).toBeLessThanOrEqual(794);}
+  const page=pdf.getPage(0),contents=page.node.Contents(),streams=contents instanceof PDFArray?contents.asArray().map(ref=>page.node.context.lookup(ref)):[contents];
+  const operators=streams.filter(stream=>stream instanceof PDFRawStream).map(stream=>Buffer.from(decodePDFRawStream(stream as PDFRawStream).decode()).toString('latin1')).join('\n');
+  const matrices=[...operators.matchAll(/([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) Tm/g)];expect(matrices.some(match=>Number(match[3])>0)).toBe(true);expect(matrices.every(match=>Number(match[2])===0)).toBe(true);
  });
  it('continues oversized table rows and long identifiers across pages instead of clipping them',async()=>{
   const result=await renderLetterPdf({...input,document:{...input.document,blocks:[{type:'table',rows:[[[{type:'text',text:'LongIdentifier'.repeat(700)}],[{type:'text',text:'Retained row'.repeat(300)}]]]}]}});

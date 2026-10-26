@@ -58,7 +58,7 @@ export async function renderLetterPdf(input:LetterPdfInput){
  function space(needed:number){if(y-needed<bottom)newPage();}
  function drawLine(line:Run[],x:number,baseline:number,size:number){
   let cursor=x;
-  for(const run of line){page.drawText(run.text,{x:cursor,y:baseline,font:run.font,size,color:rgb(.12,.14,.17),...(run.italic?{xSkew:degrees(10)}:{})});if(run.underline)page.drawLine({start:{x:cursor,y:baseline-2},end:{x:cursor+run.width,y:baseline-2},thickness:.5});cursor+=run.width;}
+  for(const run of line){page.drawText(run.text,{x:cursor,y:baseline,font:run.font,size,color:rgb(.12,.14,.17),...(run.italic?{ySkew:degrees(10)}:{})});if(run.underline)page.drawLine({start:{x:cursor,y:baseline-2},end:{x:cursor+run.width,y:baseline-2},thickness:.5});cursor+=run.width;}
   bounds.push({page:pdf.getPageCount(),x,y:baseline,width:cursor-x,height:size});
  }
  function paragraph(content:LetterInline[],size=11,strong=false,indent=0){for(const line of wrap(content,bodyWidth-indent-4,size,strong)){space(size*1.65);drawLine(line,left+indent,y-size,size);y-=size*1.65;}y-=7;}
