@@ -36,17 +36,17 @@ export function applyPersonnelHeaderMapping(source:PersonnelImportSource,expecte
 
 /** Header-only wire construction. This API cannot accept a source snapshot, rows, filenames or cells.
  * Capture before WebCrypto awaits; cryptography is a revision binding, never permission or truth. */
-export async function preparePersonnelHeaderAssistancePacket(input:{companyId:string;operationNonce:string;headers:readonly import('./personnel-import-assistance').PersonnelImportHeader[];sendHeadingsOnly:boolean}){
+export async function preparePersonnelHeaderAssistancePacket(input:{companyId:string;operationNonce:string;headers:readonly import('./personnel-import-assistance').PersonnelImportHeader[];sendHeadingsOnly:boolean;evaluationBinding?:import('./personnel-import-evaluation').EmployeeImportEvaluationBinding}){
  const captured={companyId:input.companyId,operationNonce:input.operationNonce,sendHeadingsOnly:input.sendHeadingsOnly,
-  headers:input.headers.map(header=>({columnIndex:header.columnIndex,heading:header.heading}))};
+  headers:input.headers.map(header=>({columnIndex:header.columnIndex,heading:header.heading})),...(input.evaluationBinding?{evaluationBinding:{...input.evaluationBinding}}:{})};
  const {capturePersonnelImportHeaders,PersonnelImportHeaderAssistanceRequestSchema,personnelImportRegistryRevisionText,personnelImportHeadersRevisionText,personnelImportSourceRevisionText}=await import('./personnel-import-assistance');
  const headers=capturePersonnelImportHeaders(captured.headers);
  const sha=async(text:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),byte=>byte.toString(16).padStart(2,'0')).join('');
  const registryDigest=await sha(personnelImportRegistryRevisionText()),headersDigest=await sha(personnelImportHeadersRevisionText(headers));
  const sourceRevision=await sha(personnelImportSourceRevisionText(headersDigest,registryDigest));
  const packet=PersonnelImportHeaderAssistanceRequestSchema.parse({version:1,companyId:captured.companyId,operationNonce:captured.operationNonce,
-  headers,registryDigest,sourceRevision,mode:'ai',consent:{headersReviewed:true,sendHeadingsOnly:captured.sendHeadingsOnly}});
- return Object.freeze({...packet,headers:Object.freeze(packet.headers.map(header=>Object.freeze({...header}))),consent:Object.freeze({...packet.consent})});
+  headers,...captured.evaluationBinding?{evaluationBinding:captured.evaluationBinding}:{},registryDigest,sourceRevision,mode:'ai',consent:{headersReviewed:true,sendHeadingsOnly:captured.sendHeadingsOnly}});
+ return Object.freeze({...packet,headers:Object.freeze(packet.headers.map(header=>Object.freeze({...header}))),consent:Object.freeze({...packet.consent}),...packet.evaluationBinding?{evaluationBinding:Object.freeze({...packet.evaluationBinding})}:{}});
 }
 
 /** Remove only metadata padding for physically absent trailing cells, never explicit empty strings,

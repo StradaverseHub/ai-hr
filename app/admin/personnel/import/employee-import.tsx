@@ -1,4 +1,6 @@
 'use client';
+import {PersonnelImportEvaluationPanel,type PersonnelImportEvaluationHandle,type PersonnelImportEvaluationStatus} from '@/components/personnel-import-evaluation-panel';
+import {employeeImportSourceFingerprint,personnelImportLocalDigest,personnelImportLocalBytesDigest} from '@/lib/personnel-import-evaluation-client';
 import {PersonnelImportPreparationReview,type PersonnelPreparationApplied} from '@/components/personnel-import-preparation-review';
 import {preparePersonnelImportMatrix,preparePersonnelImportText,type PersonnelPreparation} from '@/lib/personnel-import-preparation';
 import {PersonnelImportWorkbookReview,type PersonnelWorkbookReviewMessages} from '@/components/personnel-import-workbook-review';
@@ -117,6 +119,12 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
   const [csv, setCsv] = useState('');
+  const evaluation=useRef<PersonnelImportEvaluationHandle|null>(null);
+  const [evaluationStatus,setEvaluationStatus]=useState<PersonnelImportEvaluationStatus>({tracked:false,mode:null,blocked:false,committed:false});
+  const [sourceEpoch,setSourceEpoch]=useState(0),[guidedUsed,setGuidedUsed]=useState(false);
+  const manualCorrection=useRef(false);
+  const originalSourceFingerprint=useRef<string|null>(null);
+  const baseline=evaluationStatus.tracked&&evaluationStatus.mode==='baseline';
   const [importSource,setImportSource]=useState<PersonnelImportSource|null>(null);
   const [reviewHeaders,setReviewHeaders]=useState(false);
   const [headerNotice,setHeaderNotice]=useState<string|null>(null);
@@ -179,6 +187,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         setPreview(p);
         setResult(null);
         setPhase('previewed');
+        await evaluation.current?.record({kind:'preview',validRows:p.validCount,rejectedRows:p.total-p.validCount,fileErrors:p.fileErrors.length});
       } catch (e) {
         if (revision !== inputRevision.current) return;
         setError((e as Error).message);
@@ -189,8 +198,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const validate = () => runValidate(csv);
 
   const beginTextPreparation=()=>{
-    if(commitPending.current)return;
-    reset();setWorkbookReview(null);
+    if(commitPending.current||baseline||evaluationStatus.blocked)return;
+    setGuidedUsed(true);reset();setWorkbookReview(null);
     const revisionId=crypto.randomUUID();
     const source=importSource?.currentText===csv?importSource:null;
     const options={columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee' as const,resolvers:[resolveReferenceLabel]};
@@ -205,7 +214,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const loadFile = async (file: File) => {
     if (commitPending.current) return;
     reset();setWorkbookReview(null);setPreparationReview(null);
-    const preparing=prepareIntake;
+    const preparing=prepareIntake&&!baseline;
+    setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;
     const revision = inputRevision.current;
     const readRevision = ++fileReadRevision.current;
     setFileName(null);
@@ -218,6 +228,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
         allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
+      // The canonical reader has already enforced file/decode bounds before allocating hash bytes.
+      let originalDigest:string|null=null;
+      try{originalDigest=await personnelImportLocalBytesDigest(await file.arrayBuffer());}catch{/* Measurement may be unavailable; the ordinary manual import stays usable. */}
+      if(revision!==inputRevision.current)return;
+      originalSourceFingerprint.current=originalDigest;
       if (revision !== inputRevision.current) return;
       if(preparing){
         const revisionId=crypto.randomUUID();
@@ -386,7 +401,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   };
 
   const commit = () => {
-    if (commitPending.current || pending || reading || !preview) return;
+    if (commitPending.current || pending || reading || evaluationStatus.blocked || evaluationStatus.committed || !preview) return;
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
@@ -395,12 +410,17 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       try {
         // cf43c909 — the file's NAME rides along as the history row's label. The file itself never leaves
         // the browser: `csv` is still the only thing sent, so the write path is unchanged.
-        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts,allocationsCsv,preview.allocations?.token);
+        const revision=inputRevision.current;
+        const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
+        if(binding===null||revision!==inputRevision.current)return;
+        let r;
+        try{r=await commitImportAction(csv,companyId,fileName??'',dependentsCsv,registerTexts,allocationsCsv,preview.allocations?.token,binding);}catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
+        if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
         setResult(r);
         setPhase('done');
         router.refresh();
       } catch (e) {
-        setError((e as Error).message);
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):(e as Error).message);
       } finally {
         commitPending.current = false;
         setCommitting(false);
@@ -439,8 +459,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       {allocationsCsv.trim()&&<p className="rounded-md border p-3 text-sm">{ta('companion',{count:preview?.allocations?.groups.length??0})}</p>}
       {preview?.allocations&&<section className="space-y-3 rounded-md border p-4" aria-label={ta('confirmTitle')}>{preview.allocations.groups.map(group=><div key={group.key} className="border-b pb-3 text-sm last:border-0"><p className="font-medium">{group.employeeCode} · {group.effectiveDate}</p><p className="text-xs text-muted-foreground">{group.companyId} · {ta('sourceRows')}: {group.rowNums.join(', ')}</p><ul>{group.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul>{group.operation==='clear'&&<p>{ta('clearHelp')}</p>}{group.errors.map((message,i)=><p key={i} className="text-destructive">{message}</p>)}</div>)}</section>}
       <StepRail current={currentStep} />
+      <PersonnelImportEvaluationPanel ref={evaluation} companyId={companyId} sourceEpoch={sourceEpoch} baselineAvailable={!workbookReview&&!preparationReview}
+        getSource={()=>({...originalSourceFingerprint.current?{fingerprint:originalSourceFingerprint.current}:{},text:workbookReview?JSON.stringify(workbookReview.workbook):preparationReview?.preparation?JSON.stringify(preparationReview.preparation):employeeImportSourceFingerprint(csv,dependentsCsv,registerTexts,allocationsCsv),revision:inputRevision.current})}
+        canBegin={!guidedUsed&&!!(csv.trim()||workbookReview||preparationReview)} disabled={pending||reading||committing} onStatus={setEvaluationStatus} onStarted={()=>{setPreview(null);setResult(null);setPhase('idle');}}/>
       <Card className="space-y-4 p-5">
-        <fieldset disabled={committing} className="min-w-0 space-y-4">
+        <fieldset disabled={committing||evaluationStatus.blocked} className="min-w-0 space-y-4">
         <div className="sm:max-w-[260px]">
           <Field label={t('targetCompany')}>
             <select
@@ -448,7 +471,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               value={companyId}
               onChange={(e) => {
                 if (commitPending.current) return;
-                setCompanyId(e.target.value);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
+                setCompanyId(e.target.value);setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
                 reset();
               }}
             >
@@ -491,7 +514,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         <StepHeading num={3} label={t('step3')} />
         {/* Choose (or drop) the completed template. Reading it auto-runs the same validate step the
             paste box uses, so the file flows straight into the check-before-create preview below. */}
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={prepareIntake} disabled={pending||reading||committing} onChange={e=>setPrepareIntake(e.target.checked)}/><span>{t('headerAssistance.workbook.prepareToggle')}<span className="mt-1 block text-xs text-muted-foreground">{t('headerAssistance.workbook.prepareHint')}</span></span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={prepareIntake&&!baseline} disabled={baseline||pending||reading||committing} onChange={e=>setPrepareIntake(e.target.checked)}/><span>{t('headerAssistance.workbook.prepareToggle')}<span className="mt-1 block text-xs text-muted-foreground">{t('headerAssistance.workbook.prepareHint')}</span></span></label>
         <div>
           <Field label={t('uploadFile')}>
             <div
@@ -556,9 +579,10 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
                 className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
                 placeholder={t('csvPlaceholder')}
                 value={csv}
+                onBlur={()=>{if(manualCorrection.current){manualCorrection.current=false;void evaluation.current?.record({kind:'correction',mappingChanges:null,editedRows:null,reason:'values'});}}}
                 onChange={(e) => {
                   if (commitPending.current) return;
-                  setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
+                  manualCorrection.current=true;originalSourceFingerprint.current=null;setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
                   setFileName(null);
                   reset();
                 }}
@@ -568,8 +592,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           </div>
         </details>
 
-        <Button type="button" variant="outline" disabled={pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
-        {workbookReview&&<PersonnelImportWorkbookReview key={workbookReview.revisionId} workbook={workbookReview.workbook} revisionId={workbookReview.revisionId}
+        <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
+        {!baseline&&workbookReview&&<PersonnelImportWorkbookReview key={workbookReview.revisionId} workbook={workbookReview.workbook} revisionId={workbookReview.revisionId}
           knownRoles={Object.fromEntries(workbookReview.workbook.sheets.map(sheet=>{
             const key=sheet.sheetName.trim().toLowerCase(),roles:Record<string,PersonnelSheetRole>={[EMPLOYEE_XLSX_SHEETS.family.trim().toLowerCase()]:'family',[ALLOCATION_SHEET.trim().toLowerCase()]:'allocations',[PERSONNEL_REGISTER_SHEETS.qualification.trim().toLowerCase()]:'qualification',[PERSONNEL_REGISTER_SHEETS.emergency.trim().toLowerCase()]:'emergency'};
             return[sheet.sheetName,roles[key]??'unassigned'];
@@ -578,7 +602,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             if(commitPending.current)return;
             if(expectedRevision!==workbookReview.revisionId||workbookReview.inputRevision!==inputRevision.current||workbookReview.companyId!==companyId){setHeaderNotice(headerMessages.sourceChanged);setWorkbookReview(null);return;}
             try{
-            const employee=reviewed.employee,revisionId=crypto.randomUUID();
+            setGuidedUsed(true);const employee=reviewed.employee,revisionId=crypto.randomUUID();
             const framed=employee.source.rows[0]?.cells[0]?.decoded===PERSONNEL_CSV_FRAME;
             const rows=employee.source.rows.slice(framed?1:0);
             const matrix=decodePersonnelCsvRows(personnelWorksheetMatrixRows(employee.source),'employee');
@@ -589,7 +613,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             }catch{setHeaderNotice(headerMessages.invalidSource);return;}
             setWorkbookReview(null);
           }}/>}
-        {preparationReview&&<div className="space-y-3"><PersonnelImportPreparationReview key={preparationReview.revisionId} preparation={preparationReview.preparation} sourceRevisionId={preparationReview.revisionId} mode="create" onApply={applied=>{
+        {!baseline&&preparationReview&&<div className="space-y-3"><PersonnelImportPreparationReview key={preparationReview.revisionId} preparation={preparationReview.preparation} sourceRevisionId={preparationReview.revisionId} mode="create" onApply={applied=>{
           if(commitPending.current)return;
           if(applied.sourceRevisionId!==preparationReview.revisionId||preparationReview.inputRevision!==inputRevision.current||preparationReview.companyId!==companyId){setHeaderNotice(headerMessages.sourceChanged);setPreparationReview(null);return;}
           const companions=preparationReview.companions;
@@ -597,26 +621,27 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           try{
             const nextSource=capturePersonnelImportSource({text:applied.text,fileName:preparationReview.fileName,format:'paste'},applied.revisionId);
             preparationEvidence.current={applied,...preparationReview.workbook?{workbook:preparationReview.workbook}:{},...preparationReview.sheetDecision?{sheetDecision:preparationReview.sheetDecision}:{}};
-            reset();setCsv(applied.text);setImportSource(nextSource);headerAssistanceAnnotation.current=null;
+            reset();setCsv(applied.text);setImportSource(nextSource);setGuidedUsed(true);
+            const capturedRevision=inputRevision.current;void personnelImportLocalDigest(applied.text).then(revision=>{if(capturedRevision===inputRevision.current)void evaluation.current?.record({kind:'preparation',revision,normalizations:null,corrections:null,unresolved:0,conflicts:null,duplicates:null,missingSourceEvidence:null});}).catch(()=>setHeaderNotice(t('measurement.observationUnavailable')));headerAssistanceAnnotation.current=null;
             setDependentsCsv(companions.family);setAllocationsCsv(companions.allocations);setRegisterTexts(companions.registers);setFileName(preparationReview.fileName);setPreparationReview(null);setHeaderNotice(headerMessages.acceptedRevision);
           }catch{setHeaderNotice(headerMessages.invalidSource);}
         }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>setPreparationReview(null)}>{workbookMessages.cancel}</Button></div>}
 
         <div className="space-y-3">
-          <Button type="button" variant="outline" disabled={pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
-            if(commitPending.current)return;
+          <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
+            if(commitPending.current||baseline)return;setGuidedUsed(true);
             try{const source=importSource?.currentText===csv?importSource:capturePersonnelImportSource({text:csv,format:'paste'},crypto.randomUUID());setImportSource(source);setReviewHeaders(true);setHeaderNotice(null);}
             catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
           }}>{headerMessages.reviewHeadings}</Button>
           {headerNotice&&<p role="status" className="text-sm text-muted-foreground">{headerNotice}</p>}
-          {reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource} companyId={companyId}
+          {!baseline&&reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource} companyId={companyId}
             options={{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}}
             choices={employeeTemplate.columns.map(column=>({key:column.key,label:employeeColumnLabel(column.key)}))}
-            messages={headerMessages} disabled={pending||reading||committing}
+            messages={headerMessages} evaluationBinding={evaluation.current?.binding()} allowAi={!baseline&&!evaluationStatus.blocked} disabled={pending||reading||committing}
             onCancel={()=>setReviewHeaders(false)} onApply={(destinations,revision,assistance)=>{
               if(commitPending.current)return;
               if(importSource.revisionId!==revision||importSource.currentText!==csv){setHeaderNotice(headerMessages.sourceChanged);setReviewHeaders(false);return;}
-              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());reset();setCsv(accepted.text);setImportSource(accepted.source);headerAssistanceAnnotation.current=assistance??null;setHeaderNotice(headerMessages.acceptedRevision);}
+              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());reset();setCsv(accepted.text);setImportSource(accepted.source);headerAssistanceAnnotation.current=assistance??null;void evaluation.current?.record({kind:'correction',mappingChanges:null,editedRows:0,reason:'mapping'});setHeaderNotice(headerMessages.acceptedRevision);}
               catch{setHeaderNotice(headerMessages.invalidSource);}
             }}/>}
         </div>
@@ -630,7 +655,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;
-              setCsv(SAMPLE);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
+              setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;setCsv(SAMPLE);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
               setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
@@ -752,7 +777,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               type="button"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
-                setCsv('');setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
+                setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;setCsv('');setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);preparationEvidence.current=null;
                 setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();
@@ -769,7 +794,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           preview={preview}
           onImport={commit}
           onDownloadErrors={downloadErrors}
-          busy={pending}
+          busy={pending||evaluationStatus.blocked||evaluationStatus.committed}
         />
       )}
     </div>

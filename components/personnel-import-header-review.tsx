@@ -5,20 +5,21 @@ import {useEffect,useId,useRef,useState} from 'react';
 import {Button,inputCls} from './ui';
 import {personnelHeaderSuggestions,preparePersonnelHeaderAssistancePacket,type PersonnelImportSource} from '@/lib/personnel-import-assistance-source';
 import {z} from 'zod';
+import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding} from '@/lib/personnel-import-evaluation';
 import {capturePersonnelImportHeaders,capturePersonnelImportHeaderProposal,type PersonnelImportHeaderProposal} from '@/lib/personnel-import-assistance';
 import {preparePersonnelImportHeadersAction,assistPersonnelImportHeadersAction,reopenPersonnelImportHeadersAction} from '@/app/admin/personnel/import/assistance-actions';
 import type {PersonnelImportHeaderOptions} from '@/lib/personnel-import-contract';
 export type PersonnelImportHeaderAssistanceAnnotation=Readonly<{attemptId:string;attemptVersion:number;adoptedMappings:number}>;
 export type PersonnelImportHeaderReviewMessages=Readonly<{title:string;localOnly:string;sheet:string;column:string;sourceHeading:string;sampleValues:string;destination:string;chooseField:string;unresolved:string;ambiguous:string;duplicate:string;applyMapping:string;cancel:string;reviewHeadings:string;invalidSource:string;acceptedRevision:string;sourceChanged:string;unknownSheet:string;aiTitle:string;aiDescription:string;aiChoose:string;aiConsent:string;aiSend:string;aiWorking:string;aiUnavailable:string;aiUncertain:string;aiReopen:string;aiNewRequest:string;aiReady:string;aiUseSuggestion:string;aiNoHeadings:string;aiLimit:string;aiSelected:string;aiStale:string;aiPrepareUnknown:string;}>;
-export function PersonnelImportHeaderReview({source,companyId,options,choices,messages,onApply,onCancel,disabled=false}:{source:PersonnelImportSource;companyId:string;options:PersonnelImportHeaderOptions;choices:readonly {key:string;label:string}[];messages:PersonnelImportHeaderReviewMessages;onApply:(destinations:readonly string[],revisionId:string,assistance?:PersonnelImportHeaderAssistanceAnnotation)=>void;onCancel:()=>void;disabled?:boolean}){
+export function PersonnelImportHeaderReview({source,companyId,options,choices,messages,onApply,onCancel,disabled=false,evaluationBinding,allowAi=true}:{source:PersonnelImportSource;companyId:string;options:PersonnelImportHeaderOptions;choices:readonly {key:string;label:string}[];messages:PersonnelImportHeaderReviewMessages;onApply:(destinations:readonly string[],revisionId:string,assistance?:PersonnelImportHeaderAssistanceAnnotation)=>void;onCancel:()=>void;disabled?:boolean;evaluationBinding?:EmployeeImportEvaluationBinding;allowAi?:boolean}){
  const id=useId(),suggestions=personnelHeaderSuggestions(source,options);
  const [selected,setSelected]=useState(()=>source.acceptedDestinations?[...source.acceptedDestinations]:suggestions.map(row=>row.matches.length===1?row.matches[0]:''));
  const [aiColumns,setAiColumns]=useState<number[]>([]),[consented,setConsented]=useState(false),[aiPending,setAiPending]=useState(false);
  const [aiStatus,setAiStatus]=useState<'idle'|'unavailable'|'uncertain'|'ready'|'stale'>('idle');
  type Packet=Awaited<ReturnType<typeof preparePersonnelHeaderAssistancePacket>>;
- type Saved={packet:Packet;localRevision:string;companyId:string;indexes:Map<number,number>;binding?:{attemptId:string;attemptVersion:number}};
- const saved=useRef<Saved|null>(null),pending=useRef(false),alive=useRef(true),latest=useRef({revision:source.revisionId,companyId});
- latest.current={revision:source.revisionId,companyId};
+ type Saved={packet:Packet;localRevision:string;companyId:string;evaluationKey:string;indexes:Map<number,number>;binding?:{attemptId:string;attemptVersion:number}};
+ const saved=useRef<Saved|null>(null),pending=useRef(false),alive=useRef(true),latest=useRef({revision:source.revisionId,companyId,evaluationKey:JSON.stringify(evaluationBinding)});
+ latest.current={revision:source.revisionId,companyId,evaluationKey:JSON.stringify(evaluationBinding)};
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const [proposal,setProposal]=useState<{value:PersonnelImportHeaderProposal;saved:Saved}|null>(null);
  const [adopted,setAdopted]=useState<{attemptId:string;attemptVersion:number;fields:Record<number,string>}|null>(null);
@@ -27,9 +28,9 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
  const eligible=suggestions.filter(row=>row.matches.length!==1);
  let reviewedHeaders:ReturnType<typeof capturePersonnelImportHeaders>|null=null;
  try{if(aiColumns.length)reviewedHeaders=capturePersonnelImportHeaders(eligible.filter(row=>aiColumns.includes(row.index)).map(row=>({columnIndex:originalIndex(row.index),heading:row.raw})));}catch{/* Manual review remains available; no truncation or partial packet. */}
- const current=(request:Saved)=>alive.current&&latest.current.revision===request.localRevision&&latest.current.companyId===request.companyId;
+ const current=(request:Saved)=>alive.current&&latest.current.revision===request.localRevision&&latest.current.companyId===request.companyId&&latest.current.evaluationKey===request.evaluationKey;
  const requestAssistance=async(reopen:boolean)=>{
-  if(pending.current||disabled)return;
+  if(pending.current||disabled||!allowAi)return;
   if(!reopen&&(!consented||!reviewedHeaders||reviewedHeaders.length>32||saved.current))return;
   const localRevision=source.revisionId,selectedCompany=companyId;
   const capturedHeaders=reviewedHeaders?.map(header=>({...header}));
@@ -37,8 +38,8 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
   try{
    let request=saved.current;
    if(!reopen){
-    const packet=await preparePersonnelHeaderAssistancePacket({companyId:selectedCompany,operationNonce:crypto.randomUUID(),headers:capturedHeaders!,sendHeadingsOnly:true});
-    request={packet,localRevision,companyId:selectedCompany,indexes:new Map(eligible.filter(row=>aiColumns.includes(row.index)).map(row=>[originalIndex(row.index),row.index]))};
+    const packet=await preparePersonnelHeaderAssistancePacket({companyId:selectedCompany,operationNonce:crypto.randomUUID(),headers:capturedHeaders!,sendHeadingsOnly:true,...evaluationBinding?{evaluationBinding:{...evaluationBinding}}:{}});
+    request={packet,localRevision,companyId:selectedCompany,evaluationKey:JSON.stringify(packet.evaluationBinding),indexes:new Map(eligible.filter(row=>aiColumns.includes(row.index)).map(row=>[originalIndex(row.index),row.index]))};
     if(!current(request))return;
     saved.current=request;
    }
@@ -53,8 +54,8 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
     const prepared=await preparePersonnelImportHeadersAction(request.packet);
     if(!current(request)){if(alive.current)setAiStatus('stale');return;}
     if(prepared.kind!=='prepared'){setAiStatus('unavailable');return;}
-    const binding=z.object({kind:z.literal('prepared'),attemptId:z.string().uuid(),attemptVersion:z.literal(1),sourceRevision:z.string(),registryDigest:z.string()}).strict().parse(prepared);
-    if(binding.sourceRevision!==request.packet.sourceRevision||binding.registryDigest!==request.packet.registryDigest)throw Error();
+    const binding=z.object({kind:z.literal('prepared'),attemptId:z.string().uuid(),attemptVersion:z.literal(1),sourceRevision:z.string(),registryDigest:z.string(),evaluationBinding:EmployeeImportEvaluationBindingSchema.optional()}).strict().parse(prepared);
+    if(binding.sourceRevision!==request.packet.sourceRevision||binding.registryDigest!==request.packet.registryDigest||JSON.stringify(binding.evaluationBinding)!==JSON.stringify(request.packet.evaluationBinding))throw Error();
     request={...request,binding:{attemptId:binding.attemptId,attemptVersion:binding.attemptVersion}};
     saved.current=request;
     // Same explicit human consent covers this first execute. No later retry can enter here.
@@ -62,9 +63,9 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
    }
    if(!current(request)){if(alive.current)setAiStatus('stale');return;}
    if(result.kind!=='proposal'){setProposal(null);setAdopted(null);setAiStatus('unavailable');return;}
-   const envelope=z.object({kind:z.literal('proposal'),attemptId:z.string().uuid(),attemptVersion:z.literal(1),proposal:z.unknown()}).strict().parse(result);
+   const envelope=z.object({kind:z.literal('proposal'),attemptId:z.string().uuid(),attemptVersion:z.literal(1),proposal:z.unknown(),evaluationBinding:EmployeeImportEvaluationBindingSchema.optional()}).strict().parse(result);
    const value=capturePersonnelImportHeaderProposal(envelope.proposal,request.packet.headers);
-   if(envelope.attemptId!==request.binding?.attemptId||envelope.attemptVersion!==request.binding?.attemptVersion||value.sourceRevision!==request.packet.sourceRevision||value.registryDigest!==request.packet.registryDigest
+   if(JSON.stringify(envelope.evaluationBinding)!==JSON.stringify(request.packet.evaluationBinding)||envelope.attemptId!==request.binding?.attemptId||envelope.attemptVersion!==request.binding?.attemptVersion||value.sourceRevision!==request.packet.sourceRevision||value.registryDigest!==request.packet.registryDigest
     ||value.mappings.some(mapping=>(mapping.status==='mapped'?[mapping.field]:mapping.status==='ambiguous'?mapping.fields:[]).some(field=>!choices.some(choice=>choice.key===field))))throw Error();
    setProposal({value,saved:request});setAiStatus('ready');
   }catch{if(alive.current)setAiStatus(saved.current?'uncertain':'unavailable');}
@@ -89,7 +90,7 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
       <option value="">{messages.chooseField}</option>{choices.map(choice=><option key={choice.key} value={choice.key}>{choice.label}</option>)}</select>{issue&&<p id={`${id}-issue-${index}`} className="mt-1 text-destructive">{issue}</p>}</td></tr>;
    })}
   </tbody></table></div>
-  <details className="rounded-md border border-border p-3"><summary className="cursor-pointer text-sm font-medium">{messages.aiTitle}</summary>
+  {allowAi&&<details className="rounded-md border border-border p-3"><summary className="cursor-pointer text-sm font-medium">{messages.aiTitle}</summary>
    <div className="mt-3 space-y-3"><p className="text-sm text-muted-foreground">{messages.aiDescription}</p>
     {eligible.length===0?<p className="text-sm">{messages.aiNoHeadings}</p>:<>
      <fieldset disabled={disabled||aiPending||!!saved.current} className="space-y-2"><legend className="mb-2 text-sm font-medium">{messages.aiChoose}</legend>{eligible.map(row=><label key={row.index} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={aiColumns.includes(row.index)} onChange={e=>{setConsented(false);setAiColumns(old=>e.target.checked?[...old,row.index].sort((a,b)=>a-b):old.filter(index=>index!==row.index));}}/><span>{originalIndex(row.index)+1}: {row.raw}</span></label>)}</fieldset>
@@ -106,7 +107,7 @@ export function PersonnelImportHeaderReview({source,companyId,options,choices,me
      {mapping.status==='unresolved'?<p className="text-muted-foreground">{messages.unresolved}</p>:(mapping.status==='mapped'?[mapping.field]:mapping.fields).map(field=><Button type="button" key={field} variant="outline" disabled={disabled||aiPending} onClick={()=>useSuggestion(mapping.columnIndex,field)}>{messages.aiUseSuggestion}: {choices.find(choice=>choice.key===field)?.label}</Button>)}
     </li>)}</ul>}
    </div>
-  </details>
+  </details>}
   <div className="flex flex-wrap gap-2"><Button type="button" disabled={disabled||!ready} onClick={()=>{
    const binding=proposal?.saved.binding,used=adopted&&proposal&&current(proposal.saved)&&binding?.attemptId===adopted.attemptId&&binding?.attemptVersion===adopted.attemptVersion?Object.entries(adopted.fields).filter(([index,field])=>selected[Number(index)]===field).length:0;
    onApply([...selected],source.revisionId,used&&binding?{attemptId:binding.attemptId,attemptVersion:binding.attemptVersion,adoptedMappings:used}:undefined);
