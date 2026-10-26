@@ -1,21 +1,27 @@
 import { createHash } from 'node:crypto';
 import { and,asc,eq,inArray,sql } from 'drizzle-orm';
-import type { SessionContext } from '../../../db/client';
+import type { SessionContext,Tx } from '../../../db/client';
 import { assessmentFileText,performanceAttachment,onehrReview } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { recordProposal } from '../../../core/agent-proposal';
 import { AiImageReadError,readImage,supportsImageReading,type AiImageMime,type ResolvedAiConfig } from '../../../lib/ai';
-import { getOnehrReview } from './service';
-import { getAssessmentInsightSource } from './insight-source';
+import { getOnehrReviewTx } from './service';
+import { getAssessmentInsightSourceTx } from './insight-source';
 import { evidenceExtension,extractEvidenceText,type EvidenceText } from './evidence-extraction';
+import {assertPerformanceProviderSourceTx} from './provider-source-authority';
+import {withAiAdmissionCheck} from '../../../core/ai-governance';
+import {captureImageInput,imageInputDigest} from '../../../lib/ai/image-input';
+const fingerprint=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const imageMimes:Record<string,AiImageMime>={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp'};
 const unread=():EvidenceText=>({status:'unread',text:'',method:null});
-async function context(ctx:SessionContext,reviewId:string,contextId?:string){
- if(contextId)return getAssessmentInsightSource(ctx,reviewId,contextId);
- const view=await getOnehrReview(ctx,reviewId);if(!view||!view.self&&!view.manager&&!view.moderator&&!view.admin)throw Error('This assessment is not assigned to you.');
+async function context(ctx:SessionContext,reviewId:string,contextId?:string){return withPerformanceTenant(ctx,tx=>contextTx(tx,ctx,reviewId,contextId));}
+async function contextTx(tx:Tx,ctx:SessionContext,reviewId:string,contextId?:string){
+ await assertPerformanceProviderSourceTx(tx,ctx);
+ if(contextId)return getAssessmentInsightSourceTx(tx,ctx,reviewId,contextId);
+ const view=await getOnehrReviewTx(tx,ctx,reviewId);if(!view||!view.self&&!view.manager&&!view.moderator&&!view.admin)throw Error('This assessment is not assigned to you.');
  if(!view.policy.modules.evidence&&!view.moderator)throw Error('Supporting evidence is disabled.');
- const [record]=view.resultsSubmitted?await withPerformanceTenant(ctx,tx=>tx.select({proof:onehrReview.submittedProof}).from(onehrReview).where(eq(onehrReview.reviewId,reviewId))):[];
+ const [record]=view.resultsSubmitted?await tx.select({proof:onehrReview.submittedProof}).from(onehrReview).where(eq(onehrReview.reviewId,reviewId)):[];
  const kpis=new Set(view.kpis.map(k=>k.id)),confirmed=new Set(record?.proof.filter(proof=>kpis.has(proof.kpiId)).map(proof=>proof.attachmentId)??[]),superseded=new Set(view.evidence.filter(e=>e.state==='shared'&&e.supersedesId).map(e=>e.supersedesId)),evidence=new Map(view.evidence.map(e=>[e.id,e]));
  // Download/history permissions also retain retracted evidence. Current AI context uses active entries,
  // while links captured at human result confirmation remain immutable review proof.
@@ -23,21 +29,46 @@ async function context(ctx:SessionContext,reviewId:string,contextId?:string){
 }
 /** A chat turn can read only existing cached contents. Visibility is re-evaluated through native file RLS. */
 export async function getAssessmentFileTexts(ctx:SessionContext,reviewId:string,contextId?:string){
- const view=await context(ctx,reviewId,contextId),ids=view.attachments.map(a=>a.id);if(!ids.length)return new Map<string,EvidenceText>();
- const rows=await withPerformanceTenant(ctx,tx=>tx.select().from(assessmentFileText).where(inArray(assessmentFileText.attachmentId,ids)).orderBy(asc(assessmentFileText.attachmentId)));
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ return withPerformanceTenant(ctx,tx=>getAssessmentFileTextsTx(tx,ctx,reviewId,contextId));
+}
+/** Native assignment/evidence visibility and actual immutable-content binding in the caller Tx. */
+export async function getAssessmentFileTextsTx(tx:Tx,ctx:SessionContext,reviewId:string,contextId?:string){
+ const view=await contextTx(tx,ctx,reviewId,contextId),ids=view.attachments.map(a=>a.id);if(!ids.length)return new Map<string,EvidenceText>();
+ const rows=await tx.select().from(assessmentFileText).where(inArray(assessmentFileText.attachmentId,ids)).orderBy(asc(assessmentFileText.attachmentId));
+ // PG16 binary-string SHA256; no attachment bytes leave this query or enter a receipt.
+ const current=await tx.select({id:performanceAttachment.id,hash:sql<string>`encode(sha256(${performanceAttachment.content}),'hex')`}).from(performanceAttachment).where(inArray(performanceAttachment.id,ids));
+ const hashes=new Map(current.map(row=>[row.id,row.hash]));
+ if(rows.some(row=>hashes.get(row.attachmentId)!==row.contentHash))throw Error('Current assessment evidence could not be confirmed.');
  return new Map(rows.map(row=>[row.attachmentId,{status:row.status as EvidenceText['status'],text:row.text,method:row.method as EvidenceText['method']}]));
 }
 /** Explicit summary generation reads files outside transactions. Images: four workers, eight files, one 22s deadline. */
 export async function readAssessmentFileTexts(ctx:SessionContext,reviewId:string,{allowImages=false,budgetMs=30000,contextId}:{allowImages?:boolean;budgetMs?:number;contextId?:string}={}){
- const view=await context(ctx,reviewId,contextId),ids=view.attachments.map(a=>a.id),idSet=new Set(ids),end=Date.now()+Math.min(30000,Math.max(1,budgetMs));
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ const view=await context(ctx,reviewId,contextId),sourceFingerprint=fingerprint(view),ids=view.attachments.map(a=>a.id),idSet=new Set(ids),end=Date.now()+Math.min(30000,Math.max(1,budgetMs));
  if(!ids.length)return new Map<string,EvidenceText>();
  const cached=await withPerformanceTenant(ctx,tx=>tx.select().from(assessmentFileText).where(inArray(assessmentFileText.attachmentId,ids)).orderBy(asc(assessmentFileText.attachmentId))),byId=new Map(cached.map(row=>[row.attachmentId,row]));
  const out=new Map<string,EvidenceText>(cached.map(row=>[row.attachmentId,{status:row.status as EvidenceText['status'],text:row.text,method:row.method as EvidenceText['method']}]));
  type Write={id:string;hash:string;value:EvidenceText;attempts:number};const writes:Write[]=[],images:typeof view.attachments=[];
  async function bytes(id:string,vision=false){
   return withPerformanceTenant(ctx,async tx=>{
+   const current=await contextTx(tx,ctx,reviewId,contextId);
+   if(fingerprint(current)!==sourceFingerprint||!current.attachments.some(file=>file.id===id))throw Error('Current assessment evidence could not be confirmed.');
    const [file]=await tx.select({id:performanceAttachment.id,name:performanceAttachment.fileName,content:performanceAttachment.content}).from(performanceAttachment).where(eq(performanceAttachment.id,id));
-   let cfg:ResolvedAiConfig|null=null;if(vision&&file)try{cfg=await assessmentAiConfigTx(tx,ctx,'pm');}catch{/* Manual file reading remains available when AI is unusable. */}return file?{...file,cfg,hash:createHash('sha256').update(file.content).digest('hex')}:null;
+   if(!file)return null;
+   const hash=createHash('sha256').update(file.content).digest('hex');
+   let cfg:ResolvedAiConfig|null=null;if(vision)try{cfg=await assessmentAiConfigTx(tx,ctx,'pm');}catch{/* Manual file reading remains available when AI is unusable. */}
+   if(cfg&&supportsImageReading(cfg.provider)){
+    let expected:string|null=null;try{expected=imageInputDigest(captureImageInput({data:file.content,mimeType:imageMimes[evidenceExtension(file.name)]}));}catch{/* Invalid bytes retain the ordinary readImage refusal; they cannot acquire admission. */}
+    cfg=withAiAdmissionCheck(cfg,'performance_pm',async(admissionTx,request)=>{
+     if(request.operation!=='image'||request.inputDigest!==expected||!await assessmentAiFeatureEnabledTx(admissionTx,ctx,'pm'))throw Error('Current assessment image access could not be confirmed.');
+     const fresh=await contextTx(admissionTx,ctx,reviewId,contextId);
+     if(fingerprint(fresh)!==sourceFingerprint||!fresh.attachments.some(item=>item.id===id))throw Error('Current assessment image access could not be confirmed.');
+     const [actual]=await admissionTx.select({name:performanceAttachment.fileName,hash:sql<string>`encode(sha256(${performanceAttachment.content}),'hex')`}).from(performanceAttachment).where(eq(performanceAttachment.id,id));
+     if(!actual||actual.name!==file.name||actual.hash!==hash)throw Error('Current assessment image access could not be confirmed.');
+    });
+   }
+   return {...file,cfg,hash};
   });
  }
  for(const file of view.attachments){

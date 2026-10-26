@@ -456,13 +456,14 @@ export async function changeAssessmentPanelStateTx(tx:Tx,ctx:SessionContext,revi
 }
 type FeedbackCard={requestId:string;reviewId:string;cycleId:string;guidedReview:boolean;closed:boolean;resetAt:string|null;subject:string;statements:Statement[];answers:Record<string,'yes'|'no'>|null;remark:string;comments:Record<string,string>;submitted:boolean;frozen:boolean};
 async function feedbackCard(tx:Tx,requestId:string) {uuid.parse(requestId);const [r]=await tx.execute<{value:FeedbackCard|null}>(sql`select app.onehr_feedback_card(${requestId}::uuid) as value`);if(!r?.value)throw Error('Feedback request not found or access has been removed.');return r.value;}
-export async function getOnehrFeedback(ctx:SessionContext,requestId:string){return withPerformanceTenant(ctx,async tx=>{
+export async function getOnehrFeedback(ctx:SessionContext,requestId:string){return withPerformanceTenant(ctx,tx=>getOnehrFeedbackTx(tx,ctx,requestId));}
+export async function getOnehrFeedbackTx(tx:Tx,ctx:SessionContext,requestId:string){
  const card=await feedbackCard(tx,requestId);
  const [draft]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.contextId,requestId),eq(assessmentDraft.kind,'feedback'),eq(assessmentDraft.actorUserId,ctx.userId!)));
  const ai=await assessmentAiStateTx(tx,ctx);
  const payload=draft?assessmentDraftSchema.parse(draft.payload):null;
  return {...card,aiEnabled:ai.features['360'],commandAiEnabled:ai.moduleHeld&&ai.providerConfigured,draft:draft&&payload?{...draft,payload:payload.kind==='feedback'?{...payload,comments:currentPrincipleComments(card.statements,payload.comments??{})}:payload}:null};
-});}
+}
 export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,raw:unknown,remark:string,comments:Record<string,string>={}) {
   const answers=z.record(z.string(),z.enum(['yes','no'])).parse(raw);note.parse(remark);
   const principleComments=z.record(z.string().max(200),z.string().trim().max(2000)).parse(comments);

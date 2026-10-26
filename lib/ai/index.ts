@@ -15,6 +15,7 @@
 import { captureAiConfig,governed,textReservation } from './governance';
 import { captureConversationInput, conversationInputDigest } from './conversation-input';
 import {draftInputDigest} from './draft-input';
+import {captureImageInput,imageInputDigest} from './image-input';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
@@ -86,10 +87,11 @@ async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs)
 export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}
 /** This operation never changes the existing text/conversation paths. Callers authorize the bytes before using it. */
 export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
+ const captured=captureImageInput(args);
  cfg=captureAiConfig(cfg);
- if(!validImageBytes(args.data,args.mimeType)||!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
- if(args.signal?.aborted)throw new AiImageReadError(true);
- return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,args.data.length*2)+2500)},record=>readImageTransport(cfg,{...args,onUsage:record}));
+ if(!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
+ if(captured.signal?.aborted)throw new AiImageReadError(true);
+ return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,captured.data.length*2)+2500),inputDigest:imageInputDigest(captured)},record=>readImageTransport(cfg,{...captured,onUsage:record}));
 }
 async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
  if(!validImageBytes(args.data,args.mimeType))throw new AiImageReadError(false);
