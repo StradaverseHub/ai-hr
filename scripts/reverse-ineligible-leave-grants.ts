@@ -31,13 +31,13 @@
  */
 import { writeFileSync } from 'node:fs';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
-import { createDb } from '../db/client';
+import { createDb, type Tx } from '../db/client';
+import { lockOwnerTenantCatalogsTx } from '../db/provision-ownership';
 // ADR-0080 D9 — through the PACK FACADE, never core/leave directly. The drift ratchet refuses a new
 // scripts/ file importing the leave pack's implementation, and its allowlist only ever shrinks.
 import { INELIGIBLE_GRANT_REVERSAL_REASON, isProfileEligible, type LeaveEligibility } from '../packs/leave/service';
-import { employment, leaveLedger, leaveType, person } from '../db/schema';
+import { employment, leaveLedger, leaveType, person, tenant } from '../db/schema';
 
-const APPLY = process.argv.includes('--apply');
 const OUT = `/var/tmp/ineligible-leave-grants-${new Date().toISOString().slice(0, 10)}.txt`;
 
 async function main() {
@@ -46,18 +46,46 @@ async function main() {
     console.error('this script requires MIGRATION_DATABASE_URL (the owner role).');
     process.exit(1);
   }
-  const owner = createDb(ownerUrl);
-  const db = owner.db;
+  const apply = process.argv.includes('--apply');
+  const result = await runIneligibleGrantRepair(ownerUrl, { apply });
+  if (result.restrictedCodes.length === 0) {
+    console.log('No leave type carries a gender / marital / organisation condition. Nothing to check.');
+    await createDb(ownerUrl).client.end();
+    return;
+  }
+  // The report is private operator evidence, written only after completed database transactions. A
+  // file-write failure cannot undo those commits; a rerun uses the original net/idempotence guards.
+  writeFileSync(OUT, result.lines.join('\n') + '\n', 'utf8');
+  console.log(`508d3acd ${apply ? 'APPLY' : 'DRY RUN'}`);
+  console.log(`  pairs to reverse       : ${result.reversed}  (${result.reversedDays.toFixed(2)} days)`);
+  console.log(`  left alone (days spent): ${result.skippedSpent}`);
+  console.log(`  already reversed       : ${result.skippedAlready}`);
+  console.log(`  correctly held         : ${result.correct}`);
+  console.log(`  per-employee list      : ${OUT}`);
+  if (!apply) console.log(`  nothing was written. Re-run with --apply once the list has been reviewed.`);
+  await createDb(ownerUrl).client.end();
+}
 
+type RepairPart = { restrictedCodes: string[]; lines: string[]; reversed: number; reversedDays: number;
+  skippedSpent: number; skippedAlready: number; correct: number };
+
+/** All-tenant utility, ordered tenant-ID nomination only. Each applying tenant owns fresh scoped
+ * source reads through its effects in one owner transaction. Earlier completed tenants stay committed
+ * if a later tenant refuses/fails; the current tenant is now atomic rather than row-partial. No global
+ * all-tenant lock or posted app principal is introduced. Dry-run keeps a nonadmitting read path. */
+export async function runIneligibleGrantRepair(ownerUrl: string, supplied: { apply: boolean }): Promise<RepairPart> {
+  const apply = supplied.apply, generatedAt = new Date().toISOString();
+  const owner = createDb(ownerUrl);
+  const tenantIds = (await owner.db.select({ id: tenant.id }).from(tenant)).map(row => row.id).sort();
+  const parts: RepairPart[] = [];
+  const perform = async (db: ReturnType<typeof createDb>['db'] | Tx, tenantId: string): Promise<RepairPart> => {
   // Every type that carries an identity condition at all. A type with none can never produce a wrong pair.
   const types = await db
     .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, eligibility: leaveType.eligibility })
-    .from(leaveType);
+    .from(leaveType).where(eq(leaveType.tenantId, tenantId));
   const restricted = types.filter((t) => hasIdentityRule(t.eligibility));
   if (restricted.length === 0) {
-    console.log('No leave type carries a gender / marital / organisation condition. Nothing to check.');
-    await owner.client.end();
-    return;
+    return { restrictedCodes: [] as string[], lines: [] as string[], reversed: 0, reversedDays: 0, skippedSpent: 0, skippedAlready: 0, correct: 0 };
   }
 
   const emps = await db
@@ -77,17 +105,10 @@ async function main() {
       employmentCategory: employment.employmentCategory,
     })
     .from(employment)
-    .innerJoin(person, eq(person.id, employment.personId));
+    .innerJoin(person, eq(person.id, employment.personId)).where(eq(employment.tenantId, tenantId));
   const empById = new Map(emps.map((e) => [e.id, e]));
 
-  const lines: string[] = [
-    `508d3acd — entitlement grants the leave type's identity conditions exclude`,
-    `${APPLY ? 'APPLY' : 'DRY RUN'}   ·   generated ${new Date().toISOString()}`,
-    `types carrying an identity condition: ${restricted.map((t) => t.code ?? t.id).join(', ')}`,
-    ``,
-    `EMPLOYEE | LEAVE TYPE | ACCRUED DAYS | BALANCE | ACTION`,
-    `-`.repeat(88),
-  ];
+  const lines: string[] = [];
   let reversed = 0;
   let reversedDays = 0;
   let skippedSpent = 0;
@@ -105,7 +126,7 @@ async function main() {
         debits: sql<string>`count(*) filter (where ${leaveLedger.entryType} = 'debit')`,
       })
       .from(leaveLedger)
-      .where(eq(leaveLedger.leaveTypeId, t.id))
+      .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.leaveTypeId, t.id)))
       .groupBy(leaveLedger.employmentId);
 
     for (const row of held) {
@@ -137,7 +158,7 @@ async function main() {
       reversed += 1;
       reversedDays = Math.round((reversedDays + accrued) * 100) / 100;
 
-      if (APPLY) {
+      if (apply) {
         await db.insert(leaveLedger).values({
           tenantId: emp.tenantId,
           employmentId: emp.id,
@@ -151,18 +172,32 @@ async function main() {
     }
   }
 
-  lines.push(``, `to reverse: ${reversed} (${reversedDays.toFixed(2)} days) · left alone because days were spent: ${skippedSpent} · already reversed: ${skippedAlready} · correctly held: ${correct}`);
-  writeFileSync(OUT, lines.join('\n') + '\n', 'utf8');
-
-  // Counts only on the console — the list names individuals and belongs in the file.
-  console.log(`508d3acd ${APPLY ? 'APPLY' : 'DRY RUN'}`);
-  console.log(`  pairs to reverse       : ${reversed}  (${reversedDays.toFixed(2)} days)`);
-  console.log(`  left alone (days spent): ${skippedSpent}`);
-  console.log(`  already reversed       : ${skippedAlready}`);
-  console.log(`  correctly held         : ${correct}`);
-  console.log(`  per-employee list      : ${OUT}`);
-  if (!APPLY) console.log(`  nothing was written. Re-run with --apply once the list has been reviewed.`);
-  await owner.client.end();
+  return { restrictedCodes: restricted.map(t => t.code ?? t.id), lines, reversed, reversedDays,
+    skippedSpent, skippedAlready, correct };
+  };
+  for (const tenantId of tenantIds) {
+    const part = apply ? await owner.db.transaction(async tx => {
+      await lockOwnerTenantCatalogsTx(tx, tenantId);
+      return perform(tx, tenantId);
+    }) : await perform(owner.db, tenantId);
+    parts.push(part);
+  }
+  const total: RepairPart = { restrictedCodes: parts.flatMap(p => p.restrictedCodes), lines: [], reversed: 0,
+    reversedDays: 0, skippedSpent: 0, skippedAlready: 0, correct: 0 };
+  for (const part of parts) {
+    total.reversed += part.reversed;
+    total.reversedDays = Math.round((total.reversedDays + part.reversedDays) * 100) / 100;
+    total.skippedSpent += part.skippedSpent; total.skippedAlready += part.skippedAlready; total.correct += part.correct;
+  }
+  total.lines = [
+    `508d3acd — entitlement grants the leave type's identity conditions exclude`,
+    `${apply ? 'APPLY' : 'DRY RUN'}   ·   generated ${generatedAt}`,
+    `types carrying an identity condition: ${total.restrictedCodes.join(', ')}`, ``,
+    `EMPLOYEE | LEAVE TYPE | ACCRUED DAYS | BALANCE | ACTION`, `-`.repeat(88),
+    ...parts.flatMap(p => p.lines), ``,
+    `to reverse: ${total.reversed} (${total.reversedDays.toFixed(2)} days) · left alone because days were spent: ${total.skippedSpent} · already reversed: ${total.skippedAlready} · correctly held: ${total.correct}`,
+  ];
+  return total;
 }
 
 /** Does this type carry any identity condition at all? */
@@ -172,7 +207,7 @@ function hasIdentityRule(elig: unknown): boolean {
   return list(e.gender) || list(e.maritalStatus) || ['orgDivision', 'orgBranch', 'orgRegion', 'orgLine', 'orgSection', 'orgTeam', 'orgBase', 'employmentCategory'].some((k) => list(e[k]));
 }
 
-main().then(
+if (process.argv[1]?.endsWith('reverse-ineligible-leave-grants.ts')) main().then(
   () => process.exit(0),
   (e) => {
     console.error(e);
