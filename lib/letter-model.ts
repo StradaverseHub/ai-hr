@@ -49,7 +49,7 @@ const blockSchema:z.ZodType<LetterBlock>=z.lazy(()=>z.union([
  z.object({type:z.literal('if'),condition:conditionSchema,then:z.array(blockSchema).max(100),otherwise:z.array(blockSchema).max(100)}).strict(),
 ]));
 /** Bound and reject cycles before a recursive validator can overflow its call stack. */
-function bounded(value:unknown){
+export function assertLetterStructureBound(value:unknown){
  let nodes=0,characters=0;const stack:{value:unknown;depth:number;exit?:boolean}[]=[{value,depth:0}],seen=new Set<object>();
  while(stack.length){const next=stack.pop()!;if(next.exit){seen.delete(next.value as object);continue;}if(++nodes>10000||next.depth>32)throw new LetterModelError('limit','document');
   if(typeof next.value==='string'){characters+=next.value.length;if(characters>256000)throw new LetterModelError('limit','document');}
@@ -69,7 +69,7 @@ export function validateLetterFields(input:unknown):LetterField[]{
  return result.data;
 }
 export function validateLetterDocument(input:unknown,fields:readonly LetterField[]):LetterDocument{
- bounded(input);const result=z.object({version:z.literal(1),language:z.enum(LETTER_LANGUAGES),blocks:z.array(blockSchema).min(1).max(500)}).strict().safeParse(input);
+ assertLetterStructureBound(input);const result=z.object({version:z.literal(1),language:z.enum(LETTER_LANGUAGES),blocks:z.array(blockSchema).min(1).max(500)}).strict().safeParse(input);
  if(!result.success)throw new LetterModelError('invalid','document');
  const definitions=new Map(fields.map(field=>[field.key,field]));
  function condition(test:LetterCondition){
@@ -85,7 +85,7 @@ export function validateLetterDocument(input:unknown,fields:readonly LetterField
 export function usedLetterFields(document:LetterDocument):string[]{
  const used=new Set<string>();
  const visit=(value:unknown)=>{if(!value||typeof value!=='object')return;const node=value as Record<string,unknown>;if(node.type==='field'&&typeof node.key==='string')used.add(node.key);if(['present','equals','after','greater'].includes(String(node.type))&&typeof node.field==='string')used.add(node.field);Object.values(node).forEach(child=>Array.isArray(child)?child.forEach(visit):visit(child));};
- bounded(document);visit(document);return [...used].sort();
+ assertLetterStructureBound(document);visit(document);return [...used].sort();
 }
 const locale={en:'en-MY',ms:'ms-MY',zh:'zh-CN',th:'th-TH',ta:'ta-MY',vi:'vi-VN'};
 /** Inputs must already come from scoped canonical readers; this function never fetches employee data. */
