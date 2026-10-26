@@ -1,11 +1,10 @@
 /** Fixed canonical SMTP record projection; operator drafts never leave this reader. */
 import { z } from 'zod';
-import { EmailSettingsError, emailConfigSchema } from '../identity/email-model';
+import { EmailSettingsError } from '../identity/email-model';
 import { readRecord, type AuthSql } from './record-store';
-import type { Relay } from './smtp';
+import {storedEmailRelay} from '../identity/email-relay';
 export const INTERNAL_EMAIL_STATE_KEY = 'email-state';
-const relay = z.object({ config: emailConfigSchema, password: z.string().max(4096).optional() }).strict()
-  .refine(value => !value.config.auth || Boolean(value.password));
+const relay = storedEmailRelay;
 // Canonical states start at "initial" and Apply assigns opaque()'s 43-character revision.
 // Only this new projection is validated; existing settings/recovery callers retain their behavior.
 const projection = z.object({

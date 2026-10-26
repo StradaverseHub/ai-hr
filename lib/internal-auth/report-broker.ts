@@ -4,6 +4,8 @@ import {internalConfig,internalSelected} from './config';
 import {readRecord,type AuthSql} from './record-store';
 import {parseCredential,assertActiveCredential} from './credential';
 import {readActiveRelayTx} from './active-relay';
+import {prepareSmtpRelay,assertFreshDeliveryRelay} from './smtp-credentials';
+import type {StoredEmailRelay,DeliveryEmailRelay} from '../identity/email-relay';
 import {InternalAuthError} from './errors';
 import {EmailSettingsError} from '../identity/email-model';
 import {masterArtifactFingerprint,type MasterArtifactAuthorization} from '../employee-master-artifact-model';
@@ -22,6 +24,8 @@ export interface ReportBrokerDependencies {
  /** Production is the direct fixed renderer RPC. No sender-forwarded manifest accepted. */
  authorizeArtifact(input:{occurrenceId:string;leaseToken:string;expectedAccessStamp:string}):Promise<MasterArtifactAuthorization>;
  now?:()=>number;
+ /** Tokens are acquired only outside transactions; reusable secrets never enter the sender reply. */
+ prepareRelay?:(relay:StoredEmailRelay)=>Promise<DeliveryEmailRelay>;
 }
 export class ReportBrokerRefusal extends Error {
  constructor(readonly reason:ReportBrokerFailureReason){super('Managed report broker refused.');}
@@ -100,19 +104,31 @@ async function start(request:Extract<ReportBrokerRequest,{phase:'start'}>,d:Repo
  // Authorize/hash first; no DB transaction or row lock spans the renderer RPC.
  const manifest=authorizedSchema.parse(await d.authorizeArtifact({occurrenceId:request.occurrenceId,leaseToken:request.leaseToken,expectedAccessStamp:proof.accessStamp}));
  if(manifest.accessStamp!==proof.accessStamp||reportProofDigest(manifest.artifact)!==reportProofDigest(request.expectedArtifact))refuse('generationFailed');
- const result=await d.transaction(async tx=>{
+ const attempt=(prepared?:{relay:DeliveryEmailRelay;revision:string;secretDigest:string})=>d.transaction(async tx=>{
   await bounded(tx);const c=await lockedContext(tx,request,origin),m=await material(tx,c);
   // Reopen at the final check: time consumed by renderer/lock acquisition cannot extend the proof.
   const freshProof=openReportInspection(request.inspectionProof,request,now());
   if(!freshProof||freshProof.targetDigest!==reportProofDigest(c.target)||freshProof.accessStamp!==c.target.accessStamp
    ||manifest.accessStamp!==c.target.accessStamp||reportProofDigest(freshProof.identities)!==reportProofDigest(m.identities)
    ||freshProof.relayRevision!==m.relay.revision)refuse();
+  if(m.relay.relay.config.authentication==='microsoft365'&&!prepared)
+   return {prepare:m.relay.relay,revision:m.relay.revision,secretDigest:reportProofDigest(m.relay.relay)};
+  if(prepared&&(prepared.revision!==m.relay.revision||prepared.secretDigest!==reportProofDigest(m.relay.relay)))refuse();
+  const delivery=prepared?assertFreshDeliveryRelay(prepared.relay,now()):m.relay.relay;
   const [row]=await tx.unsafe('select app.internal_auth_report_start($1::uuid,$2::uuid,$3::text,($4::text)::jsonb,($5::text)::jsonb) value',
    [request.occurrenceId,request.leaseToken,origin,JSON.stringify(c),JSON.stringify(manifest.artifact)]);
   if(row?.value!=='started')refuse(row?.value==='busy'?'busy':row?.value==='notEligible'?'notEligible':'unavailable');
   // Validate the whole response BEFORE commit; malformed output must roll back started.
-  return reportBrokerResponse.parse({ok:true,phase:'start',target:c.target,artifact:manifest.artifact,relay:m.relay.relay});
+  return reportBrokerResponse.parse({ok:true,phase:'start',target:c.target,artifact:manifest.artifact,relay:delivery});
  });
+ let result=await attempt();
+ if('prepare' in result){
+  const snapshot=result;
+  // The first Tx has committed. No row/advisory lock spans Microsoft's token request.
+  const relay=await (d.prepareRelay??(value=>prepareSmtpRelay(value,{now})))(snapshot.prepare);
+  result=await attempt({relay,revision:snapshot.revision,secretDigest:snapshot.secretDigest});
+  if('prepare' in result)refuse('unavailable');
+ }
  // transaction() has committed; the process must close its pool before serializing this result.
  return result;
 }

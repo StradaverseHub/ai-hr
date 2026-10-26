@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { client, withTenant } from '../../db/client';
 import { sql } from 'drizzle-orm';
-import { EmailSettingsError, emailConfigSchema, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
+import { EmailSettingsError, emailConfigSchema, sameEmailCredential, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
 import { authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
@@ -41,7 +41,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
       if ((request.password?.length || 0) > 4096) throw new EmailSettingsError('invalid');
       const previous = draft || state.active;
       const password = !config.auth ? undefined : request.password ||
-        (previous?.config.host === config.host && previous.config.user === config.user ? previous.password : undefined);
+        (previous&&sameEmailCredential(previous.config,config) ? previous.password : undefined);
       if (config.auth && !password) throw new EmailSettingsError('invalid');
       state.drafts[identity.subject] = { config, password, id: randomUUID(), revision: state.revision, testedAt: null };
     } else {

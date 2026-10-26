@@ -1,10 +1,12 @@
 /** Auth-owned transport only. No database, private record, session or relay selection dependency. */
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
-import { EmailSettingsError, type EmailConfig } from '../identity/email-model';
+import { EmailSettingsError } from '../identity/email-model';
 import { xlsxEmailAttachment, type XlsxEmailAttachment } from '../email-attachment';
+import {prepareSmtpRelay} from './smtp-credentials';
+import type {EmailRelay} from '../identity/email-relay';
 
-export type Relay={config:EmailConfig;password?:string};
+export type Relay=EmailRelay;
 type TextMail={to:string;subject:string;text:string};
 export type Mail=TextMail&(
   | {attachment?:undefined;messageId?:string}
@@ -27,9 +29,10 @@ const message=z.object({to:z.string(),subject:z.string(),text:z.string(),
 export const sendSmtp:MailTransport=async(relay,input)=>{
   const parsed=message.safeParse(input);
   if(!parsed.success)throw new EmailSettingsError('invalid');
-  const mail=parsed.data,c=relay.config;
-  const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:true,
-    auth:c.auth?{user:c.user,pass:relay.password}:undefined,
+  const mail=parsed.data,delivery=await prepareSmtpRelay(relay),c=delivery.config;
+  const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:c.security==='tls',
+    ...(c.security==='starttls'?{requireTLS:true}:{}),
+    auth:c.auth?(c.authentication==='microsoft365'?{type:'OAuth2' as const,user:c.user,accessToken:delivery.accessToken}:{user:c.user,pass:delivery.password}):undefined,
     tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},connectionTimeout:10_000,greetingTimeout:8_000,socketTimeout:15_000,
     disableFileAccess:true,disableUrlAccess:true});
   try{
