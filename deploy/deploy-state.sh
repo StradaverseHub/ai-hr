@@ -80,6 +80,20 @@ kv_get() { # file key → value ('' when absent)
   sed -n "s/^${2}=//p" "$1" 2>/dev/null | tail -n 1
 }
 
+# Snapshot presence as well as bytes: an absent and an empty record are different states.
+record_snapshot() {
+  if [ -f "$1" ]; then
+    printf '__snapshot_exists=1\n'
+    cat "$1" 2>/dev/null || true
+  else
+    printf '__snapshot_exists=0\n'
+  fi
+}
+
+kv_snapshot() { # immutable record text, key -> value; never evaluate record contents as shell
+  printf '%s\n' "$1" | sed -n "s/^${2}=//p" | tail -n 1
+}
+
 kv_set() { # file key value
   local f="$1" k="$2" v="$3" tmp
   tmp="$f.tmp.$$"
@@ -120,9 +134,8 @@ shift 2>/dev/null || true
 case "$cmd" in
 
   # Called by improve:release BEFORE the rsync. Closes the window in which the local process dies
-  # between "new source is being written to the box" and "deploy.sh has started": deploy.sh removes
-  # this file the moment it begins, so a `pending` that is still here means no deploy ever ran
-  # against the source now on disk.
+  # between "new source is being written to the box" and "deploy.sh has started". Clear this marker
+  # only after the new current record is published; a failed begin must leave the source pending.
   pending)
     kv_set "$PENDING" ref "$(san "${1:-unknown}")"
     kv_set "$PENDING" at "$(now)"
@@ -136,9 +149,8 @@ case "$cmd" in
   # `phase=-`, which is the same window). One `mv` means every reader sees either the previous
   # record or this whole one.
   begin)
-    rm -f "$PENDING" 2>/dev/null || true
     tmp="$CUR.tmp.$$"
-    {
+    if {
       printf 'ref=%s\n'        "$(san "${1:-unknown}")"
       printf 'pid=%s\n'        "$(san "${2:-}")"
       printf 'log=%s\n'        "$(san "${3:-}")"
@@ -147,8 +159,10 @@ case "$cmd" in
       printf 'result=\n'
       printf 'exit_code=\n'
       printf 'build_id=\n'
-    } > "$tmp" 2>/dev/null
-    mv -f "$tmp" "$CUR" 2>/dev/null || true
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$CUR" 2>/dev/null; then
+      # Clear pending only after both writing and publishing the complete record succeeded.
+      rm -f "$PENDING" 2>/dev/null || true
+    fi
     ;;
 
   phase)
@@ -181,46 +195,76 @@ case "$cmd" in
     ;;
 
   status)
-    d_build_id="$(disk_build_id)"
-    [ -n "$d_build_id" ] || d_build_id='-'
-    ref="$(kv_get "$CUR" ref)";              [ -n "$ref" ] || ref='-'
-    phase="$(kv_get "$CUR" phase)";          [ -n "$phase" ] || phase='-'
-    pid="$(kv_get "$CUR" pid)"
-    result="$(kv_get "$CUR" result)"
-    exit_code="$(kv_get "$CUR" exit_code)";  [ -n "$exit_code" ] || exit_code='-'
-    started_at="$(kv_get "$CUR" started_at)"; [ -n "$started_at" ] || started_at='-'
-    finished_at="$(kv_get "$CUR" finished_at)"; [ -n "$finished_at" ] || finished_at='-'
-    log="$(kv_get "$CUR" log)"
-    built_ref="$(kv_get "$LAST_OK" ref)";           [ -n "$built_ref" ] || built_ref='-'
-    built_build_id="$(kv_get "$LAST_OK" build_id)"; [ -n "$built_build_id" ] || built_build_id='-'
+    # Each writer replaces a record atomically. Read one complete version of each record, then
+    # revalidate the versions before publishing: separate kv_get calls can mix two deployments.
+    snapshot_attempt=0
+    while :; do
+      snapshot_attempt=$((snapshot_attempt + 1))
+      cur_snapshot="$(record_snapshot "$CUR")"
+      ok_snapshot="$(record_snapshot "$LAST_OK")"
+      pending_snapshot="$(record_snapshot "$PENDING")"
+      disk_snapshot="$(disk_build_id)"
+      d_build_id="$disk_snapshot"
+      [ -n "$d_build_id" ] || d_build_id='-'
+      ref="$(kv_snapshot "$cur_snapshot" ref)";              [ -n "$ref" ] || ref='-'
+      phase="$(kv_snapshot "$cur_snapshot" phase)";          [ -n "$phase" ] || phase='-'
+      pid="$(kv_snapshot "$cur_snapshot" pid)"
+      result="$(kv_snapshot "$cur_snapshot" result)"
+      exit_code="$(kv_snapshot "$cur_snapshot" exit_code)";  [ -n "$exit_code" ] || exit_code='-'
+      started_at="$(kv_snapshot "$cur_snapshot" started_at)"; [ -n "$started_at" ] || started_at='-'
+      finished_at="$(kv_snapshot "$cur_snapshot" finished_at)"; [ -n "$finished_at" ] || finished_at='-'
+      log="$(kv_snapshot "$cur_snapshot" log)"
+      built_ref="$(kv_snapshot "$ok_snapshot" ref)";           [ -n "$built_ref" ] || built_ref='-'
+      built_build_id="$(kv_snapshot "$ok_snapshot" build_id)"; [ -n "$built_build_id" ] || built_build_id='-'
 
-    if [ -f "$PENDING" ]; then
-      state=incomplete
-      # The announced ref is the source now on disk; there is no `current` record naming it, because
-      # that is precisely what did not happen.
-      pending_ref="$(kv_get "$PENDING" ref)"
-      [ -n "$pending_ref" ] && ref="$pending_ref"
-    elif [ ! -f "$CUR" ]; then
-      state=unknown
-    elif [ -z "$result" ]; then
-      if alive "$pid"; then state=running; else state=died; fi
-    elif [ "$result" = "ok" ]; then
-      if [ "$d_build_id" != '-' ] && [ "$d_build_id" = "$built_build_id" ] && [ "$ref" = "$built_ref" ]; then
-        state=ok
+      if [ "$(kv_snapshot "$pending_snapshot" __snapshot_exists)" = "1" ]; then
+        state=incomplete
+        # The announced ref is the source now on disk; there is no `current` record naming it, because
+        # that is precisely what did not happen.
+        pending_ref="$(kv_snapshot "$pending_snapshot" ref)"
+        [ -n "$pending_ref" ] && ref="$pending_ref"
+      elif [ "$(kv_snapshot "$cur_snapshot" __snapshot_exists)" = "0" ]; then
+        state=unknown
+      elif [ -z "$result" ]; then
+        if alive "$pid"; then state=running; else state=died; fi
+      elif [ "$result" = "ok" ]; then
+        if [ "$d_build_id" != '-' ] && [ "$d_build_id" = "$built_build_id" ] && [ "$ref" = "$built_ref" ]; then
+          state=ok
+        else
+          # Finished cleanly, but what is on disk is no longer what it built. Something replaced the
+          # source or the build afterwards; `.next` and the source do not agree.
+          state=stale-build
+        fi
       else
-        # Finished cleanly, but what is on disk is no longer what it built. Something replaced the
-        # source or the build afterwards; `.next` and the source do not agree.
-        state=stale-build
+        state=failed
       fi
-    else
-      state=failed
-    fi
 
-    if [ "$d_build_id" != '-' ] && [ "$d_build_id" = "$built_build_id" ] && [ "$ref" = "$built_ref" ] && [ "$ref" != '-' ]; then
-      stale_build=0
-    else
-      stale_build=1
-    fi
+      if [ "$d_build_id" != '-' ] && [ "$d_build_id" = "$built_build_id" ] && [ "$ref" = "$built_ref" ] && [ "$ref" != '-' ]; then
+        stale_build=0
+      else
+        stale_build=1
+      fi
+      if [ "$cur_snapshot" = "$(record_snapshot "$CUR")" ] &&
+         [ "$ok_snapshot" = "$(record_snapshot "$LAST_OK")" ] &&
+         [ "$pending_snapshot" = "$(record_snapshot "$PENDING")" ] &&
+         [ "$disk_snapshot" = "$(disk_build_id)" ]; then
+        break
+      fi
+      if [ "$snapshot_attempt" -ge 5 ]; then
+        # Never report success or a matching build from a record set that kept changing.
+        state=incomplete
+        phase=snapshot-changing
+        ref='-'
+        pid='-'
+        exit_code='-'
+        started_at='-'
+        finished_at='-'
+        built_ref='-'
+        built_build_id='-'
+        stale_build=1
+        break
+      fi
+    done
 
     log_size=0
     if [ -n "$log" ] && [ -f "$log" ]; then

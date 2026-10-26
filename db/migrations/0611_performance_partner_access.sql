@@ -1,13 +1,13 @@
--- ADR-0141 — OneHR performance partner: performance administration without compensation.
+-- ADR-0142 — OneHR performance partner: performance administration without compensation.
 --
--- 0610 added the enum value. This file gives it exactly the authority ADR-0141 §2-§5 describes and
+-- 0610 added the enum value. This file gives it exactly the authority ADR-0142 §2-§5 describes and
 -- nothing else. The label is referenced ONLY as text (r.role::text, text CHECK constraints): drizzle runs
 -- every pending migration in ONE transaction, so 0610's ADD VALUE has not committed when this file runs
 -- and a 'performance_partner'::role literal here would fail with "unsafe use of new value".
 --
 -- What the role gets (all of it OneHR-native-cycle scoped, company + descendants, live grant):
 --   1. app.assessment_admin_for admits it  → onehr_admin / onehr_cycle_admin / calibration access and every
---      OneHR satellite policy follow (ADR-0141 §2).
+--      OneHR satellite policy follow (ADR-0142 §2).
 --   2. SELECT-only reads of employment / assignment in its companies, and of performance_review rows of
 --      OneHR-native cycles (§3). No write policy on any of those tables changes.
 --   3. review_cycle: an UPDATE policy for OneHR-native cycles in scope, solely so the existing
@@ -97,7 +97,7 @@ CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SE
 
 -- peer_feedback_request is a performance-pack satellite (packs/performance/index.ts) that OneHR panel
 -- administration writes beside performance_onehr_panel (assignOnehrPanelTx, changeAssessmentPanelStateTx).
--- ADR-0141's verification contract has the partner administer panels, and §4 does not exclude this table,
+-- ADR-0142's verification contract has the partner administer panels, and §4 does not exclude this table,
 -- so it gets the OneHR-scoped rows HR already reaches: OneHR-native reviews whose subject is employed in a
 -- partner company, never the partner's OWN panel (0054's anonymity rule). SELECT, INSERT and UPDATE only;
 -- no DELETE. The row carries the subject/peer/cycle names and a status, no rating or pay.
@@ -148,7 +148,7 @@ REVOKE ALL ON FUNCTION app.review_cycle_partner_write_guard() FROM PUBLIC,ai_hr_
 --> statement-breakpoint
 CREATE TRIGGER review_cycle_partner_write_guard BEFORE UPDATE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.review_cycle_partner_write_guard();
 --> statement-breakpoint
--- Creating a OneHR cycle stays with HR (ADR-0141 §4). onehr_cycle_insert (0529) admits any onehr_cycle_admin,
+-- Creating a OneHR cycle stays with HR (ADR-0142 §4). onehr_cycle_insert (0529) admits any onehr_cycle_admin,
 -- which now includes the partner; this RESTRICTIVE policy re-imposes review_cycle_write's own authority on
 -- the INSERT that turns a cycle into a OneHR-native one. For every role that could already insert here the
 -- predicate is the one review_cycle_write applied to the same row, so nothing they could do changes.
@@ -174,7 +174,7 @@ REVOKE ALL ON FUNCTION app.onehr_person_labels(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_person_labels(uuid[]) TO ai_hr_app;
 --> statement-breakpoint
 
--- ── 6. Role allow-lists (ADR-0141 §5) ─────────────────────────────────────────────────────────────────
+-- ── 6. Role allow-lists (ADR-0142 §5) ─────────────────────────────────────────────────────────────────
 -- 0312 layer 2: the invitable customer set. test/invitation-privesc.test.ts pins it to core/auth.ts ROLES.
 ALTER TABLE app_invitation DROP CONSTRAINT app_invitation_role_customer_set;
 --> statement-breakpoint

@@ -222,7 +222,7 @@ const isAdminOrPerfCompCtx = (ctx: SessionContext) =>
   isAdminCtx(ctx) || (ctx.grants ?? []).some((g) => g.role === 'performance_comp_partner');
 
 /**
- * ADR-0141 — company-scoped OneHR-NATIVE administration gate: canAdminPerfCtx's set PLUS the OneHR
+ * ADR-0142 — company-scoped OneHR-NATIVE administration gate: canAdminPerfCtx's set PLUS the OneHR
  * performance partner, resolved against `ctx.grants` (never `ctx.roles`, ADR-0049 §4). It gates ONLY reads
  * and lists of OneHR-native cycles. Generic cycle lifecycle (create/open/release/close), merit/bonus actions,
  * calibration of generic cycles and cycleDetail's compensation roster keep canAdminPerfCtx /
@@ -1391,11 +1391,11 @@ export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   });
 }
 
-/** ADR-0141 — a OneHR-native cycle row for the performance-administration list, with NO pay figure. */
+/** ADR-0142 — a OneHR-native cycle row for the performance-administration list, with NO pay figure. */
 export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
 
 /**
- * ADR-0141 — the OneHR-native cycles this session administers (the performance partner's landing list).
+ * ADR-0142 — the OneHR-native cycles this session administers (the performance partner's landing list).
  * Generic cycles never appear, and no compensation-derived count (pendingComp) is computed: the partner's
  * performance_review visibility is limited to OneHR-native rows (0611) and merit status is not its business.
  * Gated twice: app.onehr_cycle_admin per row (authoritative) and canAdminOnehrCtx (grant-scoped UX mirror).
@@ -1447,7 +1447,7 @@ export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCyc
   });
 }
 
-/** ADR-0141 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
+/** ADR-0142 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
 export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<string>> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.execute<{ id: string }>(sql`select c.id from company c where app.onehr_admin(c.id)`);
@@ -1455,7 +1455,7 @@ export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<strin
   });
 }
 
-/** ADR-0141 — true when `cycleId` is a OneHR-native cycle this session may administer (DB-authoritative). */
+/** ADR-0142 — true when `cycleId` is a OneHR-native cycle this session may administer (DB-authoritative). */
 export function isOnehrAdminCycle(ctx: SessionContext, cycleId: string): Promise<boolean> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cycleId)) return Promise.resolve(false);
   return withTenant(ctx, async (tx) => {

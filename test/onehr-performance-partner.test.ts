@@ -1,7 +1,7 @@
 /**
- * ADR-0141 — the OneHR performance partner: performance administration WITHOUT compensation.
+ * ADR-0142 — the OneHR performance partner: performance administration WITHOUT compensation.
  *
- * Verification contract (ADR-0141 "Verification contract"), exercised against real RLS as the app role:
+ * Verification contract (ADR-0142 "Verification contract"), exercised against real RLS as the app role:
  *   positive    — a company-scoped partner administers a OneHR-native cycle in its company;
  *   negative    — no compensation, no generic cycle / merit / pending pay, no payroll / HR authority, no
  *                 person columns beyond self, no other company, no review_cycle or performance_review
@@ -50,7 +50,7 @@ async function refusal(p: Promise<unknown>): Promise<string> {
   throw new Error('expected the operation to be refused, but it succeeded');
 }
 
-describe('OneHR performance partner (ADR-0141)', () => {
+describe('OneHR performance partner (ADR-0142)', () => {
   let b: Base, a: SessionContext;
   let subject: Hired, manager: Hired, peers: Hired[], partnerPerson: Hired, otherEmployee: Hired;
   let coB: string, onehrCycleId: string, genericCycleId: string, genericDraftId: string, otherCycleId: string, reviewId: string;

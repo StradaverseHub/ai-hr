@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -7,6 +7,8 @@ import { reconcileReadinessCases, orchestrationQueue, runHrOrchestrator } from '
 import { sweepReadinessNudges } from '../core/readiness-nudge';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotifications } from '../core/notifications';
+import { digestOf } from '../core/agent-proposal';
+import * as readinessActions from '../core/readiness-actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 describe('central HR orchestrator', () => {
@@ -15,15 +17,15 @@ describe('central HR orchestrator', () => {
   beforeEach(async () => { await resetDb(); base = await seedBase(); });
   afterAll(closeAll);
 
-  async function hire() {
+  async function hire(suffix = '') {
     const employee = await hireEmployee(adminCtx(base), {
-      person: { fullName: 'Orchestration fixture', primaryEmail: 'orchestrator@example.test' },
+      person: { fullName: `Orchestration fixture${suffix}`, primaryEmail: `orchestrator${suffix}@example.test` },
       companyId: base.companyId, departmentId: base.deptA,
       employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
     } as never);
     await owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: base.tenantId,
-      personId: employee.personId, passportNumber: 'ORCH-PASSPORT',
-      taxNumber: 'ORCH-TAX', epfNumber: 'ORCH-EPF', socsoNumber: 'ORCH-SOCSO' });
+      personId: employee.personId, passportNumber: `ORCH-PASSPORT${suffix}`,
+      taxNumber: `ORCH-TAX${suffix}`, epfNumber: `ORCH-EPF${suffix}`, socsoNumber: `ORCH-SOCSO${suffix}` });
     return employee;
   }
   const cases = () => owner.db.select().from(schema.hrOrchestrationCase).orderBy(schema.hrOrchestrationCase.id);
@@ -69,6 +71,7 @@ describe('central HR orchestrator', () => {
     expect((await cases()).length).toBeGreaterThan(0);
     const employee = { ...adminCtx(base), roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
     await expect(reconcileReadinessCases(employee)).rejects.toThrow('access denied');
+    await expect(runHrOrchestrator(employee)).rejects.toThrow('access denied');
     expect(await withTenant(employee, tx => tx.select().from(schema.hrOrchestrationCase))).toEqual([]);
   });
 
@@ -108,7 +111,109 @@ describe('central HR orchestrator', () => {
       { role: 'hr_admin', companyId: null }, { role: 'employee', companyId: null },
     ] };
     expect((await orchestrationQueue(reader)).lastRun?.failed).toBe(false);
+    expect((await orchestrationQueue(reader)).lastRun?.steps).toEqual({
+      observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded',
+    });
     expect((await orchestrationQueue({ ...adminCtx(base), grants: [{ role: 'super_admin', companyId: null }] })).observedAt).not.toBeNull();
+  });
+
+  it('keeps pass receipts scoped to the matching administrative authority and tenant', async () => {
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    await runHrOrchestrator(adminCtx(base));
+    expect((await orchestrationQueue(adminCtx(base))).lastRun).not.toBeNull();
+    const scoped = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: base.companyId }] };
+    // A tenant-wide pass exists, but is not a receipt for this company-scoped observer.
+    expect((await orchestrationQueue(scoped)).lastRun).toBeNull();
+    await runHrOrchestrator(scoped);
+    expect((await orchestrationQueue(scoped)).lastRun?.failed).toBe(false);
+    const other = await seedBase();
+    expect((await orchestrationQueue(adminCtx(other))).lastRun).toBeNull();
+  });
+
+  it.each([
+    { name: 'malformed metadata',
+      payload: { harnessVersion: 'private source text', failed: 'private exception', steps: { claims: 'private instruction' }, prompt: 'private prompt' },
+      expected: { harnessVersion: null, failed: null, steps: { observe: 'unknown', readiness: 'unknown', claims: 'unknown', verify: 'unknown' } } },
+    { name: 'unsupported future contract',
+      payload: { harnessVersion: 'readiness-v999', failed: false, steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' }, prompt: 'private prompt' },
+      expected: { harnessVersion: 'readiness-v999', failed: null, steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } } },
+  ])('uses the latest tied receipt without inventing success or exposing private text: $name', async ({ payload, expected }) => {
+    const at = new Date();
+    const event = { tenantId: base.tenantId, aggregateType: 'hr_orchestrator', aggregateId: base.tenantId,
+      eventType: 'orchestrator.pass-finished', actorType: 'agent' as const, occurredAt: at };
+    const scopeDigest = digestOf(['all-employments']);
+    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, harnessVersion: 'readiness-v2', failed: false,
+      steps: { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } } });
+    await owner.db.insert(schema.domainEvent).values({ ...event, payload: { scopeDigest, ...payload } });
+    const view = await orchestrationQueue(adminCtx(base));
+    expect(view.lastRun).toEqual({ at, ...expected });
+    expect(JSON.stringify(view.lastRun)).not.toContain('private');
+  });
+
+  it('keeps cases, observation time and receipt in one snapshot during a concurrent pass', async () => {
+    const employee = await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    const ctx = adminCtx(base);
+    await runHrOrchestrator(ctx);
+    const before = await orchestrationQueue(ctx);
+    expect(before.total).toBeGreaterThan(0);
+    expect(before.lastRun?.failed).toBe(false);
+
+    const original = readinessActions.loadReadinessActions;
+    let interleaved = false;
+    const read = vi.spyOn(readinessActions, 'loadReadinessActions').mockImplementation(async (...args: Parameters<typeof original>) => {
+      const actions = await original(...args);
+      if (!interleaved) {
+        // The queue has read its cases and check time. Commit an actual source correction and a
+        // newer failed pass before it reads the pass receipt. No sleeps or assumed timestamp gaps.
+        interleaved = true;
+        await owner.db.update(schema.employment).set({ paymentMethod: 'cash' }).where(eq(schema.employment.id, employee.employmentId));
+        await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
+        await owner.db.execute(sql`revoke select on agent_proposal from ai_hr_app`);
+        try {
+          const newer = await runHrOrchestrator(adminCtx(base));
+          expect(newer.nudge.status).toBe('failed');
+          expect(newer.after.status).toBe('succeeded');
+        } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
+      }
+      return actions;
+    });
+    const during = await orchestrationQueue(ctx).finally(() => { read.mockRestore(); });
+    expect(interleaved).toBe(true);
+    expect(during).toEqual(before);
+    const after = await orchestrationQueue(adminCtx(base));
+    expect(after.total).toBeLessThan(before.total);
+    expect(after.verified).toBeGreaterThan(before.verified);
+    expect(after.lastRun?.failed).toBe(true);
+  });
+
+  it('loads guidance only for displayed employees while retaining the full scoped case count', async () => {
+    const employees = [];
+    for (let index = 0; index < 10; index++) employees.push(await hire(`-${index}`));
+    await owner.db.delete(schema.employeeStatutoryMy).where(inArray(schema.employeeStatutoryMy.personId, employees.map(employee => employee.personId)));
+    await reconcileReadinessCases(adminCtx(base));
+    // Six source gaps per employee. Distinct observation times make the displayed set deterministic,
+    // independently of generated UUIDs: eight whole employees, two cases for the ninth, none for ten.
+    const now = Date.now();
+    for (const [index, employee] of employees.entries()) {
+      await owner.db.update(schema.hrOrchestrationCase).set({ openedAt: new Date(now - (10 - index) * 1000) })
+        .where(eq(schema.hrOrchestrationCase.employmentId, employee.employmentId));
+    }
+    const requested: string[][] = [];
+    const original = readinessActions.loadReadinessActions;
+    const read = vi.spyOn(readinessActions, 'loadReadinessActions').mockImplementation(async (...args: Parameters<typeof original>) => {
+      requested.push([...args[2]]);
+      return original(...args);
+    });
+    const view = await orchestrationQueue(adminCtx(base)).finally(() => { read.mockRestore(); });
+    expect(view.total).toBe(60);
+    expect(view.rows).toHaveLength(50);
+    expect(view.verified).toBe(0);
+    expect(view.inactive).toBe(0);
+    expect(requested).toEqual([employees.slice(0, 9).map(employee => employee.employmentId)]);
+    expect(new Set(view.rows.map(row => row.employmentId))).toEqual(new Set(requested[0]));
   });
 
   it('a failed specialist does not suppress verification and is recorded as failed', async () => {
@@ -123,6 +228,42 @@ describe('central HR orchestrator', () => {
       expect(result.failed).toBe(true);
       expect((await orchestrationQueue(adminCtx(base))).lastRun?.failed).toBe(true);
     } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
+  });
+
+  it.each([false, true])('fails an unrecorded run without inventing a receipt; prior receipt: %s', async priorReceipt => {
+    await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    const ctx = adminCtx(base);
+    if (priorReceipt) await runHrOrchestrator(ctx);
+    const previous = (await orchestrationQueue(ctx)).lastRun;
+    if (priorReceipt) expect(previous?.failed).toBe(false);
+    await owner.db.execute(sql`create function public.test_refuse_orchestrator_trace() returns trigger
+      language plpgsql as $$ begin
+        if new.event_type = 'orchestrator.pass-finished' then raise exception 'fictional trace refusal'; end if;
+        return new;
+      end $$`);
+    try {
+      await owner.db.execute(sql`create trigger test_refuse_orchestrator_trace before insert on domain_event
+        for each row execute function public.test_refuse_orchestrator_trace()`);
+      const result = await runHrOrchestrator(ctx);
+      expect(result.before.status).toBe('succeeded');
+      expect(result.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+      expect(result.triage).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+      expect(result.after.status).toBe('succeeded');
+      expect(result.failed).toBe(true);
+      const view = await orchestrationQueue(ctx);
+      expect(view.total).toBeGreaterThan(0);
+      expect(view.observedAt).not.toBeNull();
+      // The last recorded pass can predate this failed attempt. It is not a live-health guarantee.
+      expect(view.lastRun).toEqual(previous);
+      const checks = await owner.db.select().from(schema.domainEvent)
+        .where(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked')).orderBy(schema.domainEvent.sequence);
+      expect(checks).toHaveLength(priorReceipt ? 4 : 2);
+    } finally {
+      await owner.db.execute(sql`drop trigger if exists test_refuse_orchestrator_trace on domain_event`);
+      await owner.db.execute(sql`drop function public.test_refuse_orchestrator_trace()`);
+    }
   });
 
   it('does not duplicate a reminder after the best-effort proposal write fails', async () => {

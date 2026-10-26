@@ -1,13 +1,22 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
+import { Eye, EyeOff } from 'lucide-react';
+import { LoginShell } from './login-shell';
+import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations } from 'next-intl';
 
-type Reply = { step: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '' }: {
-  organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
+type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
+export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation }: {
+  presentation?: LoginPresentation; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth');
+  const router = useRouter();
+  const copy = useTranslations('loginPresentation');
+  const passwordId = useId();
+  const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<Reply>({ step: mode });
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -36,33 +45,36 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         }) });
       const reply: Reply = await response.json();
       if (!response.ok) { setError(reply.error || 'unavailable'); return; }
-      form.reset(); setState(reply);
+      form.reset(); setShowPassword(false); setState(reply);
+      if (reply.step === 'activated' && !reply.recoveryCodes?.length) router.replace(activationLoginHref(reply.organization));
       if (reply.step === 'complete' && !reply.recoveryCodes?.length) window.location.assign(returnTo);
     } catch { setError('unavailable'); } finally { setBusy(false); }
   }
   const field = 'h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
-  const button = 'min-h-11 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50';
+  const button = 'login-submit';
   const errors = ['invalidLogin', 'invalidChallenge', 'invalidCode', 'passwordPolicy', 'passwordMismatch', 'rateLimited', 'unavailable', 'conflict', 'forbidden'];
-  const title = state.step === 'complete' && state.recoveryCodes ? 'codesTitle' : `${['login','recovery','invite','accept','password','enroll','mfa','sent','reset','resetDone'].includes(state.step) ? state.step : 'login'}Title`;
-  return <main className="flex min-h-dvh items-center justify-center bg-muted/30 px-5 py-10">
-    <section aria-labelledby="internal-auth-title" className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-background p-6 shadow-sm sm:p-8">
-      <header className="space-y-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI HR</p>
-        <h1 id="internal-auth-title" className="text-2xl font-semibold tracking-tight">{t(title)}</h1>
-        {state.step === 'login' && <p className="text-sm leading-relaxed text-muted-foreground">{t('loginHelp')}</p>}
+  const title = ['complete', 'activated'].includes(state.step) && state.recoveryCodes ? 'codesTitle' : `${['login','recovery','invite','accept','password','enroll','mfa','sent','reset','resetDone'].includes(state.step) ? state.step : 'login'}Title`;
+  return <LoginShell presentation={presentation}>
+    <section aria-labelledby="internal-auth-title" className="space-y-8">
+      <header className="space-y-3">
+        <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
+        {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
       {state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
       : state.step === 'reset' && !resetToken ? <a href="/login" className="text-sm underline">{t('back')}</a>
-      : state.step === 'complete' && state.recoveryCodes?.length ? <div className="space-y-4">
+      : ['complete', 'activated'].includes(state.step) && state.recoveryCodes?.length ? <div className="space-y-4">
         <p className="text-sm leading-relaxed text-muted-foreground">{t('codesHelp')}</p>
         <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-xs leading-7" aria-label={t('codesTitle')}>{state.recoveryCodes.join('\n')}</pre>
         <button type="button" className="text-sm underline" onClick={() => {
           const file = new Blob([`AI HR recovery codes\n${state.recoveryCodes!.join('\n')}\n`], { type: 'text/plain' });
           const url = URL.createObjectURL(file), link = document.createElement('a'); link.href = url; link.download = 'aihr-recovery-codes.txt'; link.click(); URL.revokeObjectURL(url);
         }}>{t('download')}</button>
-        <form method="post" onSubmit={event => { event.preventDefault(); window.location.assign(returnTo); }} className="space-y-4">
+        <form method="post" onSubmit={event => { event.preventDefault();
+          if (state.step === 'activated') router.replace(activationLoginHref(state.organization));
+          else window.location.assign(returnTo); }} className="space-y-4">
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" required className="mt-1"/>{t('codesSaved')}</label>
-          <button className={button}>{t('continue')}</button>
+          <button className={button}>{t(state.step === 'activated' ? 'signIn' : 'continue')}</button>
         </form>
       </div> : <form method="post" onSubmit={submit} className="space-y-4">
         {['login','recovery'].includes(state.step) && <>
@@ -70,7 +82,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input className={field} name="username" required maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="username"/></label>
         </>}
         {state.step === 'invite' && <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input name="username" required minLength={3} maxLength={64} autoComplete="username" autoCapitalize="none" spellCheck={false} className={field}/></label>}
-        {['login','password','reset','invite'].includes(state.step) && <label className="block space-y-1.5"><span className="text-sm font-medium">{t(state.step === 'login' ? 'password' : 'newPassword')}</span><input className={field} name="password" type="password" required minLength={state.step === 'login' ? 1 : 14} maxLength={128} autoComplete={state.step === 'login' ? 'current-password' : 'new-password'}/></label>}
+        {['login','password','reset','invite'].includes(state.step) && <div className="space-y-1.5"><label htmlFor={passwordId} className="block text-sm font-medium">{t(state.step === 'login' ? 'password' : 'newPassword')}</label><div className="login-password"><input id={passwordId} className={field} name="password" type={showPassword ? 'text' : 'password'} required minLength={state.step === 'login' ? 1 : 14} maxLength={128} autoComplete={state.step === 'login' ? 'current-password' : 'new-password'}/><button type="button" className="login-password-toggle" aria-label={copy(showPassword ? 'hidePassword' : 'showPassword')} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}</button></div></div>}
         {['password','reset','invite'].includes(state.step) && <>
           <p className="text-xs leading-relaxed text-muted-foreground">{t('passwordHelp')}</p>
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('confirmation')}</span><input className={field} name="confirmation" type="password" required minLength={14} maxLength={128} autoComplete="new-password"/></label>
@@ -83,10 +95,14 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         {['enroll','mfa','reset'].includes(state.step) && <label className="block space-y-1.5"><span className="text-sm font-medium">{t(state.step === 'enroll' ? 'code' : 'codeOrRecovery')}</span><input className={field} name="code" required={state.step !== 'reset'} maxLength={64} autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false}/>{state.step === 'reset' && <span className="block text-xs text-muted-foreground">{t('resetMfaHelp')}</span>}</label>}
         {state.step === 'accept' && <p className="text-sm leading-relaxed">{t('acceptHelp')}</p>}
         <button type="submit" disabled={busy} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</button>
-        {state.step === 'login' && <a href="/reset-password" className="block text-center text-sm underline">{t('forgot')}</a>}
+        {state.step === 'login' && <a href="/reset-password" className="block text-sm font-medium underline">{t('forgot')}</a>}
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
+      {state.step === 'login' && <div className="login-help">
+        <details><summary>{copy('firstTime')}</summary><p className="mt-2">{copy('firstTimeHelp')}</p></details>
+        <details><summary>{copy('getHelp')}</summary><p className="mt-2">{copy('getHelpBody')}</p></details>
+      </div>}
     </section>
-  </main>;
+  </LoginShell>;
 }

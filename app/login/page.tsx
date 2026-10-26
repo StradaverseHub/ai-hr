@@ -1,6 +1,9 @@
+import { loginOrganization } from '@/lib/internal-auth/login-navigation';
 import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
 import { safeReturnTo } from '@/lib/identity/config';
 import { InternalAuthForm } from './internal-form';
+import { LoginShell } from './login-shell';
+import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { keycloakSelected } from '@/lib/identity/config';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -32,12 +35,12 @@ import { signOutUnlinkedAction } from '@/app/auth-actions';
  * true for local dev too, where the fallback still applies and this page is a courtesy rather than a
  * gate — so local dev keeps the short note and no identity list.
  */
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ signedOut?: string; returnTo?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ signedOut?: string; returnTo?: string; organization?: string | string[] }> }) {
   if (internalSelected()) {
     const { currentInternalIdentity } = await import('@/lib/internal-auth/web-session');
     const query = await searchParams;
     if (await currentInternalIdentity()) redirect(safeReturnTo(query.returnTo));
-    return <InternalAuthForm organization={internalConfig().organization} returnTo={safeReturnTo(query.returnTo)}/>;
+    return <InternalAuthForm organization={loginOrganization(query.organization, internalConfig().organization)} returnTo={safeReturnTo(query.returnTo)} presentation={await publicLoginPresentation()}/>;
   }
   const t = await getTranslations('auth');
   const tCommon = await getTranslations('common');
@@ -102,8 +105,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const principals = demo ? await listPrincipals() : [];
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center bg-muted/30 px-6 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-background p-8 shadow-sm">
+    <LoginShell presentation={await publicLoginPresentation()}>
+      <div className="space-y-6">
         <div className="text-center">
           {/* `common`, NOT `auth`: the brand lives at common.appName, and reading it off `t` would
               resolve auth.appName — a MISSING_MESSAGE that passes tsc, the suite and next build alike. */}
@@ -154,6 +157,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </a>
         )}
       </div>
-    </main>
+    </LoginShell>
   );
 }

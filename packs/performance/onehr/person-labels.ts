@@ -1,7 +1,7 @@
 import { sql, type AnyColumn, type SQL } from 'drizzle-orm';
 
 /**
- * ADR-0141 — OneHR administration reads person LABELS through app.onehr_person_labels (0611), never by
+ * ADR-0142 — OneHR administration reads person LABELS through app.onehr_person_labels (0611), never by
  * joining `person`. The projection returns only full name, preferred name and employee code, and only for
  * employments whose company the caller administers for OneHR (app.onehr_admin: HR administrators, perf-comp
  * partners and performance partners alike). `person` RLS is deliberately not widened for the performance

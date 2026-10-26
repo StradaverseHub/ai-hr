@@ -10,7 +10,7 @@ The native tests add workflow state, normalized weights, missing-component behav
 
 The literal `_RR_EXPORT_HEADER` list was also extracted without running the application. The workbook contract preserves its 43 columns in order and verifies real XLSX sheets, score units, partial KPI coverage, formula-safe names and leading-zero employee codes. The SQL snapshot scorer has a differential check against the same 156 numeric cases; prepared tests are not evidence of execution.
 
-## Re-derivation against OneHR 6e0a14e (2026-10-25, ADR-0140 M02)
+## Re-derivation against OneHR 6e0a14e (2026-10-25, ADR-0141 M02)
 
 `source-drift-6e0a14e.json` records a re-derivation against the 24 Oct 2026 package (OneHR `6e0a14e`, checksums
 verified 667/667). The extractor parsed both `app.py` files with Python's AST only; the application was never imported

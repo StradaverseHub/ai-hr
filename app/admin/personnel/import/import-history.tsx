@@ -1,4 +1,5 @@
 'use client';
+import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -25,6 +26,7 @@ import { importRunOutcome, type ImportRunError, type ImportRunRow } from '@/lib/
  */
 export function ImportHistory({ runs }: { runs: ImportRunRow[] }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Same shape and the same csvSafeCell formula-injection guard as the preview's error report: this echoes
@@ -32,7 +34,7 @@ export function ImportHistory({ runs }: { runs: ImportRunRow[] }) {
   const downloadErrors = (run: ImportRunRow) => {
     const csvOut = toCsv([
       [t('colRow'), t('colName'), t('colEmail'), t('colResult')],
-      ...run.errors.map((e: ImportRunError) => [e.rowNum, e.fullName, e.email, e.errors.join('; ')]),
+      ...run.errors.map((e: ImportRunError) => [e.rowNum, e.fullName, e.email, e.errors.map(nricMessage).join('; ')]),
     ]);
     const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -101,6 +103,7 @@ function RunRows({
   onDownload: () => void;
 }) {
   const t = useTranslations('people.import');
+  const nricMessage = useNricPolicyMessage();
   const outcomeCls =
     outcome === 'succeeded'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -178,7 +181,7 @@ function RunRows({
                   <li key={e.rowNum}>
                     <span className="text-muted-foreground">{t('row', { num: e.rowNum })}</span>
                     {(e.fullName || e.email) && ` · ${[e.fullName, e.email].filter(Boolean).join(' · ')}`} —{' '}
-                    <span className="text-red-600 dark:text-red-400">{e.errors.join('; ')}</span>
+                    <span className="text-red-600 dark:text-red-400">{e.errors.map(nricMessage).join('; ')}</span>
                   </li>
                 ))}
               </ul>

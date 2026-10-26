@@ -1,4 +1,4 @@
--- ADR-0141 — OneHR performance partner: performance administration without compensation.
+-- ADR-0142 — OneHR performance partner: performance administration without compensation.
 --
 -- The enum value ONLY. Everything that grants it authority is in 0611, deliberately a separate file:
 -- an enum label added by ALTER TYPE cannot be USED (cast, compared as ::role, inserted) until the
@@ -8,5 +8,5 @@
 -- (r.role::text = 'performance_partner', CHECK constraints on text columns), never as a ::role literal,
 -- exactly like 0099 did for the first two partners.
 --
--- Irreversible once released (Postgres has no DROP VALUE); accepted by the owner in ADR-0141.
+-- Irreversible once released (Postgres has no DROP VALUE); accepted by the owner in ADR-0142.
 ALTER TYPE "role" ADD VALUE IF NOT EXISTS 'performance_partner';

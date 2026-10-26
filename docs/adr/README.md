@@ -82,5 +82,7 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0138](0138-home-notice-and-sharing-evidence.md) | Retained notice actions, scoped audiences and minimal Home sharing | Direction accepted; implementation and acceptance incomplete |
 
 - [0139 — Counted database phase reuse](0139-counted-database-phase-reuse.md)
-- [0140 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0140-onehr-6e0a14e-migration-decisions.md)
-- [0141 — OneHR performance partner: performance administration without compensation](0141-onehr-performance-partner.md)
+
+- [ADR-0140: Operator customer workspace](0140-operator-customer-workspace.md)
+- [0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
+- [0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)

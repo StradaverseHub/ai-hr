@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "c39e768cb9e9934d4833d36bb44e1c6bf9837db0",
+  "sourceBuildId": "26ecnMOvfLJ50eVnBjcl-",
+  "purpose": "Actual next/font Latin assets for topbar replica typography; application font definitions remain in app/layout.tsx.",
+  "assets": [
+    {
+      "file": "jakarta-latin.woff2",
+      "buildAsset": "fba5a26ea33df6a3-s.18rizl4rsrl42.woff2",
+      "sha256": "cd8db90cd950e26bc8761f65d323588bd5cd112d326d6d322bc7c8ea86771215"
+    },
+    {
+      "file": "geist-mono-latin.woff2",
+      "buildAsset": "797e433ab948586e-s.0r6juujl39pe6.woff2",
+      "sha256": "5f3d6ad60f29d6cb708414ec6887163d63bf197377ef5417d2483ff31ace6c3b"
+    },
+    {
+      "file": "dm-mono-latin-400.woff2",
+      "buildAsset": "36363bfb06833f56-s.p.38hmww4cj4vme.woff2",
+      "sha256": "fd7521f3531a5ccfc655b25c4f22e9871df3ec141ad79bb27fde20d0df347b6d"
+    },
+    {
+      "file": "dm-mono-latin-500.woff2",
+      "buildAsset": "a73419dd2ba2d841-s.p.2yee423r7ahpo.woff2",
+      "sha256": "0e263db52797086e763679c54f84ded8cc1249879bc27dca2bd5dd446f6d9f36"
+    }
+  ]
+}

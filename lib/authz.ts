@@ -64,7 +64,7 @@ export async function requirePerfCompAccess(): Promise<SessionContext> {
 }
 
 /**
- * ADR-0141 — the performance-administration screens that also serve OneHR-native cycles. Admits the
+ * ADR-0142 — the performance-administration screens that also serve OneHR-native cycles. Admits the
  * perf-comp set PLUS the OneHR performance partner; a page that admits through this guard must still send
  * a partner-only session away from anything generic (notFound for a non-OneHR cycle). The OneHR services
  * re-check app.onehr_cycle_admin on every read, and RLS is the backstop.

@@ -1,3 +1,4 @@
+import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { internalSelected, internalIssuer } from '@/lib/internal-auth/config';
 import { client } from '@/db/client';
 import { digest, validOpaque } from '@/lib/internal-auth/crypto';
@@ -49,7 +50,7 @@ export default async function InviteActivatePage({
       const copy = await getTranslations('internalAuth');
       return <main className="flex min-h-dvh items-center justify-center bg-muted/30 px-5 py-10"><section className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-background p-6 shadow-sm sm:p-8"><h1 className="text-2xl font-semibold">{copy('switchAccountTitle')}</h1><p className="text-sm leading-relaxed text-muted-foreground">{copy('switchAccountHelp')}</p><form action={switchInvitationAccount}><input type="hidden" name="token" value={token}/><button className="min-h-11 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">{copy('switchAccountSubmit')}</button></form></section></main>;
     }
-    return <InternalAuthForm mode={identity ? 'accept' : 'invite'} invitation={token} returnTo="/"/>;
+    return <InternalAuthForm mode={identity ? 'accept' : 'invite'} invitation={token} returnTo="/" presentation={await publicLoginPresentation()}/>;
   }
   // Dev / gated demo: there is no WorkOS to verify against, so activation cannot be completed. Say so
   // plainly rather than throwing an opaque provider error (mirrors how /login handles the same case).

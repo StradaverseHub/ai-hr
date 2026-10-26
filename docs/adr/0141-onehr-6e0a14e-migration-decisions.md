@@ -1,4 +1,4 @@
-# ADR-0140 — OneHR 6e0a14e migration decisions (ADR-M01…M16)
+# ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)
 
 - **Date:** 2026-10-25
 - **Status:** Direction accepted by the owner as platform decisions (25 Oct 2026). Business-policy content awaits Chin Hin confirmation. Implementation pending; nothing released.
@@ -23,7 +23,7 @@ Phase 3a, authorized 25 Oct 2026, covers only:
 - re-verification of the existing integration;
 - golden fixtures;
 - this ADR;
-- the performance-only administrator (ADR-0141).
+- the performance-only administrator (ADR-0142).
 
 ## Decisions
 
@@ -41,7 +41,7 @@ Phase 3a, authorized 25 Oct 2026, covers only:
 4. **M04 — One access model.**
    - OneHR's admin items, user roles and leader abilities converge on one effective-permission interpretation (ADR-0135) when that model ships.
    - Role names are never mapped wholesale.
-   - Performance administration must be possible **without compensation access**. The first, OneHR-scoped step is ADR-0141.
+   - Performance administration must be possible **without compensation access**. The first, OneHR-scoped step is ADR-0142.
 
 5. **M05 — Organisation.**
    - A company node per OneHR business group: a real holding company where one exists, otherwise a non-statutory grouping company with no employees.
@@ -94,4 +94,4 @@ Phase 3a, authorized 25 Oct 2026, covers only:
 - New work in this repository on the OneHR delta cites this ADR and the relevant M-number.
 - A business-policy item (M05, M11, M16 and the scope rows of M03/M09/M10) is not built until its Chin Hin confirmation is recorded in the migration approval log.
 - Nothing here changes current production behaviour.
-- When ADR-0135's effective-permission catalogue ships, OneHR admin items and leader abilities map onto it, and ADR-0141's role becomes one of its bindings.
+- When ADR-0135's effective-permission catalogue ships, OneHR admin items and leader abilities map onto it, and ADR-0142's role becomes one of its bindings.

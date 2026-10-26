@@ -131,9 +131,11 @@ export default async function Tp1DeclarationPage({
     employeeCode: e.employeeCode,
     company: e.company,
     companyId: e.companyId,
-    department: e.department,
+    department: e.departmentLabel ?? e.department,
+    departmentCode: e.departmentCode,
     departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
+    businessUnit: e.businessUnitLabel ?? e.businessUnit,
+    businessUnitCode: e.businessUnitCode,
     businessUnitId: e.businessUnitId,
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));

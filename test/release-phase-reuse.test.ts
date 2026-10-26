@@ -16,6 +16,9 @@ const shell=(args:string[])=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:
 const commit=()=>{shell(['add','.']);shell(['-c','user.name=Phase proof','-c','user.email=proof@example.invalid','commit','-qm','synthetic evidence fixture']);return shell(['rev-parse','HEAD']);};
 const passing=(files:number)=>`\n Test Files  ${files} passed (${files})\n Tests  ${files*2} passed (${files*2})\n Duration  1s\n`;
 const rehash=()=>receipt.artifacts=artifactManifest(archive,receipt.artifacts.map(x=>x.path));
+// The validator authorizes historical exact bytes, not whatever CSS/tests a future feature ships.
+const reviewedRepairRef='c98bfed60f6330b57f5a67d959ce6e3757df3b53';
+const reviewedRepair=(path:string)=>execFileSync('git',['show',reviewedRepairRef+':'+path],{cwd:owner,encoding:'utf8'});
 beforeAll(()=>{
  originalState=process.env.AIHR_IMPACT_STATE_DIR;process.env.AIHR_IMPACT_STATE_DIR=state;
  mkdirSync(cwd);mkdirSync(archive);shell(['init','-q']);put(cwd,'.gitignore','.gate-receipt.json\n.env.local\n');
@@ -35,7 +38,8 @@ beforeAll(()=>{
  const all=shell(['ls-files','test']).split('\n').filter(p=>!p.endsWith('.browser.test.tsx')).sort(),db=all.filter(p=>p.startsWith('test/db')),nodb=all.filter(p=>!db.includes(p));
  expect(nodb.length).toBe(948);
  for(const p of BOOTSTRAP_FILES)put(cwd,p,readFileSync(join(owner,p),'utf8'));
- put(cwd,HOME_REPAIR.path,readFileSync(join(owner,HOME_REPAIR.path),'utf8'));for(const r of PHONE_HEADER_REPAIRS)put(cwd,r.path,readFileSync(join(owner,r.path),'utf8'));head=commit();
+ const repairedHome=reviewedRepair(HOME_REPAIR.path);expect(digest(repairedHome)).toBe(HOME_REPAIR.after);put(cwd,HOME_REPAIR.path,repairedHome);
+ for(const r of PHONE_HEADER_REPAIRS){const repaired=reviewedRepair(r.path);expect(digest(repaired)).toBe(r.after);put(cwd,r.path,repaired);}head=commit();
  const plan=phaseReusePlan(base,head,cwd),env=environmentHash(cwd),at=new Date().toISOString();
  const originalPlan={sha:base,base,deployed:base,environmentHash:env,plan:{synthetic:true}};
  const learning={sha:base,base,environmentHash:env,tier:'full',result:'FAIL',failed:[HOME_REPAIR.path],at,id:base+'.synthetic',plan:originalPlan.plan,fullReceipt:{sha:base,tier:'full',result:'FAIL'}};
@@ -135,5 +139,28 @@ describe('the actual finalization CLI',()=>{
    const log=join(archive,'chunk8.log'),old=readFileSync(log,'utf8');writeFileSync(log,old+'tampered');
    try{expect(invoke).toThrow();expect(JSON.parse(readFileSync(join(cwd,'.gate-receipt.json'),'utf8')).result).toBe('FAIL');}finally{writeFileSync(log,old);}
   }finally{for(const [name,bytes]of fresh)put(archive,'fresh-'+name,bytes);}
+ });
+});
+
+// This fixture exercises the Operator repair contract; its synthetic commits/logs are never
+// application coverage. The production validator additionally requires OPERATOR_BASE identity.
+describe('bounded Operator historical assertion repair',()=>{
+ it('accepts exact assertion bytes and refuses runtime, SQL, journal, helpers and weakened assertions',async()=>{
+  const {validateOperatorRepairDelta,OPERATOR_REPAIR}=await import('../scripts/gate-phase-reuse-evidence');
+  const root=mkdtempSync(join(tmpdir(),'aihr-operator-proof-'));
+  const g=(args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const save=()=>{g(['add','.']);g(['-c','user.name=Proof','-c','user.email=proof@example.invalid','commit','-qm','fixture']);return g(['rev-parse','HEAD']);};
+  try{
+   g(['init','-q']);
+   put(root,OPERATOR_REPAIR.path,execFileSync('git',['show','10d24c2a8e11e52aa0f114426d438277ae611ada:'+OPERATOR_REPAIR.path],{cwd:owner,encoding:'utf8'}));
+   for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml'])put(root,p,'original');
+   put(root,'CLAUDE.md','original');const original=save();
+   put(root,OPERATOR_REPAIR.path,readFileSync(join(owner,OPERATOR_REPAIR.path),'utf8'));put(root,'CLAUDE.md','owner full-gate rule');const repaired=save();
+   expect(validateOperatorRepairDelta(original,repaired,root)).toEqual(['CLAUDE.md',OPERATOR_REPAIR.path].sort());
+   for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml']){
+    put(root,p,'unauthorized');const bad=save();expect(()=>validateOperatorRepairDelta(original,bad,root)).toThrow(/unapproved/);g(['reset','--hard',repaired]);
+   }
+   put(root,OPERATOR_REPAIR.path,'// weakened assertion');const bad=save();expect(()=>validateOperatorRepairDelta(original,bad,root)).toThrow(/reviewed repair/);
+  }finally{rmSync(root,{recursive:true,force:true});}
  });
 });

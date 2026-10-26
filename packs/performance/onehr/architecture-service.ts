@@ -60,7 +60,7 @@ export async function setAssessmentCareerRoute(ctx:SessionContext,cycleId:string
 export async function generateAssessmentProfiles(ctx:SessionContext,cycleId:string,token?:string){
  return withPerformanceTenant(ctx,async tx=>{
   const v=await load(tx,cycleId);if(!v.policy.modules.tm)throw Error('Competency assessment is disabled.');
-  // ADR-0141: person row when readable (HR), else the label projection (performance partner).
+  // ADR-0142: person row when readable (HR), else the label projection (performance partner).
   const reviews=await tx.select({row:onehrReview,name:onehrLabel.labelOrPerson(person.fullName,employment.id)}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).leftJoin(person,eq(person.id,employment.personId)).where(and(eq(onehrReview.cycleId,cycleId),sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
   const report:{reviewId:string;name:string;profile:string|null;status:'assign'|'started'|'manual'|'empty'|'unmapped'|'not_part';count:number}[]=[],plans=new Map<string,{profileId:string;profileMatch:string;competencies:ReturnType<typeof technicalProfilePlan>}>();
   for(const {row:r,name} of reviews){

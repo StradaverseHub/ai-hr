@@ -39,7 +39,7 @@ export async function snapshotAssessmentParticipantsTx(tx:Tx,ctx:SessionContext,
 export async function assessmentParticipantsTx(tx:Tx,cycleId:string){
  const [cycle]=await tx.select({companyId:reviewCycle.companyId,status:reviewCycle.status,openedOn:onehrCycle.participationOpenedOn}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(eq(reviewCycle.id,cycleId));
  if(!cycle)return [];
- // ADR-0141: the person row when the caller can read it (HR: unchanged rows, names and cost), else the label
+ // ADR-0142: the person row when the caller can read it (HR: unchanged rows, names and cost), else the label
  // projection (performance partner, who cannot read person). Same companies as the onehr_admin filter.
  const name=onehrLabel.labelOrPerson(person.fullName,employment.id);
  const rows=await tx.select({employmentId:employment.id,name,companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})

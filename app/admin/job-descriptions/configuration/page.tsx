@@ -1,0 +1,7 @@
+import Link from 'next/link';
+import {getTranslations} from 'next-intl/server';
+import {requireAdmin} from '@/lib/authz';
+import {getJobMasters,getJobForm} from '@/packs/job-descriptions/service';
+import {Button,Field,PageHeader,inputCls} from '@/components/ui';
+import {ConfigurationForm} from './configuration-form';
+export default async function JobConfigurationPage({searchParams}:{searchParams:Promise<{company?:string;saved?:string}>}){const s=await requireAdmin();const t=await getTranslations('jobDescriptions');const{company,saved}=await searchParams;const masters=await getJobMasters(s);const selected=masters.companies.find(v=>v.value===company);return <div className="mx-auto max-w-6xl space-y-6"><Link href="/admin/job-descriptions" className="text-sm text-primary underline">{t('back')}</Link><PageHeader title={t('configuration')} description={t('configurationIntro')}/>{saved&&<p role="status" className="text-sm text-primary">{t('saved')}</p>}<form className="flex max-w-xl items-end gap-3"><Field label={t('company')} className="flex-1"><select name="company" required className={inputCls} defaultValue={company??''}><option value="">{t('chooseCompany')}</option>{masters.companies.map(v=><option key={v.value} value={v.value}>{v.label}</option>)}</select></Field><Button variant="outline">{t('continue')}</Button></form>{selected&&<ConfigurationForm companyId={selected.value} definition={await getJobForm(s,selected.value)}/>}</div>;}

@@ -16,7 +16,7 @@ import { UI_THEME_ATTRIBUTE, isUiTheme, type UiTheme } from '@/lib/ui-theme';
  * ⚠️ NO ATTRIBUTE MEANS CLASSIC, deliberately — not the cookie default. The Monolith tokens and every
  * `monolith:` utility apply only UNDER the attribute, so a document without one is painted Classic by the
  * stylesheet; a component that rendered Monolith structure there would be Monolith markup in Classic paint.
- * The layout always writes the attribute (lib/ui-theme.ts resolves an absent cookie to Monolith first).
+ * The layout always writes the attribute (lib/ui-theme.ts resolves an absent cookie to Atelier first).
  *
  * The server has no document, so it renders the value app/layout.tsx resolved from the cookie, handed in
  * through <UiThemeProvider>; hydration reads the same value back (getServerSnapshot), so there is no

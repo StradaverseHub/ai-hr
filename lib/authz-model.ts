@@ -91,7 +91,7 @@ export function isPerfCompPartner(s: SessionContext, companyId?: string | null):
 }
 
 /**
- * ADR-0141 — who administers OneHR-NATIVE assessment cycles: the admin roles, the perf-comp partner and the
+ * ADR-0142 — who administers OneHR-NATIVE assessment cycles: the admin roles, the perf-comp partner and the
  * OneHR performance partner. The TS mirror of app.assessment_admin_for (0611); the DB predicate is the
  * authoritative backstop (live grants, subtree descendants). Deliberately a SEPARATE set: the performance
  * partner is NOT in PERFCOMP_ROLES / PAYROLL_ROLES / ADMIN_ROLES, so canManagePerfComp, requirePerfCompAccess,

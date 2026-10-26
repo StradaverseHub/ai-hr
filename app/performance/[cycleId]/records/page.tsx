@@ -9,7 +9,7 @@ import { captureRatingRecordsAction } from '../../onehr-actions';
 type Query={company?:string;department?:string;businessGroup?:string;page?:string;error?:string};
 export default async function RatingRecordsPage({params,searchParams}:{params:Promise<{cycleId:string}>;searchParams:Promise<Query>}){
  const s=await requireOnehrAdminAccess(),{cycleId}=await params,q=await searchParams,t=await getTranslations('onehr.records');
- // ADR-0141 — the performance partner reaches OneHR-native cycles only.
+ // ADR-0142 — the performance partner reaches OneHR-native cycles only.
  if(isOnehrOnlyPerformanceAdmin(s)&&!await isOnehrAdminCycle(s,cycleId))notFound();
  const page=/^\d+$/.test(q.page??'')?Math.max(1,Math.min(100000,Number(q.page))):1;
  const v=await getAssessmentRatingRecords(s,cycleId,q,page);

@@ -3,7 +3,7 @@ import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
 /**
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
- * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
+ * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC format is validated; tenant-wide duplicate admission is enforced by the database policy.
  */
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
@@ -100,6 +100,9 @@ function resolveZakatElection(p: {
 // draft can ask the SAME rule before `hireEmployee` (server pack) and on its Bank & Statutory tab (client
 // pack). `setStatutoryProfileMY` below still calls it exactly where it always did.
 
+// Duplicate admission belongs to the database statutory trigger, shared by this owner,
+// generic Profile changes, ESS approval, draft activation, imports and direct app-role writes.
+// It reserves only a changed normalized key; unchanged duplicates survive an OFF policy.
 export const normalizeIC = (ic: string): string => ic.replace(/\D/g, '');
 export const isValidIC = (ic: string): boolean => /^\d{12}$/.test(normalizeIC(ic));
 
@@ -219,7 +222,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   // `if (!isValidIC(...)) throw`, which rejected '' as well, so the Create Employee wizard failed at its last
   // step for anyone who entered a bank account or an EPF number but no Identity No — a field no step marks
   // required, and one item e3ce0d4d made optional precisely so passport holders could be hired. ic_number has
-  // been nullable since 0212 and its (tenant_id, ic_number) uniqueness partial since 0214, so null rows coexist.
+  // been nullable since 0212; blank identity never participates in duplicate admission.
   const icRaw = (p.icNumber ?? '').trim();
   const icNumber = icRaw ? normalizeIC(icRaw) : null;
   if (icNumber !== null && !isValidIC(icNumber)) throw new InvalidICError();

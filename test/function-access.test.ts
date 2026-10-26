@@ -29,7 +29,7 @@ import {
 import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
-// ADR-0141: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
+// ADR-0142: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
 const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
 
 /**
@@ -134,7 +134,7 @@ describe('function-access registry (lib/permissions)', () => {
 
   // The scopedSession count tracks MATRIX_ROLES (that guard gates nothing at the page boundary, so every
   // authenticated role reaches it) and moved 6 → 7 when the operator tier was added in 0294, then 7 → 8
-  // with ADR-0141's performance_partner (0610). The two ADMIN counts stay pinned at 2, which is the
+  // with ADR-0142's performance_partner (0610). The two ADMIN counts stay pinned at 2, which is the
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 8', () => {

@@ -1,3 +1,4 @@
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees } from '@/core/read';
@@ -155,8 +156,8 @@ export default async function AnalyticsPage({
           }}
           options={{
             companies: companies.map((c) => ({ value: c.id, label: c.name })),
-            departments: departments.map((d) => ({ value: d.id, label: d.name })),
-            costCentres: costCentres.map((c) => ({ value: c.id, label: `${c.code} · ${c.name}` })),
+            departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
+            costCentres: organisationChoiceLabels(costCentres).map((c) => ({ value: c.id, label: c.displayLabel })),
             managers: employees.map((e) => ({ value: e.employmentId, label: e.name })),
             locations: locationOptions,
           }}

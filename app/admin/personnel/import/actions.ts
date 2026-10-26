@@ -1,4 +1,5 @@
 'use server';
+import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
 
 import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
 import { revalidatePath } from 'next/cache';
@@ -39,11 +40,12 @@ export async function validateImportAction(
   companyId: string,
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
+  allocationsCsv?:string,
 ): Promise<ImportPreview> {
   const s = await requireAdmin();
-  if(Buffer.byteLength([csv,dependentsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
+  if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
   const { records, warnings } = parseEmployee(csv);
-  const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers) });
+  const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers),allocationRecords:parseCostAllocationCsv(allocationsCsv??'') });
   for(const row of preview.rows) row.warnings.push(...warnings);
   const familyWarnings=(dependentsCsv??'').trim()?parseFamily(dependentsCsv!).warnings:[];
   for(const row of preview.rows) row.warnings.push(...familyWarnings.map(warning=>`Family: ${warning}`));
@@ -60,15 +62,17 @@ export async function commitImportAction(
   fileName?: string,
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
+  allocationsCsv?:string,allocationToken?:string,
 ): Promise<ImportResult> {
   const s = await requireAdmin();
-  if(Buffer.byteLength([csv,dependentsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
+  if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
   const { records } = parseEmployee(csv);
   const result = await commitEmployeeImport(s, {
     companyId,
     records,
     dependentRecords: familyRecords(dependentsCsv),
     registerRecords:registerRecords(registers),
+    allocationRecords:parseCostAllocationCsv(allocationsCsv??''),allocationToken,
     fileName: fileName ?? '',
   });
   revalidatePath('/admin/personnel');

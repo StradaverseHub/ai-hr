@@ -5,13 +5,14 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
 const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), requireModule: vi.fn(), list: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn() }));
-vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key.split('.').reduce((v: any, k) => v[k], en.rewards) }));
+vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
-vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, rewardSharedPolicyChoices: ports.shared }));
-vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn() }));
+vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared }));
+vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
+import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
 import ReviewsPage from '../app/rewards/page';
 import { PolicyForm, RewardPolicyFields } from '../app/rewards/[unitId]/policy-form';
 import { defaultPolicy } from '../packs/rewards/model';
@@ -23,6 +24,7 @@ const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale
 async function resolvePolicyFields(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(node.map(resolvePolicyFields));
   if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+  if (typeof node.type === 'function' && node.type.constructor.name === 'AsyncFunction') return resolvePolicyFields(await (node.type as any)(node.props));
   if (node.type === RewardPolicyFields) return RewardPolicyFields(node.props as ComponentProps<typeof RewardPolicyFields>);
   return cloneElement(node, { children: await resolvePolicyFields(node.props.children) });
 }
@@ -31,16 +33,18 @@ beforeEach(() => {
   ports.scopedAdmin.mockResolvedValue({ s: session, scopeIds: ['company'] });
   ports.scopedSession.mockResolvedValue({ s: session, scopeIds: ['company'] });
   ports.choices.mockResolvedValue({ companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu', companyId: 'company', name: 'Headquarters' }], users: [], cycles: [] });
-  ports.list.mockResolvedValue([{ id: 'review', cycle: 'Annual review', kind: 'annual', year: 2026, company: 'Company', unit: 'Headquarters', status: 'draft' }]);
+  ports.list.mockResolvedValue([{ id: 'review', cycle: 'Annual review', kind: 'annual', year: 2026, company: 'Company', unit: 'Headquarters', status: 'draft',revision:1,canConfigure:true,deletionReason:null }]);
   ports.shared.mockResolvedValue([]);
 });
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
   it('puts cycle creation and configuration links in the admin hub, scoped to administrative companies', async () => {
-    show(await AdminPage({ searchParams: Promise.resolve({}) }));
+    show(await resolvePolicyFields(await AdminPage({ searchParams: Promise.resolve({}) })));
     expect(screen.getByRole('heading', { name: 'Rewards configuration' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Configure' }).getAttribute('href')).toBe('/admin/rewards/review');
+    expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
+    expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/admin/rewards/review');
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create unit review' })).toBeTruthy();
     expect(screen.getByLabelText('Snapshot date').getAttribute('max')).toBe(todayInKualaLumpur());
     expect(ports.scopedAdmin).toHaveBeenCalledOnce();
@@ -53,6 +57,15 @@ describe('Rewards administration and review destinations', () => {
     expect(screen.getByRole('link', { name: 'Open review' }).getAttribute('href')).toBe('/rewards/review');
     expect(screen.getByRole('link', { name: 'Rewards configuration' }).getAttribute('href')).toBe('/admin/rewards');
     expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
+  });
+  it('renders View with disabled policy fields and no mutation forms, even for an authorised owner',async()=>{
+    ports.configuration.mockResolvedValue({unit:{id:'review',kind:'annual',status:'draft',revision:1,policy:defaultPolicy(Number(todayInKualaLumpur().slice(0,4)))},cycle:{name:'Annual review'},name:'Operations',canConfigure:true,canManageMembers:true,members:[{id:'m',userId:'admin',role:'gr'}]});
+    show(await resolvePolicyFields(await ConfigurationPage({params:Promise.resolve({unitId:'review'}),searchParams:Promise.resolve({mode:'view'})})));
+    expect(document.querySelectorAll('input:not([type="hidden"]),textarea,select').length).toBeGreaterThan(30);
+    expect(document.querySelectorAll('form')).toHaveLength(0);
+    for(const field of document.querySelectorAll('input,textarea,select'))expect(field.matches(':disabled')).toBe(true);
+    expect(screen.queryByRole('button',{name:'Save policy'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Assign role'})).toBeNull();
   });
   it('makes a locked policy visible with every editable field disabled and no save command', async () => {
     const policy = defaultPolicy(Number(todayInKualaLumpur().slice(0, 4)));

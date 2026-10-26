@@ -34,7 +34,7 @@ export default async function PerformancePage({
   const { s,scopeIds } = await scopedSession();
   const t = await getTranslations('performance.list');
   const admin = isAdmin(s) || canManagePerfComp(s);
-  // ADR-0141 — a session whose only performance authority is the OneHR performance partner administers
+  // ADR-0142 — a session whose only performance authority is the OneHR performance partner administers
   // OneHR-native cycles: it sees those cycles and the OneHR panels, never generic cycles, pending pay or
   // the new-cycle form (cycle creation stays with HR).
   const onehrOnly = isOnehrOnlyPerformanceAdmin(s);

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import drift from './fixtures/onehr/source-drift-6e0a14e.json';
 import golden from './fixtures/onehr/source-golden.json';
 
-// ADR-0140 M02: the golden fixtures were derived from OneHR a644fd6. This record re-derives them against 6e0a14e
+// ADR-0141 M02: the golden fixtures were derived from OneHR a644fd6. This record re-derives them against 6e0a14e
 // (isolated AST execution, app never imported). The guards keep the two files from drifting apart silently.
 const fixtures = join(__dirname, 'fixtures', 'onehr');
 const sha256 = (file: string) => createHash('sha256').update(readFileSync(join(fixtures, file))).digest('hex');

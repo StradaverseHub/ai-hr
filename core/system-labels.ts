@@ -225,6 +225,7 @@ async function labelInUseByCompanies(
   removing: string[],
 ): Promise<boolean> {
   if (removing.length === 0) return false;
+  if(kind==='cost_center'){const [allocation]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_label_in_use(${labelId}::uuid,array[${sql.join(removing.map(id=>sql`${id}::uuid`),sql`, `)}]) as used`);if(allocation?.used)return true;}
   const fk = ASSIGNMENT_FK[kind];
   if (fk) {
     // An active assignment on an employee in one of the removing companies that points at this label.

@@ -1,8 +1,8 @@
-# ADR-0141 — OneHR performance partner: performance administration without compensation
+# ADR-0142 — OneHR performance partner: performance administration without compensation
 
 - **Date:** 2026-10-25
-- **Status:** Direction accepted by the owner (25 Oct 2026). Implementation on a migration branch; not released (ADR-0140 M12).
-- **Refines:** ADR-0049 §3 (for OneHR-native cycles only) and ADR-0140 M04.
+- **Status:** Direction accepted by the owner (25 Oct 2026). Implementation on a migration branch; not released (ADR-0141 M12).
+- **Refines:** ADR-0049 §3 (for OneHR-native cycles only) and ADR-0141 M04.
 - **Related:** ADR-0004, 0009, 0103, 0115, 0135.
 
 ## Context
@@ -11,7 +11,7 @@ The native OneHR administration predicate `app.assessment_admin_for` (0540) admi
 - the first two as HR;
 - the partner by design (ADR-0049 §3, through `can_admin_perfcomp_*` in `compensation_rls`, `employment_rls` and `person_rls`).
 
-OneHR's own access model (24 Oct 2026) lets business-group and business-unit staff administer appraisal without seeing pay. The migration decisions (ADR-0140, ID-D-05) require the same here.
+OneHR's own access model (24 Oct 2026) lets business-group and business-unit staff administer appraisal without seeing pay. The migration decisions (ADR-0141, ID-D-05) require the same here.
 
 ADR-0049 §3 rejected a performance-only partner because the **generic** schema keeps ratings and merit/bonus on the same `performance_review` row and RLS is row-level. OneHR-native cycles are different:
 - assessment state lives in `performance_onehr_*` and `performance_assessment_*` satellites (0529, 0540);

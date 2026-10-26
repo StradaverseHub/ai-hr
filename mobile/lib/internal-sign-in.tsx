@@ -14,6 +14,7 @@ import authCopy from './internal-auth-copy.json';
 
 export function InternalSignIn() {
   const company = useCompanyConnection(), session = useSession();
+  const workplaceOrganization = company?.organization ?? '';
   const copy = authCopy[appLocale() === 'ms' ? 'ms' : 'en'];
   const [step, setStep] = useState<InternalReply | null>(null), [organization, setOrganization] = useState('');
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
@@ -29,7 +30,7 @@ export function InternalSignIn() {
     if (pending.current) return;
     if (step?.step === 'password' && password !== confirmation) { setError('passwordMismatch'); return; }
     pending.current = true; setBusy(true); setError('');
-    const body: Record<string, string> = step ? { challenge: step.challenge!, ...(step.step === 'password' ? { password } : { code }) } : { organization, username, password };
+    const body: Record<string, string> = step ? { challenge: step.challenge!, ...(step.step === 'password' ? { password } : { code }) } : { organization: workplaceOrganization || organization, username, password };
     setPassword(''); setConfirmation(''); setCode('');
     try {
       if (!step) {
@@ -61,8 +62,9 @@ export function InternalSignIn() {
       }} disabled={busy}/>
     </View> : <View style={styles.fields}>
       {state === 'login' && <>
-        <Text style={styles.body}>{copy.loginHelp}</Text>
-        <Text>{copy.organization}</Text><TextInput accessibilityLabel={copy.organization} autoCapitalize="none" autoCorrect={false} maxLength={64} value={organization} onChangeText={setOrganization} style={styles.input} editable={!busy}/>
+        <Text style={styles.body}>{workplaceOrganization ? copy.workplaceLoginHelp : copy.loginHelp}</Text>
+        {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> :
+          <><Text>{copy.organization}</Text><TextInput accessibilityLabel={copy.organization} autoCapitalize="none" autoCorrect={false} maxLength={64} value={organization} onChangeText={setOrganization} style={styles.input} editable={!busy}/></>}
         <Text>{copy.username}</Text><TextInput accessibilityLabel={copy.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" maxLength={64} value={username} onChangeText={setUsername} style={styles.input} editable={!busy}/>
       </>}
       {(state === 'login' || state === 'password') && <>
@@ -74,7 +76,7 @@ export function InternalSignIn() {
         <Text>{copy.manualKey}</Text><Text selectable style={styles.key}>{step?.secret}</Text>
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
-      <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!organization || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
+      <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!(workplaceOrganization || organization) || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
       {state === 'login' && <Button title={copy.forgot} kind="quiet" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')}/>}
       {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
     </View>}

@@ -1,5 +1,7 @@
 # ai-hr — how to work here
 
+> **Repository and release targets:** The sole repository is [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr). Before changing branches, CI/CD or deployments, read [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md): `alpha` owns the existing host as staging; `main` is reserved for a separate future live installation. This owner decision supersedes older main-to-existing-host release instructions below.
+
 The only instruction file. AGENTS.md and HANDOFF.md were retired on 2026-09-11; do not recreate a
 status file. Live state is read from git, the server and the board (§3), never from a document.
 History lives in `docs/HANDOFF-HISTORY.md` (rounds, newest first) and `docs/adr/` (decisions).
@@ -128,6 +130,14 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
 
 ## 4. The gate
 
+**Owner full-gate rule — 26 October 2026.** Let every planned full-gate chunk finish, even when an
+earlier part reports failures. Keep the candidate frozen and collect the complete results; do not
+interrupt the full run to repair early findings. After all chunks finish, repair the failures and
+rerun only the failed parts, retaining valid evidence for the unaffected passing parts. Preserve the
+original failed attempt and the repair evidence. Once the combined required checks pass, proceed to
+deployment through the release workflow. This owner instruction supersedes guidance that would
+restart unaffected passing parts or stop the full gate on its first test failure.
+
 Use the deterministic impact gate ([ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md)).
 Complete the outcome walkthrough before the final gate. During development, run focused checks for the
 changed behavior and its consumers. Reuse valid evidence; a new commit calls for impact reassessment.
@@ -200,6 +210,9 @@ data directories are what the slow background drain is for.
   script has run on the box and its rows are verified.
 
 ## 7. Deploy
+
+Staging first; after staging acceptance, production waits for a subsequent explicit owner request.
+Follow the owner deployment rule in [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md).
 
 Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
 Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (gate receipt

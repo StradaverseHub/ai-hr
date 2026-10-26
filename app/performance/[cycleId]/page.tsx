@@ -41,7 +41,7 @@ export default async function CyclePage({
   params: Promise<{ cycleId: string }>;
   searchParams: Promise<{ error?: string; progressModule?:string;progressKind?:string;progressGroup?:string;progressCompany?:string }>;
 }) {
-  // ADR-0141 — admits the OneHR performance partner too, for OneHR-native cycles ONLY (below).
+  // ADR-0142 — admits the OneHR performance partner too, for OneHR-native cycles ONLY (below).
   const s = await requireOnehrAdminAccess();
   const t = await getTranslations('performance.cycle');
   const tl = await getTranslations('performance.lifecycle');

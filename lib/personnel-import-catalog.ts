@@ -35,8 +35,7 @@ export function normalizePersonnelCatalogRecord(record:Record<string,string>,she
  }
  return {record:normalized,errors};
 }
-/** Display names are listed only when unambiguous; exact saved values remain available in every list. */
+/** Excel list choices contain only the exact saved codes, including leading zeroes. Labels stay on Reference. */
 export function personnelCatalogReferenceValues(options:readonly {category:string;value:string;label?:string|null}[]) {
- const catalog=new PersonnelImportCatalog();for(const option of options)catalog.addOption(option);
- return [...new Set(options.flatMap(option=>[option.value,...option.label && catalog.resolve(option.category,option.label).value===option.value?[option.label]:[]]))];
+ return [...new Set(options.filter(option=>option.value.trim()!=='').map(option=>option.value))];
 }

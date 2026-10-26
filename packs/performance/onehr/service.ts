@@ -61,7 +61,7 @@ async function isManager(tx: Tx, reviewId: string) { const [r] = await tx.execut
 async function canWritePlanRemark(tx:Tx,reviewId:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.assessment_plan_remark_writer(${reviewId}::uuid) as ok`);return !!r?.ok;}
 async function requireAdmin(tx: Tx, cycleId: string) { if (!await isAdmin(tx,cycleId)) throw Error('Performance administrator access is required.'); }
 /**
- * ADR-0141: a performance partner administers OneHR assessments but never writes the kernel review. Decide that
+ * ADR-0142: a performance partner administers OneHR assessments but never writes the kernel review. Decide that
  * by the ACTOR's authority over the subject's company, not by whether RLS let the UPDATE through: a partner who
  * is also the subject's manager passes performance_review RLS on the manager path.
  */
@@ -384,7 +384,7 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
     const prior=await tx.select().from(onehrPanel).where(eq(onehrPanel.reviewId,reviewId));
     const omitted=prior.filter(p=>!p.archivedAt&&!inputs.some(i=>i.employmentId===p.peerEmploymentId));
     if(omitted.some(p=>p.submittedAt))throw Error('Submitted reviewers must remain on the panel.');
-    // ADR-0141: the person row the caller can read (manager, HR) wins; a performance partner gets the label projection.
+    // ADR-0142: the person row the caller can read (manager, HR) wins; a performance partner gets the label projection.
     const [subject]=await tx.select({name:onehrLabel.labelOrPerson(person.fullName,employment.id),personId:employment.personId}).from(employment).leftJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,r.row.employmentId),sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`));
     if(!subject)throw Error('Subject not available.');
     if(!admin&&(/^[a-z]+$/i.test(r.row.grade)?inputs.length!==1:inputs.length<r.cycle.policy.minValid))throw Error('The panel is smaller than the required valid response count.');
@@ -962,7 +962,7 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const [released]=await tx.select().from(assessmentRelease).where(eq(assessmentRelease.reviewId,reviewId));
     const [frozen]=await tx.insert(onehrResult).values({tenantId:ctx.tenantId,reviewId,cycleId:r.row.cycleId,employmentId:r.row.employmentId,result,digest:hash({reviewId,policy:r.cycle.policy,result}),performanceReleasedAt:released?.performanceReleasedAt,potentialReleasedAt:released?.potentialReleasedAt,talentReleasedAt:released?.talentReleasedAt,feedbackReleasedAt:released?.feedbackReleasedAt}).returning();
     // Legacy ratings stay null: OneHR's frozen record is the sole authoritative final assessment.
-    // ADR-0141: performance_review stays an HR write. RLS turns a refused UPDATE into zero rows, so refuse
+    // ADR-0142: performance_review stays an HR write. RLS turns a refused UPDATE into zero rows, so refuse
     // loudly instead of leaving a frozen OneHR result over an open kernel review (rolls the freeze back).
     await requireKernelReviewWriter(tx,r.row.companyId,'Only an HR administrator can finalize this assessment.');
     const closed=await tx.update(performanceReview).set({closedAt:new Date(),status:'submitted'}).where(eq(performanceReview.id,reviewId)).returning({id:performanceReview.id});
@@ -1314,7 +1314,7 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
   const [nativeScope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) or app.heads_department_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) as ok`);
   if(!reviewer||!subject||reviewer.personId===subject.personId||!nativeScope?.ok||reviewer.terminatedOn&&reviewer.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active reviewer other than the subject.');
   const [frozen]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(frozen||r.native.closedAt||r.cycle.native.status==='closed')throw Error('Assessment is finalized.');
-  // ADR-0141: the reviewer lives on the kernel review, an HR write; refuse instead of a silent zero-row update.
+  // ADR-0142: the reviewer lives on the kernel review, an HR write; refuse instead of a silent zero-row update.
   await requireKernelReviewWriter(tx,r.row.companyId,'Only an HR administrator can reassign the reviewer.');
   const moved=await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId)).returning({id:performanceReview.id});
   if(!moved.length)throw Error('Only an HR administrator can reassign the reviewer.');

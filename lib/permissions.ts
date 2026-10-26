@@ -52,7 +52,7 @@ export const MATRIX_ROLES: readonly Role[] = [
   // DOES reach — /operator — is gated in-page and therefore not a matrix column, exactly like
   // /admin/scheduled-actions.
   'operator',
-  // ADR-0141 (0610) — OneHR performance partner. Reaches exactly the scopedSession screens every role
+  // ADR-0142 (0610) — OneHR performance partner. Reaches exactly the scopedSession screens every role
   // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
   // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
   'performance_partner',
@@ -104,6 +104,9 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
+  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
+  {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
   {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
@@ -123,6 +126,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myHomePreferences',href:'/me/home',labelKey:'employeeHome.preferences.title',guard:'scopedSession',routes:['/me/home']},
   {screenKey:'myHomeGreetings',href:'/me/greetings/[id]',labelKey:'employeeHome.greetingDetail.title',guard:'scopedSession',routes:['/me/greetings/[id]']},
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
+  { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },

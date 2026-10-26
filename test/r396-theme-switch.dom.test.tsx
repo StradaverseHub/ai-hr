@@ -70,7 +70,7 @@ describe('r396 — the theme control', () => {
   it('shows the supported fallback for an old Current browser preference', () => {
     document.documentElement.setAttribute('data-ui-theme', 'current');
     wrap(<UiThemeSwitcher />);
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('monolith');
+    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('atelier');
     expect(screen.queryByRole('option', { name: 'Current' })).toBeNull();
   });
 
