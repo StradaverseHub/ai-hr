@@ -36,7 +36,7 @@ describe('standalone enrollment form in a real browser', () => {
         expect(rect.width).toBeGreaterThan(100); expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width);
       }
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-      console.info('Standalone enrollment screenshot:', await page.screenshot({path:`../.vitest-attachments/standalone-${locale}-${width}.png`}));
+      console.info('Standalone enrollment screenshot:', await page.screenshot({element:document.querySelector('main')!,path:`../.vitest-attachments/standalone-${locale}-${width}.png`}));
     });
   }
 });

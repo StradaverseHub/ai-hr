@@ -22,13 +22,22 @@ describe('Users directory desktop/mobile experience',()=>{
    const email=screen.getByText('alexandra.christina.consultant@external-company.example.test');
    expect(email.scrollWidth).toBeLessThanOrEqual(email.clientWidth+1);
    const first=document.querySelector('[data-directory-row]')!;
-   await page.getByRole('button',{name:d.manage}).first().click();
-   expect(screen.getByRole('region',{name:d.accessFor.replace('{name}','Aisyah Rahman')})).toBeTruthy();
+   const accessCell=first.querySelectorAll('td')[1] as HTMLElement;
+   const lastGrant=accessCell.querySelector('li:last-child')!;
+   expect(lastGrant.getBoundingClientRect().bottom).toBeLessThanOrEqual(accessCell.getBoundingClientRect().bottom);
+   if(width<768){
+    const assistantCell=first.querySelectorAll('td')[2] as HTMLElement;
+    expect(accessCell.getBoundingClientRect().bottom).toBeLessThanOrEqual(assistantCell.getBoundingClientRect().top);
+   }
    for(const control of first.querySelectorAll('button'))expect(control.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+   await page.getByRole('button',{name:d.manage}).first().click();
+   const panel=screen.getByRole('region',{name:d.accessFor.replace('{name}','Aisyah Rahman')});
+   expect(panel.getBoundingClientRect().bottom).toBeLessThanOrEqual(panel.closest('td')!.getBoundingClientRect().bottom);
+   console.info('User access screenshot:',await page.screenshot({animations:'disabled',element:document.querySelector('main')!,path:`../.vitest-attachments/users-access-${locale}-${width}.png`}));
    await page.getByRole('combobox',{name:d.groupBy}).selectOptions('role');
    expect(document.querySelectorAll('th[scope="rowgroup"]')).toHaveLength(3);
    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-   console.info('Users directory screenshot:',await page.screenshot({path:`../.vitest-attachments/users-directory-${locale}-${width}.png`}));
+   console.info('Users directory screenshot:',await page.screenshot({animations:'disabled',element:document.querySelector('main')!,path:`../.vitest-attachments/users-directory-${locale}-${width}.png`}));
   });
  }
 });

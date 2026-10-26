@@ -6,8 +6,11 @@ import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { Avatar, Card, Field, RoleTag, SectionHeader, btnGhost, inputCls, theadCls, thCls } from '@/components/ui';
 import { archiveUserAction, assignRoleAction, revokeInvitationAction, revokeRoleAction, setAssistantGrantAction } from '../actions';
 import { ManualSubmit } from './manual-submit';
+import styles from './users-directory.module.css';
 import { directoryGrants, directoryType, type DirectoryGroupBy, type UserDirectoryRow } from './directory-model';
 
+type DirectoryGroup = { key: string; label: string; rows: UserDirectoryRow[] };
+type DirectoryEntry = { group: DirectoryGroup; row: UserDirectoryRow | null };
 type Props = {
   rows: UserDirectoryRow[];
   groupAdmin: boolean;
@@ -38,7 +41,7 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
       && (role === 'all' || grants.some(g => g.role === role))
       && (company === 'all' || grants.some(g => (g.companyId ?? 'group') === company && (role === 'all' || g.role === role)));
   }).sort((a,b) => (a.name ?? a.email ?? '').localeCompare(b.name ?? b.email ?? '',locale) || a.key.localeCompare(b.key)), [rows,search,status,type,role,company,locale]);
-  const groups = new Map<string, { key: string; label: string; rows: UserDirectoryRow[] }>();
+  const groups = new Map<string, DirectoryGroup>();
   for (const u of filtered) {
     const grants = directoryGrants(u).filter(g => (role === 'all' || g.role === role) && (company === 'all' || (g.companyId ?? 'group') === company));
     const keys = groupBy === 'none' ? ['all'] : groupBy === 'status' ? [u.status] : groupBy === 'type' ? [directoryType(u)]
@@ -52,7 +55,7 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
     }
   }
   const orderedGroups = [...groups.values()].sort((a,b) => groupBy === 'status' ? statusOrder.indexOf(a.key)-statusOrder.indexOf(b.key) : a.label.localeCompare(b.label,locale));
-  const entries = orderedGroups.flatMap(g => collapsed.includes(g.key) ? [{ group: g, row: null }] : g.rows.map(row => ({ group: g, row })));
+  const entries = orderedGroups.flatMap<DirectoryEntry>(g => collapsed.includes(g.key) ? [{ group: g, row: null }] : g.rows.map(row => ({ group: g, row })));
   const pages = Math.max(1,Math.ceil(entries.length/pageSize)), currentPage = Math.min(page,pages);
   const visible = entries.slice((currentPage-1)*pageSize,currentPage*pageSize);
   function reset() { setSearch('');setStatus('current');setRole('all');setCompany('all');setType('all');setPage(1);setCollapsed([]); }
@@ -83,7 +86,7 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
     <div className="space-y-3 border-b border-border p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(14rem,2fr)_1fr_1fr]">
         <label className="min-w-0 space-y-1 text-xs font-medium"><span>{d('search')}</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" aria-hidden="true"/><input type="search" className={`${inputCls} min-h-11 pl-9`} placeholder={d('searchPlaceholder')} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/></div></label>
-        <Field label={t('statusColumn')}><select className={`${inputCls} min-h-11`} value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="current">{d('current')}</option><option value="all">{d('allStatuses')}</option>{statusOrder.map(s=><option key={s} value={s}>{t(`status.${s}`)}</option>)}</select></Field>
+        <Field label={t('statusColumn')}><select className={`${inputCls} min-h-11`} value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="current">{d('current')}</option><option value="all">{d('allStatuses')}</option>{(groupAdmin?statusOrder:['active','archived']).map(s=><option key={s} value={s}>{t(`status.${s}`)}</option>)}</select></Field>
         <Field label={d('roleFilter')}><select className={`${inputCls} min-h-11`} value={role} onChange={e=>{setRole(e.target.value);setPage(1);}}><option value="all">{d('allRoles')}</option>{availableRoles.map(r=><option key={r} value={r}>{t(`role.${r}`)}</option>)}</select></Field>
         <Field label={t('inviteScope')}><select className={`${inputCls} min-h-11`} value={company} onChange={e=>{setCompany(e.target.value);setPage(1);}}><option value="all">{d('allCompanies')}</option><option value="group">{t('groupWide')}</option>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         {groupAdmin&&<Field label={d('userType')}><select className={`${inputCls} min-h-11`} value={type} onChange={e=>{setType(e.target.value);setPage(1);}}><option value="all">{d('allTypes')}</option>{['employee','standalone','unlinked'].map(k=><option key={k} value={k}>{d(`type.${k}`)}</option>)}</select></Field>}
@@ -93,11 +96,11 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
       {(groupBy==='role'||groupBy==='company')&&<p className="text-xs text-muted-foreground">{d('multipleGroups')}</p>}
     </div>
     {filtered.length===0?<div className="space-y-2 px-4 py-10 text-center"><p className="text-sm font-medium">{rows.length?d('noMatches'):t('empty')}</p><p className="text-sm text-muted-foreground">{rows.length?d('noMatchesHelp'):d('emptyHelp')}</p></div>:<>
-      <table className="block w-full text-left text-sm md:table md:table-fixed"><thead className={`${theadCls} sr-only md:not-sr-only md:table-header-group`}><tr><th scope="col" className={`${thCls} md:w-[30%]`}>{d('user')}</th><th scope="col" className={`${thCls} md:w-[15%]`}>{t('statusColumn')}</th><th scope="col" className={`${thCls} md:w-[28%]`}>{d('access')}</th><th scope="col" className={`${thCls} md:w-[10%]`}>{d('assistant')}</th><th scope="col" className={`${thCls} md:w-[17%]`}><span className="sr-only">{d('actions')}</span></th></tr></thead>
+      <table className={`${styles.directoryTable} block w-full text-left text-sm md:table md:table-fixed`}><thead className={`${theadCls} sr-only md:not-sr-only md:table-header-group`}><tr><th scope="col" className={`${thCls} md:w-[30%]`}>{d('user')}</th><th scope="col" className={`${thCls} md:w-[15%]`}>{t('statusColumn')}</th><th scope="col" className={`${thCls} md:w-[28%]`}>{d('access')}</th><th scope="col" className={`${thCls} md:w-[10%]`}>{d('assistant')}</th><th scope="col" className={`${thCls} md:w-[17%]`}><span className="sr-only">{d('actions')}</span></th></tr></thead>
         <tbody className="block md:table-row-group">{visible.map(({group,row:u},index)=>{
           const showGroup=groupBy!=='none'&&(index===0||visible[index-1].group.key!==group.key);
           const key=u?`${group.key}:${u.key}`:`group:${group.key}`,id=`${instance}-access-${currentPage}-${index}`;
-          return <Fragment key={key}>
+          return <Fragment key={showGroup?`group-header:${group.key}`:key}>
             {showGroup&&<tr className="block bg-muted/50 md:table-row"><th colSpan={5} scope="rowgroup" className="block px-4 py-2 md:table-cell"><button type="button" className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring" aria-expanded={!collapsed.includes(group.key)} onClick={()=>{setCollapsed(prev=>prev.includes(group.key)?prev.filter(k=>k!==group.key):[...prev,group.key]);setPage(1);}}>{collapsed.includes(group.key)?<ChevronRight aria-hidden="true" className="size-4"/>:<ChevronDown aria-hidden="true" className="size-4"/>}{group.label}<span className="font-normal tabular-nums text-muted-foreground">{group.rows.length}</span></button></th></tr>}
             {u&&<>
               <tr data-directory-row className="grid grid-cols-2 border-b border-border hover:bg-muted/20 md:table-row">

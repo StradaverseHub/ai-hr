@@ -33,7 +33,8 @@ describe('user directory filtering, grouping and focused access editing',()=>{
  it('groups by company scope, supports collapsing groups, and keeps each user’s full grants',()=>{
   show();select('Group by','company');expect(names().filter(n=>n?.includes('Aisyah'))).toHaveLength(2);
   const header=[...document.querySelectorAll('th[scope="rowgroup"]')].find(el=>el.textContent?.startsWith('Acme'))!;
-  fireEvent.click(within(header as HTMLElement).getByRole('button'));expect(names().filter(n=>n?.includes('Aisyah'))).toHaveLength(1);
+  const toggle=within(header as HTMLElement).getByRole('button');toggle.focus();
+  fireEvent.click(toggle);expect(document.activeElement).toBe(toggle);expect(names().filter(n=>n?.includes('Aisyah'))).toHaveLength(1);
   fireEvent.click(within(header as HTMLElement).getByRole('button'));expect(names().filter(n=>n?.includes('Aisyah'))).toHaveLength(2);
  });
  it('keeps mutations out of the collapsed rows and targets only the expanded user',()=>{
