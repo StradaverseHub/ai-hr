@@ -29,3 +29,20 @@ M04 server verification, native location-source metadata, signed-device acceptan
 adjudication protocols remain required. App Attest assertions can be generated locally, but this does
 not make initial attestation or Google verification offline, nor prove the actual device acceptance
 matrix. Compilation, syntax checks and port tests establish narrower facts than hardware verification.
+
+Online command binding uses `lib/mobile-clock-integrity.ts` for one versioned positional UTF-8
+encoding on both platforms and the server. It covers deployment origin and installation identity,
+tenant, actor, employment and enrolled key; the stored challenge ID, nonce and expiry; request ID,
+direction, location, accuracy, sampled time and exact attachment digest/length/MIME; and reported app
+identity/version and original location-source signals. UUID case is normalized. Missing source signals
+stay null, distinct from false. Raw clock snapshots are not fields of this protocol. The attachment
+digest covers transmitted bytes before image normalization, matching the existing photo owner's digest.
+
+Hashing is not verification. The future challenge owner must persist an installation identity separately
+from the public workplace setup label, generate random one-use challenges, and bind them to authenticated
+scope and an enrolled key. The server reconstructs those fields from its records and deployment config,
+compares the exact submitted command/attachment, verifies the vendor proof, and atomically consumes the
+challenge/counter with the attendance result. An input object cannot establish its own actor, freshness,
+key ownership or installation. The new helpers are protocol primitives only; existing v1 clock routes
+and live attendance do not yet accept or trust this evidence. Offline permits require a distinct purpose
+and protocol, rather than extending the online challenge's lifetime.

@@ -13,7 +13,7 @@ const origin=z.string().max(300).refine(value=>{
 export const OnlineClockIntegrityData=z.object({
   version:z.literal(1),purpose:z.literal('attendance.clock.online'),
   // The server must supply this origin from deployment configuration, never Host/Forwarded headers.
-  scope:z.object({apiOrigin:origin,tenantId:uuid,actorId:uuid,employmentId:uuid,deviceKeyId:uuid}).strict(),
+  scope:z.object({apiOrigin:origin,installationId:uuid,tenantId:uuid,actorId:uuid,employmentId:uuid,deviceKeyId:uuid}).strict(),
   // A stored, one-use server challenge. These fields alone do not prove issuance or freshness.
   challenge:z.object({id:uuid,nonce,expiresAt:instant}).strict(),
   command:z.object({requestId:uuid,action:z.enum(['in','out']),
@@ -23,6 +23,12 @@ export const OnlineClockIntegrityData=z.object({
     photo:z.object({sha256,byteLength:z.number().int().positive().max(2*1024*1024),
       mimeType:z.enum(['image/jpeg','image/png'])}).strict().nullable(),
   }).strict(),
+  // Client-reported source facts. null means unavailable; false adds no authenticity assurance.
+  evidence:z.object({platform:z.enum(['ios','android']),appId:z.string().min(1).max(200),
+    appVersion:z.string().min(1).max(64),buildVersion:z.string().min(1).max(64),
+    provider:z.string().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/).nullable(),
+    mock:z.boolean().nullable(),simulated:z.boolean().nullable(),accessory:z.boolean().nullable(),
+  }).strict(),
 }).strict();
 export type OnlineClockIntegrityData=z.infer<typeof OnlineClockIntegrityData>;
 
@@ -31,11 +37,12 @@ export type OnlineClockIntegrityData=z.infer<typeof OnlineClockIntegrityData>;
  * Scope/challenge must be reconstructed from authenticated server records at verification time.
  */
 export function onlineClockClientData(input:unknown):string{
-  const data=OnlineClockIntegrityData.parse(input),s=data.scope,c=data.challenge,p=data.command;
+  const data=OnlineClockIntegrityData.parse(input),s=data.scope,c=data.challenge,p=data.command,e=data.evidence;
   return JSON.stringify(['aihr.mobile.integrity',data.version,data.purpose,
-    [s.apiOrigin,s.tenantId,s.actorId,s.employmentId,s.deviceKeyId],
+    [s.apiOrigin,s.installationId,s.tenantId,s.actorId,s.employmentId,s.deviceKeyId],
     [c.id,c.nonce,c.expiresAt],
     [p.requestId,p.action,p.lat,p.lng,p.accuracy,p.sampledAt,
       p.photo?[p.photo.sha256,p.photo.byteLength,p.photo.mimeType]:null],
+    [e.platform,e.appId,e.appVersion,e.buildVersion,e.provider,e.mock,e.simulated,e.accessory],
   ]);
 }

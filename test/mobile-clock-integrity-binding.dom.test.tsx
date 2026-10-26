@@ -9,10 +9,12 @@ import {onlineClockClientDataHash} from '../lib/mobile-api/clock-integrity';
 
 const id=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
 const input=()=>({version:1 as const,purpose:'attendance.clock.online' as const,
-  scope:{apiOrigin:'https://hr.example.com',tenantId:id(1),actorId:id(2),employmentId:id(3),deviceKeyId:id(4)},
+  scope:{apiOrigin:'https://hr.example.com',installationId:id(7),tenantId:id(1),actorId:id(2),employmentId:id(3),deviceKeyId:id(4)},
   challenge:{id:id(5),nonce:'A'.repeat(43),expiresAt:1900000000000},
   command:{requestId:id(6),action:'in' as 'in'|'out',lat:3.123,lng:101.456,accuracy:7.5,sampledAt:1800000000000,
     photo:{sha256:'a'.repeat(64),byteLength:123,mimeType:'image/jpeg' as const}},
+  evidence:{platform:'ios' as 'ios'|'android',appId:'ai.stradaverse.aihr.test',appVersion:'1.0.3',buildVersion:'4',provider:null as string|null,
+    mock:null as boolean|null,simulated:false as boolean|null,accessory:false as boolean|null},
 });
 function nativeHash(digest:(algorithm:unknown,value:string,options:unknown)=>Promise<string>){
   const module={exports:{} as {onlineClockClientDataHash:(input:unknown,check:()=>void)=>Promise<string>}};
@@ -29,8 +31,9 @@ describe('online clock integrity command binding',()=>{
   it('uses explicit versioned positional bytes rather than caller object insertion order',()=>{
     const data=input();
     const expected=JSON.stringify(['aihr.mobile.integrity',1,'attendance.clock.online',
-      ['https://hr.example.com',id(1),id(2),id(3),id(4)],[id(5),'A'.repeat(43),1900000000000],
+      ['https://hr.example.com',id(7),id(1),id(2),id(3),id(4)],[id(5),'A'.repeat(43),1900000000000],
       [id(6),'in',3.123,101.456,7.5,1800000000000,['a'.repeat(64),123,'image/jpeg']],
+      ['ios','ai.stradaverse.aihr.test','1.0.3','4',null,null,false,false],
     ]);
     expect(onlineClockClientData(data)).toBe(expected);
     expect(onlineClockClientData({...data,scope:Object.fromEntries(Object.entries(data.scope).reverse()),command:Object.fromEntries(Object.entries(data.command).reverse())})).toBe(expected);
@@ -49,6 +52,9 @@ describe('online clock integrity command binding',()=>{
       ...Object.keys(original.command).filter(key=>key!=='photo').map(key=>({...original,command:{...original.command,[key]:key==='requestId'?id(9):key==='action'?'out':Number(original.command[key as 'lat'])+1}})),
       {...original,command:{...original.command,photo:null}},
       ...Object.keys(original.command.photo).map(key=>({...original,command:{...original.command,photo:{...original.command.photo,[key]:key==='sha256'?'b'.repeat(64):key==='mimeType'?'image/png':124}}})),
+      ...Object.keys(original.evidence).map(key=>({...original,evidence:{...original.evidence,
+        [key]:key==='platform'?'android':key==='provider'?'fused':['mock','simulated','accessory'].includes(key)?true:'changed',
+      }})),
     ];
     for(const changed of changes)expect(verify('sha256',Buffer.from(onlineClockClientData(changed),'utf8'),publicKey,signature)).toBe(false);
   });
@@ -58,6 +64,13 @@ describe('online clock integrity command binding',()=>{
     expect(onlineClockClientData({...original,command:{...original.command,photo:null}})).not.toBe(onlineClockClientData(original));
     expect(OnlineClockIntegrityData.safeParse({...original,command:{...original.command,photo:undefined}}).success).toBe(false);
   });
+  it('preserves unavailable, true and false source flags as three different signed facts',()=>{
+    const original=input();
+    for(const flag of ['mock','simulated','accessory']){
+      const variants=[null,false,true].map(value=>onlineClockClientData({...original,evidence:{...original.evidence,[flag]:value}}));
+      expect(new Set(variants).size).toBe(3);
+    }
+  });
   it('rejects unsupported domains, extra fields, invalid instants, coordinates and attachment metadata',()=>{
     const original=input();
     const invalid=[{...original,version:2},{...original,purpose:'attendance.clock.offline'},
@@ -65,6 +78,7 @@ describe('online clock integrity command binding',()=>{
       {...original,scope:{...original.scope,apiOrigin:'https://hr.example.com/'}},
       {...original,scope:{...original.scope,apiOrigin:'https://user:secret@hr.example.com'}},
       {...original,scope:{...original.scope,bootId:'must-stay-local'}},
+      {...original,evidence:{...original.evidence,elapsedBeforeNs:'private-raw-uptime'}},
       {...original,challenge:{...original.challenge,nonce:'A'.repeat(42)+'B'}},
       ...[{sampledAt:1.2},{sampledAt:8640000000000001},{lat:91},{lng:Infinity},{accuracy:-1},{verified:true}].map(change=>({...original,command:{...original.command,...change}})),
       ...[{sha256:'A'.repeat(64)},{byteLength:2*1024*1024+1},{mimeType:'text/html'}].map(change=>({...original,command:{...original.command,photo:{...original.command.photo,...change}}})),
