@@ -1,4 +1,7 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate allocation and existing0601 ordering first.
+-- Centrally reserved source-only: 0617_provider_readiness, journal idx 617, timestamp 1792997586569.
+-- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
+-- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
+-- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
 -- Requires OpenRouter options and provider_evaluation feature integration. No provider is activated.
 CREATE TABLE public.ai_provider_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,

@@ -1,4 +1,7 @@
--- UNALLOCATED SOURCE DRAFT. No journal number reserved. Do not apply manually.
+-- Centrally reserved source-only: 0619_module_agent_improvement, journal idx 619, timestamp 1792997586571.
+-- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
+-- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
+-- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
 -- Digests/configuration only: no prompts, answers, model self-ratings or cross-user HR learning data.
 CREATE TABLE public.ai_agent_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),

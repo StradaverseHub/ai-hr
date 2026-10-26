@@ -1,5 +1,7 @@
--- Parent allocation 0602 coordinated with actual Operator/efficiency owners on 26 October 2026.
--- STILL UNJOURNALED/UNAPPLIED: resolve existing Operator 0601 rollout order before journaling.
+-- Centrally reserved source-only: 0613_ai_action_controls, journal idx 613, timestamp 1792997586565.
+-- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
+-- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
+-- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
 -- SOURCE DRAFT ONLY: no migration number or journal entry has been allocated. Do not apply this
 -- manually. Integrate after Board 3's verified release, with a centrally allocated migration, then
 -- validate the restricted-owner upgrade and app-role behavior. No endpoint currently calls this API.
