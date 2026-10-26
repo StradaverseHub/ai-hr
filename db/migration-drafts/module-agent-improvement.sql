@@ -164,20 +164,36 @@ CREATE POLICY ai_agent_candidate_signal_owner ON public.ai_agent_candidate FOR S
 CREATE POLICY ai_agent_provenance_signal_owner ON public.ai_agent_candidate_provenance FOR SELECT TO PUBLIC
  USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_candidate_provenance'::regclass))
   AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND(owner_user_id=app.current_user_id() OR app.is_group_admin()));
+-- This BOOL surface moves cross-table policy SQL behind an early actual-principal guard.
+-- A physical maintenance owner without an app identity must not need candidate SELECT merely
+-- to plan its own expired-only RLS query. No job/feedback query occurs here (no RLS recursion).
+CREATE FUNCTION app.agent_signal_custody_visible(wanted_kind text,wanted_id uuid,wanted_tenant uuid,wanted_owner uuid) RETURNS boolean
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+BEGIN
+ IF wanted_kind IS NULL OR wanted_kind NOT IN('job','feedback') OR wanted_id IS NULL
+  OR wanted_tenant IS NULL OR wanted_owner IS NULL THEN RETURN false;END IF;
+ IF app.current_user_id() IS NULL OR app.current_tenant_id() IS NULL THEN RETURN false;END IF;
+ IF wanted_tenant IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS DISTINCT FROM true
+  OR current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM public.ai_agent_candidate c JOIN public.ai_agent_candidate_provenance p
+  ON p.candidate_id=c.id AND p.tenant_id=c.tenant_id AND p.owner_user_id=c.owner_user_id
+  WHERE c.tenant_id=wanted_tenant AND c.owner_user_id=wanted_owner
+   AND(c.owner_user_id=app.current_user_id() OR app.is_group_admin())
+   AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.refs) r
+    WHERE CASE wanted_kind WHEN 'job' THEN r->>'jobId' ELSE r->>'id' END=wanted_id::text));
+END $$;
+REVOKE ALL ON FUNCTION app.agent_signal_custody_visible(text,uuid,uuid,uuid) FROM PUBLIC;
+-- Deliberate guarded BOOL only: physical table owners must evaluate PUBLIC policy expressions.
+-- Missing actual app identity returns false before any candidate/provenance SQL is executed.
+GRANT EXECUTE ON FUNCTION app.agent_signal_custody_visible(text,uuid,uuid,uuid) TO PUBLIC;
 CREATE POLICY ai_agent_job_feedback_signal_owner ON public.ai_agent_job_feedback FOR SELECT TO PUBLIC
  USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_feedback'::regclass))
-  AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND EXISTS(
-   SELECT 1 FROM public.ai_agent_candidate c JOIN public.ai_agent_candidate_provenance p ON p.candidate_id=c.id AND p.tenant_id=c.tenant_id
-   WHERE c.tenant_id=ai_agent_job_feedback.tenant_id AND c.owner_user_id=ai_agent_job_feedback.user_id
-    AND(c.owner_user_id=app.current_user_id() OR app.is_group_admin())
-    AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.refs) r WHERE r->>'id'=ai_agent_job_feedback.id::text)));
+  AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND app.agent_signal_custody_visible('feedback',id,tenant_id,user_id));
 CREATE POLICY ai_agent_job_signal_owner ON public.ai_agent_job_receipt FOR SELECT TO PUBLIC
  USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_receipt'::regclass))
-  AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND EXISTS(
-   SELECT 1 FROM public.ai_agent_candidate c JOIN public.ai_agent_candidate_provenance p ON p.candidate_id=c.id AND p.tenant_id=c.tenant_id
-   WHERE c.tenant_id=ai_agent_job_receipt.tenant_id AND c.owner_user_id=ai_agent_job_receipt.user_id
-    AND(c.owner_user_id=app.current_user_id() OR app.is_group_admin())
-    AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.refs) r WHERE r->>'jobId'=ai_agent_job_receipt.id::text)));
+  AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND app.agent_signal_custody_visible('job',id,tenant_id,user_id));
 --> statement-breakpoint
 CREATE FUNCTION app.agent_candidate_signals_current(wanted_candidate uuid) RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
