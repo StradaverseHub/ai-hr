@@ -18100,6 +18100,7 @@
       "uncertain": "Delivery uncertain; check before retrying"
     },
     "categories": {
+      "letters": "Letters",
       "attendance": "Attendance",
       "claims": "Claims",
       "delegation": "Delegation",

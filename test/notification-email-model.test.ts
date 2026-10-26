@@ -24,7 +24,8 @@ describe('brief workflow email contracts',()=>{
   const src=fs.readFileSync('core/notifications.ts','utf8'),start=src.indexOf('const REGISTRY:'),end=src.indexOf('export async function dispatchNotifications');
   expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start+10000);
   const categories=[...src.slice(start,end).matchAll(/category:\s*'([^']+)'/g)].map(m=>m[1]);
-  expect(categories.length).toBeGreaterThan(25);expect([...new Set(categories)].sort()).toEqual([...notificationEmailCategories].sort());
+  expect(categories.length).toBeGreaterThan(25);// Letters uses its durable account-addressed queue rather than the employment event registry.
+  expect([...new Set([...categories,'letters'])].sort()).toEqual([...notificationEmailCategories].sort());
  });
  it('renders six translated brief alerts without accepting HR detail',()=>{
   const bodies=new Set<string>();

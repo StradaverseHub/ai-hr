@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** Categories describe the existing event registry; they do not decide recipients. */
 export const notificationEmailCategories = [
-  'attendance', 'claims', 'delegation', 'leave', 'notice', 'offboarding', 'payroll',
+  'attendance', 'claims', 'delegation', 'leave', 'letters', 'notice', 'offboarding', 'payroll',
   'onboarding', 'performance', 'profile', 'readiness', 'review', 'rewards', 'toil',
 ] as const;
 export type NotificationEmailCategory = typeof notificationEmailCategories[number];

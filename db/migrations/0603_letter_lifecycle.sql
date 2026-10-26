@@ -819,3 +819,57 @@ CREATE POLICY notification_letter_user_read ON notification FOR SELECT USING
 CREATE POLICY notification_letter_user_update ON notification FOR UPDATE USING
  (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current())
  WITH CHECK (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current());
+--> statement-breakpoint
+ALTER TABLE notification_email_policy DROP CONSTRAINT notification_email_policy_category_check;
+ALTER TABLE notification_email_policy ADD CONSTRAINT notification_email_policy_category_check CHECK(category IN
+ ('attendance','claims','delegation','leave','letters','notice','offboarding','onboarding','payroll','performance','profile','readiness','review','rewards','toil','employee_master_reports'));
+ALTER TABLE notification_pref ALTER COLUMN recipient_employment_id DROP NOT NULL;
+ALTER TABLE notification_pref ADD COLUMN recipient_user_id uuid REFERENCES app_user(id),
+ ADD COLUMN email_consent_issuer text,ADD COLUMN email_consent_subject text,
+ ADD COLUMN email_consent_address_hash text,ADD COLUMN email_consent_verified_at timestamptz;
+ALTER TABLE notification_pref ADD CONSTRAINT notification_pref_audience_xor CHECK(
+ (recipient_employment_id IS NOT NULL AND recipient_user_id IS NULL) OR
+ (recipient_employment_id IS NULL AND recipient_user_id IS NOT NULL AND category='letters' AND channel='email'));
+CREATE UNIQUE INDEX notification_pref_user_uq ON notification_pref(tenant_id,recipient_user_id,category,channel);
+CREATE FUNCTION app.letter_email_consent_identity(issuer text,subject text,address_hash text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+  JOIN public.app_external_identity i ON i.app_user_id=u.id
+  WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+  AND i.issuer=$1 AND i.subject=$2 AND i.revoked_at IS NULL
+  AND encode(sha256(convert_to(lower(p.primary_email),'UTF8')),'hex')=$3)
+$$;
+REVOKE ALL ON FUNCTION app.letter_email_consent_identity(text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_email_consent_identity(text,text,text) TO ai_hr_app;
+CREATE POLICY notification_pref_letter_account ON notification_pref FOR ALL USING
+ (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND category='letters' AND channel='email' AND app.principal_snapshot_current())
+ WITH CHECK (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND recipient_employment_id IS NULL AND category='letters' AND channel='email' AND app.principal_snapshot_current());
+CREATE FUNCTION app.guard_letter_email_consent() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE changed boolean;
+BEGIN
+ IF TG_OP='UPDATE' AND OLD.recipient_user_id IS NOT NULL THEN
+  IF (NEW.tenant_id,NEW.recipient_user_id,NEW.recipient_employment_id,NEW.category,NEW.channel) IS DISTINCT FROM
+     (OLD.tenant_id,OLD.recipient_user_id,OLD.recipient_employment_id,OLD.category,OLD.channel) THEN
+   RAISE EXCEPTION 'Account email preference identity is immutable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF NEW.recipient_user_id IS NULL THEN RETURN NEW;END IF;
+ IF NEW.recipient_user_id IS DISTINCT FROM app.current_user_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN
+  RAISE EXCEPTION 'Account email preference unavailable' USING ERRCODE='42501';END IF;
+ IF NEW.email_locale NOT IN ('en','ms','zh','ta','th','vi') THEN RAISE EXCEPTION 'Invalid email language';END IF;
+ IF NEW.enabled THEN
+  IF NOT app.letter_email_consent_identity(NEW.email_consent_issuer,NEW.email_consent_subject,NEW.email_consent_address_hash) THEN
+   RAISE EXCEPTION 'Account email identity unavailable' USING ERRCODE='42501';END IF;
+  changed:=TG_OP='INSERT';
+  IF TG_OP='UPDATE' THEN changed:=NOT OLD.enabled OR (NEW.email_consent_issuer,NEW.email_consent_subject,NEW.email_consent_address_hash) IS DISTINCT FROM (OLD.email_consent_issuer,OLD.email_consent_subject,OLD.email_consent_address_hash);END IF;
+  NEW.email_consent_user_id:=app.current_user_id();
+  IF changed THEN NEW.email_after_sequence:=app.notification_email_watermark();NEW.email_consent_verified_at:=now();
+  ELSE NEW.email_after_sequence:=OLD.email_after_sequence;NEW.email_consent_verified_at:=OLD.email_consent_verified_at;END IF;
+ ELSE
+  NEW.email_consent_user_id:=NULL;NEW.email_after_sequence:=NULL;NEW.email_consent_issuer:=NULL;NEW.email_consent_subject:=NULL;NEW.email_consent_address_hash:=NULL;NEW.email_consent_verified_at:=NULL;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_letter_email_consent() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER letter_email_consent_guard BEFORE INSERT OR UPDATE ON notification_pref FOR EACH ROW EXECUTE FUNCTION app.guard_letter_email_consent();

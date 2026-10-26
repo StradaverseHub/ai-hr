@@ -18100,6 +18100,7 @@
       "uncertain": "发送结果不确定，请检查后再重试"
     },
     "categories": {
+      "letters": "信函",
       "attendance": "考勤",
       "claims": "报销",
       "delegation": "委托",

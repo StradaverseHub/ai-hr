@@ -5432,9 +5432,12 @@ export const notificationPref = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    recipientEmploymentId: uuid('recipient_employment_id')
-      .notNull()
-      .references(() => employment.id),
+    recipientEmploymentId: uuid('recipient_employment_id').references(() => employment.id),
+    recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
+    emailConsentIssuer: text('email_consent_issuer'),
+    emailConsentSubject: text('email_consent_subject'),
+    emailConsentAddressHash: text('email_consent_address_hash'),
+    emailConsentVerifiedAt: timestamp('email_consent_verified_at',{withTimezone:true}),
     category: text('category').notNull(),
     channel: notificationChannelEnum('channel').notNull(),
     enabled: boolean('enabled').notNull().default(true),
@@ -5450,7 +5453,7 @@ export const notificationPref = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex('notification_pref_uq').on(t.tenantId, t.recipientEmploymentId, t.category, t.channel)],
+  (t) => [uniqueIndex('notification_pref_user_uq').on(t.tenantId,t.recipientUserId,t.category,t.channel),uniqueIndex('notification_pref_uq').on(t.tenantId, t.recipientEmploymentId, t.category, t.channel)],
 );
 
 // Out-of-app delivery attempts (in-app needs no row — the notification IS the in-app delivery).
