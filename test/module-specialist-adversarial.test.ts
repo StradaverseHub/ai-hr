@@ -18,8 +18,12 @@ describe('specialists preserve business meaning rather than inventing HR conclus
   expect(facts(result).some(fact=>fact.value==='95.00')).toBe(false);
   expect(result.findings).toContain('released_pay_stored_only');expect(result.effects).toEqual([]);
  });
- it('refuses a withheld balance carrying poisoned values instead of recovering their presence or amounts',()=>{
-  expect(()=>assess('leave',bounded([{balances:[{leaveType:'Fictional annual',withheld:true,available:98765,pending:12345,taken:2}]}]))).toThrow();
+ it('refuses withheld decomposition aliases while preserving independently permitted native summaries',()=>{
+  // Earlier counterexample incorrectly assumed withheld meant every field was forbidden.
+  for(const alias of ['accrued','balance'])expect(()=>assess('leave',bounded([{balances:[{leaveType:'Fictional annual',withheld:true,available:5,pending:null,taken:2,[alias]:98765}]}]))).toThrow();
+  const permitted=assess('leave',bounded([{balances:[{leaveType:'Fictional annual',withheld:true,available:null,pending:2,taken:2}]}]));
+  expect(permitted.findings).toEqual(['leave_pending_not_approved','scope_current_caller','withheld_not_reconstructable']);
+  expect(facts(permitted).find(fact=>fact.field==='pending')?.value).toBe(2);expect(facts(permitted).some(fact=>fact.field==='available')).toBe(false);
  });
  it('preserves an approved unpaid claim without treating approval as payment',()=>{
   const result=assess('claims',{hasEmployment:true,truncated:false,claims:[{claimType:'Fictional travel',status:'approved',incurredOn:'2026-01-01',createdAt:'2026-01-01',decidedAt:'2026-01-02',paidAt:null}]});

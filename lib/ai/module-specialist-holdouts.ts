@@ -13,6 +13,8 @@ const states:SpecialistHoldout[]=[
  f('org','only-functional',b([{reportingLines:[{name:'Permitted functional manager',lineType:'functional'}]}]),['reporting_recorded','administrative_manager_missing']),
  f('leave','pending-with-available',b([{balances:[{leaveType:'Canonical Annual',available:4,taken:1,pending:2,withheld:false}]}]),['leave_available_recorded','leave_pending_not_approved']),
  f('leave','hidden-summary',b([{balances:[{leaveType:'Canonical Annual',available:null,pending:null,taken:2,withheld:true}]}]),['withheld_not_reconstructable']),
+ f('leave','permitted-pending-hidden-available',b([{balances:[{leaveType:'Canonical Annual',available:null,pending:2,taken:2,withheld:true}]}]),['withheld_not_reconstructable','leave_pending_not_approved']),
+ f('leave','permitted-available-hidden-pending',b([{balances:[{leaveType:'Canonical Annual',available:5,pending:null,taken:2,withheld:true}]}]),['withheld_not_reconstructable','leave_available_recorded']),
  f('ess','payment-gap',{employees:1,ready:0,gaps:[{id:'no_bank_account',count:1,blocks:'payment'}]},['readiness_gaps']),
  f('ess','clear',{employees:1,ready:1,gaps:[]},['readiness_currently_clear']),
  f('approvals','pending',b([{leaveType:'Canonical Annual',status:'pending',startDate:'2026-01-01',endDate:'2026-01-01',hasRejectedDates:false}]),['own_request_pending']),
@@ -67,6 +69,7 @@ for(const module of [...new Set(states.map(row=>row.module))]){
 }
 export const SPECIALIST_EXPECTED_FACTS:Readonly<Record<string,readonly Readonly<{field:string;value:string|number|boolean|null}>[]>>=Object.freeze({
  'employees:active':[{field:'workStatus',value:'active'}], 'org:administrative':[{field:'reportingKind',value:'administrative'}], 'leave:pending-with-available':[{field:'available',value:4},{field:'pending',value:2}], 'leave:hidden-summary':[{field:'taken',value:2}],
+ 'leave:permitted-pending-hidden-available':[{field:'pending',value:2},{field:'taken',value:2}], 'leave:permitted-available-hidden-pending':[{field:'available',value:5},{field:'taken',value:2}],
  'ess:payment-gap':[{field:'blockingEffect',value:'payment'}], 'approvals:partial-dates':[{field:'hasRejectedDates',value:true}], 'knowledge_base:published-index':[{field:'category',value:'Work'}], 'payroll:stored-released':[{field:'net',value:'7001.2345'}], 'payroll:missing-net-currency':[{field:'net',value:null},{field:'currency',value:null}],
  'attendance:late':[{field:'workedMinutes',value:470}], 'claims:approved-unpaid':[{field:'status',value:'approved'},{field:'paidAt',value:null}], 'claims:paid':[{field:'status',value:'paid'},{field:'paidAt',value:'2026-01-02'}], 'performance:standard-unreleased':[{field:'released',value:false}], 'performance:onehr-plan':[{field:'framework',value:'onehr'},{field:'artifact',value:'plan'}],
  'rewards:posted':[{field:'status',value:'posted'}], 'lifecycle:complete':[{field:'progressDone',value:2}], 'toil:banked':[{field:'activeCredit',value:2}], 'multi_cycle_payroll:additional-index':[{field:'runSequence',value:2}], 'typed_pay_components:stored-decimal':[{field:'amount',value:'1234.5678'}], 'country-my:filing-gap':[{field:'blockingEffect',value:'statutory_filing'}],
