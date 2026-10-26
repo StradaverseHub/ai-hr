@@ -884,8 +884,18 @@ export async function readOwnReplacementSubmissionTx(tx:Tx,ctx:SessionContext,re
  .from(replacementLeaveRequest).innerJoin(employment,and(eq(employment.id,replacementLeaveRequest.employmentId),eq(employment.tenantId,replacementLeaveRequest.tenantId))).where(and(eq(replacementLeaveRequest.id,requestId),eq(replacementLeaveRequest.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);if(!row)return null;
  const lines=await tx.select({workedDate:replacementLeaveRequestDate.workedDate}).from(replacementLeaveRequestDate).where(and(eq(replacementLeaveRequestDate.requestId,row.id),eq(replacementLeaveRequestDate.tenantId,ctx.tenantId),eq(replacementLeaveRequestDate.subjectEmploymentId,row.employmentId))).orderBy(replacementLeaveRequestDate.workedDate);
  const [event]=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'replacement-leave-request'),eq(domainEvent.aggregateId,row.id),eq(domainEvent.eventType,'replacement-leave-request.submitted'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId),eq(domainEvent.subjectEmploymentId,row.employmentId))).limit(1);
- const payload=event?.payload as {unit?:unknown;totalDays?:unknown;totalHours?:unknown;dates?:unknown;submittedOn?:unknown}|null;if(!event||payload?.unit!==row.unit||payload.totalDays!==Number(row.totalDays)||payload.totalHours!==Number(row.totalHours)||payload.submittedOn!==row.submittedOn||JSON.stringify(Array.isArray(payload.dates)?[...payload.dates].sort():null)!==JSON.stringify(lines.map(line=>line.workedDate)))return null;
- return {requestId:row.id,submittedEventId:event.id,employmentId:row.employmentId,currentStatus:row.status,totalDays:Number(row.totalDays),totalHours:Number(row.totalHours)};
+ const payload=event?.payload as {unit?:unknown;totalDays?:unknown;totalHours?:unknown;dates?:unknown;submittedOn?:unknown}|null;
+ if(!event||!payload||payload.unit!==row.unit||typeof payload.totalDays!=='number'||!Number.isFinite(payload.totalDays)||payload.totalDays<=0
+  ||typeof payload.totalHours!=='number'||!Number.isFinite(payload.totalHours)||payload.totalHours<0||payload.submittedOn!==row.submittedOn
+  ||!Array.isArray(payload.dates)||!payload.dates.every(date=>typeof date==='string')||JSON.stringify([...payload.dates].sort())!==JSON.stringify(lines.map(line=>line.workedDate)))return null;
+ const currentTotalDays=Number(row.totalDays),currentTotalHours=Number(row.totalHours);
+ if(!Number.isFinite(currentTotalDays)||currentTotalDays<=0||!Number.isFinite(currentTotalHours)||currentTotalHours<0)return null;
+ // Approval deliberately re-derives and writes the credit totals. The immutable original submitted
+ // event owns the requested projection; the current header owns today's stored approved totals.
+ // Pending/rejected/cancelled requests have no native repricing transition and still must agree.
+ if(row.status!=='approved'&&(payload.totalDays!==currentTotalDays||payload.totalHours!==currentTotalHours))return null;
+ return {requestId:row.id,submittedEventId:event.id,employmentId:row.employmentId,currentStatus:row.status,
+  submittedTotalDays:payload.totalDays,submittedTotalHours:payload.totalHours,currentTotalDays,currentTotalHours};
 }
 
 /**
