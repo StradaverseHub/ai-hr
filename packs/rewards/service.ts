@@ -10,7 +10,7 @@ import { appUser, assignment, businessUnit, company, compensation, employment, j
 import { assertModuleGate, withRewardsTenant } from '../../core/module-gate';
 import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
-import { lockLeaveDependencyConfigurationTx } from '../../core/leave-dependency-lock';
+import { lockLeaveDependencyConfigurationTx, lockLeaveDependenciesTx } from '../../core/leave-dependency-lock';
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { calculateRewards } from './engine';
@@ -486,14 +486,18 @@ async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:str
  const assigned=await rolesFor(tx,unitId);if(!assigned.includes('payroll'))throw new RewardError('The assigned payroll role is required.');
  await requireAdmin(tx,nominee.companyId);return nominee;
 }
-async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selection:ReviewedRewardPostSelection){
- const ctx=captureRewardPostContext(supplied),p=structuredClone(selection);if(p.batchId)idSchema.parse(p.batchId);
+export async function lockReviewedRewardPostSourceTx(tx:Tx,supplied:SessionContext,unitId:string){
+ const ctx=captureRewardPostContext(supplied),id=idSchema.parse(unitId);
  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  // Minimal selection/current native role and company authority BEFORE funding, private entries or employee locks.
- const nominee=await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);
+ const nominee=await reviewedRewardPostAuthorityTx(tx,ctx,id);
  if(nominee.parentUnitId)await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,nominee.parentUnitId)).for('update',{noWait:true});
- await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,p.unitId)).for('update',{noWait:true});
- const current=await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);if(JSON.stringify(current)!==JSON.stringify(nominee))throw new RewardError('The reward unit source changed.');
+ await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,id)).for('update',{noWait:true});
+ const current=await reviewedRewardPostAuthorityTx(tx,ctx,id);if(JSON.stringify(current)!==JSON.stringify(nominee))throw new RewardError('The reward unit source changed.');
+ return {ctx,unit:current};
+}
+async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selection:ReviewedRewardPostSelection){
+ const p=structuredClone(selection);if(p.batchId)idSchema.parse(p.batchId);const {ctx}=await lockReviewedRewardPostSourceTx(tx,supplied,p.unitId);
  const prepared=await prepareRewardPostTx(tx,ctx,p.unitId,p.revision,p.batchId??undefined,true);
  if(prepared.alreadyPosted)throw new RewardError('Reopen the recorded posting instead of preparing another.');
  const {unit,result,roles,entries}=prepared;
@@ -501,6 +505,9 @@ async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selec
  // The canonical unit lock protects all native entry writers. Re-read exact rows after explicit ownership
  // as well, so no directly changed version can be reviewed and then silently enacted.
  const locked=await load(tx,unit.id);if(JSON.stringify(locked.entries)!==JSON.stringify(entries))throw new RewardError('The reward entries changed.');
+ const subjects=[...new Set(result.rows.map(row=>row.source.employmentId))].sort();
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,subjects);
+ const protectedSource=await load(tx,unit.id);if(!isDeepStrictEqual(protectedSource.entries,locked.entries))throw new RewardError('The whole reward source set changed.');
  const sourceRows=[];
  for(const row of [...result.rows].sort((a,b)=>a.source.employmentId.localeCompare(b.source.employmentId))){
   const {emp,cur}=await currentRewardPostEmployeeTx(tx,unit,row,true);
@@ -542,8 +549,7 @@ export async function postReviewedRewardUnitTx(tx:Tx,ctx:SessionContext,p:Review
 /** Exact original-actor native unit posting plus CURRENT root metadata. No old salary text, hidden
  * employee/input IDs, payslip/payment claim, or automatic second posting on a completed retry. */
 export async function readReviewedRewardPostReferenceTx(tx:Tx,supplied:SessionContext,reference:{unitId:string;postedEventId:string}){
- const ctx=captureRewardPostContext(supplied),p={...reference};await tx.execute(sql`select app.access_workforce_write_lock()`);
- await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);
+ const p={...reference},{ctx}=await lockReviewedRewardPostSourceTx(tx,supplied,p.unitId);
  const [row]=await tx.execute<{unitId:string;postedEventId:string;currentStatus:typeof rewardUnit.$inferSelect['status'];currentRevision:number;postedRevision:number;postedBatchId:string|null}>(sql`select u.id as "unitId",d.id as "postedEventId",u.status as "currentStatus",u.revision as "currentRevision",(d.payload->>'revision')::integer as "postedRevision",u.posted_batch_id as "postedBatchId"
   from public.reward_unit u join public.domain_event d on d.tenant_id=u.tenant_id and d.aggregate_id=u.id
   where u.id=${p.unitId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.deleted_at is null and d.id=${p.postedEventId}::uuid
