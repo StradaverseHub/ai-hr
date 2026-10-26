@@ -1,13 +1,20 @@
 # Attendance storage test split
 
-## Intact financial group move — 26 October MYT, runtime pending
+## Intact financial group move — 26 October MYT, hosted runtime verified
 
 The four-file checkpoint below contained one32-case unclocked file with a505.0s reported interval in40223846855. The new candidate moves its entire18-case HR-attested cash/TOIL group, including the original table expression and135-minute scenarios, into test/attendance-policy-storage-attested-financial.test.ts. The remaining14cases stay in attendance-policy-storage-unclocked.test.ts. The other68cases and shared fixture are untouched: total47registrations/100expanded cases across five files. Every callback, value, original deadline, genuine-clock future-work refusal,135-minute/cash/TOIL assertion, per-case reset and live b/ctx getter remains byte-identical. No artificial clock or weaker financial guard is introduced.
 
-The frozen original32-case source oracle is bound to e9b21688b. A closed source reader permits only this whole registration move and identical per-file setup. Negative controls reject a missing reset, changed money, changed historical date, altered135-minute value, skipped scope check or changed source oracle. Six lightweight source/refusal controls passed; one newly written oracle-mutation fixture correctly failed its mandatory nonempty anchor assertion, then only that failed control was repaired/retested and passed. No application/DB/compiler/Vitest/Mac slot was used. All seven controls will run as hosted prerequisites before actual financial checks. This is source-preservation evidence only.
+The frozen original32-case source oracle is bound to e9b21688b. A closed source reader permits only this whole registration move and identical per-file setup. Negative controls reject a missing reset, changed money, changed historical date, altered135-minute value, skipped scope check or changed source oracle. Six lightweight source/refusal controls passed; one newly written oracle-mutation fixture correctly failed its mandatory nonempty anchor assertion, then only that failed control was repaired/retested and passed. No application/DB/compiler/Vitest/Mac slot was used. All seven controls subsequently passed together as hosted prerequisites before the actual financial check below. The original six-pass/one-failure attempt and single repaired control remain preserved.
 
 The purpose is to expose a smaller scheduling unit to the existing full matrix. Splitting does not reduce the total business verification or automatically reduce a two-worker command covering all100cases. The complete moved32cases must actually run with the same2workers/2GiB PG16/JIT-on budget, then all original expanded names, process exits, OOM state and cleanup must be independently authenticated. No whole-release, compiler/build/deployment or under600s result exists for this candidate yet.
 
+
+
+### Actual included-runner result
+
+[40284681255](https://github.com/StradaverseHub/ai-hr/actions/runs/40284681255), exact7b5f47a3bad8b1adbb336e3674077a45261822d8, passed32/32 original cases with no failures, skipped/pending/todo cases. Independent API/job/ZIP/report review reconciled all32 original expanded names exactly and byte-compared the oracle with actual31ae source. Per-file14/18counts, genuine money/time assertions and all original callbacks remain. The other68unchanged cases retain their historical evidence and were not rerun or relabelled as current coverage.
+
+The14-case file interval was103.260s; the18-case financial file211.894s. Actual DB phase246.540s; submission-to-last-job406.2534s (**6m46s**).398occupied runner-seconds is not billing. PG16.15/JIT on2GiB cap, peak778,088,448B, zero OOM/max events; canonical owned stop and alwayscleanup completed. Artifact12633607689/12,040B ZIP SHA25661aaba4bd307a1a150f2f28c0fbecc5c135be535f2b7a0da55e7ad36bee1ecdc. All source/case/resource/timing evidence is retained under ignored scratchpad/unclocked-financial-split-20261026/actual. Scheduling hints use these actual intervals with the real origin pin. This separate-VM observation is not a paired causal speedup, complete100-case runtime result, compiler/build/deployment or full under600s release proof.
 
 
 ## Cloud validation checkpoint — 26 October MYT

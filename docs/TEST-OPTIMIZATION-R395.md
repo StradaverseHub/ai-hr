@@ -1,6 +1,6 @@
 # r395 write-equivalence performance and preservation
 
-## Two-part write-context candidate — runtime pending
+## Two-part write-context candidate — hosted runtime verified
 
 The measured50-file run40275058443 passed the original88 write cases, but this file took529.998s after an80.604s start delay. Its24generic caller cases account for524.506s of reported intervals. Ordering addresses the start delay; it does not remove the sequential caller loop.
 
@@ -10,7 +10,15 @@ The fixture lives in test/r395-write-fixture.ts and registers once per isolated 
 
 The immutable source oracle in .github/ci/diagnostics/fixtures/r395-write-before-split.ts.txt is bound to the original file at2a83c8c84. A closed source-preservation reader reconstructs permitted moves and rejects modified callbacks, queries, savepoints, original63other cases, thresholds, missing contexts, mutation removal, report collision or oracle replacement. All8dependency-free preservation/refusal controls passed in52ms locally, with no application imports, database, compiler, Vitest or Mac slots. They also run before expensive hosted checks and in the normal controller. This is source evidence, not runtime or full release proof.
 
-The partition weights280.429s and293.485s are sums of old reported case intervals, including the extra controls. They are scheduling estimates, not measured split wall time or a predicted speedup. Run both complete files on the same existing2workers/2GiB PostgreSQL/JIT-on budget; independently verify all88original names plus3extras, both non-vacuity results, actual exits, memory/OOM state and cleanup. No full release, compiler/build/staging or under600s claim is established yet.
+The partition weights280.429s and293.485s are sums of old reported case intervals, including the extra controls. They are scheduling estimates, not measured split wall time or a predicted speedup. Both complete files have now passed on the same existing2workers/2GiB PostgreSQL/JIT-on budget, as detailed below. No full release, compiler/build/staging or under600s submission-to-arrival claim is established.
+
+### Actual included-runner result
+
+[40283271315](https://github.com/StradaverseHub/ai-hr/actions/runs/40283271315), exacte9b21688b7cdd35d02ba20847a55abca735747d3, passed91/91 cases with no failures, pending, skipped or todo cases. Independently authenticated API/job/ZIP/source review reconciled every original88expanded name exactly once against the actual a025 report, and proved the frozen source oracle equals that original run's source file. The three additions are precisely the two repeated caller controls and the secondary non-vacuity assertion. Both actual table tallies show48/50 insert tables with an allowed attempt and48/50 with an RLS refusal; unchanged returned-update thresholds also passed. All original real-hire/CTE/admin-mutation/restoration cases passed.
+
+Primary76cases took166.229s and secondary15cases168.862s between raw file timestamps. Actual Vitest179.61s; complete DB phase202.327s; submission-to-last-job346.249499s (**5m46s**).339occupied runner-seconds is not billing. PG16.15/JIT on remained within2GiB, peak588,791,808B, all OOM/max events0; canonical stop and alwayscleanup succeeded. One actual ordered split run is not a paired causal speedup against the earlier50-file workload or the Mac. No compiler/build/full regression/deployment ran.
+
+Artifact12632554513/1,362,210B ZIP SHA256c600b9928df37ae2ef354702928381de832cb086044082b26a45a69ed4301915. Raw evidence, exact91-case comparison, independent actual48/50 tallies and source/resource checks are retained under ignored scratchpad/r395-context-split-20261026/actual. The diagnostic server log was collected with its original16MiB cap; it is not claimed complete. Independent bounded terminal log tail, process/cgroup/settings and all assertion reports were validated. Scheduling hints now use the two actual file intervals, retaining this exact origin and no PASS authority.
 
 ## Runtime verification on 26 October MYT
 

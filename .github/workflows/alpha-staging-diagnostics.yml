@@ -643,7 +643,7 @@ jobs:
     if: ${{ inputs.managed_compiler_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 12
     defaults: {run: {working-directory: source}}
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}

@@ -109,6 +109,24 @@
       "scope": "Four complete performance-service split files;167 original cases passed, scheduling hints only",
       "artifactId": 12628199438,
       "sha256": "732a5e2484355324a3192473af038fb39889219d2ebe0ed51be9c44140022f1c"
+    },
+    {
+      "runId": 40283271315,
+      "candidate": "e9b21688b7cdd35d02ba20847a55abca735747d3",
+      "controller": "e9b21688b7cdd35d02ba20847a55abca735747d3",
+      "conclusion": "success",
+      "scope": "Both write-context files: all88original cases plus3additional independent non-vacuity controls; file intervals remain scheduling hints only",
+      "artifactId": 12632554513,
+      "sha256": "c600b9928df37ae2ef354702928381de832cb086044082b26a45a69ed4301915"
+    },
+    {
+      "runId": 40284681255,
+      "candidate": "7b5f47a3bad8b1adbb336e3674077a45261822d8",
+      "controller": "7b5f47a3bad8b1adbb336e3674077a45261822d8",
+      "conclusion": "success",
+      "scope": "Both unchanged unclocked/attested financial files: original32cases, scheduling hints only; other68not rerun",
+      "artifactId": 12633607689,
+      "sha256": "61aaba4bd307a1a150f2f28c0fbecc5c135be535f2b7a0da55e7ad36bee1ecdc"
     }
   ],
   "durationsMs": {
@@ -199,7 +217,7 @@
     "test/attendance-policy-overlap-storage.test.ts": 139,
     "test/attendance-policy-storage-pricing.test.ts": 157230,
     "test/attendance-policy-storage-settlement.test.ts": 173967,
-    "test/attendance-policy-storage-unclocked.test.ts": 505009,
+    "test/attendance-policy-storage-unclocked.test.ts": 103260,
     "test/attendance-policy-storage.test.ts": 164360,
     "test/attendance-policy.test.ts": 4641,
     "test/attendance-recompute.test.ts": 28542,
@@ -940,7 +958,7 @@
     "test/r394-with-tenant-one-round-trip.test.ts": 69,
     "test/r395-policy-visibility-guard.test.ts": 294,
     "test/r395-visibility-equivalence.test.ts": 272152,
-    "test/r395-write-path-equivalence.test.ts": 609756,
+    "test/r395-write-path-equivalence.test.ts": 166230,
     "test/r397-my-leave-equivalence.test.ts": 19190,
     "test/r400-monolith-primitives.test.ts": 115,
     "test/r404-leave-details.test.ts": 26916,
@@ -1098,7 +1116,9 @@
     "test/zakat-history.test.ts": 9660,
     "test/zakat-in-total-deductions-3a092cf0.test.ts": 4919,
     "test/zakat-loans-employee-first.test.ts": 21881,
-    "test/zakat.test.ts": 16519
+    "test/zakat.test.ts": 16519,
+    "test/r395-write-contexts-secondary.test.ts": 168863,
+    "test/attendance-policy-storage-attested-financial.test.ts": 211895
   },
   "limits": [
     "File intervals overlap workers and include setup/hooks; they are estimates, not CPU cost or a completion bound.",
