@@ -11,6 +11,7 @@ import {isAiPrincipalCurrentTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+function capture(ctx:SessionContext):SessionContext{return {...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};}
 const fail=():never=>{throw new TestingRefusal('not_assigned');};
 /** Existing helper remains blocking. This adapter permits at most 1000ms PER lock wait, never raises
  * an existing nonzero bound, and restores exact caller text on success or valid business refusal.
@@ -47,7 +48,7 @@ async function reopen(tx:Tx,ctx:SessionContext,reference:z.infer<typeof NativeRe
 /** The full ExecutionInput is explicitly entered/confirmed by the human, never filled by a model.
  * Published metadata only; draftDefinition and instruction narrative never enter the card/digest. */
 export async function prepareOwnTestingExecutionTx(tx:Tx,ctx:SessionContext,input:unknown){
- const intent=OwnTestingExecutionIntent.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,ctx),prepared=await prepareTestingExecutionSaveTx(tx,fresh,intent.observation),s=prepared.source;
+ const captured=capture(ctx),intent=OwnTestingExecutionIntent.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,captured),prepared=await prepareTestingExecutionSaveTx(tx,fresh,intent.observation),s=prepared.source;
   return OwnTestingExecutionReview.parse({version:1,action:'system_testing.execution.save',humanObservation:prepared.input,caseId:s.caseId,caseNo:s.caseNo,assignmentId:s.assignmentId,executionId:s.executionId,
    versionId:s.published.id,instructionOrdinal:s.published.ordinal,meaning:'human_observation_not_independently_verified',reviewDigest:testingExecutionPreparedDigest(fresh,prepared)});
  });
@@ -55,8 +56,19 @@ export async function prepareOwnTestingExecutionTx(tx:Tx,ctx:SessionContext,inpu
 /** Shared custody must own the exact confirmed input and commit completion in this top-level Tx.
  * Human 'passed' is a recorded claim, not independent evaluation evidence or a permission to promote. */
 export async function confirmOwnTestingExecutionTx(tx:Tx,ctx:SessionContext,input:unknown,expectedDigest:string){
- const intent=OwnTestingExecutionIntent.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,ctx),effect=await saveTestingExecutionTx(tx,fresh,intent.observation,{expectedDigest});return reopen(tx,fresh,{runId:effect.runId,eventId:effect.eventId});});
+ const captured=capture(ctx),intent=OwnTestingExecutionIntent.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,captured),effect=await saveTestingExecutionTx(tx,fresh,intent.observation,{expectedDigest});return reopen(tx,fresh,{runId:effect.runId,eventId:effect.eventId});});
 }
 export async function reopenOwnTestingExecutionEventTx(tx:Tx,ctx:SessionContext,input:unknown){
- const reference=NativeReference.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,ctx);return reopen(tx,fresh,reference);});
+ const captured=capture(ctx),reference=NativeReference.parse(input);return bounded(tx,async()=>{const fresh=await guard(tx,captured);return reopen(tx,fresh,reference);});
+}
+
+/** Source-owned interval for shared USER custody. Own execution nominates native references only;
+ * the real case→assignment→execution owner precedes the custody row and remains held to outer commit.
+ * The callback is trusted server composition, never a model/service selector or arbitrary executor. */
+export async function withOwnTestingExecutionIntervalTx<T>(tx:Tx,ctx:SessionContext,executionId:string,work:(fresh:SessionContext,source:Awaited<ReturnType<typeof readOwnTestingExecutionSourceTx>>)=>Promise<T>):Promise<T>{
+ const captured=capture(ctx),id=testingUuid.parse(executionId);return bounded(tx,async()=>{
+  const fresh=await guard(tx,captured);
+  const [nominee]=await tx.execute<{assignmentId:string;versionId:string;expectedRevision:number}>(sql`select assignment_id as "assignmentId",version_id as "versionId",revision as "expectedRevision" from public.test_execution where id=${id}::uuid and tenant_id=${fresh.tenantId}::uuid and tester_user_id=${fresh.userId}::uuid`);
+  if(!nominee)return fail();const source=await readOwnTestingExecutionSourceTx(tx,fresh,{...nominee,executionId:id});return work(fresh,source);
+ });
 }
