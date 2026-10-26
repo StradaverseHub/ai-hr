@@ -55,6 +55,8 @@ try{
  const directory=()=>page.locator('[data-tour="admin-users"]');
  const navigate=async()=>{const r=await page.goto(origin+'/admin/users');assert.equal(r.status(),200);await directory().waitFor();assert(!new URL(page.url()).searchParams.has('error'),page.url());};
  await navigate();
+ await page.getByRole('dialog',{name:'Product tour'}).getByRole('button',{name:'Skip',exact:true}).click();
+ report.phases.push('first-use product tour dismissed through its visible control');
  const form=page.locator('#manual-account-setup form').first();
  await form.locator('[name="accountType"][value="standalone"]').check();
  await form.locator('[name="fullName"]').fill('Alexandra Consultant');await form.locator('[name="email"]').fill('alexandra@example.test');
@@ -86,6 +88,7 @@ try{
  assert.equal(query('select count(*) from employment'),before);report.phases.push('invitation saved and reopened without employment');
  await directory().getByRole('button',{name:messages.directory.clearFilters,exact:true}).click();await directory().scrollIntoViewIfNeeded();await directory().screenshot({path:join(out,'users-desktop.png'),animations:'disabled'});
  await page.setViewportSize({width:390,height:1100});await directory().scrollIntoViewIfNeeded();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await directory().screenshot({path:join(out,'users-mobile.png'),animations:'disabled'});
+ const serverLog=readFileSync(join(out,'next.log'),'utf8');assert(!/MISSING_MESSAGE|FORMATTING_ERROR|ReferenceError:|TypeError:/.test(serverLog),'Server render errors');
  assert.deepEqual(report.browserErrors,[]);assert.deepEqual(report.consoleErrors,[]);report.exitCode=0;
 }catch(error){report.error=String(error.stack??error);if(page)await page.screenshot({path:join(out,'failure.png'),fullPage:true}).catch(()=>{});throw error;}
 finally{await browser?.close();await new Promise(r=>proxy?proxy.close(r):r());if(app){try{process.kill(-app.pid,'SIGTERM');}catch{}await sleep(1500);if(app.exitCode===null)try{process.kill(-app.pid,'SIGKILL');}catch{}}if(logFd!==undefined)closeSync(logFd);spawnSync('bash',[pg,'stop'],{env:pgEnv});writeFileSync(join(out,'report.json'),JSON.stringify(report,null,2)+'\n');}
