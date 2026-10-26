@@ -17,7 +17,7 @@ import {recordedPayrollComparisonCurrency} from '../lib/payroll-comparison-sourc
 import { storedComponentLines } from './payslip-earning-lines';
 import { listDocuments } from './knowledge-base';
 import { listNotifications } from './notifications';
-import { myReviews } from './performance';
+import {ownPerformanceWorkStatusesTx} from '../packs/performance/service';
 import { getMyOnboarding } from './lifecycle-self';
 import { listRewardUnits } from '../packs/rewards/service';
 import { ownClaimStatuses } from '../packs/claims/service';
@@ -93,8 +93,7 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
           workedMinutes: record.workedMinutes, otMinutes: record.otMinutes }));
       }))).flat()); break;
       case 'claims': data = await ownClaimStatuses(fresh, 25, tx); break;
-      case 'performance': data = bounded((await myReviews(fresh, tx)).map(row => ({ reviewId: row.reviewId,
-        cycleName: row.cycleName, status: row.status, released: row.released, periodEnd: row.periodEnd }))); break;
+      case 'performance': data = await ownPerformanceWorkStatusesTx(tx,fresh,25); break;
       case 'rewards': data = bounded((await listRewardUnits(fresh, (await reads.allowedCompanies(fresh, tx)).map(row => row.id), tx))
         .map(row => ({ id: row.id, kind: row.kind, year: row.year, status: row.status, revision: row.revision,cycle:row.cycle,company:row.company,unit:row.unit }))); break;
       case 'lifecycle': {

@@ -31,10 +31,11 @@ import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
 import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark, assessmentTalentRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
+import {assertAiPrincipalTx} from '../../../core/ai-principal';
 import {assertAssignedWorkPrincipalTx} from '../../../core/approvals';
 import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { assessmentAiStateTx } from './ai-settings';
-import { isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
+import { isModuleEnabled,resolveEntitlementsTx,assertModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { assessmentImportRecords, importKpiDefinition, importValue, kpiLibraryTemplateSchema } from './import-model';
 import framework from './framework.json';
@@ -1256,6 +1257,43 @@ export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
     const companies=await tx.select({id:company.id,name:company.legalName,profitEligible:cycle.native.companyId?sql<boolean>`(${company.id}=${cycle.native.companyId}::uuid or app.is_company_descendant(${company.id},${cycle.native.companyId}::uuid) or app.is_company_descendant(${cycle.native.companyId}::uuid,${company.id}))`:sql<boolean>`true`}).from(company).where(sql`app.onehr_admin(${company.id})`);
     return {profitAchievements:await profitAchievementsTx(tx,cycleId),cycle:cycle.native,policy:cycle.policy,revision:config.revision,participants:await assessmentParticipantsTx(tx,cycleId),kpiNames:[...new Set(reviews.flatMap(r=>kpiSchema.array().parse(r.kpis).map(k=>k.title)))].sort(),reviews:reviews.map(({kpis,...r})=>r),users,companies,sessions:await tx.select().from(onehrCalibration).where(eq(onehrCalibration.cycleId,cycleId))};});
 }
+/** Minimal OWN work metadata in the caller's actual transaction. No full review/result/panel,
+ * KPI answers, names, ratings, remarks, plan goals or private publication content is retrieved.
+ * The configured OneHR-cycle predicate is the canonical standard/OneHR distinction used by
+ * assertStandardCycleTx; a shared performance_review header is not a second standard review.
+ */
+export type OwnPerformanceWorkStatus=Readonly<{framework:'standard'|'onehr';artifact:'review'|'plan';reviewId:string;planId:string|null;
+ cycleName:string;periodEnd:string;status:string;released:boolean|null}>;
+export async function ownPerformanceWorkStatusesTx(tx:Tx,supplied:SessionContext,limit=25):Promise<{rows:OwnPerformanceWorkStatus[];truncated:boolean}>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ if(!Number.isInteger(limit)||limit<1||limit>25)throw Error('Performance work is unavailable.');
+ await assertAiPrincipalTx(tx,ctx);assertModuleEnabled({...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},'performance');
+ if(!ctx.personId)return {rows:[],truncated:false};
+ const own=and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.is_self_person(${employment.personId})`);
+ const standard=await tx.select({reviewId:performanceReview.id,cycleName:reviewCycle.name,periodEnd:reviewCycle.periodEnd,status:performanceReview.status,released:sql<boolean>`${reviewCycle.releasedAt} is not null`})
+  .from(performanceReview).innerJoin(reviewCycle,and(eq(reviewCycle.id,performanceReview.cycleId),eq(reviewCycle.tenantId,performanceReview.tenantId)))
+  .innerJoin(employment,and(eq(employment.id,performanceReview.employmentId),eq(employment.tenantId,performanceReview.tenantId)))
+  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),sql`not exists(select 1 from performance_onehr_cycle configured where configured.cycle_id=${performanceReview.cycleId} and configured.tenant_id=${performanceReview.tenantId})`))
+  .orderBy(desc(reviewCycle.periodEnd),asc(performanceReview.id)).limit(limit+1);
+ const visibleModern=and(own,eq(onehrReview.tenantId,ctx.tenantId),sql`app.onehr_review_header(${onehrReview.reviewId}) is not null`,sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed')`);
+ const modern=await tx.select({reviewId:onehrReview.reviewId,cycleName:reviewCycle.name,periodEnd:reviewCycle.periodEnd,status:reviewCycle.status})
+  .from(onehrReview).innerJoin(reviewCycle,and(eq(reviewCycle.id,onehrReview.cycleId),eq(reviewCycle.tenantId,onehrReview.tenantId)))
+  .innerJoin(employment,and(eq(employment.id,onehrReview.employmentId),eq(employment.tenantId,onehrReview.tenantId))).where(visibleModern)
+  .orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId)).limit(limit+1);
+ // Own draft-plan metadata is already permitted by onehr_plan_access; no unpublished contents are
+ // selected. Link through the actual source review, retaining its current canonical visibility.
+ const plans=await tx.select({planId:onehrPlan.id,reviewId:onehrReview.reviewId,cycleName:reviewCycle.name,periodEnd:reviewCycle.periodEnd,status:onehrPlan.status})
+  .from(onehrPlan).innerJoin(onehrReview,and(eq(onehrReview.reviewId,onehrPlan.reviewId),eq(onehrReview.tenantId,onehrPlan.tenantId),eq(onehrReview.employmentId,onehrPlan.employmentId)))
+  .innerJoin(reviewCycle,and(eq(reviewCycle.id,onehrReview.cycleId),eq(reviewCycle.tenantId,onehrReview.tenantId)))
+  .innerJoin(employment,and(eq(employment.id,onehrPlan.employmentId),eq(employment.tenantId,onehrPlan.tenantId))).where(visibleModern)
+  .orderBy(desc(reviewCycle.periodEnd),asc(onehrPlan.id)).limit(limit+1);
+ const rows:OwnPerformanceWorkStatus[]=[...standard.map(row=>({...row,framework:'standard' as const,artifact:'review' as const,planId:null})),
+  ...modern.map(row=>({...row,framework:'onehr' as const,artifact:'review' as const,planId:null,released:null})),
+  ...plans.map(row=>({...row,framework:'onehr' as const,artifact:'plan' as const,released:null}))];
+ rows.sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd)||a.framework.localeCompare(b.framework)||a.artifact.localeCompare(b.artifact)||(a.planId??a.reviewId).localeCompare(b.planId??b.reviewId));
+ return {rows:rows.slice(0,limit),truncated:rows.length>limit};
+}
+
 export async function onehrAssignments(ctx:SessionContext) {
   return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,cycleStatus:reviewCycle.status,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
 }

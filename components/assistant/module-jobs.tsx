@@ -33,6 +33,8 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
   if(fact.value===null)return t('unknown');
   if(fact.format==='boolean'&&typeof fact.value==='boolean')return t(fact.value?'yes':'no');
   if(fact.format==='module'&&typeof fact.value==='string'&&MODULE_JOBS.some(([module])=>module===fact.value))return t(`module_${fact.value}`);
+ if(fact.format==='performanceFramework'&&typeof fact.value==='string'&&['standard','onehr'].includes(fact.value))return t(`framework_${fact.value}`);
+ if(fact.format==='performanceArtifact'&&typeof fact.value==='string'&&['review','plan'].includes(fact.value))return t(`artifact_${fact.value}`);
   if(fact.format==='blocks'&&typeof fact.value==='string')return t(`blocks_${fact.value}`);
   if(presentation.module==='rewards'&&fact.field==='status'&&typeof fact.value==='string'&&['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn'].includes(fact.value))return rewardStage(fact.value);
   if(presentation.module==='rewards'&&fact.field==='rewardKind'&&typeof fact.value==='string'&&['annual','adhoc','midyear'].includes(fact.value))return rewardKind(fact.value);
