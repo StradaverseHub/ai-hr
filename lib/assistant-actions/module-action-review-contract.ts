@@ -7,7 +7,7 @@ const digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const ModuleActionPrepare=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),intent:OwnNotificationPreferencesIntent}).strict();
 export const ModuleActionConfirmation=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
 export const ModuleActionPreparedReview=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
- createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnNotificationPreferencesReview}).strict();
+ createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnNotificationPreferencesReview.omit({reviewDigest:true})}).strict();
 /** Recorded native effect reconciled with current values; never a latest-event or delivery claim. */
 export const ModuleActionCompletedReceipt=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),
  sourceEventId:z.uuid(),employmentId:z.uuid(),enabledCategories:z.array(notificationPreferenceCategory),locale:z.enum(notificationEmailLocales),
