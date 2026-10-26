@@ -1,5 +1,6 @@
 /** Typed presentation for current canonical tool outcomes. Never consume model text as facts. */
 import {presentCanonicalModuleData} from './module-job-presentation';
+import {checkedModuleHumanHandoffs} from './module-human-handoffs';
 import {isAgentModuleCode,type AgentModuleCode} from './module-agents';
 import type {JobPresentation,JobCard,JobFact,JobFactField} from './module-jobs';
 export const GROUNDED_TOOL_MODULES=Object.freeze({my_leave_balances:'leave',my_leave_requests:'approvals',leave_entitlement_explain:'leave',
@@ -18,7 +19,12 @@ export function presentGroundedToolOutcome(name:GroundedToolName,outcome:unknown
  const source=obj(outcome);if(source.ok!==true)return null;
  const bound=(rows:unknown[])=>({rows,truncated:source.truncated===true});
  switch(name){
-  case 'my_module_work':if(!isAgentModuleCode(source.module))return null;return presentCanonicalModuleData(source.module,source.data);
+  case 'my_module_work':{
+   if(!isAgentModuleCode(source.module))return null;
+   const presentation=presentCanonicalModuleData(source.module,source.data),handoffs=checkedModuleHumanHandoffs(source.module,source.humanActions),seen=new Set<string>();
+   const cards:JobCard[]=[...presentation.cards];for(const handoff of handoffs){if(seen.has(handoff.route))continue;seen.add(handoff.route);cards.push(Object.freeze({title:Object.freeze({kind:'module' as const,module:handoff.module}),facts:Object.freeze([]),href:handoff.route,linkPurpose:'human_review' as const}));}
+   return Object.freeze({...presentation,cards:Object.freeze(cards)});
+  }
   case 'my_leave_balances':return presentCanonicalModuleData('leave',bound(arr(source.employments)));
   case 'my_leave_requests':return presentCanonicalModuleData('approvals',bound(arr(source.rows)));
   case 'my_payslip_summary':return presentCanonicalModuleData('payroll',bound(arr(source.rows)));

@@ -16816,7 +16816,9 @@
         "state_manager": "Manager",
         "state_report": "Direct report",
         "field_personCount": "People away in this period",
-        "field_approvedOnFromDate": "Approved away on the start date"
+        "field_approvedOnFromDate": "Approved away on the start date",
+        "reviewAction": "Review an action",
+        "humanReviewNote": "Choose the details on the review page. Opening it does not submit or change an HR record."
       },
       "module_overview_label": "Explore my workflows",
       "module_overview_prompt": "Which current Assistant module capabilities are available to me? Use my_module_work for assistant. Explain the scope and limits without reading unrelated records.",

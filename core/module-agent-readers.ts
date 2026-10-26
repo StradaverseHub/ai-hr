@@ -5,6 +5,7 @@ import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_CAPABILITIES, isAgentModuleCode, type AgentModuleCode } from '../lib/ai/module-agents';
 import {MODULE_AGENT_ACTIONS,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
+import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import {isAdmin} from '../lib/authz-model';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
@@ -124,7 +125,7 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       default: return unavailable();
     }
     if (!active()) return unavailable();
-    return { module, capability, scope: 'current-caller', data };
+    return { module, capability, scope: 'current-caller', data, humanActions:moduleHumanActionHandoffs(module) };
   };
   return Object.freeze({ moduleWork });
 }

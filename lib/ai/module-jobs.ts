@@ -14,5 +14,5 @@ export const JOB_FACT_FIELDS=['personCount','approvedOnFromDate','grade','holida
 export type JobFactField=typeof JOB_FACT_FIELDS[number];
 export type JobFact=Readonly<{field:JobFactField;value:string|number|boolean|null;format:'text'|'number'|'date'|'status'|'boolean'|'money'|'module'|'gap'|'blocks'|'performanceFramework'|'performanceArtifact'}>;
 export type JobCard=Readonly<{title:Readonly<{kind:'text';value:string}|{kind:'record';number:number}|{kind:'gap';code:string}|{kind:'module';module:AgentModuleCode}>;
- facts:readonly JobFact[];href?:string;withheld?:boolean}>;
+ facts:readonly JobFact[];href?:string;linkPurpose?:'human_review';withheld?:boolean}>;
 export type JobPresentation=Readonly<{module:AgentModuleCode;cards:readonly JobCard[];truncated:boolean;hasEmployment?:boolean}>;

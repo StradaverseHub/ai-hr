@@ -16816,7 +16816,9 @@
         "state_manager": "ผู้จัดการ",
         "state_report": "ผู้ใต้บังคับบัญชาโดยตรง",
         "field_personCount": "ผู้ที่ลาในช่วงนี้",
-        "field_approvedOnFromDate": "ผู้ที่ได้รับอนุมัติลาในวันเริ่มต้น"
+        "field_approvedOnFromDate": "ผู้ที่ได้รับอนุมัติลาในวันเริ่มต้น",
+        "reviewAction": "ตรวจสอบการดำเนินการ",
+        "humanReviewNote": "เลือกรายละเอียดในหน้าตรวจสอบ การเปิดหน้านี้จะไม่ส่งคำขอหรือเปลี่ยนแปลงข้อมูลบุคลากร"
       },
       "module_overview_label": "สำรวจขั้นตอนงานของฉัน",
       "module_overview_prompt": "ฉันใช้ความสามารถของโมดูล Assistant ใดได้บ้าง ใช้ my_module_work สำหรับ assistant และอธิบายขอบเขตโดยไม่อ่านข้อมูลที่ไม่เกี่ยวข้อง",

@@ -16816,7 +16816,9 @@
         "state_manager": "Quản lý",
         "state_report": "Cấp dưới trực tiếp",
         "field_personCount": "Người nghỉ trong khoảng này",
-        "field_approvedOnFromDate": "Người nghỉ được duyệt vào ngày bắt đầu"
+        "field_approvedOnFromDate": "Người nghỉ được duyệt vào ngày bắt đầu",
+        "reviewAction": "Xem lại thao tác",
+        "humanReviewNote": "Chọn thông tin trên trang xem lại. Việc mở trang không gửi yêu cầu hay thay đổi hồ sơ nhân sự."
       },
       "module_overview_label": "Khám phá quy trình của tôi",
       "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",

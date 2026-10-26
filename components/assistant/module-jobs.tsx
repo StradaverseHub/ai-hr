@@ -54,13 +54,13 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
   {presentation.cards.length===0&&<Card className="p-5"><p className="text-sm text-muted-foreground">{t(presentation.hasEmployment===false?'noEmployment':'noData')}</p></Card>}
   <div className="grid gap-3 sm:grid-cols-2">{presentation.cards.map((card,index)=><Card key={index} className="min-w-0 p-4">
    <h3 className="break-words text-sm font-semibold">{heading(card)}</h3>
-   {card.title.kind==='module'&&<p className="mt-2 text-xs text-muted-foreground">{t(`help_${card.title.module}`)}</p>}
+   {card.title.kind==='module'&&<p className="mt-2 text-xs text-muted-foreground">{card.linkPurpose==='human_review'?t('humanReviewNote'):t(`help_${card.title.module}`)}</p>}
    {card.facts.length>0&&<dl className="mt-3 space-y-2">{card.facts.map((fact,i)=><div key={i} className="flex items-start justify-between gap-4 text-sm">
     <dt className="min-w-0 text-muted-foreground">{t(`field_${fact.field}`)}</dt><dd className="max-w-[65%] break-words text-right tabular-nums">{display(fact)}</dd>
    </div>)}</dl>}
    {card.withheld&&<p className="mt-3 text-xs text-muted-foreground">{t('withheld')}</p>}
-   {card.title.kind==='module'&&<a href={'/assistant?job='+card.title.module} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('open')}</a>}
-   {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('original')}</a>}
+   {card.title.kind==='module'&&card.linkPurpose!=='human_review'&&<a href={'/assistant?job='+card.title.module} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('open')}</a>}
+   {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(card.linkPurpose==='human_review'?'reviewAction':'original')}</a>}
   </Card>)}</div>
   {presentation.truncated&&<p className="text-sm text-muted-foreground">{t('truncated')}</p>}
   {['payroll','typed_pay_components'].includes(presentation.module)&&<p className="text-xs text-muted-foreground">{t('moneyNote')}</p>}

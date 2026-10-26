@@ -7,6 +7,8 @@ import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {createModuleAgentReaders} from '../core/module-agent-readers';
+import {toolsFor} from '../core/assistant-tools';
+import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import * as perf from '../packs/performance/service';
 import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
@@ -50,6 +52,14 @@ describe('current own Performance framework metadata',()=>{
  it('rechecks actual participation removal rather than falling back to the legacy shared header',async()=>{
   const [part]=await owner.db.select().from(schema.assessmentParticipationSnapshot).where(and(eq(schema.assessmentParticipationSnapshot.cycleId,cycleId),eq(schema.assessmentParticipationSnapshot.employmentId,subject.employmentId)));const config=await perf.getOnehrCycle(a,cycleId);await perf.setAssessmentParticipation(a,cycleId,config!.revision,subject.employmentId,part.revision,'remove');
   expect((await read()).rows.filter(row=>row.reviewId===reviewId)).toEqual([]);
+ });
+ it('returns closed human review directions through the actual Assistant tool without effects, and rechecks revocation',async()=>{
+  const tool=toolsFor(self).find(row=>row.spec.name==='my_module_work');if(!tool)throw Error('Missing canonical tool.');
+  const before=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.id);
+  const result=await tool.run(self,{module:'performance'});expect(result.ok).toBe(true);if(!result.ok)throw Error('Expected current canonical result.');expect(result.humanActions).toEqual(moduleHumanActionHandoffs('performance'));
+  expect(JSON.stringify(result.humanActions)).not.toMatch(/employmentId|personId|rating|reviewedDigest|eventId|confirmOwn/);
+  expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.id)).toEqual(before);
+  await revokeAssistant(a,{appUserId:self.userId!});await expect(tool.run(self,{module:'performance'})).rejects.toThrow();
  });
  it('rechecks module/login and Assistant revocation in the mounted module-read owner',async()=>{
   const view=await withTenant(self,tx=>createModuleAgentReaders(self,tx,()=>true).moduleWork('performance'));expect((view.data as Awaited<ReturnType<typeof read>>).rows.some(row=>row.reviewId===reviewId)).toBe(true);

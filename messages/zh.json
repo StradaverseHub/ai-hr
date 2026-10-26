@@ -16816,7 +16816,9 @@
         "state_manager": "主管",
         "state_report": "直属下属",
         "field_personCount": "此期间休假人数",
-        "field_approvedOnFromDate": "起始日期已批准休假人数"
+        "field_approvedOnFromDate": "起始日期已批准休假人数",
+        "reviewAction": "审核操作",
+        "humanReviewNote": "请在审核页面选择具体信息。打开页面不会提交申请或更改人事记录。"
       },
       "module_overview_label": "探索我的工作流程",
       "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",

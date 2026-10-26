@@ -960,7 +960,9 @@ const myModuleWork: AssistantTool = {
       'Approvals covers only your own leave decisions, not an assigned inbox. Notifications expose delivery status, not message facts. ' +
       'Readiness exposes gap codes, never identifiers. Performance exposes status, never ratings. Rewards exposes cycle status, never pay recommendations. ' +
       'Money is copied from released stored kernel results: never calculate or infer it. Empty/truncated data is scoped, never a tenant-wide claim. ' +
-      'Catalogue metadata does not establish independent quality evaluation or permission for another tool.',
+      'Catalogue metadata does not establish independent quality evaluation or permission for another tool. ' +
+      'humanActions contains only fixed pages for human selection and review, never effect permission. ' +
+      'Offer those pages when the user asks to act; never claim submission, fill HR facts or confirm for the human.',
     inputSchema: schema({ module: { type: 'string', enum: [...AGENT_MODULE_CODES] } }),
   },
   async run(ctx, input, readSession?: AssistantReadSession) {

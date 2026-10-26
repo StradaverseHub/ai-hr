@@ -3,7 +3,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en',data:{rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false} as unknown,fail:false}));
+const state=vi.hoisted(()=>({locale:'en',data:{rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false} as unknown,fail:false,tools:[] as unknown[]}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const name of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[name];
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
@@ -12,19 +12,22 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
 vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
 vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
-vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
+vi.mock('../core/assistant-tools',()=>({toolsFor:()=>state.tools}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>{
  if(state.fail)throw Error('PRIVATE_DATABASE_ERROR_BODY');const binding=MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)!;
  return {module,capability:binding[1],scope:'current-caller',data:state.data};
 }}))}));
 import {withAssistantRead} from '../core/assistant-read-session';
-import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
+import {loadCanonicalModuleJob,loadCanonicalToolJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer} from '../components/assistant/module-jobs';
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES} from '../lib/ai/module-agents';
+import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
+import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
+import type {AssistantReadSession} from '../core/assistant-read-session';
 import type {SessionContext} from '../db/client';
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
 const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]};
-beforeEach(()=>{vi.clearAllMocks();state.locale='en';state.fail=false;state.data={rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false};});
+beforeEach(()=>{vi.clearAllMocks();state.locale='en';state.fail=false;state.tools=[];state.data={rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false};});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('deterministic current-user job cards',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s presents meaningful canonical facts with accessible headings and refresh controls',async locale=>{
@@ -72,6 +75,13 @@ describe('deterministic current-user job cards',()=>{
   expect(entry.getAttribute('href')).toBe('/assistant/performance');expect(entry.parentElement?.textContent).toContain((copies[locale] as typeof en).assistant.workspace.jobs.module_performance);
   expect(visible.container.querySelectorAll('a[href^="/assistant?job="]')).toHaveLength(1);expect(withAssistantRead).not.toHaveBeenCalled();visible.unmount();
   render(await ModuleJobChooser({modules:['leave','ess']}));expect(screen.queryByRole('link',{name:copy.title})).toBeNull();
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s renders only a source-owned human handoff from the grounded chat path',async locale=>{
+  state.locale=locale;const outcome={ok:true as const,module:'leave',data:{rows:[],truncated:false},humanActions:moduleHumanActionHandoffs('leave')};
+  state.tools=[{spec:{name:'my_module_work'},module:null,sensitivity:'ordinary',run:async()=>outcome}];
+  const view=await loadCanonicalToolJob(ctx,'my_module_work',{module:'leave'},assistantSourceDigest(outcome),{} as AssistantReadSession),copy=(copies[locale] as typeof en).assistant.workspace.jobs;
+  const shown=render(await CanonicalModuleJob({view,ctx}));expect(screen.getByRole('link',{name:copy.reviewAction}).getAttribute('href')).toBe('/assistant/leave');expect(screen.getByText(copy.humanReviewNote)).toBeTruthy();expect(shown.container.querySelectorAll('form[method="post"]')).toHaveLength(0);shown.unmount();
+  render(await CanonicalModuleJob({view:JSON.parse(JSON.stringify(view)) as CanonicalModuleJobView,ctx}));expect(screen.queryByRole('link',{name:copy.reviewAction})).toBeNull();
  });
  it('refuses model-forged, serialized, cross-user and expired views before rendering their facts',async()=>{
   const issued=await loadCanonicalModuleJob(ctx,{module:'employees'});
