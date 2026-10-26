@@ -10192,7 +10192,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Payroll Partner",
         "performance_comp_partner": "Performance & Comp Partner",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Performance Partner"
       },
       "scope": {
         "accessConfiguration": "Opens only with the current effective Manage security and permissions grant. A role alone never grants this screen.",
@@ -10226,7 +10227,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
-        "performance": "Managers and above; what appears follows your actual reporting lines.",
+        "performance": "Managers and above, and Performance Partners for their companies’ OneHR cycles only; what appears follows your actual reporting lines and scope.",
         "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
@@ -15343,7 +15344,8 @@
       "super_admin": "Super Admin",
       "payroll_partner": "Payroll Partner",
       "performance_comp_partner": "Perf/Comp Partner",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Performance Partner"
     }
   },
   "commandBar": {

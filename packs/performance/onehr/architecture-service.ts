@@ -3,21 +3,24 @@ import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { type SessionContext, type Tx } from '../../../db/client';
-import { assignment, assessmentCareerProfile, department, employment, onehrCycle, onehrReview, person, position } from '../../../db/schema';
+import { assessmentCareerProfile, department, onehrCycle, onehrReview, person, position } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { loadAssessmentAdminCycleTx as load, auditAssessmentAdminTx as event } from './admin-context';
 import { importArchitecture, type architectureSheets } from './architecture-model';
 import { resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { careerSchema, policySchema, type Policy } from './model';
+import { onehrLabel } from './person-labels';
+import { onehrAssignment, onehrEmployment } from './employment-projection';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stableId=(cycleId:string,key:string)=>{const h=digest([cycleId,key]);return `${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
 async function save(tx:Tx,ctx:SessionContext,cycleId:string,revision:number,previous:Policy,policy:Policy){
- // Company and employment references must stay inside this administrator's native scope.
+ // Company and employment references must stay inside this administrator's native scope (employment through
+ // the OneHR projection, VF-07: HR reads its own rows, unchanged).
  for(const p of policy.profiles){
   if(p.companyId){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${p.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('A profile company is outside your scope.');}
-  for(const id of p.employmentIds??[]){const [e]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(eq(employment.id,id));if(!e||p.companyId&&e.companyId!==p.companyId)throw Error('A profile assignment is outside its company.');}
+  for(const id of p.employmentIds??[]){const [e]=await tx.select({id:onehrEmployment.id,companyId:onehrEmployment.companyId}).from(onehrEmployment).where(eq(onehrEmployment.id,id));if(!e||p.companyId&&e.companyId!==p.companyId)throw Error('A profile assignment is outside its company.');}
  }
  await publishAssessmentCatalogueTx(tx,ctx,cycleId,previous,policy);
  await tx.update(onehrCycle).set({policy,revision:revision+1}).where(eq(onehrCycle.cycleId,cycleId));
@@ -59,7 +62,9 @@ export async function setAssessmentCareerRoute(ctx:SessionContext,cycleId:string
 export async function generateAssessmentProfiles(ctx:SessionContext,cycleId:string,token?:string){
  return withPerformanceTenant(ctx,async tx=>{
   const v=await load(tx,cycleId);if(!v.policy.modules.tm)throw Error('Competency assessment is disabled.');
-  const reviews=await tx.select({row:onehrReview,name:person.fullName}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).innerJoin(person,eq(person.id,employment.personId)).where(eq(onehrReview.cycleId,cycleId)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
+  // ADR-0142: person row when readable (HR), else the label projection (performance partner); employment and
+  // assignment likewise through the OneHR projection views (VF-07).
+  const reviews=await tx.select({row:onehrReview,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id)}).from(onehrReview).innerJoin(onehrEmployment,eq(onehrEmployment.id,onehrReview.employmentId)).leftJoin(person,eq(person.id,onehrEmployment.personId)).where(and(eq(onehrReview.cycleId,cycleId),sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
   const report:{reviewId:string;name:string;profile:string|null;status:'assign'|'started'|'manual'|'empty'|'unmapped'|'not_part';count:number}[]=[],plans=new Map<string,{profileId:string;profileMatch:string;competencies:ReturnType<typeof technicalProfilePlan>}>();
   for(const {row:r,name} of reviews){
    const [guards]=await tx.execute<{self:boolean;participates:boolean;started:boolean}>(sql`select exists(select 1 from employment e where e.id=${r.employmentId}::uuid and app.is_self_person(e.person_id)) as self, app.assessment_review_participates(${r.reviewId}::uuid) as participates,app.assessment_competency_started(${r.reviewId}::uuid) as started`);
@@ -67,7 +72,7 @@ export async function generateAssessmentProfiles(ctx:SessionContext,cycleId:stri
    if(!guards.participates){report.push({...base,status:'not_part'});continue;}
    if(guards.self||r.profileMatch==='assigned'){report.push({...base,status:'manual'});continue;}
    if(guards.started){report.push({...base,status:'started'});continue;}
-   const [role]=await tx.select({department:department.name,title:position.title}).from(assignment).innerJoin(department,eq(department.id,assignment.departmentId)).leftJoin(position,eq(position.id,assignment.positionId)).where(and(eq(assignment.employmentId,r.employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${todayInKualaLumpur()}::date and (${assignment.validTo} is null or ${assignment.validTo}>${todayInKualaLumpur()}::date)`)).orderBy(desc(assignment.validFrom),asc(assignment.id)).limit(1);
+   const [role]=await tx.select({department:department.name,title:position.title}).from(onehrAssignment).innerJoin(department,eq(department.id,onehrAssignment.departmentId)).leftJoin(position,eq(position.id,onehrAssignment.positionId)).where(and(eq(onehrAssignment.employmentId,r.employmentId),isNull(onehrAssignment.supersededAt),sql`${onehrAssignment.validFrom}<=${todayInKualaLumpur()}::date and (${onehrAssignment.validTo} is null or ${onehrAssignment.validTo}>${todayInKualaLumpur()}::date)`)).orderBy(desc(onehrAssignment.validFrom),asc(onehrAssignment.id)).limit(1);
    const [career]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.employmentId));
    const picked=resolveTechnicalProfile(v.policy.profiles,{companyId:r.companyId,employmentId:r.employmentId,department:role?.department??'',title:role?.title??'',grade:r.grade},career?careerSchema.parse(career.career).selfProfileId:null);
    if(!picked){report.push({...base,status:'unmapped'});continue;}

@@ -80,6 +80,10 @@ export const roleEnum = pgEnum('role', [
   // policy forbids it for every branch, and core/auth.ts inviteUser() does not list it as invitable.
   // Only ai_hr_owner (seed / by hand on a deployment) creates an operator grant.
   'operator',
+  // ADR-0142 (0610/0611) — OneHR performance partner: administers OneHR-native assessment cycles in its
+  // company subtree WITHOUT any compensation, payroll, Rewards, HR or generic-cycle authority. Appended
+  // after operator because ALTER TYPE … ADD VALUE appends; enum order is NOT authority order (0312).
+  'performance_partner',
 ]);
 export const employmentTypeEnum = pgEnum('employment_type', PERSONNEL_EMPLOYMENT_TYPES);
 /**
@@ -664,7 +668,7 @@ export const appInvitation = pgTable(
     // database, the way role_assignment's check above does.
     check(
       'app_invitation_role_customer_set',
-      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner')`,
+      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner')`,
     ),
     // 0312 — the table-level mirror of role_assignment_super_admin_group_wide. Without it an
     // invitation for a company-scoped super_admin was writable and simply un-consumable.

@@ -10192,7 +10192,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Rakan Penggajian",
         "performance_comp_partner": "Rakan Prestasi & Pampasan",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Rakan Prestasi"
       },
       "scope": {
         "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses.",
@@ -10226,7 +10227,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
-        "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "performance": "Pengurus dan ke atas, serta Rakan Prestasi untuk kitaran OneHR syarikat mereka sahaja; apa yang dipaparkan mengikut garis pelaporan dan skop sebenar anda.",
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
@@ -15343,7 +15344,8 @@
       "super_admin": "Pentadbir Super",
       "payroll_partner": "Rakan Gaji",
       "performance_comp_partner": "Rakan Prestasi/Pampasan",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Rakan Prestasi"
     }
   },
   "commandBar": {

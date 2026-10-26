@@ -3494,6 +3494,20 @@
       "when": 1793023949843,
       "tag": "0620_onehr_panel_manager_anonymity",
       "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1793025815550,
+      "tag": "0610_performance_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1793025815551,
+      "tag": "0611_performance_partner_access",
+      "breakpoints": true
     }
   ]
 }

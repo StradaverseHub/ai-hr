@@ -89,3 +89,29 @@ export function withEffectiveGrants(s: SessionContext): SessionContext {
 export function isPerfCompPartner(s: SessionContext, companyId?: string | null): boolean {
   return hasGrantFor(s, 'performance_comp_partner', companyId);
 }
+
+/**
+ * ADR-0142 — who administers OneHR-NATIVE assessment cycles: the admin roles, the perf-comp partner and the
+ * OneHR performance partner. The TS mirror of app.assessment_admin_for (0611); the DB predicate is the
+ * authoritative backstop (live grants, subtree descendants). Deliberately a SEPARATE set: the performance
+ * partner is NOT in PERFCOMP_ROLES / PAYROLL_ROLES / ADMIN_ROLES, so canManagePerfComp, requirePerfCompAccess,
+ * canManagePayroll and isAdmin keep refusing it — generic cycles, merit, compensation, payroll and HR stay
+ * out of its reach. Resolved against `s.grants` (companyId-bearing), never the flattened `s.roles`.
+ */
+const ONEHR_ADMIN_ROLES = new Set([...PERFCOMP_ROLES, 'performance_partner']);
+
+/** Can administer OneHR-native assessment cycles for `companyId` (no companyId = any grant of the set). */
+export function canAdminOnehr(s: SessionContext, companyId?: string | null): boolean {
+  return !!s.grants?.some(
+    (g) => ONEHR_ADMIN_ROLES.has(g.role) && (companyId == null || g.companyId == null || g.companyId === companyId),
+  );
+}
+
+/**
+ * True when the session's ONLY route to performance administration is the OneHR performance partner: it
+ * can administer OneHR-native cycles but must not see generic cycles, merit, pending pay or the new-cycle
+ * form. A user who is also an admin or a perf-comp partner is never narrowed by this (union rule, ADR-0049).
+ */
+export function isOnehrOnlyPerformanceAdmin(s: SessionContext): boolean {
+  return hasGrantFor(s, 'performance_partner') && !isAdmin(s) && !canManagePerfComp(s);
+}

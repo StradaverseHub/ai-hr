@@ -26,6 +26,8 @@ const ROLES = [
   'super_admin',
   'payroll_partner',
   'performance_comp_partner',
+  // ADR-0142 — OneHR performance partner: company-scoped OneHR administration without compensation.
+  'performance_partner',
 ] as const;
 
 export default async function UsersPage({
