@@ -211,6 +211,9 @@ data directories are what the slow background drain is for.
 
 ## 7. Deploy
 
+Staging first; after staging acceptance, production waits for a subsequent explicit owner request.
+Follow the owner deployment rule in [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md).
+
 Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
 Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (gate receipt
 check; tsc; `rsync --delete`; `deploy.sh` on the box; marks the item deployed) — or

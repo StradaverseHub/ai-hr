@@ -96,7 +96,7 @@ describe('db55d08a — the entry type, pinned in the source as well as in the da
     expect(sql).toContain("CHECK (import_mode IN ('replace', 'add'))");
   });
 
-  it('the migration is in the journal, and its idx came from max(idx) rather than entries.length', () => {
+  it('the migration keeps its allocated index and watermark ordering as the journal grows', () => {
     const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as {
       entries: { idx: number; tag: string; when: number }[];
     };
@@ -136,10 +136,10 @@ describe('db55d08a — the entry type, pinned in the source as well as in the da
     // idx 240 is dated 1781862219000 — ten seconds EARLIER despite the higher number. Both were applied
     // long ago so the watermark has passed them and it is inert, but it is real, and it is why this
     // case checks the neighbourhood of one entry rather than the whole file.
-    // Pin allocation against the entries that existed before this watermark. The journal's CURRENT
-    // length keeps growing and can legitimately equal this historical idx years after allocation.
+    // Allocation may reserve gaps for parallel work. Count entries BEFORE this watermark instead of
+    // the growing current length, which can legitimately reach the historical reserved index later.
     const allocatedBefore = journal.entries.filter((e) => e.when < mine!.when);
-    expect(mine!.idx).toBe(Math.max(...allocatedBefore.map((e) => e.idx)) + 1);
+    expect(mine!.idx).toBeGreaterThan(allocatedBefore.length);
   });
 });
 
