@@ -6,7 +6,7 @@ import {readFileSync,constants} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {customerEnvironmentErrors} from '../../deploy/check-customer-env.mjs';
 import {STAGING_BUILD_RUNTIME as runtime} from './build-production.mjs';
-import {stagingProfileProbeCommand,validateStagingProfile} from './staging-preflight.mjs';
+import {stagingProfileProbeCommand,validateStagingProfile,DEPLOY_RUNTIME_SELECTION} from './staging-preflight.mjs';
 const fixture={NODE_ENV:'production',AUTH_PROVIDER:'internal',ALLOW_DEMO_SESSION:'false',AUTH_PUBLIC_ORIGIN:'https://hr.customer.org',AUTH_SESSION_KEY:'a'.repeat(64),AI_CONFIG_SECRET:'private-fixture-config-value',AUDIT_HASH_CHAIN_ENABLED:'true',DATABASE_URL:'postgres://ai_hr_app:private-fixture-db@127.0.0.1/hr',MIGRATION_DATABASE_URL:'postgres://ai_hr_owner:private-fixture-owner@127.0.0.1/hr'};
 function observe(changes={}){
  const command=stagingProfileProbeCommand(customerEnvironmentErrors),delimiter="<<'AIHR_PROFILE_PREFLIGHT_NODE'\n";
@@ -26,7 +26,7 @@ test('actual Node20/customer gap is reproduced before artifact or source work',(
 test('demo branch matches actual default deploy predicate and never grants release authority',()=>{
  const {command,report}=observe({ALLOW_DEMO_SESSION:'true'});assert.equal(report.profile,'demo');assert.equal(report.ok,true);assert.equal(report.releaseAuthorized,false);
  assert.equal(validateStagingProfile(report,customerEnvironmentErrors),report);
- assert(command.includes('set -a\n. ./.env.production\nset +a\n/opt/node20/bin/node'));assert(!command.includes('--env-file'));assert(!command.includes('deploy-state.sh'));
+ assert(command.includes('set -a\n. ./.env.production\nset +a\nnode'));assert(command.includes(DEPLOY_RUNTIME_SELECTION));assert(command.startsWith("bash -s <<'AIHR_PROFILE_PREFLIGHT_SHELL'"));assert(!command.includes('--env-file'));assert(!command.includes('deploy-state.sh'));
 });
 for(const [name,change] of [['unknown field',r=>r.secret='bad'],['wrong checker',r=>r.checkerSha256='f'.repeat(64)],['wrong native runtime',r=>r.runtime.abi='127'],['invented pass',r=>{r.errors=['actual refusal'];r.ok=true;}],['invented release',r=>r.releaseAuthorized=true],['unknown profile',r=>r.profile='bypass']])test('refuse '+name,()=>{const {report}=observe({ALLOW_DEMO_SESSION:'true'});change(report);assert.throws(()=>validateStagingProfile(report,customerEnvironmentErrors));});
 test('canonical operator awaits profile check before archive verifier and repeats it before launch',()=>{
@@ -35,3 +35,5 @@ test('canonical operator awaits profile check before archive verifier and repeat
  assert.equal(source.split(early).length,2);assert.equal(source.split(verify).length,2);assert(source.indexOf(early)>=0&&source.indexOf(early)<source.indexOf(verify));
  assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await revalidateCi(evidence);'));
 });
+
+test('runtime priority matches actual deploy Bash selection, including future installed runtimes',()=>{const source=readFileSync(new URL('../../deploy/deploy.sh',import.meta.url),'utf8');assert.equal(source.split(DEPLOY_RUNTIME_SELECTION).length,2);assert(DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node24/bin')<DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node22/bin'));assert(DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node22/bin')<DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node20/bin'));});
