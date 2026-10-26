@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      installer_repair_only:
+        description: Retest the one pinned failed negative fixture and execute previously unrun installer controls; original run stays FAIL
+        required: false
+        default: false
+        type: boolean
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -726,11 +731,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false, fetch-depth: 3}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Require an exact frozen filesystem-only selection
-        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}', GH_TOKEN: '${{ github.token }}'}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -741,11 +746,25 @@ jobs:
           assert(p.filesystem_activation_probe===true&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
           assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
           for(const [key,value]of Object.entries(p)){
-            if(['filesystem_activation_probe','candidate_ref','expected_sha'].includes(key))continue;
+            if(['filesystem_activation_probe','installer_repair_only','candidate_ref','expected_sha'].includes(key))continue;
             assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='', 'No unrelated diagnostic allowed: '+key);
+          }
+          if(p.installer_repair_only){
+            const original='a1c8157f729b603625b5d5de4900082bbc0212f9',runId=40268601211;
+            const changed=execFileSync('git',['diff','--name-only',original,e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+            assert.deepEqual(changed,['.github/ci/staging-cleanup-protocol.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+            const file='.github/ci/staging-cleanup-protocol.test.mjs';
+            const before=execFileSync('git',['show',original+':'+file],{encoding:'utf8'});
+            const after=execFileSync('git',['show',e.GITHUB_SHA+':'+file],{encoding:'utf8'});
+            assert.equal(after,before.replace("r=>r.witnessFingerprint='e'.repeat(64)","r=>r.witnessFingerprint='f'.repeat(64)"));
+            const api=path=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+path],{encoding:'utf8',timeout:15000}));
+            const originalRun=api('actions/runs/'+runId),artifact=api('actions/artifacts/12627347795');
+            assert(originalRun.head_sha===original&&originalRun.run_attempt===1&&originalRun.status==='completed'&&originalRun.conclusion==='failure'&&originalRun.repository.id===1333414856);
+            assert(artifact.id===12627347795&&artifact.expired===false&&artifact.workflow_run.id===runId&&artifact.workflow_run.head_sha===original&&artifact.digest==='sha256:24a9baef791e18f24867abbcc68f8dde204f9c4eed7228ede6f180f6064f7ef5');
           }
           NODE
       - name: Actual private Linux exchanges and strict fake staging transport
+        if: ${{ !inputs.installer_repair_only }}
         run: |
           set -euo pipefail
           python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
@@ -754,7 +773,11 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/deploy.sh
-          node --test --test-reporter=spec .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          if [ "${{ inputs.installer_repair_only }}" = "true" ]; then
+            node --test --test-reporter=spec --test-name-pattern="^owned cleanup requires the actual empty checksum output, fresh observation and exact original build tuple$" .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          else
+            node --test --test-reporter=spec .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          fi
           python3 .github/ci/cleanup-install.test.py -v 2>&1 | tee "$RUNNER_TEMP/cleanup-install.log"
           node --test --test-reporter=spec .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-ci-promotion.log"
           node --test --test-reporter=spec .github/ci/staging-build-install.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-build-install.log"
