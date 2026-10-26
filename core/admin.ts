@@ -625,9 +625,12 @@ export async function createDepartment(
   ctx: SessionContext,
   p: { companyId: string; name: string; parentDepartmentId?: string; businessUnitId?: string | null; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Department name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Belt-and-braces (mirrors the RLS clamp in app.heads_department_of, migration 0121): a parent
     // department must belong to the SAME company, so a cross-company department tree — which would leak
     // employees across companies to a HOD of the parent — can never be built in the first place.
@@ -671,9 +674,12 @@ export async function createPosition(
   ctx: SessionContext,
   p: { companyId: string; title: string; jobFamily?: string; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(position)
       .values({ tenantId: ctx.tenantId, companyId: p.companyId, title, jobFamily: p.jobFamily?.trim() || null, description })
@@ -698,10 +704,13 @@ export async function createCostCenter(
   ctx: SessionContext,
   p: { companyId: string; code: string; name: string; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const code = cleanName(p.code, 'Cost-center code');
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(costCenter)
       .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, description })
@@ -729,10 +738,13 @@ export async function createBusinessUnit(
   ctx: SessionContext,
   p: { companyId: string; code: string; name: string; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(businessUnit)
       .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, description })
@@ -2591,10 +2603,13 @@ export async function updateDepartment(
   ctx: SessionContext,
   p: { id: string; name: string; businessUnitId?: string | null; headEmploymentId?: string | null; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Department name');
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
     // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
@@ -2629,7 +2644,10 @@ export async function updateDepartment(
   });
 }
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active department with this name already exists — rename it before unarchiving.');
@@ -2639,7 +2657,10 @@ export function archiveDepartment(ctx: SessionContext, p: { id: string; archived
   });
 }
 export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.departmentId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('department');
@@ -2649,9 +2670,12 @@ export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
 }
 
 export async function updatePosition(ctx: SessionContext, p: { id: string; title: string; jobFamily?: string; description?: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null, description }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
@@ -2661,7 +2685,10 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
   });
 }
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
@@ -2671,7 +2698,10 @@ export function archivePosition(ctx: SessionContext, p: { id: string; archived: 
   });
 }
 export async function deletePosition(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.positionId, p.id));
     if ((u?.n ?? 0) > 0) throw new InUseError('position');
@@ -2681,10 +2711,13 @@ export async function deletePosition(ctx: SessionContext, p: { id: string }) {
 }
 
 export async function updateCostCenter(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const code = cleanName(p.code, 'Cost-center code');
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ code, name, description }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
@@ -2694,7 +2727,10 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
   });
 }
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active cost center with this code already exists — change it before unarchiving.');
@@ -2704,7 +2740,10 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
   });
 }
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [allocated]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_label_in_use(${p.id}::uuid) as used`);
     if(allocated?.used)throw new InUseError('cost center allocation; archive the label to retain its history');
@@ -2719,10 +2758,13 @@ export async function updateBusinessUnit(
   ctx: SessionContext,
   p: { id: string; code: string; name: string; headEmploymentId?: string | null; description?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
     const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
@@ -2747,7 +2789,10 @@ export async function updateBusinessUnit(
   });
 }
 export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(businessUnit).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active business unit with this code already exists — change it before unarchiving.');
