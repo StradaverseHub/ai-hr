@@ -14,3 +14,15 @@ export const ModuleActionCompletedReceipt=z.object({action:z.literal(MODULE_NOTI
  semantics:z.literal('recorded_effect_current_values')}).strict();
 export const ModuleActionRetiredReceipt=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
 export const ModuleActionReviewIndexResult=z.object({kind:z.literal('module_review_index'),reviews:z.array(z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),actionId:z.uuid(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.actionId)).size===rows.length)}).strict();
+
+/** ESS source support is closed and unmounted; existing notification HTTP contracts above stay
+ * unchanged. Native policy/source fingerprints are encrypted only, never public confirmation data. */
+import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeHumanContent} from './own-profile-change-contract';
+export const ProfileModuleActionPrepare=OwnProfileChangeHumanContent;
+export const ProfileModuleActionConfirmation=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+export const ProfileModuleActionPreparedReview=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
+ createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OwnProfileChangeHumanContent,consequence:z.literal('request_hr_review')}).strict();
+export const ProfileModuleActionCompletedReceipt=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),
+ requestId:z.uuid(),requestedEventId:z.uuid(),employmentId:z.uuid(),currentStatus:z.enum(['pending','approved','rejected']),semantics:z.literal('submitted_not_approved')}).strict();
+export const ProfileModuleActionRetiredReceipt=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
+export const ProfileModuleActionReviewIndexResult=z.object({kind:z.literal('profile_module_review_index'),reviews:z.array(z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),actionId:z.uuid(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.actionId)).size===rows.length)}).strict();

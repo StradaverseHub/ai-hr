@@ -3,7 +3,7 @@
 -- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
- action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save')),
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
@@ -15,11 +15,14 @@ CREATE TABLE app.assistant_own_leave_review (
  CHECK(CASE WHEN state='awaiting_confirmation' THEN intent_digest IS NOT NULL AND reviewed_digest IS NOT NULL
   ELSE intent_digest IS NULL AND reviewed_digest IS NULL END),
  leave_request_id uuid UNIQUE,submission_event_id uuid UNIQUE,
- notification_event_id uuid UNIQUE,
- CHECK(CASE WHEN action_kind='leave.apply' THEN notification_event_id IS NULL
+ notification_event_id uuid UNIQUE,profile_request_id uuid UNIQUE,profile_requested_event_id uuid UNIQUE,
+ CHECK(CASE WHEN action_kind='leave.apply' THEN notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL
   AND ((state='completed')=(leave_request_id IS NOT NULL AND submission_event_id IS NOT NULL))
-  ELSE leave_request_id IS NULL AND submission_event_id IS NULL
-   AND ((state='completed')=(notification_event_id IS NOT NULL)) END),
+  WHEN action_kind='notifications.email_preferences.save' THEN leave_request_id IS NULL AND submission_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL
+   AND ((state='completed')=(notification_event_id IS NOT NULL))
+  ELSE leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL
+   AND ((state='completed')=(profile_request_id IS NOT NULL AND profile_requested_event_id IS NOT NULL)) END),
+ CHECK((profile_request_id IS NULL)=(profile_requested_event_id IS NULL)),
  CHECK((leave_request_id IS NULL)=(submission_event_id IS NULL)),
  created_at timestamptz NOT NULL,expires_at timestamptz NOT NULL CHECK(expires_at>created_at)
 );
@@ -385,9 +388,10 @@ CREATE FUNCTION app._assistant_module_action_review_json(p_id uuid) RETURNS json
   'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
   'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object(
    'formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
-  'eventId',r.notification_event_id)
+  'eventId',CASE WHEN r.action_kind='ess.profile.request' THEN r.profile_requested_event_id ELSE r.notification_event_id END)
+  ||CASE WHEN r.action_kind='ess.profile.request' THEN jsonb_build_object('requestId',r.profile_request_id) ELSE '{}'::jsonb END
  FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id
- WHERE r.id=p_id AND r.action_kind='notifications.email_preferences.save';
+ WHERE r.id=p_id AND r.action_kind IN ('notifications.email_preferences.save','ess.profile.request');
 $$;
 REVOKE ALL ON FUNCTION app._assistant_module_action_review_json(uuid) FROM PUBLIC,ai_hr_app;
 
@@ -397,7 +401,7 @@ CREATE FUNCTION app.assistant_module_action_review_prepare(p_kind text,p_id uuid
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE at_time timestamptz;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
 BEGIN
- IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF p_kind IS NULL OR p_kind NOT IN ('notifications.email_preferences.save','ess.profile.request') THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(p_person,p_employment,p_company);
  -- A preparation in the same privacy-erasure transaction must not create new uncaptured private text.
  IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
@@ -436,7 +440,7 @@ CREATE FUNCTION app.assistant_module_action_review_subject(p_id uuid,p_kind text
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
 BEGIN
- IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF p_kind IS NULL OR p_kind NOT IN ('notifications.email_preferences.save','ess.profile.request') THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
  IF t IS NULL OR u IS NULL THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind=p_kind;
@@ -452,7 +456,7 @@ CREATE FUNCTION app.assistant_module_action_review_read(p_id uuid,p_kind text,p_
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
 BEGIN
- IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF p_kind IS NULL OR p_kind NOT IN ('notifications.email_preferences.save','ess.profile.request') THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
  IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
   OR current_setting('transaction_read_only')<>'off' THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
@@ -544,3 +548,61 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_module_action_reviews_index() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_module_action_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
+-- ESS uses the SAME physical custody/lifecycle. Only canonical request/event REFERENCES survive
+-- completion; no proposal, native source fingerprint or private fields enter terminal metadata.
+CREATE FUNCTION app.assistant_profile_action_review_complete(p_id uuid,p_reviewed_digest text,p_request uuid,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND action_kind='ess.profile.request' AND tenant_id=t AND user_id=u FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
+ IF p_request IS NULL OR p_event IS NULL THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='completed' THEN
+  IF r.profile_request_id IS DISTINCT FROM p_request OR r.profile_requested_event_id IS DISTINCT FROM p_event THEN
+   RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.profile_change_request q JOIN public.employment e ON e.id=q.employment_id AND e.tenant_id=q.tenant_id
+   JOIN public.domain_event d ON d.id=p_event AND d.tenant_id=q.tenant_id AND d.aggregate_type='profile-change' AND d.aggregate_id=q.id
+    AND d.event_type='profile-change.requested' AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id=q.employment_id
+   WHERE q.id=p_request AND q.tenant_id=t AND q.person_id=r.person_id AND q.employment_id=r.employment_id AND q.status='pending'
+    AND e.person_id=r.person_id AND e.company_id=r.company_id AND d.payload->>'employmentId'=r.employment_id::text
+    AND jsonb_typeof(d.payload->'fields')='array' AND jsonb_array_length(d.payload->'fields') BETWEEN 1 AND 4224
+    AND q.xmin=pg_current_xact_id()::xid AND d.xmin=pg_current_xact_id()::xid) THEN
+   RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+  UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',profile_request_id=p_request,profile_requested_event_id=p_event WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_module_action_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_profile_action_review_complete(uuid,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_profile_action_review_complete(uuid,text,uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_profile_action_reviews_index()
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();p uuid;at_time timestamptz;
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' THEN
+  RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ SELECT a.person_id INTO p FROM public.app_user a JOIN public.person actual ON actual.id=a.person_id AND actual.tenant_id=a.tenant_id
+ WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id);
+ IF p IS NULL THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ at_time:=clock_timestamp();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=t AND r.user_id=u AND r.person_id=p AND r.action_kind='ess.profile.request'
+   AND r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time
+  ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_profile_action_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_profile_action_reviews_index() TO ai_hr_app;
