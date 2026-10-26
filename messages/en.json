@@ -16619,7 +16619,8 @@
         "findingsScope": "These notes explain current records you are allowed to see. They do not reconstruct hidden data or replace native validation.",
         "signalsTitle": "Choose feedback to include",
         "signalsConsent": "Optional: choose up to ten of your verified feedback items for the same module selected above. Ratings suggest improvements; they do not prove correctness.",
-        "signalsTruncated": "Only a bounded recent selection is shown; this is not your complete feedback history."
+        "signalsTruncated": "Only a bounded recent selection is shown; this is not your complete feedback history.",
+        "evaluationsUnknown": "Evaluation evidence is unavailable or no longer current."
       },
       "specialistFindings": {
         "scope_current_caller": "These notes use only the current records available to you.",

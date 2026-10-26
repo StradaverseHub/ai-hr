@@ -16619,7 +16619,8 @@
         "findingsScope": "Nota ini menerangkan rekod semasa yang boleh anda lihat. Ia tidak membina semula data tersembunyi atau menggantikan pengesahan asal.",
         "signalsTitle": "Pilih maklum balas untuk disertakan",
         "signalsConsent": "Pilihan: pilih sehingga sepuluh maklum balas anda yang telah disahkan untuk modul yang sama seperti dipilih di atas. Penarafan mencadangkan penambahbaikan; ia tidak membuktikan ketepatan.",
-        "signalsTruncated": "Hanya pilihan terkini yang terhad dipaparkan; ini bukan keseluruhan sejarah maklum balas anda."
+        "signalsTruncated": "Hanya pilihan terkini yang terhad dipaparkan; ini bukan keseluruhan sejarah maklum balas anda.",
+        "evaluationsUnknown": "Bukti penilaian tidak tersedia atau tidak lagi terkini."
       },
       "specialistFindings": {
         "scope_current_caller": "Nota ini hanya menggunakan rekod semasa yang boleh anda akses.",

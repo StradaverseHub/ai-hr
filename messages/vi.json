@@ -16619,7 +16619,8 @@
         "findingsScope": "Các ghi chú giải thích hồ sơ hiện tại bạn được phép xem, không tái dựng dữ liệu bị ẩn hay thay thế xác thực trong quy trình gốc.",
         "signalsTitle": "Chọn phản hồi để đưa vào",
         "signalsConsent": "Không bắt buộc: chọn tối đa mười phản hồi đã được xác minh của chính bạn cho cùng mô-đun đã chọn ở trên. Xếp hạng gợi ý cải tiến, không chứng minh tính đúng đắn.",
-        "signalsTruncated": "Chỉ hiển thị một tập phản hồi gần đây có giới hạn; đây không phải toàn bộ lịch sử phản hồi của bạn."
+        "signalsTruncated": "Chỉ hiển thị một tập phản hồi gần đây có giới hạn; đây không phải toàn bộ lịch sử phản hồi của bạn.",
+        "evaluationsUnknown": "Bằng chứng đánh giá không khả dụng hoặc không còn cập nhật."
       },
       "specialistFindings": {
         "scope_current_caller": "Các ghi chú này chỉ dùng những hồ sơ hiện tại mà bạn được phép xem.",

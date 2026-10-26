@@ -22,7 +22,7 @@ export async function SpecialistJobComposer({modules}:{modules:readonly AgentMod
 /** Only source-owned group-admin metadata reaches these management forms. No posted score is used. */
 export async function ModuleSpecialistReview({view}:{view:View}){
  const t=await getTranslations('assistant.workspace.specialists'),jobs=await getTranslations('assistant.workspace.jobs'),signals=await getTranslations('assistant.workspace.governed');
- const reviewable=view.candidates.filter(row=>!row.own),promotable=reviewable.filter(row=>row.passingEvaluators>=2),active=view.promotions.filter(row=>!row.retired);
+ const reviewable=view.candidates.filter(row=>!row.own),promotable=reviewable.filter(row=>(row.passingEvaluators??0)>=2),active=view.promotions.filter(row=>!row.retired);
  const record=(row:{module:AgentModuleCode;version:number})=>t('record',{module:jobs(`module_${row.module}`),version:row.version});
  return <Card className="p-5"><details><summary className="min-h-11 cursor-pointer text-sm font-medium">{t('title')}</summary>
   <div className="mt-3 space-y-5"><p className="text-xs text-muted-foreground">{t('intro')}</p>
@@ -37,7 +37,7 @@ export async function ModuleSpecialistReview({view}:{view:View}){
     <button type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    {view.candidates.length?<ul className="space-y-3">{view.candidates.map(row=><li key={row.id} className="rounded-lg border p-3 text-sm">
-    <p className="font-medium">{record(row)}</p><p className="mt-1 text-xs text-muted-foreground">{t('evaluations',{count:row.evaluations})} · {t('passing',{count:row.passingEvaluators})} · {t('incomplete',{count:row.incompleteEvaluators})}</p>
+    <p className="font-medium">{record(row)}</p><p className="mt-1 text-xs text-muted-foreground">{row.evaluations===null||row.passingEvaluators===null||row.incompleteEvaluators===null?t('evaluationsUnknown'):<>{t('evaluations',{count:row.evaluations})} · {t('passing',{count:row.passingEvaluators})} · {t('incomplete',{count:row.incompleteEvaluators})}</>}</p>
    </li>)}</ul>:<p className="text-sm text-muted-foreground">{t('empty')}</p>}
    {reviewable.length>0&&<form action={evaluateSpecialistCandidateAction} className="space-y-3">
     <label className="block text-sm">{t('chooseCandidate')}<select name="candidateId" required className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{record(row)}</option>)}</select></label>

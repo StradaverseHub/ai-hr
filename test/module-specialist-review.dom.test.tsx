@@ -36,4 +36,9 @@ describe('specialist human governance presentation',()=>{
  it('does not offer specialist execution when no module is available',async()=>{
   render(await SpecialistJobComposer({modules:[]}));expect(screen.getByRole('button')).toBeDisabled();
  });
+ it('shows unavailable evaluation evidence as unknown rather than zero or a promotion pass',async()=>{
+  const v={...view(),candidates:view().candidates.map(row=>({...row,evaluations:null,passingEvaluators:null,incompleteEvaluators:null}))};
+  const{container}=render(await ModuleSpecialistReview({view:v}));expect(screen.getAllByText('assistant.workspace.specialists.evaluationsUnknown')).toHaveLength(3);
+  expect(container.querySelectorAll('select[name="candidateId"]')).toHaveLength(1);expect(screen.queryByText(/specialists\.passing/)).toBeNull();
+ });
 });

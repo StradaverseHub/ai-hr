@@ -16619,7 +16619,8 @@
         "findingsScope": "这些说明解释您当前获准查看的记录，不会还原隐藏数据，也不代替原有验证。",
         "signalsTitle": "选择要纳入的反馈",
         "signalsConsent": "可选：为上方所选的同一模块，选择最多十项您本人已核验的反馈。评分可用于提出改进建议，但不能证明结果正确。",
-        "signalsTruncated": "仅显示近期反馈的有限选项，并非您的完整反馈历史。"
+        "signalsTruncated": "仅显示近期反馈的有限选项，并非您的完整反馈历史。",
+        "evaluationsUnknown": "评估证据不可用或已不再有效。"
       },
       "specialistFindings": {
         "scope_current_caller": "这些说明仅使用您当前获准查看的记录。",
