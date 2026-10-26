@@ -290,7 +290,7 @@ BEGIN
    THEN RAISE EXCEPTION 'Invalid letter presentation' USING ERRCODE='check_violation';END IF;
    IF NOT app.letter_permission_for_user((NEW.presentation->>'signatoryUserId')::uuid,NEW.company_id,'approve')
     OR NOT app.letter_permission_for_user((NEW.presentation->>'signatoryUserId')::uuid,NEW.company_id,'read')
-    OR (NEW.presentation->>'letterheadAssetId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_asset a WHERE a.id=(NEW.presentation->>'letterheadAssetId')::uuid AND a.tenant_id=NEW.tenant_id AND a.company_id=NEW.company_id AND a.kind='letterhead'))
+    OR (NEW.presentation->>'letterheadAssetId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_asset head_asset WHERE head_asset.id=(NEW.presentation->>'letterheadAssetId')::uuid AND head_asset.tenant_id=NEW.tenant_id AND head_asset.company_id=NEW.company_id AND head_asset.kind='letterhead'))
    THEN RAISE EXCEPTION 'Letter presentation identity mismatch' USING ERRCODE='check_violation';END IF;
   END IF;
  ELSIF TG_TABLE_NAME='letter_template_field' THEN
