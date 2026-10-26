@@ -52,7 +52,7 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       case 'employees': data = bounded((await own()).map(row => ({ employmentId: row.employmentId, employeeCode: row.employeeCode,
         company: row.company, hiredOn: row.hiredOn, terminatedOn: row.terminatedOn, status: row.status }))); break;
       case 'org': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,
-        reportingLines: (await reads.reportingLinesFor(fresh, row.employmentId, tx)).map(line => ({ lineType: line.lineType, name: line.name, employeeCode: line.employeeCode })) })))); break;
+        reportingLines: (await reads.reportingLinesFor(fresh, row.employmentId, tx)).managers.map(line => ({ lineType: line.lineType, name: line.name, employeeCode: line.employeeCode })) })))); break;
       case 'leave': data = bounded(await Promise.all((await own()).map(async row => ({ employmentId: row.employmentId,
         balances: (await reads.leaveBalances(fresh, row.employmentId, undefined, { includeArchived: false }, tx)).map(balance => ({ leaveTypeId: balance.leaveTypeId, leaveType: balance.leaveType, accrued: balance.accrued, taken: balance.taken, pending: balance.pending, balance: balance.balance, available: balance.available })) })))); break;
       case 'ess': data = await ready(false); break;

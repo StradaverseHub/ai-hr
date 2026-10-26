@@ -40,9 +40,9 @@ export async function executeRoutingHoldout(configuration: unknown, read: Assist
   }
   record('candidate-was-exercised', changedOrder, false);
   const plan = captureTypedModulePlan({ version: 1, modules: ['ess','employees'] });
-  const baseline = [];
+  const baseline: Awaited<ReturnType<AssistantReadSession['moduleWork']>>[] = [];
   for (const module of plan.modules) baseline.push(await read.moduleWork(module));
-  const exercised = [];
+  const exercised: Awaited<ReturnType<AssistantReadSession['moduleWork']>>[] = [];
   for (const module of applyTypedRouteCandidate(candidate, plan).modules) exercised.push(await read.moduleWork(module));
   const normalize = (rows: typeof baseline) => [...rows].sort((a,b) => a.module.localeCompare(b.module));
   record('actual-canonical-data-preserved', assistantSourceDigest(normalize(baseline)) === assistantSourceDigest(normalize(exercised)), false);
