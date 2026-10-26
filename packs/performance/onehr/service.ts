@@ -32,6 +32,7 @@ import { actorOf, appendEvent } from '../../../db/events';
 import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark, assessmentTalentRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import {assertAiPrincipalTx} from '../../../core/ai-principal';
+import {lockAccessConfigurationTx} from '../../../core/access-configuration-lock';
 import {assertAssignedWorkPrincipalTx} from '../../../core/approvals';
 import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { assessmentAiStateTx } from './ai-settings';
@@ -1078,8 +1079,38 @@ export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,e
     const goals=z.array(goalSchema).parse(plan.goals);if(!goals.some(g=>g.id===goalId))throw Error('Goal not found.');const previous=goals.find(g=>g.id===goalId)!.status;
     await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?{...g,status,progressNote,progressAt:now,checkins:[...(g.checkins??[]),{status,note:progressNote,at:now}]}:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'goal-progress-updated',{goalId,previous,status,note:progressNote,reviewId:r.row.reviewId});});
 }
-export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number) {
-  uuid.parse(planId);return withPerformanceTenant(ctx,async tx=>{const [p]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!p||!await isSelf(tx,p.employmentId))throw Error('Plan not found.');revision(p.revision,expected);if(p.status!=='closed')throw Error('A recorded career conversation is required.');await tx.update(onehrPlan).set({acknowledgedAt:new Date(),revision:p.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'plan-acknowledged');});
+/** Minimal own-plan facts for an explicit acknowledgement. The native permission is current self,
+ * exact revision and closed plan; it deliberately does not infer approval of ratings or add a new
+ * cycle/work-window decision. Caller owns Access before protected subject reads. */
+async function ownOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,planId:string,noWait:boolean){
+ uuid.parse(planId);assertModuleEnabled(ctx,'performance');
+ const query=tx.select({planId:onehrPlan.id,reviewId:onehrPlan.reviewId,employmentId:onehrPlan.employmentId,planYear:onehrPlan.planYear,
+  status:onehrPlan.status,planRevision:onehrPlan.revision,acknowledgedAt:onehrPlan.acknowledgedAt,conversationHeldOn:onehrPlan.conversationHeldOn,planVersion:sql<string>`${onehrPlan}.xmin::text`})
+  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId)));
+ const [plan]=await(noWait?query.for('update',{noWait:true}):query.for('update'));if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');return plan;
+}
+export async function readOwnOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,planId:string){return ownOnehrPlanAcknowledgementSourceTx(tx,ctx,planId,true);}
+export type ReviewedOnehrPlanAcknowledgement={employmentId:string;planVersion:string};
+/** Same canonical human operation. Reviewed source metadata is refusal-only. Ordinary calls retain
+ * the legacy empty payload/null subject audit and void public API. The reviewed-only native event
+ * carries safe revision/time metadata and own subject, enabling exact terminal reconciliation. */
+export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,reviewed?:ReviewedOnehrPlanAcknowledgement){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const plan=await ownOnehrPlanAcknowledgementSourceTx(tx,ctx,id,Boolean(checked));revision(plan.planRevision,expectedRevision);
+ if(checked&&(checked.employmentId!==plan.employmentId||checked.planVersion!==plan.planVersion||plan.acknowledgedAt!==null))throw Error('This record changed. Reload before saving.');
+ if(plan.status!=='closed')throw Error('A recorded career conversation is required.');
+ const acknowledgedAt=new Date(),planRevision=plan.planRevision+1;
+ await tx.update(onehrPlan).set({acknowledgedAt,revision:planRevision}).where(eq(onehrPlan.id,id));
+ let eventId:string|null=null;
+ if(checked)eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:id,eventType:'onehr.plan-acknowledged',actor:actorOf(ctx),subjectEmploymentId:plan.employmentId,
+  payload:{version:1,planRevision,acknowledgedAt:acknowledgedAt.toISOString()}},{returnId:true});
+ else await audit(tx,ctx,id,'plan-acknowledged');
+ return {planId:id,employmentId:plan.employmentId,reviewId:plan.reviewId,planRevision,acknowledgedAt,eventId};
+}
+export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number):Promise<void> {
+ const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},id=planId,expectedRevision=expected;uuid.parse(id);
+ await withPerformanceTenant(current,tx=>acknowledgeOnehrPlanTx(tx,current,id,expectedRevision));
 }
 export async function reopenAssessmentPlan(ctx:SessionContext,planId:string,expected:number){
  uuid.parse(planId);
