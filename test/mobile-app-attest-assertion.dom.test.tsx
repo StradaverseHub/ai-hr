@@ -35,6 +35,13 @@ describe('server App Attest assertion proof checker',()=>{
     expect(checkAppAttestAssertion({...synthetic(0x80000000),previousCounter:0x7fffffff})).toEqual({nextCounter:0x80000000});
     expect(checkAppAttestAssertion(synthetic(0xffffffff))).toEqual({nextCounter:0xffffffff});
   });
+  it('does not accept or advance a forged larger counter with the old signature',()=>{
+    const original=reference(),decoded=decodeFirstSync(original.assertion);
+    const auth=Buffer.from(decoded.authenticatorData);auth.writeUInt32BE(0xffffffff,33);
+    reason(()=>checkAppAttestAssertion({...original,assertion:encode({...decoded,authenticatorData:auth})}),'invalid_signature');
+    expect(original.previousCounter).toBe(0);
+    expect(checkAppAttestAssertion(original)).toEqual({nextCounter:1});
+  });
   it('requires an explicit stored counter and a P-256 public key, never a supplied private or other-curve key',()=>{
     const original=reference(),pair=generateKeyPairSync('ec',{namedCurve:'secp384r1'});
     for(const previousCounter of [undefined,-1,0.5,NaN,0x100000000])reason(()=>checkAppAttestAssertion({...original,previousCounter:previousCounter as number}),'invalid_configuration');

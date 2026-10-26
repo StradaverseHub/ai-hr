@@ -1,4 +1,5 @@
 /** Low-level App Attest assertion checks, never an enrollment or attendance verdict. */
+import 'server-only';
 import {createHash,KeyObject,timingSafeEqual,verify} from 'node:crypto';
 import {decodeFirstSync} from 'cbor';
 
@@ -6,7 +7,7 @@ type Reason='malformed'|'invalid_configuration'|'invalid_key'|'wrong_app'|'repla
 export class AppAttestAssertionError extends Error{
   constructor(readonly reason:Reason){super('App Attest assertion check failed');this.name='AppAttestAssertionError';}
 }
-const fail=(reason:Reason):never=>{throw new AppAttestAssertionError(reason);};
+function fail(reason:Reason):never{throw new AppAttestAssertionError(reason);}
 // Preserve every semantic tag as Tagged rather than executing the decoder's tag conversions.
 const tags=new Proxy(Object.create(null),{get:()=>null});
 const hash=(data:Buffer)=>createHash('sha256').update(data).digest();
@@ -36,6 +37,8 @@ export function checkAppAttestAssertion(input:{assertion:Buffer;clientData:Buffe
   if(!timingSafeEqual(hash(Buffer.from(appId,'utf8')),auth.subarray(0,32)))fail('wrong_app');
   const nextCounter=auth.readUInt32BE(33);
   if(nextCounter<=previousCounter)fail('replayed_counter');
+  // Apple's nonce is hashed once here; ECDSA-with-SHA256 verifies that nonce as its message.
+  // Do not try alternate hash constructions when verification fails.
   const nonce=hash(Buffer.concat([auth,hash(clientData)]));
   let valid=false;
   try{valid=verify('sha256',nonce,{key:publicKey,dsaEncoding:'der'},signature);}catch{}
