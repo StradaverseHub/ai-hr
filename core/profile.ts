@@ -1,3 +1,7 @@
+import {createHash} from 'node:crypto';
+import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
+import {getSetting} from './entitlements';
+import {assertAiPrincipalTx} from './ai-principal';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
@@ -41,7 +45,7 @@ import { isCalendarDate } from '../lib/calendar-date';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
+import { company,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
@@ -353,14 +357,8 @@ export async function updateOwnContact(
 /** New submissions use the versioned owner exclusively; stored legacy requests retain decisions/history.
  * The current owner validates exact subject, policy, baselines, options and effective writer behavior.
  */
-export async function requestProfileChange(
-  ctx:SessionContext,
-  p:{employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal},
-  outerTx?:Tx,
-){
- p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- if(!ctx.personId)throw new EssProfileError('permission');
- const run=async(tx:Tx)=>{
+type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal};
+async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
   const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
@@ -372,16 +370,79 @@ export async function requestProfileChange(
   const proposed=checked.proposal;
   const route=await resolveProfileRouteTx(tx,ctx,p.employmentId);
   if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
+  return {ctx,policy,checked,proposed,route};
+}
+export type CanonicalOwnProfileChangeReview={employmentId:string;proposal:EssProfileProposal;reviewedDigest:string};
+async function canonicalProfileChangeReviewTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareProfileChangeRequestTx>>):Promise<CanonicalOwnProfileChangeReview>{
+ const {ctx,policy,checked,proposed,route}=prepared;
+ if(!ownProfileProposalIsIntact(proposed,policy.visible))throw new EssProfileError('fieldClosed');
+ // Only safe row-version metadata enters the source fingerprint. Never hash a hidden current
+ // bank/identity/salary value into a client-review token. The canonical validator retains its locks.
+ const [versions]=await tx.select({employment:sql<string>`${employment}.xmin::text`,person:sql<string>`${person}.xmin::text`,company:sql<string>`${company}.xmin::text`}).from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.id,checked.subject.id),eq(employment.tenantId,ctx.tenantId),eq(person.id,ctx.personId!))).limit(1);
+ if(!versions)throw new EssProfileError('unavailable');
+ const dependentVersions=checked.rows.dependents.length?await tx.select({id:employeeDependent.id,revision:sql<string>`xmin::text`}).from(employeeDependent).where(inArray(employeeDependent.id,checked.rows.dependents.map(row=>row.id))).orderBy(employeeDependent.id):[];
+ const qualificationVersions=checked.rows.qualifications.length?await tx.select({id:employeeQualification.id,revision:sql<string>`xmin::text`}).from(employeeQualification).where(inArray(employeeQualification.id,checked.rows.qualifications.map(row=>row.id))).orderBy(employeeQualification.id):[];
+ const emergencyVersions=checked.rows.emergency.length?await tx.select({id:personEmergencyContact.id,revision:sql<string>`xmin::text`}).from(personEmergencyContact).where(inArray(personEmergencyContact.id,checked.rows.emergency.map(row=>row.id))).orderBy(personEmergencyContact.id):[];
+ if(dependentVersions.length!==checked.rows.dependents.length||qualificationVersions.length!==checked.rows.qualifications.length||emergencyVersions.length!==checked.rows.emergency.length)throw new EssProfileError('unavailable');
+ const projection=projectOwnProfileProposal(proposed,policy.visible) as EssProfileProposal;
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-profile-change-request:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:checked.subject.id,companyId:checked.subject.companyId,country:checked.subject.country},projection,profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields')),versions,{statutory:checked.rows.snapshot?{id:checked.rows.snapshot.rowId,revision:checked.rows.snapshot.revision}:null,dependentVersions,qualificationVersions,emergencyVersions},route])).digest('hex');
+ return {employmentId:checked.subject.id,proposal:projection,reviewedDigest};
+}
+/** Read-only canonical review owner for a human-authored v2 approval request. No action custody,
+ * model nomination, request/event write or click/commit proof is created here. */
+export async function prepareOwnProfileChangeRequestReviewTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ if(!ctx.personId)throw new EssProfileError('permission');
+ return canonicalProfileChangeReviewTx(tx,await prepareProfileChangeRequestTx(tx,ctx,p));
+}
+async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput,expectedReviewedDigest?:string){
+ const prepared=await prepareProfileChangeRequestTx(tx,ctx,p);ctx=prepared.ctx;const {proposed,route}=prepared;
+ if(expectedReviewedDigest!==undefined){if(!/^[a-f0-9]{64}$/.test(expectedReviewedDigest)||(await canonicalProfileChangeReviewTx(tx,prepared)).reviewedDigest!==expectedReviewedDigest)throw new EssProfileError('stale');}
   // Policy advisory serializes canonical submissions. Exact retry reuses one pending proposal.
   const matching=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,ctx.personId!),eq(profileChangeRequest.employmentId,p.employmentId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}=${JSON.stringify(proposed)}::jsonb`)).orderBy(profileChangeRequest.createdAt,profileChangeRequest.id).limit(2);
   if(matching.length>1)throw new EssProfileError('unavailable');
-  if(matching.length===1)return {requestId:matching[0].id};
+  if(matching.length===1){
+   if(expectedReviewedDigest!==undefined){
+    const [existing]=await tx.select({routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext}).from(profileChangeRequest).where(eq(profileChangeRequest.id,matching[0].id)).limit(1);
+    if(!existing||JSON.stringify(existing)!==JSON.stringify({routeId:route?.routeId??null,routeRevision:route?.routeRevision??null,routeApproverUserId:route?.routeApproverUserId??null,routeApproverEmploymentId:route?.routeApproverEmploymentId??null,routeContext:route?.routeContext??null}))throw new EssProfileError('stale');
+   }
+   return {requestId:matching[0].id,requestedEventId:undefined,replayed:true};
+  }
   const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:ctx.personId!,proposed,...(route??{})}).returning({id:profileChangeRequest.id});
   const fields='v' in proposed&&proposed.v===2?[...proposed.fields.map(field=>field.fieldId),...proposed.registers.flatMap(record=>record.fields.map(field=>field.fieldId))]:Object.keys(proposed);
-  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields,...(route?{approverEmploymentId:route.routeApproverEmploymentId,routeId:route.routeId,routeRevision:route.routeRevision}:{})}});
-  return {requestId:row.id};
- };
+  const requestedEventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields,...(route?{approverEmploymentId:route.routeApproverEmploymentId,routeId:route.routeId,routeRevision:route.routeRevision}:{})}},{returnId:expectedReviewedDigest!==undefined});
+  return {requestId:row.id,requestedEventId,replayed:false};
+}
+export async function requestProfileChange(ctx:SessionContext,p:OwnProfileChangeInput,outerTx?:Tx){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ if(!ctx.personId)throw new EssProfileError('permission');
+ const run=async(tx:Tx)=>{const result=await requestProfileChangeOwnerTx(tx,ctx,p);return {requestId:result.requestId};};
  return outerTx?run(outerTx):withTenant(ctx,run);
+}
+export type OwnProfileChangeSubmissionReference={requestId:string;requestedEventId:string;employmentId:string;status:'pending'|'approved'|'rejected'};
+/** Original actor and actual transaction login are both mandatory. A same-person second login
+ * cannot adopt another actor's pending request or native event. No proposal/current private values
+ * are selected or returned by this receipt reader. A reference means submitted, never approved. */
+export async function readOwnProfileChangeSubmissionReferenceTx(tx:Tx,ctx:SessionContext,requestId:string,expectedEventId?:string):Promise<OwnProfileChangeSubmissionReference|null>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ if(!ctx.userId||!ctx.personId)return null;
+ await assertAiPrincipalTx(tx,ctx);if(!await isOwnPersonTx(tx,ctx))return null;
+ const [request]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status}).from(profileChangeRequest).innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId))).where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.personId,ctx.personId),eq(employment.personId,ctx.personId),eq(profileChangeRequest.id,requestId))).limit(1);
+ if(!request)return null;
+ const events=await tx.select({id:domainEvent.id,employmentId:sql<unknown>`${domainEvent.payload}->>'employmentId'`,fields:sql<unknown>`${domainEvent.payload}->'fields'`}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'profile-change'),eq(domainEvent.aggregateId,request.id),eq(domainEvent.eventType,'profile-change.requested'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId),eq(domainEvent.subjectEmploymentId,request.employmentId))).orderBy(domainEvent.sequence).limit(2);
+ if(events.length!==1||expectedEventId!==undefined&&events[0].id!==expectedEventId||events[0].employmentId!==request.employmentId||!Array.isArray(events[0].fields)||events[0].fields.length===0||events[0].fields.length>4224||events[0].fields.some((id:unknown)=>typeof id!=='string'||!personnelField(id)))return null;
+ return{requestId:request.id,requestedEventId:events[0].id,employmentId:request.employmentId,status:request.status};
+}
+/** Refusal-only expected review, then the SAME canonical request/event owner. The enclosing action
+ * command owns this Tx and any future custody completion; no nested commit/extra ledger exists. */
+export async function requestReviewedOwnProfileChangeTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput,expectedReviewedDigest:string){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ if(!ctx.personId||!ctx.userId)throw new EssProfileError('permission');
+ await assertAiPrincipalTx(tx,ctx);
+ const result=await requestProfileChangeOwnerTx(tx,ctx,p,expectedReviewedDigest);
+ const reference=await readOwnProfileChangeSubmissionReferenceTx(tx,ctx,result.requestId,result.requestedEventId);
+ if(!reference)throw new EssProfileError('unavailable');
+ return {...reference,replayed:result.replayed};
 }
 
 export async function decideProfileChange(
