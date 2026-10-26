@@ -17,7 +17,7 @@ export default function Inbox() {
   return (
     <Screen refreshing={inbox.loading && inbox.data != null} onRefresh={inbox.reload}>
       <Title>{t('tabInbox')}</Title>
-      <LoadState loading={inbox.loading && !inbox.data} error={inbox.error} onRetry={inbox.reload} />
+      <LoadState loading={inbox.loading} hasData={inbox.data!=null} error={inbox.error} onRetry={inbox.reload} />
       {inbox.data && !inbox.data.enabled && <Muted>{t('notificationsOff')}</Muted>}
       {inbox.data?.enabled && inbox.data.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}
       {inbox.data?.items.map((n) => (

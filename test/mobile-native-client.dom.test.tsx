@@ -4,6 +4,7 @@ import { transpileModule, ModuleKind } from 'typescript';
 import * as React from 'react';
 import * as contract from '../lib/mobile-api/contract';
 import {readBoundedBody} from '../lib/bounded-body';
+import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordinator';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
@@ -13,13 +14,14 @@ import { SessionChangedError, SignInRequiredError, UnavailableError, RequestReje
 const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
 function clientFixture() {
   let generation = 0;
+  let namespace='company-one',monotonic=0,locale='en';
   const appState={currentState:'active'};
   const config = { apiUrl: 'https://hr.example.com' };
   const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => Response.json(new URL(url).pathname.endsWith('/clock') ? {outcome:'refused',code:'clock_conflict'} : employee('Employment one')));
   const auth = { authGeneration: () => generation,
     assertAuthGeneration(owner: number) { if (owner !== generation) throw new SessionChangedError(); },
     getAccessToken: vi.fn(async () => 'access-token'), refresh: vi.fn(async () => 'rotated-token') };
-  const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>)=>Promise<unknown>;
+  const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>)=>Promise<unknown>;
     useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null } } };
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
@@ -30,16 +32,53 @@ function clientFixture() {
       if (id === '../../lib/bounded-body') return {readBoundedBody};
       if (id === '../../lib/mobile-api/contract') return contract;
       if (id === './auth') return auth;
-      if (id === './config') return { config, apiOriginProblem, configProblem: () => null };
+      if (id === './config') return { config, apiOriginProblem, configProblem: () => null,identityNamespace:()=>namespace };
+      if (id === './read-coordinator') return {retryAfterSeconds,createReadCoordinator:(ports:Parameters<typeof createReadCoordinator>[0])=>createReadCoordinator({...ports,now:()=>monotonic})};
       if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError };
-      if (id === './i18n') return { appLocale: () => 'en' };
+      if (id === './i18n') return { appLocale: () => locale };
       throw new Error(`Unexpected native client dependency: ${id}`);
     } });
-  return { api: output.exports, config, response, auth, appState, changeSession() { generation += 1; } };
+  return { api: output.exports, config, response, auth, appState, changeSession() { generation += 1; },changeConnection(){namespace='company-two';},changeLocale(){locale='ms';},advanceCooldown(ms:number){monotonic+=ms;} };
 }
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it('does not start a queued read under a different language than its scoped key',async()=>{
+    const f=clientFixture();const pending=f.api.apiGet('me');f.changeLocale();
+    await expect(pending).rejects.toBeInstanceOf(SessionChangedError);expect(f.response).not.toHaveBeenCalled();
+    await f.api.apiGet('me');expect(f.response.mock.calls[0][1]?.headers).toHaveProperty('accept-language','ms');
+  });
+  it('a refresh refusal from an obsolete account is not a sign-in refusal for the new account',async()=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:401}));
+    f.auth.refresh.mockImplementationOnce(async()=>{queueMicrotask(()=>f.changeSession());throw new SignInRequiredError();});
+    await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(SessionChangedError);expect(f.response).toHaveBeenCalledOnce();
+  });
+  it('shares a scoped read across widgets and one unmount cannot cancel the remaining widget',async()=>{
+    const f=clientFixture();let release!:(response:Response)=>void;
+    f.response.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));const onSignInRequired=vi.fn();
+    function Widget({label}:{label:string}){const result=f.api.useApi('me',{},onSignInRequired);return <span>{label}: {result.data?.person.name??'loading'}</span>;}
+    const ui=render(<><Widget key="a" label="A"/><Widget key="b" label="B"/></>);
+    await waitFor(()=>expect(f.response).toHaveBeenCalledOnce());ui.rerender(<Widget key="b" label="B"/>);
+    expect(f.response.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    await act(async()=>release(Response.json(employee('Shared employee'))));await screen.findByText('B: Shared employee');
+    expect(f.auth.getAccessToken).toHaveBeenCalledOnce();expect(onSignInRequired).not.toHaveBeenCalled();
+  });
+  it('keeps equivalent parameter order in one read and isolates a different company profile at the same origin',async()=>{
+    const f=clientFixture();let release!:(response:Response)=>void;
+    f.response.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+    const first=f.api.apiGet('me',{employmentId:'own',locale:'en'}).catch(e=>e);
+    const second=f.api.apiGet('me',{locale:'en',employmentId:'own'}).catch(e=>e);
+    await waitFor(()=>expect(f.response).toHaveBeenCalledOnce());f.changeConnection();
+    const fresh=await f.api.apiGet('me',{employmentId:'own',locale:'en'});
+    expect(await first).toBeInstanceOf(SessionChangedError);expect(await second).toBeInstanceOf(SessionChangedError);
+    release(Response.json(employee('Obsolete employee')));expect(fresh).toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
+  });
+  it('honors a safe read Retry-After without automatic or repeated manual network attempts',async()=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:429,headers:{'retry-after':'2'}}));
+    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:2});
+    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:2});expect(f.response).toHaveBeenCalledOnce();
+    f.advanceCooldown(2001);await expect(f.api.apiGet('me')).resolves.toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
+  });
   it('never starts a write in the background, including after a delayed token refresh',async()=>{
     const f=clientFixture();f.appState.currentState='background';
     await expect(f.api.apiPost('clock',new FormData())).rejects.toBeInstanceOf(UnavailableError);

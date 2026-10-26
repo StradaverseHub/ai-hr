@@ -18,7 +18,7 @@ export function TeamPanel({refreshToken=0}:{refreshToken?:number}={}){
   if(team.data&&!team.data.enabled)return null;
   return <View style={{gap:12,borderTopWidth:1,borderColor:palette.border,paddingTop:20}}>
     <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('teamAvailability')}</Text>
-    <LoadState loading={team.loading&&!team.data} error={team.error} onRetry={team.reload}/>
+    <LoadState loading={team.loading} hasData={team.data!=null} error={team.error} onRetry={team.reload}/>
     {team.data&&<>
       <Pressable accessibilityRole="button" accessibilityState={{expanded}} onPress={()=>setExpanded(!expanded)} style={{minHeight:60,flexDirection:'row',alignItems:'center',gap:12}}>
         <View style={{flexDirection:'row',maxWidth:140}}>{away.slice(0,3).map(p=><View key={p.employmentId} style={{width:36,height:36,borderRadius:18,marginRight:-6,backgroundColor:palette.card,borderWidth:1,borderColor:palette.border,alignItems:'center',justifyContent:'center'}}><Text style={{color:palette.text}}>{p.name.split(/\s+/).map(v=>v[0]).slice(0,2).join('')}</Text></View>)}</View>

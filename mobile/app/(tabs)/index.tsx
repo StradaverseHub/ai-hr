@@ -31,13 +31,13 @@ function LegacyHome() {
   return (
     <Screen refreshing={me.loading && me.data != null} onRefresh={reloadAll}>
       <Title>{name ? t('hello', { name }) : t('helloNoName')}</Title>
-      <LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />
+      <LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />
 
       {design.homeOrder.map(id => <Fragment key={id}>
         {id === 'clock' ? <ClockPanel refreshToken={refreshToken}/> : id === 'team' ? <TeamPanel refreshToken={refreshToken}/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
           {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
         </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
-          <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />
+          <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload} />
           {leave.data?.cards.map(c => <Card key={c.leaveTypeId}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</Card>)}
           {leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}
         </>}
@@ -46,7 +46,7 @@ function LegacyHome() {
       {me.data?.modules.payroll !== false && (
         <>
           <SectionLabel>{t('latestPayslip')}</SectionLabel>
-          <LoadState loading={payslips.loading && !payslips.data} error={payslips.error} onRetry={payslips.reload} />
+          <LoadState loading={payslips.loading} hasData={payslips.data!=null} error={payslips.error} onRetry={payslips.reload} />
           {payslips.data && (
             <Card>
               {latest ? (

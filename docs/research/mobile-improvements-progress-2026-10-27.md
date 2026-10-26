@@ -94,3 +94,23 @@ The isolated follow-up implements server-ordered abandonment, pending-aware volu
 quarantine cleanup under [ADR-0143](../adr/0143-mobile-submission-abandonment.md). Its first 24 database
 cases and subsequent 65 consumer checks passed, with further unattributed-record and terminal-response
 coverage added before final validation. These follow-up changes are not covered by run 40388034577.
+
+The integrated `08a2f0412` follow-up retains verified alpha ancestry and appends the unchanged budget
+migration after its existing journal prefix. Affected database suites passed 62 cases; nine guard and
+native-consumer files passed 69 cases. Native TypeScript and both Hermes exports passed. A deliberate
+temporary removal of the two abandonment writer checks made both corresponding tests fail by accepting
+the abandoned requests; restoring the checks made both pass. These mutation results establish that
+the refusal tests exercise the writer guards rather than an unrelated RLS or environment failure.
+
+## M02 shared reads and retry handling
+
+The native read coordinator shares concurrent identical GETs within an identity, company profile,
+origin and language, with independent consumer cancellation and a bounded 64-key in-flight inventory.
+It retains no completed HR response globally. Safe server retry hints create bounded monotonic
+cooldowns; nothing automatically retries in the background. Same-scope retained data now shows
+refresh/stale status, while account, connection and language changes reject obsolete results before
+screen or sign-out side effects. Writes retain the existing explicit immutable-command behavior.
+
+Focused validation passed 43 cases across five files, plus native TypeScript. Final language-change
+coverage then passed all 30 cases in the affected transport, coordinator and load-state files. These
+targeted results do not substitute for a complete frozen-candidate gate or signed-device acceptance.

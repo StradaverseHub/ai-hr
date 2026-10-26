@@ -24,34 +24,34 @@ export function destinationTitle(target: string, design: MobileDesignV2): string
 }
 function Welcome({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), { palette } = useTenantDesign(), me = useApi('me', {}, signOut);
-  return <><Title>{block.title || (me.data?.person.name ? t('hello', { name: me.data.person.name }) : t('helloNoName'))}</Title>{block.body ? <Text style={{ color: palette.muted }}>{block.body}</Text> : null}<LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} /></>;
+  return <><Title>{block.title || (me.data?.person.name ? t('hello', { name: me.data.person.name }) : t('helloNoName'))}</Title>{block.body ? <Text style={{ color: palette.muted }}>{block.body}</Text> : null}<LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} /></>;
 }
 function Balances({ block }: { block: MobileBlock }) {
   const { signOut, employmentId } = useSession(), { design } = useTenantDesign();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
-  return <><LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />{leave.data?.cards.map(c => <View key={c.leaveTypeId} style={{ gap: 6, marginBottom: 10 }}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{block.detail === 'expanded' && <Muted>{c.takenOnly ? t('taken') : c.isCurrentCycle ? t('canApplyFor') : t('balance')}</Muted>}{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</View>)}{leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}<Button title={t('tabRequests')} kind="quiet" onPress={() => router.push(mobileDestination('requests'))} /></>;
+  return <><LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload} />{leave.data?.cards.map(c => <View key={c.leaveTypeId} style={{ gap: 6, marginBottom: 10 }}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{block.detail === 'expanded' && <Muted>{c.takenOnly ? t('taken') : c.isCurrentCycle ? t('canApplyFor') : t('balance')}</Muted>}{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</View>)}{leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}<Button title={t('tabRequests')} kind="quiet" onPress={() => router.push(mobileDestination('requests'))} /></>;
 }
 function Messages({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), { palette } = useTenantDesign(), inbox = useApi('notifications', {}, signOut);
   if (inbox.data && !inbox.data.enabled) return null;
-  return <><LoadState loading={inbox.loading && !inbox.data} error={inbox.error} onRetry={inbox.reload} /><>{inbox.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <View key={n.id} style={{ gap: 6, marginBottom: 12 }}><Text style={{ color: palette.text, fontWeight: n.readAt ? '400' : '700' }}>{n.title}</Text><Muted>{n.body}</Muted></View>)}{inbox.data?.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}</></>;
+  return <><LoadState loading={inbox.loading} hasData={inbox.data!=null} error={inbox.error} onRetry={inbox.reload} /><>{inbox.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <View key={n.id} style={{ gap: 6, marginBottom: 12 }}><Text style={{ color: palette.text, fontWeight: n.readAt ? '400' : '700' }}>{n.title}</Text><Muted>{n.body}</Muted></View>)}{inbox.data?.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}</></>;
 }
 function Tasks({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), tasks = useApi('tasks', {}, signOut);
-  return <><LoadState loading={tasks.loading && !tasks.data} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Muted>{t('tasksOnWeb')}</Muted>}</>;
+  return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Muted>{t('tasksOnWeb')}</Muted>}</>;
 }
 function Requests({ block }: { block: MobileBlock }) {
   const { signOut, employmentId } = useSession(), requests = useApi('leave-requests', { employmentId: employmentId ?? undefined }, signOut);
-  return <><LoadState loading={requests.loading && !requests.data} error={requests.error} onRetry={requests.reload} />{requests.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(r => <View key={r.id} style={{ gap: 6, marginBottom: 12 }}><Row label={r.type} value={r.status} /><Muted>{r.from} → {r.to}</Muted></View>)}{requests.data?.items.length === 0 && <Muted>{t('noRequests')}</Muted>}<Button title={t('tabRequests')} kind="quiet" onPress={() => router.push('/leave')} /></>;
+  return <><LoadState loading={requests.loading} hasData={requests.data!=null} error={requests.error} onRetry={requests.reload} />{requests.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(r => <View key={r.id} style={{ gap: 6, marginBottom: 12 }}><Row label={r.type} value={r.status} /><Muted>{r.from} → {r.to}</Muted></View>)}{requests.data?.items.length === 0 && <Muted>{t('noRequests')}</Muted>}<Button title={t('tabRequests')} kind="quiet" onPress={() => router.push('/leave')} /></>;
 }
 function Pay({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), pay = useApi('payslips', {}, signOut);
   if (pay.data && !pay.data.enabled) return null;
-  return <><LoadState loading={pay.loading && !pay.data} error={pay.error} onRetry={pay.reload} />{pay.data?.items.slice(0, block.detail === 'compact' ? 1 : 20).map(p => <View key={p.id} style={{ marginBottom: 12 }}><Row label={p.payPeriod} value={fmtMoney(p.net)} strong /><Muted>{t('netPay')}</Muted></View>)}{pay.data?.items.length === 0 && <Muted>{t('noPayslips')}</Muted>}</>;
+  return <><LoadState loading={pay.loading} hasData={pay.data!=null} error={pay.error} onRetry={pay.reload} />{pay.data?.items.slice(0, block.detail === 'compact' ? 1 : 20).map(p => <View key={p.id} style={{ marginBottom: 12 }}><Row label={p.payPeriod} value={fmtMoney(p.net)} strong /><Muted>{t('netPay')}</Muted></View>)}{pay.data?.items.length === 0 && <Muted>{t('noPayslips')}</Muted>}</>;
 }
 function Profile() {
   const { signOut } = useSession(), me = useApi('me', {}, signOut);
-  return <><LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />{me.data && <><Title>{me.data.person.name}</Title><Muted>{me.data.person.email}</Muted></>}<Button title={t('tabMe')} kind="quiet" onPress={() => router.push('/me')} /></>;
+  return <><LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />{me.data && <><Title>{me.data.person.name}</Title><Muted>{me.data.person.email}</Muted></>}<Button title={t('tabMe')} kind="quiet" onPress={() => router.push('/me')} /></>;
 }
 function Widget({ block, refreshToken, design }: { block: MobileBlock; refreshToken: number; design: MobileDesignV2 }) {
   const { palette } = useTenantDesign();

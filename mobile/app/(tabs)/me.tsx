@@ -25,7 +25,7 @@ export default function Me() {
     <Screen refreshing={me.loading && me.data != null} onRefresh={() => (me.reload(), payslips.reload())}>
       <Title>{me.data?.person.name ?? t('tabMe')}</Title>
       {me.data?.person.email && <Muted>{me.data.person.email}</Muted>}
-      <LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />
+      <LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />
 
       {employments.length > 0 && <SectionLabel>{t('employments')}</SectionLabel>}
       {employments.map((e) => (
@@ -46,7 +46,7 @@ export default function Me() {
       ))}
 
       <SectionLabel>{t('payslips')}</SectionLabel>
-      <LoadState loading={payslips.loading && !payslips.data} error={payslips.error} onRetry={payslips.reload} />
+      <LoadState loading={payslips.loading} hasData={payslips.data!=null} error={payslips.error} onRetry={payslips.reload} />
       {payslips.data && !payslips.data.enabled && <Muted>{t('payrollOff')}</Muted>}
       {payslips.data?.enabled && payslips.data.items.length === 0 && <Muted>{t('noPayslips')}</Muted>}
       {payslips.data?.items.map((p) => (

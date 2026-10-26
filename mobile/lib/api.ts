@@ -18,8 +18,9 @@ import {
   PayslipsResponse,
 } from '../../lib/mobile-api/contract';
 import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
-import { apiOriginProblem, config, configProblem } from './config';
-import { SignInRequiredError, UnavailableError, RequestRejectedError } from './errors';
+import { apiOriginProblem, config, configProblem,identityNamespace } from './config';
+import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError } from './errors';
+import {createReadCoordinator,retryAfterSeconds} from './read-coordinator';
 import { appLocale } from './i18n';
 
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
@@ -35,12 +36,12 @@ type Endpoints = {
   notifications: NotificationsResponse;
 };
 
-function url(path: string, params: Record<string, string | undefined>): string {
+function url(path: string, params: Record<string, string | undefined>,origin:string): string {
   const q = Object.entries(params)
     .filter((e): e is [string, string] => e[1] != null)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
-  return `${config.apiUrl}/api/mobile/v1/${path}${q ? `?${q}` : ''}`;
+  return `${origin}/api/mobile/v1/${path}${q ? `?${q}` : ''}`;
 }
 
 const responses = {
@@ -54,9 +55,11 @@ const commands = { 'submission-abandon':SubmissionAbandonResponse, clock: ClockR
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
+  const origin=config.apiUrl,namespace=identityNamespace(),locale=appLocale();
+  const assertCurrent=()=>{assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
   const send = async (token: string) => {
-    assertAuthGeneration(owner);
+    assertCurrent();
     if(request&&AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
     if(configProblem())throw new UnavailableError('The approved company connection is no longer valid.');
     const controller = new AbortController();
@@ -65,41 +68,54 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
     if (signal?.aborted) controller.abort();
     const timeout = setTimeout(abort, 15_000);
     try {
-      const response = await nativeFetch(url(path, params), {
-        headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale(), ...(request?.json ? {'content-type':'application/json'} : {}) },
+      const response = await nativeFetch(url(path, params,origin), {
+        headers: { authorization: `Bearer ${token}`, 'accept-language': locale, ...(request?.json ? {'content-type':'application/json'} : {}) },
         ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error', credentials: 'omit', signal: controller.signal,
       });
-      assertAuthGeneration(owner);
+      assertCurrent();
       if (!response.ok) {
         void response.body?.cancel().catch(()=>{});
-        return {status:response.status, data:undefined};
+        return {status:response.status, data:undefined,retryAfter:retryAfterSeconds(response.headers.get('retry-after'))};
       }
       const bytes = await readBoundedBody(response, 1024 * 1024, 15_000, controller.signal);
-      assertAuthGeneration(owner);
+      assertCurrent();
       const text = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
       const parsed = schema.safeParse(JSON.parse(text));
       if (!parsed.success) throw new UnavailableError('Invalid server response.');
       return {status:response.status, data:parsed.data};
     } catch (error) {
       controller.abort();
-      assertAuthGeneration(owner);
+      assertCurrent();
       if (error instanceof UnavailableError) throw error;
       throw new UnavailableError();
     } finally { clearTimeout(timeout); signal?.removeEventListener('abort',abort); }
   };
-  let res = await send(await getAccessToken());
-  assertAuthGeneration(owner);
-  if (res.status === 401 && !signal?.aborted) res = await send(await refresh());
-  assertAuthGeneration(owner);
-  if (signal?.aborted) throw new UnavailableError();
-  if (res.status === 401) throw new SignInRequiredError();
-  if (res.status === 429 || res.status >= 500) throw new UnavailableError();
-  if (res.status < 200 || res.status >= 300) throw new RequestRejectedError(res.status);
-  return res.data as T;
+  try{
+    let res = await send(await getAccessToken());
+    assertCurrent();
+    if (res.status === 401 && !signal?.aborted) res = await send(await refresh());
+    assertCurrent();
+    if (signal?.aborted) throw new UnavailableError();
+    if (res.status === 401) throw new SignInRequiredError();
+    if (res.status === 429) throw new UnavailableError(undefined,res.retryAfter);
+    if (res.status >= 500) throw new UnavailableError(undefined,res.retryAfter);
+    if (res.status < 200 || res.status >= 300) throw new RequestRejectedError(res.status);
+    return res.data as T;
+  }catch(error){assertCurrent();throw error;}
 }
 
-export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<Endpoints[P]>{return apiRequest(path,params,undefined,signal);}
+const reads=createReadCoordinator({unavailable:seconds=>new UnavailableError(undefined,seconds),obsolete:()=>new SessionChangedError(),
+  backoff:error=>error instanceof UnavailableError?error.retryAfter:undefined});
+const canonicalParams=(params:Record<string,string|undefined>)=>Object.fromEntries(Object.entries(params).filter((pair):pair is [string,string]=>pair[1]!==undefined).sort(([a],[b])=>a.localeCompare(b)));
+export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<Endpoints[P]>{
+  const owner=authGeneration(),namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),snapshot=canonicalParams(params);
+  const scope=JSON.stringify([owner,namespace,origin,locale]),key=JSON.stringify([path,snapshot]);
+  return reads.read(scope,key,sharedSignal=>{
+    assertAuthGeneration(owner);if(identityNamespace()!==namespace||config.apiUrl!==origin||appLocale()!==locale)throw new SessionChangedError();
+    return apiRequest<Endpoints[P]>(path,snapshot,undefined,sharedSignal);
+  },signal);
+}
 type Commands = {'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
 export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
   const form=body instanceof FormData;
@@ -122,20 +138,22 @@ export function useApi<P extends keyof Endpoints>(
 ): Loadable<Endpoints[P]> {
   const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(null);
   const [tick, setTick] = useState(0);
-  const paramsKey = JSON.stringify(params);
-  const key = JSON.stringify([config.apiUrl, path, paramsKey, appLocale(), authGeneration()]);
+  const paramsKey = JSON.stringify(canonicalParams(params));
+  const namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),owner=authGeneration();
+  const key = JSON.stringify([namespace,origin, path, paramsKey, locale, owner]);
 
   useEffect(() => {
     let live = true;
+    const belongs=()=>live&&authGeneration()===owner&&identityNamespace()===namespace&&config.apiUrl===origin&&appLocale()===locale;
     const controller = new AbortController();
     setResult(prior => ({ key, data: prior?.key === key ? prior.data : null, error: null, loading: true }));
     apiGet(path, JSON.parse(paramsKey) as Record<string, string | undefined>, controller.signal)
       .then((d) => {
-        if (!live) return;
+        if (!belongs()) return;
         setResult({ key, data: d, error: null, loading: false });
       })
       .catch((e: Error) => {
-        if (!live) return;
+        if (!belongs()) return;
         if (e instanceof SignInRequiredError) onSignInRequired();
         setResult(prior => ({ key, data: e instanceof RequestRejectedError || e instanceof SignInRequiredError ? null : prior?.key === key ? prior.data : null, error: e, loading: false }));
       })

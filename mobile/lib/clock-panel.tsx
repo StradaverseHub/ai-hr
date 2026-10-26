@@ -112,7 +112,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   function cancel(){removeLocalFile(draft?.photo);putClock(null);}
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
-    <LoadState loading={clock.loading&&!current} error={clock.error} onRetry={clock.reload}/>
+    <LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>
     {!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}
     {current&&<>
       <View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>

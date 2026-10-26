@@ -313,7 +313,12 @@ endpoint schemas, and bounds response reads to 1 MiB with a 15-second exchange d
 active through the body. Server-side mobile uploads have a 30-second body deadline as well as byte
 limits. Malformed/oversized/stalled responses remain unavailable, never accepted command receipts.
 Same-scope refresh keeps displayed data and offers an error/retry; scope changes still hide previous
-results immediately. Unmounted requests are cancelled. Writes retain explicit immutable retry behavior.
+results immediately. Concurrent identical reads share one bounded request within the same identity,
+company connection and language. Each consumer can cancel independently; the last cancellation ends
+the shared request. Completed response bodies are not kept in a global cache. Valid `Retry-After`
+hints (up to one hour) delay repeated reads using a monotonic cooldown, with an explicit retry message
+and no automatic background retry. Refresh and stale-data labels distinguish retained data from a
+fresh response. Writes retain explicit immutable retry behavior.
 Multipart attachments expose actual file bytes with their declared MIME, as required by Expo fetch;
 URI-only React Native file parts are not accepted by that transport. Verify this on signed binaries
 and through required/optional photo and document flows before distribution.
