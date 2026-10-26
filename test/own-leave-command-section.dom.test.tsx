@@ -47,7 +47,7 @@ describe('unmounted real-session own-leave section composition',()=>{
   owners.choices.mockResolvedValueOnce({kind:'unavailable'});const denied=panel(await OwnLeaveCommandSection())!;expect(denied.key).not.toBe(first.key);expect(denied.props.employments).toEqual([]);
   owners.choices.mockResolvedValueOnce({...choices,employments:[{...choices.employments[0],id:randomUUID()}]});expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key);
   owners.session.mockResolvedValueOnce({...session(),grants:[{role:'employee',companyId:randomUUID()}]});expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key);
-  expect(panel(await OwnLeaveCommandSection())!.key).toBe(first.key);
+  expect(panel(await OwnLeaveCommandSection())!.key).not.toBe(first.key); // A fresh render also retires private memory when labels are unchanged.
  });
  it('captures session carrier arrays before locale resolution can mutate the retained cache object',async()=>{
   const actual=session();owners.session.mockResolvedValue(actual);owners.locale.mockImplementationOnce(async()=>{actual.roles[0]='hr_admin';actual.grants[0].role='hr_admin';return'en';});
@@ -65,3 +65,5 @@ describe('unmounted real-session own-leave section composition',()=>{
 });
 
 it('keeps login-only cleanup visible after person unlinking without querying or inventing an own employment',async()=>{owners.session.mockResolvedValue({...session(),personId:null});const client=panel(await OwnLeaveCommandSection())!;expect(client).not.toBeNull();expect(client.props.employments).toEqual([]);expect(owners.tenant).not.toHaveBeenCalled();expect(owners.choices).not.toHaveBeenCalled();expect(Object.keys(client.props).sort()).toEqual(['employments','messages','resumeActionId']);});
+
+it('clears saved private client memory on a fresh render even when a visibility policy changed without changing menu IDs or labels',async()=>{const first=panel(await OwnLeaveCommandSection())!,second=panel(await OwnLeaveCommandSection())!;expect(second.props).toEqual(first.props);expect(second.key).not.toBe(first.key);expect(String(second.key)).toMatch(/^[a-f0-9]{64}$/);});

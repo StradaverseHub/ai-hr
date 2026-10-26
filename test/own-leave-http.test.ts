@@ -1,6 +1,6 @@
 /** Authored protocol/CSRF/privacy regressions. UNRUN; no real session/database/provider. */
 import { describe, expect, it, vi } from 'vitest';
-import { createOwnLeaveBrowserHandler } from '../lib/assistant-actions/own-leave-http';
+import { createOwnLeaveBrowserHandler,OWN_LEAVE_PREPARE_BYTES,OWN_LEAVE_RESPONSE_BYTES } from '../lib/assistant-actions/own-leave-http';
 const actionId = '11111111-1111-4111-8111-111111111111', employmentId = '22222222-2222-4222-8222-222222222222';
 const leaveTypeId = '33333333-3333-4333-8333-333333333333', requestId = '44444444-4444-4444-8444-444444444444';
 const eventId = '55555555-5555-4555-8555-555555555555', digest = 'a'.repeat(64);
@@ -8,7 +8,7 @@ const confirmation = { actionId, contractVersion: 1, reviewedDigest: digest };
 const completed = { kind: 'completed', receipt: { actionId, contractVersion: 1, state: 'completed', leaveRequestId: requestId, submissionEventId: eventId } };
 const prepare = { operation: 'prepare', nomination: { action: 'leave.apply', contractVersion: 1, employmentId, leaveTypeId, date: '2030-06-10', durationType: 'full_day' },
   selection: { employmentId, leaveTypeId }, humanText: { reason: 'Human entered reason', employeeRemark: 'Human entered remark' } };
-const review = { kind: 'prepared', review: { actionId, contractVersion: 1, reviewedDigest: digest,
+const review = { kind: 'prepared', review: { actionId, contractVersion: 1, reviewedDigest: digest,humanIntentDigest:digest,
   createdAt: '2030-06-01T00:00:00.000Z', expiresAt: '2030-06-01T00:10:00.000Z', companyName: 'Fictional Company',
   employeeCode: null, leaveTypeName: 'Annual Leave', date: '2030-06-10', durationType: 'full_day', deductionDays: 1,
   availableBalance: null, estimatedAvailableAfter: null, holidayWarnings: [], approvalRouting: 'unknown', humanText: prepare.humanText } };
@@ -110,3 +110,10 @@ describe('own-leave browser transport owner', () => {
     } finally {vi.useRealTimers();}
   });
 });
+
+describe('closed own-leave full input and output boundaries',()=>{
+ it('admits the literal maximum schema-valid escaped human reason+remark without expanding confirm/list budget',async()=>{const f=fixture(),value={...prepare,humanText:{reason:'\u0001'.repeat(2000),employeeRemark:'\u0001'.repeat(2000)}},bytes=new TextEncoder().encode(JSON.stringify(value)).byteLength;expect(bytes).toBeGreaterThan(20480);expect(bytes).toBeLessThanOrEqual(OWN_LEAVE_PREPARE_BYTES);f.owners.prepare.mockRejectedValueOnce(Error('stop after authentic transport admission'));await f.run(request(value));expect(f.owners.prepare).toHaveBeenCalledWith(session,value);const old=fixture();expect((await old.run(request({operation:'list'},{'Content-Length':'20481'}))).status).toBe(400);expect(old.owners.authenticate).not.toHaveBeenCalled();});
+ it('rejects oversized full public review without truncating names/text or exposing an unbounded server body',async()=>{const f=fixture();f.owners.prepare.mockResolvedValueOnce({...review,review:{...review.review,companyName:'X'.repeat(OWN_LEAVE_RESPONSE_BYTES)}});const result=await f.run(request(prepare));expect(result.status).toBe(503);expect(await result.json()).toEqual({error:'unavailable'});});
+});
+
+it('preserves the full escaped schema-valid public review when it fits the declared full-response budget',async()=>{const f=fixture(),humanText={reason:'\u0001'.repeat(2000),employeeRemark:'\u0001'.repeat(2000)},full={...review,review:{...review.review,humanText}},value={...prepare,humanText};const bytes=new TextEncoder().encode(JSON.stringify(full)).byteLength;expect(bytes).toBeGreaterThan(20480);expect(bytes).toBeLessThanOrEqual(OWN_LEAVE_RESPONSE_BYTES);f.owners.prepare.mockResolvedValueOnce(full);const result=await f.run(request(value));expect(result.status).toBe(200);expect(await result.json()).toEqual(full);});

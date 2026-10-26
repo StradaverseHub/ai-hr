@@ -25,7 +25,7 @@ export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<
     },
     reopen: async (session, actionId) => {
       await cleanup(session);
-      return withTenant(session.ctx, tx => reopenOwnLeaveReviewTx(tx, session.ctx, actionId));
+      return withTenant(session.ctx, tx => reopenOwnLeaveReviewTx(tx, session.ctx, actionId,session.locale));
     },
     // Confirmation MUST own its top-level transaction directly: do not wrap this in another transaction
     // or a savepoint, and never catch/continue inside it after a partial canonical effect.

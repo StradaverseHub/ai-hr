@@ -1,9 +1,10 @@
-/** UNRELEASED review custody and human-confirmation command. No route or model tool calls it.
+import {ownLeaveHumanIntentText} from '../../lib/assistant-actions/own-leave-human-intent';
+/** UNRELEASED review custody and human-confirmation command. The human browser route calls it; no model tool does.
  * Relevant source writers and security/concurrency/retention verification must be complete before exposure.
 
  * Requires the coordinated review-store and non-admitting-control migrations before runtime use.
  * One caller transaction owns authority, pause check, private row and retirement. No nested commit. */
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
@@ -54,7 +55,7 @@ function publicReview(stored: StoredReview): PendingResult {
   const { review } = unsealOwnLeaveReview(metadata, stored.sealed);
   const card = OwnLeavePreparedReview.safeParse({
     actionId: metadata.actionId, contractVersion: metadata.contractVersion,
-    reviewedDigest: metadata.reviewedDigest, createdAt: metadata.createdAt, expiresAt: metadata.expiresAt,
+    reviewedDigest: metadata.reviewedDigest,humanIntentDigest:createHash('sha256').update(ownLeaveHumanIntentText(review.nomination,{employmentId:review.nomination.employmentId,leaveTypeId:review.nomination.leaveTypeId},review.humanText)).digest('hex'), createdAt: metadata.createdAt, expiresAt: metadata.expiresAt,
     companyName: review.companyName, employeeCode: review.employeeCode, leaveTypeName: review.leaveTypeName,
     date: review.nomination.date, durationType: review.nomination.durationType, deductionDays: review.deductionDays,
     availableBalance: review.availableBalance, estimatedAvailableAfter: review.estimatedAvailableAfter,
@@ -109,21 +110,32 @@ export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
   return publicReview(stored);
 }
 
-/** Fresh Assistant/source access before reopening; no new model admission. This is a frozen saved
- * review, not a current eligibility assertion. Confirmation will need a separate complete recheck. */
-export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, actionIdValue: unknown): Promise<PendingResult | RetiredResult | CompletedResult> {
+/** Fresh Assistant/source visibility before returning saved pending content; no model admission.
+ * Any changed canonical review refuses rather than returning a formerly permitted balance.
+ * Confirmation still repeats complete source/effect checks in its separate top-level transaction. */
+export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, actionIdValue: unknown, locale?:string): Promise<PendingResult | RetiredResult | CompletedResult> {
   const ctx = captureContext(supplied);
   const actionId = z.string().uuid().safeParse(actionIdValue);
   if (!actionId.success) throw new OwnLeaveContentUnavailable();
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) throw new OwnLeaveContentUnavailable();
   await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
+  const [nominated]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${actionId.data}::uuid) as subject`);
+  const subject=z.uuid().safeParse(nominated?.subject);if(!subject.success)throw new OwnLeaveContentUnavailable();
+  await lockLeaveDependenciesTx(tx,actor.tenantId,[subject.data]);
   const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(${actionId.data}::uuid) as review`);
   if (stored.metadata.actionId !== actionId.data
     || stored.metadata.binding.tenantId !== actor.tenantId || stored.metadata.binding.userId !== actor.userId
-    || stored.metadata.binding.personId !== actor.personId) throw new OwnLeaveContentUnavailable();
-  return stored.metadata.state === 'awaiting_confirmation' ? publicReview(stored)
-    : stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
+    || stored.metadata.binding.personId !== actor.personId || stored.metadata.binding.employmentId!==subject.data) throw new OwnLeaveContentUnavailable();
+  if(stored.metadata.state==='awaiting_confirmation'){
+    const saved=unsealOwnLeaveReview(stored.metadata,stored.sealed),intent=saved.review.nomination;
+    // Saved visibility is not a permission. Rebuild the exact canonical permitted projection under
+    // the same current authority/config/subject interval BEFORE returning any saved values.
+    const fresh=await readOwnLeaveCandidateTx(tx,actor,intent,{employmentId:subject.data,leaveTypeId:intent.leaveTypeId},saved.review.humanText,locale);
+    if(fresh.kind!=='candidate'||ownLeaveReviewedDigest(fresh.candidate)!==stored.metadata.reviewedDigest||fresh.candidate.intentDigest!==stored.metadata.intentDigest||fresh.privateAvailableBalance!==saved.availableBalance)throw new OwnLeaveContentUnavailable();
+    return publicReview(stored);
+  }
+  return stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
 }
 
 /** Same-login privacy-only retirement remains available after person relinking or source/grant

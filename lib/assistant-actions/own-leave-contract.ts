@@ -95,7 +95,7 @@ export const OwnLeaveReviewWarning = z.object({
  * and login/person/tenant bindings. Confirmation still posts only ID/version/reviewed digest. */
 export const OwnLeavePreparedReview = z.object({
   actionId: z.string().uuid(), contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
-  reviewedDigest: OwnLeaveDigest, createdAt: z.string().datetime(), expiresAt: z.string().datetime(),
+  reviewedDigest: OwnLeaveDigest, humanIntentDigest: OwnLeaveDigest, createdAt: z.string().datetime(), expiresAt: z.string().datetime(),
   companyName: z.string().min(1), employeeCode: z.string().nullable(), leaveTypeName: z.string().min(1),
   date: calendarDate, durationType: z.literal('full_day'), deductionDays: z.number().finite().positive(),
   availableBalance: z.number().finite().nullable(), estimatedAvailableAfter: z.number().finite().nullable(),

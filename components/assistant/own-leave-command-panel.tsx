@@ -1,14 +1,15 @@
 'use client';
+import {ownLeaveBrowserHumanIntentDigest} from '@/lib/assistant-actions/own-leave-human-intent';
 
-/** Complete browser owner, deliberately UNMOUNTED. Parent must key this component to the actual
- * authenticated login and bind the fixed route only after migration/dependency/security acceptance.
+/** Mounted candidate browser owner, UNRELEASED until migration/dependency/security/experience acceptance.
+ * The server keys this component to the actual authenticated login and fresh rendering lifetime.
  * Human input only; no executor callback, endpoint prop, model text, persistence or automatic effect. */
 import Link from 'next/link';
 import {useEffect,useId,useRef,useState,type FormEvent,type ReactNode} from 'react';
 import {useFormatter,useTranslations} from 'next-intl';
 import {z} from 'zod';
 import {Button,Card,inputCls} from '@/components/ui';
-import {OwnLeaveReviewIndexResult} from '@/lib/assistant-actions/own-leave-http';
+import {OWN_LEAVE_RESPONSE_BYTES,OwnLeaveReviewIndexResult} from '@/lib/assistant-actions/own-leave-http';
 import {OwnLeaveFinalReceipt,OwnLeaveHumanText,OwnLeaveNomination,OwnLeavePreparedReview,type OwnLeaveConfirmation} from '@/lib/assistant-actions/own-leave-contract';
 
 export type OwnLeaveCommandMessages=Readonly<{
@@ -30,7 +31,7 @@ const Result=z.discriminatedUnion('kind',[
 ]);
 type Result=z.infer<typeof Result>;
 type State={kind:'draft'}|{kind:'review';review:z.infer<typeof OwnLeavePreparedReview>}|
- {kind:'uncertain';actionId:string|null}|{kind:'completed';receipt:z.infer<typeof OwnLeaveFinalReceipt>}|
+ {kind:'uncertain';actionId:string|null;expectedIntentDigest?:string}|{kind:'completed';receipt:z.infer<typeof OwnLeaveFinalReceipt>}|
  {kind:'retired';receipt:z.infer<typeof OwnLeaveFinalReceipt>};
 type Operation='prepare'|'confirm'|'discard'|'reopen'|'list';
 const unavailable=()=>Error('Own-leave response unavailable.');
@@ -40,10 +41,10 @@ const unavailable=()=>Error('Own-leave response unavailable.');
 export async function readOwnLeaveCommandResponse(response:Response,expectedActionId?:string):Promise<Result>{
  const refuse=async():Promise<never>=>{await response.body?.cancel().catch(()=>undefined);throw unavailable();};
  if(!response.ok||response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body)return refuse();
- const length=response.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||Number(length)>32768))return refuse();
+ const length=response.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||Number(length)>OWN_LEAVE_RESPONSE_BYTES))return refuse();
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0,reads=0;
  try{
-  while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++reads>256||bytes>32768)throw unavailable();chunks.push(part.value);}
+  while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++reads>256||bytes>OWN_LEAVE_RESPONSE_BYTES)throw unavailable();chunks.push(part.value);}
   const joined=new Uint8Array(bytes);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength;}
   const result=Result.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(joined)));
   const actionId=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
@@ -69,19 +70,24 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
  const clearText=()=>{setReason('');setRemark('');setEmploymentId('');setLeaveTypeId('');setDate('');};
  async function dispatch(operation:Operation,packet:unknown,actionId?:string){
   if(inFlight.current||state.kind==='uncertain'&&(operation!=='list'&&(operation!=='reopen'&&operation!=='discard'||!actionId||state.actionId!==null&&actionId!==state.actionId)))return;inFlight.current=true;setBusy(operation);setError('');if(operation!=='list')setIndex(null);
+  const captured=structuredClone(packet),expectedBefore=state.kind==='review'?state.review.humanIntentDigest:state.kind==='uncertain'?state.expectedIntentDigest:undefined;let expectedIntentDigest=expectedBefore,dispatched=false;
   const abort=new AbortController();controller.current=abort;const timer=setTimeout(()=>abort.abort(),15000);
   try{
-   const response=await fetch(endpoint,{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
+   if(operation==='prepare'){const value=captured as {nomination:unknown;selection:unknown;humanText:unknown};expectedIntentDigest=await ownLeaveBrowserHumanIntentDigest(value.nomination,value.selection,value.humanText);if(abort.signal.aborted||!mounted.current)throw unavailable();}
+   dispatched=true;
+   const response=await fetch(endpoint,{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(captured)});
    const result=await readOwnLeaveCommandResponse(response,actionId);if(!mounted.current)return;
    if((operation==='list'&&result.kind!=='review_index')||(operation!=='list'&&result.kind==='review_index'))throw unavailable();
+   if(expectedIntentDigest&&result.kind==='prepared'&&result.review.humanIntentDigest!==expectedIntentDigest)throw unavailable();
+   if(state.kind==='uncertain'&&!state.actionId&&expectedIntentDigest&&(result.kind==='completed'||result.kind==='retired')){setError(m.prepareUncertain);return;}
    if(result.kind==='review_index')setIndex(result.reviews);
    else if(result.kind==='prepared'){if(operation!=='prepare'&&operation!=='reopen')throw unavailable();clearText();setState({kind:'review',review:result.review});}
    else if(result.kind==='completed'){if(operation==='prepare'||operation==='discard')throw unavailable();clearText();setState({kind:'completed',receipt:result.receipt});}
    else if(result.kind==='retired'){if(operation==='prepare')throw unavailable();clearText();setState({kind:'retired',receipt:result.receipt});}
    else if(operation==='prepare'){setState({kind:'draft'});setError(result.kind==='needs_employee_remark'?m.needsRemark:result.kind==='needs_selection'?m.invalidSelection:m.unavailable);}
-   else{setState({kind:'uncertain',actionId:actionId??null});setError(m.unavailable);}
+   else{setState({kind:'uncertain',actionId:actionId??null,expectedIntentDigest});setError(m.unavailable);}
   }catch{
-   if(mounted.current){if(operation!=='list'){clearText();setState({kind:'uncertain',actionId:actionId??null});}setError(m.unavailable);}
+   if(mounted.current){if(operation!=='list'&&dispatched){clearText();setState({kind:'uncertain',actionId:state.kind==='uncertain'&&state.expectedIntentDigest&&!state.actionId?null:actionId??null,expectedIntentDigest});}setError(m.unavailable);}
   }finally{clearTimeout(timer);if(mounted.current)setBusy(null);inFlight.current=false;if(controller.current===abort)controller.current=null;}
  }
  function prepare(event:FormEvent){

@@ -43,7 +43,9 @@ export type OwnLeaveBrowserOwners<Session> = Readonly<{
 const headers = { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const failure = (status: number) => Response.json({ error: 'unavailable' }, { status, headers });
-const MAX_BYTES = 20 * 1024;
+export const OWN_LEAVE_PREPARE_BYTES=28672;
+export const OWN_LEAVE_RESPONSE_BYTES=65536;
+const MAX_BYTES=OWN_LEAVE_PREPARE_BYTES;
 
 /** Byte, fragment and total-time bounds apply before identity/database work. No text is logged or
  * retained. Cancellation before dispatch prevents dispatch; once canonical confirmation starts,
@@ -71,7 +73,9 @@ async function readPacket(request: Request): Promise<Packet> {
     if (request.signal.aborted) throw Error();
     const data = new Uint8Array(bytes); let offset = 0;
     for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
-    return Packet.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data)));
+    const packet=Packet.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data)));
+    if(packet.operation!=='prepare'&&(bytes>20480||length!==null&&Number(length)>20480))throw Error();
+    return packet;
   } catch { void reader.cancel().catch(() => {}); throw Error(); }
   finally { clearTimeout(timeout); request.signal.removeEventListener('abort', abort); reader.releaseLock(); }
 }
@@ -114,7 +118,9 @@ export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwn
           : packet.operation === 'confirm' ? await owners.confirm(session, packet.confirmation)
             : await owners.discard(session, packet.confirmation);
       // Strict validation refuses accidental private fields, rather than forwarding a server object.
-      return Response.json(packet.operation==='list'?OwnLeaveReviewIndexResult.parse(result):PublicResult.parse(result), { status: 200, headers });
+      const checked=packet.operation==='list'?OwnLeaveReviewIndexResult.parse(result):PublicResult.parse(result);
+      if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>OWN_LEAVE_RESPONSE_BYTES)return failure(503);
+      return Response.json(checked,{status:200,headers});
     } catch { return failure(503); }
   };
 }

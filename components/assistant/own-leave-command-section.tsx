@@ -1,7 +1,7 @@
 /** Candidate server composition; release requires migration/source/security/experience acceptance.
  * It accepts no session, employment, type or executor props. */
 import 'server-only';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import Link from 'next/link';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {z} from 'zod';
@@ -28,7 +28,7 @@ export async function OwnLeaveCommandSection({resumeActionId:resumeValue}:{resum
   // A server-derived opaque React identity prevents cross-login or changed-resume state reuse.
   // This key grants no authority and contains no private text, raw session IDs or posted actor data.
   const grants=(ctx.grants??[]).map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const key=createHash('sha256').update(JSON.stringify(['own-leave-panel-v2',ctx.tenantId,ctx.userId,ctx.personId,[...(ctx.roles??[])].sort(),grants,locale,resume.data??null,choices])).digest('hex');
+  const key=createHash('sha256').update(JSON.stringify(['own-leave-panel-v2',ctx.tenantId,ctx.userId,ctx.personId,[...(ctx.roles??[])].sort(),grants,locale,resume.data??null,choices,randomUUID()])).digest('hex');
   return <section className="space-y-4">
    {employments.length===0&&<p role="alert" className="text-sm">{messages.unavailable}</p>}
    <OwnLeaveCommandPanel key={key} employments={employments} messages={messages} resumeActionId={resume.data}/>

@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { appendEvent } from '../db/events';
+import {updateLeaveType} from '../core/admin';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { setAiAllowance } from '../core/ai-management';
 import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx, expireOwnLeaveReviewsForCallerTx, runOwnLeaveReviewRetention, confirmOwnLeaveReview } from '../core/assistant-actions/own-leave-store';
@@ -481,8 +482,10 @@ describe('own-leave canonical completion-reference custody', () => {
     const refs = await withTenant(ctx, canonicalSubmission), before = await counts();
     await expect(withTenant(ctx, tx => completeReference(tx, review, refs))).rejects.toThrow();
     expect(await counts()).toEqual(before);
-    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
-      .toEqual({ kind: 'prepared', review });
+    // The unrelated committed submission changed the native balance/overlap source. Pending
+    // reopening now refuses stale content, while the custody marker/body remain unchanged.
+    await expect(withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId))).rejects.toThrow();
+    expect(await counts()).toEqual(before);
   });
 
   it('fails closed for source rows created in an unsupported savepoint and rolls back the whole command', async () => {
@@ -564,4 +567,9 @@ describe('own-leave top-level confirmation owner', () => {
     } finally { await owner.db.execute(sql`drop function app.fictional_own_leave_completion_failure()`); }
     expect((await confirmOwnLeaveReview(ctx, confirmation(review), 'en')).kind).toBe('completed');
   });
+});
+
+describe('fresh permitted pending own-leave reopening',()=>{
+ it('refuses formerly visible saved balance after the actual canonical ESS view policy hides it, without returning private values or changing custody/native effects',async()=>{const review=await prepare();expect(review.availableBalance).not.toBeNull();const [type]=await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id,base.annualLeaveTypeId));await updateLeaveType(await groupCtx(),{id:type.id,name:type.name,essViewConfig:{...(type.essViewConfig??{}),available:false}});const before=await counts();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en'))).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);expect(await counts()).toEqual(before);expect(before).toMatchObject({requests:0,pending:1,bodies:1,model_runs:0});});
+ it('refuses a changed canonical private balance during pending reopen instead of replaying the saved estimate',async()=>{const review=await prepare();await credit(subject.employmentId);const before=await counts();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en'))).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);expect(await counts()).toEqual(before);});
 });

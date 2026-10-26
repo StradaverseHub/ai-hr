@@ -30,7 +30,7 @@ import { OwnLeaveReviewCard } from '../components/assistant/own-leave-review-car
 afterEach(() => { cleanup(); locale = 'en'; });
 function review() {
   const now = new Date();
-  return { actionId: randomUUID(), contractVersion: 1 as const, reviewedDigest: 'a'.repeat(64),
+  return { actionId: randomUUID(), contractVersion: 1 as const, reviewedDigest: 'a'.repeat(64),humanIntentDigest:'b'.repeat(64),
     createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 600_000).toISOString(),
     companyName: '<strong>Fictional company</strong>', employeeCode: 'FICT-1', leaveTypeName: 'Annual',
     date: todayInKualaLumpur(), durationType: 'full_day' as const, deductionDays: 0.5,
