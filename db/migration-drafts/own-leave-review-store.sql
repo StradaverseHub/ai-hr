@@ -2,7 +2,7 @@
 -- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
 -- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
 -- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
--- SOURCE DRAFT ONLY. No migration allocation/journal entry; never apply manually.
+-- RESERVED SOURCE DRAFT ONLY. No journal entry or application; never apply manually.
 -- Review custody and canonical-reference completion only. No leave executor or endpoint is mounted.
 -- Tables have no app-role grants/policies: narrow SECURITY DEFINER functions own all access.
 CREATE TABLE app.assistant_own_leave_review (

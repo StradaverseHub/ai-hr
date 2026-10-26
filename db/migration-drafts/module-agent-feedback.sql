@@ -20,6 +20,17 @@ ALTER TABLE public.ai_agent_feedback ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.ai_agent_feedback FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
+-- A real table-owner connection can retire expired opinions without impersonating a group admin.
+-- SECURITY DEFINER app calls cannot acquire this path: session_user stays the actual app login.
+-- No new role, BYPASSRLS, table privilege, nonexpired visibility, INSERT or UPDATE grant is added.
+CREATE POLICY ai_agent_feedback_expired_connection_select ON public.ai_agent_feedback FOR SELECT TO PUBLIC
+ USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
+  AND session_user=pg_get_userbyid((SELECT c.relowner FROM pg_class c WHERE c.oid='public.ai_agent_feedback'::regclass)));
+--> statement-breakpoint
+CREATE POLICY ai_agent_feedback_expired_connection_delete ON public.ai_agent_feedback FOR DELETE TO PUBLIC
+ USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
+  AND session_user=pg_get_userbyid((SELECT c.relowner FROM pg_class c WHERE c.oid='public.ai_agent_feedback'::regclass)));
+--> statement-breakpoint
 CREATE POLICY ai_agent_feedback_own ON public.ai_agent_feedback FOR ALL TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND user_id=app.current_user_id())
  WITH CHECK (tenant_id=app.current_tenant_id() AND user_id=app.current_user_id()
