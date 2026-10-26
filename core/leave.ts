@@ -9,6 +9,8 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
@@ -3364,6 +3366,10 @@ export async function requestLeave(
    * live authority/dependency checks, consent and atomic lifecycle/receipt persistence. */
   reviewedOwnLeave?: ReviewedOwnLeaveEffect,
 ): Promise<RequestLeaveResult> {
+  p = { ...p,
+    overrideConsent: Array.isArray(p.overrideConsent) ? p.overrideConsent.slice() : p.overrideConsent,
+    ...(p.document ? { document: { ...p.document } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (reviewedOwnLeave) {
     if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
     // Capture the server-owned inputs before any await; a caller retaining its object cannot change
@@ -3386,6 +3392,10 @@ export async function requestLeave(
       throw new LeaveReviewedEffectError('changed');
   }
   const perform = async (tx: Tx) => {
+    // Rights first, then shared source configuration. An unauthorized subject is refused by the
+    // original gate before acquiring any employment lock or reading leave policy/balance facts.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
@@ -3399,7 +3409,7 @@ export async function requestLeave(
     //
     // ABOVE the Emergency-Leave short-circuit below, which returns into a whole separate submission path,
     // and above every other gate: nothing is read or written on behalf of someone the caller may not act for.
-    const [subject] = await tx
+    const readSubject = () => tx
       .select({ personId: employment.personId, companyId: employment.companyId,
         hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn,
         resignationDate: employment.resignationDate, lastWorkingDate: employment.lastWorkingDate,
@@ -3407,6 +3417,7 @@ export async function requestLeave(
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    const [subject] = await readSubject();
     // Self is decided by PERSON, not by employment id: one person can hold several employments (multi-company
     // groups), and all of them are still their own leave. A caller with no personId (a service/admin context
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
@@ -3431,6 +3442,15 @@ export async function requestLeave(
     // so a company-scoped grant is resolved in the company the leave is actually being filed in.
     if (!isSelfSubject && !(subject && (await resolveApplyOnBehalfTx(tx, ctx, subject.companyId)))) {
       throw new LeaveOnBehalfNotAllowedError();
+    }
+
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    const [currentSubject] = await readSubject();
+    // The initial row nominated/authorized a subject; use it only if the same canonical projection
+    // still holds after acquiring ownership. All selected facts are scalar/date values, fixed order.
+    if (!subject || !currentSubject || JSON.stringify(subject) !== JSON.stringify(currentSubject)) {
+      if (reviewedOwnLeave) throw new LeaveReviewedEffectError('changed');
+      throw new LeaveDependencyUnavailable();
     }
 
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.

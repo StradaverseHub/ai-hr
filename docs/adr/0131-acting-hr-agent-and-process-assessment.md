@@ -1641,3 +1641,19 @@ Existing validation, projection, rollback/replay and returned behavior classific
 interval. The now-unused separate-transaction resolver wrapper is removed. This closes the earlier
 correction-specific gap; configuration writers for the Movement catalogue and remaining organization /
 leave owners still require integration. All affected correction and transaction tests remain UNRUN.
+
+
+### Canonical request submission joins rights and dependency ownership (unrun)
+
+requestLeave now takes the existing Access lock, then shared leave configuration, before reading the
+subject. Its original self/on-behalf and reviewed-effect guards still run before any employment lock
+or policy/balance read. It then owns that authorized employment and rereads the exact canonical subject
+projection; a changed projection refuses instead of submitting against the earlier facts. Catalogue,
+calendar, balance and canonical request/event writes remain afterward in the same perform transaction,
+including when an enclosing own-leave command supplies its transaction. The reviewed-effect refusal
+contract and existing business engine are preserved; this is not a parallel Assistant submitter.
+
+Affected request, emergency/override, attachment, on-behalf, reviewed-effect, Access and concurrency
+checks remain UNRUN. Other request/approval/cancellation and dependency writers still need participation.
+The Access lock is existing authorization infrastructure; new leave barriers remain fail-fast and require
+whole-transaction rollback. This source checkpoint establishes no universal barrier or runtime proof.
