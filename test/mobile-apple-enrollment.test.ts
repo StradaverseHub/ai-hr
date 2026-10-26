@@ -13,7 +13,7 @@ import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,t
 const settings={apiOrigin:'https://hr.example.com',target:{platform:'ios',appId:'ABCDEFGHIJ.ai.stradaverse.aihr.test',environment:'production',requiredMetadata:null}};
 let base:Base;
 beforeAll(()=>vi.stubEnv('AI_CONFIG_SECRET','synthetic-mobile-key-receipt-secret-2026'));
-beforeEach(async()=>{await resetDb();base=await seedBase();});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-mobile-key-receipt-secret-2026');await resetDb();base=await seedBase();});
 afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 async function employee(b=base){
   const e=await hireEmployee(adminCtx(b),{person:{fullName:'Key employee',primaryEmail:randomUUID()+'@key.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
@@ -36,6 +36,7 @@ describe('scoped Apple key enrollment transaction',()=>{
     expect(createHash('sha256').update(keyEnrollmentClientData(begin.context)).digest('base64')).toBe(begin.clientDataHash);
     const command={...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation};
     const [a,b]=await Promise.all([f.service.complete(e.ctx,command),f.service.complete(e.ctx,command)]);expect(a).toEqual(b);
+    expect(f.verifyProof).toHaveBeenCalledWith(expect.objectContaining({clientDataHash:Buffer.from(begin.clientDataHash,'base64'),keyId:f.vendorKeyId,appId:settings.target.appId,environment:'production'}));
     const [row]=await owner.db.select().from(schema.mobileIntegrityKey);expect(row.proofKind).toBe('apple_key_proof');expect(row.assertionCounter).toBe(0);
     expect(row.receiptCiphertext).not.toContain('SYNTHETIC_PRIVATE_RECEIPT');
     const aad=JSON.stringify(['mobile-integrity-key-receipt',1,base.tenantId,e.ctx.userId,row.id,begin.challenge.id]);
@@ -95,5 +96,32 @@ describe('scoped Apple key enrollment transaction',()=>{
     await withTenant(e.ctx,tx=>tx.update(schema.mobileIntegrityKey).set({assertionCounter:1}).where(eq(schema.mobileIntegrityKey.id,receipt.keyId)));
     await expect(withTenant(e.ctx,tx=>tx.update(schema.mobileIntegrityKey).set({assertionCounter:0}).where(eq(schema.mobileIntegrityKey.id,receipt.keyId)))).rejects.toThrow();
     await expect(withTenant(e.ctx,tx=>tx.delete(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,receipt.keyId)))).rejects.toThrow();
+  });
+  it('never transfers a fingerprint to another actor or re-enrolls revoked key material',async()=>{
+    const e=await employee(),peer=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+    const receipt=await f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation});
+    const other=await f.service.begin(peer.ctx,peer.intent);
+    await expect(f.service.complete(peer.ctx,{...peer.intent,challengeId:other.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation})).rejects.toMatchObject({reason:'key_unavailable'});
+    expect((await f.service.begin(peer.ctx,peer.intent)).challenge.state).toBe('active');
+    await revokeOwnIntegrityKey(e.ctx,{employmentId:e.employmentId,keyId:receipt.keyId});
+    const next={...e.intent,requestId:randomUUID()},fresh=await f.service.begin(e.ctx,next);
+    await expect(f.service.complete(e.ctx,{...next,challengeId:fresh.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation})).rejects.toMatchObject({reason:'key_unavailable'});
+    expect(await owner.db.select().from(schema.mobileIntegrityKey)).toHaveLength(1);
+  });
+  it('enforces active-key capacity independently of issuance rate and keeps earlier active keys visible first',async()=>{
+    const e=await employee(),keys:Awaited<ReturnType<typeof listOwnIntegrityKeys>>=[];
+    for(let i=0;i<5;i++){
+      const f=fixture(),intent={...e.intent,requestId:randomUUID(),appInstallationId:randomUUID()},begin=await f.service.begin(e.ctx,intent);
+      keys.push(await f.service.complete(e.ctx,{...intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation}));
+    }
+    // Refill only this owned synthetic actor's issuance bucket to test the distinct active-key cap.
+    const budgetKey=createHash('sha256').update(JSON.stringify(['mobile-integrity-issue',base.tenantId,e.ctx.userId,'device.enrollment'])).digest('hex');
+    await owner.db.execute(sql`update app_request_budget set tokens=5,updated_at=clock_timestamp() where budget_key=${budgetKey}`);
+    const sixth=fixture(),intent={...e.intent,requestId:randomUUID(),appInstallationId:randomUUID()},begin=await sixth.service.begin(e.ctx,intent);
+    await expect(sixth.service.complete(e.ctx,{...intent,challengeId:begin.challenge.id,vendorKeyId:sixth.vendorKeyId,attestation:sixth.attestation})).rejects.toMatchObject({reason:'capacity'});
+    expect((await sixth.service.begin(e.ctx,intent)).challenge.state).toBe('active');
+    await revokeOwnIntegrityKey(e.ctx,{employmentId:e.employmentId,keyId:keys[4].keyId});
+    const list=await listOwnIntegrityKeys(e.ctx,e.employmentId);expect(list.slice(0,4).every(key=>key.revokedAt===null)).toBe(true);expect(list[4].keyId).toBe(keys[4].keyId);
+    expect(await sixth.service.complete(e.ctx,{...intent,challengeId:begin.challenge.id,vendorKeyId:sixth.vendorKeyId,attestation:sixth.attestation})).toMatchObject({revokedAt:null});
   });
 });

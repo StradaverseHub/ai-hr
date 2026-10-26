@@ -47,6 +47,7 @@ export async function readOwnIntegrityChallenge(ctx:SessionContext,input:Integri
       eq(mobileIntegrityChallenge.actorId,ctx.userId!),eq(mobileIntegrityChallenge.requestId,intent.requestId))).limit(1);
     if(!row)throw new IntegrityChallengeError('not_found');matches(row,intent);return view(row,await stamp(tx));
   });
+}
 
 /** bindingHash is computed by the trusted enrollment/command owner, not copied from an HTTP body.
  * Same actor/request ID retains the original challenge, including expired/consumed terminal states.
