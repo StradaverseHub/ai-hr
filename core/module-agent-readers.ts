@@ -21,6 +21,9 @@ import { listSchemaTables } from './schema-explorer';
 import { listTestCases } from './system-testing';
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
+const storedAmount = (value: unknown): string | number | null => typeof value === 'number' && Number.isFinite(value) ? value :
+  typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value) && value.length <= 40 ? value : null;
+const storedLabel = (value: unknown): string | null => typeof value === 'string' && value.length <= 250 ? value : null;
 const bounded = <T>(rows: T[]) => ({ rows: rows.slice(0, 25), truncated: rows.length > 25 });
 export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: () => boolean) {
   const moduleWork = async (module: AgentModuleCode) => {
@@ -71,8 +74,8 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
         const rows = await reads.myPayslips(fresh, (await own()).map(row => row.employmentId), true, tx);
         data = bounded(rows.filter(row => row.released).map(row => ({ payslipId: row.id, payPeriod: row.payPeriod,
           // Stored kernel amounts only. Missing historical detail stays absent; never re-derive money.
-          lines: bounded(storedComponentLines(row.statutory).map(line => ({ code: line.code ?? null,
-            name: line.name ?? null, amount: line.amount ?? null }))) })));
+          lines: bounded(storedComponentLines(row.statutory).map(line => ({ code: storedLabel(line.code),
+            name: storedLabel(line.name), amount: storedAmount(line.amount) }))) })));
         break;
       }
       case 'multi_cycle_payroll': assertModuleEnabled(fresh, 'payroll'); data = bounded((await reads.myReleasedPayslipRuns(fresh, tx)).map(run => ({ payslipId: run.payslipId, payPeriod: run.payPeriod, cycleName: run.cycleName, runType: run.runType, runSeq: run.runSeq }))); break;
@@ -110,7 +113,7 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       case 'system_testing': data = bounded((await listTestCases(fresh, {}, tx)).map(row => ({ caseNo: row.caseNo,
         moduleCode: row.moduleCode, latestOutcome: row.latestOutcome, latestRunAt: row.latestRunAt, runCount: row.runCount }))); break;
       case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code))
-        .map(([code, binding]) => ({ module: code, capability: binding })), effects: 'human-confirmation-only' }; break;
+        .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only' }; break;
       default: return unavailable();
     }
     if (!active()) return unavailable();

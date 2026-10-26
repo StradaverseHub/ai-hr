@@ -6,6 +6,7 @@ import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { askAssistantAction } from './actions';
+import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-actions';
 
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
@@ -48,6 +49,9 @@ export default async function AssistantPage({
           {/* Three different reasons, three different next steps. "No" with no route forward is the one
               thing this must not render. */}
           <p className="text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
+          <form action={eraseAgentFeedbackAction} className="mt-4">
+            <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
+          </form>
         </Card>
       </div>
     );
@@ -93,6 +97,21 @@ export default async function AssistantPage({
             </p>
           )}
 
+          <form action={saveAgentFeedbackAction} className="mt-4 space-y-2 border-t pt-3">
+            <input type="hidden" name="exchangeId" value={h.id} />
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" name="consented" value="yes" required className="mt-0.5" />
+              <span>{t('workspace.feedbackConsent')}</span>
+            </label>
+            <div className="flex flex-wrap gap-2" aria-label={t('workspace.feedbackTitle')}>
+              {(['helpful', 'needs_correction', 'incorrect'] as const).map(outcome => <button
+                key={outcome} type="submit" name="outcome" value={outcome}
+                className="min-h-11 rounded-md border px-3 py-2 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                {t(`workspace.feedback_${outcome}`)}
+              </button>)}
+            </div>
+          </form>
+
           {h.toolCalls.length > 0 && (
             <p className="mt-2 text-[11px] text-muted-foreground">
               {t('lookedAt', { tools: [...new Set(h.toolCalls.map((c) => c.name))].join(', ') })}
@@ -101,6 +120,9 @@ export default async function AssistantPage({
         </Card>
       ))}
 
+      <form action={eraseAgentFeedbackAction}>
+        <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
+      </form>
       </section>}
       {history.length === 0 && (
         <Card className="p-6">

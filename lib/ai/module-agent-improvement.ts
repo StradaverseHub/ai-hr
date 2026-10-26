@@ -3,7 +3,7 @@
  * This engine has no network, database, deployment credentials, raw feedback or learning corpus.
  */
 import { createHash } from 'node:crypto';
-import type { AgentModuleCode } from './module-agents';
+import { isAgentModuleCode, type AgentModuleCode } from './module-agents';
 export type ImprovementScope = Readonly<{ tenantId: string; userId: string; module: AgentModuleCode }>;
 export type Candidate = Readonly<{ scope: ImprovementScope; version: number; digest: string; authorId: string;
   baselineDigest: string; state: 'candidate' | 'promoted' | 'rolled_back' }>;
@@ -16,7 +16,7 @@ const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(va
 const boundedText = (value: string) => typeof value === 'string' && value.length > 0 && value.length <= 128;
 export function createAgentCandidate(scope: ImprovementScope, authorId: string, baselineDigest: string,
   version: number, configuration: Readonly<{ promptDigest: string; routingDigest: string; engineContractDigest: string }>): Candidate {
-  if (!boundedText(scope.tenantId) || !boundedText(scope.userId) || !boundedText(authorId) || !boundedText(baselineDigest) ||
+  if (!isAgentModuleCode(scope.module) || Object.keys(configuration).sort().join(',') !== 'engineContractDigest,promptDigest,routingDigest' || !boundedText(scope.tenantId) || !boundedText(scope.userId) || !boundedText(authorId) || !boundedText(baselineDigest) ||
     !Number.isSafeInteger(version) || version < 1 || Object.values(configuration).some(value => !boundedText(value))) return fail();
   const capturedScope = Object.freeze({ tenantId: scope.tenantId, userId: scope.userId, module: scope.module });
   return Object.freeze({ scope: capturedScope, version, authorId, baselineDigest,
