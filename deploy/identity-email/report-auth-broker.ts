@@ -3,6 +3,7 @@ import postgres from 'postgres';
 import {reportRenderDatabase} from './render-config';
 import {authorizeReportArtifact} from './render-process';
 import {internalConfig,internalSelected} from '../../lib/internal-auth/config';
+import {prepareReportSmtpRelay} from '../../lib/internal-auth/report-smtp-token';
 import {executeReportBrokerRequest,type ReportBrokerDependencies} from '../../lib/internal-auth/report-broker';
 import {reportBrokerRequest,reportBrokerResponse,REPORT_BROKER_REQUEST_MAX_BYTES,REPORT_BROKER_REPLY_MAX_BYTES,type ReportBrokerResponse} from '../../lib/internal-auth/report-broker-model';
 function trustedUid(value:string|undefined):number {
@@ -27,7 +28,7 @@ async function main():Promise<ReportBrokerResponse>{
    try{const result=await pool.begin(async tx=>({value:await work(tx)}));return result.value;}
    finally{clearTimeout(deadline);}
   };
-  return reportBrokerResponse.parse(await executeReportBrokerRequest(input,{transaction,authorizeArtifact:authorizeReportArtifact}));
+  return reportBrokerResponse.parse(await executeReportBrokerRequest(input,{transaction,authorizeArtifact:authorizeReportArtifact,prepareRelay:prepareReportSmtpRelay}));
  }finally{
   // No relay-bearing JSON is written until every private app connection has closed.
   await pool.end({timeout:2});

@@ -1,0 +1,24 @@
+name: production-package-checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/releases/**'
+      - 'docs/PRODUCTION-PACKAGES.md'
+      - '.github/workflows/production-package-checks.yml'
+  push:
+    branches: [alpha, main]
+    paths:
+      - 'scripts/releases/**'
+      - '.github/workflows/production-package-checks.yml'
+permissions:
+  contents: read
+jobs:
+  publisher-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Test staging approval and immutable package publication
+        run: python3 -m unittest discover -s scripts/releases -p 'test_*.py' -v

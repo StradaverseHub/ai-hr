@@ -1,5 +1,7 @@
 # Embedded HR authentication
 
+For unattended Microsoft 365 email, see [application OAuth SMTP setup](MICROSOFT365-SMTP.md).
+
 The owner cancelled Keycloak activation on 2026-10-15. Use `AUTH_PROVIDER=internal`; no identity-service process, OIDC discovery, `/identity` proxy or cloud identity dependency is required. ADR-0117 owns the design. The old Keycloak activation helper on the current server is disabled. Its installed service and legacy tables are retained for reviewed cleanup rather than destructively removed.
 
 ## Installation and owner enrollment

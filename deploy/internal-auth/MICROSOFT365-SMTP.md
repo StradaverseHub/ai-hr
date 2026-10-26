@@ -1,0 +1,65 @@
+# Microsoft 365 application authentication for email
+
+AIHR internal authentication supports unattended SMTP with an application identity. An enrolled
+installation operator configures it in **System Configuration → Email delivery**. It uses existing
+encrypted mail settings and the Save, Test and Activate workflow. No user sign-in, delegated refresh
+token, callback or database migration is needed.
+
+## Microsoft 365 administrator setup
+
+Register a single-tenant Entra application, add **Office 365 Exchange Online → Application permissions
+→ SMTP.SendAsApp**, and grant tenant administrator consent. Register its service principal in
+Exchange Online using `New-ServicePrincipal`. Use the **Enterprise application** object ID; the
+app-registration object ID is different. Restrict access to the designated sending mailbox using
+Exchange mailbox permissions and grant the sender's required Send As permission. Verify SMTP AUTH
+is enabled for that mailbox under the organization's approved security policy. Do not grant
+unrelated Graph, IMAP or POP permissions for AIHR SMTP.
+
+Create a client secret with an expiry and rotation owner. Privately provide its **value**, tenant ID,
+application/client ID and allowed mailbox to the AIHR installation operator. Keep secrets out of
+chat, tickets and tracked files. The request uses `client_credentials` with
+`https://outlook.office365.com/.default`. The screenshot's delegated `SMTP.Send` uses another flow.
+Follow Microsoft's [application SMTP setup](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)
+and [SMTP submission requirements](https://learn.microsoft.com/en-us/exchange/mail-flow-best-practices/how-to-set-up-a-multifunction-device-or-application-to-send-email-using-microsoft-365-or-office-365).
+
+## AIHR setup and acceptance
+
+1. Select Microsoft 365 application OAuth in the saved Email delivery form. AIHR fixes the connection
+   to `smtp.office365.com:587`, mandatory STARTTLS and verified TLS 1.2 or later.
+2. Enter tenant ID, application ID, mailbox username, client secret value and From address. Save the
+   draft. Saving does not replace the active connection.
+3. Send the test to the operator's verified address and check the actual inbox, including junk mail.
+   After receiving it, confirm receipt and activate the tested draft.
+4. Verify account and Reports deliveries separately. Configuring email does not install Reports
+   private services, enable scheduling, create consent or replay held deliveries.
+
+Saved secrets are write-only. A blank secret retains it only for the same authentication method,
+host, mailbox, tenant and application. Changing those requires a new secret. Every saved replacement
+requires a fresh successful test and explicit receipt before activation. For rotation, leave the
+old credential valid until the replacement is accepted, then revoke it in Entra. Preserve the
+existing authentication encryption key and its database backup together.
+
+Each delivery obtains a short-lived access token in memory. Provider bodies and credentials stay
+out of public failures and audit events. Reports obtains the token outside database transactions,
+then rechecks the occurrence, identities, contact, permissions and relay revision before marking
+the attempt started. Its isolated sender receives the token, never the client secret or encryption
+key. A token or SMTP failure does not trigger a new delivery.
+
+The reviewed internal Reports installer also installs `aihr-smtp-token.socket` and its one-request
+Python service. The socket accepts only the existing web/broker UID. The helper uses a separate
+dynamic UID, no private environment file, no database credentials and a fixed Microsoft endpoint.
+The Auth broker retains its loopback-only network filter. Upgrade the reviewed private Reports
+bundle before expecting OAuth Reports delivery; a missing helper fails closed. Check the installed
+UID/socket/proc boundaries and memory budgets on Linux as part of that upgrade's acceptance.
+
+Password and no-auth relays retain implicit TLS support and may select mandatory STARTTLS. Application
+OAuth is available only for the internal authentication owner; legacy managed identity settings
+reject it. National clouds, certificate credentials, delegated authorization and Graph sending
+are outside this implementation.
+
+## Failure handling
+
+A failed test leaves active settings in place. Check consent, enterprise service-principal
+registration, mailbox grants, SMTP AUTH policy and secret expiry privately. Token acquisition
+does not prove SMTP authorization or inbox receipt. Keep real tenant delivery, receipt and
+production activation evidence separate from simulated transport and local tests.
