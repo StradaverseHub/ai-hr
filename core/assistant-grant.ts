@@ -17,6 +17,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { appUser, assistantGrant, person } from '../db/schema';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 
 export const ASSISTANT_MODULE = 'assistant';
 
@@ -135,7 +136,10 @@ export async function grantAssistant(
   ctx: SessionContext,
   p: { appUserId: string },
 ): Promise<{ id: string }> {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     assertAdmin(ctx);
     const [existing] = await tx
       .select({ id: assistantGrant.id })
@@ -184,7 +188,10 @@ export async function grantAssistant(
 /** Admin: switch it off. A STAMP, never a delete — 0451 revokes DELETE from ai_hr_app so the database
  *  enforces that rather than this function. Idempotent: no live row is a no-op, not an error. */
 export async function revokeAssistant(ctx: SessionContext, p: { appUserId: string }): Promise<void> {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   await withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     assertAdmin(ctx);
     const [row] = await tx
       .update(assistantGrant)

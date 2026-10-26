@@ -12,8 +12,9 @@ import { resolveEntitlementsTx } from '../entitlements';
  * cannot change that identity proof until this transaction ends. Refuse an older repeatable-read
  * snapshot: this read must take a new statement snapshot after acquiring the access lock.
  *
- * This does NOT fence Assistant-grant, module, leave-policy or balance writers, nor check AI pauses.
- * The future command must close those dependencies before using this context to execute. No nested
+ * Canonical Assistant grant/revoke writers now join this Access lock. Module, leave-policy and
+ * balance writers still need their own participating dependency interval; this does not check AI
+ * pauses or prove all storage writers participate. The command must close those dependencies. No nested
  * transaction, provider call, model admission, action record or domain event is created here. */
 export async function readOwnLeaveActorTx(tx: Tx, ctx: SessionContext): Promise<SessionContext | null> {
   if (!ctx.userId || !ctx.personId || ctx.entitlementsExempt !== undefined

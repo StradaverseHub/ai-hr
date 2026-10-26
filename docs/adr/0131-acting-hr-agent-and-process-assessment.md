@@ -1673,3 +1673,18 @@ without request/ledger/event changes during an employee interval, then perform t
 or compensation after release. All new cases and affected single/batch decisions, delegation, employee
 cancellation, split/group, Payroll and credit consumers are UNRUN. Other ledger and dependency writers
 remain pending. No universal barrier or runtime/security/effect-completion claim is established here.
+
+
+### Canonical Assistant grant/revoke writers join current actor ownership (unrun)
+
+The canonical grant and revocation services now acquire the existing tenant Access lock before their
+administrator/RLS guard, grant reads/writes and event. The own-leave actor reader already owns that
+same barrier before its live grant read, so participating permission transitions serialize with the
+actual actor interval. This adds no grant, bypass, provider call or new privilege. Other module/pause
+and storage writers remain separate dependencies and still require completion.
+
+Two authored two-connection cases hold Access, call the actual public grant/revoke service, positively
+observe its pending advisory lock through fixture-database lock metadata, require unchanged grant/event
+state, release the interval and verify exactly the intended live-grant state plus one event. They and
+all affected grant, actor, RLS and revocation-security checks are UNRUN. Source checks do not establish
+an installed database barrier or universal authority guarantee; no release is authorized by this alone.
