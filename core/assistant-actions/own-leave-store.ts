@@ -11,6 +11,8 @@ import { requestLeave, lockLeaveDependenciesTx } from '../../packs/leave/service
 import { assertAiActionUnpausedTx } from '../ai-governance';
 import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
   type OwnLeaveFinalReceipt as Receipt, type OwnLeavePreparedReview as Card } from '../../lib/assistant-actions/own-leave-contract';
+import { assertAiPrincipalTx } from '../ai-principal';
+import { OwnLeaveReviewIndexResult } from '../../lib/assistant-actions/own-leave-http';
 import { readOwnLeaveActorTx } from './own-leave-actor';
 import { readOwnLeaveCandidateTx, type OwnLeaveCandidateResult } from './own-leave-candidate';
 import { OwnLeaveContentUnavailable, OwnLeaveSealedReview, sealOwnLeaveReview, unsealOwnLeaveReview } from './own-leave-content';
@@ -229,4 +231,20 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
     // error, after withTenant has rolled back; never expose a cause or commit a partial command.
     throw new OwnLeaveContentUnavailable();
   }
+}
+
+/** Own login's bounded metadata discovery, including after Assistant grant/pause revocation. This
+ * grants no review-content, request/event or leave-effect access. Explicit reopen keeps its full gates.
+ * Expired private-body cleanup is a separate caller transaction and is not hidden in this reader.
+ */
+export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
+  const ctx=captureContext(supplied);
+  try{
+    await assertAiPrincipalTx(tx,ctx);
+    const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select action_id as "actionId",state,
+      to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+      to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt"
+      from app.assistant_own_leave_reviews_index()`);
+    return OwnLeaveReviewIndexResult.parse({kind:'review_index',reviews:Array.from(rows)});
+  }catch{throw new OwnLeaveContentUnavailable();}
 }

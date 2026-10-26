@@ -340,3 +340,29 @@ END $$;
 REVOKE ALL ON FUNCTION app.assistant_review_erasure_complete() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER assistant_review_erasure_complete AFTER INSERT ON app.assistant_review_erasure_intent
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.assistant_review_erasure_complete();
+
+--> statement-breakpoint
+-- UNALLOCATED ADDITION / UNJOURNALED / UNAPPLIED: metadata discovery is not a content/effect grant.
+-- Fixed 30-day discovery visibility and 25-row bound; this is NOT a metadata purge promise.
+CREATE FUNCTION app.assistant_own_leave_reviews_index()
+ RETURNS TABLE(action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();p uuid;at_time timestamptz;
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' THEN
+  RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ SELECT a.person_id INTO p FROM public.app_user a JOIN public.person actual ON actual.id=a.person_id AND actual.tenant_id=a.tenant_id
+ WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id);
+ IF p IS NULL THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ at_time:=clock_timestamp();
+ RETURN QUERY SELECT r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=t AND r.user_id=u AND r.person_id=p
+   AND r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time
+  ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_index() TO ai_hr_app;

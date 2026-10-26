@@ -3,7 +3,7 @@
  * Migrations/relevant writer/security/retention/experience acceptance remain required before mount. */
 import { withTenant, type SessionContext } from '../../db/client';
 import { createOwnLeaveBrowserHandler } from '../../lib/assistant-actions/own-leave-http';
-import { confirmOwnLeaveReview, discardOwnLeaveReviewTx, expireOwnLeaveReviewsForCallerTx, prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx } from './own-leave-store';
+import { confirmOwnLeaveReview, discardOwnLeaveReviewTx, expireOwnLeaveReviewsForCallerTx, listOwnLeaveReviewsTx, prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx } from './own-leave-store';
 
 type BrowserSession = Readonly<{ ctx: SessionContext; locale?: string }>;
 export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<BrowserSession>) {
@@ -14,6 +14,10 @@ export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<
     authenticate: async () => {
       const session = await authenticate(), ctx = session.ctx;
       return Object.freeze({ ctx: { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) }, locale: session.locale });
+    },
+    list: async (session) => {
+      await cleanup(session);
+      return withTenant(session.ctx, tx => listOwnLeaveReviewsTx(tx, session.ctx));
     },
     prepare: async (session, packet) => {
       await cleanup(session);

@@ -6,7 +6,17 @@ import { isSameOriginBrowserRequest } from '../request-origin';
 import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeaveHumanSelection, OwnLeaveHumanText,
   OwnLeaveNomination, OwnLeavePreparedReview } from './own-leave-contract';
 
+/** Metadata discovery only. No business text, digests, subjects or source-record references. */
+export const OwnLeaveReviewIndexEntry = z.object({actionId:z.string().uuid(),
+  state:z.enum(['awaiting_confirmation','discarded','expired','refused','completed']),
+  createdAt:z.string().datetime(),expiresAt:z.string().datetime()}).strict()
+  .refine(row=>Date.parse(row.expiresAt)>Date.parse(row.createdAt));
+export const OwnLeaveReviewIndexResult = z.object({kind:z.literal('review_index'),
+  reviews:z.array(OwnLeaveReviewIndexEntry).max(25)}).strict()
+  .refine(result=>new Set(result.reviews.map(row=>row.actionId)).size===result.reviews.length);
+
 const Packet = z.discriminatedUnion('operation', [
+  z.object({ operation: z.literal('list') }).strict(),
   z.object({ operation: z.literal('prepare'), nomination: OwnLeaveNomination,
     selection: OwnLeaveHumanSelection, humanText: OwnLeaveHumanText }).strict(),
   z.object({ operation: z.literal('reopen'), actionId: z.string().uuid() }).strict(),
@@ -14,6 +24,7 @@ const Packet = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('discard'), confirmation: OwnLeaveConfirmation }).strict(),
 ]);
 const PublicResult = z.discriminatedUnion('kind', [
+  OwnLeaveReviewIndexResult,
   z.object({ kind: z.literal('prepared'), review: OwnLeavePreparedReview }).strict(),
   z.object({ kind: z.literal('completed'), receipt: OwnLeaveFinalReceipt.refine(value => value.state === 'completed') }).strict(),
   z.object({ kind: z.literal('retired'), receipt: OwnLeaveFinalReceipt.refine(value => value.state !== 'completed') }).strict(),
@@ -23,6 +34,7 @@ const PublicResult = z.discriminatedUnion('kind', [
 type Packet = z.infer<typeof Packet>;
 export type OwnLeaveBrowserOwners<Session> = Readonly<{
   authenticate(): Promise<Session>;
+  list(session: Session): Promise<unknown>;
   prepare(session: Session, packet: Extract<Packet, { operation: 'prepare' }>): Promise<unknown>;
   reopen(session: Session, actionId: string): Promise<unknown>;
   confirm(session: Session, confirmation: z.infer<typeof OwnLeaveConfirmation>): Promise<unknown>;
@@ -79,12 +91,13 @@ export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwn
     try { session = await owners.authenticate(); } catch { return failure(401); }
     if (request.signal.aborted) return failure(408);
     try {
-      const result = packet.operation === 'prepare' ? await owners.prepare(session, packet)
+      const result = packet.operation === 'list' ? await owners.list(session)
+        : packet.operation === 'prepare' ? await owners.prepare(session, packet)
         : packet.operation === 'reopen' ? await owners.reopen(session, packet.actionId)
           : packet.operation === 'confirm' ? await owners.confirm(session, packet.confirmation)
             : await owners.discard(session, packet.confirmation);
       // Strict validation refuses accidental private fields, rather than forwarding a server object.
-      return Response.json(PublicResult.parse(result), { status: 200, headers });
+      return Response.json(packet.operation==='list'?OwnLeaveReviewIndexResult.parse(result):PublicResult.parse(result), { status: 200, headers });
     } catch { return failure(503); }
   };
 }

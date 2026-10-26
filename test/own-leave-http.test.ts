@@ -14,7 +14,7 @@ const review = { kind: 'prepared', review: { actionId, contractVersion: 1, revie
   availableBalance: null, estimatedAvailableAfter: null, holidayWarnings: [], approvalRouting: 'unknown', humanText: prepare.humanText } };
 const session = Object.freeze({ login: 'server-session-only' });
 function fixture() {
-  const owners = { authenticate: vi.fn(async () => session), prepare: vi.fn(async () => review),
+  const owners = { list:vi.fn(async()=>({kind:'review_index',reviews:[]})), authenticate: vi.fn(async () => session), prepare: vi.fn(async () => review),
     reopen: vi.fn(async () => completed), confirm: vi.fn(async () => completed),
     discard: vi.fn(async () => ({ kind: 'retired', receipt: { actionId, contractVersion: 1, state: 'discarded' } })) };
   return { owners, run: createOwnLeaveBrowserHandler(owners) };
