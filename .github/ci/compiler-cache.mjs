@@ -11,6 +11,7 @@ import {compilerStateIdentity,publishCompilerState,readCompilerState} from './di
 import {validateCompilerPhase} from './diagnostics/compiler-incremental.mjs';
 import {COMPILER_STATE_ARTIFACT,COMPILER_PACKET_MEMBERS} from './compiler-cache-protocol.mjs';
 import {compilerStateApplicability} from '../../scripts/ci-compiler-cache-policy.ts';
+import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
 
 const REPO='StradaverseHub/ai-hr',REPO_ID=1333414856,WORKFLOW='.github/workflows/alpha-staging.yml',DIAGNOSTIC='.github/workflows/alpha-staging-diagnostics.yml';
 const REVIEW='codex/test-suite-efficiency-review-20261025';
@@ -18,7 +19,7 @@ const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const CACHE_NAME=COMPILER_STATE_ARTIFACT,MAX_ZIP=64*1024**2;
 const MEMBERS=COMPILER_PACKET_MEMBERS;
 export const COMPILER_SEED=Object.freeze({kind:'seed',runId:40243921832,source:'067301b3596a2f6c2f483265edf6a6015e34698c',controller:'067301b3596a2f6c2f483265edf6a6015e34698c',artifactId:12617977681,digest:'sha256:e631a892d9e1826c691475ba9a5f761e3e9e865fbdf57ffc253352ed7e65c8d8'});
-const CODE_PATHS=['.github/ci/compiler-cache.mjs','.github/ci/compiler-cache-protocol.mjs','.github/ci/extract-artifact.py','.github/ci/typecheck.sh','.github/ci/prepare-runner.sh','.github/ci/runner-capacity.mjs','.github/ci/diagnostics/compiler-transport.mjs','.github/ci/diagnostics/compiler-state.mjs','.github/ci/diagnostics/compiler-incremental.mjs','scripts/ci-compiler-cache-policy.ts','.github/actions/setup-alpha/action.yml'];
+const CODE_PATHS=['.github/ci/cache-artifact-discovery.mjs','.github/ci/compiler-cache.mjs','.github/ci/compiler-cache-protocol.mjs','.github/ci/extract-artifact.py','.github/ci/typecheck.sh','.github/ci/prepare-runner.sh','.github/ci/runner-capacity.mjs','.github/ci/diagnostics/compiler-transport.mjs','.github/ci/diagnostics/compiler-state.mjs','.github/ci/diagnostics/compiler-incremental.mjs','scripts/ci-compiler-cache-policy.ts','.github/actions/setup-alpha/action.yml'];
 const digest=b=>createHash('sha256').update(b).digest('hex');
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const id=v=>/^[1-9][0-9]{0,15}$/.test(String(v))&&Number.isSafeInteger(Number(v));
@@ -63,9 +64,11 @@ export function verifyCompilerPublisherTree(tree,expected){
  for(const [path,blob]of Object.entries(expected))assert(sha(blob)&&entries.get(path)===blob,'Producer compiler/workflow implementation differs: '+path);
  return true;
 }
-function expectedCode(kind){
- const paths=[...CODE_PATHS,kind==='normal'?WORKFLOW:DIAGNOSTIC];
- return Object.fromEntries(paths.map(path=>[path,execFileSync('git',['rev-parse','HEAD:'+path],{cwd:ROOT,encoding:'utf8',timeout:5000}).trim()]));
+function expectedCode(kind,deadline){
+ const paths=[...CODE_PATHS,kind==='normal'?WORKFLOW:DIAGNOSTIC],remaining=deadline-Date.now();assert(remaining>0,'Compiler publisher code lookup deadline');
+ const blobs=execFileSync('git',['rev-parse',...paths.map(path=>'HEAD:'+path)],{cwd:ROOT,encoding:'utf8',timeout:Math.min(5000,remaining)}).trim().split('\n');
+ assert(blobs.length===paths.length&&blobs.every(sha),'Complete compiler implementation identities required');
+ return Object.fromEntries(paths.map((path,index)=>[path,blobs[index]]));
 }
 function metadataApi(path,deadline,maxBuffer=8*1024**2){
  const remaining=deadline-Date.now();assert(remaining>0,'Compiler cache lookup budget exhausted');
@@ -73,23 +76,24 @@ function metadataApi(path,deadline,maxBuffer=8*1024**2){
 }
 function listOrigins(e,report,deadline){
  if(e.AIHR_COMPILER_CACHE_FORCE_INVALID==='true')return [COMPILER_SEED];
- const result=[];
- for(const [file,kind]of [['alpha-staging.yml','normal'],['alpha-staging-diagnostics.yml','pilot']]){
-  try{
-   const list=metadataApi('actions/workflows/'+file+'/runs?per_page=3',deadline);
-   assert(Array.isArray(list.workflow_runs)&&list.workflow_runs.length<=3,'Bounded workflow inventory required');
-   for(const run of list.workflow_runs)if(run.id!==Number(e.GITHUB_RUN_ID)&&run.run_attempt===1&&['workflow_dispatch','push'].includes(run.event))result.push({kind,runId:run.id,listed:run});
-  }catch(error){report.lookup.push({kind,discoveryError:String(error)});}
- }
- return [...result,COMPILER_SEED];
+ try{
+  const inventory=metadataApi('actions/artifacts?name='+encodeURIComponent(CACHE_NAME)+'&per_page=3',deadline);
+  return [...cacheArtifactCandidates(inventory,{name:CACHE_NAME,currentRunId:e.GITHUB_RUN_ID}).map(pointer=>({kind:'artifact',...pointer})),COMPILER_SEED];
+ }catch(error){report.lookup.push({discoveryError:String(error)});return [COMPILER_SEED];}
 }
 async function restoreGraph(source,out,current,e,report){
  const deadline=Date.now()+20000;
- for(const d of listOrigins(e,report,deadline)){
+ for(const selectedOrigin of listOrigins(e,report,deadline)){
+  let d=selectedOrigin;
   if(Date.now()>=deadline){report.lookup.push({error:'Lookup budget exhausted; compiling cold'});break;}
   const observation={kind:d.kind,runId:d.runId};report.lookup.push(observation);
   try{
-   const run=d.listed||metadataApi('actions/runs/'+d.runId,deadline),jobs=metadataApi('actions/runs/'+d.runId+'/attempts/1/jobs?per_page=100',deadline);
+   const run=d.listed||metadataApi('actions/runs/'+d.runId,deadline);
+   if(d.kind==='artifact'){
+    const kind=run.path===WORKFLOW?'normal':run.path===DIAGNOSTIC?'pilot':null;assert(kind,'Graph publisher workflow differs');
+    d={...d,kind};observation.kind=kind;
+   }
+   const jobs=metadataApi('actions/runs/'+d.runId+'/attempts/1/jobs?per_page=100',deadline);
    let artifact;
    if(d.kind==='seed')artifact=metadataApi('actions/artifacts/'+d.artifactId,deadline);
    else{
@@ -97,10 +101,11 @@ async function restoreGraph(source,out,current,e,report){
     assert(inventory.total_count===inventory.artifacts.length&&inventory.artifacts.length<100,'Complete bounded artifact inventory required');
     const selected=inventory.artifacts.filter(v=>v.name===CACHE_NAME);assert(selected.length===1,'No unique eligible compiler cache artifact');artifact=selected[0];
    }
+   if(d.discoveryArtifactId!==undefined)assert(artifact.id===d.discoveryArtifactId,'Compiler graph discovery pointer differs');
    const job=validateCompilerOrigin(d,run,jobs,artifact);
    let publisherTree=null,publisherCode=null;
    if(d.kind!=='seed'){
-    publisherTree=metadataApi('git/trees/'+run.head_sha+'?recursive=1',deadline);publisherCode=expectedCode(d.kind);
+    publisherTree=metadataApi('git/trees/'+run.head_sha+'?recursive=1',deadline);publisherCode=expectedCode(d.kind,deadline);
     verifyCompilerPublisherTree(publisherTree,publisherCode);observation.publisherCodeVerified=true;
    }
    const remaining=deadline-Date.now();assert(remaining>0,'Cache download budget exhausted');
@@ -133,6 +138,7 @@ async function restoreGraph(source,out,current,e,report){
    if(e.AIHR_COMPILER_CACHE_FORCE_INVALID==='true'){bytes=Buffer.concat([bytes,Buffer.from(' ')]);observation.forcedInvalidBytesSha256=digest(bytes);}
    writeFileSync(join(snapshot,'whole-project.tsbuildinfo'),bytes,{flag:'wx',mode:0o600});json(join(snapshot,'provenance.json'),envelope);
    const verified=readCompilerState(snapshot,original);
+   assert(Date.now()<=deadline,'Compiler cache lookup deadline exceeded during local validation');
    observation.accepted=true;observation.artifactId=artifact.id;
    return {bytes:verified.bytes,origin:{kind:d.kind,source:original.source,controller:original.controller,runId:run.id,artifactId:artifact.id,artifactDigest:artifact.digest,stateSha256:digest(verified.bytes)},applicability};
   }catch(error){observation.error=String(error);}

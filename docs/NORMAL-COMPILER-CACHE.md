@@ -24,7 +24,7 @@ Root independently authenticated raw APIs/archives, command output/count/zero ex
 
 Whole compiler elapsed was 94.00% lower in this one same-source pair; complete diagnostic elapsed was 76.52% lower. Total occupied runner time was 501 s / 8.35 minutes, not authoritative billing. SDK deletion was skipped in both. Earlier genuine changed-source/dependency/new-root refusal controls retain their separate execution origins. This pair proves normal-entry-point publication/restoration and mandatory cold fallback, not arbitrary changed-input performance or a full workflow release.
 
-Normal adoption still requires complete version 3 validation and trusted controller installation. No main/alpha branch or staging runtime was changed. Actual current-source controller SHA remains distinct from later documentation commits. The complete required test/build/migration/deployment/arrival target below 600 seconds is still unachieved.
+Normal adoption still requires complete current-policy validation and trusted controller installation; the results above retain their historical version3 origin. No main/alpha branch or staging runtime was changed. Actual current-source controller SHA remains distinct from later documentation commits. The complete required test/build/migration/deployment/arrival target below 600 seconds is still unachieved.
 
 ## Identity and trust
 
@@ -33,6 +33,12 @@ The actual candidate, controller and run remain separate. Cache state comes only
 The reader also fetches the original authenticated controller Git tree and requires every actual critical compiler, extraction, configuration-policy, toolchain-setup and workflow blob to match its current trusted implementation. Reported hashes alone cannot establish that match. A single immutable bootstrap tuple is separately pinned to the independently verified original diagnostic source067301b35/run40243921832/artifact12617977681/ZIP digeste631a892…; it expires normally and is never relabelled as a newer compilation.
 
 Actual Node/TypeScript/Next/Linux/x64, compiler implementation bytes/flags/heap/path, root configuration, dependency locks, generated Next types and mobile inputs must match. A distinct source needs an authenticated bounded ancestor comparison; the compiler discovers/checks all current files afterward. Identical source still runs the compiler. Extended/referenced configurations retain cold compilation; they do not produce eligible reusable graphs under this policy. No matching graph, stale state, failed job, wrong code, unavailable API or invalid bytes produces an accepted cache hit. Lookup has a20second budget, then the actual compiler runs cold.
+
+## Exact artifact publisher discovery
+
+The current source looks up at most three entries in GitHub's repository artifact index with the exact whole-compiler-state-v1 name, rather than the three most recent runs of each workflow. Controller-only and resource diagnostics do not publish graph packets and must not hide an older eligible publisher. The index is only a bounded discovery hint: the reader still fetches the actual run, complete producing-job and per-run artifact inventories, requires the exact discovered artifact ID and sole namespace, authenticates every critical controller blob and ZIP/state bytes, checks original compiler exit/log/resource cleanup, runtime/configuration/source compatibility and age, then always executes the complete current compiler. The new shared discovery module joins the pinned code inventory. Old managed implementations do not receive a new waiver; the sole previously verified immutable bootstrap remains separately pinned.
+
+The whole lookup keeps its20-second deadline, including final local validation; all compiler implementation Git blob IDs are read in one bounded Git invocation. API failure, invalid or expired pointers, wrong workflow/job/source/code, corrupted bytes or incompatible state still yields a cold compile. No cache lookup creates PASS. The current source change and private transport regression controls are pending hosted verification; a real current-source compiler cache hit and complete normal release remain separate required evidence.
 
 ## Execution and resource controls
 

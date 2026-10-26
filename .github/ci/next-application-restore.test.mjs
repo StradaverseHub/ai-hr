@@ -22,7 +22,9 @@ function fixture(mode){
  workflow_run:{id:run.id,head_sha:run.head_sha,repository_id:1333414856,head_repository_id:1333414856}};
  const tree={truncated:false,tree:NEXT_APPLICATION_CODE.map(path=>({path,type:'blob',sha:mode==='wrong-code'&&path===NEXT_APPLICATION_CODE[0]?'d'.repeat(40):'c'.repeat(40)}))};
  const routes={
-  ['actions/workflows/alpha-staging.yml/runs?per_page=3']:{workflow_runs:[run]},
+  ['actions/artifacts?name='+NEXT_APPLICATION_STATE+'&per_page=3']:{total_count:1,artifacts:[artifact]},
+  ['actions/runs/'+run.id]:run,
+  ['actions/workflows/alpha-staging.yml/runs?per_page=3']:{workflow_runs:[103,102,101].map(id=>({...run,id}))},
   ['actions/runs/'+run.id+'/attempts/1/jobs?per_page=100']:{total_count:1,jobs:[job]},
   ['actions/runs/'+run.id+'/artifacts?per_page=100']:{total_count:1,artifacts:[artifact]},
   ['git/trees/'+run.head_sha+'?recursive=1']:tree
@@ -45,6 +47,7 @@ test('actual authenticated transport returns graph bytes while failed whole run 
   assert(result);assert(result.bytes.equals(f.f.files.get('state.json')));assert.equal(result.origin.runId,123);
   assert.equal(report.lookup[0].actualPublisherCodeVerified,true);assert.equal(report.lookup[0].accepted,true);
   assert(!existsSync(join(f.source,'.next')),'Lookup must not install graph or build output');
+  const requests=readFileSync(f.trace,'utf8');assert(requests.includes('actions/artifacts?name='+NEXT_APPLICATION_STATE+'&per_page=3'));assert(!requests.includes('actions/workflows/'),'Recent nonpublishing workflows must not hide an older graph');
  }finally{process.env.PATH=old;f.close();}
 });
 test('actual transport refuses corrupt ZIP, failed producing job and changed actual controller; returns cold rather than PASS',()=>{

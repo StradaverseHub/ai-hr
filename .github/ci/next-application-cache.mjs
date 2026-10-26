@@ -10,6 +10,7 @@ import {nextBuildContext,assertNextBuildSource} from './next-build-cache.mjs';
 import {hash,assertNextAncestry,validateNextState} from './next-build-cache-policy.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,NEXT_APPLICATION_SEED,NEXT_APPLICATION_CODE,assertManagedNextInvocation,validateManagedNextOrigin,verifyNextPublisherTree,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
+import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr';
 const save=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
@@ -28,10 +29,8 @@ function codeIdentity(deadline){
 }
 function origins(e,report,deadline){
  try{
-  const inventory=api('actions/workflows/alpha-staging.yml/runs?per_page=3',deadline);
-  assert(Array.isArray(inventory.workflow_runs)&&inventory.workflow_runs.length<=3,'Bounded application publisher discovery');
-  return [...inventory.workflow_runs.filter(r=>r.id!==Number(e.GITHUB_RUN_ID)&&r.run_attempt===1&&['workflow_dispatch','push'].includes(r.event))
-   .map(run=>({kind:'normal',runId:run.id,listed:run})),NEXT_APPLICATION_SEED];
+  const inventory=api('actions/artifacts?name='+encodeURIComponent(NEXT_APPLICATION_STATE)+'&per_page=3',deadline);
+  return [...cacheArtifactCandidates(inventory,{name:NEXT_APPLICATION_STATE,currentRunId:e.GITHUB_RUN_ID}).map(pointer=>({kind:'normal',...pointer})),NEXT_APPLICATION_SEED];
  }catch(error){report.lookup.push({discoveryError:String(error)});return [NEXT_APPLICATION_SEED];}
 }
 export function restoreManagedNextState({source,out,e,context,report}){
@@ -50,6 +49,7 @@ export function restoreManagedNextState({source,out,e,context,report}){
     assert(artifacts.total_count===artifacts.artifacts.length&&artifacts.artifacts.length<100,'Complete bounded application artifact inventory');
     const matches=artifacts.artifacts.filter(a=>a.name===NEXT_APPLICATION_STATE);assert(matches.length===1,'Unique application state artifact required');artifact=matches[0];
    }
+   if(selected.discoveryArtifactId!==undefined)assert(artifact.id===selected.discoveryArtifactId,'Application graph discovery pointer differs');
    const job=validateManagedNextOrigin(origin,run,jobs,artifact);
    let tree,expected;
    if(origin.kind==='normal'){
