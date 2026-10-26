@@ -10704,7 +10704,11 @@
       "crossMidnightAutoYes": "Ya · dikira daripada masa yang ditetapkan",
       "clockingWindowCutoffLegend": "Tetingkap daftar masuk dan had masa harian",
       "clockingWindowCutoffNote": "Direkod untuk rujukan: daftar masuk/keluar belum disemak terhadap tetingkap ini.",
-      "colScheduleGroup": "Kumpulan Jadual"
+      "colScheduleGroup": "Kumpulan Jadual",
+      "geofenceAccuracyLegend": "Kualiti lokasi geofens",
+      "geofenceMaximumAccuracy": "Ketidakpastian maksimum yang dilaporkan (meter)",
+      "geofenceAccuracyHint": "Had tambahan syarikat adalah pilihan. Biarkan kosong jika tiada had tambahan. Jarak ditambah ketidakpastian yang dilaporkan masih mesti berada dalam radius lokasi yang ditetapkan. Pilih had berdasarkan ukuran di tempat kerja anda.",
+      "geofenceNoAdditionalCap": "Tiada had tambahan"
     },
     "scheduleAssignment": {
       "pageTitle": "Penetapan Jadual",

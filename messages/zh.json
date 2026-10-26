@@ -10704,7 +10704,11 @@
       "crossMidnightAutoYes": "是 · 根据时间自动计算",
       "clockingWindowCutoffLegend": "打卡时间窗口与每日截止时间",
       "clockingWindowCutoffNote": "仅作记录参考：打卡尚未依据此时间窗口进行核对。",
-      "colScheduleGroup": "排班组"
+      "colScheduleGroup": "排班组",
+      "geofenceAccuracyLegend": "地理围栏定位质量",
+      "geofenceMaximumAccuracy": "报告定位误差上限（米）",
+      "geofenceAccuracyHint": "可选的公司额外限制。留空表示不设额外上限。距离加上报告定位误差仍须在指定地点半径内。请根据工作地点的实测结果选择上限。",
+      "geofenceNoAdditionalCap": "不设额外上限"
     },
     "scheduleAssignment": {
       "pageTitle": "排班分配",

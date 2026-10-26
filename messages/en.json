@@ -10704,7 +10704,11 @@
       "crossMidnightAutoYes": "Yes · worked out from the times",
       "clockingWindowCutoffLegend": "Clocking window and day cut-off",
       "clockingWindowCutoffNote": "Recorded for reference: clockings are not yet checked against this window.",
-      "colScheduleGroup": "Schedule Group"
+      "colScheduleGroup": "Schedule Group",
+      "geofenceAccuracyLegend": "Geofence location quality",
+      "geofenceMaximumAccuracy": "Maximum reported uncertainty (metres)",
+      "geofenceAccuracyHint": "Optional additional company limit. Leave blank for no additional cap. Distance plus reported uncertainty must still fit inside an assigned site. Choose a limit using measurements at your workplaces.",
+      "geofenceNoAdditionalCap": "No additional cap"
     },
     "scheduleAssignment": {
       "pageTitle": "Schedule Assignment",

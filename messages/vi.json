@@ -10704,7 +10704,11 @@
       "crossMidnightAutoYes": "Có · tính từ giờ đã đặt",
       "clockingWindowCutoffLegend": "Khung giờ chấm công và giờ chốt ngày",
       "clockingWindowCutoffNote": "Chỉ ghi nhận để tham khảo: giờ chấm công hiện chưa được đối chiếu với khung giờ này.",
-      "colScheduleGroup": "Nhóm lịch làm việc"
+      "colScheduleGroup": "Nhóm lịch làm việc",
+      "geofenceAccuracyLegend": "Chất lượng vị trí hàng rào địa lý",
+      "geofenceMaximumAccuracy": "Sai số được báo cáo tối đa (mét)",
+      "geofenceAccuracyHint": "Giới hạn bổ sung của công ty là tùy chọn. Để trống nếu không đặt giới hạn bổ sung. Khoảng cách cộng sai số được báo cáo vẫn phải nằm trong bán kính địa điểm được chỉ định. Chọn giới hạn dựa trên số đo tại nơi làm việc.",
+      "geofenceNoAdditionalCap": "Không có giới hạn bổ sung"
     },
     "scheduleAssignment": {
       "pageTitle": "Phân công lịch làm việc",

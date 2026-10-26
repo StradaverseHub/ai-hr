@@ -1,4 +1,5 @@
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
+import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
@@ -213,6 +214,11 @@ export class GeolocationRequiredError extends Error {
   }
 }
 
+/** Same typed result is used by preview and every enforced punch writer. */
+export class GeofenceQualityError extends GeolocationRequiredError {
+  constructor(public readonly assessment:GeofenceAssessment){super();this.name='GeofenceQualityError';}
+}
+
 /** Thrown when geofencing is enabled and the employee's current position is outside every assigned
  *  site's radius (or they have zero active assigned sites — fail-closed). Carries enough context for the
  *  caller to write the attendance.geofence.blocked event in a SEPARATE transaction after this one rolls
@@ -236,6 +242,8 @@ export class OutsideGeofenceError extends Error {
        */
       radiusM: number | null;
       punch: 'in' | 'out';
+      accuracyM?: number;
+      reason?: 'outside_site'|'no_assigned_site';
     },
   ) {
     super(
@@ -298,7 +306,7 @@ type GeofenceCheck =
  */
 export async function resolveGeofence(
   tx: Tx,
-  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out'; skip?: boolean },
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; accuracy?:number; punch: 'in' | 'out'; skip?: boolean },
 ): Promise<GeofenceCheck> {
   if (p.skip) return { enforced: false, lat: null, lng: null };
   const [emp] = await tx
@@ -311,9 +319,8 @@ export async function resolveGeofence(
   if (!enabled) {
     return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null };
   }
-  if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
-    throw new GeolocationRequiredError();
-  }
+  const [policy]=await tx.select({maximum:attendancePolicy.geofenceMaximumAccuracyM}).from(attendancePolicy)
+    .where(eq(attendancePolicy.companyId,emp!.companyId)).limit(1);
 
   const sites = await tx
     .select({
@@ -333,43 +340,30 @@ export async function resolveGeofence(
       ),
     );
 
-  /** The nearest site of ALL of them — for the refusal payload only. */
-  let nearest: { id: string; distanceM: number; radiusM: number | null } | null = null;
-  /** The nearest site that actually PASSES its own effective radius — the decision. */
-  let match: { id: string; distanceM: number; radiusM: number } | null = null;
-
-  for (const s of sites) {
-    const distanceM = haversineMetres(p.lat, p.lng, s.lat, s.lng);
-    const effectiveRadiusM = s.radiusM;
-    if (!nearest || distanceM < nearest.distanceM) {
-      nearest = { id: s.id, distanceM, radiusM: effectiveRadiusM };
-    }
-    if (effectiveRadiusM == null || distanceM > effectiveRadiusM) continue;
-    if (!match || distanceM < match.distanceM) {
-      match = { id: s.id, distanceM, radiusM: effectiveRadiusM };
-    }
-  }
-
-  if (!match) {
+  const assessment=assessGeofence(p,sites,policy?.maximum??null,haversineMetres);
+  if(assessment.outcome==='location_required'||assessment.outcome==='invalid_location'||assessment.outcome==='poor_accuracy')
+    throw new GeofenceQualityError(assessment);
+  if (assessment.outcome!=='pass') {
     throw new OutsideGeofenceError({
       employmentId: p.employmentId,
       date: p.date,
       time: p.time,
-      lat: p.lat,
-      lng: p.lng,
-      nearestLocationId: nearest?.id ?? null,
-      distanceM: nearest ? Math.round(nearest.distanceM) : null,
-      radiusM: nearest?.radiusM ?? null,
+      lat: p.lat!,
+      lng: p.lng!,
+      nearestLocationId: assessment.siteId,
+      distanceM: assessment.distanceM==null?null:Math.round(assessment.distanceM),
+      radiusM: assessment.radiusM,
+      accuracyM:p.accuracy!,reason:assessment.outcome,
       punch: p.punch,
     });
   }
   return {
     enforced: true,
-    lat: p.lat,
-    lng: p.lng,
-    clockingLocationId: match.id,
-    distanceM: Math.round(match.distanceM),
-    radiusM: match.radiusM,
+    lat: p.lat!,
+    lng: p.lng!,
+    clockingLocationId: assessment.siteId!,
+    distanceM: Math.round(assessment.distanceM!),
+    radiusM: assessment.radiusM!,
   };
 }
 
@@ -1879,7 +1873,7 @@ export async function payableHoursForCycle(
   return payableMinutes / 60;
 }
 
-export type GeoInput = { lat: number; lng: number };
+export type GeoInput = { lat: number; lng: number;accuracy?:number };
 
 /** Map a resolved geofence outcome onto the attendance_punch geo columns (per-punch capture, ADR-0070 parity). */
 function punchGeoValues(geo: GeofenceCheck) {
@@ -2073,6 +2067,7 @@ export async function checkInTx(
       time: p.time,
       lat: p.geo?.lat,
       lng: p.geo?.lng,
+      accuracy:p.geo?.accuracy,
       punch: 'in',
       // r423 — a time HR typed in has no phone position behind it: never compared with a location.
       skip: p.manual,
@@ -2241,6 +2236,7 @@ export async function checkOutTx(
       time: p.time,
       lat: p.geo?.lat,
       lng: p.geo?.lng,
+      accuracy:p.geo?.accuracy,
       punch: 'out',
       skip: p.manual,
     });
@@ -6050,6 +6046,7 @@ export type AttendancePolicyView = {
   otApprovalCalculation: OtApprovalMethod;
   // Feedback 5249d43f: when TRUE, web clock-in/out requires a registered device (employee_device).
   requireRegisteredDevice: boolean;
+  geofenceMaximumAccuracyM:number|null;
   isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
 };
 
@@ -6073,6 +6070,7 @@ export function listAttendancePolicies(
         halfWorkingDays: attendancePolicy.halfWorkingDays,
         otApprovalCalculation: attendancePolicy.otApprovalCalculation,
         requireRegisteredDevice: attendancePolicy.requireRegisteredDevice,
+        geofenceMaximumAccuracyM:attendancePolicy.geofenceMaximumAccuracyM,
       })
       .from(attendancePolicy)
       .where(inArray(attendancePolicy.companyId, companyIds));
@@ -6092,6 +6090,7 @@ export function listAttendancePolicies(
             halfWorkingDays: DEFAULTS.halfWorkingDays,
             otApprovalCalculation: 'system_calculated' as OtApprovalMethod,
             requireRegisteredDevice: false,
+            geofenceMaximumAccuracyM:null,
             isDefault: true,
           };
     });
@@ -6124,6 +6123,8 @@ export async function setAttendancePolicy(
     // Feedback 5249d43f: require a registered device for web clocking. Optional — absent ⇒ false (the
     // checkbox posts nothing when unchecked; pre-existing callers keep the shipping default OFF).
     requireRegisteredDevice?: boolean;
+    // Undefined preserves an existing cap; null explicitly removes the additional company cap.
+    geofenceMaximumAccuracyM?:number|null;
   },
 ) {
   const workStart = asTime(p.workStart, 'Work start');
@@ -6157,6 +6158,9 @@ export async function setAttendancePolicy(
   }
   const otApprovalCalculation: OtApprovalMethod = p.otApprovalCalculation ?? 'system_calculated';
   const requireRegisteredDevice = p.requireRegisteredDevice ?? false;
+  const geofenceMaximumAccuracyM=p.geofenceMaximumAccuracyM;
+  if(geofenceMaximumAccuracyM!=null&&(!Number.isInteger(geofenceMaximumAccuracyM)||geofenceMaximumAccuracyM<=0||geofenceMaximumAccuracyM>2147483647))
+    throw new Error('Maximum location uncertainty must be a positive whole number of metres.');
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -6173,10 +6177,11 @@ export async function setAttendancePolicy(
         halfWorkingDays,
         otApprovalCalculation,
         requireRegisteredDevice,
+        geofenceMaximumAccuracyM,
       })
       .onConflictDoUpdate({
         target: attendancePolicy.companyId,
-        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation, requireRegisteredDevice },
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation, requireRegisteredDevice,geofenceMaximumAccuracyM },
       })
       .returning({ id: attendancePolicy.id });
     await appendEvent(tx, {
@@ -6196,6 +6201,7 @@ export async function setAttendancePolicy(
         halfWorkingDays,
         otApprovalCalculation,
         requireRegisteredDevice,
+        ...(geofenceMaximumAccuracyM!==undefined?{geofenceMaximumAccuracyM}:{}),
       },
     });
     return row;

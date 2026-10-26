@@ -87,3 +87,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 - [0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
 - [0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)
 - [ADR-0143: Server-ordered mobile submission abandonment](0143-mobile-submission-abandonment.md)
+
+- [0144 — Shared geofence containment with reported uncertainty](0144-geofence-reported-uncertainty.md)

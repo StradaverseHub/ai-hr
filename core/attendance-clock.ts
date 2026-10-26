@@ -177,7 +177,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     const sameMinute = priorPunches.filter(punch=>minute(punch.time)===minute(time));
     const legacyAggregateAnchor = p.action==='out' && !priorPunches.length && day?.checkIn && minute(day.checkIn)===minute(time);
     const preciseOrder = !legacyAggregateAnchor && sameMinute.every(punch=>punch.captureId!=null);
-    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: point?.lat, lng: point?.lng, punch: p.action });
+    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: point?.lat, lng: point?.lng,accuracy:point?.accuracy, punch: p.action });
     // Geofenced → a matched site with its distance and radius, or resolveGeofence has already thrown. Not
     // geofenced → the three are stored NULL together (0517) and the position alone is the record.
     if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');

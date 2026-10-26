@@ -172,7 +172,7 @@ async function attendanceRow(employmentId: string, date: string) {
 }
 
 // Kuala Lumpur-ish coordinates for the "site" and a couple of test offsets.
-const HQ = { lat: 3.139, lng: 101.6869 };
+const HQ = { lat: 3.139, lng: 101.6869,accuracy:0 };
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -206,7 +206,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
   it('creates + updates + persists fields', async () => {
     const a = adminCtx(b);
     const loc = await defaultLocationFor(a, b.companyId);
-    const { id } = await mkSite(a, { name: 'HQ Tower', lat: HQ.lat, lng: HQ.lng });
+    const { id } = await mkSite(a, { name: 'HQ Tower', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.name).toBe('HQ Tower');
     expect(row.lat).toBeCloseTo(HQ.lat, 6);
@@ -248,7 +248,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 
   it('name unique per TENANT (f9afd1ce); archive/restore; hard delete when unreferenced', async () => {
     const a = adminCtx(b);
-    const { id } = await mkSite(a, { name: 'DupSite', lat: HQ.lat, lng: HQ.lng });
+    const { id } = await mkSite(a, { name: 'DupSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     await expect(mkSite(a, { name: 'DupSite', lat: HQ.lat, lng: HQ.lng })).rejects.toThrow();
 
     await archiveClockingLocation(a, { clockingLocationId: id });
@@ -264,7 +264,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 
   it('delete refuses when referenced by an assignment or attendance row', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Ref Site', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Ref Site', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
     await expect(deleteClockingLocation(a, { clockingLocationId: site })).rejects.toBeInstanceOf(ClockingLocationInUseError);
@@ -278,7 +278,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 
   it('appends clocking-location.created/updated/archived/restored/deleted events', async () => {
     const a = adminCtx(b);
-    const { id } = await mkSite(a, { name: 'EvSite', lat: HQ.lat, lng: HQ.lng });
+    const { id } = await mkSite(a, { name: 'EvSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     await updateClockingLocation(a, { companyIds: [b.companyId],
       clockingLocationId: id,
       name: 'EvSite2',
@@ -306,8 +306,8 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 describe('assignment + geofencing config (ADR-0070; r423 — one switch, one writer)', () => {
   it('set-based replace assigns and unassigns', async () => {
     const a = adminCtx(b);
-    const { id: site1 } = await mkSite(a, { name: 'S1', lat: HQ.lat, lng: HQ.lng });
-    const { id: site2 } = await mkSite(a, { name: 'S2', lat: HQ.lat + 0.01, lng: HQ.lng });
+    const { id: site1 } = await mkSite(a, { name: 'S1', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
+    const { id: site2 } = await mkSite(a, { name: 'S2', lat: HQ.lat + 0.01, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
 
     await assign(a, e.employmentId, [site1, site2]);
@@ -328,7 +328,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
    */
   it('an employee of company B is refused a site not open to B, and given it once B is ticked (r423)', async () => {
     const a = adminCtx(b);
-    const { id: sharedGate } = await mkSite(a, { name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng });
+    const { id: sharedGate } = await mkSite(a, { name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Sdn Bhd' });
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
     const eB = await hire(a, coB, deptB.id, 'B Employee');
@@ -362,7 +362,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
     const { id: coB } = await createCompany(a, { legalName: 'Zeta Sdn Bhd' });
     await owner.db.update(schema.company).set({ companyLabel: 'Zeta' }).where(eq(schema.company.id, coB));
     const { id: gate } = await mkSite(a, { name: 'Used Gate', lat: HQ.lat, lng: HQ.lng, companyIds: [coB, b.companyId] });
-    const { id: lonely } = await mkSite(a, { name: 'Lonely Gate', lat: HQ.lat + 0.01, lng: HQ.lng });
+    const { id: lonely } = await mkSite(a, { name: 'Lonely Gate', lat: HQ.lat + 0.01, lng: HQ.lng,accuracy:0 });
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
     const e1 = await hire(a, b.companyId, b.deptA, 'Acme One');
     const e2 = await hire(a, b.companyId, b.deptA, 'Acme Two');
@@ -378,7 +378,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
 
   it('appends ONE employee.clocking-control.updated event carrying the switch and the list, before and after', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'EvS', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'EvS', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
     expect(await latestEventPayload(b.tenantId, e.employmentId, 'employee.clocking-control.updated')).toMatchObject({
@@ -412,7 +412,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
     await expect(setClockingControl(a, { employmentId: e.employmentId, enabled: true, clockingLocationIds: [] })).rejects.toThrow(
       'Choose at least one clocking location, or turn geofencing off.',
     );
-    const { id: site } = await mkSite(a, { name: 'Usable', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Usable', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     await assign(a, e.employmentId, [site]);
     const [row] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, e.employmentId));
     expect(row.geofencingEnabled).toBe(true);
@@ -421,7 +421,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
 
   it('an INACTIVE location cannot be newly chosen, and alone does not satisfy the switch', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Closed', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Closed', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     await archiveClockingLocation(a, { clockingLocationId: site });
     const e = await hire(a, b.companyId, b.deptA);
     await expect(assign(a, e.employmentId, [site])).rejects.toBeInstanceOf(ClockingLocationNotAvailableError);
@@ -434,7 +434,7 @@ describe('assignment + geofencing config (ADR-0070; r423 — one switch, one wri
    */
   it('a transferred employee’s old site is kept but flagged, does not count, and does not match at clock-in', async () => {
     const a = adminCtx(b);
-    const { id: oldSite } = await mkSite(a, { name: 'Old Co Site', lat: HQ.lat, lng: HQ.lng });
+    const { id: oldSite } = await mkSite(a, { name: 'Old Co Site', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [oldSite]);
     const { id: coB } = await createCompany(a, { legalName: 'Transfer Co' });
@@ -525,7 +525,7 @@ describe('r423 — companies, state and status on a clocking location', () => {
   it('the list filters by search text, company and status', async () => {
     const a = adminCtx(b);
     const { id: coB } = await createCompany(a, { legalName: 'Filter Co' });
-    const { id: x } = await mkSite(a, { name: 'Klang Store', lat: HQ.lat, lng: HQ.lng });
+    const { id: x } = await mkSite(a, { name: 'Klang Store', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const { id: y } = await mkSite(a, { name: 'Penang Branch', lat: HQ.lat + 0.01, lng: HQ.lng, companyIds: [coB] });
     await updateClockingLocation(a, { clockingLocationId: y, companyIds: [coB], name: 'Penang Branch', lat: HQ.lat + 0.01, lng: HQ.lng, radiusM: 300, address: 'Lebuh Pantai', locationId: await defaultLocationFor(a, b.companyId) });
     await archiveClockingLocation(a, { clockingLocationId: x });
@@ -542,7 +542,7 @@ describe('r423 — companies, state and status on a clocking location', () => {
 describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
   it('inside radius: row stamped per-punch (coords, matched id, distance, radius, pass, web)', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'InRadius', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'InRadius', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
 
@@ -565,12 +565,12 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('outside all sites: OutsideGeofenceError, NO attendance row, blocked event PERSISTED', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Far', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Far', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
 
     // ~1.1 degrees away ≈ 100+ km — well outside any sane radius.
-    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1 };
+    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1,accuracy:0 };
     await expect(
       checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: farAway }),
     ).rejects.toBeInstanceOf(OutsideGeofenceError);
@@ -598,7 +598,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('within ANY of two assigned sites passes', async () => {
     const a = adminCtx(b);
-    const { id: site1 } = await mkSite(a, { name: 'Near1', lat: HQ.lat, lng: HQ.lng });
+    const { id: site1 } = await mkSite(a, { name: 'Near1', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const { id: site2 } = await mkSite(a, { name: 'Near2', lat: HQ.lat + 1, lng: HQ.lng + 1 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site1, site2]);
@@ -625,7 +625,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('enabled + no coords: GeolocationRequiredError, no row, no event', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'NoCoords', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'NoCoords', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
 
@@ -680,7 +680,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
   /** r423 plan point 14 — a time HR types in is never compared with a location, whatever the switch says. */
   it('a MANUAL (HR-typed) check-in/out of a geofenced employee is accepted, not_enforced, with no geo', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Manual', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Manual', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
     // Without `manual` the same call is refused (no position) — the guard is the flag, not luck.
@@ -709,7 +709,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
    */
   it('import never overwrites a web check-in; the end an import supplies carries no geo reading', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'ImpSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'ImpSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const hired=await hireEmployee(a,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',
       hiredOn:'2024-01-01',employeeCode:'IMP1',person:{fullName:'Imp Emp',primaryEmail:uniqEmail()}});
     const emp={id:hired.employmentId};
@@ -761,7 +761,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 
   it('import check-in then web check-out: in=import, out=web with out-geo stamped', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'MixSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'MixSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const hired=await hireEmployee(a,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',
       hiredOn:'2024-01-01',employeeCode:'MIX1',person:{fullName:'Mix Emp',primaryEmail:uniqEmail()}});
     const emp={id:hired.employmentId};
@@ -783,14 +783,14 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 
   it('blocked check-out, then approved correction: row completed, geo fields nulled, method NULL', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'CorrSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'CorrSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     await assign(a, e.employmentId, [site]);
 
     // Check in fine (at the office)...
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
     // ...then try to check out from far away (e.g. an offsite meeting) — blocked.
-    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1 };
+    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1,accuracy:0 };
     await expect(
       checkOut(a, { employmentId: e.employmentId, date: '2026-07-06', time: '18:00', geo: farAway }),
     ).rejects.toBeInstanceOf(OutsideGeofenceError);
@@ -821,7 +821,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
   it('a tenant employee SELECTs the clocking_location catalog but cannot write', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'RlsSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'RlsSite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const [p] = await owner.db
       .insert(schema.person)
       .values({ tenantId: b.tenantId, fullName: 'Plain Emp', primaryEmail: uniqEmail() })
@@ -850,7 +850,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
    */
   it('a company-scoped admin reads the catalog and assigns sites, but every catalog write is refused by the service', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'AOnly', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'AOnly', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const companyAdmin = await adminFor(b.companyId); // scoped to ONE company — not a group admin
 
     // Read: the site is open to the company this admin administers, so it is on their list.
@@ -910,7 +910,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 
   it('a company-scoped admin’s raw UPDATE and DELETE touch no row (RLS USING filters; the service is what refuses)', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Untouchable', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Untouchable', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const companyAdmin = await adminFor(b.companyId);
     // An UPDATE/DELETE policy's USING clause hides the row rather than throwing — which is exactly why
     // the service guard exists: without it a company admin's archive would "succeed" and change nothing.
@@ -953,7 +953,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 
   it('another tenant sees nothing', async () => {
     const a = adminCtx(b);
-    await mkSite(a, { name: 'TenantASite', lat: HQ.lat, lng: HQ.lng });
+    await mkSite(a, { name: 'TenantASite', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
 
     const [t2] = await owner.db.insert(schema.tenant).values({ workosOrgId: `org_${randomUUID()}`, name: 'Other Tenant' }).returning({ id: schema.tenant.id });
     const [c2] = await owner.db.insert(schema.company).values({ tenantId: t2.id, legalName: 'Other Co' }).returning({ id: schema.company.id });
@@ -967,7 +967,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 
   it('employee cannot write employee_clocking_location join rows', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'JoinRls', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'JoinRls', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const e = await hire(a, b.companyId, b.deptA);
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, e.personId));
     const empCtx = await employeeCtxFor(p.id);
@@ -987,7 +987,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 describe('1fff489c — per-site radius', () => {
   /** ~111.19 km per degree of latitude at the equator on the R=6371 km sphere haversineMetres uses. */
   const METRES_PER_DEG_LAT = 111_194.9;
-  const north = (metres: number) => ({ lat: HQ.lat + metres / METRES_PER_DEG_LAT, lng: HQ.lng });
+  const north = (metres: number) => ({ lat: HQ.lat + metres / METRES_PER_DEG_LAT, lng: HQ.lng,accuracy:0 });
 
   it('a single site is judged against ITS OWN radius when the employee has no override', async () => {
     const a = adminCtx(b);
@@ -1189,7 +1189,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
   /** f9afd1ce REVERSED "an update cannot re-home a point onto another company's location". */
   it('an update CAN re-home a point onto another company’s location', async () => {
     const a = adminCtx(b);
-    const { id: point } = await mkSite(a, { name: 'Homed', lat: HQ.lat, lng: HQ.lng });
+    const { id: point } = await mkSite(a, { name: 'Homed', lat: HQ.lat, lng: HQ.lng,accuracy:0 });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Rehome' });
     const { id: foreignLocation } = await createLocation(a, { companyId: coB, code: 'REHOME', name: 'Elsewhere' });
     await updateClockingLocation(a, { companyIds: [b.companyId],

@@ -4242,6 +4242,9 @@ export const attendancePolicy = pgTable(
     // (employee_device) — enforced server-side in core/attendance-device.ts enforceDeviceGateTx. Default
     // FALSE so shipping the feature locks nobody out; terminal imports are exempt (documented bypass).
     requireRegisteredDevice: boolean('require_registered_device').notNull().default(false),
+    // Optional company restriction in addition to distance + reported uncertainty <= site radius.
+    // No universal threshold is inferred for existing companies.
+    geofenceMaximumAccuracyM: integer('geofence_maximum_accuracy_m'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
