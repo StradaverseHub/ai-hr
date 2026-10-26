@@ -26,6 +26,8 @@ import { type SessionContext, type Tx } from '../db/client';
 // keep working. See core/module-gate.ts.
 import { withPerformanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
+import { assertModuleEnabled } from './entitlements';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import {
   assignment,
   calibrationEntry,
@@ -640,28 +642,44 @@ export async function submitManagerReview(
   });
 }
 
+/** Minimal standard-cycle acknowledgement source. Caller owns Access before subject reads; cycle
+ * and review ownership precede current facts. No ratings, comments, recommendations or money leave
+ * this source projection. OneHR is a separate engine and is deliberately refused here. */
+export async function readOwnReviewAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,reviewId:string){
+  assertModuleEnabled(ctx,'performance');if(!ctx.personId)throw new PerfError('Only the employee can acknowledge their own review');
+  const [nominated]=await tx.select({cycleId:performanceReview.cycleId}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId))
+    .where(and(eq(performanceReview.id,reviewId),eq(performanceReview.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);
+  if(!nominated)throw new PerfError('Only the employee can acknowledge their own review');
+  const [cycle]=await tx.select({id:reviewCycle.id,name:reviewCycle.name,releasedAt:reviewCycle.releasedAt,periodStart:reviewCycle.periodStart,periodEnd:reviewCycle.periodEnd,version:sql<string>`${reviewCycle}.xmin::text`})
+    .from(reviewCycle).where(and(eq(reviewCycle.id,nominated.cycleId),eq(reviewCycle.tenantId,ctx.tenantId))).for('share',{noWait:true});
+  if(!cycle)throw new PerfError('Performance review not found (or not visible)');
+  await assertStandardCycleTx(tx,cycle.id);
+  const [review]=await tx.select({id:performanceReview.id,cycleId:performanceReview.cycleId,employmentId:performanceReview.employmentId,status:performanceReview.status,acknowledgedAt:performanceReview.acknowledgedAt,version:sql<string>`${performanceReview}.xmin::text`})
+    .from(performanceReview).where(and(eq(performanceReview.id,reviewId),eq(performanceReview.tenantId,ctx.tenantId))).for('update',{noWait:true});
+  if(!review||review.cycleId!==cycle.id)throw new PerfError('Performance review not found (or not visible)');
+  const [subject]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,review.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+  if(!ctx.personId||subject?.personId!==ctx.personId)throw new PerfError('Only the employee can acknowledge their own review');
+  return {reviewId:review.id,employmentId:review.employmentId,cycleId:cycle.id,cycleName:cycle.name,periodStart:cycle.periodStart,periodEnd:cycle.periodEnd,
+    status:review.status,releasedAt:cycle.releasedAt,acknowledgedAt:review.acknowledgedAt,reviewVersion:review.version,cycleVersion:cycle.version};
+}
+export type ReviewedReviewAcknowledgementSource=Pick<Awaited<ReturnType<typeof readOwnReviewAcknowledgementSourceTx>>,'reviewId'|'employmentId'|'cycleId'|'reviewVersion'|'cycleVersion'>;
+/** Canonical acknowledgement joined to an enclosing human command. Expected source can only
+ * refuse changed facts; it cannot supply a status, rating, actor, approval or replacement effect. */
+export async function acknowledgeReviewTx(tx:Tx,ctx:SessionContext,p:{reviewId:string},expected?:ReviewedReviewAcknowledgementSource){
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const reviewId=p.reviewId,checked=expected?{...expected}:undefined;
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const current=await readOwnReviewAcknowledgementSourceTx(tx,ctx,reviewId);
+  if(checked&&(checked.reviewId!==current.reviewId||checked.employmentId!==current.employmentId||checked.cycleId!==current.cycleId||checked.reviewVersion!==current.reviewVersion||checked.cycleVersion!==current.cycleVersion))throw new PerfError('This review changed; review it again');
+  if(!current.releasedAt)throw new PerfError('This review has not been released yet');
+  if(current.status!=='submitted')throw new PerfError(`Cannot acknowledge a ${current.status} review`);
+  await tx.update(performanceReview).set({status:'acknowledged',acknowledgedAt:sql`now()`}).where(eq(performanceReview.id,current.reviewId));
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-review',aggregateId:current.reviewId,eventType:'performance-review.acknowledged',actor:actorOf(ctx),subjectEmploymentId:current.employmentId},{returnId:true});
+  return {status:'acknowledged' as const,reviewId:current.reviewId,employmentId:current.employmentId,cycleId:current.cycleId,eventId};
+}
 /** Employee acknowledges their (released) review. Self only; only after the cycle is released. */
 export async function acknowledgeReview(ctx: SessionContext, p: { reviewId: string }) {
-  return withTenant(ctx, async (tx) => {
-    const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
-    const isSelf = ctx.personId != null && ctx.personId === subjectPersonId;
-    if (!isSelf) throw new PerfError('Only the employee can acknowledge their own review');
-    if (!cycle.releasedAt) throw new PerfError('This review has not been released yet');
-    if (review.status !== 'submitted') throw new PerfError(`Cannot acknowledge a ${review.status} review`);
-    await tx
-      .update(performanceReview)
-      .set({ status: 'acknowledged', acknowledgedAt: sql`now()` })
-      .where(eq(performanceReview.id, review.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-review',
-      aggregateId: review.id,
-      eventType: 'performance-review.acknowledged',
-      actor: actorOf(ctx),
-      subjectEmploymentId: review.employmentId,
-    });
-    return { status: 'acknowledged' as const };
-  });
+  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},reviewId=p.reviewId;
+  return withTenant(current,async tx=>{await acknowledgeReviewTx(tx,current,{reviewId});return {status:'acknowledged' as const};});
 }
 
 /** Admin re-points a review at a new reviewer (e.g. the manager changed mid-cycle). */
