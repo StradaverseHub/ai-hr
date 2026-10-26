@@ -4,16 +4,26 @@ import {assertCiCandidateBuildInvocation} from './build-production.mjs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 export const BOUNDED_DB_KIB=8*1024**2;
+export const SUITE_SETUP_KIB=24*1024**2;
+export const SUITE_READY_KIB=21*1024**2; // Existing test admission stays20GiB; reserve1GiB before a possible image pull.
 export const BOUNDED_COMPILER_SETUP_KIB=12*1024**2;
 export function capacityDecision(profile,availableKiB){
- assert(['legacy','bounded-db-diagnostic','bounded-compiler-diagnostic','bounded-whole-compiler','bounded-next-build-diagnostic','bounded-canonical-build'].includes(profile),'Unknown runner capacity profile');
+ assert(['legacy','bounded-db-diagnostic','bounded-compiler-diagnostic','bounded-whole-compiler','bounded-next-build-diagnostic','bounded-canonical-build','bounded-suite-setup','bounded-suite-ready'].includes(profile),'Unknown runner capacity profile');
  assert(Number.isSafeInteger(availableKiB)&&availableKiB>=0,'Missing runner disk capacity');
- const floor=['bounded-compiler-diagnostic','bounded-whole-compiler','bounded-next-build-diagnostic','bounded-canonical-build'].includes(profile)?BOUNDED_COMPILER_SETUP_KIB:BOUNDED_DB_KIB;
+ const floor=profile==='bounded-suite-setup'?SUITE_SETUP_KIB:profile==='bounded-suite-ready'?SUITE_READY_KIB:['bounded-compiler-diagnostic','bounded-whole-compiler','bounded-next-build-diagnostic','bounded-canonical-build'].includes(profile)?BOUNDED_COMPILER_SETUP_KIB:BOUNDED_DB_KIB;
  return {profile,availableKiB,targetKiB:profile==='legacy'?null:floor,decision:profile==='legacy'||availableKiB<floor?'clean':'enough',releaseAuthorized:false};
 }
 export function validateCapacityScope(profile,e){
  if(profile==='legacy')return true;
  if(profile==='bounded-canonical-build')return assertCiCandidateBuildInvocation(e);
+ if(['bounded-suite-setup','bounded-suite-ready'].includes(profile)){
+  const prefix='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/';
+  const normal=['test','browser','controller-tests'].includes(e.GITHUB_JOB)&&e.GITHUB_WORKFLOW_REF?.startsWith(prefix)&&['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME);
+  const pilot=e.GITHUB_JOB==='runner-diagnostics'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF===prefix+'heads/codex/test-suite-efficiency-review-20261025'&&e.AIHR_SUITE_CAPACITY_PILOT==='true';
+  assert(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_RUN_ATTEMPT==='1'&&(normal||pilot),'Suite capacity requires exact first-attempt normal suite or explicit standard-runner pilot');
+  assert(/^[a-f0-9]{40}$/.test(e.GITHUB_SHA??'')&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA,'Suite capacity controller differs');
+  return true;
+ }
  assert(['bounded-db-diagnostic','bounded-compiler-diagnostic','bounded-whole-compiler','bounded-next-build-diagnostic','bounded-canonical-build'].includes(profile)
   &&e.GITHUB_ACTIONS==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'
   &&e.GITHUB_REPOSITORY_ID==='1333414856'&&(profile==='bounded-whole-compiler'?['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME):e.GITHUB_EVENT_NAME==='workflow_dispatch'),'Bounded capacity requires actual managed context');

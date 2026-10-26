@@ -154,8 +154,13 @@ jobs:
     needs: resolve
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_SUITE_CAPACITY_PILOT: 'true'
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: source
@@ -178,15 +183,19 @@ jobs:
             if [ -d "$p" ]; then sudo du -sx -B1 "$p"; fi
           done
       - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Record measured capacity and unused SDK sizes
         run: node ../automation/.github/ci/runner-diagnostics.mjs
+        env: {AIHR_CAPACITY_REPORT_PROFILE: "${{ github.run_attempt == 1 && 'bounded-suite-ready' || 'legacy' }}"}
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: runner-resources
-          path: ${{ runner.temp }}/runner-resources.json
+          path: |
+            ${{ runner.temp }}/runner-resources.json
+            ${{ runner.temp }}/suite-capacity-preparation.log
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
   controller-tests:
     if: ${{ !inputs.diagnostics_only }}
     needs: resolve
@@ -208,6 +217,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Owned Linux install cleanup and immutable byte inventory controls
         run: |
           python3 ../automation/.github/ci/cleanup-install.test.py -v
@@ -404,6 +414,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: PDF test tools
         run: |
           sudo apt-get update -qq
@@ -411,6 +422,10 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/pdf-tools"
           "$RUNNER_TEMP/pdf-tools/bin/pip" install --quiet pymupdf
           echo "$RUNNER_TEMP/pdf-tools/bin" >> "$GITHUB_PATH"
+      - name: Preserve suite headroom after PDF tooling
+        if: ${{ github.run_attempt == 1 }}
+        run: bash ../automation/.github/ci/prepare-runner.sh
+        env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
         env: {UNIT: '${{ matrix.unit }}'}
@@ -447,8 +462,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - run: pnpm exec playwright install --with-deps "$ENGINE"
         env: {ENGINE: '${{ matrix.engine }}'}
+      - name: Preserve suite headroom after browser tooling
+        if: ${{ github.run_attempt == 1 }}
+        run: bash ../automation/.github/ci/prepare-runner.sh
+        env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
       - run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
         env: {ENGINE: '${{ matrix.engine }}'}
       - if: always()

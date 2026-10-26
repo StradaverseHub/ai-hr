@@ -15,7 +15,7 @@ test('reduced disk profile refuses local, self-hosted, unrelated and ordinary re
  for(const [key,value]of Object.entries({GITHUB_ACTIONS:'false',RUNNER_ENVIRONMENT:'self-hosted',GITHUB_REPOSITORY:'other/repo',GITHUB_REPOSITORY_ID:'9',GITHUB_EVENT_NAME:'push',GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('alpha-staging-db-diagnostics','alpha-staging')}))assert.throws(()=>validateCapacityScope('bounded-db-diagnostic',{...e,[key]:value}));
 });
 
-import {mkdtempSync,realpathSync,writeFileSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync,realpathSync,writeFileSync,readFileSync,mkdirSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -84,4 +84,38 @@ test('application-build headroom is scoped to the dedicated diagnostic and canno
  for(const mode of ['cold','warm','recover'])assert(validateCapacityScope('bounded-next-build-diagnostic',{...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}));
  for(const changes of [{GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/unrelated.yml@refs/heads/codex/test-suite-efficiency-review-20261025'},{GITHUB_JOB:'typecheck'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_NEXT_BUILD_CACHE_MODE:'other'},{DATABASE_URL:'postgres://live'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>validateCapacityScope('bounded-next-build-diagnostic',{...e,...changes}));
  assert.throws(()=>compilerSwapFloorKiB('bounded-next-build-diagnostic',e));
+});
+
+test('normal suite setup preserves24GiB pre-dependency and21GiB ready margins; test admission stays20GiB',async()=>{
+ const {SUITE_SETUP_KIB,SUITE_READY_KIB,compilerSwapFloorKiB}=await import('./runner-capacity.mjs');
+ assert.equal(SUITE_SETUP_KIB,24*1024**2);assert.equal(SUITE_READY_KIB,21*1024**2);
+ for(const [profile,floor]of [['bounded-suite-setup',SUITE_SETUP_KIB],['bounded-suite-ready',SUITE_READY_KIB]]){
+  assert.equal(capacityDecision(profile,floor-1).decision,'clean');assert.equal(capacityDecision(profile,floor).decision,'enough');
+  const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'test',
+   GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha',GITHUB_SHA:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40)};
+  for(const event of ['push','pull_request','workflow_dispatch'])for(const job of ['test','browser','controller-tests'])assert(validateCapacityScope(profile,{...e,GITHUB_JOB:job,GITHUB_EVENT_NAME:event}));
+  for(const change of [{CI:'false'},{GITHUB_JOB:'build'},{GITHUB_JOB:'typecheck'},{GITHUB_JOB:'migrations'},{GITHUB_RUN_ATTEMPT:'2'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY_ID:'1'},{GITHUB_SHA:'b'.repeat(40)},{GITHUB_WORKFLOW_REF:'other'}])assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
+  const pilot={...e,GITHUB_JOB:'runner-diagnostics',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/test-suite-efficiency-review-20261025',AIHR_SUITE_CAPACITY_PILOT:'true'};
+  assert(validateCapacityScope(profile,pilot));assert.throws(()=>validateCapacityScope(profile,{...pilot,AIHR_SUITE_CAPACITY_PILOT:'false'}));
+  assert.throws(()=>compilerSwapFloorKiB(profile,e));
+ }
+});
+test('suite shell checks the actual Docker filesystem before SDK mutation and does not delete anything when admitted',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'suite-capacity-'))),trace=join(dir,'trace'),dockerRoot=join(dir,'docker-root');
+ mkdirSync(dockerRoot);
+ try{
+  writeFileSync(join(dir,'uname'),'#!/bin/sh\nprintf "Linux\\n"\n',{mode:0o700});
+  writeFileSync(join(dir,'node'),'#!/bin/sh\nexec '+quote(process.execPath)+' "$@"\n',{mode:0o700});
+  writeFileSync(join(dir,'docker'),'#!/bin/sh\n[ "$AIHR_DOCKER_FAIL" != 1 ] || exit 1\n[ "$1" = info ] || exit 97\nprintf "%s\\n" "$AIHR_FAKE_DOCKER_ROOT"\n',{mode:0o700});
+  writeFileSync(join(dir,'df'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "$AIHR_DF_TRACE"\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\n"\nfor p in "$@"; do [ "$p" != -Pk ] || continue; k=41943040; if [ "$p" = "$AIHR_FAKE_DOCKER_ROOT" ] && [ "$AIHR_DOCKER_LOW" = 1 ]; then k=20971520; fi; printf "/dev/fake 75085112 0 %s 55%% %s\\n" "$k" "$p"; done\n',{mode:0o700});
+  writeFileSync(join(dir,'sudo'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "$AIHR_SUDO_TRACE"\nexit 0\n',{mode:0o700});
+  const e={...process.env,PATH:dir+':/usr/bin:/bin',GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',
+   GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'test',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha',
+   GITHUB_SHA:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),GITHUB_WORKSPACE:dir,RUNNER_TEMP:dir,AIHR_CI_CAPACITY_PROFILE:'bounded-suite-setup',AIHR_SUDO_TRACE:trace,AIHR_DF_TRACE:trace+'.df',AIHR_FAKE_DOCKER_ROOT:dockerRoot};
+  const script=fileURLToPath(new URL('./prepare-runner.sh',import.meta.url));
+  const result=spawnSync('/bin/bash',[script],{env:e,encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert(!existsSync(trace));
+  assert(readFileSync(trace+'.df','utf8').includes(dir+' '+dir+' '+dockerRoot));
+  const bad=spawnSync('/bin/bash',[script],{env:{...e,AIHR_DOCKER_FAIL:'1'},encoding:'utf8'});assert.notEqual(bad.status,0);assert(!existsSync(trace));
+  const low=spawnSync('/bin/bash',[script],{env:{...e,AIHR_CI_CAPACITY_PROFILE:'bounded-suite-ready',AIHR_DOCKER_LOW:'1'},encoding:'utf8'});assert.equal(low.status,2,low.stderr);assert(low.stderr.includes('Insufficient capacity'));
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });

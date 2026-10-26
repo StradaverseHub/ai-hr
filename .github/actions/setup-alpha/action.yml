@@ -11,13 +11,18 @@ inputs:
     description: Install native SDK dependencies; keep enabled for all test/compiler jobs
     default: 'true'
   capacity_profile:
-    description: Legacy cleanup or explicitly reviewed bounded diagnostic capacity
+    description: Legacy cleanup or reviewed bounded compiler/build/suite capacity
     default: legacy
 runs:
   using: composite
   steps:
     - shell: bash
-      run: bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh"
+      run: |
+        if [[ "${{ inputs.capacity_profile }}" == bounded-suite-setup ]]; then
+          bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh" | tee -a "$RUNNER_TEMP/suite-capacity-preparation.log"
+        else
+          bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh"
+        fi
       env: {AIHR_CI_CAPACITY_PROFILE: '${{ inputs.capacity_profile }}'}
     - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
       with:
@@ -45,3 +50,8 @@ runs:
       shell: bash
       working-directory: ${{ inputs.path }}
       run: cp .env.example .env.local
+    - name: Enforce post-dependency suite capacity
+      if: ${{ inputs.capacity_profile == 'bounded-suite-setup' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh" | tee -a "$RUNNER_TEMP/suite-capacity-preparation.log"
+      env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
