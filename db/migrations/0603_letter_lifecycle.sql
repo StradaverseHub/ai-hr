@@ -304,6 +304,7 @@ BEGIN
  ELSIF TG_TABLE_NAME='letter_template_field' THEN
   IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active AND f.id=app.letter_field_latest_version(x.company_id,f.key) AND (NOT coalesce((f.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(x.company_id))) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_generation_batch' THEN
+  IF NOT automation AND EXISTS(SELECT 1 FROM public.letter_job reserved WHERE reserved.id=NEW.operation_key AND reserved.tenant_id=NEW.tenant_id AND reserved.kind='eventDraft') THEN RAISE EXCEPTION 'Automatic draft operation identity is reserved';END IF;
   SELECT * INTO v FROM public.letter_template_version WHERE id=NEW.template_version_id;
   SELECT * INTO p FROM public.letter_policy_version WHERE id=NEW.policy_version_id;
   IF v.id IS NULL OR p.id IS NULL OR v.tenant_id<>NEW.tenant_id OR p.tenant_id<>NEW.tenant_id OR v.company_id<>NEW.company_id OR p.company_id<>NEW.company_id OR p.category<>v.category OR NOT p.enabled OR v.status<>'approved'
@@ -331,6 +332,7 @@ BEGIN
    stage:=p.policy->'stages'->l.stage_index;
    IF l.state<>'submitted' OR r.id IS NULL OR r.letter_id<>l.id OR r.tenant_id<>l.tenant_id OR r.id IS DISTINCT FROM l.current_revision_id THEN RAISE EXCEPTION 'Letter revision changed';END IF;
    IF TG_TABLE_NAME='letter_approval_decision' THEN
+    IF NOT app.letter_automation_source_current(l.id) THEN RAISE EXCEPTION 'The employee event that created this letter changed' USING ERRCODE='check_violation';END IF;
     IF NEW.actor_id IS DISTINCT FROM app.current_user_id() OR NEW.actor_id=l.created_by OR NEW.stage_index<>l.stage_index OR NEW.content_hash<>r.content_hash THEN RAISE EXCEPTION 'Letter decision identity mismatch';END IF;
     SELECT d.delegated_to INTO delegate FROM public.letter_approval_decision d WHERE d.revision_id=r.id AND d.stage_index=l.stage_index AND d.action='delegate' ORDER BY d.created_at DESC,d.id DESC LIMIT 1;
     IF (delegate IS NOT NULL AND delegate<>NEW.actor_id) OR (delegate IS NULL AND NOT coalesce(stage->'userIds' ? NEW.actor_id::text,false)) THEN RAISE EXCEPTION 'Letter stage belongs to another approver';END IF;
@@ -389,6 +391,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE b public.letter_generation_batch;p public.letter_policy_version;d public.letter_approval_decision;
 BEGIN
  IF app.letter_automation_transition_allowed(to_jsonb(OLD),to_jsonb(NEW)) THEN RETURN NEW;END IF;
+ IF NEW.state IN ('submitted','approved','issued') AND (NEW.state IS DISTINCT FROM OLD.state OR NEW.stage_index<>OLD.stage_index) AND NOT app.letter_automation_source_current(OLD.id) THEN RAISE EXCEPTION 'The employee event that created this letter changed' USING ERRCODE='check_violation';END IF;
  IF NOT (app.letter_permission(OLD.company_id,'generate') OR app.letter_permission(OLD.company_id,'approve') OR app.letter_permission(OLD.company_id,'issue') OR app.letter_permission(OLD.company_id,'settings')) THEN RAISE EXCEPTION 'Letter write permission unavailable';END IF;
  NEW.submitted_at:=OLD.submitted_at;NEW.approved_at:=OLD.approved_at;NEW.issued_at:=OLD.issued_at;NEW.voided_at:=OLD.voided_at;
  IF (to_jsonb(NEW)-ARRAY['current_revision_id','state','stage_index','lock_version','legal_hold','retain_until','submitted_at','approved_at','issued_at','voided_at']) IS DISTINCT FROM
@@ -926,6 +929,7 @@ DECLARE j public.letter_job%ROWTYPE;l public.letter_record%ROWTYPE;p jsonb;deleg
 BEGIN
  SELECT * INTO j FROM public.letter_job WHERE id=wanted_job AND tenant_id=wanted_tenant AND kind<>'eventDraft' AND status<>'cancelled';IF NOT FOUND THEN RETURN false;END IF;
  SELECT * INTO l FROM public.letter_record WHERE id=j.letter_id AND tenant_id=j.tenant_id AND company_id=j.company_id;IF NOT FOUND THEN RETURN false;END IF;
+ IF l.state NOT IN ('issued','void') AND NOT app.letter_automation_source_current_at(wanted_tenant,l.id) THEN RETURN false;END IF;
  SELECT config.policy INTO p FROM public.letter_generation_batch b JOIN public.letter_policy_version config ON config.id=b.policy_version_id AND config.tenant_id=b.tenant_id WHERE b.id=l.batch_id AND b.tenant_id=l.tenant_id;
  IF p IS NULL OR (p->>'emailNotifications')::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=j.recipient_user_id AND u.tenant_id=j.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
  IF j.payload->>'purpose'='creatorDecision' THEN
@@ -1208,3 +1212,56 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.letter_automation_rule_metadata(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_automation_rule_metadata(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Canonical SQL confirmation-date owner, shared by status/criteria readers and source guards.
+-- Pure arguments only: granting execution exposes no personnel rows.
+CREATE FUNCTION app.employment_confirmation_date(final_date date,normal_date date,probation_end date,provisional_end date) RETURNS date
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT coalesce(final_date,normal_date,probation_end,provisional_end) $$;
+REVOKE ALL ON FUNCTION app.employment_confirmation_date(date,date,date,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.employment_confirmation_date(date,date,date,date) TO ai_hr_app;
+--> statement-breakpoint
+-- Movement owns this narrow validation of an IMMUTABLE, already-applied fact. The
+-- canonical projection classified it when the intent was registered. Applied facts
+-- never become pending/superseded. Reversal or a changed configured behavior
+-- invalidates the registered promotion/confirmation classification.
+CREATE FUNCTION app.movement_applied_source_current(wanted_tenant uuid,subject uuid,movement uuid,source uuid,source_sequence bigint,expected_behavior text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.domain_event original JOIN public.domain_event applied ON applied.id=source AND applied.tenant_id=original.tenant_id AND applied.subject_employment_id=subject AND applied.sequence=source_sequence
+  WHERE original.id=movement AND original.tenant_id=wanted_tenant AND original.subject_employment_id=subject
+   AND (source=movement AND original.event_type<>'employment.movement.scheduled' OR original.event_type='employment.movement.scheduled' AND applied.event_type='employment.movement.applied' AND applied.payload->>'scheduledId'=original.id::text)
+   AND expected_behavior IN ('promotion','confirmation')
+   AND coalesce((SELECT kind.behaviour_kind FROM public.movement_event_type kind WHERE kind.tenant_id=wanted_tenant AND kind.code=coalesce(original.payload->'movement'->>'type',original.payload->>'type')),coalesce(original.payload->'movement'->>'type',original.payload->>'type'))=expected_behavior
+   AND (expected_behavior='promotion' OR coalesce(original.payload->'movement'->>'type',original.payload->>'type')='confirmation')
+   AND NOT EXISTS(SELECT 1 FROM public.domain_event reversal WHERE reversal.tenant_id=wanted_tenant AND reversal.subject_employment_id=subject AND reversal.event_type='employment.movement.reversed' AND reversal.payload->>'movementId'=original.id::text))
+$$;
+REVOKE ALL ON FUNCTION app.movement_applied_source_current(uuid,uuid,uuid,uuid,bigint,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- A Letter party learns a boolean for this exact artifact workflow, never raw
+-- personnel dates, movement payloads, compensation or another employee's data.
+CREATE FUNCTION app.letter_automation_source_current_at(wanted_tenant uuid,subject uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE l public.letter_record;b public.letter_generation_batch;j public.letter_job;r public.letter_automation_rule_version;e public.employment;
+BEGIN
+ SELECT * INTO l FROM public.letter_record WHERE id=subject AND tenant_id=wanted_tenant;
+ IF l.id IS NULL THEN RETURN false;END IF;
+ SELECT * INTO b FROM public.letter_generation_batch WHERE id=l.batch_id AND tenant_id=l.tenant_id;SELECT * INTO j FROM public.letter_job WHERE id=b.operation_key AND tenant_id=l.tenant_id AND kind='eventDraft';
+ IF j.id IS NULL THEN RETURN true;END IF;
+ SELECT * INTO r FROM public.letter_automation_rule_version WHERE id=(j.payload->>'ruleVersionId')::uuid AND tenant_id=l.tenant_id AND company_id=l.company_id;
+ SELECT * INTO e FROM public.employment WHERE id=l.employment_id AND tenant_id=l.tenant_id AND company_id=l.company_id;
+ IF r.id IS NULL OR e.id IS NULL OR j.company_id<>l.company_id OR b.id::text IS DISTINCT FROM j.payload->>'batchId' OR l.employment_id::text IS DISTINCT FROM j.payload->>'employmentId' OR j.status<>'completed' OR (j.payload->>'sourceAsOfDate')::date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RETURN false;END IF;
+ IF r.trigger='probation_due' THEN
+  RETURN j.source_event_id IS NULL AND j.payload->>'sourceKey'='probation:'||e.id::text||':'||(j.payload->>'sourceAsOfDate') AND app.employment_confirmation_date(e.final_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on) IS NOT DISTINCT FROM (j.payload->>'sourceAsOfDate')::date;
+ END IF;
+ RETURN coalesce(j.payload->>'sourceKey' LIKE 'movement:%' AND j.source_event_id::text IS NOT DISTINCT FROM j.payload->>'sourceEventId'
+  AND app.movement_applied_source_current(l.tenant_id,l.employment_id,substring(j.payload->>'sourceKey' from 10)::uuid,j.source_event_id,(j.payload->>'sourceSequence')::bigint,CASE r.trigger WHEN 'promotion_applied' THEN 'promotion' WHEN 'confirmation_applied' THEN 'confirmation' ELSE NULL END),false);
+END $$;
+REVOKE ALL ON FUNCTION app.letter_automation_source_current_at(uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_automation_source_current(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=app.current_tenant_id()
+  AND (app.letter_can_read(l.id) OR app.current_user_id() IS NULL AND app.letter_notification_storage_owner())
+  AND app.letter_automation_source_current_at(l.tenant_id,l.id))
+$$;
+REVOKE ALL ON FUNCTION app.letter_automation_source_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_automation_source_current(uuid) TO ai_hr_app;

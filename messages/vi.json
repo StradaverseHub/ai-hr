@@ -24274,6 +24274,7 @@
       }
     },
     "automation": {
+      "sourceBlocked": "Sự kiện nhân viên tạo ra thư này đã thay đổi. Thư này không thể tiếp tục quy trình. Hãy xem lại sự kiện đã sửa trước khi tạo bản nháp mới.",
       "status": "Trạng thái",
       "search": "Tìm mẫu đang hoạt động",
       "next": "Trang tiếp",

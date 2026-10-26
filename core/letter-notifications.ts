@@ -28,6 +28,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
  const [record]=await tx.select().from(letterRecord).where(and(eq(letterRecord.id,job.letterId),eq(letterRecord.tenantId,ctx.tenantId),eq(letterRecord.companyId,job.companyId)));
  const [source]=await tx.select().from(domainEvent).where(and(eq(domainEvent.id,job.sourceEventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'letter'),eq(domainEvent.aggregateId,job.letterId)));
  if(!record||!source)return cancel();
+ if(!['issued','void'].includes(record.state)){const [current]=await tx.execute<{ok:boolean}>(sql`select app.letter_automation_source_current_at(${ctx.tenantId}::uuid,${record.id}::uuid) as ok`);if(current?.ok!==true)return cancel();}
  const entitlements=await resolveEntitlementsTx(tx,ctx.tenantId);if(!isModuleEnabled({...ctx,entitlements},'notifications',record.companyId))return cancel();
  const [configuration]=await tx.select({policy:letterPolicyVersion.policy}).from(letterGenerationBatch).innerJoin(letterPolicyVersion,and(eq(letterPolicyVersion.id,letterGenerationBatch.policyVersionId),eq(letterPolicyVersion.tenantId,letterGenerationBatch.tenantId))).where(and(eq(letterGenerationBatch.id,record.batchId),eq(letterGenerationBatch.tenantId,ctx.tenantId)));
  if(!configuration)return cancel();const policy=validateLetterPolicy(configuration.policy);

@@ -10,7 +10,7 @@ vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'actual-user'},scopeIds:['00000000-0000-4000-8000-000000000001']})}));
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.templates,listLetterGenerationBatches:mocks.batches,getLetterTemplate:mocks.template,getLetterGenerationBatch:mocks.batch,getStaffLetter:mocks.detail}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:mocks.create,updateGeneration:mocks.update}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.generate'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{generate:c.letters.generate,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.automation'|'letters.generate'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{automation:c.letters.automation,generate:c.letters.generate,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
 import GeneratePage from '../app/letters/generate/page';
 import NewPage from '../app/letters/generate/new/page';
 import BatchPage from '../app/letters/generate/[batchId]/page';
@@ -58,4 +58,9 @@ it.each(['en','ms','zh','ta','th','vi'] as const)('blocks batch submission until
 it('keeps submission blocked while any other letter on the page has unsaved corrections',async()=>{
  const data=batch(),secondId='00000000-0000-4000-8000-000000000006';mocks.batch.mockResolvedValue({...data,ready:3,needsCorrection:0,rows:[data.rows[0],{...data.rows[0],record:{...data.rows[0].record,id:secondId,reference:'HR/0002'}}]});render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));const user=userEvent.setup(),submit=screen.getByRole('button',{name:'Submit 3 ready letters'});
  for(const toggle of screen.getAllByText('Update permitted fields'))await user.click(toggle);const [first,second]=screen.getAllByLabelText('Note');await user.type(first,' changed');await user.type(second,' changed');await user.clear(first);await user.type(first,'Original permitted note');expect(submit).toHaveProperty('disabled',true);await user.clear(second);await user.type(second,'Original permitted note');expect(submit).toHaveProperty('disabled',false);
+});
+
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('explains invalid automatic sources and removes obsolete correction actions in %s',async locale=>{
+ mocks.locale=locale;const data=batch();mocks.batch.mockResolvedValue({...data,ready:0,needsCorrection:1,rows:[{...data.rows[0],ready:false,automationSourceChanged:true}]});render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));expect(screen.getByRole('alert').textContent).toBe(catalogues[locale].letters.automation.sourceBlocked);expect(screen.queryByText(catalogues[locale].letters.generate.page.correct)).toBeNull();expect(screen.getByRole('button',{name:catalogues[locale].letters.generate.page.submit.replace('{count}','0')})).toHaveProperty('disabled',true);
 });

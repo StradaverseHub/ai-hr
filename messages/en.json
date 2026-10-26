@@ -24274,6 +24274,7 @@
       }
     },
     "automation": {
+      "sourceBlocked": "The employee event that created this letter has changed. This letter cannot proceed. Review the corrected event before creating a new draft.",
       "status": "Status",
       "search": "Search active templates",
       "next": "Next page",

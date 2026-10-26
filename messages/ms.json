@@ -24274,6 +24274,7 @@
       }
     },
     "automation": {
+      "sourceBlocked": "Peristiwa pekerja yang mencipta surat ini telah berubah. Surat ini tidak boleh diteruskan. Semak peristiwa yang dibetulkan sebelum mencipta draf baharu.",
       "status": "Status",
       "search": "Cari templat aktif",
       "next": "Halaman seterusnya",

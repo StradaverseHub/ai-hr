@@ -10,7 +10,7 @@ vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',user
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterRegister:mocks.list,getStaffLetter:mocks.detail,letterAudit:mocks.audit,listLetterTemplates:mocks.templates}));
 vi.mock('../app/letters/register/actions',()=>({updateRegister:mocks.update}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');}}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.errors'|'letters.register'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{errors:c.letters.errors,register:c.letters.register,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.automation'|'letters.errors'|'letters.register'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{automation:c.letters.automation,errors:c.letters.errors,register:c.letters.register,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
 import RegisterPage from '../app/letters/register/page';
 import DetailPage from '../app/letters/register/[letterId]/page';
 const companyId='00000000-0000-4000-8000-000000000001',letterId='00000000-0000-4000-8000-000000000002',revisionId='00000000-0000-4000-8000-000000000003',versionId='00000000-0000-4000-8000-000000000004';
@@ -33,4 +33,9 @@ it('retains a revocation reason after the owner refuses a stale action',async()=
 });
 it.each(['en','ms','zh','th','ta','vi'] as const)('renders the real register and controls in %s',async locale=>{
  mocks.locale=locale;render(await RegisterPage({searchParams:Promise.resolve({companyId})}));const c=catalogues[locale].letters.register;expect(screen.getByRole('heading',{name:c.title})).toBeTruthy();expect(screen.getByRole('link',{name:c.ready})).toBeTruthy();cleanup();render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));expect(screen.getByRole('checkbox',{name:c.voidConfirm})).toHaveProperty('required',true);expect(screen.getByRole('checkbox',{name:c.legalHold})).toBeTruthy();
+});
+
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('hides issue for obsolete automatic sources while preserving issued document access in %s',async locale=>{
+ mocks.locale=locale;mocks.detail.mockResolvedValue({...detail('approved'),automationSourceChanged:true});render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));expect(screen.getByRole('alert').textContent).toBe(catalogues[locale].letters.automation.sourceBlocked);expect(document.querySelector('input[name="action"][value="issue"]')).toBeNull();cleanup();mocks.detail.mockResolvedValue({...detail('issued'),automationSourceChanged:true});render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));expect(screen.getByRole('alert').textContent).toBe(catalogues[locale].letters.automation.issuedSourceChanged);expect(document.querySelector('a[href*="/document"]')).toBeTruthy();
 });
