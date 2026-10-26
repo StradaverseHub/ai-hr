@@ -54,6 +54,7 @@ import {
   type ProfileRequestApprover,
 } from '../lib/profile-requestable-fields';
 import { resolveActiveAiConfig } from './ai-config';
+import { assertAiPrincipalTx } from './ai-principal';
 
 /** Refused before the database sees it, so a caller gets a reason rather than a silent no-op. */
 export class TenantSettingError extends Error {
@@ -99,10 +100,12 @@ export async function setTenantSetting(
   p: { key: string; value: TenantSettingValue },
   outerTx?:Tx,
 ): Promise<void> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   // Mirrors app.is_group_admin(). A company-scoped admin is deliberately NOT enough: these switches are
   // tenant-wide, and a per-company admin flipping one would change behaviour for companies they do not
   // administer.
   if (!isGroupAdmin(ctx)) throw new TenantSettingError('not_group_admin');
+  try { p={key:p.key,value:structuredClone(p.value)}; } catch { throw new TenantSettingError('wrong_type'); }
 
   const entry = catalogEntry(p.key);
   if (!entry) throw new TenantSettingError('unknown_key');
@@ -112,6 +115,14 @@ export async function setTenantSetting(
   if(p.value!==null&&typeof p.value==='object'&&!Array.isArray(p.value)&&!(p.key==='ess.profile_change_fields'&&(isProfileEditPolicyValue(p.value)||isProfileVisibilityPolicyValue(p.value))||p.key===PROFILE_ROUTING_KEY&&isProfileRoutingPolicy(p.value)))throw new TenantSettingError('wrong_type');
 
   const run=async (tx:Tx) => {
+    // Fresh carrier/login/principal binding owns Access before profile-policy/setting locks. Existing
+    // outerTx callers already own Access before their policy tuple; this join is reentrant, not a late
+    // lock-order repair for arbitrary supplied transactions. No model or posted role is authority.
+    try {
+      await assertAiPrincipalTx(tx,ctx);
+      const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+      if(current?.allowed!==true)throw new TenantSettingError('not_group_admin');
+    } catch { throw new TenantSettingError('not_group_admin'); }
     if(p.key==='ess.profile_change_fields'||p.key==='ess.profile_change_approver'||p.key==='ess.profile_photo_edit'||p.key===PROFILE_ROUTING_KEY)await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await tx
       .insert(schema.tenantSetting)
