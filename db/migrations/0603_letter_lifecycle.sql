@@ -567,3 +567,16 @@ RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search
 $$;
 REVOKE ALL ON FUNCTION app.letter_signatory_choices(uuid,uuid,text,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_signatory_choices(uuid,uuid,text,integer) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Only identities already bound to an authorized template version may be labelled here.
+CREATE FUNCTION app.letter_template_appearance(subject uuid) RETURNS TABLE(letterhead_name text,signatory_name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT a.name,p.full_name FROM public.letter_template_version v
+ LEFT JOIN public.letter_asset a ON a.id=(v.presentation->>'letterheadAssetId')::uuid AND a.tenant_id=v.tenant_id AND a.company_id=v.company_id AND a.kind='letterhead'
+ LEFT JOIN public.app_user u ON u.id=(v.presentation->>'signatoryUserId')::uuid AND u.tenant_id=v.tenant_id
+ LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=v.tenant_id
+ WHERE v.id=subject AND v.tenant_id=app.current_tenant_id() AND (app.letter_permission(v.company_id,'read') OR app.letter_permission(v.company_id,'template'))
+$$;
+REVOKE ALL ON FUNCTION app.letter_template_appearance(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_template_appearance(uuid) TO ai_hr_app;

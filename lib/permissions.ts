@@ -109,6 +109,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
   {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
   {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
+  {screenKey:'letterTemplates',href:'/letters/templates',labelKey:'letters.templates.page.title',guard:'scopedSession',routes:['/letters/templates','/letters/templates/new','/letters/templates/[versionId]','/letters/templates/[versionId]/edit'],hasScopeNote:true},
   {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
