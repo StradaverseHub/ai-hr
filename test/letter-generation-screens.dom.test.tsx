@@ -1,5 +1,5 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-import {render,screen,cleanup,within} from '@testing-library/react';
+import {render,screen,cleanup,within,waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
@@ -42,4 +42,20 @@ it('keeps a replacement draft fixed to the original recipient and names the fres
 it.each(['en','ms','zh','ta','th','vi'] as const)('shows the reviewer reason and decision history beside the correction controls in %s',async locale=>{
  mocks.locale=locale;const data=batch(),reason='Correct the effective date <script>literal reason</script>';mocks.batch.mockResolvedValue({...data,ready:0,needsCorrection:1,rows:[{...data.rows[0],record:{...data.rows[0].record,state:'returned'},ready:false,correctionReason:reason}]});render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));const copy=catalogues[locale].letters.generate.page;
  expect(screen.getByText(copy.reviewerReason)).toBeTruthy();expect(screen.getByText(reason)).toBeTruthy();expect(screen.getByRole('link',{name:copy.decisionHistory}).getAttribute('href')).toBe('/letters/approval/'+letterId);expect(document.querySelector('script')).toBeNull();
+});
+
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('blocks batch submission until corrections are saved or restored, retaining refused edits in %s',async locale=>{
+ mocks.locale=locale;const data=batch();mocks.batch.mockResolvedValue({...data,ready:3,needsCorrection:0});mocks.update.mockResolvedValue({error:'stale'});
+ render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));const user=userEvent.setup(),copy=catalogues[locale].letters.generate,submit=screen.getByRole('button',{name:copy.page.submit.replace('{count}','3')});
+ expect(submit).toHaveProperty('disabled',false);await user.click(screen.getByText(copy.page.correct));const input=screen.getByLabelText('Note');await user.type(input,' — correction');expect(submit).toHaveProperty('disabled',true);expect(screen.getByText(copy.page.unsavedCorrections)).toBeTruthy();await user.click(submit);expect(mocks.update).not.toHaveBeenCalled();
+ const unload=new Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);expect(unload.defaultPrevented).toBe(true);
+ await user.clear(input);await user.type(input,'Original permitted note');expect(submit).toHaveProperty('disabled',false);expect(screen.queryByText(copy.page.unsavedCorrections)).toBeNull();
+ await user.type(input,' — retained after failure');await user.click(screen.getByRole('button',{name:copy.page.refresh}));await screen.findByRole('alert');expect(input).toHaveProperty('value','Original permitted note — retained after failure');expect(submit).toHaveProperty('disabled',true);expect(mocks.update).toHaveBeenCalledTimes(1);
+ await user.clear(input);await user.type(input,'Original permitted note');await waitFor(()=>expect(submit).toHaveProperty('disabled',false));
+});
+
+it('keeps submission blocked while any other letter on the page has unsaved corrections',async()=>{
+ const data=batch(),secondId='00000000-0000-4000-8000-000000000006';mocks.batch.mockResolvedValue({...data,ready:3,needsCorrection:0,rows:[data.rows[0],{...data.rows[0],record:{...data.rows[0].record,id:secondId,reference:'HR/0002'}}]});render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));const user=userEvent.setup(),submit=screen.getByRole('button',{name:'Submit 3 ready letters'});
+ for(const toggle of screen.getAllByText('Update permitted fields'))await user.click(toggle);const [first,second]=screen.getAllByLabelText('Note');await user.type(first,' changed');await user.type(second,' changed');await user.clear(first);await user.type(first,'Original permitted note');expect(submit).toHaveProperty('disabled',true);await user.clear(second);await user.type(second,'Original permitted note');expect(submit).toHaveProperty('disabled',false);
 });

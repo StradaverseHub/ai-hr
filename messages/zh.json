@@ -24275,6 +24275,7 @@
     },
     "generate": {
       "page": {
+        "unsavedCorrections": "请先刷新草稿版本以保存修改，或恢复已保存的值，再提交此批次。",
         "reviewerReason": "审核人说明",
         "decisionHistory": "查看审批记录",
         "title": "生成信函",

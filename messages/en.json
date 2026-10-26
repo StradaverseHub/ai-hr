@@ -24275,6 +24275,7 @@
     },
     "generate": {
       "page": {
+        "unsavedCorrections": "Save your changes with Refresh draft revision, or restore the saved values, before submitting this batch.",
         "reviewerReason": "Reviewer’s reason",
         "decisionHistory": "View decision history",
         "title": "Generate letters",

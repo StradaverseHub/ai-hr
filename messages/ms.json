@@ -24275,6 +24275,7 @@
     },
     "generate": {
       "page": {
+        "unsavedCorrections": "Simpan perubahan melalui Muat semula versi draf, atau pulihkan nilai tersimpan, sebelum menghantar kelompok ini.",
         "reviewerReason": "Alasan penyemak",
         "decisionHistory": "Lihat sejarah keputusan",
         "title": "Jana surat",

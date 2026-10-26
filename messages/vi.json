@@ -24275,6 +24275,7 @@
     },
     "generate": {
       "page": {
+        "unsavedCorrections": "Làm mới phiên bản nháp để lưu thay đổi hoặc khôi phục các giá trị đã lưu trước khi gửi lô này.",
         "reviewerReason": "Lý do của người xét duyệt",
         "decisionHistory": "Xem lịch sử quyết định",
         "title": "Tạo thư",

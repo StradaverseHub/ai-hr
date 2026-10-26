@@ -1,5 +1,5 @@
 'use client';
-import {useActionState,useEffect,useMemo,useRef,useState} from 'react';
+import {createContext,useActionState,useCallback,useContext,useEffect,useId,useMemo,useRef,useState,type ReactNode} from 'react';
 import {Field,inputCls,btnPrimary,btnGhost} from '@/components/ui';
 import type {LetterChoice} from '@/lib/letter-choice';
 import type {LetterField,LetterValue} from '@/lib/letter-model';
@@ -7,6 +7,16 @@ import {createGeneration,updateGeneration} from '@/app/letters/generate/actions'
 import {LetterChoicePicker,type LetterChoiceLabels} from './choice-picker';
 import {LetterCustomInputs} from './custom-inputs';
 export type GenerationFormLabels={department:string;branch:string;hiredFrom:string;hiredTo:string;filterHelp:string;invalidRange:string;selected:string;addShown:string;remove:string;limit:string;commonValues:string;customHelp:string;create:string;working:string;reason:string;currency:string};
+const BatchEdits=createContext<{blocked:boolean;message:string;setBlocked:(id:string,blocked:boolean)=>void}|null>(null);
+/** Submit applies to saved revisions across the entire batch, never unsaved form inputs. */
+export function LetterGenerationBatchEdits({children,message}:{children:ReactNode;message:string}){
+ const [blockedForms,setBlockedForms]=useState<ReadonlySet<string>>(()=>new Set());
+ const setBlocked=useCallback((id:string,blocked:boolean)=>setBlockedForms(previous=>{if(previous.has(id)===blocked)return previous;const next=new Set(previous);if(blocked)next.add(id);else next.delete(id);return next;}),[]);
+ const blocked=blockedForms.size>0,value=useMemo(()=>({blocked,message,setBlocked}),[blocked,message,setBlocked]);
+ useEffect(()=>{if(!blocked)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[blocked]);
+ return <BatchEdits.Provider value={value}>{children}</BatchEdits.Provider>;
+}
+function customFormSnapshot(form:HTMLFormElement){return JSON.stringify([...new FormData(form)].filter(([key])=>key.startsWith('custom:')));}
 function useRetainedForm(){const ref=useRef<HTMLFormElement>(null);useEffect(()=>{const form=ref.current;if(!form)return;const retain=(event:Event)=>event.preventDefault();form.addEventListener('reset',retain);return()=>form.removeEventListener('reset',retain);},[]);return ref;}
 function Failure({state,errors}:{state:{error:string;field?:string}|null;errors:Record<string,string>}){return state?.error?<p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{Object.hasOwn(errors,state.error)?errors[state.error]:errors.unavailable}{state.field&&<>: <span>{state.field}</span></>}</p>:null;}
 export function LetterGenerationCreate({companyId,versionId,operationKey,fields,labels,picker,errors,fixedEmployee,reissueOf}:{companyId:string;versionId:string;operationKey:string;fixedEmployee?:LetterChoice;reissueOf?:string;fields:LetterField[];labels:GenerationFormLabels;picker:LetterChoiceLabels;errors:Record<string,string>}){
@@ -18,6 +28,9 @@ export function LetterGenerationCreate({companyId,versionId,operationKey,fields,
   {fields.some(field=>field.source.startsWith('custom.'))&&<section className="space-y-4"><h2 className="font-semibold">{labels.commonValues}</h2><p className="text-sm text-muted-foreground">{labels.customHelp}</p><LetterCustomInputs fields={fields} currencyLabel={labels.currency}/></section>}<button type="submit" className={`${btnPrimary} min-h-11`} disabled={pending||!selected.length||limit} aria-busy={pending}>{pending?labels.working:labels.create}</button></fieldset></form>;
 }
 export function LetterGenerationUpdate({action,batchId,letterId,lockVersion,fields=[],values={},label,pendingLabel,reasonLabel,currencyLabel,errors,disabled=false}:{action:'submit'|'refresh'|'withdraw';batchId:string;letterId?:string;lockVersion?:number;fields?:LetterField[];values?:Record<string,LetterValue|null>;label:string;pendingLabel:string;reasonLabel:string;currencyLabel:string;errors:Record<string,string>;disabled?:boolean}){
- const [state,dispatch,pending]=useActionState(updateGeneration,null),ref=useRetainedForm();
- return <form ref={ref} action={dispatch} className="space-y-4"><Failure state={state} errors={errors}/><input type="hidden" name="action" value={action}/><input type="hidden" name="batchId" value={batchId}/><input type="hidden" name="letterId" value={letterId??''}/><input type="hidden" name="expectedLockVersion" value={lockVersion??''}/><fieldset disabled={pending||disabled} className="min-w-0 space-y-4">{action==='refresh'&&<LetterCustomInputs fields={fields} values={values} currencyLabel={currencyLabel}/>} {action==='withdraw'&&<Field label={reasonLabel}><textarea className={`${inputCls} min-h-24`} name="reason" maxLength={2000} required/></Field>}<button type="submit" className={`${action==='submit'?btnPrimary:btnGhost+' border'} min-h-11`} disabled={pending||disabled} aria-busy={pending}>{pending?pendingLabel:label}</button></fieldset></form>;
+ const [state,dispatch,pending]=useActionState(updateGeneration,null),ref=useRetainedForm(),batchEdits=useContext(BatchEdits),formId=useId(),baseline=useRef<string|null>(null),[dirty,setDirty]=useState(false),setBlocked=batchEdits?.setBlocked;
+ useEffect(()=>{if(action==='refresh'&&ref.current)baseline.current=customFormSnapshot(ref.current);},[action,ref]);
+ useEffect(()=>{if(action==='submit'||!setBlocked)return;setBlocked(formId,dirty||pending);return()=>setBlocked(formId,false);},[action,dirty,pending,formId,setBlocked]);
+ const blocked=action==='submit'&&batchEdits?.blocked===true,unavailable=pending||disabled||blocked;
+ return <form ref={ref} action={dispatch} onChange={()=>{if(action==='refresh'&&ref.current)setDirty(customFormSnapshot(ref.current)!==baseline.current);}} onSubmit={event=>{if(blocked)event.preventDefault();}} className="space-y-4"><Failure state={state} errors={errors}/><input type="hidden" name="action" value={action}/><input type="hidden" name="batchId" value={batchId}/><input type="hidden" name="letterId" value={letterId??''}/><input type="hidden" name="expectedLockVersion" value={lockVersion??''}/>{blocked&&<p role="status" className="rounded-md border p-3 text-sm">{batchEdits?.message}</p>}<fieldset disabled={unavailable} className="min-w-0 space-y-4">{action==='refresh'&&<LetterCustomInputs fields={fields} values={values} currencyLabel={currencyLabel}/>} {action==='withdraw'&&<Field label={reasonLabel}><textarea className={`${inputCls} min-h-24`} name="reason" maxLength={2000} required/></Field>}<button type="submit" className={`${action==='submit'?btnPrimary:btnGhost+' border'} min-h-11`} disabled={unavailable} aria-busy={pending}>{pending?pendingLabel:label}</button></fieldset></form>;
 }
