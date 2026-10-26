@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 /** Workflow email configuration. Policy and consent have separate owners and never imply SMTP readiness. */
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Grant } from '../db/client';
+import { and, asc, eq, getTableColumns, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Grant, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employment, notificationEmailPolicy, notificationPref, notificationDelivery } from '../db/schema';
 import { isAdmin, isGroupAdmin, withEffectiveGrants } from '../lib/authz-model';
@@ -58,12 +58,18 @@ export async function readNotificationEmailPreferences(ctx: SessionContext) {
 }
 export type EmailConsentIdentity = {issuer:string;subject:string;email:string|null;emailVerified:boolean};
 /** The action obtains identity from the verified server session, never from form fields. */
-export async function saveNotificationEmailPreferences(ctx:SessionContext, employmentId:string, enabledCategories:readonly string[], locale:NotificationEmailLocale, identity:EmailConsentIdentity|null) {
+export async function saveNotificationEmailPreferences(ctx:SessionContext, employmentId:string, enabledCategories:readonly string[], locale:NotificationEmailLocale, identity:EmailConsentIdentity|null):Promise<void> {
+  const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))}, selected=[...enabledCategories], proof=identity?{...identity}:null;
+  await withTenant(captured,tx=>saveNotificationEmailPreferencesTx(tx,captured,employmentId,selected,locale,proof));
+}
+/** Same canonical consent owner, joined to an enclosing human command. The exact event is not proof
+ * of commit; an enclosing custody owner must commit its completion receipt in this transaction. */
+export async function saveNotificationEmailPreferencesTx(tx:Tx,ctx:SessionContext, employmentId:string, enabledCategories:readonly string[], locale:NotificationEmailLocale, identity:EmailConsentIdentity|null):Promise<{employmentId:string;eventId:string}> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};enabledCategories=[...enabledCategories];identity=identity?{...identity}:null;
   requireModule(ctx); const selected=categories(enabledCategories);
   if (!ctx.userId || !ctx.personId) throw new NotificationEmailSettingsError('forbidden');
   if (!notificationEmailLocales.includes(locale)) throw new NotificationEmailSettingsError('invalid');
-  await withTenant(ctx,async tx=>{
-    const [own]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId!))).limit(1);
+  const [own]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId!))).limit(1);
     if (!own) throw new NotificationEmailSettingsError('forbidden');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`workflow-email-consent:${ctx.tenantId}:${employmentId}`},0))`);
     const current=await tx.select().from(notificationPref).where(and(eq(notificationPref.recipientEmploymentId,employmentId),eq(notificationPref.channel,'email')));
@@ -91,8 +97,27 @@ export async function saveNotificationEmailPreferences(ctx:SessionContext, emplo
         target:[notificationPref.tenantId,notificationPref.recipientEmploymentId,notificationPref.category,notificationPref.channel],set:{...value,updatedAt:sql`now()`},
       });
     }
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:'notification-email.consent-changed',subjectEmploymentId:employmentId,actor:actorOf(ctx),payload:{enabledCategories:[...selected],locale}});
-  });
+    const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:'notification-email.consent-changed',subjectEmploymentId:employmentId,actor:actorOf(ctx),payload:{enabledCategories:[...selected],locale}},{returnId:true});
+    return {employmentId,eventId};
+}
+/** Private canonical source snapshot for a supplied-Tx review. Locks only this owner's existing
+ * policy/consent keys; any busy acquisition requires whole-Tx rollback. Caller already owns Access
+ * before employment reads (the workforce statement trigger joins that same canonical interval).
+ * Caller owns fresh login/module/Assistant authority; these rows must never become model context. */
+export async function readOwnNotificationEmailPreferenceSourceTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  requireModule(ctx);if(!ctx.userId||!ctx.personId)throw new NotificationEmailSettingsError('forbidden');
+  const [policyLock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${'workflow-email-policy:'+ctx.tenantId},0)) as owned`);
+  if(policyLock?.owned!==true)throw new NotificationEmailSettingsError('notAvailable');
+  const [consentLock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'workflow-email-consent:'+ctx.tenantId+':'+employmentId},0)) as owned`);
+  if(consentLock?.owned!==true)throw new NotificationEmailSettingsError('notAvailable');
+  const [own]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,version:sql<string>`xmin::text`}).from(employment)
+    .where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);
+  if(!own)throw new NotificationEmailSettingsError('forbidden');
+  const preferences=await tx.select({...getTableColumns(notificationPref),version:sql<string>`xmin::text`}).from(notificationPref)
+    .where(and(eq(notificationPref.tenantId,ctx.tenantId),eq(notificationPref.recipientEmploymentId,employmentId),eq(notificationPref.channel,'email'))).orderBy(asc(notificationPref.category));
+  const policy=await tx.select({...getTableColumns(notificationEmailPolicy),version:sql<string>`xmin::text`}).from(notificationEmailPolicy)
+    .where(eq(notificationEmailPolicy.tenantId,ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category));
+  return {own,preferences,policy};
 }
 export async function readNotificationEmailDeliveries(ctx:SessionContext) {
   requireModule(ctx); if (!isAdmin(ctx)) throw new NotificationEmailSettingsError('forbidden');
