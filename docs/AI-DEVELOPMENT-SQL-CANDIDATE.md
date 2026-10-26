@@ -1,0 +1,5 @@
+# Disposable development SQL candidate
+
+This isolated development branch mirrors the seven reserved AI drafts into a journal only to execute focused checks on disposable runners. It preserves all497 canonical prefix entries exactly, including historical ordering, and exact frozen Standalone0612 bytes from9546a58bbd3e4ae8f4dd8427f70b95f198b51256, then reservations0613–0619 in coordinated order. All eight new timestamps exceed the canonical prefix maximum and are strictly increasing. Each AI SQL file is byte-identical to its draft at this candidate. The parent implementation branch remains unjournalled.
+
+Actual staging was read-only checked at497entries/max1792941214168 before preparing this candidate. Standalone0612 and all AI migrations remain unapplied there. Successful disposable checks prove only their exact selected source/input scope, not staging upgrade/order, final-gate coverage, production readiness or release authorization. Do not merge this development-only overlay as a substitute for the later dependency handback and complete candidate review. No service, identity, provider or tenant is activated by this source.
