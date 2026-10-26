@@ -2899,8 +2899,11 @@ export async function bulkSaveLabels(
   p: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
   existingTx?: Tx,
 ): Promise<{ created: number; updated: number; createdIds: { key: string; id: string }[] }> {
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const agg = KIND_AGG[kind];
   return tenantMutation(ctx, existingTx, async (tx) => {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx, ctx.tenantId);
     const errors: LabelRowError[] = [];
     // Maps each created draft's client key → its new server id so the grid can convert the draft row

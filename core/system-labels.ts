@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { tenantMutation } from '../db/tenant-mutation';
 /** System Labels criteria owner. Creation company is provenance and write ownership;
  * availability is exclusively Global or an explicit nonempty company assignment set.
@@ -277,14 +278,18 @@ export function listLabelAssignments(ctx: SessionContext, kind: string): Promise
 export type LabelCriteriaChange={kind:string;labelId:string;isGlobal:boolean;companyIds:string[]};
 /** One complete owner for a single save or a reviewed batch. No caller can skip final validation. */
 export async function setLabelCriteria(ctx:SessionContext,p:LabelCriteriaChange,existingTx?:Tx):Promise<{isGlobal:boolean;companyIds:string[]}>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const [result]=await setLabelCriteriaBatch(ctx,[p],existingTx);return {isGlobal:result.isGlobal,companyIds:result.companyIds};
 }
 export async function setLabelCriteriaBatch(ctx:SessionContext,changes:readonly LabelCriteriaChange[],existingTx?:Tx):Promise<{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]>{
+ changes=structuredClone(changes);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const rawChanges:unknown=changes;
  if(!Array.isArray(rawChanges)||rawChanges.some(change=>!change||typeof change.kind!=='string'||typeof change.labelId!=='string'||typeof change.isGlobal!=='boolean'||!Array.isArray(change.companyIds)||change.companyIds.some((id:unknown)=>typeof id!=='string')))throw new Error('Choose valid label Criteria.');
  if(changes.length>1000||new Set(changes.map(change=>change.kind+':'+change.labelId)).size!==changes.length)throw new Error('Choose each label once within the supported batch size.');
  for(const p of changes){assertKind(p.kind);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.labelId))throw new UnknownLabelError();const ids=[...new Set(p.companyIds)];if(ids.length>1000||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new Error('Choose valid companies from the available list.');if(!p.isGlobal&&!ids.length)throw new Error('Select at least one company, or choose Global.');}
  return tenantMutation(ctx,existingTx,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   await lockLabelCriteriaTx(tx, ctx.tenantId);
   const plans:{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]=[],results:typeof plans=[];
   for(const p of changes){assertKind(p.kind);const kind=p.kind,ids=[...new Set(p.companyIds)];
@@ -400,8 +405,11 @@ export async function existingSystemLabelImportKeysTx(tx:Tx,tenantId:string,rows
 
 /** Compatibility entry points delegate to the complete owner; no independent sharing switch exists. */
 export function assignLabelToCompanies(ctx: SessionContext, p: {kind:string;labelId:string;companyIds:string[]}, existingTx?: Tx): Promise<{assigned:string[]}> {
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   assertKind(p.kind);
   return tenantMutation(ctx, existingTx, async tx => {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
     const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
       .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
@@ -410,8 +418,11 @@ export function assignLabelToCompanies(ctx: SessionContext, p: {kind:string;labe
   });
 }
 export function unassignLabelFromCompanies(ctx: SessionContext, p: {kind:string;labelId:string;companyIds:string[]}, existingTx?: Tx): Promise<{unassigned:string[]}> {
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   assertKind(p.kind);
   return tenantMutation(ctx, existingTx, async tx => {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
     const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
       .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
@@ -420,8 +431,11 @@ export function unassignLabelFromCompanies(ctx: SessionContext, p: {kind:string;
   });
 }
 export function setLabelGlobal(ctx: SessionContext, p: {kind:string;labelId:string;isGlobal:boolean}, existingTx?: Tx): Promise<{isGlobal:boolean}> {
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   assertKind(p.kind);
   return tenantMutation(ctx, existingTx, async tx => {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const existing = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
       .where(and(eq(labelCompanyAssignment.labelId, p.labelId), eq(labelCompanyAssignment.labelKind, p.kind)));
     const label = await loadLabel(tx, ctx.tenantId, p.kind as LabelKind, p.labelId);
