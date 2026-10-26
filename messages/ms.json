@@ -10429,7 +10429,21 @@
           "calib": "Pembantu kalibrasi"
         },
         "moduleMissing": "Dihidupkan · Akses Prestasi diperlukan"
-      }
+      },
+      "routingTitle": "Penghalaan diluluskan",
+      "approvedProviders": "ID penyedia diluluskan, mengikut urutan",
+      "approvedProvidersHelp": "Masukkan satu ID penyedia setiap baris. Hanya penyedia ini boleh menerima permintaan.",
+      "routingInvalid": "Masukkan ID penyedia unik menggunakan huruf kecil, nombor, sempang atau garis miring.",
+      "boundedFallbacks": "Benarkan sandaran dalam senarai diluluskan ini",
+      "routingPreference": "Keutamaan penghalaan",
+      "preferLatency": "Utamakan kependaman rendah",
+      "preferPrice": "Utamakan harga rendah",
+      "routingPrivacy": "Permintaan mensyaratkan tiada pengumpulan data dan tiada penyimpanan data. Semak dasar penyedia sebelum mengaktifkan.",
+      "metadataOnly": "Semakan ini hanya membaca metadata. Ia tidak mengesahkan privasi, tingkah laku alat atau mutu jawapan.",
+      "metadataTest": "Semak metadata laluan",
+      "metadataOk": "Metadata kunci, model dan laluan diluluskan disahkan.",
+      "explicitRouterModel": "Masukkan ID penyedia/model yang tepat. Penghala model automatik tidak disokong.",
+      "accountPluginsReview": "Semak pemproses lalai akaun sebelum mengaktifkan. Tetapan akaun yang dikuatkuasakan boleh mengatasi sekatan permintaan; kawalan keselamatan dikekalkan."
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",

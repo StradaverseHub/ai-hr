@@ -10429,7 +10429,21 @@
           "calib": "Calibration assistant"
         },
         "moduleMissing": "On · Performance access required"
-      }
+      },
+      "routingTitle": "Approved routing",
+      "approvedProviders": "Approved provider IDs, in order",
+      "approvedProvidersHelp": "Enter one provider ID per line. Only these providers may receive requests.",
+      "routingInvalid": "Enter unique provider IDs using lowercase letters, numbers, hyphens or slashes.",
+      "boundedFallbacks": "Allow fallback within this approved list",
+      "routingPreference": "Routing preference",
+      "preferLatency": "Prefer lower latency",
+      "preferPrice": "Prefer lower price",
+      "routingPrivacy": "Requests require no data collection and zero data retention. Review the providers’ policies before enabling.",
+      "metadataOnly": "This check reads metadata only. It does not certify privacy, tool behavior or answer quality.",
+      "metadataTest": "Check route metadata",
+      "metadataOk": "Key, model and approved route metadata confirmed.",
+      "explicitRouterModel": "Enter an exact provider/model ID. Automatic model routers are not supported.",
+      "accountPluginsReview": "Review account-default processors before enabling. Enforced account settings can override request restrictions; security guardrails remain in place."
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",

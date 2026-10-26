@@ -1,3 +1,5 @@
+-- Parent allocation 0603 coordinated with actual Operator/efficiency owners on 26 October 2026.
+-- STILL UNJOURNALED/UNAPPLIED: resolve existing Operator 0601 rollout order before journaling.
 -- SOURCE DRAFT ONLY. No migration allocation/journal entry; never apply manually.
 -- Review custody and canonical-reference completion only. No leave executor or endpoint is mounted.
 -- Tables have no app-role grants/policies: narrow SECURITY DEFINER functions own all access.

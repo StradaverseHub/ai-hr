@@ -4,6 +4,9 @@ import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } fr
 import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
+import { assertAiPrincipalTx } from './ai-principal';
+import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import type { AiAdmission } from '../lib/ai/governance';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
 async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
@@ -30,9 +33,12 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
 
 /** The resolved configuration carries the calling authorization as an opaque, server-only capability. */
 export function governedAiConfig(ctx:SessionContext,cfg:ResolvedAiConfig,feature:AiFeatureId):ResolvedAiConfig{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ cfg={...cfg,...(cfg.provider==='openrouter'?{providerOptions:readOpenRouterOptions(cfg.providerOptions)}:{})};
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- return {...cfg,governance:{async run(request,call){
+ return Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>):Promise<T>{
   const [admission]=await withTenant(ctx,async tx=>{
+   await assertAiPrincipalTx(tx,ctx);
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint,${forcedPause})`);
   });
@@ -50,5 +56,5 @@ export function governedAiConfig(ctx:SessionContext,cfg:ResolvedAiConfig,feature
    try { await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle(${admission.run_id}::uuid,${succeeded},${actual}::bigint)`)); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
   }
- }}};
+ }})});
 }

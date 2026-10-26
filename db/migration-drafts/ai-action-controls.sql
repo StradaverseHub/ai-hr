@@ -1,3 +1,5 @@
+-- Parent allocation 0602 coordinated with actual Operator/efficiency owners on 26 October 2026.
+-- STILL UNJOURNALED/UNAPPLIED: resolve existing Operator 0601 rollout order before journaling.
 -- SOURCE DRAFT ONLY: no migration number or journal entry has been allocated. Do not apply this
 -- manually. Integrate after Board 3's verified release, with a centrally allocated migration, then
 -- validate the restricted-owner upgrade and app-role behavior. No endpoint currently calls this API.

@@ -30,7 +30,11 @@ describe('unregistered OpenRouter request boundary', () => {
         require_parameters: true, data_collection: 'deny', zdr: true } });
     expect(body.messages[2].tool_calls[0].function.arguments).toBe('{}');
     expect(body.messages[3]).toEqual({ role: 'tool', tool_call_id: 'fictional_call_1', content: 'Fictional permitted result' });
-    for (const key of ['apiKey', 'plugins', 'user', 'session_id', 'cacheKey', 'providerState', 'max_tokens']) expect(body).not.toHaveProperty(key);
+    expect(body.plugins).toContainEqual({id:'web',enabled:false});
+    expect(body.plugins).toContainEqual({id:'fusion',enabled:false});
+    expect(body.plugins.every((plugin:{enabled:boolean})=>plugin.enabled===false)).toBe(true);
+    expect(body.plugins.some((plugin:{id:string})=>['alignment','armor','moderation'].includes(plugin.id))).toBe(false);
+    for (const key of ['apiKey', 'user', 'session_id', 'cacheKey', 'providerState', 'max_tokens']) expect(body).not.toHaveProperty(key);
     expect(JSON.stringify(body)).not.toContain('fictional-opaque-state');
     expect(JSON.stringify(body)).not.toContain('fictional-cache-identity');
   });

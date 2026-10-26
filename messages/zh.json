@@ -10429,7 +10429,21 @@
           "calib": "校准助手"
         },
         "moduleMissing": "已开启 · 需要绩效访问权限"
-      }
+      },
+      "routingTitle": "已批准的路由",
+      "approvedProviders": "已批准的供应商 ID（按顺序）",
+      "approvedProvidersHelp": "每行输入一个供应商 ID。只有这些供应商可以接收请求。",
+      "routingInvalid": "请输入不重复的供应商 ID，仅使用小写字母、数字、连字符或斜杠。",
+      "boundedFallbacks": "允许在此批准列表内切换备用供应商",
+      "routingPreference": "路由偏好",
+      "preferLatency": "优先低延迟",
+      "preferPrice": "优先低价格",
+      "routingPrivacy": "请求要求不收集数据且零数据保留。启用前请审查供应商政策。",
+      "metadataOnly": "此检查仅读取元数据，不证明隐私合规、工具行为或回答质量。",
+      "metadataTest": "检查路由元数据",
+      "metadataOk": "密钥、模型及已批准路由的元数据已确认。",
+      "explicitRouterModel": "请输入准确的供应商/模型 ID。不支持自动模型路由。",
+      "accountPluginsReview": "启用前请审查账户默认处理器。强制账户设置可能覆盖请求限制；安全防护保持不变。"
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",

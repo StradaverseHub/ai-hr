@@ -3,7 +3,7 @@
  * implements, so the rest of the app is provider-agnostic. Draft-only: adapters generate text and
  * validate credentials; they never persist anything.
  */
-export type AiProvider = 'anthropic' | 'openai' | 'google';
+export type AiProvider = 'anthropic' | 'openai' | 'google' | 'openrouter';
 
 /** Resolved, ready-to-use config for one generation — the decrypted key lives only in request memory. */
 export type ResolvedAiConfig = {
@@ -11,6 +11,8 @@ export type ResolvedAiConfig = {
   provider: AiProvider;
   model: string;
   apiKey: string;
+  /** Explicit tenant-owned versioned routes; never sourced from an environment/model request. */
+  providerOptions?: import('./providers/openrouter-configuration').OpenRouterOptions;
 };
 
 export type GenerateArgs = {

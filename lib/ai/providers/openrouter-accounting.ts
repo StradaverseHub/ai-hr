@@ -1,4 +1,4 @@
-/** Unregistered provider accounting reader. No request, settlement, estimate or price lookup.
+/** Provider accounting reader. No request, settlement, estimate or price lookup.
  * Missing provider metadata stays unknown. Never use upstream inference cost as the account charge. */
 import type { AiUsage } from '../types';
 

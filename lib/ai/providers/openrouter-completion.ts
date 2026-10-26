@@ -1,4 +1,4 @@
-/** Unregistered, non-streaming response boundary. Never executes tools or proves caller access.
+/** Unreleased non-streaming response boundary. Never executes tools or proves caller access.
  * Raw provider errors/debug bodies are deliberately discarded, including errors inside HTTP 200. */
 import { z } from 'zod';
 import { AiGatewayError, normaliseStop, type AiStop, type ConverseResult } from '../types';

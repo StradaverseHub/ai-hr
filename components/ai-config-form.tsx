@@ -7,7 +7,8 @@
  * plaintext key is sent to a server action that encrypts it before it touches the DB and is never
  * echoed back. "Test" returns only ok/generic-reason.
  */
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useId } from 'react';
+import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/providers/openrouter-configuration';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, PlugZap, Trash2 } from 'lucide-react';
@@ -45,17 +46,25 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   const [model, setModel] = useState(p.model);
   const [key, setKey] = useState('');
   const [testing, startTest] = useTransition();
+  const router=p.provider==='openrouter', routeId=useId();
+  const [routes,setRoutes]=useState(p.providerOptions?.routing.allowedProviders.join('\n')??'');
+  const [fallbacks,setFallbacks]=useState(p.providerOptions?.routing.allowFallbacks??false);
+  const [sort,setSort]=useState<'price'|'latency'>(p.providerOptions?.routing.sort??'latency');
+  const [routeTouched,setRouteTouched]=useState(false);
+  let options:OpenRouterOptions|undefined;
+  if(router){try{options=readOpenRouterOptions({version:1,routing:{allowedProviders:routes.split(/[\s,]+/).filter(Boolean),allowFallbacks:fallbacks,sort}});}catch{/* shown beside field after blur */}}
+
 
   function onTest() {
     startTest(async () => {
-      const res = await testConnectionAction({ provider: p.provider, model, apiKey: key });
-      if (res.ok) toast.success(t('testOk'));
+      const res = await testConnectionAction({ provider: p.provider, model, apiKey: key, ...(router?{providerOptions:options}:{}) });
+      if (res.ok) toast.success(t(router?'metadataOk':'testOk'));
       else toast.error(res.error ?? t('testFail'));
     });
   }
 
-  const canSave = storable || p.configured; // need the secret set to store a NEW key
-  const canTest = !testing && (Boolean(key) || p.isActive); // typed key, or test the active stored key
+  const canSave = (storable || p.configured) && (!router || Boolean(options&&model.trim())); // need the secret set to store a NEW key
+  const canTest = !testing && (Boolean(key) || p.isActive) && (!router || Boolean(options&&model.trim())); // typed key, or test the active stored key
 
   return (
     <Card className="p-5">
@@ -77,17 +86,20 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         <input type="hidden" name="provider" value={p.provider} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('model')}>
-            <select name="model" value={model} onChange={(e) => setModel(e.target.value)} className={inputCls}>
+            {router?<input name="model" required value={model} onChange={e=>setModel(e.target.value)}
+              autoComplete="off" spellCheck={false} className={inputCls+' min-h-11'} aria-describedby={routeId+'-model-help'}/>:<select name="model" value={model} onChange={(e) => setModel(e.target.value)} className={inputCls}>
               {p.models.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
               ))}
-            </select>
+            </select>}
+            {router&&<p id={routeId+'-model-help'} className="mt-1 text-xs text-muted-foreground">{t('explicitRouterModel')}</p>}
           </Field>
           <Field label={t('apiKey')}>
             <input
               name="apiKey"
+              required={!p.configured}
               type="password"
               autoComplete="off"
               value={key}
@@ -97,18 +109,36 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
             />
           </Field>
         </div>
+        {router&&<fieldset className="space-y-3 rounded-md border border-border p-3">
+          <legend className="px-1 text-sm font-medium">{t('routingTitle')}</legend>
+          <input type="hidden" name="providerOptions" value={options?JSON.stringify(options):''}/>
+          <label htmlFor={routeId+'-providers'} className="block text-sm font-medium">{t('approvedProviders')}</label>
+          <textarea id={routeId+'-providers'} value={routes} onChange={e=>setRoutes(e.target.value)} onBlur={()=>setRouteTouched(true)}
+            required rows={3} maxLength={8192} autoComplete="off" spellCheck={false} className={inputCls}
+            aria-invalid={routeTouched&&!options} aria-describedby={routeId+'-route-help'+(routeTouched&&!options?' '+routeId+'-route-error':'')}/>
+          <p id={routeId+'-route-help'} className="text-xs text-muted-foreground">{t('approvedProvidersHelp')}</p>
+          {routeTouched&&!options&&<p id={routeId+'-route-error'} role="alert" className="text-sm text-destructive">{t('routingInvalid')}</p>}
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={fallbacks}
+            onChange={e=>setFallbacks(e.target.checked)} className="size-4"/>{t('boundedFallbacks')}</label>
+          <Field label={t('routingPreference')}><select value={sort} onChange={e=>setSort(e.target.value as 'price'|'latency')} className={inputCls+' min-h-11'}>
+            <option value="latency">{t('preferLatency')}</option><option value="price">{t('preferPrice')}</option>
+          </select></Field>
+          <p className="text-xs text-muted-foreground">{t('routingPrivacy')}</p>
+          <p className="text-xs text-muted-foreground">{t('metadataOnly')}</p>
+          <p className="text-xs text-muted-foreground">{t('accountPluginsReview')}</p>
+        </fieldset>}
         {!storable && <p className="text-xs text-amber-600 dark:text-amber-400">{t('notStorable')}</p>}
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" name="makeActive" defaultChecked={!p.isActive} className="size-4" />
+          <input type="checkbox" name="makeActive" defaultChecked={!router&&!p.isActive} className="size-4" />
           {t('makeActive')}
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" disabled={!canSave}>
+          <Button type="submit" disabled={!canSave} className={router?'min-h-11':undefined}>
             {t('save')}
           </Button>
-          <Button type="button" variant="secondary" onClick={onTest} disabled={!canTest}>
-            {testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
-            {testing ? t('testing') : t('test')}
+          <Button type="button" variant="secondary" onClick={onTest} disabled={!canTest} className={router?'min-h-11':undefined}>
+            {testing ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" /> : <PlugZap aria-hidden="true" className="size-3.5" />}
+            {testing ? t('testing') : t(router?'metadataTest':'test')}
           </Button>
         </div>
       </form>

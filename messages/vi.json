@@ -10429,7 +10429,21 @@
           "calib": "Trợ lý hiệu chỉnh"
         },
         "moduleMissing": "Bật · Cần quyền truy cập Hiệu suất"
-      }
+      },
+      "routingTitle": "Định tuyến được phê duyệt",
+      "approvedProviders": "ID nhà cung cấp được phê duyệt, theo thứ tự",
+      "approvedProvidersHelp": "Nhập mỗi ID nhà cung cấp trên một dòng. Chỉ các nhà cung cấp này được nhận yêu cầu.",
+      "routingInvalid": "Nhập các ID không trùng, dùng chữ thường, số, dấu gạch nối hoặc dấu gạch chéo.",
+      "boundedFallbacks": "Cho phép chuyển dự phòng trong danh sách được phê duyệt này",
+      "routingPreference": "Ưu tiên định tuyến",
+      "preferLatency": "Ưu tiên độ trễ thấp",
+      "preferPrice": "Ưu tiên giá thấp",
+      "routingPrivacy": "Yêu cầu bắt buộc không thu thập và không lưu giữ dữ liệu. Xem xét chính sách nhà cung cấp trước khi bật.",
+      "metadataOnly": "Kiểm tra này chỉ đọc siêu dữ liệu, không chứng nhận quyền riêng tư, hành vi công cụ hay chất lượng câu trả lời.",
+      "metadataTest": "Kiểm tra siêu dữ liệu tuyến",
+      "metadataOk": "Đã xác nhận siêu dữ liệu khóa, mô hình và tuyến được phê duyệt.",
+      "explicitRouterModel": "Nhập ID nhà cung cấp/mô hình chính xác. Không hỗ trợ bộ định tuyến mô hình tự động.",
+      "accountPluginsReview": "Xem xét bộ xử lý mặc định của tài khoản trước khi bật. Thiết lập bắt buộc có thể ghi đè hạn chế yêu cầu; biện pháp bảo mật vẫn được giữ nguyên."
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",

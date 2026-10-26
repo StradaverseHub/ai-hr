@@ -2145,3 +2145,87 @@ No route/page/model tool is mounted, no provider or network is invoked. Real rou
 session/locale integration, UI, retention/erasure and actual role/RLS/CSRF/concurrency/
 experience acceptance remain release-blocking alongside remaining writer coverage.
 Only three-file AST syntax and diff checks; compiler/tests/app/DB/build remain UNRUN.
+
+
+### Provider gateway/configuration integration (26 October 2026; unreleased source)
+
+OpenRouter is now registered in the provider union/registry/gateway with an actual
+stateless adapter for bounded text generation and converse. It reuses the transport,
+strict versioned tenant routes, privacy constraints and honest usage accounting;
+generation requires governance, rejects incomplete/refused/tool-bearing drafts and
+records known charged token usage even when a draft is refused. Missing accounting
+stays unreported and does not become zero. No image method or environment-key/model
+fallback is offered. Exact explicit author/model IDs only: model-router namespaces,
+variant suffixes (including web-search shortcuts), additional slashes and trailing
+line terminators refuse before a request.
+The admin metadata probe performs only bounded official key/model-endpoint/ZDR GETs,
+checks exact approved endpoint tags with tool parameter metadata and returns only a
+boolean/generic reason. It has a total ten-second deadline, fixed destinations,
+no retries/redirects, bounded JSON and no completion/HR payload. Metadata success is
+NOT a real model/tool/quality/privacy certification or provider activation.
+Tenant BYOK save/read/activate/probe now carry normalized provider_options through
+the v2 resolver, preserve existing encrypted keys on model-only updates and reject
+unknown route configuration before key use. The unallocated options draft additionally
+pins model shape and strengthens tenant-wide configuration-write RLS to current
+principal plus group-wide admin. The application checks the same current login/carrier
+and group authority under Access ownership. Principal failure raises rather than
+silently falling through to platform credentials. Options are nonsecret; ciphertext
+column SELECT remains withheld. Audit adds only a normalized routing version/digest.
+A shared current-principal prerequisite now runs before config resolution and actual
+AI governance admission: exact Tx tenant/user/role/grant carrier, current canonical
+snapshot, unarchived/unblocked login and ReadCommitted; no synthetic exemption or
+statutory override. Carrier mismatch refuses before a foreign Access key is acquired.
+Governance captures context/routes and freezes the resolved configuration. This is
+NOT subject/module/disclosure authorization or a proof that prepared payload fields
+remain permitted: all feature/background consumers, current-config binding, typed
+minimal payload ownership and revocation/retrieval/cache barriers remain mandatory
+before the combined release. Userless background provider calls now fail this
+prerequisite and need an authorized initiating-login owner, not a new bypass.
+The existing settings card now supports explicit model IDs, ordered approved provider
+IDs, bounded fallback and latency/price preferences. New activation is unchecked by
+default; model selection, secret storage and live activation are never seeded. Visible
+labels, route-local blur errors/helper text, minimum touch targets and metadata-only
+feedback follow the targeted UI/UX skill guidance. Fourteen new copy keys exist in
+all six locales; actual translation/render/accessibility/viewport checks remain UNRUN.
+Pure mocked adapter/probe/HTTP/privacy regressions, actual SQL key/options/tenant/
+revoked-or-company-only-admin/RLS groups, four principal/admission groups and DOM
+settings cases are AUTHORED UNRUN. Existing AI config/governance/feature consumers,
+whole compiler, SQL/shadow migrations, build and browser journey remain UNRUN.
+Only changed-input AST syntax, six-locale JSON presence and diff checks were run;
+no app/DB/tests/build, authenticated provider request or staging action occurred.
+
+Official documentation finding: current ChatRequest OpenAPI exposes fourteen plugin
+IDs, and account defaults (including enforced defaults) may affect requests even when
+plugins are omitted. The builder therefore explicitly disables the eleven current
+data-expanding/routing/content-transforming processors; it leaves alignment, armor
+and moderation security guardrails unchanged. A model cannot supply plugins or server
+tools. Enforced account settings can override request controls, so independent account
+processor/security/capability review is REQUIRED before any live enablement. No
+request flag is a compliance guarantee and no production HR transfer was authorized.
+Primary references refreshed:
+https://openrouter.ai/openapi.json
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key
+https://openrouter.ai/docs/api/api-reference/endpoints/list-all-endpoints-for-a-model
+https://openrouter.ai/docs/guides/features/plugins/overview
+The prose plugin page was search-readable but direct Markdown retrieval returned403;
+exact current IDs/fields were checked against the live official OpenAPI instead.
+
+Allocation coordination found tracked 0601_operator_customer_workspace.sql in the
+operator worktree/history. An early 0601–0603 proposal was withdrawn before any journal
+change. Replacement 0602–0604 has no bounded checkout/history filename hits, but is NOT
+allocated yet: efficiency cleared only its own reservation state and contacted the
+actual Operator owner. Await that acknowledgement; source absence is not reservation
+proof. All three drafts remain unjournaled/unapplied. Mobile still retains its release
+and restoration window; no resource handback has occurred.
+
+
+The actual Operator owner subsequently confirmed through the authorized efficiency
+coordination that it has no reservation for 0602–0604, retaining only its existing0601.
+As the AI delivery parent, this chat now reserves0602 ai_action_controls,
+0603 own_leave_review_store and0604 openrouter_provider_options. This source allocation
+does not authorize runtime or establish rollout ordering. Drafts remain unjournaled/
+unapplied until Operator0601 is either in the verified baseline or explicitly retired/
+reallocated by its actual owner. Do not edit peer files, silently include unrelated
+operator features, skip an applied lower migration or treat filename absence as a
+reservation receipt. The ordering dependency is being coordinated separately.

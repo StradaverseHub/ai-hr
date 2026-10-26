@@ -1,10 +1,10 @@
-/** Unregistered OpenRouter routing boundary. Pure policy construction only: no key, network,
+/** OpenRouter routing policy boundary. Pure policy construction only: no key, network,
  * model selection, HR data or tool execution. The eventual adapter must derive these preferences
  * from authorized tenant configuration and keep them outside user/model-controlled request fields.
  * Routing filters are not evidence of provider compliance or permission to disclose a field. */
 import { z } from 'zod';
 
-const providerSlug = z.string().min(1).max(128).regex(/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/);
+const providerSlug = z.string().min(1).max(128).regex(/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/).refine(value=>value.trim()===value);
 export const OpenRouterRoutingConfiguration = z.object({
   allowedProviders: z.array(providerSlug).min(1).max(32)
     .refine(values => new Set(values).size === values.length),

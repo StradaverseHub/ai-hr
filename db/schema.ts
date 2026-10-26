@@ -142,7 +142,7 @@ export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'complet
 export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
 // Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
 export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
-export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google']);
+export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google', 'openrouter']);
 // Performance lifecycle (ADR-0022 lifecycle extension). Goal-setting lock + closure classification.
 export const goalStageStatusEnum = pgEnum('perf_goal_stage_status', ['pending', 'locked']);
 export const goalApprovalEnum = pgEnum('perf_goal_approval', ['draft', 'proposed', 'approved']);
@@ -7945,6 +7945,7 @@ export const aiProviderConfig = pgTable(
     tenantId: tenantId(),
     provider: aiProviderEnum('provider').notNull(),
     model: text('model').notNull(),
+    providerOptions: jsonb('provider_options').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     // Encrypted at rest; opaque base64url token. Never returned to the client.
     apiKeyCiphertext: text('api_key_ciphertext').notNull(),
     keyLast4: text('key_last4').notNull(),

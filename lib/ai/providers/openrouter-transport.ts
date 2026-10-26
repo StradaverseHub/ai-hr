@@ -1,6 +1,6 @@
-/** UNREGISTERED server transport. No tenant/provider activation or authorization is established
+/** UNRELEASED fixed-endpoint server transport. No tenant/provider activation or authorization is established
  * here. The gateway owner must freshly authorize/redact every field BEFORE calling it and settle
- * actual usage honestly. No arbitrary endpoint, plugins, retries, tool execution or persistent key. */
+ * actual usage honestly. No arbitrary endpoint, enabled plugins, retries, tool execution or persistent key. */
 import { z } from 'zod';
 import { AiGatewayError, type ConverseArgs } from '../types';
 import { buildOpenRouterRoutingPolicy } from './openrouter-policy';
@@ -9,14 +9,21 @@ import { readOpenRouterAccounting } from './openrouter-accounting';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_BYTES = 2 * 1024 * 1024;
+// Official OpenAPI ChatRequest plugin mapping checked 26 October 2026. Disable data-expanding,
+// routing and content-transforming defaults. Do NOT disable account security guardrails
+// (alignment/armor/moderation). Enforced account defaults may override request controls: independent
+// account-policy/capability evaluation is still required before live enablement, not proved here.
+const DISABLED_PROCESSORS = ['auto-beta-router','auto-router','context-compression','file-parser',
+  'fusion','jev-router','pareto-router','response-healing','switchyard-router','web','web-fetch'] as const;
+
 const unavailable = () => new AiGatewayError('AI provider response unavailable.');
-const name = z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/);
-const id = z.string().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/);
-const model = z.string().min(3).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]*$/)
-  .refine(value => value !== 'openrouter/auto' && !value.startsWith('openrouter/auto:'));
-const Configuration = z.object({ model, routing: z.unknown() }).strict();
-const KeyConfiguration = Configuration.extend({
-  apiKey: z.string().min(1).max(4096).regex(/^[\x21-\x7e]+$/),
+const name = z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/).refine(value=>value.trim()===value);
+const id = z.string().min(1).max(256).refine(value=>!/[\u0000-\u001f\u007f]/.test(value));
+export const OpenRouterModel = z.string().min(3).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/)
+  .refine(value => value.trim()===value && !value.toLowerCase().startsWith('openrouter/'));
+const Configuration = z.object({ model: OpenRouterModel, routing: z.unknown() }).strict();
+export const OpenRouterTransportConfiguration = Configuration.extend({
+  apiKey: z.string().min(1).max(4096).refine(value=>! /[^\x21-\x7e]/.test(value)),
 });
 const Call = z.object({ id, name, input: z.unknown().refine(value => value !== undefined) }).strict();
 const Arguments = z.object({
@@ -74,6 +81,7 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
     if (pending.size) throw unavailable();
     const body = JSON.stringify({ model: cfg.model, messages, stream: false,
       max_completion_tokens: args.maxTokens ?? 2048, provider: buildOpenRouterRoutingPolicy(cfg.routing),
+      plugins: DISABLED_PROCESSORS.map(id=>({id,enabled:false})),
       ...(args.tools.length ? { tools: args.tools.map(tool => ({ type: 'function', function: {
         name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: true,
       } })), tool_choice: 'auto', parallel_tool_calls: false } : {}) });
@@ -82,7 +90,7 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
   } catch { throw unavailable(); }
 }
 
-async function responseJson(response: Response, signal: AbortSignal, expired: () => boolean): Promise<unknown> {
+export async function readOpenRouterJsonResponse(response: Response, signal: AbortSignal, expired: () => boolean): Promise<unknown> {
   if (!response.ok || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     void response.body?.cancel().catch(() => {}); throw unavailable();
   }
@@ -115,8 +123,8 @@ async function responseJson(response: Response, signal: AbortSignal, expired: ()
 export function createOpenRouterTransport(fetcher: typeof fetch) {
   return async (configuration: unknown, args: ConverseArgs, signal?: AbortSignal) => {
     if (signal?.aborted) throw unavailable();
-    let cfg: z.infer<typeof KeyConfiguration>, body: string;
-    try { cfg = KeyConfiguration.parse(configuration); body = buildOpenRouterRequest({ model: cfg.model, routing: cfg.routing }, args); }
+    let cfg: z.infer<typeof OpenRouterTransportConfiguration>, body: string;
+    try { cfg = OpenRouterTransportConfiguration.parse(configuration); body = buildOpenRouterRequest({ model: cfg.model, routing: cfg.routing }, args); }
     catch { throw unavailable(); }
     const controller = new AbortController(), timeoutMs = args.timeoutMs ?? 30_000, started = performance.now();
     const abort = () => controller.abort();
@@ -134,7 +142,7 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         const response = await fetcher(ENDPOINT, { method: 'POST', redirect: 'error', cache: 'no-store',
           headers: { Authorization: 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
           body, signal: controller.signal });
-        const value = await responseJson(response, controller.signal, () => performance.now() - started >= timeoutMs);
+        const value = await readOpenRouterJsonResponse(response, controller.signal, () => performance.now() - started >= timeoutMs);
         if (controller.signal.aborted || performance.now() - started >= timeoutMs) throw unavailable();
         const completion = readOpenRouterCompletion(value);
         const usage = value && typeof value === 'object' ? (value as Record<string, unknown>).usage : undefined;

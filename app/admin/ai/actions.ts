@@ -32,6 +32,12 @@ const str = (v: FormDataEntryValue | null) => {
   return s.length ? s : undefined;
 };
 
+function providerOptions(value: string | undefined): unknown {
+  if(value===undefined)return undefined;
+  if(Buffer.byteLength(value,'utf8')>8192)throw new AiConfigError('Approved AI routing configuration is required.');
+  try{return JSON.parse(value);}catch{throw new AiConfigError('Approved AI routing configuration is required.');}
+}
+
 /** Only our own, user-safe error messages reach the browser; a raw Postgres/RLS error (e.g. a write
  *  blocked by the FORCE-RLS policy, or a constraint violation) is mapped to a generic string so no
  *  internal SQL/schema text is disclosed in the ErrorBanner. */
@@ -54,6 +60,7 @@ export async function saveAiProviderConfigAction(formData: FormData) {
       model: String(formData.get('model')),
       apiKey: str(formData.get('apiKey')),
       makeActive: formData.get('makeActive') != null,
+      providerOptions: providerOptions(str(formData.get('providerOptions'))),
     });
   } catch (e) {
     back(safeError(e));
@@ -99,7 +106,9 @@ export async function testConnectionAction(input: {
   provider: string;
   model: string;
   apiKey?: string;
+  providerOptions?: unknown;
 }): Promise<{ ok: boolean; error?: string }> {
   const s = await getSession();
-  return testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined });
+  try{return await testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined, providerOptions:input.providerOptions });}
+  catch{return {ok:false,error:(await getTranslations('admin.ai'))('testFail')};}
 }

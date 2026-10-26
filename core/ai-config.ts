@@ -8,10 +8,11 @@
  *    ciphertext is NEVER read back by app code via a normal query — `resolveActiveAiConfig` reads it
  *    only through the SECURITY DEFINER resolver, and only the decrypted result lives in request memory.
  *  - The UI view (`getAiConfigView`) never selects the ciphertext column.
- *  - Domain events carry {provider, model} only — never the key, ciphertext, or test result.
+ *  - Domain events carry provider/model and a nonsecret OpenRouter route digest — never the key, ciphertext, or test result.
  *  - Fail closed: a present-but-undecryptable active config errors; it does NOT silently fall through
  *    to the shared platform env key.
  */
+import { createHash } from 'node:crypto';
 import { governedAiConfig } from './ai-governance';
 import type { AiFeatureId } from '../lib/ai/features';
 import { eq, sql } from 'drizzle-orm';
@@ -31,6 +32,9 @@ import {
   type ValidateResult,
 } from '../lib/ai';
 import { decryptSecret, encryptSecret, keyLast4 } from '../lib/ai/crypto';
+import { assertAiPrincipalTx } from './ai-principal';
+import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
 
 export class AiConfigError extends Error {
   constructor(message: string) {
@@ -46,6 +50,22 @@ function assertAdmin(ctx: SessionContext) {
   if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.');
 }
 
+/** Tenant-wide key/routing configuration requires fresh group-wide authority, not a stale page
+ * role or one company's HR grant. Existing RLS and withheld ciphertext grants still apply. */
+async function assertConfigurationAdminTx(tx: Tx, ctx: SessionContext) {
+  assertAdmin(ctx);
+  await assertAiPrincipalTx(tx,ctx);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+  if(row?.allowed!==true)throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+}
+
+function routingOptions(value:unknown):OpenRouterOptions {
+  try{return readOpenRouterOptions(value);}catch{throw new AiConfigError('Approved AI routing configuration is required.');}
+}
+function providerModel(provider:AiProvider,model:string){
+  if(provider==='openrouter'&&!OpenRouterModel.safeParse(model).success)throw new AiConfigError('Enter an explicit provider/model identifier.');
+}
+
 // ─────────────────────────────── reads ───────────────────────────────
 
 export type AiProviderView = {
@@ -57,6 +77,7 @@ export type AiProviderView = {
   model: string;
   keyLast4: string | null;
   isActive: boolean;
+  providerOptions: OpenRouterOptions | null;
   envKeyPresent: boolean; // a platform env key exists for this provider
 };
 
@@ -69,8 +90,9 @@ export type AiConfigView = {
 
 /** Admin-only. The settings-page model: one entry per provider, NEVER including the ciphertext. */
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
     const rows = await tx
       .select({
@@ -78,6 +100,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         model: aiProviderConfig.model,
         keyLast4: aiProviderConfig.keyLast4,
         isActive: aiProviderConfig.isActive,
+        providerOptions: aiProviderConfig.providerOptions,
       })
       .from(aiProviderConfig);
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
@@ -93,6 +116,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         model: row?.model ?? meta.defaultModel,
         keyLast4: row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
+        providerOptions: p==='openrouter'&&row?routingOptions(row.providerOptions):null,
         envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
       };
     });
@@ -114,14 +138,18 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
  * exists but cannot be decrypted, this throws rather than leaking through the shared env key.
  */
 export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext, feature: AiFeatureId = 'hr_assistant'): Promise<ResolvedAiConfig | null> {
-  const rows = (await tx.execute(
-    sql`select provider, model, api_key_ciphertext from app.ai_active_provider_config()`,
-  )) as unknown as { provider: string; model: string; api_key_ciphertext: string }[];
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  await assertAiPrincipalTx(tx,ctx);
+  let rows:{provider:string;model:string;api_key_ciphertext:string;provider_options:unknown}[];
+  try{rows=(await tx.execute(sql`select provider, model, api_key_ciphertext, provider_options from app.ai_active_provider_config_v2()`)) as unknown as typeof rows;}
+  catch{throw new AiConfigError('AI configuration authority could not be confirmed.');}
   const row = rows[0];
   if (row) {
     if (!isProvider(row.provider)) throw new AiConfigError('Stored AI provider is unknown.');
+    providerModel(row.provider,row.model);
+    const providerOptions=row.provider==='openrouter'?routingOptions(row.provider_options):undefined;
     const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId); // throws on failure → fail closed
-    return governedAiConfig(ctx,{ provider: row.provider, model: row.model, apiKey },feature);
+    return governedAiConfig(ctx,{ provider: row.provider, model: row.model, apiKey, ...(providerOptions?{providerOptions}:{}) },feature);
   }
   const fallback=envFallbackConfig();
   return fallback?governedAiConfig(ctx,fallback,feature):null;
@@ -155,20 +183,28 @@ async function activateTx(tx: Tx, provider: AiProvider) {
  */
 export async function saveAiProviderConfig(
   ctx: SessionContext,
-  p: { provider: string; model: string; apiKey?: string; makeActive?: boolean },
+  p: { provider: string; model: string; apiKey?: string; makeActive?: boolean; providerOptions?: unknown },
 ): Promise<void> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isProvider(p.provider)) throw new AiConfigError('Unknown AI provider.');
   const model = p.model?.trim();
   if (!model) throw new AiConfigError('A model is required.');
+  providerModel(p.provider,model);
   const apiKey = p.apiKey?.trim() || undefined;
 
   await withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     const [existing] = await tx
-      .select({ id: aiProviderConfig.id })
+      .select({ id: aiProviderConfig.id, providerOptions: aiProviderConfig.providerOptions })
       .from(aiProviderConfig)
       .where(eq(aiProviderConfig.provider, p.provider as AiProvider))
       .limit(1);
+
+    const providerOptions=p.provider==='openrouter'?routingOptions(p.providerOptions===undefined?existing?.providerOptions:p.providerOptions):{};
+    if(p.provider!=='openrouter'&&p.providerOptions!==undefined&&JSON.stringify(p.providerOptions)!=='{}')throw new AiConfigError('Routing options are only supported for OpenRouter.');
+
+    if(p.provider==='openrouter'&&apiKey&&!OpenRouterTransportConfiguration.safeParse({model,apiKey,routing:(providerOptions as OpenRouterOptions).routing}).success)throw new AiConfigError('AI provider key or model configuration is invalid.');
 
     let cipherFields: { apiKeyCiphertext: string; keyLast4: string } | null = null;
     if (apiKey) {
@@ -184,7 +220,7 @@ export async function saveAiProviderConfig(
     if (existing) {
       await tx
         .update(aiProviderConfig)
-        .set({ model, ...(cipherFields ?? {}), updatedByUserId: ctx.userId ?? null, updatedAt: sql`now()` })
+        .set({ model, providerOptions, ...(cipherFields ?? {}), updatedByUserId: ctx.userId ?? null, updatedAt: sql`now()` })
         .where(eq(aiProviderConfig.id, existing.id));
       rowId = existing.id;
     } else {
@@ -194,6 +230,7 @@ export async function saveAiProviderConfig(
           tenantId: ctx.tenantId,
           provider: p.provider as AiProvider,
           model,
+          providerOptions,
           apiKeyCiphertext: cipherFields!.apiKeyCiphertext,
           keyLast4: cipherFields!.keyLast4,
           createdByUserId: ctx.userId ?? null,
@@ -211,22 +248,26 @@ export async function saveAiProviderConfig(
       eventType: 'ai-provider-config.saved',
       actor: actorOf(ctx),
       // Key/ciphertext/last4 are deliberately omitted from the (tenant-wide) event log.
-      payload: { provider: p.provider, model, active: Boolean(p.makeActive) },
+      payload: { provider: p.provider, model, active: Boolean(p.makeActive), ...(p.provider==='openrouter'?{routingVersion:1,routingDigest:createHash('sha256').update(JSON.stringify(providerOptions)).digest('hex')}:{}) },
     });
   });
 }
 
 /** Make an already-configured provider the active one. */
 export async function setActiveProvider(ctx: SessionContext, p: { provider: string }): Promise<void> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isProvider(p.provider)) throw new AiConfigError('Unknown AI provider.');
   await withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     const [row] = await tx
-      .select({ id: aiProviderConfig.id })
+      .select({ id: aiProviderConfig.id, model: aiProviderConfig.model, providerOptions: aiProviderConfig.providerOptions })
       .from(aiProviderConfig)
       .where(eq(aiProviderConfig.provider, p.provider as AiProvider))
       .limit(1);
     if (!row) throw new AiConfigError('Configure this provider with a key before activating it.');
+    providerModel(p.provider as AiProvider,row.model);
+    if(p.provider==='openrouter')routingOptions(row.providerOptions);
     await activateTx(tx, p.provider as AiProvider);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -241,8 +282,9 @@ export async function setActiveProvider(ctx: SessionContext, p: { provider: stri
 
 /** Turn AI drafting off for the tenant (deactivate all). Env fallback, if any, still applies. */
 export async function disableAi(ctx: SessionContext): Promise<void> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   await withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     await tx.update(aiProviderConfig).set({ isActive: false }).where(eq(aiProviderConfig.isActive, true));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -256,9 +298,11 @@ export async function disableAi(ctx: SessionContext): Promise<void> {
 
 /** Remove a provider's stored config + key entirely. */
 export async function removeAiProviderConfig(ctx: SessionContext, p: { provider: string }): Promise<void> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isProvider(p.provider)) throw new AiConfigError('Unknown AI provider.');
   await withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     const [row] = await tx
       .select({ id: aiProviderConfig.id })
       .from(aiProviderConfig)
@@ -285,18 +329,21 @@ export async function removeAiProviderConfig(ctx: SessionContext, p: { provider:
  */
 export async function testConnection(
   ctx: SessionContext,
-  p: { provider: string; model: string; apiKey?: string },
+  p: { provider: string; model: string; apiKey?: string; providerOptions?: unknown },
 ): Promise<ValidateResult> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isProvider(p.provider)) return { ok: false, error: 'Unknown AI provider.' };
   const model = p.model?.trim();
   if (!model) return { ok: false, error: 'A model is required.' };
+  try{providerModel(p.provider,model);}catch{return {ok:false,error:'An explicit provider/model identifier is required.'};}
   const typed = p.apiKey?.trim() || undefined;
 
   return withTenant(ctx, async (tx) => {
-    assertAdmin(ctx);
+    await assertConfigurationAdminTx(tx,ctx);
     let cfg: ResolvedAiConfig;
     if (typed) {
-      cfg = { provider: p.provider as AiProvider, model, apiKey: typed };
+      cfg = { provider: p.provider as AiProvider, model, apiKey: typed, ...(p.provider==='openrouter'?{providerOptions:routingOptions(p.providerOptions)}:{}) };
     } else {
       // Stored-key path: resolveActiveAiConfig fails closed (throws) if the ciphertext can't be
       // decrypted (e.g. AI_CONFIG_SECRET rotated). Keep the Test result a clean generic reason.
@@ -309,7 +356,7 @@ export async function testConnection(
       if (!active || active.provider !== p.provider) {
         return { ok: false, error: 'Enter the API key to test, or activate this provider first.' };
       }
-      cfg = { provider: active.provider, model, apiKey: active.apiKey };
+      cfg = { ...active, model, ...(active.provider==='openrouter'&&p.providerOptions!==undefined?{providerOptions:routingOptions(p.providerOptions)}:{}) };
     }
     return validateConfig(cfg);
   });

@@ -18,6 +18,7 @@ describe('versioned OpenRouter persisted options', () => {
   it.each([null, {}, { version: 0, routing: { allowedProviders: ['approved'] } },
     { version: '1', routing: { allowedProviders: ['approved'] } },
     { version: 1, routing: { allowedProviders: [] } },
+    { version: 1, routing: { allowedProviders: ['approved\n'] } },
     { version: 1, routing: { allowedProviders: ['approved', 'approved'] } },
     { version: 1, routing: { allowedProviders: ['https://unapproved.example'] } },
     { version: 1, routing: { allowedProviders: ['approved'], zdr: false } },
