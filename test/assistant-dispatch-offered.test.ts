@@ -170,3 +170,47 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     expect(sentToModel()).toContain(net);
   });
 });
+
+
+describe('actual Assistant consumption of bounded agent batches', () => {
+  it('refuses duplicate IDs and excessive fan-out before any otherwise offered reader runs', async () => {
+    const { ctx } = await employeeWithReleasedPayslip(true);
+    const tool = ASSISTANT_TOOLS.find(t => t.spec.name === 'my_payslip_summary')!;
+    const spy = vi.spyOn(tool, 'run');
+    try {
+      const duplicate = [
+        { id: 'same', name: tool.spec.name, input: { limit: 1 } },
+        { id: 'same', name: tool.spec.name, input: { limit: 1 } },
+      ];
+      const excessive = Array.from({ length: 17 }, (_, i) => ({ id: `c${i}`, name: tool.spec.name, input: { limit: 1 } }));
+      for (const batch of [duplicate, excessive]) {
+        converse.mockReset(); converse.mockResolvedValueOnce(toolUse(batch));
+        await expect(askAssistant(ctx, { question: 'Read my released payslip.' })).rejects.toMatchObject({ code: 'provider_error' });
+        expect(converse).toHaveBeenCalledTimes(1);
+        expect(spy).not.toHaveBeenCalled();
+      }
+      // The same offered tool really can run after a valid proposal; no global disabling shortcut.
+      converse.mockReset();
+      converse.mockResolvedValueOnce(toolUse([{ id: 'valid', name: tool.spec.name, input: { limit: 1 } }])).mockResolvedValueOnce(end);
+      await expect(askAssistant(ctx, { question: 'Read my released payslip.' })).resolves.toMatchObject({ stop: 'end' });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally { spy.mockRestore(); }
+  });
+
+  it('does not send oversized read content into the next provider turn or persist it as rows', async () => {
+    const { ctx } = await employeeWithReleasedPayslip(true);
+    const tool = ASSISTANT_TOOLS.find(t => t.spec.name === 'my_payslip_summary')!;
+    const sentinel = 'OVERSIZED_CANONICAL_READ_SENTINEL';
+    const spy = vi.spyOn(tool, 'run').mockResolvedValueOnce({ ok: true, text: sentinel + '界'.repeat(23_000) });
+    try {
+      converse.mockResolvedValueOnce(toolUse([{ id: 'large', name: tool.spec.name, input: { limit: 1 } }])).mockResolvedValueOnce(end);
+      const result = await askAssistant(ctx, { question: 'Read my released payslip.' });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(toolTurn()).toEqual([{ id: 'large', name: tool.spec.name, content: 'That lookup failed.', isError: true }]);
+      expect(sentToModel()).not.toContain(sentinel);
+      const audit = await auditOf(result.exchangeId);
+      expect(audit).toEqual([{ name: tool.spec.name, input: { limit: 1 }, rowCount: null, refusal: 'tool_error' }]);
+      expect(JSON.stringify(audit)).not.toContain(sentinel);
+    } finally { spy.mockRestore(); }
+  });
+});

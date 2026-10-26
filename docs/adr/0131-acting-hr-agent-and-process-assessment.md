@@ -2238,3 +2238,28 @@ version binding, account-default processor evaluation and typed module/disclosur
 ownership are still outstanding; this integration is not a live-provider capability
 or end-to-end security pass. The gateway continues to require canonical/human effect
 owners and honest unknown accounting, never model-computed HR/payroll facts.
+
+
+### Shared module-reader execution boundary (source only)
+
+The actual Assistant loop now consumes `captureAgentReadBatch` before any tool is
+dispatched. The complete proposal has at most 16 calls and 32 KiB of UTF-8 input;
+correlation IDs must be unique, arguments are captured and recursively frozen, and
+getters, opaque objects, cycles/deep structures and non-JSON values refuse. The
+provider's undefined-arguments contract remains an ordinary per-call input error.
+A malformed batch terminates before all reads rather than partially dispatching or
+repairing IDs. Existing offered-only lookup and canonical reader authorization stay
+in place. Each result is bounded to 64 KiB; oversized output becomes the existing
+generic lookup failure, without silent truncation or copying rows into the audit.
+
+This is an actual Assistant consumer plus a reusable read-only execution boundary,
+not completed module-agent coverage, effect authorization, field-disclosure proof,
+or a measured cost/latency benefit. It must never dispatch confirmation/effect
+commands. Seven pure cases and two actual Assistant consumer DB cases (scripted
+provider, real existing fixture/loop) are authored UNRUN, covering mutable input,
+getter avoidance, malformed/duplicate/oversized proposals, positive valid dispatch
+and oversized-output exclusion from subsequent model turns and audit rows. Static
+AST syntax and diff review only; executable tests and the compiler remain UNRUN
+while Mobile owns the complete runtime window. All twenty module workflows,
+independent agent evaluations, remaining source revocation/disclosure ownership,
+workspace UI and the combined release proof remain outstanding.

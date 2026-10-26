@@ -33,6 +33,7 @@
  * constants and the caller's ROLE only. Read the comment on SYSTEM before adding a line to it.
  */
 import { and, count, eq, gte, sql } from 'drizzle-orm';
+import { captureAgentReadBatch, serializeAgentReadResult } from '../lib/ai/agent-read-batch';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assistantBudget, assistantExchange, assistantUsage } from '../db/schema';
 import { converse } from '../lib/ai';
@@ -306,15 +307,16 @@ export async function askAssistant(
         break;
       }
 
+      const capturedCalls = captureAgentReadBatch(res.toolCalls);
       // The assistant turn must carry the calls AND the opaque provider state back verbatim, or the
       // provider sees tool results answering a request it has no record of making.
       turns.push({
         role: 'assistant',
         content: res.text,
-        toolCalls: res.toolCalls,
+        toolCalls: [...capturedCalls],
         providerState: res.providerState,
       });
-      const results = await runTools(ctx, offered, res.toolCalls, audit);
+      const results = await runTools(ctx, offered, capturedCalls, audit);
       turns.push({ role: 'tool', results });
 
       if (i === MAX_TURNS - 1) hitTurnCap = true;
@@ -362,7 +364,7 @@ export async function askAssistant(
 async function runTools(
   ctx: SessionContext,
   offered: readonly AssistantTool[],
-  calls: AiToolCall[],
+  calls: readonly AiToolCall[],
   audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[],
 ): Promise<AiToolResult[]> {
   return Promise.all(
@@ -386,6 +388,7 @@ async function runTools(
       }
       try {
         const outcome = await tool.run(ctx, call.input);
+        const content = serializeAgentReadResult(outcome);
         const rowCount = rowCountOf(outcome);
         audit.push({
           name: call.name,
@@ -395,7 +398,7 @@ async function runTools(
         });
         // A REFUSAL IS NOT AN ERROR — see the file header. It goes back as content so the model can
         // relay it; marking it isError invites a retry of a call that will decline identically.
-        return { id: call.id, name: call.name, content: JSON.stringify(outcome) };
+        return { id: call.id, name: call.name, content };
       } catch {
         // The wrapper threw. The message is NOT relayed: it may carry a database error naming a column
         // or a value, and it is going into a model's context and then to a person.
