@@ -10278,7 +10278,8 @@
         "myLetters": "Chỉ các thư đã phát hành cho người đăng nhập trong công việc hiện tại và trước đây. Vai trò đặc quyền không mở rộng phạm vi Thư của tôi.",
         "letterReports": "Quyền báo cáo thư hiện tại và phạm vi dữ liệu thư được kiểm tra mỗi lần đọc và xuất.",
         "letterFields": "Định nghĩa trường yêu cầu quyền mẫu hoặc đọc hiện tại. Ánh xạ bảo mật còn yêu cầu quyền tài chính tương ứng.",
-        "letterTemplates": "Theo phạm vi công ty hiện tại và quyền đọc/mẫu Thư. Ánh xạ bảo mật còn yêu cầu quyền truy cập tài chính."
+        "letterTemplates": "Theo phạm vi công ty hiện tại và quyền đọc/mẫu Thư. Ánh xạ bảo mật còn yêu cầu quyền truy cập tài chính.",
+        "letterGenerate": "Theo ngữ cảnh công ty hiện tại, quyền tạo/đọc Thư và quyền truy cập Nhân sự và tài chính hiện tại."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -24150,7 +24151,8 @@
         "applying": "Đang áp dụng thay đổi…",
         "deactivationHelp": "Việc ngừng kích hoạt sẽ chặn tạo thư mới. Tài liệu đã phát hành vẫn truy cập được theo quy tắc lưu giữ.",
         "wording": "Nội dung mẫu",
-        "workflowDefault": "Theo quy trình đã cấu hình"
+        "workflowDefault": "Theo quy trình đã cấu hình",
+        "generate": "Tạo thư"
       },
       "form": {
         "code": "Mã mẫu",
@@ -24241,6 +24243,66 @@
         "working": "Đang chuẩn bị bản xem trước…",
         "select": "Chọn nhân viên.",
         "help": "Lưu thay đổi thành bản nháp mới trước khi xem trước. Bản xem trước dùng phiên bản đã lưu và nhân viên đã chọn. Để trống giá trị tùy chỉnh chưa có; hệ thống sẽ báo dữ liệu bắt buộc còn thiếu."
+      }
+    },
+    "generate": {
+      "page": {
+        "title": "Tạo thư",
+        "intro": "Tạo và kiểm tra lô nháp từ mẫu được duyệt đang có hiệu lực.",
+        "activeTemplates": "Mẫu đang hoạt động",
+        "yourBatches": "Lô của bạn",
+        "emptyTemplates": "Không có mẫu được duyệt đang có hiệu lực phù hợp tìm kiếm.",
+        "emptyBatches": "Bạn chưa có lô nào trong công ty này.",
+        "noAccess": "Không có công ty được phép tạo thư.",
+        "ready": "Sẵn sàng",
+        "correction": "Cần sửa",
+        "total": "Thư đã chọn",
+        "openDrafts": "Bản nháp đang mở",
+        "inactiveTemplate": "Mẫu này đã ngừng hoạt động hoặc chưa có hiệu lực. Khôi phục tính hợp lệ trước khi gửi.",
+        "sourceChanged": "Thông tin nhân viên đã thay đổi sau phiên bản này. Làm mới bản nháp trước khi gửi.",
+        "missingDocument": "Thiếu thông tin bắt buộc. Chưa thể xem trước thư.",
+        "preview": "Xem trước thư",
+        "correct": "Cập nhật trường được phép",
+        "refresh": "Làm mới phiên bản nháp",
+        "remove": "Bỏ khỏi lô",
+        "first": "Trang đầu",
+        "next": "Trang tiếp",
+        "readonlyHelp": "Nội dung thư được cố định. Chỉ các trường được chỉ định có thể chỉnh sửa mới được thay đổi.",
+        "reviewEmployee": "Xem thông tin nhân viên",
+        "submit": "Gửi {count} thư sẵn sàng",
+        "created": "Đã tạo lô nháp. Kiểm tra trạng thái sẵn sàng và bản xem trước trước khi gửi.",
+        "refreshed": "Đã làm mới phiên bản nháp. Phê duyệt trước đó được giữ trong lịch sử.",
+        "withdrawn": "Đã bỏ thư khỏi lô này. Lịch sử vẫn được lưu giữ.",
+        "submitted": "Đã gửi các thư sẵn sàng để phê duyệt.",
+        "missing": "Thiếu: {field}",
+        "unavailable": "Không khả dụng"
+      },
+      "form": {
+        "department": "Tên phòng ban chứa",
+        "branch": "Chi nhánh (giá trị chính xác)",
+        "hiredFrom": "Ngày tuyển dụng từ",
+        "hiredTo": "Ngày tuyển dụng đến",
+        "filterHelp": "Bộ lọc thay đổi các mục có thể chọn. Nhân viên đã chọn vẫn được giữ lại.",
+        "invalidRange": "Ngày bắt đầu tuyển dụng phải trước hoặc bằng ngày kết thúc.",
+        "selected": "Nhân viên đã chọn",
+        "addShown": "Thêm nhân viên đang hiển thị",
+        "remove": "Bỏ",
+        "limit": "Chọn tối đa 500 nhân viên.",
+        "commonValues": "Giá trị tùy chỉnh chung",
+        "customHelp": "Các giá trị này áp dụng cho mọi nhân viên đã chọn. Kiểm tra và cập nhật các trường được phép trong lô nháp.",
+        "create": "Tạo lô nháp",
+        "working": "Đang xử lý…",
+        "reason": "Lý do loại bỏ"
+      },
+      "errors": {
+        "invalid": "Kiểm tra danh sách nhân viên, giá trị theo kiểu dữ liệu và mã định danh đã gửi.",
+        "stale": "Thư hoặc thông tin nguồn đã thay đổi. Làm mới và kiểm tra phiên bản hiện tại.",
+        "configuration": "Kiểm tra mẫu đang hoạt động, chuỗi phê duyệt và quyền truy cập dữ liệu cần thiết trước khi tiếp tục.",
+        "conflict": "Khóa yêu cầu này đã được dùng cho đầu vào khác. Mở biểu mẫu tạo thư mới.",
+        "permission": "Bạn không có quyền truy cập hiện tại cần thiết đối với thư hoặc nhân viên này.",
+        "unavailable": "Không thể hoàn thành thao tác. Hãy thử lại.",
+        "state": "Trạng thái thư hoặc lô đã thay đổi. Tải lại trước khi thử tiếp.",
+        "reasonRequired": "Nhập lý do loại bỏ."
       }
     }
   }

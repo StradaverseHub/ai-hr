@@ -10278,7 +10278,8 @@
         "myLetters": "Hanya surat yang dikeluarkan kepada individu yang log masuk bagi pekerjaan semasa dan terdahulu. Peranan berkeistimewaan tidak meluaskan Surat Saya.",
         "letterReports": "Kebenaran laporan surat semasa dan skop data surat disemak pada setiap bacaan dan eksport.",
         "letterFields": "Takrif medan memerlukan kebenaran templat atau bacaan semasa. Pemetaan sulit turut memerlukan kebenaran kewangan yang berkuat kuasa.",
-        "letterTemplates": "Skop syarikat semasa dan kebenaran baca/templat Surat. Pemetaan sulit turut memerlukan akses kewangan."
+        "letterTemplates": "Skop syarikat semasa dan kebenaran baca/templat Surat. Pemetaan sulit turut memerlukan akses kewangan.",
+        "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -24150,7 +24151,8 @@
         "applying": "Menerapkan perubahan…",
         "deactivationHelp": "Penyahaktifan menghalang penjanaan surat baharu. Dokumen yang telah dikeluarkan kekal boleh diakses mengikut peraturan penyimpanan.",
         "wording": "Kandungan templat",
-        "workflowDefault": "Daripada aliran kerja yang dikonfigurasikan"
+        "workflowDefault": "Daripada aliran kerja yang dikonfigurasikan",
+        "generate": "Jana surat"
       },
       "form": {
         "code": "Kod templat",
@@ -24241,6 +24243,66 @@
         "working": "Menyediakan pratonton…",
         "select": "Pilih pekerja.",
         "help": "Simpan perubahan sebagai draf baharu sebelum pratonton. Pratonton ini menggunakan versi tersimpan dan pekerja yang dipilih. Biarkan nilai tersuai yang tidak tersedia kosong; data wajib yang tiada akan dilaporkan."
+      }
+    },
+    "generate": {
+      "page": {
+        "title": "Jana surat",
+        "intro": "Cipta dan semak kelompok draf daripada templat aktif yang diluluskan.",
+        "activeTemplates": "Templat aktif",
+        "yourBatches": "Kelompok anda",
+        "emptyTemplates": "Tiada templat aktif yang diluluskan sepadan dengan carian ini.",
+        "emptyBatches": "Anda tiada kelompok dalam syarikat ini.",
+        "noAccess": "Tiada syarikat yang dibenarkan tersedia untuk penjanaan surat.",
+        "ready": "Sedia",
+        "correction": "Perlu pembetulan",
+        "total": "Surat dipilih",
+        "openDrafts": "Draf terbuka",
+        "inactiveTemplate": "Templat ini tidak aktif atau belum berkuat kuasa. Pulihkan kelayakannya sebelum menghantar.",
+        "sourceChanged": "Maklumat pekerja telah berubah sejak versi ini. Muat semula draf sebelum menghantar.",
+        "missingDocument": "Maklumat wajib tiada. Pratonton surat belum tersedia.",
+        "preview": "Pratonton surat",
+        "correct": "Kemas kini medan yang dibenarkan",
+        "refresh": "Muat semula versi draf",
+        "remove": "Buang daripada kelompok",
+        "first": "Halaman pertama",
+        "next": "Halaman seterusnya",
+        "readonlyHelp": "Kandungan surat adalah tetap. Perubahan terhad kepada medan yang ditetapkan boleh diedit.",
+        "reviewEmployee": "Semak maklumat pekerja",
+        "submit": "Hantar {count} surat sedia",
+        "created": "Kelompok draf dicipta. Semak kesediaan dan pratonton sebelum menghantar.",
+        "refreshed": "Versi draf dimuat semula. Kelulusan terdahulu kekal dalam sejarah.",
+        "withdrawn": "Surat dibuang daripada kelompok ini. Sejarahnya disimpan.",
+        "submitted": "Surat yang sedia telah dihantar untuk kelulusan.",
+        "missing": "Tiada: {field}",
+        "unavailable": "Tidak tersedia"
+      },
+      "form": {
+        "department": "Jabatan mengandungi",
+        "branch": "Cawangan (nilai tepat)",
+        "hiredFrom": "Tarikh mula kerja dari",
+        "hiredTo": "Tarikh mula kerja hingga",
+        "filterHelp": "Penapis mengubah pilihan yang tersedia. Pekerja yang dipilih kekal dipilih.",
+        "invalidRange": "Tarikh mula julat mesti pada atau sebelum tarikh akhir.",
+        "selected": "Pekerja dipilih",
+        "addShown": "Tambah pekerja dipaparkan",
+        "remove": "Buang",
+        "limit": "Pilih tidak lebih daripada 500 pekerja.",
+        "commonValues": "Nilai tersuai bersama",
+        "customHelp": "Nilai ini terpakai kepada setiap pekerja dipilih. Semak dan kemas kini medan yang dibenarkan dalam kelompok draf.",
+        "create": "Cipta kelompok draf",
+        "working": "Sedang diproses…",
+        "reason": "Sebab pembuangan"
+      },
+      "errors": {
+        "invalid": "Semak pilihan pekerja, nilai bertip dan pengecam yang dihantar.",
+        "stale": "Surat atau maklumat sumber telah berubah. Muat semula dan semak versi semasa.",
+        "configuration": "Semak templat aktif, rantaian kelulusan dan akses data yang diperlukan sebelum meneruskan.",
+        "conflict": "Kekunci permintaan ini sudah digunakan untuk input lain. Buka borang penjanaan baharu.",
+        "permission": "Anda tidak mempunyai akses semasa yang diperlukan kepada surat atau pekerja ini.",
+        "unavailable": "Tindakan tidak dapat diselesaikan. Cuba lagi.",
+        "state": "Surat atau kelompok ini telah berubah status. Muat semula sebelum mencuba lagi.",
+        "reasonRequired": "Masukkan sebab pembuangan."
       }
     }
   }

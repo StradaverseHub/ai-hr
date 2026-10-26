@@ -10278,7 +10278,8 @@
         "myLetters": "Only the signed-in person’s issued letters across current and historical employments. Privileged roles do not widen My Letters.",
         "letterReports": "Current letter report permission and letter data scope are checked for every read and export.",
         "letterFields": "Field definitions require current template or read permission. Confidential mappings also require the canonical financial permission.",
-        "letterTemplates": "Current company scope and Letters read/template permissions. Confidential mappings also require financial access."
+        "letterTemplates": "Current company scope and Letters read/template permissions. Confidential mappings also require financial access.",
+        "letterGenerate": "Current company context, Letters generate/read permissions and current Workforce and financial access."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -24150,7 +24151,8 @@
         "applying": "Applying change…",
         "deactivationHelp": "Deactivation prevents new letter generation. Issued artifacts remain accessible under retention rules.",
         "wording": "Template wording",
-        "workflowDefault": "From configured workflow"
+        "workflowDefault": "From configured workflow",
+        "generate": "Generate letters"
       },
       "form": {
         "code": "Template code",
@@ -24241,6 +24243,66 @@
         "working": "Preparing preview…",
         "select": "Select an employee.",
         "help": "Save changes as a new draft before previewing. This preview uses the saved version and the selected employee. Leave unavailable custom values blank; missing required data will be reported."
+      }
+    },
+    "generate": {
+      "page": {
+        "title": "Generate letters",
+        "intro": "Create and review draft batches from active approved templates.",
+        "activeTemplates": "Active templates",
+        "yourBatches": "Your batches",
+        "emptyTemplates": "No active approved templates match this search.",
+        "emptyBatches": "You have no batches in this company.",
+        "noAccess": "No authorized company is available for letter generation.",
+        "ready": "Ready",
+        "correction": "Needs correction",
+        "total": "Selected letters",
+        "openDrafts": "Open drafts",
+        "inactiveTemplate": "This template is inactive or not yet effective. Restore its eligibility before submitting.",
+        "sourceChanged": "Employee information has changed since this revision. Refresh the draft before submitting.",
+        "missingDocument": "Required information is missing. A letter preview is not available yet.",
+        "preview": "Letter preview",
+        "correct": "Update permitted fields",
+        "refresh": "Refresh draft revision",
+        "remove": "Remove from batch",
+        "first": "First page",
+        "next": "Next page",
+        "readonlyHelp": "Body wording is fixed. Changes are limited to fields designated as editable.",
+        "reviewEmployee": "Review employee information",
+        "submit": "Submit {count} ready letters",
+        "created": "Draft batch created. Review readiness and previews before submitting.",
+        "refreshed": "Draft revision refreshed. Previous approvals remain in history.",
+        "withdrawn": "Letter removed from this batch. Its history is retained.",
+        "submitted": "The ready letters were submitted for approval.",
+        "missing": "Missing: {field}",
+        "unavailable": "Unavailable"
+      },
+      "form": {
+        "department": "Department contains",
+        "branch": "Branch (exact value)",
+        "hiredFrom": "Hire date from",
+        "hiredTo": "Hire date through",
+        "filterHelp": "Filters change the available choices. Selected employees remain selected.",
+        "invalidRange": "The start hire date must be on or before the end date.",
+        "selected": "Selected employees",
+        "addShown": "Add shown employees",
+        "remove": "Remove",
+        "limit": "Select no more than 500 employees.",
+        "commonValues": "Common custom values",
+        "customHelp": "These values apply to every selected employee. Review and update permitted fields in the draft batch.",
+        "create": "Create draft batch",
+        "working": "Working…",
+        "reason": "Reason for removal"
+      },
+      "errors": {
+        "invalid": "Check the employee selection, typed values and submitted identifiers.",
+        "stale": "The letter or source information changed. Refresh and review the current revision.",
+        "configuration": "Check the active template, approval chain and required data access before proceeding.",
+        "conflict": "This request key already belongs to different inputs. Open a new generation form.",
+        "permission": "You do not have the required current access to these letters or employees.",
+        "unavailable": "The action could not be completed. Try again.",
+        "state": "This letter or batch has changed state. Refresh before trying again.",
+        "reasonRequired": "Enter a reason for removal."
       }
     }
   }

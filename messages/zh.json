@@ -10278,7 +10278,8 @@
         "myLetters": "仅限登录本人当前及以往任职期间的已发出信函。特权角色不会扩大“我的信函”的范围。",
         "letterReports": "每次读取及导出均检查当前信函报表权限和信函数据范围。",
         "letterFields": "字段定义需要当前模板或读取权限。保密映射还需要相应的财务权限。",
-        "letterTemplates": "依据当前公司范围及信函读取或模板权限。机密映射还须具备财务访问权限。"
+        "letterTemplates": "依据当前公司范围及信函读取或模板权限。机密映射还须具备财务访问权限。",
+        "letterGenerate": "依据当前公司范围、信函生成与读取权限，以及当前员工资料和财务访问权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -24150,7 +24151,8 @@
         "applying": "正在应用更改…",
         "deactivationHelp": "停用后无法生成新信函。已签发的文件仍可根据保留规则访问。",
         "wording": "模板正文",
-        "workflowDefault": "使用已配置的流程设置"
+        "workflowDefault": "使用已配置的流程设置",
+        "generate": "生成信函"
       },
       "form": {
         "code": "模板代码",
@@ -24241,6 +24243,66 @@
         "working": "正在准备预览…",
         "select": "请选择员工。",
         "help": "预览前请将更改保存为新草稿。此预览使用已保存版本及所选员工的数据。没有可用值的自定义字段请留空，系统会提示缺少的必填数据。"
+      }
+    },
+    "generate": {
+      "page": {
+        "title": "生成信函",
+        "intro": "从已启用的获批模板创建并检查草稿批次。",
+        "activeTemplates": "可用模板",
+        "yourBatches": "我的批次",
+        "emptyTemplates": "没有符合搜索条件的已生效获批模板。",
+        "emptyBatches": "您在此公司尚无批次。",
+        "noAccess": "没有可授权生成信函的公司。",
+        "ready": "已就绪",
+        "correction": "需修正",
+        "total": "已选信函",
+        "openDrafts": "未完成草稿",
+        "inactiveTemplate": "此模板已停用或尚未生效，请恢复其可用状态后再提交。",
+        "sourceChanged": "本版本生成后员工信息已更改，请先刷新草稿再提交。",
+        "missingDocument": "缺少必填信息，暂时无法预览信函。",
+        "preview": "信函预览",
+        "correct": "更新允许修改的字段",
+        "refresh": "刷新草稿版本",
+        "remove": "从批次中移除",
+        "first": "第一页",
+        "next": "下一页",
+        "readonlyHelp": "正文内容固定，仅可更改指定为可编辑的字段。",
+        "reviewEmployee": "查看员工信息",
+        "submit": "提交 {count} 封已就绪信函",
+        "created": "草稿批次已创建，请检查就绪状态并预览后再提交。",
+        "refreshed": "草稿版本已刷新，先前的审批保留在历史记录中。",
+        "withdrawn": "信函已从此批次移除，其历史记录予以保留。",
+        "submitted": "已就绪信函已提交审批。",
+        "missing": "缺少：{field}",
+        "unavailable": "不可用"
+      },
+      "form": {
+        "department": "部门名称包含",
+        "branch": "分行（精确值）",
+        "hiredFrom": "入职日期起",
+        "hiredTo": "入职日期止",
+        "filterHelp": "筛选条件更改可选项，已选员工会保留。",
+        "invalidRange": "起始入职日期不得晚于结束日期。",
+        "selected": "已选员工",
+        "addShown": "添加当前显示的员工",
+        "remove": "移除",
+        "limit": "最多选择500名员工。",
+        "commonValues": "通用自定义值",
+        "customHelp": "这些值适用于每位已选员工。请在草稿批次中检查并更新允许修改的字段。",
+        "create": "创建草稿批次",
+        "working": "正在处理…",
+        "reason": "移除原因"
+      },
+      "errors": {
+        "invalid": "请检查员工选择、字段值及提交的标识。",
+        "stale": "信函或源信息已更改，请刷新并检查当前版本。",
+        "configuration": "继续前请检查可用模板、审批流程及所需的数据访问权限。",
+        "conflict": "此请求键已用于不同的输入，请打开新的生成表单。",
+        "permission": "您目前没有访问这些信函或员工所需的权限。",
+        "unavailable": "无法完成操作，请重试。",
+        "state": "此信函或批次的状态已更改，请刷新后重试。",
+        "reasonRequired": "请输入移除原因。"
       }
     }
   }

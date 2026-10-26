@@ -437,6 +437,12 @@ export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: strin
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
 }
+/** Resolve an explicit bounded identity set through the same current Workforce projection. */
+export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
+ if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ return tx.select(columns).from(workforceListSource).where(inArray(columns.employmentId,ids)).orderBy(columns.employmentId);
+}
 /** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
  * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
 export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){

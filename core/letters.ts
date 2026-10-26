@@ -17,7 +17,7 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
 import {assertWorkforceEmploymentTx} from './workforce-access';
-import {listWorkforcePickPageTx} from './read';
+import {listWorkforcePickPageTx,readWorkforcePickRowsTx} from './read';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
 function text(value:string,max:number){const result=value.trim();if(!result||result.length>max)throw new LetterWorkflowError('invalid','text');return result;}
@@ -263,14 +263,15 @@ export function getLetterGenerationBatch(ctx:SessionContext,id:string,input:{cur
   const eligible=record.state==='draft'&&Boolean(revision)&&!issue&&!sourceChanged&&template.active;states[record.state]=(states[record.state]??0)+1;if(eligible)ready++;if(['draft','returned','rejected'].includes(record.state)&&!eligible)needsCorrection++;
   if(index>=start&&index<end)rows.push({record,revision:revision??null,issue,sourceChanged,ready:eligible});
  }
- return {batch,rows,templateActive:template.active,ready,needsCorrection,total:records.length,states,nextCursor:end<records.length?records[end-1].id:null};
+ const identities=await readWorkforcePickRowsTx(ctx,tx,rows.map(row=>row.record.employmentId)),people=new Map(identities.map(row=>[row.employmentId,{name:row.name,code:row.employeeCode}]));
+ return {batch,rows:rows.map(row=>({...row,employee:people.get(row.record.employmentId)??null})),templateActive:template.active,ready,needsCorrection,total:records.length,selected:records.length-(states.withdrawn??0),states,nextCursor:end<records.length?records[end-1].id:null};
 });}
 export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'generate');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
  const visible=and(eq(letterGenerationBatch.companyId,input.companyId),eq(letterGenerationBatch.createdBy,ctx.userId!),sql`(select count(*) from letter_record r where r.batch_id=${letterGenerationBatch.id})=case when jsonb_typeof(${letterGenerationBatch.selection}->'employmentIds')='array' then jsonb_array_length(${letterGenerationBatch.selection}->'employmentIds') else -1 end`);
  const [cursor]=input.cursor?await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(visible,eq(letterGenerationBatch.id,input.cursor))).limit(1):[];if(input.cursor&&!cursor)throw new LetterWorkflowError('invalid','cursor');
  const rows=await tx.select({id:letterGenerationBatch.id,createdAt:letterGenerationBatch.createdAt,templateVersionId:letterTemplateVersion.id,title:letterTemplateVersion.name,category:letterTemplateVersion.category,
-  total:sql<number>`(select count(*)::integer from letter_record r where r.batch_id=${letterGenerationBatch.id})`,
+  total:sql<number>`(select count(*)::integer from letter_record r where r.batch_id=${letterGenerationBatch.id} and r.state<>'withdrawn')`,
   drafts:sql<number>`(select count(*)::integer from letter_record r where r.batch_id=${letterGenerationBatch.id} and r.state in ('draft','returned','rejected'))`
  }).from(letterGenerationBatch).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterGenerationBatch.templateVersionId)).where(and(visible,cursor?sql`(${letterGenerationBatch.createdAt},${letterGenerationBatch.id})<(select batch_cursor.created_at,batch_cursor.id from letter_generation_batch batch_cursor where batch_cursor.id=${input.cursor}::uuid)`:undefined)).orderBy(desc(letterGenerationBatch.createdAt),desc(letterGenerationBatch.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
@@ -464,8 +465,9 @@ export function listLetterTemplates(ctx:SessionContext,input:{companyId:string;m
  sql`${letterTemplateVersion.id}=(select v.id from letter_template_version v where v.template_id=${letterTemplate.id} ${active?sql`and v.status='approved' and v.effective_from<=${todayInKualaLumpur()}::date`:sql``} order by v.ordinal desc limit 1)`)).orderBy(asc(letterTemplate.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].root.id:null};
 });}
-export function getLetterTemplate(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
+export function getLetterTemplate(ctx:SessionContext,id:string,options:{forGeneration?:boolean}={}){return letters(ctx,false,async tx=>{
  const [row]=await tx.select({root:letterTemplate,version:letterTemplateVersion}).from(letterTemplateVersion).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(eq(letterTemplateVersion.id,uuid(id)));if(!row)return null;await anyPermission(tx,row.root.companyId,['read','template']);
+ if(options.forGeneration){await permission(tx,row.root.companyId,'generate');await generationTemplate(tx,row.root.companyId,id,true,true);}
  const fields=await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition,active:letterMergeFieldVersion.active,ordinal:letterMergeFieldVersion.ordinal}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,id)).orderBy(asc(letterMergeFieldVersion.key));
  if(usedLetterFields(row.version.document).some(key=>!fields.some(field=>field.definition.key===key)))throw new LetterWorkflowError('permission');
  const [appearance]=await tx.execute<{letterhead_name:string|null;signatory_name:string|null}>(sql`select * from app.letter_template_appearance(${row.version.id}::uuid)`);

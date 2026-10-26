@@ -4,8 +4,9 @@ import {revalidatePath} from 'next/cache';
 import {getSession} from '@/lib/session';
 import {saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,getLetterTemplate,previewLetterTemplate} from '@/core/letters';
 import {WorkforceAccessError} from '@/core/workforce-access';
-import {LETTER_LANGUAGES,LetterModelError,parseLetterValue,type LetterDocument,type LetterValue} from '@/lib/letter-model';
+import {LETTER_LANGUAGES,LetterModelError,type LetterDocument} from '@/lib/letter-model';
 import {LetterWorkflowError} from '@/lib/letter-workflow';
+import {letterCustomValues} from '@/lib/letter-form-values';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const value=(form:FormData,key:string)=>typeof form.get(key)==='string'?form.get(key) as string:'';
 export type TemplateActionState={error:string;field?:string}|null;
@@ -35,10 +36,7 @@ export async function previewTemplate(_previous:TemplatePreviewState,form:FormDa
  const templateVersionId=value(form,'versionId'),employmentId=value(form,'employmentId');if(!uuid.test(templateVersionId)||!uuid.test(employmentId))return {error:'invalid'};
  const ctx=await getSession();try{
   const template=await getLetterTemplate(ctx,templateVersionId);if(!template)return {error:'permission'};
-  const fields=template.fields.filter(field=>field.definition.source.startsWith('custom.')),allowed=new Set(fields.flatMap(({definition})=>['custom:'+definition.key+':value',...(definition.kind==='currency'?['custom:'+definition.key+':currency']:[])]));let characters=0;
-  for(const [key,input]of form.entries())if(key.startsWith('custom:')){if(!allowed.has(key)||typeof input!=='string')return {error:'invalid'};characters+=input.length;if(characters>256000)return {error:'limit'};}
-  const customValues:Record<string,LetterValue|null>={};
-  for(const {definition}of fields){const input=value(form,'custom:'+definition.key+':value');customValues[definition.key]=input.trim()?parseLetterValue({kind:definition.kind,value:input,...(definition.kind==='currency'?{currency:value(form,'custom:'+definition.key+':currency')}:{})},definition.key):null;}
+  const customValues=letterCustomValues(form,template.fields.map(field=>field.definition));
   const preview=await previewLetterTemplate(ctx,{templateVersionId,employmentId,customValues});return {document:preview.document};
  }catch(error){
   if(error instanceof WorkforceAccessError)return {error:'permission'};
