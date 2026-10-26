@@ -25,7 +25,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'Show the delivery status of notifications sent to me.',
   system_explorer:'Using only my existing administrator rights, list the schema catalog I may already inspect; do not grant rights or change anything.',
   assistant:'Which Assistant capabilities are currently available to me?',
-  system_testing:'Using only my existing administrator rights, show recorded statuses of existing test cases; do not run tests or grant rights.',
+  system_testing:'Show the reported statuses of my currently assigned tests; do not run tests, claim independent verification or grant rights.',
  },
  ms:{
   employees:'Tunjukkan profil pekerjaan dan butiran jawatan saya yang terkini.',
@@ -47,7 +47,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'Tunjukkan status penghantaran pemberitahuan yang dihantar kepada saya.',
   system_explorer:'Dengan hak pentadbir sedia ada saya sahaja, senaraikan katalog skema yang memang boleh saya periksa; jangan beri hak baharu atau ubah apa-apa.',
   assistant:'Apakah keupayaan Pembantu yang tersedia untuk saya sekarang?',
-  system_testing:'Dengan hak pentadbir sedia ada saya sahaja, tunjukkan status tercatat kes ujian sedia ada; jangan jalankan ujian atau beri hak baharu.',
+  system_testing:'Tunjukkan status yang dilaporkan bagi ujian yang kini ditugaskan kepada saya; jangan jalankan ujian, dakwa pengesahan bebas atau beri hak baharu.',
  },
  zh:{
   employees:'请显示我目前的任职资料和职位详情。',
@@ -69,7 +69,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'请显示发给我的通知的送达状态。',
   system_explorer:'仅使用我现有的管理员权限，列出我本来就能查看的数据库结构目录；不要授予权限或更改任何内容。',
   assistant:'我目前可以使用哪些助手功能？',
-  system_testing:'仅使用我现有的管理员权限，显示已有测试用例的已记录状态；不要运行测试或授予权限。',
+  system_testing:'请显示目前分配给我的测试所报告的状态；不要运行测试、声称已经独立验证或授予权限。',
  },
  ta:{
   employees:'எனது தற்போதைய பணியாளர் விவரத்தையும் பதவி விவரங்களையும் காட்டுங்கள்.',
@@ -91,7 +91,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'எனக்கு அனுப்பப்பட்ட அறிவிப்புகளின் விநியோக நிலையைக் காட்டுங்கள்.',
   system_explorer:'எனக்கு ஏற்கனவே உள்ள நிர்வாக உரிமைகளை மட்டும் பயன்படுத்தி, நான் பார்க்க அனுமதிக்கப்பட்ட தரவுத்தள அமைப்புப் பட்டியலைக் காட்டுங்கள்; உரிமை வழங்கவோ எதையும் மாற்றவோ வேண்டாம்.',
   assistant:'எனக்கு தற்போது எந்த உதவியாளர் வசதிகள் கிடைக்கின்றன?',
-  system_testing:'எனக்கு ஏற்கனவே உள்ள நிர்வாக உரிமைகளை மட்டும் பயன்படுத்தி, ஏற்கனவே உள்ள சோதனை வழக்குகளின் பதிவு செய்யப்பட்ட நிலையைக் காட்டுங்கள்; சோதனைகளை இயக்கவோ உரிமை வழங்கவோ வேண்டாம்.',
+  system_testing:'தற்போது எனக்கு ஒதுக்கப்பட்ட சோதனைகளின் அறிக்கையிடப்பட்ட நிலையைக் காட்டுங்கள்; சோதனைகளை இயக்கவோ சுயாதீனமாகச் சரிபார்க்கப்பட்டதாகக் கூறவோ உரிமை வழங்கவோ வேண்டாம்.',
  },
  th:{
   employees:'แสดงข้อมูลการจ้างงานและรายละเอียดตำแหน่งปัจจุบันของฉัน',
@@ -113,7 +113,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'แสดงสถานะการส่งการแจ้งเตือนที่ส่งถึงฉัน',
   system_explorer:'ใช้เฉพาะสิทธิ์ผู้ดูแลที่ฉันมีอยู่แล้ว แสดงรายการโครงสร้างฐานข้อมูลที่ฉันมีสิทธิ์ตรวจดูอยู่แล้ว ห้ามให้สิทธิ์เพิ่มหรือเปลี่ยนแปลงข้อมูล',
   assistant:'ตอนนี้ฉันใช้ความสามารถใดของผู้ช่วยได้บ้าง?',
-  system_testing:'ใช้เฉพาะสิทธิ์ผู้ดูแลที่ฉันมีอยู่แล้ว แสดงสถานะที่บันทึกไว้ของกรณีทดสอบที่มีอยู่ ห้ามรันการทดสอบหรือให้สิทธิ์เพิ่ม',
+  system_testing:'แสดงสถานะที่รายงานของการทดสอบที่มอบหมายให้ฉันในปัจจุบัน ห้ามรันการทดสอบ อ้างว่าได้รับการตรวจสอบอย่างอิสระ หรือให้สิทธิ์เพิ่ม',
  },
  vi:{
   employees:'Cho tôi xem hồ sơ công việc và chi tiết chức danh hiện tại của mình.',
@@ -135,7 +135,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   notifications:'Cho tôi xem trạng thái chuyển phát của các thông báo gửi cho mình.',
   system_explorer:'Chỉ dùng quyền quản trị hiện có của tôi để liệt kê danh mục cấu trúc dữ liệu mà tôi vốn được phép xem; không cấp thêm quyền hay thay đổi nội dung.',
   assistant:'Hiện tại tôi có thể sử dụng những chức năng nào của Trợ lý?',
-  system_testing:'Chỉ dùng quyền quản trị hiện có của tôi để xem trạng thái đã ghi của các ca kiểm thử hiện có; không chạy kiểm thử hay cấp thêm quyền.',
+  system_testing:'Cho tôi xem trạng thái được báo cáo của các ca kiểm thử hiện được giao cho mình; không chạy kiểm thử, khẳng định đã xác minh độc lập hay cấp thêm quyền.',
  },
 };
 const securityQuestions:Record<PromptHoldoutLocale,Record<PromptSecurityKey,string>>={

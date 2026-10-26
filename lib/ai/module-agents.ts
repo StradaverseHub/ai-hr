@@ -7,7 +7,7 @@ export const MODULE_AGENT_CAPABILITIES = [
   ['toil', 'own_replacement_credit_ledger'], ['multi_cycle_payroll', 'own_released_run_index'],
   ['typed_pay_components', 'own_stored_pay_components'], ['country-my', 'own_malaysian_record_readiness'],
   ['notifications', 'own_notification_delivery_status'], ['system_explorer', 'authorized_schema_inventory'],
-  ['assistant', 'current_assistant_capabilities'], ['system_testing', 'authorized_test_case_status'],
+  ['assistant', 'current_assistant_capabilities'], ['system_testing', 'own_testing_assignment_status'],
 ] as const;
 export type AgentModuleCode = typeof MODULE_AGENT_CAPABILITIES[number][0];
 export type AgentCapability = typeof MODULE_AGENT_CAPABILITIES[number][1];
