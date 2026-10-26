@@ -14,6 +14,7 @@ private enum KeyStorageError: Error { case unavailable, invalidKey }
 // Platform primitives only. No result from this module is a server-verified trust verdict.
 public class AihrIntegrityModule: Module {
   private static let requests = KeyRequests()
+  private static let proofs = AppAttestProofStore(persistence: AppAttestKeychainProofPersistence())
   private static let runtimeId = UUID().uuidString.lowercased()
   public func definition() -> ModuleDefinition {
     Name("AihrIntegrity")
@@ -67,15 +68,37 @@ public class AihrIntegrityModule: Module {
       }
     }
 
+    AsyncFunction("appleAttestationInfo") { (id: String, hash: String, promise: Promise) in
+      guard self.validKeyId(id), self.hashData(hash) != nil else { self.invalid(promise); return }
+      do {
+        switch try Self.proofs.snapshot(keyId: id, hash: hash) {
+        case .absent: promise.resolve(["state": "absent"])
+        case .requested: promise.resolve(["state": "requested"])
+        case .retryable: promise.resolve(["state": "retryable"])
+        case .completed(let data): promise.resolve(["state": "completed", "attestation": data.base64EncodedString()])
+        }
+      } catch { self.reject(error, promise) }
+    }
+
     AsyncFunction("attestAppleKey") { (id: String, hash: String, promise: Promise) in
       guard DCAppAttestService.shared.isSupported else { self.unsupported(promise); return }
       guard self.validKeyId(id), let data = self.hashData(hash) else { self.invalid(promise); return }
-      // On serverUnavailable the owner must retry with this same key AND this same hash.
-      DCAppAttestService.shared.attestKey(id, clientDataHash: data) { result, error in
-        guard error == nil else { self.reject(error, promise); return }
-        guard let result, !result.isEmpty, result.count <= 65536 else { self.unavailable(promise); return }
-        promise.resolve(result.base64EncodedString())
-      }
+      // Persist intent before DeviceCheck, then persist the artifact before resolving JavaScript.
+      // Only a known serverUnavailable result permits an explicit same-key/same-hash retry.
+      Self.proofs.request(keyId: id, hash: hash,
+        retryable: { ($0 as? DCError)?.code == .serverUnavailable },
+        vendor: { complete in
+          DCAppAttestService.shared.attestKey(id, clientDataHash: data) { result, error in
+            if let error { complete(.failure(error)) }
+            else if let result { complete(.success(result)) }
+            else { complete(.failure(AppAttestProofError.malformedProof)) }
+          }
+        }, completion: { result in
+          switch result {
+          case .success(let data): promise.resolve(data.base64EncodedString())
+          case .failure(let error): self.reject(error, promise)
+          }
+        })
     }
 
     AsyncFunction("assertAppleKey") { (id: String, hash: String, promise: Promise) in
@@ -138,6 +161,16 @@ public class AihrIntegrityModule: Module {
   private func unsupported(_ promise: Promise) { promise.reject("ERR_INTEGRITY_UNSUPPORTED", "Device integrity capability is unsupported") }
   private func unavailable(_ promise: Promise) { promise.reject("ERR_INTEGRITY_UNAVAILABLE", "Device integrity operation unavailable") }
   private func reject(_ error: Error?, _ promise: Promise) {
+    if let cached = error as? AppAttestProofError {
+      switch cached {
+      case .invalidInput: invalid(promise)
+      case .bindingConflict: promise.reject("ERR_INTEGRITY_BINDING_CONFLICT", "Retain the original enrollment hash")
+      case .recoveryRequired: promise.reject("ERR_INTEGRITY_RECOVERY_REQUIRED", "Reconcile the retained enrollment")
+      case .busy: promise.reject("ERR_INTEGRITY_IN_PROGRESS", "Retain the pending enrollment")
+      case .storageUnavailable, .malformedProof: unavailable(promise)
+      }
+      return
+    }
     guard let dc = error as? DCError else { unavailable(promise); return }
     switch dc.code {
     case .featureUnsupported: unsupported(promise)

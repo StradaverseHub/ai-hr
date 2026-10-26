@@ -123,6 +123,7 @@ class AihrIntegrityModule : Module() {
     }
 
     AsyncFunction("appleKeyInfo") { _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("appleAttestationInfo") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("generateAppleKey") { _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("attestAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("assertAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }

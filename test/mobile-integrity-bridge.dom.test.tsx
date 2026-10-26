@@ -9,6 +9,7 @@ function fixture(){
     capabilities:vi.fn(()=>({version:1,platform:'ios',appId:'ai.stradaverse.aihr.test',appVersion:'1.0.3',buildVersion:'4',keyMechanism:'apple_app_attest'})),
     clockSnapshot:vi.fn(()=>({localOnly:true as const,runtimeId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',source:'ios_continuous',elapsedBeforeNs:'9007199254740993',elapsedAfterNs:'9007199254740995',wallTimeMs:Date.now(),bootId:null})),
     appleKeyInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),generateAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>'opaque-key-reference'),
+    appleAttestationInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({state:'absent'})),
     attestAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified platform artifact').toString('base64')),
     assertAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified assertion').toString('base64')),
     createAndroidKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({publicKeySpki:Buffer.from('unverified public key').toString('base64'),certificateChain:[Buffer.from('not a certificate').toString('base64')],reportedSecurityLevel:'software'})),

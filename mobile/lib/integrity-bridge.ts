@@ -22,13 +22,18 @@ export const NativeCapabilities=z.object({version:z.literal(1),platform:z.enum([
 const AndroidKeyEvidence=z.object({publicKeySpki:blob(2048),certificateChain:z.array(blob(16384)).min(1).max(8),
   reportedSecurityLevel:z.enum(['strongbox','tee','software','hardware_unspecified','unknown']),
 }).strict();
-type Reason='bridge_missing'|'method_missing'|'unsupported'|'unavailable'|'server_unavailable'|'invalid_input'|'invalid_key'|'key_exists'|'provider_expired'|'obsolete'|'in_progress'|'timeout'|'malformed';
+const AppleAttestationSnapshot=z.discriminatedUnion('state',[
+  z.object({state:z.literal('absent')}).strict(),z.object({state:z.literal('requested')}).strict(),
+  z.object({state:z.literal('retryable')}).strict(),z.object({state:z.literal('completed'),attestation:blob(65536)}).strict(),
+]);
+type Reason='bridge_missing'|'method_missing'|'unsupported'|'unavailable'|'server_unavailable'|'invalid_input'|'invalid_key'|'key_exists'|'binding_conflict'|'recovery_required'|'provider_expired'|'obsolete'|'in_progress'|'timeout'|'malformed';
 export type NativeIntegrityResult<T>={status:'evidence';evidence:T;verification:'not_verified'}|{status:'unsupported'|'unavailable'|'invalid';reason:Reason};
 const codes:Record<string,{status:'unsupported'|'unavailable'|'invalid';reason:Reason}>={
   ERR_INTEGRITY_UNSUPPORTED:{status:'unsupported',reason:'unsupported'},ERR_INTEGRITY_INVALID_INPUT:{status:'invalid',reason:'invalid_input'},
   ERR_INTEGRITY_INVALID_KEY:{status:'invalid',reason:'invalid_key'},ERR_INTEGRITY_KEY_EXISTS:{status:'invalid',reason:'key_exists'},
   ERR_INTEGRITY_PROVIDER_EXPIRED:{status:'unavailable',reason:'provider_expired'},ERR_INTEGRITY_OBSOLETE:{status:'unavailable',reason:'obsolete'},
   ERR_INTEGRITY_SERVER_UNAVAILABLE:{status:'unavailable',reason:'server_unavailable'},ERR_INTEGRITY_IN_PROGRESS:{status:'unavailable',reason:'in_progress'},
+  ERR_INTEGRITY_BINDING_CONFLICT:{status:'invalid',reason:'binding_conflict'},ERR_INTEGRITY_RECOVERY_REQUIRED:{status:'unavailable',reason:'recovery_required'},
 };
 function failure(error:unknown):NativeIntegrityResult<never>{
   let code:unknown;try{code=error&&typeof error==='object'?Reflect.get(error,'code'):null;}catch{}
@@ -64,6 +69,7 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
     capabilities:()=>read('capabilities',NativeCapabilities),clockSnapshot:()=>read('clockSnapshot',NativeClockSnapshot),
     appleKeyInfo:(value:string)=>valid(alias.safeParse(value))?operation('appleKeyInfo',[value],keyId.nullable()):Promise.resolve(invalid),
     generateAppleKey:(value:string)=>valid(alias.safeParse(value))?operation('generateAppleKey',[value],keyId):Promise.resolve(invalid),
+    appleAttestationInfo:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('appleAttestationInfo',[id,hash],AppleAttestationSnapshot):Promise.resolve(invalid),
     attestAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('attestAppleKey',[id,hash],blob(65536)):Promise.resolve(invalid),
     assertAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleKey',[id,hash],blob(8192)):Promise.resolve(invalid),
     createAndroidKey:(value:string,nonce:string,strongBox=false)=>valid(alias.safeParse(value),sha256.safeParse(nonce),z.boolean().safeParse(strongBox))?operation('createAndroidKey',[value,nonce,strongBox],AndroidKeyEvidence):Promise.resolve(invalid),
