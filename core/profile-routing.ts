@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,profileChangeRequest,person} from '../db/schema';
 import {appendEvent,actorOf} from '../db/events';
 import {getSetting} from './entitlements';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {assertProfilePolicyWriteAuthorityTx,freshProfileEditPolicyTx} from './profile-edit-policy';
 import {setTenantSetting} from './tenant-settings';
 import {isAdmin,isGroupAdmin} from '../lib/authz-model';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
@@ -106,9 +106,12 @@ export function profileRequestTypeSql(proposed:SQL):SQL<ProfileRequestType>{retu
 export function profileRouteReaderPredicate(ctx:SessionContext){
  return sql`app.profile_route_reader(${profileChangeRequest.employmentId},${profileChangeRequest.routeApproverUserId},${profileChangeRequest.routeApproverEmploymentId},${profileChangeRequest.status}::text)`;
 }
-export function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[];version?:1|2;previewFingerprint?:string}){
+export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[];version?:1|2;previewFingerprint?:string}){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ try{p=structuredClone(p);}catch{throw new ProfileRoutingError('invalid');}
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
+  try{await assertProfilePolicyWriteAuthorityTx(tx,ctx);}catch{throw new ProfileRoutingError('unauthorized');}
   const fresh=await freshProfileEditPolicyTx(tx,ctx),before=readProfileRoutingPolicy(fresh.ctx);
   if(before.revision!==p.expectedRevision||before.enabled&&!p.enabled)throw new ProfileRoutingError('changed');
   const value={version:p.version??1,enabled:p.enabled,revision:randomUUID(),rules:p.rules};

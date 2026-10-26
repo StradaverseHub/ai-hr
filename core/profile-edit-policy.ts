@@ -1,5 +1,7 @@
 /** Same policy advisory key for every canonical settings writer and profile mutation. */
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
+import {sql} from 'drizzle-orm';
+import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import type {SessionContext,Tx} from '../db/client';
@@ -16,10 +18,24 @@ export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){
  return {ctx:fresh,editable:resolveEssEditableIds(raw),legacyPrimary:resolveEssPrimaryEditableIds(raw),visible:resolveEssVisibleIds(raw)};
 }
 
+/** Only administrative policy mutation roots call this. Ordinary ESS readers/reviewers retain their
+ * existing source-specific authority; joining Access alone does not grant a group role. */
+export async function assertProfilePolicyWriteAuthorityTx(tx:Tx,ctx:SessionContext):Promise<void>{
+ try{
+  await assertAiPrincipalTx(tx,ctx);
+  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+  if(current?.allowed!==true)throw new TenantSettingError('not_group_admin');
+ }catch{throw new TenantSettingError('not_group_admin');}
+}
+const capturePolicyContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
+
 /** Settings and withdrawal compose under the same policy lock as save/approval. */
-export function saveProfileEditPolicy(ctx:SessionContext,p:{keys:readonly string[];withdrawnReason:string}){
+export async function saveProfileEditPolicy(ctx:SessionContext,p:{keys:readonly string[];withdrawnReason:string}){
+ ctx=capturePolicyContext(ctx);
+ try{p={keys:structuredClone(p.keys),withdrawnReason:p.withdrawnReason};}catch{throw new TenantSettingError('wrong_type');}
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new TenantSettingError('not_group_admin');
+  await assertProfilePolicyWriteAuthorityTx(tx,ctx);
   const fields=essEditableFields();
   const declared=new Set<string>(fields.flatMap(field=>[field.id,...(field.ess.legacyPrimaryKey?[field.ess.legacyPrimaryKey]:[])]));
   if(p.keys.length>512||new Set(p.keys).size!==p.keys.length||p.keys.some(key=>!declared.has(key)))throw new TenantSettingError('wrong_type');
@@ -41,9 +57,12 @@ import {resolveAllowedRequestKeys} from '../lib/profile-requestable-fields';
 import {setTenantSetting,TenantSettingError} from './tenant-settings';
 
 /** Complete three-state policy, with finite primary-contact compatibility carried separately. */
-export function saveProfileVisibilityPolicy(ctx:SessionContext,p:{policy:unknown;withdrawnReason:string;expectedFingerprint?:string}){
+export async function saveProfileVisibilityPolicy(ctx:SessionContext,p:{policy:unknown;withdrawnReason:string;expectedFingerprint?:string}){
+ ctx=capturePolicyContext(ctx);
+ try{p=structuredClone(p);}catch{throw new TenantSettingError('wrong_type');}
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new TenantSettingError('not_group_admin');
+  await assertProfilePolicyWriteAuthorityTx(tx,ctx);
   if(!isProfileVisibilityPolicyValue(p.policy))throw new TenantSettingError('wrong_type');
   const policy=p.policy,visible=essVisibleFields(),ids=new Set(visible.map(field=>field.id));
   const groupIds=new Set(visible.flatMap(field=>[profileTabPolicyKey(field.tab),profileSectionPolicyKey(field.tab,field.section)]));
@@ -74,9 +93,11 @@ export function readProfilePresentationPolicy(ctx:SessionContext){return withTen
 export type ProfilePresentationPolicy=Awaited<ReturnType<typeof freshProfileEditPolicyTx>>;
 
 /** Disabling submission withdraws pending photos in the same locked policy transaction. */
-export function saveOwnPhotoSubmissionSetting(ctx:SessionContext,p:{enabled:boolean;withdrawnReason:string}){
+export async function saveOwnPhotoSubmissionSetting(ctx:SessionContext,p:{enabled:boolean;withdrawnReason:string}){
+ ctx=capturePolicyContext(ctx);p={enabled:p.enabled,withdrawnReason:p.withdrawnReason};
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new TenantSettingError('not_group_admin');
+  await assertProfilePolicyWriteAuthorityTx(tx,ctx);
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   await setTenantSetting(fresh.ctx,{key:'ess.profile_photo_edit',value:p.enabled},tx);
   const {withdrawProfileChangesForLockedFields}=await import('./profile');
