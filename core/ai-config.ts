@@ -79,6 +79,7 @@ export type AiProviderView = {
   isActive: boolean;
   providerOptions: OpenRouterOptions | null;
   candidateSaved: boolean;
+  candidateId: string | null;
   candidateVersion: string | null;
   activeModel: string | null;
   envKeyPresent: boolean; // a platform env key exists for this provider
@@ -122,6 +123,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         isActive: row?.isActive ?? false,
         providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
         candidateSaved: Boolean(draft),
+        candidateId: draft?.id ?? null,
         candidateVersion: draft?.version ?? null,
         activeModel: row?.isActive ? row.model : null,
         envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),

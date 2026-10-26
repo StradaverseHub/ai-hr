@@ -299,3 +299,23 @@ describe('tenant default user allowance, usage against limits and attention',()=
  });
 });
 
+
+
+describe('current calling-login authority for AI control writes', () => {
+ it.each(['feature', 'allowance', 'clear', 'setting'] as const)('refuses an archived administrator before %s effects', async operation => {
+  await setAiAllowance(group, { kind: 'user', subjectId: base.adminUserId, dailyRequests: 3, monthlyTokens: 100, enabled: true });
+  const before = await owner.db.select().from(schema.aiControlPolicy);
+  const beforeSettings = await owner.db.select().from(schema.tenantSetting);
+  const beforeEvents = await owner.db.select().from(schema.domainEvent);
+  await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, base.adminUserId));
+  const command = operation === 'feature' ? () => setAiFeature(group, 'hr_assistant', false)
+   : operation === 'setting' ? () => setAiFeature(group, 'claims_triage', false)
+   : operation === 'clear' ? () => clearUserAllowance(group, base.adminUserId)
+   : () => setAiAllowance(group, { kind: 'user', subjectId: base.adminUserId, dailyRequests: 0, monthlyTokens: 0, enabled: false });
+  await expect(command()).rejects.toThrow();
+  expect(await owner.db.select().from(schema.aiControlPolicy)).toEqual(before);
+  expect(await owner.db.select().from(schema.tenantSetting)).toEqual(beforeSettings);
+  expect(await owner.db.select().from(schema.domainEvent)).toEqual(beforeEvents);
+  expect(await runs()).toEqual([]);
+ });
+});

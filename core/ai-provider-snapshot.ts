@@ -1,4 +1,6 @@
-/** Server-only, request-memory provider binding. No persisted digest/key or client capability. */
+/** Server-only request authority. A sealed evaluation receipt may retain its fingerprint solely as
+ * historical tested-configuration evidence; fresh issued snapshots remain mandatory for authority.
+ * No plaintext persisted fingerprint/key or client capability. */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';

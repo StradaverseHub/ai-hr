@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiControlPolicy, aiModelRun, appUser, company, person, assistantBudget } from '../db/schema';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
@@ -9,9 +9,18 @@ import { SETTING_CATALOG } from '../packs/catalog';
 import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
+import { assertAiPrincipalTx } from './ai-principal';
 
 export class AiControlError extends Error {}
 const assertAdmin = (ctx: SessionContext) => { if (!isAdmin(ctx)) throw new AiControlError('Only HR administrators may manage AI.'); };
+const captureControlContext = (ctx: SessionContext): SessionContext => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
+async function currentControlAdminTx(tx: Tx, ctx: SessionContext, groupOnly: boolean) {
+  await assertAiPrincipalTx(tx, ctx);
+  if (groupOnly) {
+    const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.is_group_admin() as allowed`);
+    if (row?.allowed !== true) throw new AiControlError('Current AI administration access could not be confirmed.');
+  }
+}
 export function parseAiAllowance(value: string, maximum: number): number | null {
   if (!value.trim()) return null;
   if (!/^\d+$/.test(value.trim())) throw new AiControlError('Enter a whole number of zero or more, or leave blank for no additional cap.');
@@ -114,14 +123,19 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
 }
 
 export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, enabled: boolean) {
+  ctx = captureControlContext(ctx);
   assertAdmin(ctx);
   if (!isGroupAdmin(ctx)) throw new AiControlError('Only a group administrator may change shared AI features.');
   if (!isAiFeature(feature) || typeof enabled !== 'boolean') throw new AiControlError('Unknown AI feature.');
   const entry = AI_FEATURES.find(f=>f.id===feature)!;
   if(entry.kind==='platform') throw new AiControlError('This feature is managed by the platform.');
   // Existing switches remain authoritative, including the deterministic reminder fallback.
-  if(entry.setting) return setTenantSetting(ctx,{key:entry.setting,value:enabled});
+  if(entry.setting) return withTenant(ctx, async tx => {
+    await currentControlAdminTx(tx, ctx, true);
+    await setTenantSetting(ctx, { key: entry.setting!, value: enabled }, tx);
+  });
   await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
     await tx.insert(aiControlPolicy).values({tenantId:ctx.tenantId,scopeKey:`feature:${feature}`,kind:'feature',featureId:feature,enabled,updatedByUserId:ctx.userId??null})
       .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:{enabled,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`}});
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:ctx.tenantId,eventType:'ai-control.feature-changed',actor:actorOf(ctx),payload:{feature,enabled}});
@@ -131,10 +145,13 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type AiAllowanceKind = 'company'|'user'|'user_default';
 /** `user_default` is the tenant-wide allowance for every login without an individual policy; it has no subject. */
 export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;subjectId?:string|null;dailyRequests:number|null;monthlyTokens:number|null;enabled:boolean}){
+  ctx = captureControlContext(ctx);
+  p = { kind: p.kind, subjectId: p.subjectId, dailyRequests: p.dailyRequests, monthlyTokens: p.monthlyTokens, enabled: p.enabled };
   assertAdmin(ctx);
   if(!['company','user','user_default'].includes(p.kind)||(p.kind!=='user_default'&&!UUID.test(p.subjectId??''))||typeof p.enabled!=='boolean')throw new AiControlError('Unknown allowance scope.');
   for(const [value,max] of [[p.dailyRequests,1000000],[p.monthlyTokens,1000000000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
   await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, p.kind !== 'company');
     if(p.kind==='user'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change user allowances.');
     if(p.kind==='user_default'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change the default user allowance.');
     const subjectId=p.kind==='user_default'?null:p.subjectId!;
@@ -152,10 +169,12 @@ export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;
 }
 /** Returns a login to the tenant default by removing its individual policy; the removed values stay in the event history. */
 export async function clearUserAllowance(ctx:SessionContext,userId:string){
+  ctx = captureControlContext(ctx);
   assertAdmin(ctx);
   if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change user allowances.');
   if(!UUID.test(userId))throw new AiControlError('Unknown user.');
   await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
     const [removed]=await tx.delete(aiControlPolicy).where(and(eq(aiControlPolicy.tenantId,ctx.tenantId),eq(aiControlPolicy.scopeKey,`user:${userId}`),eq(aiControlPolicy.kind,'user'))).returning();
     if(!removed)throw new AiControlError('This login already follows the default allowance.');
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:userId,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:'user',enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens}});

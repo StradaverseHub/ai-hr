@@ -8,6 +8,7 @@ import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import * as reads from './read';
 import { ownClaimStatuses } from '../packs/claims/service';
+import { createModuleAgentReaders } from './module-agent-readers';
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const principalKey = (ctx: SessionContext) => JSON.stringify([ctx.tenantId, ctx.userId, ctx.personId ?? null, ctx.roles ?? null, ctx.grants ?? null]);
@@ -21,6 +22,7 @@ function createReads(ctx: SessionContext, tx: Tx, active: () => boolean) {
     return result;
   };
   return Object.freeze({
+    ...createModuleAgentReaders(ctx, tx, active),
     myEmployment: (selected?: { employmentId: string }) => checked(() => reads.myEmployment(ctx, selected, tx)),
     myEmployments: (opts?: { profileEdit?: boolean }) => checked(() => reads.myEmployments(ctx, opts, tx)),
     myEmploymentIdsAll: () => checked(() => reads.myEmploymentIdsAll(ctx, tx)),
