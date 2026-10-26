@@ -89,7 +89,9 @@ export async function consumeOwnIntegrityChallenge<T>(ctx:SessionContext,input:I
     if(row.consumedAt)return {state:'already_consumed' as const,consumedAt:row.consumedAt.toISOString()};
     const now=await stamp(tx);if(now>=row.expiresAt)throw new IntegrityChallengeError('expired');
     const challenge=view(row,now);
-    await tx.update(mobileIntegrityChallenge).set({consumedAt:now}).where(eq(mobileIntegrityChallenge.id,row.id));
+    const [consumed]=await tx.update(mobileIntegrityChallenge).set({consumedAt:now}).where(eq(mobileIntegrityChallenge.id,row.id)).returning({id:mobileIntegrityChallenge.id});
+    // A row lock does not make a later RLS refusal or database write veto successful.
+    if(!consumed)throw new IntegrityChallengeError('not_found');
     const value=await operation(tx,challenge);
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:row.id,
       eventType:'mobile.integrity.challenge.consumed',actor:actorOf(ctx),subjectEmploymentId:intent.employmentId,payload:{purpose:intent.purpose}});

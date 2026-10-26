@@ -110,6 +110,21 @@ describe('persistent own integrity challenges',()=>{
     await expect(consumeOwnIntegrityChallenge(e.ctx,{...e.intent,challengeId:challenge.id},operation)).rejects.toThrow();
     expect(operation).not.toHaveBeenCalled();
   });
+  it('does not run business writes when the database declines the transition',async()=>{
+    const e=await employee(),challenge=await issueOwnIntegrityChallenge(e.ctx,e.intent),operation=vi.fn(async()=> 'must not run');
+    // Owned disposable database only: model a BEFORE UPDATE veto that returns no changed row.
+    await owner.db.execute(sql`create function app.test_integrity_write_veto() returns trigger language plpgsql as $$begin return null;end;$$`);
+    await owner.db.execute(sql`create trigger zz_test_integrity_write_veto before update on mobile_integrity_challenge
+      for each row execute function app.test_integrity_write_veto()`);
+    try{
+      await expect(consumeOwnIntegrityChallenge(e.ctx,{...e.intent,challengeId:challenge.id},operation)).rejects.toMatchObject({reason:'not_found'});
+      expect(operation).not.toHaveBeenCalled();expect((await issueOwnIntegrityChallenge(e.ctx,e.intent)).state).toBe('active');
+      expect(await events(challenge.id)).toHaveLength(1);
+    }finally{
+      await owner.db.execute(sql`drop trigger zz_test_integrity_write_veto on mobile_integrity_challenge`);
+      await owner.db.execute(sql`drop function app.test_integrity_write_veto()`);
+    }
+  });
   it('caps outstanding challenges while preserving retries of an already committed reference',async()=>{
     const e=await employee();const first=await issueOwnIntegrityChallenge(e.ctx,e.intent);
     for(let i=0;i<3;i++)await issueOwnIntegrityChallenge(e.ctx,{...e.intent,requestId:randomUUID()});
