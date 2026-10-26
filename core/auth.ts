@@ -1,3 +1,4 @@
+import { manualIdentityError } from '../lib/identity/manual-model';
 import { internalSelected } from '../lib/internal-auth/config';
 import { keycloakSelected } from '../lib/identity/config';
 /**
@@ -129,6 +130,8 @@ async function appendAuthEvent(args: {
 // ─────────────────────────── Admin: invitations ───────────────────────────
 
 export type InviteUserInput = {
+  /** Explicit new human login contact. Never creates an employment or matches by email. */
+  fullName?: string;
   email: string;
   role: string;
   companyId?: string | null;
@@ -146,9 +149,20 @@ async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput
   const email=input.email.trim().toLowerCase();
   if(!email||!email.includes('@'))throw new Error('A valid email is required to invite a user.');
   if(!ROLES.has(input.role))throw new Error(`Unknown role: ${input.role}`);
+  let personId=input.personId??null;
+  if(input.fullName!==undefined){
+    if(personId||!input.fullName.trim()||input.fullName.trim().length>200)throw new Error('Enter the new user’s full name.');
+    try {
+      const rows=await tx.execute<{id:string}>(sql`select app.create_login_person(${input.fullName.trim()},${email}) id`);
+      personId=rows[0].id;
+    } catch(error) {
+      if(manualIdentityError(error).code==='conflict')throw new Error('A person with this email already exists. Select the existing person or review existing accounts.');
+      throw error;
+    }
+  }
   const token=newRawToken(),leaseToken=randomUUID();
   const [row]=await tx.insert(appInvitation).values({tenantId:ctx.tenantId,companyId:input.companyId??null,email,
-    role:input.role,personId:input.personId??null,tokenHash:hashToken(token),status:'pending',
+    role:input.role,personId,tokenHash:hashToken(token),status:'pending',
     expiresAt:sql`now()+(${INVITE_TTL_DAYS}||' days')::interval`,createdBy:ctx.userId??null}).returning({id:appInvitation.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:row.id,
     eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,companyId:input.companyId??null}});

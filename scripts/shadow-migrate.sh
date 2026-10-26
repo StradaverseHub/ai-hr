@@ -22,12 +22,11 @@
 # skipped, would collide with an existing object, or would fail against real-world state, it fails HERE.
 #
 # Usage:  bash scripts/shadow-migrate.sh
-# Env:    IMPROVE_SSH_HOST (default 203.142.6.241), IMPROVE_SSH_PORT (8288), IMPROVE_SSH_USER (ubuntu)
+# SSH: private OpenSSH alias aihr-staging; optional IMPROVE_SSH_HOST / _PORT / _USER overrides.
 set -uo pipefail
 
-HOST="${IMPROVE_SSH_HOST:-203.142.6.241}"
-PORT="${IMPROVE_SSH_PORT:-8288}"
-USER="${IMPROVE_SSH_USER:-ubuntu}"
+. "$(dirname "${BASH_SOURCE[0]}")/operator-ssh.sh" || exit 2
+HOST="$AIHR_OPERATOR_TARGET"
 REMOTE_DIR="${IMPROVE_REMOTE_DIR:-/opt/ai-hr}"
 PGHOST=127.0.0.1; PGPORT=5433; SUPER=postgres; SHADOWDB=ai_hr_shadow
 ROOT="$(pwd)"; ENVFILE="$ROOT/.env.local"; BACKUP="$ROOT/.env.local.shadow.bak"
@@ -46,7 +45,7 @@ trap cleanup EXIT
 echo "== dump live schema from $HOST (structure only, no rows) =="
 # --schema-only: no employee data, no payroll figures, nothing personal is copied to this machine.
 # drizzle.__drizzle_migrations is included WITH data — it is the watermark the whole test depends on.
-ssh -p "$PORT" -o BatchMode=yes -o ConnectTimeout=12 "$USER@$HOST" \
+ssh "${AIHR_OPERATOR_SSH_OPTS[@]}" "$AIHR_OPERATOR_TARGET" \
   "cd $REMOTE_DIR && set -a && . ./.env.production && set +a && \
    pg_dump --schema-only --no-owner --no-privileges \"\$MIGRATION_DATABASE_URL\" && \
    pg_dump --data-only --table=drizzle.__drizzle_migrations --no-owner --no-privileges \"\$MIGRATION_DATABASE_URL\"" \

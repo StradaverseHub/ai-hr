@@ -15,6 +15,15 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      profile_database:
+        description: Opt-in reset/seed/template timing when the candidate implements test/profile.ts
+        default: false
+        type: boolean
+      duration_order:
+        description: Opt-in observed-duration file scheduling; cases and resources remain unchanged
+        required: false
+        default: false
+        type: boolean
       run_typecheck:
         description: Whole-repository compiler check in a separate standard runner
         default: false
@@ -33,6 +42,10 @@ env:
   TZ: Asia/Kuala_Lumpur
   LANG: en_US.UTF-8
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_CI_PG_MEMORY_GIB: '2'
+  AIHR_CI_PG_JIT: 'on'
+  AIHR_FOCUSED_PROFILE: ${{ inputs.profile_database }}
+  AIHR_TEST_DURATION_ORDER: ${{ inputs.duration_order }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -50,8 +63,11 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+      - name: Pin dependency-free controller runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --test .github/ci/focused-checks.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
@@ -66,13 +82,14 @@ jobs:
   selected-tests:
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
+      AIHR_FOCUSED_SUITE_CAPACITY: 'true'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -86,8 +103,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
+        env:
+          AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
+      - name: Summarize opt-in harness phase timings
+        if: ${{ always() && inputs.profile_database }}
+        run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned database cleanup after interrupted checks
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop

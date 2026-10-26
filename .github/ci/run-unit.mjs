@@ -7,6 +7,8 @@ const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evidence.mjs';
 import {hostHealth} from './host-health.mjs';
 import {createPlan} from './plan.mjs';
+import {DB_BATCH_FILES} from './manifest.mjs';
+import {validatePdfSetupProof} from './pdf-tools.mjs';
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
@@ -15,11 +17,12 @@ const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 let failure = false;
 try {
+  if(unit.kind!=='browser'){report.pdfToolSetup=JSON.parse(readFileSync(join(process.env.RUNNER_TEMP,'pdf-tools-setup.json'),'utf8'));validatePdfSetupProof(plan,unit,report.pdfToolSetup);}
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
   if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));
   if(unit.kind==='db'&&(process.env.AIHR_CI_PG_MEMORY_GIB!=='2'||process.env.AIHR_CI_PG_JIT!=='on'))throw Error('Full CI requires measured 2 GiB/default-JIT database budget');
-  const batchSize = unit.kind === 'db' ? 64 : Math.max(1, unit.files.length);
+  const batchSize = unit.kind === 'db' ? DB_BATCH_FILES : Math.max(1, unit.files.length);
   for (let offset = 0; offset < unit.files.length; offset += batchSize) {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
     if (unit.kind === 'db') {
@@ -39,7 +42,7 @@ try {
       args.push('--config', config);
     }
     args.push(...files, '--reporter=default', '--reporter=json', '--outputFile.json=' + path);
-    const env = {...process.env, VITEST_MAX_WORKERS: String(plan.execution.workers), VITEST_MAX_WORKERS_NODB: String(plan.execution.workers), AIHR_BROWSER_ENGINE: unit.engine ?? ''};
+    const env = {...process.env, VITEST_MAX_WORKERS: String(plan.execution.workers), VITEST_MAX_WORKERS_NODB: String(plan.execution.workers), AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
     if (unit.kind !== 'db') for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closed;
     const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
     const exitCode = child.status ?? 1;

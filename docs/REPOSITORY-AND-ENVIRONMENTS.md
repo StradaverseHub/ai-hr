@@ -10,17 +10,23 @@ Until the owner revokes this instruction, integrate each verified release into b
 
 ## Repository
 
-The sole canonical repository is **https://github.com/StradaverseHub/ai-hr** (private, GitHub organization `StradaverseHub`, repository ID `1333414856`). The earlier `zenlam/ai-hr` and personal-account `stradaverse-hub/ai-hr` locations are historical; use the organization URL for every new clone, push, pull request and CI integration.
+The sole canonical repository is **https://github.com/StradaverseHub/ai-hr** (public, GitHub organization `StradaverseHub`, repository ID `1333414856`). The earlier `zenlam/ai-hr` and personal-account `stradaverse-hub/ai-hr` locations are historical; use the organization URL for every new clone, push, pull request and CI integration.
 
 ```sh
 git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
 ```
 
+## Public-repository Actions capacity
+
+On 26 October 2026 the owner made this repository public; authenticated GitHub metadata confirmed `visibility=PUBLIC` and `isPrivate=false`. [Standard GitHub-hosted Actions are free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions), so the earlier private included-minute hold is superseded for these runs. Use standard runners only: larger runners remain separately billed, and artifact/cache storage has separate allowances. No paid capacity or billing-setting change is authorized by this visibility change.
+
+[Standard public Ubuntu runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) provide four CPUs and 16 GB RAM. Record actual execution resources and timings; results from the earlier private runners do not prove current performance. The existing complete-coverage, release-coordination and staging/main deployment rules remain in force.
+
 ## Branch and environment roles
 
 | Branch | Environment | Target |
 |---|---|---|
-| `alpha` | Staging / internal acceptance | The existing server, previously called production: `ubuntu@203.142.6.241:8288`, application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
+| `alpha` | Staging / internal acceptance | The existing server, previously called production: SSH alias `aihr-staging` (connection settings are private; see [Operator access](../deploy/OPERATOR-ACCESS.md)), application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
 | `main` | New production / live | Reserved for the separate live installation that the owner will set up. Its host, URL, database, credentials and deployment integration are not established by this decision. |
 | `codex/*` and other work branches | Isolated development | Target `alpha` for staging integration; promote a verified release to `main` for the future live environment. |
 
