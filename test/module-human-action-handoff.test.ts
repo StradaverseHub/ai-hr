@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['leave','ess','notifications','performance','claims','system_testing'];
+  const connected=['leave','ess','notifications','performance','claims','system_testing','org'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }

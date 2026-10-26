@@ -115,3 +115,9 @@ it('routes Claims submission only to a human selection, never model values, rece
  for(const extra of [{draftId:'posted'},{employmentId:'other'},{amount:1},{receiptIds:['invented']},{submitForApproval:true},{reviewedDigest:'a'.repeat(64)},{confirm:true}])expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.submit',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.submit',phase:'confirm'})).toThrow();
 });
+
+it('offers Org only a human reporting selection without model-picked employees, managers or authority',()=>{
+ expect(parseModuleAgentActionNomination({module:'org',action:'org.reporting.change',phase:'prepare'})).toEqual({kind:'prepare',module:'org',action:'org.reporting.change',adapter:'module_org_reporting_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{subordinateEmploymentId:'posted'},{managerEmploymentId:'other'},{lineType:'delegate'},{validFrom:'2026-01-01'},{movement:{type:'promotion'}},{roles:['hr_admin']},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'org',action:'org.reporting.change',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'org',action:'org.reporting.change',phase:'confirm'})).toThrow();
+});

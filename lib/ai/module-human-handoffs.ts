@@ -4,6 +4,7 @@ import {getModuleAgentAction,parseModuleAgentActionNomination} from './module-ag
 import type {AgentModuleCode} from './module-agents';
 const routes=[
  {module:'leave',action:'leave.apply',route:'/assistant/leave'},
+ {module:'org',action:'org.reporting.change',route:'/assistant/org'},
  {module:'claims',action:'claims.draft.save',route:'/assistant/claims'},
  {module:'claims',action:'claims.submit',route:'/assistant/claims'},
  {module:'system_testing',action:'system_testing.execution.save',route:'/assistant/testing'},
@@ -12,8 +13,8 @@ const routes=[
  {module:'performance',action:'performance.review.acknowledge',route:'/assistant/performance'},
  {module:'performance',action:'performance.onehr.plan.acknowledge',route:'/assistant/performance'},
 ] as const;
-const Handoff=z.object({module:z.enum(['leave','ess','notifications','performance','claims','system_testing']),action:z.enum(['claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
- route:z.enum(['/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
+const Handoff=z.object({module:z.enum(['leave','ess','notifications','performance','claims','system_testing','org']),action:z.enum(['org.reporting.change','claims.submit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
+ route:z.enum(['/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
 export type ModuleHumanHandoff=z.infer<typeof Handoff>;
 /** Called only after actual canonical read admission. It retrieves no HR values or choices. The
  * destination must still prove the current caller, source permission and human confirmation. */
@@ -28,7 +29,7 @@ export function moduleHumanActionHandoffs(module:AgentModuleCode):readonly Modul
  * read outcomes without handoff metadata keep their original presentation. */
 export function checkedModuleHumanHandoffs(module:AgentModuleCode,value:unknown):readonly ModuleHumanHandoff[]{
  if(value===undefined)return Object.freeze([]);
- const actual=z.array(Handoff).max(8).parse(value),expected=moduleHumanActionHandoffs(module);
+ const actual=z.array(Handoff).max(9).parse(value),expected=moduleHumanActionHandoffs(module);
  if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('Human review options unavailable.');
  return Object.freeze(actual.map(row=>Object.freeze(row)));
 }
