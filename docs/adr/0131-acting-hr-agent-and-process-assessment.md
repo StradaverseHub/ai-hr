@@ -2188,7 +2188,7 @@ labels, route-local blur errors/helper text, minimum touch targets and metadata-
 feedback follow the targeted UI/UX skill guidance. Fourteen new copy keys exist in
 all six locales; actual translation/render/accessibility/viewport checks remain UNRUN.
 Pure mocked adapter/probe/HTTP/privacy regressions, actual SQL key/options/tenant/
-revoked-or-company-only-admin/RLS groups, four principal/admission groups and DOM
+revoked-or-company-only-admin/RLS groups, five principal/admission groups and DOM
 settings cases are AUTHORED UNRUN. Existing AI config/governance/feature consumers,
 whole compiler, SQL/shadow migrations, build and browser journey remain UNRUN.
 Only changed-input AST syntax, six-locale JSON presence and diff checks were run;
@@ -2229,3 +2229,12 @@ unapplied until Operator0601 is either in the verified baseline or explicitly re
 reallocated by its actual owner. Do not edit peer files, silently include unrelated
 operator features, skip an applied lower migration or treat filename absence as a
 reservation receipt. The ordering dependency is being coordinated separately.
+
+
+The shared AI principal also binds the actual login's person link (including an
+explicit no-person binding); omission cannot be used to accept a newly relinked
+identity. An actual relink-refusal DB case is authored UNRUN. Current-config/payload
+version binding, account-default processor evaluation and typed module/disclosure
+ownership are still outstanding; this integration is not a live-provider capability
+or end-to-end security pass. The gateway continues to require canonical/human effect
+owners and honest unknown accounting, never model-computed HR/payroll facts.
