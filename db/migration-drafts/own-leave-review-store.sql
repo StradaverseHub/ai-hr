@@ -3,6 +3,7 @@
 -- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
@@ -14,7 +15,11 @@ CREATE TABLE app.assistant_own_leave_review (
  CHECK(CASE WHEN state='awaiting_confirmation' THEN intent_digest IS NOT NULL AND reviewed_digest IS NOT NULL
   ELSE intent_digest IS NULL AND reviewed_digest IS NULL END),
  leave_request_id uuid UNIQUE,submission_event_id uuid UNIQUE,
- CHECK((state='completed')=(leave_request_id IS NOT NULL AND submission_event_id IS NOT NULL)),
+ notification_event_id uuid UNIQUE,
+ CHECK(CASE WHEN action_kind='leave.apply' THEN notification_event_id IS NULL
+  AND ((state='completed')=(leave_request_id IS NOT NULL AND submission_event_id IS NOT NULL))
+  ELSE leave_request_id IS NULL AND submission_event_id IS NULL
+   AND ((state='completed')=(notification_event_id IS NOT NULL)) END),
  CHECK((leave_request_id IS NULL)=(submission_event_id IS NULL)),
  created_at timestamptz NOT NULL,expires_at timestamptz NOT NULL CHECK(expires_at>created_at)
 );
@@ -79,7 +84,7 @@ CREATE FUNCTION app._assistant_own_leave_review_json(p_id uuid) RETURNS jsonb
   'receipt',CASE WHEN r.state='completed' THEN jsonb_build_object('actionId',r.id,'contractVersion',1,
    'state','completed','leaveRequestId',r.leave_request_id,'submissionEventId',r.submission_event_id) ELSE NULL END)
  FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id
- WHERE r.id=p_id;
+ WHERE r.id=p_id AND r.action_kind='leave.apply';
 $$;
 REVOKE ALL ON FUNCTION app._assistant_own_leave_review_json(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -129,7 +134,7 @@ DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id()
 BEGIN
  IF t IS NULL OR u IS NULL THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
- SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='leave.apply';
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
  RETURN r.employment_id;
@@ -146,7 +151,7 @@ BEGIN
   OR current_setting('transaction_read_only')<>'off' THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
- SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u FOR UPDATE;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='leave.apply' FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
  IF p_discard IS TRUE AND r.state='awaiting_confirmation' AND p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN
@@ -181,7 +186,7 @@ BEGIN
   OR current_setting('transaction_read_only')<>'off' THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
- SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u FOR UPDATE;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='leave.apply' FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
  IF p_request IS NULL OR p_event IS NULL THEN
@@ -359,9 +364,183 @@ BEGIN
  IF p IS NULL THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
  at_time:=clock_timestamp();
  RETURN QUERY SELECT r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
-  WHERE r.tenant_id=t AND r.user_id=u AND r.person_id=p
+  WHERE r.tenant_id=t AND r.user_id=u AND r.person_id=p AND r.action_kind='leave.apply'
    AND r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time
   ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_index() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Shared module action custody extension: UNJOURNALED / UNAPPLIED, part of the reservation above.
+
+-- Same physical owner/content lifecycle. A native event is a reference, never stored private proof.
+CREATE FUNCTION app._assistant_module_action_review_json(p_id uuid) RETURNS jsonb
+ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',jsonb_build_object(
+  'actionId',r.id,'action',r.action_kind,'contractVersion',1,
+  'binding',jsonb_build_object('tenantId',r.tenant_id,'userId',r.user_id,'personId',r.person_id,'employmentId',r.employment_id,'companyId',r.company_id),
+  'intentDigest',r.intent_digest,'reviewedDigest',r.reviewed_digest,'state',r.state,
+  'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+  'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object(
+   'formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
+  'eventId',r.notification_event_id)
+ FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id
+ WHERE r.id=p_id AND r.action_kind='notifications.email_preferences.save';
+$$;
+REVOKE ALL ON FUNCTION app._assistant_module_action_review_json(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_module_action_review_prepare(p_kind text,p_id uuid,p_person uuid,p_employment uuid,p_company uuid,
+ p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE at_time timestamptz;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(p_person,p_employment,p_company);
+ -- A preparation in the same privacy-erasure transaction must not create new uncaptured private text.
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+  AND i.tenant_id=t AND i.person_id=p_person)
+  OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+   AND i.tenant_id=t AND i.person_id=p_person) THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$'
+  OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$'
+  OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512
+  OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ -- Private review admission is separate from model quota. The identity owner already holds the
+ -- tenant Access lock, serializing competing preparations and privacy/custody transitions. Bounds
+ -- apply to this login only: at most five unexpired pending reviews and twenty preparations per
+ -- rolling ten minutes. Discard/expiry cannot reset the creation-rate budget. SQL owns every time.
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND state='awaiting_confirmation' AND expires_at>at_time)>=5
+  OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND created_at>at_time-interval '10 minutes')>=20 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review
+  (action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES(p_kind,p_id,t,u,p_person,p_employment,p_company,
+  p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);
+ RETURN app._assistant_module_action_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_module_action_review_prepare(text,uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_module_action_review_prepare(text,uuid,uuid,uuid,uuid,text,text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_module_action_review_subject(p_id uuid,p_kind text) RETURNS uuid
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF t IS NULL OR u IS NULL THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind=p_kind;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
+ RETURN r.employment_id;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_module_action_review_subject(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_module_action_review_subject(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_module_action_review_read(p_id uuid,p_kind text,p_discard boolean DEFAULT false,p_reviewed_digest text DEFAULT NULL) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind=p_kind FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
+ IF p_discard IS TRUE AND r.state='awaiting_confirmation' AND p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN
+  IF clock_timestamp()>=r.expires_at THEN
+   UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='expired' WHERE id=r.id;
+  ELSIF p_discard IS TRUE THEN
+   UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='discarded' WHERE id=r.id;
+  END IF;
+ END IF;
+ DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a
+  WHERE c.action_id=a.id AND a.id=r.id AND a.state<>'awaiting_confirmation';
+ RETURN app._assistant_module_action_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_module_action_review_read(uuid,text,boolean,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_module_action_review_read(uuid,text,boolean,text) TO ai_hr_app;
+
+--> statement-breakpoint
+
+-- Source provenance remains the closed native adapter's responsibility. This SQL proves current
+-- owner/digest/expiry and exact top-level source-row custody, not arbitrary SQL's canonical origin.
+CREATE FUNCTION app.assistant_module_action_review_complete(p_id uuid,p_kind text,p_reviewed_digest text,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;d public.domain_event%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+ categories text[]:=ARRAY['attendance','claims','delegation','leave','notice','offboarding','payroll','onboarding','performance','profile','readiness','review','rewards','toil','employee_master_reports'];
+BEGIN
+ IF p_kind IS DISTINCT FROM 'notifications.email_preferences.save' OR t IS NULL OR u IS NULL
+  OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' THEN
+  RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND action_kind=p_kind AND tenant_id=t AND user_id=u FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
+ IF p_event IS NULL THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='completed' THEN
+  IF r.notification_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+  SELECT * INTO d FROM public.domain_event WHERE id=p_event AND tenant_id=t AND actor_type='user' AND actor_id=u
+   AND aggregate_type='employment' AND aggregate_id=r.employment_id AND subject_employment_id=r.employment_id
+   AND event_type='notification-email.consent-changed' AND xmin=pg_current_xact_id()::xid;
+  IF NOT FOUND OR jsonb_typeof(d.payload->'enabledCategories') IS DISTINCT FROM 'array'
+   OR (d.payload-'enabledCategories'-'locale')<>'{}'::jsonb
+   OR d.payload->>'locale' IS NULL OR d.payload->>'locale' NOT IN ('en','ms','zh','vi','ta','th') THEN
+   RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(d.payload->'enabledCategories') v
+    WHERE jsonb_typeof(v)<>'string' OR NOT (v#>>'{}')=ANY(categories))
+   OR jsonb_array_length(d.payload->'enabledCategories')<>(SELECT count(DISTINCT v) FROM jsonb_array_elements(d.payload->'enabledCategories') v)
+   OR (SELECT count(*) FROM public.notification_pref p WHERE p.tenant_id=t AND p.recipient_employment_id=r.employment_id AND p.channel='email')<>cardinality(categories)
+   OR EXISTS(SELECT 1 FROM public.notification_pref p WHERE p.tenant_id=t AND p.recipient_employment_id=r.employment_id AND p.channel='email'
+    AND (NOT p.category=ANY(categories) OR p.xmin<>pg_current_xact_id()::xid
+     OR p.enabled IS DISTINCT FROM ((d.payload->'enabledCategories') ? p.category)
+     OR p.email_locale IS DISTINCT FROM d.payload->>'locale'
+     OR (p.enabled AND p.email_consent_user_id IS DISTINCT FROM u))) THEN
+   RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+  UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',notification_event_id=p_event WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Module review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_module_action_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_module_action_review_complete(uuid,text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_module_action_review_complete(uuid,text,text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Discovery after lost preparation is metadata only, including after Assistant revocation.
+CREATE FUNCTION app.assistant_module_action_reviews_index()
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();p uuid;at_time timestamptz;
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' THEN
+  RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ SELECT a.person_id INTO p FROM public.app_user a JOIN public.person actual ON actual.id=a.person_id AND actual.tenant_id=a.tenant_id
+ WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id);
+ IF p IS NULL THEN RAISE EXCEPTION 'Own review index unavailable' USING ERRCODE='42501';END IF;
+ at_time:=clock_timestamp();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=t AND r.user_id=u AND r.person_id=p AND r.action_kind='notifications.email_preferences.save'
+   AND r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time
+  ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_module_action_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_module_action_reviews_index() TO ai_hr_app;
