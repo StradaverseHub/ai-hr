@@ -248,7 +248,7 @@ script the round depends on
 
 ### Production package publication after staging acceptance
 
-For each accepted staging release, use the final approval command in [Production packages](docs/PRODUCTION-PACKAGES.md). It automatically creates the dated production tag, packages, checksums, manifest and GitHub release notes from the accepted Linux build. Run it only after restart, exact source/build arrival, migration checks and the acceptance walkthrough, with the original acceptance evidence and explicit owner-exception label where applicable. Do not call it just because CI or a build finished. This publication does not deploy to production or authorize a database reset. Keep all SSH configuration and installation secrets private.
+For each accepted staging release, use the final approval command in [Production packages](docs/PRODUCTION-PACKAGES.md). It automatically creates the dated production tag, packages, checksums, manifest and GitHub release notes from the accepted Linux build. Run it only after restart, exact source/build arrival, migration checks and the acceptance walkthrough, using `--accept-staging`, the exact accepted `--ref` and `--build-id`, the original acceptance evidence and explicit owner-exception label where applicable. Do not call it just because CI or a build finished. Publish assets only to the separate private `StradaverseHub/ai-hr-releases` repository; the source repository may be public. This publication does not deploy to production or authorize a database reset. Keep all SSH configuration and installation secrets private.
 
 ## 8. Verification standards
 

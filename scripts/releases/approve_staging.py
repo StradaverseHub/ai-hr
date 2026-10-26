@@ -17,6 +17,8 @@ import tarfile
 from zoneinfo import ZoneInfo
 
 REPOSITORY = 'StradaverseHub/ai-hr'
+REPOSITORY_ID = 1333414856
+RELEASE_REPOSITORY = 'StradaverseHub/ai-hr-releases'
 ROOT = Path(__file__).resolve().parents[2]
 SHA = re.compile(r'^[0-9a-f]{40}$')
 BUILD = re.compile(r'^[A-Za-z0-9_-]{1,100}$')
@@ -180,8 +182,11 @@ print(json.dumps({'sha':p['sha'],'buildId':build,'pid':pid,'buildMtime':(root/'.
 
 
 class GitHub:
+    def __init__(self, repository=REPOSITORY):
+        self.repository = repository
+
     def api(self, path, method='GET', value=None):
-        args = ['gh', 'api', f'repos/{REPOSITORY}' + ('/' + path if path else ''), '--method', method]
+        args = ['gh', 'api', f'repos/{self.repository}' + ('/' + path if path else ''), '--method', method]
         if value is not None:
             args += ['--input', '-']
         return json.loads(run(args, input=None if value is None else json.dumps(value).encode()))
@@ -189,7 +194,7 @@ class GitHub:
     def asset(self, asset):
         require(asset['size'] <= 4 * 1024**2, 'Oversized release metadata')
         return run(['gh', 'api', '-H', 'Accept: application/octet-stream',
-                    f'repos/{REPOSITORY}/releases/assets/{asset["id"]}'])
+                    f'repos/{self.repository}/releases/assets/{asset["id"]}'])
 
     def releases(self):
         for page in range(1, 11):
@@ -200,14 +205,61 @@ class GitHub:
         raise ValueError('Release inventory exceeds bound')
 
     def upload(self, tag, files):
-        run(['gh', 'release', 'upload', tag, '--repo', REPOSITORY, *map(str, files)])
+        run(['gh', 'release', 'upload', tag, '--repo', self.repository, *map(str, files)])
+
+
+    def mirror(self, source, state):
+        require(self.repository == RELEASE_REPOSITORY and source.repository == REPOSITORY, 'Invalid tag transport')
+        run(['git', 'fetch', '--no-tags', '--no-write-fetch-head',
+             f'https://github.com/{REPOSITORY}.git', state['tagObject']], cwd=ROOT)
+        require(run(['git', 'rev-parse', state['tagObject'] + '^{commit}'], cwd=ROOT).decode().strip()
+                == state['sha'], 'Fetched source tag differs')
+        run(['git', '-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential',
+             'push', '--porcelain', '--no-verify', f'https://github.com/{RELEASE_REPOSITORY}.git',
+             state['tagObject'] + ':refs/tags/' + state['tag']], cwd=ROOT)
 
 
 def branches(github, sha):
-    require(github.api('')['private'] is True, 'Production packages require the private repository')
+    """Prove release lineage, never choose a candidate from a moving branch head."""
+    repo = github.api('')
+    require(repo['id'] == REPOSITORY_ID and repo['full_name'] == REPOSITORY,
+            'Source must be the canonical repository')
+    heads = {}
     for branch in ('alpha', 'main'):
-        require(github.api('git/ref/heads/' + branch)['object']['sha'] == sha,
-                'Approved source must match both published alpha and main')
+        head = github.api('git/ref/heads/' + branch)['object']['sha']
+        require(SHA.fullmatch(head), 'Invalid published ' + branch + ' commit')
+        heads[branch] = head
+        if head != sha:
+            # Compare immutable IDs, not branch names that can move between API calls.
+            comparison = github.api(f'compare/{sha}...{head}?per_page=1')
+            require(comparison['status'] == 'ahead' and comparison['merge_base_commit']['sha'] == sha,
+                    'Approved source must be contained in published ' + branch)
+    return heads
+
+
+def private_destination(github):
+    repo = github.api('')
+    require(repo['private'] is True and repo['full_name'] == RELEASE_REPOSITORY
+            and isinstance(repo['id'], int) and repo['id'] > 0,
+            'Production assets require the separate private release repository')
+    return repo['id']
+
+
+def mirror_tag(source, packages, state):
+    """Copy the exact annotated source tag, never push a branch or force an existing ref."""
+    path = 'git/ref/tags/' + state['tag']
+    try:
+        existing = packages.api(path)
+    except subprocess.CalledProcessError:
+        existing = None
+    if existing is None:
+        packages.mirror(source, state)
+        existing = packages.api(path)
+    require(existing['object']['type'] == 'tag' and existing['object']['sha'] == state['tagObject'],
+            'Private release tag differs; refusing replacement')
+    obj = packages.api('git/tags/' + state['tagObject'])
+    require(obj['object']['sha'] == state['sha'] and obj['object']['type'] == 'commit',
+            'Private release source differs')
 
 
 def verify_assets(release, expected, notes):
@@ -222,36 +274,42 @@ def verify_assets(release, expected, notes):
     require(release['body'].strip() == notes.strip() and not release['prerelease'], 'Release notes/identity mismatch')
 
 
-def publish(github, directory, state, checkpoint):
+def publish(source, github, directory, state, checkpoint):
     """Remote ref creation arbitrates concurrent publishers; never overwrite a tag or asset."""
+    destination_id = private_destination(github)
+    require(state.get('releaseRepositoryId', destination_id) == destination_id, 'Private release repository identity changed')
+    if 'releaseRepositoryId' not in state:
+        state['releaseRepositoryId'] = destination_id; checkpoint(state)
     identity = f"aihr-staging-release:{state['sha']}:{state['buildId']}"
     if not state.get('tag'):
         # Also prevents duplicates from another operator/output directory, including the initial manual release.
-        for release in github.releases():
-            if not TAG.fullmatch(release['tag_name']):
-                continue
-            manifests = [a for a in release['assets'] if a['name'] == 'release-manifest.json']
-            if manifests:
-                manifest = json.loads(github.asset(manifests[0]))
-                if manifest.get('commit') == state['sha'] and manifest.get('buildId') == state['buildId']:
-                    raise ValueError('This staging build already has a release (resume with its original local output): ' + release['html_url'])
+        for inventory in (source, github):
+            for release in inventory.releases():
+                if not TAG.fullmatch(release['tag_name']):
+                    continue
+                manifests = [a for a in release['assets'] if a['name'] == 'release-manifest.json']
+                if manifests:
+                    manifest = json.loads(inventory.asset(manifests[0]))
+                    if manifest.get('commit') == state['sha'] and manifest.get('buildId') == state['buildId']:
+                        raise ValueError('This staging build already has a release (resume with its original local output): ' + release['html_url'])
         for _ in range(8):
-            refs = github.api('git/matching-refs/tags/prod-' + state['date'] + '.')
+            refs = source.api('git/matching-refs/tags/prod-')
+            require(len(refs) <= 10000, 'Production tag inventory exceeds bound')
             tag = next_tag(state['date'], [r['ref'].removeprefix('refs/tags/') for r in refs])
-            # Recover a lost response to a prior ref creation before allocating another sequence.
+            # Refuse another approval of the same build even across dates or output directories.
             for ref in refs:
                 if ref['object']['type'] == 'tag':
-                    obj = github.api('git/tags/' + ref['object']['sha'])
+                    obj = source.api('git/tags/' + ref['object']['sha'])
                     require(identity not in obj['message'], 'This build already has a reserved production tag; resume the original output')
-            obj = github.api('git/tags', 'POST', {'tag': tag, 'message': 'Approved staging package\n' + identity,
+            obj = source.api('git/tags', 'POST', {'tag': tag, 'message': 'Approved staging package\n' + identity,
                                                 'object': state['sha'], 'type': 'commit'})
             # Save BEFORE the remote mutation so an interrupted/unknown response can resume this exact tag.
             state.update(tag=tag, tagObject=obj['sha']); checkpoint(state)
             try:
-                github.api('git/refs', 'POST', {'ref': 'refs/tags/' + tag, 'sha': obj['sha']})
+                source.api('git/refs', 'POST', {'ref': 'refs/tags/' + tag, 'sha': obj['sha']})
                 break
             except subprocess.CalledProcessError:
-                found = github.api('git/ref/tags/' + tag)
+                found = source.api('git/ref/tags/' + tag)
                 if found['object']['sha'] == obj['sha']:
                     break
                 del state['tag']; del state['tagObject']; checkpoint(state)
@@ -259,14 +317,15 @@ def publish(github, directory, state, checkpoint):
             raise ValueError('Tag allocation remained busy; retry')
     tag = state['tag']
     try:
-        ref = github.api('git/ref/tags/' + tag)
+        ref = source.api('git/ref/tags/' + tag)
     except subprocess.CalledProcessError:
-        github.api('git/refs', 'POST', {'ref': 'refs/tags/' + tag, 'sha': state['tagObject']})
-        ref = github.api('git/ref/tags/' + tag)
+        source.api('git/refs', 'POST', {'ref': 'refs/tags/' + tag, 'sha': state['tagObject']})
+        ref = source.api('git/ref/tags/' + tag)
     require(ref['object']['type'] == 'tag' and ref['object']['sha'] == state['tagObject'], 'Production tag changed')
-    obj = github.api('git/tags/' + state['tagObject'])
+    obj = source.api('git/tags/' + state['tagObject'])
     require(obj['object']['sha'] == state['sha'] and obj['object']['type'] == 'commit'
             and identity in obj['message'], 'Annotated tag source mismatch')
+    mirror_tag(source, github, state)
     source_name = f'ai-hr-{tag}-source.tar.gz'
     runtime_name = f'ai-hr-{tag}-linux-x64-runtime.tar.gz'
     for original, name in [('source.tar.gz', source_name), ('runtime.tar.gz', runtime_name)]:
@@ -278,6 +337,7 @@ def publish(github, directory, state, checkpoint):
                  [('source.tar.gz', source_name), ('runtime.tar.gz', runtime_name)]]
     manifest = {'schemaVersion': 1, 'release': tag, 'releaseDate': state['date'],
                 'releaseDateTimezone': 'Asia/Kuala_Lumpur', 'repository': REPOSITORY,
+                'packageRepository': RELEASE_REPOSITORY, 'packageRepositoryId': state['releaseRepositoryId'],
                 'commit': state['sha'], 'buildId': state['buildId'], 'platform': 'linux', 'architecture': 'x86_64',
                 'stagingRuntimeNodeVersion': state['snapshot']['nodeVersion'], 'nextVersion': state['snapshot']['nextVersion'],
                 'artifacts': artifacts, 'stagingApproval': {'acceptedAt': state['acceptedAt'], 'kind': state['approvalKind'],
@@ -305,7 +365,12 @@ Verify the downloaded assets with `shasum -a 256 -c SHA256SUMS` (or `sha256sum -
     # Save once so resume cannot silently change notes after another release is published.
     notes_path = directory / 'RELEASE_NOTES.md'
     if not notes_path.exists():
-        generated = github.api('releases/generate-notes', 'POST', {'tag_name': tag, 'target_commitish': state['sha']})
+        previous = next((r['tag_name'] for r in github.releases()
+                         if TAG.fullmatch(r['tag_name']) and not r['draft'] and not r['prerelease'] and r['tag_name'] != tag), None)
+        request = {'tag_name': tag, 'target_commitish': state['sha']}
+        if previous:
+            request['previous_tag_name'] = previous
+        generated = source.api('releases/generate-notes', 'POST', request)
         notes_path.write_text(notes + '\n' + generated['body'] + '\n'); notes_path.chmod(0o600)
     notes = notes_path.read_text()
     names = [source_name, runtime_name, 'release-manifest.json', 'RELEASE_NOTES.md']
@@ -337,6 +402,7 @@ Verify the downloaded assets with `shasum -a 256 -c SHA256SUMS` (or `sha256sum -
             github.upload(tag, missing)
         release = github.api('releases/' + str(state['releaseId']))
         verify_assets(release, expected, notes)
+        require(private_destination(github) == destination_id, 'Private release repository changed')
         github.api('releases/' + str(state['releaseId']), 'PATCH', {'draft': False, 'make_latest': 'true'})
     final = github.api('releases/' + str(state['releaseId']))
     verify_assets(final, expected, notes)
@@ -352,9 +418,12 @@ def main(argv=None):
     parser.add_argument('--staging-alias', default='aihr-staging')
     parser.add_argument('--remote-directory', default='/opt/ai-hr')
     parser.add_argument('--service', default='aihr')
-    parser.add_argument('--approval-evidence', required=True, type=Path, help='Existing staging acceptance/gate evidence; only its SHA256 is published')
+    parser.add_argument('--approval-evidence', type=Path, help='Original acceptance/gate evidence; required for publication; only its SHA256 is published')
+    parser.add_argument('--build-id', help='Exact build ID accepted by the human staging reviewer; required for publication')
     parser.add_argument('--owner-exception', action='store_true', help='Explicitly label owner-exception acceptance; never relabel as a full PASS')
-    parser.add_argument('--check', action='store_true', help='Read-only preflight: do not approve, tag, package or publish')
+    intent = parser.add_mutually_exclusive_group(required=True)
+    intent.add_argument('--check', action='store_true', help='Read-only preflight: do not approve, tag, package or publish')
+    intent.add_argument('--accept-staging', action='store_true', help='Explicit human staging acceptance; package and publish this exact source/build, never deploy')
     parser.add_argument('--output-root', type=Path, default=ROOT / '.improve/production-releases')
     args = parser.parse_args(argv)
     os.umask(0o077)
@@ -362,23 +431,34 @@ def main(argv=None):
     require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.staging_alias), 'Invalid private staging alias')
     require(re.fullmatch(r'[A-Za-z0-9_-]+', args.service), 'Invalid service name')
     require(args.remote_directory.startswith('/') and '\n' not in args.remote_directory, 'Invalid remote directory')
-    require(args.ssh_config.is_file() and args.approval_evidence.is_file(), 'Private SSH config and acceptance evidence are required')
-    require(0 < args.approval_evidence.stat().st_size <= 16 * 1024**2, 'Invalid acceptance evidence size')
+    require(args.ssh_config.is_file(), 'Private SSH config is required')
+    if args.build_id is not None:
+        require(BUILD.fullmatch(args.build_id), 'Invalid accepted build ID')
+    if args.accept_staging:
+        require(args.build_id is not None, 'Publication requires the exact human-accepted --build-id')
+        require(args.approval_evidence is not None and args.approval_evidence.is_file(),
+                'Publication requires original acceptance evidence')
+        require(0 < args.approval_evidence.stat().st_size <= 16 * 1024**2, 'Invalid acceptance evidence size')
     # Source is always git archive of the exact accepted commit, never local working-tree changes.
     require(run(['git', 'rev-parse', args.ref + '^{commit}'], cwd=ROOT).decode().strip() == args.ref, 'Source commit missing')
-    github = GitHub(); branches(github, args.ref)
+    source = GitHub(); branches(source, args.ref)
+    github = GitHub(RELEASE_REPOSITORY); private_destination(github)
     root = args.output_root.resolve(); root.mkdir(parents=True, exist_ok=True, mode=0o700); root.chmod(0o700)
-    lock_file = (root / '.publisher.lock').open('a')
-    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with (root / '.publisher.lock').open('a') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        capture_and_publish(args, source, github, root)
+
+
+def capture_and_publish(args, source_github, github, root):
     # Source archive can be prepared before the build identity is known, but --check never writes packages.
     import tempfile
     with tempfile.TemporaryDirectory(prefix='aihr-release-') as temporary:
         source = Path(temporary) / 'source.tar.gz'
-        proc = subprocess.Popen(['git', 'archive', '--format=tar', args.ref], cwd=ROOT, stdout=subprocess.PIPE)
-        with source.open('xb') as output, gzip.GzipFile(fileobj=output, mode='wb', mtime=0, compresslevel=2) as zipped:
-            for block in iter(lambda: proc.stdout.read(1024 * 1024), b''):
-                zipped.write(block)
-        require(proc.wait() == 0, 'Exact source archive failed')
+        with subprocess.Popen(['git', 'archive', '--format=tar', args.ref], cwd=ROOT, stdout=subprocess.PIPE) as proc:
+            with source.open('xb') as output, gzip.GzipFile(fileobj=output, mode='wb', mtime=0, compresslevel=2) as zipped:
+                for block in iter(lambda: proc.stdout.read(1024 * 1024), b''):
+                    zipped.write(block)
+            require(proc.wait() == 0, 'Exact source archive failed')
         files = audit_archive(source)
         lock = hashlib.sha256(run(['git', 'show', args.ref + ':pnpm-lock.yaml'], cwd=ROOT)).hexdigest()
         request = {'sha': args.ref, 'directory': args.remote_directory, 'service': args.service,
@@ -390,6 +470,8 @@ def main(argv=None):
             require(value['sha'] == args.ref and BUILD.fullmatch(value['buildId']), 'Invalid staging identity')
             return value
         before = snapshot()
+        require(args.build_id is None or before['buildId'] == args.build_id,
+                'Running staging build differs from the human-accepted --build-id')
         if args.check:
             print(json.dumps({'preflight': 'passed', 'commit': args.ref, 'buildId': before['buildId'], 'publicationPerformed': False})); return
         directory = root / (args.ref + '-' + before['buildId']); directory.mkdir(exist_ok=True, mode=0o700)
@@ -431,8 +513,8 @@ def main(argv=None):
                 require(digest(directory / name) == wanted['sha256'], 'Prepared package changed')
             audit_archive(runtime, runtime=True, build=before['buildId'], lock=lock)
         require(snapshot() == before, 'Staging changed before publication')
-        branches(github, args.ref)
-        print(publish(github, directory, state, checkpoint))
+        branches(source_github, args.ref)
+        print(publish(source_github, github, directory, state, checkpoint))
 
 
 if __name__ == '__main__':
