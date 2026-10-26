@@ -66,9 +66,11 @@ export type AttendanceDayEdit={employmentId:string;date:string;baseline:string;r
 );
 
 export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit){
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!['schedule','overtime'].includes(p.kind))throw new Error('Choose a supported attendance correction.');
   dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the correction in at most 500 characters.');
   return withAttendanceTenant(ctx,async tx=>{
+    await lockAttendanceLeaveDependenciesTx(tx,ctx,[p.employmentId]);
     const employee=await subject(tx,ctx,p.employmentId);if(!employee||employee.self)throw new Error('You cannot correct your own attendance or an employee outside your administrator scope.');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
     const payroll=await lockAttendancePayrollTx(tx,p.employmentId,p.date);

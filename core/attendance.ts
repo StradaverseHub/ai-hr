@@ -6150,6 +6150,7 @@ export async function setAttendancePolicy(
     requireRegisteredDevice?: boolean;
   },
 ) {
+  p=structuredClone(p);ctx=captureAttendanceContext(ctx);
   const workStart = asTime(p.workStart, 'Work start');
   const workEnd = asTime(p.workEnd, 'Work end');
   const lateAfter = asTime(p.lateAfter, 'Late-after');
@@ -6183,6 +6184,8 @@ export async function setAttendancePolicy(
   const requireRegisteredDevice = p.requireRegisteredDevice ?? false;
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(attendancePolicy)
       .values({
@@ -6653,6 +6656,9 @@ export async function recomputeDayFigures(
     approvedOtMinutes?: number | null;
   },
 ) {
+  // Projection only: actual write roots own the complete interval BEFORE their earlier reads,
+  // Payroll/credit/day locks and writes. Do not introduce a late leaf lock or affect dry-run scopes.
+  p={...p};ctx=captureAttendanceContext(ctx);
   const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.date,
     fallbackIn:p.checkInAt,fallbackOut:p.checkOutAt,classification:'currentSchedule'});
   if(projected.state==='policy'){

@@ -8,12 +8,13 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {setRestDay} from '../core/roster';
+import {setRestDay,createShift,assignDefaultShift,updateShift} from '../core/roster';
+import {recomputeAttendance} from '../core/attendance-recompute';
 import {setToilPolicy} from '../core/toil';
-import {checkInTx,checkOutTx,requestAttendanceCorrection,decideAttendanceCorrection,cancelOwnAttendanceCorrection,cancelAttendanceApplication} from '../core/attendance';
+import {checkInTx,checkOutTx,setAttendancePolicy,requestAttendanceCorrection,decideAttendanceCorrection,cancelOwnAttendanceCorrection,cancelAttendanceApplication} from '../core/attendance';
 import {captureEmployeeClock} from '../core/attendance-clock';
 import {commitClockingImport} from '../core/attendance-clocking-import';
-import {attendanceDayEditor,amendExistingAttendanceApplication} from '../packs/attendance/day-adjustment';
+import {attendanceDayEditor,saveAttendanceDayEdit,amendExistingAttendanceApplication} from '../packs/attendance/day-adjustment';
 import {lockLeaveDependenciesTx} from '../packs/leave/service';
 import {BUILTIN_MAPPING_ID} from '../lib/clocking-file';
 import {adminCtx,entitledCtx,setModule,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -27,7 +28,7 @@ async function fixture(){
  return {admin,self,...e};
 }
 async function state(){
- const tables=['attendance','attendance_punch','attendance_clock_capture','attendance_correction','toil_accrual','leave_ledger','payroll_batch','attendance_day_adjustment','leave_type','attendance_workflow_request','attendance_workflow_decision','attendance_workflow_participant_decision'];
+ const tables=['attendance','attendance_punch','attendance_clock_capture','attendance_correction','toil_accrual','leave_ledger','payroll_batch','attendance_day_adjustment','attendance_policy','leave_type','attendance_workflow_request','attendance_workflow_decision','attendance_workflow_participant_decision'];
  const result:Record<string,unknown>={};
  for(const table of tables){const [row]=await owner.db.execute<{image:unknown}>(sql`select coalesce(jsonb_agg(to_jsonb(r) order by r.id),'[]'::jsonb) as image from ${sql.raw(table)} r where r.tenant_id=${b.tenantId}::uuid`);result[table]=row.image;}
  // Imports deliberately retain a failed run/audit after rollback; those logs are not Attendance effects.
@@ -72,6 +73,37 @@ describe('Attendance roots join leave dependency ownership before existing locks
   }else if(['decide','amend','own-cancel','admin-cancel'].includes(command)){
    const [row]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,correctionId));expect(row.status).toBe(command.includes('cancel')?'cancelled':'approved');
   }
+ });
+ it.each(['company-empty-means-all','explicit-cohort'] as const)('protects the full %s recompute cohort before any day changes, preserves dry-run and idempotent apply',async kind=>{
+  const first=await fixture(),second=await fixture(),ids=[first.employmentId,second.employmentId].sort();
+  const shift=await createShift(first.admin,{name:'Fictional Recompute Interval',code:'FCI',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});
+  for(const id of ids){await assignDefaultShift(first.admin,{employmentId:id,shiftId:shift.id});await checkInTx(first.admin,{employmentId:id,date,time:'09:30',manual:true});await checkOutTx(first.admin,{employmentId:id,date,time:'18:00',manual:true});}
+  await updateShift(first.admin,{shiftId:shift.id,name:'Fictional Recompute Interval',code:'FCI',startTime:'10:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});
+  const scope={companyId:b.companyId,employmentIds:kind==='explicit-cohort'?ids:[],from:date,to:date,dryRun:false};
+  const before=await state();
+  await held(ids[1],async()=>{
+   await expect(recomputeAttendance(first.admin,scope)).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);
+   // The failed complete-set acquisition cannot leave the earlier employment owned.
+   await withTenant(first.admin,tx=>lockLeaveDependenciesTx(tx,b.tenantId,[ids[0]]));
+   const preview=await recomputeAttendance(first.admin,{...scope,dryRun:true});expect(preview.checked).toBe(2);expect(preview.updated).toBe(2);expect(await state()).toEqual(before);
+  });
+  const result=await recomputeAttendance(first.admin,scope);expect(result.updated).toBe(2);
+  const days=await owner.db.select().from(s.attendance);expect(days.every(day=>day.status==='present'&&day.lateMinutes===0)).toBe(true);
+  const afterDays=await owner.db.select().from(s.attendance).orderBy(s.attendance.id);
+  expect((await recomputeAttendance(first.admin,scope)).updated).toBe(0);
+  expect(await owner.db.select().from(s.attendance).orderBy(s.attendance.id)).toEqual(afterDays);
+ });
+ it('protects administrator day edit before Payroll/credit/day reads and applies the same selected correction after release',async()=>{
+  const f=await fixture();await checkInTx(f.admin,{employmentId:f.employmentId,date,time:'08:00',manual:true});await checkOutTx(f.admin,{employmentId:f.employmentId,date,time:'17:00',manual:true});
+  const editor=(await attendanceDayEditor(f.admin,f.employmentId,date))!;
+  const p={employmentId:f.employmentId,date,baseline:editor.baseline,reason:'Fictional reviewed day classification',confirmPayrollRecalculation:false,kind:'schedule' as const,shiftId:null,dayKind:'rest_day' as const};
+  const before=await state();await held(f.employmentId,async()=>{await expect(saveAttendanceDayEdit(f.admin,p)).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);});
+  await saveAttendanceDayEdit(f.admin,p);const [adjustment]=await owner.db.select().from(s.attendanceDayAdjustment).where(eq(s.attendanceDayAdjustment.employmentId,f.employmentId));expect(adjustment.dayKind).toBe('rest_day');
+ });
+ it('protects the canonical fallback Attendance policy before its row/event mutation',async()=>{
+  const f=await fixture(),p={companyId:b.companyId,workStart:'10:00',workEnd:'19:00',breakMinutes:60,lateAfter:'10:15',halfDayBefore:'14:00',workingDays:[1,2,3,4,5]};
+  const before=await state();await held(f.employmentId,async()=>{await expect(setAttendancePolicy(f.admin,p)).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);});
+  await setAttendancePolicy(f.admin,p);const [policy]=await owner.db.select().from(s.attendancePolicy).where(eq(s.attendancePolicy.companyId,b.companyId));expect(policy.workStart).toBe('10:00:00');expect(await state()).not.toEqual(before);
  });
  it('protects actual automatic TOIL banking before approval and banks exactly once after release',async()=>{
   const f=await fixture();await setModule(b.tenantId,'toil','active');const admin=await entitledCtx(b,['hr_admin']);
