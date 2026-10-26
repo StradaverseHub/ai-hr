@@ -556,7 +556,7 @@ export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Pr
    min(action.created_at) filter(where action.kind=case when policy.policy->>'acknowledgement'='signature' then 'signed' when policy.policy->>'acknowledgement'='acknowledge' then 'acknowledged' else null end) as acknowledged_at
    from letter_recipient_event action where action.artifact_id=artifact.id and action.tenant_id=l.tenant_id) recipient on true
   left join lateral (select case when count(*)=1 then min(a.department_id::text)::uuid else null end as department_id,count(*)>1 as ambiguous
-   from assignment a where a.employment_id=l.employment_id and a.tenant_id=l.tenant_id and a.valid_from<=(b.selection->>'sourceAsOfDate')::date and (a.valid_to is null or a.valid_to>(b.selection->>'sourceAsOfDate')::date)) org on true
+   from assignment a where a.employment_id=l.employment_id and a.tenant_id=l.tenant_id and a.valid_from<=b.source_as_of_date::date and (a.valid_to is null or a.valid_to>b.source_as_of_date::date)) org on true
   left join department d on d.id=org.department_id and d.tenant_id=l.tenant_id
   where app.letter_permission(l.company_id,'report') and app.letter_permission(l.company_id,'read')
    and (l.created_at at time zone 'Asia/Kuala_Lumpur')::date between ${input.from}::date and ${input.to}::date
