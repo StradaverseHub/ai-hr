@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getSession } from '@/lib/session';
@@ -43,6 +44,7 @@ export default async function AssistantPage({
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
+  const leaveCopy=await getTranslations('ownLeaveReview.workflow');
   const sp = await searchParams;
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
@@ -77,6 +79,7 @@ export default async function AssistantPage({
       <PageHeader title={t('title')} description={t('description')} />
       <ErrorBanner message={sp.error ? t(`err_${sp.error}`) : undefined} />
 
+      <Link href="/assistant/leave" className="inline-flex min-h-11 items-center rounded-md border px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{leaveCopy('title')}</Link>
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}

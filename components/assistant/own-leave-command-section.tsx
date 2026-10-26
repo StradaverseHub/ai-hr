@@ -1,5 +1,5 @@
-/** Complete server composition, deliberately UNMOUNTED until migration/source/security acceptance.
- * No route/page imports this section. It accepts no session, employment, type or executor props. */
+/** Candidate server composition; release requires migration/source/security/experience acceptance.
+ * It accepts no session, employment, type or executor props. */
 import 'server-only';
 import {createHash} from 'node:crypto';
 import Link from 'next/link';

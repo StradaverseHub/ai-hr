@@ -1,4 +1,4 @@
-/** Real authenticated server binding, deliberately UNMOUNTED until release acceptance.
+/** Real authenticated server binding; the candidate route uses the configured-origin runtime.
  * No route.ts, model tool or orchestrator registers this function. It must never accept posted
  * session/locale/tenant/actor data or a callback that bypasses the canonical review command.
  */

@@ -24199,6 +24199,11 @@
       "savedRefused": "Unavailable",
       "savedCreated": "Created",
       "savedExpires": "Review expires"
+    },
+    "workflow": {
+      "title": "Review my leave request",
+      "description": "Prepare a one-day annual leave request, review the details, then choose whether to submit it. Approval follows the normal process.",
+      "back": "Back to Assistant"
     }
   },
   "operatorWorkspace": {

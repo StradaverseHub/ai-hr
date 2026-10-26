@@ -1,7 +1,6 @@
-/** Real Next/Web Request runtime binding, deliberately UNMOUNTED. The future Node route's POST must
- * export this owner only after migrations/source/security/browser acceptance. No app/ route imports
- * this module now; no provider, model tool or arbitrary callback is an effect caller.
- */
+/** Configured Next/Web Request binding for the unreleased candidate POST. Deployment still requires
+ * migration/source/security/browser acceptance. No provider, model tool or arbitrary callback is an
+ * effect caller. */
 import 'server-only';
 import { appOrigin } from '../../lib/real-auth';
 import { createOwnLeaveBrowserCommandHandler } from './own-leave-browser';

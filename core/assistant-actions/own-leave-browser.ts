@@ -1,6 +1,6 @@
-/** UNMOUNTED canonical browser bindings. Authentication is the eventual route's real cookie session,
- * never a posted SessionContext. No model tool, provider or orchestration executor calls this owner.
- * Migrations/relevant writer/security/retention/experience acceptance remain required before mount. */
+/** Canonical candidate browser bindings. Authentication uses the real cookie session, never a posted
+ * SessionContext. No model tool, provider or orchestration executor calls this owner.
+ * Migrations/relevant writer/security/retention/experience acceptance remain required before release. */
 import { withTenant, type SessionContext } from '../../db/client';
 import { createOwnLeaveBrowserHandler, type OwnLeaveOriginPolicy } from '../../lib/assistant-actions/own-leave-http';
 import { confirmOwnLeaveReview, discardOwnLeaveReviewTx, expireOwnLeaveReviewsForCallerTx, listOwnLeaveReviewsTx, prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx } from './own-leave-store';

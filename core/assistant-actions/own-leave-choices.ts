@@ -1,4 +1,4 @@
-/** UNMOUNTED advisory choices. No candidate, review, request, effect, provider or model admission.
+/** Candidate advisory choices. No candidate, review, request, effect, provider or model admission.
  * Today-only menu eligibility is not the selected date's eligibility or permission to submit. */
 import {and,eq,inArray} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';

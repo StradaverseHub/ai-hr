@@ -15,11 +15,15 @@ vi.mock('../core/assistant-actions/own-leave-browser',async()=>{
  }};
 });
 import {handleConfiguredOwnLeaveBrowserCommand} from '../core/assistant-actions/own-leave-runtime';
+import * as route from '../app/api/assistant/own-leave/route';
 beforeEach(()=>{vi.clearAllMocks();fixture.origin=undefined;fixture.throws=false;fixture.policies.length=0;});
 function request(origin:string,url='https://attacker.fixture.test/api/assistant/own-leave'){
  return new Request(url,{method:'POST',headers:{origin,host:new URL(url).host,'x-forwarded-host':new URL(url).host,'content-type':'application/json','sec-fetch-site':'same-origin'},body:JSON.stringify({operation:'list'})});
 }
-describe('unmounted configured own-leave runtime composition',()=>{
+describe('configured own-leave candidate route composition',()=>{
+ it('exports only the configured Node POST owner without a GET effect handler',()=>{expect(route.runtime).toBe('nodejs');expect(route.POST).toBe(handleConfiguredOwnLeaveBrowserCommand);expect(Object.keys(route).sort()).toEqual(['POST','dynamic','runtime']);});
+ it('refuses a forged actor packet before authentication through the actual POST export',async()=>{fixture.origin='https://first.fixture.test';const response=await route.POST(new Request(fixture.origin+'/api/assistant/own-leave',{method:'POST',headers:{origin:fixture.origin,'content-type':'application/json','sec-fetch-site':'same-origin'},body:JSON.stringify({operation:'list',ctx:{userId:'posted-user'}})}));expect(response.status).toBe(400);expect(fixture.authenticate).not.toHaveBeenCalled();expect(fixture.operation).not.toHaveBeenCalled();});
+ it('bounds authentication failure through the candidate route without private diagnostics',async()=>{fixture.origin='https://first.fixture.test';fixture.authenticate.mockRejectedValueOnce(Error('PRIVATE_SESSION_DATABASE_DETAIL'));const response=await route.POST(request(fixture.origin));expect(response.status).toBe(401);expect(await response.json()).toEqual({error:'unavailable'});expect(fixture.operation).not.toHaveBeenCalled();});
  it.each(['missing','throw','malformed'] as const)('fails closed with an explicit undefined/invalid policy for %s config, without reflected Host fallback or authentication',async mode=>{
   if(mode==='throw')fixture.throws=true;
   if(mode==='malformed')fixture.origin='not a public origin';

@@ -24199,6 +24199,11 @@
       "savedRefused": "Không khả dụng",
       "savedCreated": "Đã tạo",
       "savedExpires": "Bản xem lại hết hạn"
+    },
+    "workflow": {
+      "title": "Xem lại yêu cầu nghỉ phép của tôi",
+      "description": "Chuẩn bị yêu cầu nghỉ phép năm một ngày, kiểm tra chi tiết rồi chọn có gửi hay không. Việc phê duyệt theo quy trình thông thường.",
+      "back": "Quay lại Trợ lý"
     }
   },
   "operatorWorkspace": {

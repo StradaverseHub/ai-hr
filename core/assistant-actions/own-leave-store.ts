@@ -174,7 +174,7 @@ export async function runOwnLeaveReviewRetention(supplied: SessionContext, limit
   } catch { throw new OwnLeaveContentUnavailable(); }
 }
 
-/** UNMOUNTED human-confirmation owner. It owns the top-level transaction: a caught error outside
+/** Human-confirmation owner for the unreleased candidate. It owns the top-level transaction: a caught error outside
  * this function cannot commit a request without its receipt. No model/provider call, allowance
  * admission, posted source references or client-supplied business fields are accepted here.
  * This source command is NOT ready for endpoint/tool exposure until all relevant dependency writers,

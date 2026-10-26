@@ -1,6 +1,6 @@
-/** Unmounted browser transport owner. No provider/model/tool capability or session supplied by POST.
+/** Candidate browser transport owner. No provider/model/tool capability or session supplied by POST.
  * The eventual route must bind authenticate to its real server session and operations to canonical
- * store/command owners; do not mount before source/security/migration acceptance. */
+ * store/command owners; do not release before source/security/migration/experience acceptance. */
 import { z } from 'zod';
 import { isSameOriginBrowserRequest } from '../request-origin';
 import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeaveHumanSelection, OwnLeaveHumanText,

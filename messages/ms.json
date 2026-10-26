@@ -24199,6 +24199,11 @@
       "savedRefused": "Tidak tersedia",
       "savedCreated": "Dicipta",
       "savedExpires": "Semakan tamat tempoh"
+    },
+    "workflow": {
+      "title": "Semak permohonan cuti saya",
+      "description": "Sediakan permohonan cuti tahunan sehari, semak butirannya, kemudian pilih sama ada mahu menghantarnya. Kelulusan mengikut proses biasa.",
+      "back": "Kembali ke Pembantu"
     }
   },
   "operatorWorkspace": {

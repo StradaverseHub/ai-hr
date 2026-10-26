@@ -1,4 +1,4 @@
-/** Server-only presentation copy for the deliberately unmounted human own-leave panel. */
+/** Server-only presentation copy for the human own-leave candidate panel. */
 import 'server-only';
 import { getTranslations } from 'next-intl/server';
 import type { OwnLeaveCommandMessages } from './own-leave-command-panel';

@@ -24199,6 +24199,11 @@
       "savedRefused": "不可用",
       "savedCreated": "创建时间",
       "savedExpires": "预览到期时间"
+    },
+    "workflow": {
+      "title": "核对我的请假申请",
+      "description": "准备一天年假的申请，核对详情后再决定是否提交。审批按正常流程进行。",
+      "back": "返回助手"
     }
   },
   "operatorWorkspace": {
