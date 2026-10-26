@@ -23,9 +23,25 @@ export const BOOTSTRAP_FILES=[
  'docs/adr/0139-counted-database-phase-reuse.md','docs/adr/README.md',
 ];
 export const BASELINE_ARTIFACTS=['plan.json','learning.json','all-files.txt','db-files.txt','nodb-files.txt','classify.tsv','full-controller.log','nodb.log',...Array.from({length:8},(_,i)=>`chunk${i+1}.log`),'port-handover-result.json','fixture-5433-before.json','fixture-5433-after.json','verify-local-fullgate-5433.py','impact-gate-5433.log'];
+// Bounded owner-requested repair of the completed Operator full attempt. Runtime/DB bytes
+// remain frozen; only this exact historical assertion, verification and release notes may change.
+export const OPERATOR_BASE='10d24c2a8e11e52aa0f114426d438277ae611ada';
+export const OPERATOR_POLICY=4;
+export const OPERATOR_REPAIR={path:'test/leave-bf-import-screen.test.ts',before:'671ad7613378e47e9189c046c52adce8a69a2d7fcc487c82f369c44d67a7efd0',after:'d11f73c99079d852c8b14d8c24101e62942df67dafa881bf3c359292b91f4dad'};
+export const OPERATOR_ARTIFACTS=BASELINE_ARTIFACTS.filter(p=>!['port-handover-result.json','fixture-5433-before.json','fixture-5433-after.json','verify-local-fullgate-5433.py','impact-gate-5433.log'].includes(p));
+export function baselineArtifacts(base:string){return base===OPERATOR_BASE?OPERATOR_ARTIFACTS:BASELINE_ARTIFACTS;}
+export function validateOperatorRepairDelta(base:string,head:string,cwd:string){
+ const before=trackedTree(base,cwd),after=trackedTree(head,cwd);
+ const allowed=new Set([OPERATOR_REPAIR.path,'scripts/gate-phase-reuse-evidence.ts','scripts/gate-phase-reuse-run.ts','test/gate-phase-reuse.test.ts','test/release-phase-reuse.test.ts','CLAUDE.md','docs/REPOSITORY-AND-ENVIRONMENTS.md','docs/HANDOFF-HISTORY.md']);
+ const changed=[...new Set([...before.keys(),...after.keys()])].filter(p=>before.get(p)!==after.get(p)).sort();
+ proof(changed.includes(OPERATOR_REPAIR.path),'the exact Operator assertion repair is required');
+ for(const path of changed){proof(allowed.has(path),'unapproved product/configuration/helper/test delta: '+path);proof(before.has(path)&&after.has(path),'file addition/removal: '+path);}
+ proof(digest(textAt(base,OPERATOR_REPAIR.path,cwd))===OPERATOR_REPAIR.before&&digest(textAt(head,OPERATOR_REPAIR.path,cwd))===OPERATOR_REPAIR.after,'Operator assertion is not the reviewed repair');
+ return changed;
+}
 export type Artifact={path:string;sha256:string};
 export type PhaseRun={files:string[];log:string;exit:number};
-export type PhaseReuseReceipt={sha:string;result:string;tier:'phase-reuse';base:string;deployedBase:string;environmentHash:string;policyVersion:number;at:string;archive:string;artifacts:Artifact[];nodb:PhaseRun;database:PhaseRun[];tooling:PhaseRun|null;strategy:'frozen-product-nodb';planFingerprint:string};
+export type PhaseReuseReceipt={sha:string;result:string;tier:'phase-reuse';base:string;deployedBase:string;environmentHash:string;policyVersion:number;at:string;archive:string;artifacts:Artifact[];nodb:PhaseRun;database:PhaseRun[];tooling:PhaseRun|null;strategy:'frozen-product-nodb'|'operator-journal-nodb';planFingerprint:string};
 export function proof(ok:unknown,why:string):asserts ok {if(!ok)throw Error('Phase reuse refused: '+why);}
 const equal=(a:unknown,b:unknown)=>isDeepStrictEqual(a,b);
 export const inventory=(files:Iterable<string>)=>[...files].filter(p=>/^test\/.+\.(?:test\.ts|dom\.test\.tsx)$/.test(p)).sort();
@@ -61,6 +77,7 @@ export function readArtifacts(root:string,manifest:Artifact[]):Map<string,string
  const out=new Map<string,string>();for(const x of manifest){proof(/^[a-f0-9]{64}$/.test(x.sha256),'invalid artifact hash');const b=safeFile(root,x.path);proof(digest(b)===x.sha256,'tampered '+x.path);out.set(x.path,b.toString('utf8'));}return out;
 }
 export function validateRepairDelta(base:string,head:string,cwd:string){
+ if(base===OPERATOR_BASE)return validateOperatorRepairDelta(base,head,cwd);
  const before=trackedTree(base,cwd),after=trackedTree(head,cwd),allowed=new Set([...BOOTSTRAP_FILES,HOME_REPAIR.path,...PHONE_HEADER_REPAIRS.map(r=>r.path)]);
  const changed=[...new Set([...before.keys(),...after.keys()])].filter(p=>before.get(p)!==after.get(p)).sort();
  proof(changed.includes(HOME_REPAIR.path),'the exact test fixture repair is required');
@@ -79,7 +96,8 @@ export function validateBaseline(artifacts:Map<string,string>,base:string,cwd:st
  const plan=JSON.parse(read('plan.json')),learning=JSON.parse(read('learning.json'));
  proof(plan.sha===base&&learning.sha===base&&learning.tier==='full'&&learning.result==='FAIL'&&learning.fullReceipt?.result===learning.result,'baseline identity/result');
  proof(plan.base===plan.deployed&&learning.base===plan.deployed&&plan.environmentHash===learning.environmentHash,'baseline provenance');
- proof(equal(learning.failed,[HOME_REPAIR.path]),'baseline failure outside the allowed Home fixture');
+ const operator=base===OPERATOR_BASE,repair=operator?OPERATOR_REPAIR:HOME_REPAIR;
+ proof(equal(learning.failed,[repair.path]),'baseline failure outside the allowed repair');
  proof(equal(plan.plan,learning.plan),'original plan differs from learning');
  proof(typeof learning.id==='string'&&/^[a-zA-Z0-9.-]+$/.test(learning.id),'invalid original observation ID');
  proof(equal(JSON.parse(readFileSync(join(learningDirectory(),'gates',learning.id+'.json'),'utf8')),learning),'original append-only observation differs');
@@ -94,13 +112,16 @@ export function validateBaseline(artifacts:Map<string,string>,base:string,cwd:st
  proof(equal(tsv,[...db.map(p=>'DB\t'+p),...nodb.map(p=>'NODB\t'+p)].sort()),'classification artifact is not an exact partition');
  const counted=databaseWitness({chunks:8,databaseFiles:db,noDatabaseFiles:nodb,allFiles:all,baseline:base,fullReceipt:learning.fullReceipt,controllerLog:read('full-controller.log'),chunkLogs:Array.from({length:8},(_,i)=>read(`chunk${i+1}.log`))});
  const failed=read('nodb.log').replace(/\u001b\[[0-9;]*m/g,'');
- proof(/^\s*Test Files\s+1 failed \| 947 passed \(948\)\s*$/m.test(failed)&&/^\s*Tests\s+3 failed \| 12338 passed \(12341\)\s*$/m.test(failed),'baseline no-DB failure shape changed');
- proof([...failed.matchAll(/^\s*FAIL\s+(?:\|[^|]+\|\s+)?(test\/\S+)/gm)].every(m=>m[1]===HOME_REPAIR.path),'foreign no-DB failure');
+ proof(operator?(/^\s*Test Files\s+1 failed \| 969 passed \(970\)\s*$/m.test(failed)&&/^\s*Tests\s+1 failed \| 12703 passed \(12704\)\s*$/m.test(failed)):(/^\s*Test Files\s+1 failed \| 947 passed \(948\)\s*$/m.test(failed)&&/^\s*Tests\s+3 failed \| 12338 passed \(12341\)\s*$/m.test(failed)),'baseline no-DB failure shape changed');
+ const failures=[...failed.matchAll(/^\s*FAIL\s+(?:\|[^|]+\|\s+)?(test\/\S+)/gm)];
+ proof(failures.length>0&&failures.every(m=>m[1]===repair.path),'foreign or missing no-DB failure');
  proof([...failed.matchAll(/^\s*Test Files\s+/gm)].length===1&&[...failed.matchAll(/^\s*Tests\s+/gm)].length===1&&/^\s*Duration\s+\S/m.test(failed)&&!/^\s*Unhandled\s/m.test(failed),'incomplete baseline no-DB footer');
+ if(!operator){
  const restored=JSON.parse(read('port-handover-result.json'));
  proof(restored.candidate===base&&restored.gateExit===1&&restored.nextBuildExit===null&&restored.currentOwnedFixtureClusterRestoredAndLogicallyUnchanged===true&&restored.productionChanged===false,'fixture restoration not verified');
  proof(equal(JSON.parse(read('fixture-5433-before.json')),JSON.parse(read('fixture-5433-after.json'))),'fixture logical comparison changed');
  proof(read('impact-gate-5433.log').includes(base.slice(0,7)),'missing original gate source binding');
+ }
  return {plan,learning,all,db,nodb,counted};
 }
 /** Use the same old/new module graph, including every source reader and uncertain consumer. */
@@ -118,16 +139,18 @@ export function phaseReusePlan(base:string,head:string,cwd:string){
 export function validatePhaseReuse(receipt:PhaseReuseReceipt,ctx:{head:string;deployedRef:string;worktree:string;now?:number}){
  const {head,deployedRef,worktree:cwd}=ctx,now=ctx.now??Date.now();
  proof(receipt.sha===head&&git(['rev-parse','HEAD'],cwd)===head&&!git(['status','--porcelain'],cwd),'stale HEAD or dirty candidate');
- proof(receipt.tier==='phase-reuse'&&receipt.result==='PASS'&&receipt.policyVersion===PHASE_REUSE_POLICY_VERSION,'receipt tier/result/policy');
+ proof(receipt.tier==='phase-reuse'&&receipt.result==='PASS'&&receipt.policyVersion===(receipt.base===OPERATOR_BASE?OPERATOR_POLICY:PHASE_REUSE_POLICY_VERSION),'receipt tier/result/policy');
  proof(receipt.environmentHash===environmentHash(cwd),'environment changed');
  proof(receipt.deployedBase===deployedRef&&isAncestor(deployedRef,receipt.base,cwd)&&isAncestor(receipt.base,head,cwd),'production moved or ancestry invalid');
  const artifacts=readArtifacts(receipt.archive,receipt.artifacts),base=validateBaseline(artifacts,receipt.base,cwd,now);
- proof(BASELINE_ARTIFACTS.every(p=>artifacts.has(p)),'missing baseline provenance');
+ proof(baselineArtifacts(receipt.base).every(p=>artifacts.has(p)),'missing baseline provenance');
  proof(base.plan.deployed===deployedRef&&base.plan.environmentHash===receipt.environmentHash,'original environment/production mismatch');
  proof(new Set(releaseHistory().filter(r=>r.at>base.learning.at).map(r=>r.sha)).size<10,'release interval exceeded');
+ if(receipt.base!==OPERATOR_BASE){
  const fresh=JSON.parse(artifacts.get('fresh-port-handover-result.json')??'null');
  proof(fresh?.candidate===head&&fresh?.gateExit===0&&fresh?.currentOwnedFixtureClusterRestoredAndLogicallyUnchanged===true&&fresh?.productionChanged===false,'fresh fixture restoration not verified');
  proof(equal(JSON.parse(artifacts.get('fresh-fixture-5433-before.json')??'null'),JSON.parse(artifacts.get('fresh-fixture-5433-after.json')??'null'))&&artifacts.has('fresh-fixture-5433-before.json')&&artifacts.has('fresh-fixture-5433-after.json'),'fresh fixture comparison missing/changed');
+ }
  const plan=phaseReusePlan(receipt.base,head,cwd);
  proof(equal(base.db,plan.db),'DB inventory/partition changed');
  proof(receipt.planFingerprint===plan.impact.fingerprint,'impact graph changed');
@@ -137,7 +160,7 @@ export function validatePhaseReuse(receipt:PhaseReuseReceipt,ctx:{head:string;de
  };
  proof(receipt.nodb.log==='fresh-nodb.log','incorrect fresh no-DB log identity');
  const freshNodb=verifyRun(receipt.nodb,plan.nodb);
- proof(receipt.strategy==='frozen-product-nodb','missing frozen-product no-DB strategy');
+ proof(receipt.strategy===(receipt.base===OPERATOR_BASE?'operator-journal-nodb':'frozen-product-nodb'),'missing frozen-product no-DB strategy');
  proof(Array.isArray(receipt.database)&&receipt.database.length===0,'this strategy must not claim newly run DB phases');
  if(plan.tooling.length){
   proof(receipt.tooling?.log==='fresh-tooling-closed-port.log','missing closed-port tooling coverage');

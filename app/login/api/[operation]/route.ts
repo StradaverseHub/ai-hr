@@ -47,8 +47,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     else if (operation === 'accept-invite' && !native) {
       const identity = await (await import('@/lib/internal-auth/web-session')).currentInternalIdentity();
       if (!identity?.emailVerified) throw new InternalAuthError('invalidLogin');
-      await acceptInternalInvitation(text(body, 'token', 43), identity);
-      result = { step: 'complete' };
+      const organization = await acceptInternalInvitation(text(body, 'token', 43), identity);
+      result = { step: 'activated', organization };
     } else if (operation === 'recovery') {
       const startedAt = Date.now();
       // Commit the request first, then keep SMTP latency out of the public response. This schedules
@@ -73,9 +73,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
       browserToken = result.access_token;
       delete reply.access_token; delete reply.refresh_token; delete reply.expires_in;
     }
+    if (result.step === 'activated' && !native) await revokeSession(request.cookies.get(INTERNAL_SESSION_COOKIE)?.value);
     const response = NextResponse.json(reply, { headers: responseHeaders });
     if (browserToken) response.cookies.set(INTERNAL_SESSION_COOKIE, browserToken, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 8 * 3600 });
-    if (operation === 'logout' && !native) response.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
+    if ((operation === 'logout' || result.step === 'activated') && !native) response.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
     return response;
   } catch (error) {
     const code = error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
