@@ -11086,11 +11086,15 @@ export async function reprojectEntitlementForEmployment(
    * retain their existing independent transaction and best-effort orchestration. */
   outerTx?: Tx,
 ): Promise<{ affected: number; totalDelta: number }> {
+  p = { ...p, ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
   const run=async(tx:Tx)=>{
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // 1. Resolve the employment + its company's country/leave-cycle context.
-    const [emp] = await tx
+    const readEmployment = () => tx
       .select({
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
@@ -11104,7 +11108,13 @@ export async function reprojectEntitlementForEmployment(
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    const [emp] = await readEmployment();
     if (!emp) return none;
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    const [currentEmployment] = await readEmployment();
+    if (!currentEmployment || JSON.stringify(emp) !== JSON.stringify(currentEmployment)) {
+      throw new LeaveDependencyUnavailable();
+    }
     const pack = packFor(emp.country);
     if (!pack) return none;
     // Same live-in-cycle window guard the granting engines use: pre-hire or terminated-before-this-year

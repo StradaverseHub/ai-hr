@@ -1688,3 +1688,18 @@ observe its pending advisory lock through fixture-database lock metadata, requir
 state, release the interval and verify exactly the intended live-grant state plus one event. They and
 all affected grant, actor, RLS and revocation-security checks are UNRUN. Source checks do not establish
 an installed database barrier or universal authority guarantee; no release is authorized by this alone.
+
+
+### Per-employment entitlement reprojection owns its actual calculation (unrun)
+
+The canonical per-employment reprojector now captures its carrier/input and acquires Access/shared
+configuration before nominating a visible employment. It owns that employment, rereads its exact
+company/grade/cycle projection, and refuses changes before catalogue/template/ledger reads and the
+canonical delta/audit/event. This works in both its independent transaction and an enclosing Movement
+transaction. Cohort enumeration remains read-only nomination; each actual employee calculation is fresh.
+
+An authored real correction case requires a busy interval to leave ledger/audit/events unchanged,
+then applies the canonical 12-to-14 delta after release and proves a second projection writes nothing.
+It and affected projection/Movement/cohort consumers remain UNRUN. Annual opening, earned/A2C sweeps,
+expiry, other ledger owners and remaining configuration participants still require completion. No
+universal fence, money computation by a model, performance claim or runtime proof is established.
