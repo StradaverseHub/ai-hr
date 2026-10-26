@@ -90,7 +90,11 @@ CREATE POLICY assignment_onehr_partner_read ON assignment FOR SELECT
 CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SELECT
  USING (tenant_id = app.current_tenant_id()
   AND cardinality((SELECT app.onehr_partner_company_ids())) > 0
-  AND EXISTS (SELECT 1 FROM performance_onehr_cycle oc WHERE oc.cycle_id = performance_review.cycle_id AND oc.tenant_id = performance_review.tenant_id)
+  AND EXISTS (SELECT 1 FROM performance_onehr_cycle oc JOIN review_cycle c ON c.id = oc.cycle_id AND c.tenant_id = oc.tenant_id
+   WHERE oc.cycle_id = performance_review.cycle_id AND oc.tenant_id = performance_review.tenant_id
+    -- The cycle must be one the partner administers too, not only the subject's employer (VF-04): a company-A
+    -- partner never reads a company-X or group-wide cycle's rows because the subject happens to work in A.
+    AND (c.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[]) OR (c.company_id IS NULL AND app.onehr_partner_for(NULL))))
   AND EXISTS (SELECT 1 FROM employment e WHERE e.id = performance_review.employment_id AND e.tenant_id = performance_review.tenant_id
    AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])));
 --> statement-breakpoint
@@ -104,12 +108,38 @@ CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SE
 CREATE POLICY peer_feedback_request_onehr_partner_read ON peer_feedback_request FOR SELECT
  USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
 --> statement-breakpoint
+-- VF-05: a partner's row names the partner as requester and a peer it can see in this tenant (the employment
+-- read below is RLS-bound, so a peer outside the partner's companies is refused). UPDATE cannot pin the
+-- requester (a policy has no OLD), so it re-checks the peer and the review scope only.
 CREATE POLICY peer_feedback_request_onehr_partner_insert ON peer_feedback_request FOR INSERT
- WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
+ WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id)
+  AND requested_by_user_id = app.current_user_id()
+  AND EXISTS (SELECT 1 FROM employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
 --> statement-breakpoint
 CREATE POLICY peer_feedback_request_onehr_partner_update ON peer_feedback_request FOR UPDATE
  USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id))
- WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
+ WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id)
+  AND EXISTS (SELECT 1 FROM employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
+--> statement-breakpoint
+
+-- ── 3b. onehr_cycle_admin: OneHR-native only for the partner (VF-06) ──────────────────────────────────
+-- 0529's onehr_cycle_admin (59 call sites) never asked whether the cycle is OneHR-native; that was harmless
+-- while every admitted actor also held generic performance authority. The partner does not, so for an actor
+-- whose only qualifying grant is performance_partner the cycle must be OneHR-native. Everyone the pre-0611
+-- set admitted (hr_admin, super_admin, performance_comp_partner — same live-grant and company/descendant
+-- semantics) gets exactly the old answer.
+CREATE FUNCTION app.onehr_admin_nonpartner(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app_user u JOIN role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND r.role::text IN ('hr_admin','super_admin','performance_comp_partner') AND (r.company_id IS NULL OR wanted_company IS NOT NULL AND (r.company_id=wanted_company OR app.is_company_descendant(wanted_company,r.company_id))))
+$$;
+REVOKE ALL ON FUNCTION app.onehr_admin_nonpartner(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onehr_cycle_admin(wanted_cycle uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=wanted_cycle AND c.tenant_id=app.current_tenant_id() AND app.onehr_admin(c.company_id)
+  AND (app.onehr_admin_nonpartner(c.company_id)
+   OR EXISTS(SELECT 1 FROM performance_onehr_cycle oc WHERE oc.cycle_id=c.id AND oc.tenant_id=c.tenant_id)))
+$$;
 --> statement-breakpoint
 
 -- ── 4. review_cycle: lockable, never writable ─────────────────────────────────────────────────────────

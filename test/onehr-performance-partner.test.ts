@@ -23,6 +23,7 @@ import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
+import { createRewardUnit } from '../packs/rewards/service';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '../lib/authz-model';
 import { closeAll, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -380,5 +381,60 @@ describe('OneHR performance partner (ADR-0142)', () => {
       withTenant(ctx, (tx) => tx.execute<{ ok: boolean }>(sql`select app.can_admin_payroll_employment(${subject.employmentId}::uuid) as ok`));
     expect((await payroll(a))[0].ok).toBe(true);
     expect((await payroll(partner))[0].ok).toBe(false);
+  });
+  it('reads no kernel review of a cycle it does not administer, even when the subject works in its company (VF-04)', async () => {
+    const { cycleId: groupCycle } = await perf.createCycle(a, { name: 'Group OneHR cycle', companyId: null, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` });
+    await perf.configureOnehrCycle(a, groupCycle, null, defaultPolicy(framework));
+    await perf.openCycle(a, { cycleId: groupCycle });
+    const rows = (ctx: SessionContext) =>
+      withTenant(ctx, (tx) => tx.select({ employmentId: schema.performanceReview.employmentId }).from(schema.performanceReview).where(eq(schema.performanceReview.cycleId, groupCycle)));
+    // Non-vacuous: HR and a group-wide partner read the subject's row in the group-wide cycle.
+    expect((await rows(a)).map((r) => r.employmentId)).toContain(subject.employmentId);
+    expect((await rows(await partnerCtx(null, null))).map((r) => r.employmentId)).toContain(subject.employmentId);
+    // Only its own review, which every employee reads (self visibility); never the subject's.
+    expect((await rows(partner)).map((r) => r.employmentId)).toEqual([partnerPerson.employmentId]);
+  });
+
+  it('writes panel requests only as itself and only for a peer it can see (VF-05)', async () => {
+    const row = (over: Partial<typeof schema.peerFeedbackRequest.$inferInsert> = {}) => ({
+      tenantId: b.tenantId, reviewId, subjectEmploymentId: subject.employmentId, peerEmploymentId: peers[0].employmentId,
+      subjectName: 'Partner subject', peerName: 'Partner peer 0', cycleName: 'Partner OneHR cycle', requestedByUserId: partner.userId!, ...over,
+    });
+    const insert = (over: Partial<typeof schema.peerFeedbackRequest.$inferInsert>) =>
+      withTenant(partner, (tx) => tx.insert(schema.peerFeedbackRequest).values(row(over)).returning({ id: schema.peerFeedbackRequest.id }));
+    expect(await refusal(insert({ requestedByUserId: a.userId! }))).toMatch(/row-level security/);
+    expect(await refusal(insert({ peerEmploymentId: otherEmployee.employmentId, peerName: 'Other company person' }))).toMatch(/row-level security/);
+    // Non-vacuous: the same row as itself, for a visible peer, is accepted.
+    expect(await insert({})).toHaveLength(1);
+    const [created] = await owner.db.select().from(schema.peerFeedbackRequest).where(eq(schema.peerFeedbackRequest.reviewId, reviewId));
+    expect(
+      await refusal(withTenant(partner, (tx) => tx.update(schema.peerFeedbackRequest).set({ peerEmploymentId: otherEmployee.employmentId }).where(eq(schema.peerFeedbackRequest.id, created.id)))),
+    ).toMatch(/row-level security/);
+  });
+
+  it('is a OneHR cycle administrator for OneHR-native cycles only (VF-06)', async () => {
+    const admin = (ctx: SessionContext, cycleId: string) =>
+      withTenant(ctx, (tx) => tx.execute<{ ok: boolean }>(sql`select app.onehr_cycle_admin(${cycleId}::uuid) as ok`)).then((r) => r[0].ok);
+    expect(await admin(a, genericCycleId)).toBe(true);
+    expect(await admin(partner, onehrCycleId)).toBe(true);
+    expect(await admin(partner, genericCycleId)).toBe(false);
+    expect(await admin(partner, genericDraftId)).toBe(false);
+  });
+
+  it('reads no Rewards review, membership or entry (VF-03 Rewards)', async () => {
+    await setModule(b.tenantId, 'rewards', 'active');
+    const hr = await entitledCtx(b);
+    const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'PRT', name: 'Partner BU', label: 'Partner BU' }).returning();
+    const unitId = await createRewardUnit(hr, { name: 'Partner-company annual review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: todayInKualaLumpur() });
+    const read = (ctx: SessionContext) =>
+      withTenant(ctx, async (tx) => ({
+        units: (await tx.select({ id: schema.rewardUnit.id }).from(schema.rewardUnit)).length,
+        members: (await tx.select({ id: schema.rewardMember.id }).from(schema.rewardMember)).length,
+        entries: (await tx.select({ id: schema.rewardEntry.id }).from(schema.rewardEntry)).length,
+      }));
+    // Non-vacuous: HR reads the review it just created in the partner's own company.
+    expect((await read(hr)).units).toBeGreaterThan(0);
+    expect(await read(partner)).toEqual({ units: 0, members: 0, entries: 0 });
+    expect(unitId).toBeTruthy();
   });
 });
