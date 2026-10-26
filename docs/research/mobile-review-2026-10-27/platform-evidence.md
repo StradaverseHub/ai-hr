@@ -52,6 +52,17 @@ that resemblance is not proof of an installed-version fix. No dependency files w
 suppressed to obtain a pass. The integrity module explicitly overrides Expo's non-blocking library
 default with `abortOnError = true`. Preserve lint as an unresolved verification requirement.
 
+The subsequent online command-binding primitive was checked at `5518bfd4e`: three focused suites
+passed 24 tests, and root/mobile TypeScript checks both exited 0. The production shared positional
+encoding and server SHA-256 implementation were exercised with generated synthetic P-256 keys.
+Changing any scope, challenge, command, attachment or reported-source field invalidated that synthetic
+signature; true/false/unavailable signals stayed distinct. The native hashing adapter was exercised
+through its actual source with a crypto port and obsolete-actor refusal. These tests establish command
+binding and adapter behavior only. They do not test Apple assertion encoding/signing, a verified vendor
+certificate, an issued challenge, atomic counter consumption or an accepted attendance write. The v1
+routes remain unchanged and do not use the primitive. Persistent enrollment/challenge owners and
+cryptographic vendor verifiers remain required before this protocol can be enabled.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
