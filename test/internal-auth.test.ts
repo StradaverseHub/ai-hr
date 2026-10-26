@@ -166,6 +166,49 @@ describe('first-party authentication with real private storage and existing HR b
     const signedIn = completed(await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true));
     expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:employee.personId,roles:['employee']});
   });
+  it('a user without employment signs in through the real internal password-change and MFA flow', async () => {
+    const ctx=adminCtx(base);
+    const input={id:randomUUID(),personId:null,fullName:'External administrator',username:'external.admin',email:'external.admin@example.test',role:'hr_admin',companyId:base.companyId,password:temp,ownershipAttested:true};
+    const id=await createManualAccount(ctx,input);
+    const c=(await credentialByLogin('alpha','external.admin'))!;
+    expect(c.enabled).toBe(true);expect(c.mustChange).toBe(true);
+    const [user]=await owner.db.select().from(schema.appUser).where(eq(schema.appUser.id,id));
+    expect(user.personId).toBeTruthy();
+    expect(await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,user.personId!))).toHaveLength(0);
+    const login=await startLogin({organization:'alpha',username:'external.admin',password:temp,native:true});
+    expect(login.step).toBe('password');expect(await readSession(challenge(login),true)).toBeNull();
+    const setup=await changeInitialPassword(challenge(login),final,true);
+    if(setup.step!=='enroll'||!setup.secret)throw new Error('Expected authenticator enrollment.');
+    const signedIn=completed(await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true));
+    expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:user.personId,grants:[{role:'hr_admin',companyId:base.companyId}]});
+    const changed=(await credentialByLogin('alpha','external.admin'))!.password;
+    expect(changed).not.toBe(c.password);
+    expect(await resumeManualAccount(ctx,input.id,'Unused replay passphrase 111!')).toBe(id);
+    expect((await credentialByLogin('alpha','external.admin'))?.password).toBe(changed);
+  });
+  it.each([false,true])('an invited user without employment activates once and follows the browser/native sign-in policy (native=%s)',async native=>{
+    const provider:AuthProvider={sendInvitation:async()=>({invitationId:'test'}),revokeInvitation:async()=>{},sendPasswordReset:async()=>{},endSession:async()=>{}};
+    const invite=await inviteUser(adminCtx(base),{fullName:'External payroll partner',email:'external.payroll@example.test',role:'payroll_partner',companyId:base.companyId},provider);
+    const setup=await startInvitation(invite.token,'external.payroll',final,native);
+    if(setup.step!=='enroll'||!setup.secret)throw new Error('Expected authenticator enrollment.');
+    const activated=await verifyMfa(challenge(setup),await generate({secret:setup.secret}),native);
+    const session=await (async()=>{
+      if(native)return getMobileSession({authorization:`Bearer ${completed(activated).access_token}`});
+      expect(activated).toMatchObject({step:'activated',organization:'alpha'});
+      expect(activated).not.toHaveProperty('access_token');
+      if(activated.step!=='activated')throw new Error('Expected activation without a browser session.');
+      const login=await startLogin({organization:'alpha',username:'external.payroll',password:final,native:false});
+      expect(login.step).toBe('mfa');
+      const signedIn=completed(await verifyMfa(challenge(login),activated.recoveryCodes![0]));
+      const identity=await readSession(signedIn.access_token);
+      expect(identity).not.toBeNull();
+      const [principal]=await client`select * from app.principal_by_identity(${identity!.issuer},${identity!.subject})`;
+      return {tenantId:principal.tenant_id,personId:principal.person_id,grants:principal.grants};
+    })();
+    expect(session).toMatchObject({tenantId:base.tenantId,grants:[{role:'payroll_partner',companyId:base.companyId}]});
+    expect(await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,session.personId!))).toHaveLength(0);
+    await expect(startInvitation(invite.token,'another.username',final,native)).rejects.toBeDefined();
+  });
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
     const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);

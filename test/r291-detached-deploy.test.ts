@@ -56,7 +56,7 @@
  *     follow tests would pass with two different-but-self-consistent values only because the shell half
  *     is stubbed in those tests. Here the two files are compared directly.
  *
- * NOT DONE, and why: nothing here runs against 203.142.6.241. Production database access is
+ * NOT DONE, and why: nothing here runs against 203.0.113.10. Production database access is
  * SELECT-only and a real deploy against the live box is not something a test may do.
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
  */
@@ -974,8 +974,8 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
         DEPLOY_SQL_TRACE: box.sqlTrace,
         AIHR_DEPLOY_STATE_DIR: box.stateDir,
         IMPROVE_SSH_HOST: 'shim.invalid',
-        IMPROVE_SSH_PORT: '8288',
-        IMPROVE_SSH_USER: 'ubuntu',
+        IMPROVE_SSH_PORT: '2222',
+        IMPROVE_SSH_USER: 'test-operator',
         IMPROVE_REMOTE_DIR: box.dir,
         ...extra,
       } as unknown as NodeJS.ProcessEnv,

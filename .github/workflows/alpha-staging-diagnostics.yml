@@ -11,6 +11,108 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      filesystem_activation_probe:
+        description: Private Linux activation, byte inventory and installer refusal fixtures; no app build, DB, SSH or staging
+        required: false
+        default: false
+        type: boolean
+      installer_fixture_phase:
+        description: Private installer controls; follow-up phases retain their pinned original outcomes
+        required: false
+        default: full
+        type: choice
+        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup, pdf-tools-setup, private-access-integration]
+      plan_probe:
+        description: Dependency-free native classifier parity against the authenticated full plan
+        required: false
+        default: false
+        type: boolean
+      build_transport_probe:
+        description: Canonical Linux build transferred to a fresh VM with native Sharp and Chinese PDF render proof; no deployment
+        required: false
+        default: false
+        type: boolean
+      transport_origin_run:
+        description: "Retest receiver only: original diagnostic run containing a successful canonical producer"
+        required: false
+        default: ""
+        type: string
+      transport_origin_sha:
+        description: Exact original producer source/controller; retained build is never relabelled
+        required: false
+        default: ""
+        type: string
+      transport_origin_artifact:
+        description: Exact original producer artifact ID
+        required: false
+        default: ""
+        type: string
+      transport_origin_digest:
+        description: Plain hex SHA256 from the original upload action; authenticated API has sha256 prefix
+        required: false
+        default: ""
+        type: string
+      compiler_transport_probe:
+        description: Whole strict compiler state on two fresh VMs with real changed-dependency and new-root refusals
+        required: false
+        default: false
+        type: boolean
+      next_build_cache_phase:
+        description: Canonical production build and application compiler graph; disabled unless explicitly measured
+        required: false
+        default: disabled
+        type: choice
+        options: [disabled, cold, warm, recover]
+      next_build_cache_origin:
+        description: 'Warm only: exact original JSON runId, sha, artifactId, digest; never relabel original state'
+        required: false
+        default: ''
+        type: string
+      managed_compiler_probe:
+        description: Exercise the actual normal whole-compiler cache integration without application tests or deployment
+        required: false
+        default: false
+        type: boolean
+      managed_compiler_force_invalid:
+        description: Deliberately corrupt only the authenticated private graph copy and require actual cold fallback
+        required: false
+        default: false
+        type: boolean
+      compiler_compatible_probe:
+        description: Reuse authenticated ancestor compiler state on the changed candidate with actual first-restore error refusal and bounded capacity
+        required: false
+        default: false
+        type: boolean
+      compiler_origin_run:
+        description: Consumer-only repair original run ID
+        required: false
+        default: ""
+        type: string
+      compiler_origin_sha:
+        description: Retained compiler producer source and controller
+        required: false
+        default: ""
+        type: string
+      compiler_origin_artifact:
+        description: Retained compiler-state artifact ID
+        required: false
+        default: ""
+        type: string
+      compiler_origin_digest:
+        description: Plain64hex digest of the retained compiler-state ZIP
+        required: false
+        default: ""
+        type: string
+      compiler_probe:
+        description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
+        required: false
+        default: false
+        type: boolean
+      statutory_probe:
+        description: Original statutory DOM file and labelled 5000ms stage/style measurement copy
+        required: false
+        default: false
+        type: boolean
       nodb_probe:
         description: Measure the three original Node/DOM failure files
         required: false
@@ -31,6 +133,7 @@ concurrency:
   group: alpha-diagnostic-${{ inputs.candidate_ref }}
   cancel-in-progress: false
 env:
+  PYTHONDONTWRITEBYTECODE: '1'
   TZ: Asia/Kuala_Lumpur
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -39,13 +142,66 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
+    if: ${{ !inputs.filesystem_activation_probe }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
+      base: ${{ steps.candidate.outputs.base }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - name: Compiler diagnostic controller checks
+        if: ${{ inputs.compiler_probe }}
+        run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
+      - name: Build transport controller checks
+        if: ${{ inputs.build_transport_probe || inputs.transport_origin_run != '' }}
+        run: |
+          node --test .github/ci/build-production.test.mjs .github/ci/build-transport.test.mjs
+          python3 .github/ci/build-transport-extract.test.py
+          python3 .github/ci/build-shim-paths.test.py
+          python3 .github/ci/build-bundle.test.py
+          python3 .github/ci/build-helper-cleanliness.test.py
+      - name: Pin typed compiler-cache controller runtime
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' || inputs.managed_compiler_probe }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Validate compatible compiler probe selection
+        if: ${{ inputs.compiler_compatible_probe }}
+        env:
+          ORIGINAL_RUN: ${{ inputs.compiler_origin_run }}
+          ORIGINAL_SHA: ${{ inputs.compiler_origin_sha }}
+          ORIGINAL_ARTIFACT: ${{ inputs.compiler_origin_artifact }}
+          ORIGINAL_DIGEST: ${{ inputs.compiler_origin_digest }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          for(const key of ['ORIGINAL_RUN','ORIGINAL_ARTIFACT'])assert(/^[1-9][0-9]{0,15}$/.test(process.env[key]??''));
+          assert(/^[a-f0-9]{40}$/.test(process.env.ORIGINAL_SHA??''));
+          assert(/^[a-f0-9]{64}$/.test(process.env.ORIGINAL_DIGEST??''));
+          NODE
+      - name: Compiler transport controller checks
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' || inputs.managed_compiler_probe }}
+        run: node --experimental-strip-types --test .github/ci/diagnostics/compiler-state.test.mjs .github/ci/diagnostics/compiler-transport.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs
+      - name: Normal compiler/cache and release-boundary controller checks
+        if: ${{ inputs.managed_compiler_probe }}
+        run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/release-policy.test.mjs .github/ci/resume-source.test.mjs
+      - name: Canonical application-build cache integrity and resource checks
+        if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+        run: node --test .github/ci/next-build-cache-policy.test.mjs .github/ci/build-production.test.mjs .github/ci/runner-capacity.test.mjs
+      - name: Validate explicit application-cache phase and original selector
+        if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+        env:
+          MODE: ${{ inputs.next_build_cache_phase }}
+          ORIGIN: ${{ inputs.next_build_cache_origin }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {parseNextCacheOrigin} from './.github/ci/next-build-cache-policy.mjs';
+          assert(['cold','warm','recover'].includes(process.env.MODE));
+          if(process.env.MODE==='warm')parseNextCacheOrigin(process.env.ORIGIN);
+          else assert(process.env.ORIGIN==='');
+          NODE
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,3 +286,733 @@ jobs:
             ${{ runner.temp }}/runner-resources.json
           if-no-files-found: error
           retention-days: 14
+
+  statutory-timing:
+    if: ${{ inputs.statutory_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - run: node ../automation/.github/ci/diagnostics/statutory-probe.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: statutory-diagnostic
+          path: ${{ runner.temp }}/statutory-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
+
+  fast-plan:
+    if: ${{ inputs.plan_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
+      - name: Reconstruct complete plan without package installation and authenticate parity
+        run: node ../automation/.github/ci/diagnostics/fast-plan.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-fast-plan
+          path: ${{ runner.temp }}/diagnostic-fast-plan/
+          if-no-files-found: error
+          retention-days: 14
+
+  compiler-incremental:
+    if: ${{ inputs.compiler_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real Next route types
+        run: pnpm exec next typegen
+      - name: Measure whole compiler and unchanged-consumer/new-root error refusal
+        run: bash ../automation/.github/ci/typecheck.sh --incremental-diagnostic
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-incremental
+          path: ${{ runner.temp }}/diagnostic-compiler-incremental/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-transport-producer:
+    if: ${{ inputs.build_transport_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    outputs:
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.bundle.outputs.artifact-digest }}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false'}
+      - name: Canonical owned System Testing build and bounded byte bundle
+        run: pnpm exec tsx ../automation/.github/ci/build-production.mjs --diagnostic "$RUNNER_TEMP/build-transport-producer"
+      - id: bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-producer
+          path: ${{ runner.temp }}/build-transport-producer/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  build-transport-consumer:
+    if: ${{ inputs.build_transport_probe }}
+    needs: [resolve, build-transport-producer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    defaults: {run: {working-directory: recipient}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      AIHR_BUILD_ARTIFACT_ID: ${{ needs.build-transport-producer.outputs.artifact_id }}
+      AIHR_BUILD_ARTIFACT_DIGEST: ${{ needs.build-transport-producer.outputs.artifact_digest }}
+      GH_TOKEN: ${{ github.token }}
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: recipient, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', path: recipient}
+      - name: Install independent PDF text and raster inspection tools
+        run: |
+          if ! command -v pdftoppm || ! command -v pdftotext; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          fi
+          pdftoppm -v
+          pdftotext -v
+      - name: Authenticate, relocate and run the transported build without rebuilding
+        run: pnpm exec tsx ../automation/.github/ci/build-transport.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-consumer
+          path: ${{ runner.temp }}/diagnostic-build-transport/
+          if-no-files-found: error
+          retention-days: 3
+
+  build-transport-consumer-repair:
+    if: ${{ inputs.transport_origin_run != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    defaults: {run: {working-directory: recipient}}
+    env:
+      AIHR_CI_HEAD: ${{ inputs.transport_origin_sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-consumer-repair
+      AIHR_BUILD_PRODUCER_RUN_ID: ${{ inputs.transport_origin_run }}
+      AIHR_BUILD_PRODUCER_CONTROL_HEAD: ${{ inputs.transport_origin_sha }}
+      AIHR_BUILD_ARTIFACT_ID: ${{ inputs.transport_origin_artifact }}
+      AIHR_BUILD_ARTIFACT_DIGEST: ${{ inputs.transport_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.transport_origin_sha }}', path: recipient, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', path: recipient}
+      - name: Install independent PDF text and raster inspection tools
+        run: |
+          if ! command -v pdftoppm || ! command -v pdftotext; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          fi
+          pdftoppm -v
+          pdftotext -v
+      - name: Retest receiver only against authenticated original successful build
+        run: pnpm exec tsx ../automation/.github/ci/build-transport.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-build-transport-consumer
+          path: ${{ runner.temp }}/diagnostic-build-transport/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-producer:
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    outputs:
+      artifact_id: ${{ steps.snapshot.outputs.artifact-id }}
+      artifact_digest: ${{ steps.snapshot.outputs.artifact-digest }}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: producer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - name: Generate actual Next route types
+        run: pnpm exec next typegen
+      - name: Whole strict compiler and immutable state snapshot
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-producer
+      - name: Bind verified owned swap cleanup to compiler snapshot
+        run: |
+          test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
+          test ! -e "$RUNNER_TEMP/diagnostic-compiler-state-packet/swap-cleanup.json"
+          cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-state-packet/swap-cleanup.json"
+      - id: snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-producer
+          path: ${{ runner.temp }}/diagnostic-compiler-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-producer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-producer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-producer/swap-cleanup.json"
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-producer-debug
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-producer/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  compiler-state-consumer:
+    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
+    needs: [resolve, compiler-state-producer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_ARTIFACT_ID: ${{ needs.compiler-state-producer.outputs.artifact_id }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ needs.compiler-state-producer.outputs.artifact_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - run: pnpm exec next typegen
+      - name: Authenticated fresh-VM restoration, full compiler and actual error-refusal controls
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-consumer-repair:
+    if: ${{ inputs.compiler_origin_run != '' && !inputs.compiler_compatible_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_ORIGIN_RUN_ID: ${{ inputs.compiler_origin_run }}
+      AIHR_COMPILER_ORIGIN_CONTROLLER: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_ARTIFACT_ID: ${{ inputs.compiler_origin_artifact }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ inputs.compiler_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.compiler_origin_sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - run: pnpm exec next typegen
+      - name: Retest consumer only against the authenticated retained compiler-state producer
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-state-compatible-consumer:
+    if: ${{ inputs.compiler_compatible_probe && inputs.compiler_origin_run != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_TRANSPORT: consumer
+      AIHR_COMPILER_COMPATIBLE_CHILD: 'true'
+      AIHR_CI_CAPACITY_PROFILE: bounded-compiler-diagnostic
+      AIHR_COMPILER_ORIGIN_RUN_ID: ${{ inputs.compiler_origin_run }}
+      AIHR_COMPILER_ORIGIN_CONTROLLER: ${{ inputs.compiler_origin_sha }}
+      AIHR_COMPILER_ARTIFACT_ID: ${{ inputs.compiler_origin_artifact }}
+      AIHR_COMPILER_ARTIFACT_DIGEST: ${{ inputs.compiler_origin_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', capacity_profile: bounded-compiler-diagnostic}
+      - run: pnpm exec next typegen
+      - name: Original state on changed candidate, immediate error refusal and complete compiler controls
+        run: bash ../automation/.github/ci/typecheck.sh --state-transport-consumer
+      - name: Retain compiler resource cleanup
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/diagnostic-compiler-transport-consumer" && test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"; then
+            test ! -e "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+            cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/diagnostic-compiler-transport-consumer/swap-cleanup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-state-consumer
+          path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
+          if-no-files-found: error
+          retention-days: 3
+
+  compiler-cache-pilot:
+    if: ${{ inputs.managed_compiler_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_CACHE_MODE: whole
+      AIHR_COMPILER_CACHE_PILOT: 'true'
+      AIHR_COMPILER_CACHE_FORCE_INVALID: ${{ inputs.managed_compiler_force_invalid }}
+      AIHR_CI_CAPACITY_PROFILE: bounded-whole-compiler
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', capacity_profile: bounded-whole-compiler}
+      - run: pnpm exec next typegen
+      - name: Exercise actual normal compiler with authenticated graph or mandatory cold fallback
+        run: bash ../automation/.github/ci/typecheck.sh --whole-cache
+      - name: Bind actual owned-resource cleanup before graph publication
+        run: |
+          test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
+          test ! -e "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+          cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: whole-compiler-state-v1
+          path: ${{ runner.temp }}/whole-compiler-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: managed-compiler-cache-diagnostic
+          path: ${{ runner.temp }}/whole-compiler-cache/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  next-build-cache:
+    if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      AIHR_NEXT_BUILD_CACHE_MODE: ${{ inputs.next_build_cache_phase }}
+      AIHR_NEXT_BUILD_ORIGIN: ${{ inputs.next_build_cache_origin }}
+      AIHR_CI_CAPACITY_PROFILE: bounded-next-build-diagnostic
+      GH_TOKEN: ${{ github.token }}
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', capacity_profile: bounded-next-build-diagnostic}
+      - name: Prove actual launcher can load typed release helpers before expensive work
+        run: node --test ../automation/.github/ci/next-build-launcher.test.mjs
+      - name: Generate the real current Next application types
+        run: pnpm exec next typegen
+      - name: Genuine canonical build, full application compiler and retained-graph refusal controls
+        run: pnpm exec tsx ../automation/.github/ci/next-build-cache.mjs
+      - name: Publish graph only after actual complete build and owned cleanup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-app-compiler-state
+          path: ${{ runner.temp }}/next-app-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-build-cache
+          path: |
+            ${{ runner.temp }}/diagnostic-next-build-cache/
+            !${{ runner.temp }}/diagnostic-next-build-cache/canonical-build/bytes/build-bundle.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
+  filesystem-activation:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && inputs.installer_fixture_phase != 'pdf-tools-setup' && inputs.installer_fixture_phase != 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false, fetch-depth: 3}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Require an exact frozen filesystem-only selection
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}', GH_TOKEN: '${{ github.token }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
+          for(const [key,value]of Object.entries(p)){
+            if(['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))continue;
+            assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='', 'No unrelated diagnostic allowed: '+key);
+          }
+          assert(['full','source-proof-followup','environment'].includes(p.installer_fixture_phase));
+          if(p.installer_fixture_phase==='environment'){
+            const changed=execFileSync('git',['diff','--name-only','a36301ca07df445ea1d6f1a0d97e85849a62e5c0',e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+            assert.deepEqual(changed,['.github/ci/staging-environment.mjs','.github/ci/staging-environment.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          }
+          if(p.installer_fixture_phase==='source-proof-followup'){
+            const original='a1c8157f729b603625b5d5de4900082bbc0212f9',runId=40268601211;
+            const changed=execFileSync('git',['diff','--name-only',original,e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+            assert.deepEqual(changed,['.github/ci/staging-cleanup-protocol.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+            const file='.github/ci/staging-cleanup-protocol.test.mjs';
+            const before=execFileSync('git',['show',original+':'+file],{encoding:'utf8'});
+            const after=execFileSync('git',['show',e.GITHUB_SHA+':'+file],{encoding:'utf8'});
+            assert.equal(after,before.replace("r=>r.witnessFingerprint='e'.repeat(64)","r=>r.witnessFingerprint='f'.repeat(64)"));
+            const api=path=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+path],{encoding:'utf8',timeout:15000}));
+            const originalRun=api('actions/runs/'+runId),artifact=api('actions/artifacts/12627347795');
+            assert(originalRun.head_sha===original&&originalRun.run_attempt===1&&originalRun.status==='completed'&&originalRun.conclusion==='failure'&&originalRun.repository.id===1333414856);
+            assert(artifact.id===12627347795&&artifact.expired===false&&artifact.workflow_run.id===runId&&artifact.workflow_run.head_sha===original&&artifact.digest==='sha256:24a9baef791e18f24867abbcc68f8dde204f9c4eed7228ede6f180f6064f7ef5');
+          }
+          NODE
+      - name: Actual private Linux exchanges and strict fake staging transport
+        if: ${{ inputs.installer_fixture_phase == 'full' }}
+        run: |
+          set -euo pipefail
+          python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
+          node --test --test-reporter=spec .github/ci/staging-transport.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-transport.log"
+          node --test --test-reporter=spec .github/ci/archive-downloads.test.mjs .github/ci/migration-history.test.mjs 2>&1 | tee "$RUNNER_TEMP/transport-history-controls.log"
+      - name: Private installer authority and read-only byte inventory refusals
+        run: |
+          set -euo pipefail
+          bash -n deploy/deploy.sh
+          if [ "${{ inputs.installer_fixture_phase }}" = "environment" ]; then
+            node --test --test-reporter=spec .github/ci/staging-environment.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          else
+          if [ "${{ inputs.installer_fixture_phase }}" = "source-proof-followup" ]; then
+            node --test --test-reporter=spec --test-name-pattern="^owned cleanup requires the actual empty checksum output, fresh observation and exact original build tuple$" .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          else
+            node --test --test-reporter=spec .github/ci/staging-environment.test.mjs .github/ci/staging-cleanup-protocol.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-environment-cleanup.log"
+          fi
+          python3 .github/ci/cleanup-install.test.py -v 2>&1 | tee "$RUNNER_TEMP/cleanup-install.log"
+          node --test --test-reporter=spec .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-ci-promotion.log"
+          node --test --test-reporter=spec .github/ci/staging-build-install.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-build-install.log"
+          python3 .github/ci/build-bundle.test.py -v 2>&1 | tee "$RUNNER_TEMP/build-bundle.log"
+          fi
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
+        with: {version: 10.33.2}
+      - name: Install dependencies only for actual official-helper private fixtures
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Actual candidate detached launcher and private rsync transport
+        if: ${{ inputs.installer_fixture_phase != 'environment' }}
+        run: |
+          set -euo pipefail
+          node --import tsx --test --test-reporter=spec .github/ci/operator-flow.test.mjs .github/ci/staging-launcher.test.mjs .github/ci/staging-source-transfer.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-official-helpers.log"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-filesystem-activation
+          path: |
+            ${{ runner.temp }}/filesystem-activation.json
+            ${{ runner.temp }}/filesystem-activation.log
+            ${{ runner.temp }}/staging-transport.log
+            ${{ runner.temp }}/transport-history-controls.log
+            ${{ runner.temp }}/staging-build-install.log
+            ${{ runner.temp }}/build-bundle.log
+            ${{ runner.temp }}/staging-ci-promotion.log
+            ${{ runner.temp }}/staging-official-helpers.log
+            ${{ runner.temp }}/staging-environment-cleanup.log
+            ${{ runner.temp }}/cleanup-install.log
+          if-no-files-found: error
+          retention-days: 3
+
+  private-access-integration:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Require exact private-access integration diagnostic
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='private-access-integration'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
+          for(const [key,value] of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          NODE
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with: {version: 10.33.2}
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Actual merged candidate release helpers and strict private transport boundaries
+        run: |
+          set -euo pipefail
+          node --import tsx --test --test-reporter=spec .github/ci/operator-flow.test.mjs .github/ci/staging-launcher.test.mjs .github/ci/staging-source-transfer.test.mjs .github/ci/staging-transport.test.mjs 2>&1 | tee "$RUNNER_TEMP/private-access-integration.log"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-private-access-integration
+          path: ${{ runner.temp }}/private-access-integration.log
+          if-no-files-found: error
+          retention-days: 3
+
+  pdf-tools-setup:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'pdf-tools-setup' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env: {AIHR_CI_HEAD: '${{ github.workflow_sha }}'}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind exact private tool-setup diagnostic selection
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='pdf-tools-setup'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          assert(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()===e.GITHUB_SHA);
+          for(const [key,value] of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          NODE
+      - name: Verify missing-package, cache-miss, native failure and no-omission controls
+        run: node --test --test-reporter=spec .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/manifest.test.mjs
+      - name: Reconstruct complete source and exercise actual normal unit dependency paths
+        env: {AIHR_CI_CLASSIFIER_RUNTIME: native}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types .github/ci/plan.mjs > "$RUNNER_TEMP/pdf-tooling-complete-plan.json"
+          ORDINARY=$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1]));const u=p.units.find(u=>u.kind!=="browser"&&!u.pdfTools);if(!u)throw Error("No complete ordinary unit");process.stdout.write(u.id)' "$RUNNER_TEMP/pdf-tooling-complete-plan.json")
+          PDF=$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1]));const u=p.units.filter(u=>u.pdfTools);if(u.length!==1)throw Error("One complete PDF unit required");process.stdout.write(u[0].id)' "$RUNNER_TEMP/pdf-tooling-complete-plan.json")
+          ORDINARY_TEMP=$(mktemp -d "$RUNNER_TEMP/pdf-ordinary-XXXXXX")
+          PDF_TEMP=$(mktemp -d "$RUNNER_TEMP/pdf-required-XXXXXX")
+          RUNNER_TEMP="$ORDINARY_TEMP" node .github/ci/pdf-tools.mjs --unit "$ORDINARY"
+          cp "$ORDINARY_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/pdf-tools-not-required.json"
+          RUNNER_TEMP="$PDF_TEMP" node .github/ci/pdf-tools.mjs --unit "$PDF"
+          cp "$PDF_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/pdf-tools-required.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {pdfSetupUnit,validatePdfSetupProof} from './.github/ci/pdf-tools.mjs';
+          const p=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/pdf-tooling-complete-plan.json'));
+          for(const name of ['pdf-tools-not-required.json','pdf-tools-required.json']){const proof=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/'+name));validatePdfSetupProof(p,pdfSetupUnit(p,proof.unit),proof);}
+          NODE
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-pdf-tools-setup
+          path: |
+            ${{ runner.temp }}/pdf-tooling-complete-plan.json
+            ${{ runner.temp }}/pdf-tools-not-required.json
+            ${{ runner.temp }}/pdf-tools-required.json
+          if-no-files-found: error
+          retention-days: 3
+
+  ledger-connection-followup:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'ledger-connection-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false, fetch-depth: 2}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind the exact ledger-only repair to its complete original source
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS);
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='ledger-connection-followup'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          for(const [key,value] of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          const changed=execFileSync('git',['diff','--name-only','8ddccd78b3d0d85273c80a013a4b15d458dfccfb',e.GITHUB_SHA],{encoding:'utf8'}).trim().split('\n').sort();
+          assert.deepEqual(changed,['.github/ci/staging-migration-ledger.mjs','.github/ci/staging-migration-ledger.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          NODE
+      - name: Retest only the actual failed connection contract and empty-connection refusal
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=spec --test-name-pattern='actual shell receiver|empty private connection' .github/ci/staging-migration-ledger.test.mjs 2>&1 | tee "$RUNNER_TEMP/ledger-connection-followup.log"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-ledger-connection-followup
+          path: ${{ runner.temp }}/ledger-connection-followup.log
+          if-no-files-found: error
+          retention-days: 3
+
+  source-transfer-followup:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false, fetch-depth: 3}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: source, persist-credentials: false, fetch-depth: 3}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind the one failed controller repair to its original complete attempt
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}', GH_TOKEN: '${{ github.token }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS),original='04de4ed6bb079e92a613f17eaffc361bded5a8c5';
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='source-transfer-followup'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          for(const [key,value]of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          const git=(...args)=>execFileSync('git',['-C','../automation',...args],{encoding:'utf8'}).trim();
+          const changed=git('diff','--name-only',original,e.GITHUB_SHA).split('\n').sort();
+          assert.deepEqual(changed,['.github/ci/staging-source-transfer.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          const file='.github/ci/staging-source-transfer.test.mjs',before=execFileSync('git',['-C','../automation','show',original+':'+file],{encoding:'utf8'}),after=readFileSync('../automation/'+file,'utf8');
+          assert.equal(after,before.replace('fileURLToPath,pathToFileURL','pathToFileURL').replace("const root=fileURLToPath(new URL('../../',import.meta.url));",'const root=process.cwd();'));
+          assert(!existsSync('../automation/node_modules'));
+          const run=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/runs/40290170108'],{encoding:'utf8'}));
+          const job=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/jobs/121463217262'],{encoding:'utf8'}));
+          assert(run.repository.id===1333414856&&run.head_repository.id===1333414856&&run.head_sha===original&&run.run_attempt===1&&run.status==='completed'&&run.conclusion==='failure');
+          assert(job.run_id===run.id&&job.name==='controller-tests'&&job.conclusion==='failure'&&job.steps.some(s=>s.name==='Exercise actual official detached-deploy helpers with shim transport'&&s.conclusion==='failure'));
+          const out=e.RUNNER_TEMP+'/source-transfer-followup';mkdirSync(out,{mode:0o700});
+          writeFileSync(out+'/selection.json',JSON.stringify({source:e.GITHUB_SHA,originalSource:original,originalRun:run.id,originalJob:job.id,changed,releaseAuthorized:false},null,2)+'\n',{flag:'wx'});
+          NODE
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with: {version: 10.33.2}
+      - name: Install only candidate dependencies for the original two-checkout topology
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Reproduce the original import failure then retest only its two unchanged cases
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync,spawnSync} from 'node:child_process';
+          import {readFileSync,writeFileSync,unlinkSync,existsSync} from 'node:fs';
+          import {resolve} from 'node:path';
+          const out=process.env.RUNNER_TEMP+'/source-transfer-followup',file='.github/ci/staging-source-transfer.test.mjs',privateOriginal=resolve('../automation/.github/ci/.source-transfer-original.mjs');
+          assert(!existsSync('../automation/node_modules'));
+          let original,repaired;
+          try{
+            writeFileSync(privateOriginal,execFileSync('git',['-C','../automation','show','04de4ed6bb079e92a613f17eaffc361bded5a8c5:'+file]),{flag:'wx',mode:0o600});
+            const run=(name,path)=>{const r=spawnSync(process.execPath,['--import','tsx','--test','--test-reporter=tap',path],{encoding:'utf8',timeout:45000,maxBuffer:4*1024**2});assert(!r.error&&r.signal===null);writeFileSync(out+'/'+name+'.log',r.stdout+r.stderr,{flag:'wx'});return {exit:r.status,text:r.stdout+r.stderr};};
+            original=run('original',privateOriginal);assert(original.exit!==0&&original.text.includes("Cannot find module 'typescript'")&&original.text.includes('/automation/scripts/gate-impact.ts'));
+            repaired=run('repaired',resolve('../automation/'+file));assert.equal(repaired.exit,0,repaired.text);assert(/^# tests 2$/m.test(repaired.text)&&/^# pass 2$/m.test(repaired.text)&&/^# fail 0$/m.test(repaired.text)&&/^# skipped 0$/m.test(repaired.text));
+          }finally{if(existsSync(privateOriginal))unlinkSync(privateOriginal);}
+          for(const path of ['.','../automation'])assert.equal(execFileSync('git',['-C',path,'status','--porcelain'],{encoding:'utf8'}),'');
+          writeFileSync(out+'/proof.json',JSON.stringify({kind:'FAILED_CONTROLLER_SOURCE_TRANSFER_REPAIR_NOT_RELEASE_RECEIPT',source:process.env.GITHUB_SHA,originalFailedAsExpected:true,repairedCases:2,originalAssertionsUnchanged:true,ownedFixtureRemoved:!existsSync(privateOriginal),bothTrackedTreesClean:true,releaseAuthorized:false},null,2)+'\n',{flag:'wx'});
+          NODE
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-source-transfer-followup
+          path: ${{ runner.temp }}/source-transfer-followup/
+          if-no-files-found: error
+          retention-days: 3

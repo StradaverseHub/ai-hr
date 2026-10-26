@@ -56,13 +56,13 @@ describe('automatic employee activation directory', () => {
     await owner.db.update(schema.employment).set({ blacklistedAt: todayInKualaLumpur() }).where(eq(schema.employment.personId, e.personId));
     expect(await candidates()).toEqual([]);
   });
-  it('does not list people without employment, cross-tenant employees, or expose the roster to delegated admins/employees', async () => {
+  it('includes people without employment but excludes cross-tenant people and guards the roster from delegated admins/employees', async () => {
     await owner.db.insert(schema.person).values({ tenantId: base.tenantId, fullName: 'Not an employee', primaryEmail: 'person@example.test' });
     await hire();
     const foreign = await seedBase();
     await hireEmployee(adminCtx(foreign), { person: { fullName: 'Foreign', primaryEmail: 'foreign@example.test' }, companyId: foreign.companyId,
       departmentId: foreign.deptA, employmentType: 'full_time', hiredOn: todayInKualaLumpur() });
-    expect((await candidates()).map(p => p.name)).toEqual(['Pending employee']);
+    expect((await candidates()).map(p => p.name)).toEqual(['Not an employee', 'Pending employee']);
     for (const grants of [[{ role: 'employee', companyId: null }], [{ role: 'hr_admin', companyId: base.companyId }], [{ role: 'operator', companyId: null }]]) {
       await expect(listEmployeeActivationCandidates({ ...adminCtx(base), grants })).rejects.toThrow(/group administrator/);
     }

@@ -1,12 +1,9 @@
 /**
  * The employee-search RULE, now that it is shared (r179 W1).
  *
- * `matchEmployees` was written for the Personnel switcher and tested there, inside
- * test/personnel-full-width-search.test.ts — a file that also opens a database, seeds two companies and
- * checks RLS scope. Two payroll screens now import the same rule for their own filter rows, so the rule
- * moved to lib/employee-search.ts and gets its own tests HERE, where they cost nothing and describe one
- * thing: what a search shows. The personnel file keeps its own assertions; the two are not redundant, they
- * guard different claims (that file: "the search cannot widen scope"; this file: "the search ranks").
+ * Pure matching rules belong here. The PostgreSQL file personnel-full-width-search.test.ts
+ * retains the actual list/detail permission boundaries; personnel-search-layout-contract.test.ts
+ * retains source wiring checks. Those files no longer pay database fixture cost for these pure cases.
  *
  * THE LAST TEST IS THE POINT OF THE OTHERS. An extraction is only safe while there is exactly ONE
  * implementation — a re-export that quietly becomes a second copy is how two screens start disagreeing
@@ -17,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '../lib/employee-search';
 import {
   SWITCHER_RESULT_CAP,
+  switcherHref,
   matchEmployees as personnelMatchEmployees,
 } from '../app/admin/personnel/employee-search';
 
@@ -87,5 +85,14 @@ describe('lib/employee-search · there is exactly ONE implementation of the rule
     // Identity, not equivalence: a forked copy would pass every assertion above on the day it was forked.
     expect(personnelMatchEmployees).toBe(matchEmployees);
     expect(SWITCHER_RESULT_CAP).toBe(EMPLOYEE_SEARCH_RESULT_CAP);
+  });
+});
+
+
+describe('Personnel search navigation URLs', () => {
+  it('selection is a URL, and the open tab rides along', () => {
+    expect(switcherHref('abc')).toBe('/admin/personnel/abc');
+    expect(switcherHref('abc', 'payroll')).toBe('/admin/personnel/abc?tab=payroll');
+    expect(switcherHref('a b/c', 'careerMovement')).toBe('/admin/personnel/a%20b%2Fc?tab=careerMovement');
   });
 });
