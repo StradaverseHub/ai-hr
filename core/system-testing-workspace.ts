@@ -197,6 +197,21 @@ export async function ownTestingWorkStatusesTx(tx:Tx,supplied:SessionContext,lim
  const rows=Array.from(found).slice(0,limit).map(row=>{const updatedAt=new Date(row.updated_at);if(!Number.isFinite(updatedAt.getTime()))throw new TestingRefusal('not_found');return{assignmentId:row.assignment_id,caseId:row.case_id,caseNo:row.case_no,title:row.title,moduleCode:row.module_code,versionId:row.version_id,ordinal:row.ordinal,executionId:row.execution_id,status:row.status,updatedAt:updatedAt.toISOString()};});
  return{rows,truncated:found.length>limit};
 }
+/** Explicit own-current execution edit read. Does not begin an execution, prepare an effect,
+ * lock a list row or return instructions/history/other testers. Revision is refusal-only. */
+export async function readOwnTestingExecutionEditableTx(tx:Tx,supplied:SessionContext,executionId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};executionId=testingUuid.parse(executionId);
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');const actor=participant(fresh);
+ const [row]=await tx.execute<{case_id:string;case_no:number;title:string;assignment_id:string;execution_id:string;version_id:string;ordinal:number;execution_revision:number;status:ExecutionStatus;actual_result:string|null;comments:string|null;defect_notes:string|null;improvement_notes:string|null}>(sql`${assignmentRowsSql(fresh,{},actor)}
+ SELECT rows.case_id,rows.case_no,rows.title,rows.assignment_id,rows.execution_id,rows.version_id,rows.ordinal,rows.execution_revision,rows.status,r.actual_result,r.comments,r.defect_notes,r.improvement_notes FROM rows
+ JOIN test_execution own_execution ON own_execution.id=rows.execution_id AND own_execution.tenant_id=${fresh.tenantId}::uuid AND own_execution.tester_user_id=${actor}::uuid
+ LEFT JOIN test_run r ON r.id=own_execution.current_run_id AND r.execution_id=own_execution.id AND r.tenant_id=${fresh.tenantId}::uuid AND r.run_by_user_id=${actor}::uuid
+ WHERE rows.execution_id=${executionId}::uuid AND rows.active AND (own_execution.current_run_id IS NULL OR r.id IS NOT NULL)
+ AND EXISTS(SELECT 1 FROM test_case current_case WHERE current_case.id=rows.case_id AND current_case.tenant_id=${fresh.tenantId}::uuid AND current_case.current_version_id=rows.version_id)
+ AND (rows.definition->>'format'<>'1' OR rows.definition->>'active'='true') LIMIT 1`);
+ if(!row)throw new TestingRefusal('not_assigned');
+ return{caseId:row.case_id,caseNo:row.case_no,title:row.title,instructionOrdinal:row.ordinal,observation:{executionId:row.execution_id,assignmentId:row.assignment_id,versionId:row.version_id,expectedRevision:row.execution_revision,status:row.status,actualResult:row.actual_result??'',comments:row.comments??'',defectNotes:row.defect_notes??'',improvementNotes:row.improvement_notes??''}};
+}
 export type TestingAssignmentRow = { assignmentId: string; caseId: string; caseNo: number; title: string; moduleCode: string; versionId: string; ordinal: number; testerUserId: string; testerName: string | null; updatedAt: Date; functionKey: string | null; category: string | null; priority: string | null; assignmentRevision: number; active: boolean; executionId: string | null; executionRevision: number | null; status: ExecutionStatus; definition: ReturnType<typeof parsePublishedInstruction> };
 export async function listTestingAssignments(ctx: SessionContext, p: { team?: boolean; testerUserId?: string; moduleCode?: string; functionKey?: string; category?: string; priority?: string; status?: ExecutionStatus; page?: number } = {}): Promise<{ rows: TestingAssignmentRow[]; total: number; page: number; summary: {status:ExecutionStatus;n:number}[] }> {
   const actor = participant(ctx);

@@ -2,7 +2,7 @@
 import 'server-only';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
 import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
@@ -17,6 +17,8 @@ import {PERSONNEL_FIELDS} from '../../lib/personnel-field-registry';
 import {ownPerformanceAcknowledgementChoicesTx} from '../../packs/performance/service';
 import {ownClaimDraftChoicesTx,readOwnClaimDraftEditableTx} from '../../packs/claims/service';
 import {prepareClaimModuleActionReview,confirmClaimModuleActionReview,reopenClaimModuleActionReview,discardClaimModuleActionReview,listClaimModuleActionReviews} from './module-action-review-store';
+import {ownTestingWorkStatusesTx,readOwnTestingExecutionEditableTx} from '../system-testing-workspace';
+import {prepareTestingModuleActionReview,confirmTestingModuleActionReview,reopenTestingModuleActionReview,discardTestingModuleActionReview,listTestingModuleActionReviews} from './module-action-review-store';
 import {MODULE_REVIEW_ACK_ACTION} from '../../lib/assistant-actions/module-action-review-contract';
 /** Minimal source choices only after fresh authority; this read does not prepare or execute effects. */
 export async function readNotificationModuleActionChoices(supplied:SessionContext):Promise<{kind:'choices';employments:{employmentId:string;employeeCode:string|null;companyName:string}[]}|{kind:'unavailable'}>{
@@ -61,11 +63,19 @@ export async function readClaimModuleActionChoices(supplied:SessionContext):Prom
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'claims');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return ClaimActionChoices.parse({kind:'choices',...await ownClaimDraftChoicesTx(tx,fresh)});});}catch{return{kind:'unavailable'};}
 }
+/** USER-owned Testing choices work for real standalone logins without person/employment. */
+export async function readTestingModuleActionChoices(supplied:SessionContext):Promise<TestingActionChoices>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};try{return await withTenant(ctx,async tx=>{const result=await ownTestingWorkStatusesTx(tx,ctx,25);return TestingActionChoices.parse({kind:'choices',truncated:result.truncated,items:result.rows.map(({assignmentId,caseId,caseNo,title,versionId,ordinal,executionId,status})=>({assignmentId,caseId,caseNo,title,versionId,instructionOrdinal:ordinal,executionId,status}))});});}catch{return{kind:'unavailable'};}
+}
+export async function readTestingModuleActionExecution(supplied:SessionContext,id:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};return withTenant(ctx,async tx=>({kind:'testing_execution_edit' as const,source:await readOwnTestingExecutionEditableTx(tx,ctx,id)}));
+}
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  testing:{list:session=>listTestingModuleActionReviews(session.ctx),readExecution:(session,id)=>readTestingModuleActionExecution(session.ctx,id),prepare:(session,input)=>prepareTestingModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenTestingModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmTestingModuleActionReview(session.ctx,input),discard:(session,input)=>discardTestingModuleActionReview(session.ctx,input)},
   claims:{readDraft:(session,input)=>readClaimModuleActionDraft(session.ctx,input),list:session=>listClaimModuleActionReviews(session.ctx),prepare:(session,input)=>prepareClaimModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenClaimModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmClaimModuleActionReview(session.ctx,input),discard:(session,input)=>discardClaimModuleActionReview(session.ctx,input)},
   performance:{list:(session,action)=>action===MODULE_REVIEW_ACK_ACTION?listReviewModuleActionReviews(session.ctx):listOnehrModuleActionReviews(session.ctx),prepare:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?prepareReviewModuleActionReview(session.ctx,input):prepareOnehrModuleActionReview(session.ctx,input),reopen:(session,action,id)=>action===MODULE_REVIEW_ACK_ACTION?reopenReviewModuleActionReview(session.ctx,id):reopenOnehrModuleActionReview(session.ctx,id),confirm:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?confirmReviewModuleActionReview(session.ctx,input):confirmOnehrModuleActionReview(session.ctx,input),discard:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?discardReviewModuleActionReview(session.ctx,input):discardOnehrModuleActionReview(session.ctx,input)},
   profile:{list:session=>listProfileModuleActionReviews(session.ctx),prepare:(session,input)=>prepareProfileModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenProfileModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmProfileModuleActionReview(session.ctx,input),discard:(session,input)=>discardProfileModuleActionReview(session.ctx,input)},

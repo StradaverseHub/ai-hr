@@ -1,5 +1,7 @@
 /** Strict human browser transport. No model tools, posted actor, source receipt or executor. */
 import {z} from 'zod';
+import {executionInputSchema,EXECUTION_STATUSES} from '../system-testing/model';
+import {MODULE_TESTING_EXECUTION_ACTION,TestingModuleActionPrepare,TestingModuleActionConfirmation,TestingModuleActionPreparedReview,TestingModuleActionCompletedReceipt,TestingModuleActionRetiredReceipt,TestingModuleActionReviewIndexResult} from './module-action-review-contract';
 import {OWN_CLAIM_DRAFT_ACTION} from './own-claim-contract';
 import {ClaimModuleActionPrepare,ClaimModuleActionConfirmation,ClaimModuleActionPreparedReview,ClaimModuleActionCompletedReceipt,ClaimModuleActionRetiredReceipt,ClaimModuleActionReviewIndexResult} from './module-action-review-contract';
 import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionPreparedReview,ModuleActionCompletedReceipt,ModuleActionRetiredReceipt,ModuleActionReviewIndexResult,ProfileModuleActionPrepare,ProfileModuleActionConfirmation,ProfileModuleActionPreparedReview,ProfileModuleActionCompletedReceipt,ProfileModuleActionRetiredReceipt,ProfileModuleActionReviewIndexResult,MODULE_REVIEW_ACK_ACTION,MODULE_ONEHR_ACK_ACTION,ReviewModuleActionPrepare,ReviewModuleActionConfirmation,ReviewModuleActionPreparedReview,ReviewModuleActionCompletedReceipt,ReviewModuleActionRetiredReceipt,ReviewModuleActionReviewIndexResult,OnehrModuleActionPrepare,OnehrModuleActionConfirmation,OnehrModuleActionPreparedReview,OnehrModuleActionCompletedReceipt,OnehrModuleActionRetiredReceipt,OnehrModuleActionReviewIndexResult} from './module-action-review-contract';
@@ -127,10 +129,40 @@ export const ClaimActionChoices=z.discriminatedUnion('kind',[
 ]);
 export type ClaimActionChoices=z.infer<typeof ClaimActionChoices>;
 type ClaimOwners<Session>=Readonly<{readDraft(session:Session,input:{employmentId:string;draftId:string}):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>}>;
-const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket,ClaimModuleActionBrowserPacket]);
+/** 4 x 16000 UTF-16 code units can JSON-escape to 384000 bytes. This closed Testing
+ * prepare envelope keeps the full native scope; other action/operation caps remain 20 KiB. */
+export const TESTING_ACTION_TRANSPORT_BYTES=524288;
+export const TestingActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.object({assignmentId:z.uuid(),caseId:z.uuid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),versionId:z.uuid(),instructionOrdinal:z.number().int().positive(),executionId:z.uuid().nullable(),status:z.enum(EXECUTION_STATUSES)}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.assignmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type TestingActionChoices=z.infer<typeof TestingActionChoices>;
+export const TestingExecutionEditResult=z.object({kind:z.literal('testing_execution_edit'),source:z.object({caseId:z.uuid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),instructionOrdinal:z.number().int().positive(),observation:executionInputSchema}).strict()}).strict();
+export const TestingModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('read_execution'),executionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('prepare'),input:TestingModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('confirm'),confirmation:TestingModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('discard'),confirmation:TestingModuleActionConfirmation}).strict(),
+]);
+export type TestingModuleActionBrowserPacket=z.infer<typeof TestingModuleActionBrowserPacket>;
+export const TestingModuleActionBrowserResult=z.discriminatedUnion('kind',[TestingExecutionEditResult,TestingModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:TestingModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:TestingModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:TestingModuleActionRetiredReceipt}).strict()]);
+export type TestingModuleActionBrowserResult=z.infer<typeof TestingModuleActionBrowserResult>;
+export function parseTestingModuleActionBrowserResult(packet:TestingModuleActionBrowserPacket,value:unknown):TestingModuleActionBrowserResult{
+ const result=TestingModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='testing_module_review_index';
+ if(!(op==='read_execution'?result.kind==='testing_execution_edit':op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index&&result.kind!=='testing_execution_edit'))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='read_execution'&&(result.kind!=='testing_execution_edit'||result.source.observation.executionId!==packet.executionId))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const source=result.review.review,human=source.humanObservation;if(source.executionId!==human.executionId||source.assignmentId!==human.assignmentId||source.versionId!==human.versionId)throw Error('Module action response unavailable.');}
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.review.humanObservation)!==JSON.stringify(packet.input.intent.observation)))throw Error('Module action response unavailable.');
+ return result;
+}
+type TestingOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;readExecution(session:Session,id:string):Promise<unknown>;prepare(session:Session,input:z.infer<typeof TestingModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>}>;
+const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket,ClaimModuleActionBrowserPacket,TestingModuleActionBrowserPacket]);
 type SharedBrowserPacket=z.infer<typeof SharedBrowserPacket>;
 export type ModuleActionBrowserOwners<Session>=Readonly<{
  authenticate():Promise<Session>;
+ testing?:TestingOwners<Session>;
  claims?:ClaimOwners<Session>;
  profile?:ProfileOwners<Session>;
  performance?:PerformanceOwners<Session>;
@@ -145,14 +177,14 @@ const unavailable=(status:number)=>Response.json({error:'unavailable'},{status,h
 /** Fixed byte/fragment/time bounds before identity/source work. Once confirmation starts, transport
  * loss is uncertain; the client must reopen the SAME saved action rather than create/retry effects. */
 async function packet(request:Request):Promise<SharedBrowserPacket>{
- const length=request.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>20480))throw Error();
+ const length=request.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>TESTING_ACTION_TRANSPORT_BYTES))throw Error();
  if(!request.body||request.signal.aborted)throw Error();
  const reader=request.body.getReader(),chunks:Uint8Array[]=[];let bytes=0,fragments=0,rejectAbort!:()=>void;
  const stopped=new Promise<never>((_,reject)=>{rejectAbort=()=>reject(Error());});void stopped.catch(()=>{});
  const abort=()=>{rejectAbort();void reader.cancel().catch(()=>{});};request.signal.addEventListener('abort',abort,{once:true});if(request.signal.aborted)abort();const timer=setTimeout(abort,5000);
- try{for(;;){if(++fragments>512)throw Error();const part=await Promise.race([reader.read(),stopped]);if(part.done)break;bytes+=part.value.byteLength;if(bytes>20480)throw Error();chunks.push(part.value);}
+ try{for(;;){if(++fragments>8192)throw Error();const part=await Promise.race([reader.read(),stopped]);if(part.done)break;bytes+=part.value.byteLength;if(bytes>TESTING_ACTION_TRANSPORT_BYTES)throw Error();chunks.push(part.value);}
   if(request.signal.aborted)throw Error();const body=new Uint8Array(bytes);let offset=0;for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.byteLength;}
-  return SharedBrowserPacket.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)));
+  const parsed=SharedBrowserPacket.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)));const extended='action' in parsed&&parsed.action===MODULE_TESTING_EXECUTION_ACTION&&parsed.operation==='prepare';if(!extended&&(bytes>20480||fragments>512||length!==null&&Number(length)>20480))throw Error();return parsed;
  }catch{void reader.cancel().catch(()=>{});throw Error();}finally{clearTimeout(timer);request.signal.removeEventListener('abort',abort);reader.releaseLock();}
 }
 /** Trusted server construction only. Undefined/invalid configured origins refuse; request Host,
@@ -167,7 +199,8 @@ export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBro
   let input:SharedBrowserPacket;try{input=await packet(request);}catch{return unavailable(400);}
   let session:Session;try{session=await owners.authenticate();}catch{return unavailable(401);}
   if(request.signal.aborted)return unavailable(408);
-  try{if('action' in input&&input.action===OWN_CLAIM_DRAFT_ACTION){const claims=owners.claims;if(!claims)return unavailable(503);const result=input.operation==='read_draft'?await claims.readDraft(session,{employmentId:input.employmentId,draftId:input.draftId}):input.operation==='list'?await claims.list(session):input.operation==='prepare'?await claims.prepare(session,input.input):input.operation==='reopen'?await claims.reopen(session,input.actionId):input.operation==='confirm'?await claims.confirm(session,input.confirmation):await claims.discard(session,input.confirmation);return Response.json(parseClaimModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+  try{if('action' in input&&input.action===MODULE_TESTING_EXECUTION_ACTION){const testing=owners.testing;if(!testing)return unavailable(503);const result=input.operation==='read_execution'?await testing.readExecution(session,input.executionId):input.operation==='list'?await testing.list(session):input.operation==='prepare'?await testing.prepare(session,input.input):input.operation==='reopen'?await testing.reopen(session,input.actionId):input.operation==='confirm'?await testing.confirm(session,input.confirmation):await testing.discard(session,input.confirmation);return Response.json(parseTestingModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===OWN_CLAIM_DRAFT_ACTION){const claims=owners.claims;if(!claims)return unavailable(503);const result=input.operation==='read_draft'?await claims.readDraft(session,{employmentId:input.employmentId,draftId:input.draftId}):input.operation==='list'?await claims.list(session):input.operation==='prepare'?await claims.prepare(session,input.input):input.operation==='reopen'?await claims.reopen(session,input.actionId):input.operation==='confirm'?await claims.confirm(session,input.confirmation):await claims.discard(session,input.confirmation);return Response.json(parseClaimModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input&&(input.action===MODULE_REVIEW_ACK_ACTION||input.action===MODULE_ONEHR_ACK_ACTION)){const performance=owners.performance;if(!performance)return unavailable(503);const result=input.operation==='list'?await performance.list(session,input.action):input.operation==='prepare'?await performance.prepare(session,input.input):input.operation==='reopen'?await performance.reopen(session,input.action,input.actionId):input.operation==='confirm'?await performance.confirm(session,input.confirmation):await performance.discard(session,input.confirmation);return Response.json(parsePerformanceModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input&&input.action==='ess.profile.request'){const profile=owners.profile;if(!profile)return unavailable(503);const result=input.operation==='list'?await profile.list(session):input.operation==='prepare'?await profile.prepare(session,input.input):input.operation==='reopen'?await profile.reopen(session,input.actionId):input.operation==='confirm'?await profile.confirm(session,input.confirmation):await profile.discard(session,input.confirmation);return Response.json(parseProfileModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input)return unavailable(400);
