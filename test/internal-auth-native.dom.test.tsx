@@ -7,7 +7,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import copy from '../mobile/lib/internal-auth-copy.json';
-function fixture() {
+function fixture(organization?: string) {
   let generation = 0;
   class Failure extends Error { constructor(public code: string) { super(code); } }
   const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
@@ -20,7 +20,7 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
-    './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test'}),companyCopy:()=>({change:'Change company'})},
+    './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
     './i18n':{appLocale:()=> 'en'},'./internal-auth-copy.json':copy,
@@ -36,6 +36,16 @@ async function login(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(copy.en.password),'Temporary fixture password 771!'); await user.click(screen.getByRole('button',{name:copy.en.signIn}));
 }
 describe('native embedded sign-in — rendered shipped screen',()=>{
+  it.each(['cloud-alpha','cloud-beta','private-company'])('uses the signed workplace %s with only username/password entry before MFA',async organization=>{
+    const f=fixture(organization),user=userEvent.setup();f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)});
+    render(<f.View/>);expect(screen.queryByLabelText(copy.en.organization)).not.toBeInTheDocument();
+    expect(screen.getByText(copy.en.organization+': '+organization)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(copy.en.username),'employee');await user.type(screen.getByLabelText(copy.en.password),'Private fixture password 771!');
+    await user.click(screen.getByRole('button',{name:copy.en.signIn}));
+    await screen.findByRole('heading',{name:copy.en.mfaTitle});
+    expect(f.request).toHaveBeenCalledWith('login',{organization,username:'employee',password:'Private fixture password 771!'},1);
+    expect(f.probe).toHaveBeenCalledOnce();expect(f.auth.completeInternalSignIn).not.toHaveBeenCalled();
+  });
   it('verifies the selected server before credentials and persists only after MFA and backup-code acknowledgement',async()=>{
     const f=fixture(),user=userEvent.setup();
     f.request.mockResolvedValueOnce({step:'password',challenge:'p'.repeat(43)}).mockResolvedValueOnce({step:'enroll',challenge:'e'.repeat(43),secret:'MANUALKEY',qr:'data:image/png;base64,fixture'})

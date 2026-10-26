@@ -20014,7 +20014,8 @@
     },
     "switchAccountTitle": "Sử dụng tài khoản khác",
     "switchAccountHelp": "Lời mời này thuộc tổ chức hoặc email đã xác minh khác. Đăng xuất để thiết lập hoặc đăng nhập tài khoản được mời. Tài khoản HR hiện tại của bạn vẫn riêng biệt.",
-    "switchAccountSubmit": "Đăng xuất và mở lời mời"
+    "switchAccountSubmit": "Đăng xuất và mở lời mời",
+    "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu."
   },
   "aiManagement": {
     "title": "Quản lý AI",
@@ -23766,5 +23767,14 @@
     "expired": "Hết hạn",
     "suspended": "Tạm ngừng",
     "closed": "Đã đóng"
+  },
+  "mobileSetup": {
+    "title": "Kết nối nơi làm việc",
+    "help": "Mở AI HR trên điện thoại này để kiểm tra nơi làm việc rồi tiếp tục đăng nhập.",
+    "open": "Mở AI HR",
+    "install": "Nếu chưa cài ứng dụng, hãy nhận AI HR từ quản trị viên rồi mở lại liên kết này.",
+    "network": "Máy chủ HR riêng có thể yêu cầu Wi-Fi công ty hoặc VPN.",
+    "invalid": "Liên kết thiết lập không hợp lệ hoặc đã hết hạn. Hãy yêu cầu quản trị viên cung cấp liên kết mới.",
+    "checking": "Đang chuẩn bị thiết lập nơi làm việc…"
   }
 }
