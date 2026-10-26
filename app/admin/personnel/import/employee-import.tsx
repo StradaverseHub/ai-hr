@@ -135,10 +135,12 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
   const [prepareIntake,setPrepareIntake]=useState(false);
-  const [workbookReview,setWorkbookReview]=useState<{revisionId:string;inputRevision:number;companyId:string;fileName:string;format:'xlsx'|'xls';workbook:PersonnelWorkbookSource}|null>(null);
+  type PendingFileSource={fingerprint:string|null;priorGuidedUsed:boolean};
+  const [workbookReview,setWorkbookReview]=useState<{revisionId:string;inputRevision:number;companyId:string;fileName:string;format:'xlsx'|'xls';workbook:PersonnelWorkbookSource;pendingSource:PendingFileSource}|null>(null);
   type PreparationReview={revisionId:string;inputRevision:number;companyId:string;fileName:string|null;preparation:PersonnelPreparation;
-    companions:{family:string;allocations:string;registers:PersonnelRegisterTexts};replacesSource?:boolean;workbook?:PersonnelWorkbookSource;sheetDecision?:{roles:Readonly<Record<string,PersonnelSheetRole>>;excluded:readonly string[];excludedAcknowledged:boolean}};
+    companions:{family:string;allocations:string;registers:PersonnelRegisterTexts};replacesSource?:boolean;pendingSource?:PendingFileSource;workbook?:PersonnelWorkbookSource;sheetDecision?:{roles:Readonly<Record<string,PersonnelSheetRole>>;excluded:readonly string[];excludedAcknowledged:boolean}};
   const [preparationReview,setPreparationReview]=useState<PreparationReview|null>(null);
+  const pendingFileSource=workbookReview?.pendingSource??preparationReview?.pendingSource;
   // Original cell/span/sheet evidence stays browser-local even after an accepted normalized revision.
   const [localEvidence,setLocalEvidence]=useState<readonly PersonnelImportLocalEvidence[]>([]);
   const [dependentsCsv, setDependentsCsv] = useState('');
@@ -217,12 +219,14 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // write path changes — this only replaces "open the file and copy its contents" for the user.
   const loadFile = async (file: File) => {
     if (commitPending.current) return;
+    // A picked candidate is not the active source. Preserve its file label, companions, original
+    // fingerprint and lineage until adoption; a failed/delayed read must not retarget old CSV.
+    const priorGuidedUsed=pendingFileSource?.priorGuidedUsed??guidedUsed;
+    if(pendingFileSource){setSourceEpoch(value=>value+1);setGuidedUsed(priorGuidedUsed);}
     reset();setWorkbookReview(null);setPreparationReview(null);
     const preparing=prepareIntake&&!baseline;
-    setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;
     const revision = inputRevision.current;
     const readRevision = ++fileReadRevision.current;
-    setFileName(null);
     setReading(true);
     try {
       // The reader maps the first requested companion to dependentsText, so Family must stay first.
@@ -236,16 +240,20 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       let originalDigest:string|null=null;
       try{originalDigest=await personnelImportLocalBytesDigest(await file.arrayBuffer());}catch{/* Measurement may be unavailable; the ordinary manual import stays usable. */}
       if(revision!==inputRevision.current)return;
-      originalSourceFingerprint.current=originalDigest;
-      if (revision !== inputRevision.current) return;
       if(preparing){
+        // Explicitly isolate measurement for the candidate before any cleanup. Cancel/supersede
+        // invalidates this epoch; the still-active old CSV never inherits the candidate fingerprint.
+        const pendingSource:PendingFileSource={fingerprint:originalDigest,priorGuidedUsed};
         const revisionId=crypto.randomUUID();
-        if(preparation&&format!=='csv')setWorkbookReview({revisionId,inputRevision:revision,companyId,fileName:name,format,workbook:preparation});
+        if(preparation&&format!=='csv')setWorkbookReview({revisionId,inputRevision:revision,companyId,fileName:name,format,workbook:preparation,pendingSource});
         else setPreparationReview({revisionId,inputRevision:revision,companyId,fileName:name,
-          replacesSource:true,preparation:preparePersonnelImportText({revisionId,text},{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}),
+          replacesSource:true,pendingSource,preparation:preparePersonnelImportText({revisionId,text},{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}),
           companions:{family:'',allocations:'',registers:{}}});
+        setSourceEpoch(value=>value+1);setGuidedUsed(false);
         return;
       }
+      // Recognised/manual file flow adopts only after decode AND fingerprint await are current.
+      originalSourceFingerprint.current=originalDigest;setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;
       setLocalEvidence([]);setCsv(text);headerAssistanceAnnotation.current=null;
       try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
 
@@ -258,11 +266,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       runValidate(text, dependentsText,registers,allocations);
     } catch (e) {
       if (revision !== inputRevision.current) return;
-      // Drop the file label and any earlier preview so a rejected pick can never leave a stale
-      // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
-      // alone — the user must press Validate again to get a preview back.
-      setFileName(null);
-      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');headerAssistanceAnnotation.current=null;
+      // A rejected candidate owns none of the active source identity or companion data. The old
+      // preview stays invalidated, so the user must explicitly validate the unchanged old input again.
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -464,7 +469,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       {preview?.allocations&&<section className="space-y-3 rounded-md border p-4" aria-label={ta('confirmTitle')}>{preview.allocations.groups.map(group=><div key={group.key} className="border-b pb-3 text-sm last:border-0"><p className="font-medium">{group.employeeCode} · {group.effectiveDate}</p><p className="text-xs text-muted-foreground">{group.companyId} · {ta('sourceRows')}: {group.rowNums.join(', ')}</p><ul>{group.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul>{group.operation==='clear'&&<p>{ta('clearHelp')}</p>}{group.errors.map((message,i)=><p key={i} className="text-destructive">{message}</p>)}</div>)}</section>}
       <StepRail current={currentStep} />
       <PersonnelImportEvaluationPanel ref={evaluation} companyId={companyId} sourceEpoch={sourceEpoch} baselineAvailable={!workbookReview&&!preparationReview}
-        getSource={()=>({...originalSourceFingerprint.current?{fingerprint:originalSourceFingerprint.current}:{},text:workbookReview?JSON.stringify(workbookReview.workbook):preparationReview?.preparation?JSON.stringify(preparationReview.preparation):employeeImportSourceFingerprint(csv,dependentsCsv,registerTexts,allocationsCsv),revision:inputRevision.current})}
+        getSource={()=>{
+          // A candidate with unknown hash NEVER borrows the unrelated active source fingerprint.
+          const fingerprint=pendingFileSource?pendingFileSource.fingerprint:originalSourceFingerprint.current;
+          return{...(fingerprint?{fingerprint}:{}),text:workbookReview?JSON.stringify(workbookReview.workbook):preparationReview?.preparation?JSON.stringify(preparationReview.preparation):employeeImportSourceFingerprint(csv,dependentsCsv,registerTexts,allocationsCsv),revision:inputRevision.current};
+        }}
         canBegin={!guidedUsed&&!!(csv.trim()||workbookReview||preparationReview)} disabled={pending||reading||committing} onStatus={setEvaluationStatus} onStarted={()=>{setPreview(null);setResult(null);setPhase('idle');}}/>
       <Card className="space-y-4 p-5">
         <fieldset disabled={committing||evaluationStatus.blocked} className="min-w-0 space-y-4">
@@ -586,6 +595,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
                 onBlur={()=>{if(manualCorrection.current){manualCorrection.current=false;void evaluation.current?.record({kind:'correction',mappingChanges:null,editedRows:null,reason:'values'});}}}
                 onChange={(e) => {
                   if (commitPending.current) return;
+                  if(pendingFileSource){setSourceEpoch(value=>value+1);setGuidedUsed(pendingFileSource.priorGuidedUsed);}
                   manualCorrection.current=true;originalSourceFingerprint.current=null;setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);
                   setFileName(null);
                   reset();
@@ -602,7 +612,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             const key=sheet.sheetName.trim().toLowerCase(),roles:Record<string,PersonnelSheetRole>={[EMPLOYEE_XLSX_SHEETS.family.trim().toLowerCase()]:'family',[ALLOCATION_SHEET.trim().toLowerCase()]:'allocations',[PERSONNEL_REGISTER_SHEETS.qualification.trim().toLowerCase()]:'qualification',[PERSONNEL_REGISTER_SHEETS.emergency.trim().toLowerCase()]:'emergency'};
             return[sheet.sheetName,roles[key]??'unassigned'];
           }))} messages={workbookMessages} disabled={pending||reading||committing}
-          onCancel={()=>setWorkbookReview(null)} onApply={(reviewed,expectedRevision)=>{
+          onCancel={()=>{if(workbookReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(workbookReview.pendingSource.priorGuidedUsed);}setWorkbookReview(null);}} onApply={(reviewed,expectedRevision)=>{
             if(commitPending.current)return;
             if(expectedRevision!==workbookReview.revisionId||workbookReview.inputRevision!==inputRevision.current||workbookReview.companyId!==companyId){setHeaderNotice(headerMessages.sourceChanged);setWorkbookReview(null);return;}
             try{
@@ -612,7 +622,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             const matrix=decodePersonnelCsvRows(personnelWorksheetMatrixRows(employee.source),'employee');
             const preparation=preparePersonnelImportMatrix({revisionId,matrix,rowNumbers:rows.map(row=>row.row),coordinateKind:'worksheet_row',source:employee.source,text:employee.text},
               {columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]});
-            setPreparationReview({revisionId,inputRevision:inputRevision.current,companyId,fileName:workbookReview.fileName,preparation,replacesSource:true,workbook:reviewed.original,sheetDecision:{roles:reviewed.roles,excluded:reviewed.excluded,excludedAcknowledged:reviewed.excludedAcknowledged},
+            setPreparationReview({revisionId,inputRevision:inputRevision.current,companyId,fileName:workbookReview.fileName,preparation,replacesSource:true,pendingSource:workbookReview.pendingSource,workbook:reviewed.original,sheetDecision:{roles:reviewed.roles,excluded:reviewed.excluded,excludedAcknowledged:reviewed.excludedAcknowledged},
               companions:{family:reviewed.companions.family,allocations:reviewed.companions.allocations,registers:{qualification:reviewed.companions.qualification,emergency:reviewed.companions.emergency}}});
             }catch{setHeaderNotice(headerMessages.invalidSource);return;}
             setWorkbookReview(null);
@@ -626,11 +636,12 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           try{
             const nextSource=capturePersonnelImportSource({text:applied.text,fileName:preparationReview.fileName,format:'paste'},applied.revisionId);
             const evidence=appendPersonnelImportLocalEvidence(preparationReview.replacesSource?[]:localEvidence,{kind:'preparation',revisionId:applied.revisionId,text:applied.text,applied,...preparationReview.workbook?{workbook:preparationReview.workbook}:{},...preparationReview.sheetDecision?{sheetDecision:preparationReview.sheetDecision}:{}});setLocalEvidence(evidence);
-            reset();setCsv(applied.text);setImportSource(nextSource);setGuidedUsed(true);
+            if(preparationReview.pendingSource)originalSourceFingerprint.current=preparationReview.pendingSource.fingerprint;
+            reset();setCsv(applied.text);setImportSource(nextSource);setGuidedUsed(true);manualCorrection.current=false;
             const capturedRevision=inputRevision.current;void personnelImportLocalDigest(applied.text).then(revision=>{if(capturedRevision===inputRevision.current)void evaluation.current?.record({kind:'preparation',revision,normalizations:null,corrections:null,unresolved:0,conflicts:null,duplicates:null,missingSourceEvidence:null});}).catch(()=>setHeaderNotice(t('measurement.observationUnavailable')));headerAssistanceAnnotation.current=null;
             setDependentsCsv(companions.family);setAllocationsCsv(companions.allocations);setRegisterTexts(companions.registers);setFileName(preparationReview.fileName);setPreparationReview(null);setHeaderNotice(headerMessages.acceptedRevision);
           }catch{setHeaderNotice(headerMessages.invalidSource);}
-        }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>setPreparationReview(null)}>{workbookMessages.cancel}</Button></div>}
+        }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
 
         <div className="space-y-3">
           <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
