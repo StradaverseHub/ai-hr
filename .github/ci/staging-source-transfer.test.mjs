@@ -5,9 +5,9 @@ import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,readFileSync,rmSync,exi
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {fileURLToPath,pathToFileURL} from 'node:url';
+import {pathToFileURL} from 'node:url';
 import {stagingTransport} from './staging-transport.mjs';
-const root=fileURLToPath(new URL('../../',import.meta.url));
+const root=process.cwd();
 const raw=await import(pathToFileURL(join(root,'scripts/improve/release.ts')).href),official={...(raw.default??{}),...raw};
 test('actual canonical rsync uses private config/alias and protects source/recipient operator data',()=>{
  const temp=realpathSync(mkdtempSync(join(tmpdir(),'staging transfer '))),source=join(temp,'source'),target=join(temp,'target'),bin=join(temp,'bin');

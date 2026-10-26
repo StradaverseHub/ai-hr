@@ -21,7 +21,7 @@ on:
         required: false
         default: full
         type: choice
-        options: [full, source-proof-followup, environment]
+        options: [full, source-proof-followup, environment, source-transfer-followup]
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -727,7 +727,7 @@ jobs:
           retention-days: 3
 
   filesystem-activation:
-    if: ${{ inputs.filesystem_activation_probe && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -817,5 +817,73 @@ jobs:
             ${{ runner.temp }}/staging-official-helpers.log
             ${{ runner.temp }}/staging-environment-cleanup.log
             ${{ runner.temp }}/cleanup-install.log
+          if-no-files-found: error
+          retention-days: 3
+
+  source-transfer-followup:
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults: {run: {working-directory: source}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false, fetch-depth: 3}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: source, persist-credentials: false, fetch-depth: 3}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Bind the one failed controller repair to its original complete attempt
+        env: {SELECTED_INPUTS: '${{ toJSON(inputs) }}', GH_TOKEN: '${{ github.token }}'}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
+          const e=process.env,p=JSON.parse(e.SELECTED_INPUTS),original='04de4ed6bb079e92a613f17eaffc361bded5a8c5';
+          assert(e.GITHUB_ACTIONS==='true'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1');
+          assert(e.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025');
+          assert(p.filesystem_activation_probe===true&&p.installer_fixture_phase==='source-transfer-followup'&&p.candidate_ref==='codex/test-suite-efficiency-review-20261025'&&p.expected_sha===e.GITHUB_SHA&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA);
+          for(const [key,value]of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
+          const git=(...args)=>execFileSync('git',['-C','../automation',...args],{encoding:'utf8'}).trim();
+          const changed=git('diff','--name-only',original,e.GITHUB_SHA).split('\n').sort();
+          assert.deepEqual(changed,['.github/ci/staging-source-transfer.test.mjs','.github/workflows/alpha-staging-diagnostics.yml']);
+          const file='.github/ci/staging-source-transfer.test.mjs',before=execFileSync('git',['-C','../automation','show',original+':'+file],{encoding:'utf8'}),after=readFileSync('../automation/'+file,'utf8');
+          assert.equal(after,before.replace('fileURLToPath,pathToFileURL','pathToFileURL').replace("const root=fileURLToPath(new URL('../../',import.meta.url));",'const root=process.cwd();'));
+          assert(!existsSync('../automation/node_modules'));
+          const run=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/runs/40290170108'],{encoding:'utf8'}));
+          const job=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/jobs/121463217262'],{encoding:'utf8'}));
+          assert(run.repository.id===1333414856&&run.head_repository.id===1333414856&&run.head_sha===original&&run.run_attempt===1&&run.status==='completed'&&run.conclusion==='failure');
+          assert(job.run_id===run.id&&job.name==='controller-tests'&&job.conclusion==='failure'&&job.steps.some(s=>s.name==='Exercise actual official detached-deploy helpers with shim transport'&&s.conclusion==='failure'));
+          const out=e.RUNNER_TEMP+'/source-transfer-followup';mkdirSync(out,{mode:0o700});
+          writeFileSync(out+'/selection.json',JSON.stringify({source:e.GITHUB_SHA,originalSource:original,originalRun:run.id,originalJob:job.id,changed,releaseAuthorized:false},null,2)+'\n',{flag:'wx'});
+          NODE
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with: {version: 10.33.2}
+      - name: Install only candidate dependencies for the original two-checkout topology
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Reproduce the original import failure then retest only its two unchanged cases
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync,spawnSync} from 'node:child_process';
+          import {readFileSync,writeFileSync,unlinkSync,existsSync} from 'node:fs';
+          import {resolve} from 'node:path';
+          const out=process.env.RUNNER_TEMP+'/source-transfer-followup',file='.github/ci/staging-source-transfer.test.mjs',privateOriginal=resolve('../automation/.github/ci/.source-transfer-original.mjs');
+          assert(!existsSync('../automation/node_modules'));
+          let original,repaired;
+          try{
+            writeFileSync(privateOriginal,execFileSync('git',['-C','../automation','show','04de4ed6bb079e92a613f17eaffc361bded5a8c5:'+file]),{flag:'wx',mode:0o600});
+            const run=(name,path)=>{const r=spawnSync(process.execPath,['--import','tsx','--test','--test-reporter=tap',path],{encoding:'utf8',timeout:45000,maxBuffer:4*1024**2});assert(!r.error&&r.signal===null);writeFileSync(out+'/'+name+'.log',r.stdout+r.stderr,{flag:'wx'});return {exit:r.status,text:r.stdout+r.stderr};};
+            original=run('original',privateOriginal);assert(original.exit!==0&&original.text.includes("Cannot find module 'typescript'")&&original.text.includes('/automation/scripts/gate-impact.ts'));
+            repaired=run('repaired',resolve('../automation/'+file));assert.equal(repaired.exit,0,repaired.text);assert(/^# tests 2$/m.test(repaired.text)&&/^# pass 2$/m.test(repaired.text)&&/^# fail 0$/m.test(repaired.text)&&/^# skipped 0$/m.test(repaired.text));
+          }finally{if(existsSync(privateOriginal))unlinkSync(privateOriginal);}
+          for(const path of ['.','../automation'])assert.equal(execFileSync('git',['-C',path,'status','--porcelain'],{encoding:'utf8'}),'');
+          writeFileSync(out+'/proof.json',JSON.stringify({kind:'FAILED_CONTROLLER_SOURCE_TRANSFER_REPAIR_NOT_RELEASE_RECEIPT',source:process.env.GITHUB_SHA,originalFailedAsExpected:true,repairedCases:2,originalAssertionsUnchanged:true,ownedFixtureRemoved:!existsSync(privateOriginal),bothTrackedTreesClean:true,releaseAuthorized:false},null,2)+'\n',{flag:'wx'});
+          NODE
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-source-transfer-followup
+          path: ${{ runner.temp }}/source-transfer-followup/
           if-no-files-found: error
           retention-days: 3
