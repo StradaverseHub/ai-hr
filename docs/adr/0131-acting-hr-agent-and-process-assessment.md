@@ -1762,3 +1762,45 @@ then release permits the canonical hire and its opening grant. Tests UNRUN;
 syntax/diff review only. Draft activation/import callers may have earlier work;
 those transitive intervals and remaining org/credit/config writers still require
 review and verification. No universal protection or Assistant effect is exposed.
+
+
+Confirmed delivery scope and completion-reference custody — 26 October 2026
+
+The human explicitly requested finishing all three delivery stages: (1) own-leave
+Assistant, (2) provider integration, and (3) AI workspace plus module agents. This
+continues the detailed roadmap above; source preparation alone completes none of
+these stages. Keep the local-only/no Actions and retain-valid-pass requirements.
+Release verified candidates autonomously under the existing authorization.
+Provider activation or production HR-data transfer is not inferred from coding.
+
+The unallocated review-store draft now permits a completed marker with one unique
+request and one unique submission-event reference, with an all-or-neither/state
+constraint. Its narrow completion function validates the current custody owner,
+exact reviewed digest, unexpired pending state and matching own request/event
+binding, and requires both source row versions to belong to the current top-level
+transaction. It retires encrypted review content in that same transaction.
+Repeated delivery can return only the same completed references. This primitive
+is not the consent owner, an Assistant grant, a pause check or an alternative leave
+engine: the eventual server command must freshly validate those, obtain its
+references directly from canonical `requestLeave`, and abort the whole transaction
+on any failure. Never accept request/event references from the human POST/model.
+
+PostgreSQL16 primary documentation confirms xid8-to-xid casting and that
+`pg_current_xact_id()` returns the top-level transaction ID even in savepoints:
+https://www.postgresql.org/docs/16/functions-info.html
+https://www.postgresql.org/docs/16/transaction-id.html
+Consequently the current narrow proof deliberately refuses source versions made
+inside a savepoint. The eventual command must use its supplied top-level transaction
+directly; this is a source constraint, not an assertion that all future callers are
+compatible. It also does not establish that arbitrary same-transaction SQL used the
+canonical engine; that provenance remains the server command owner's responsibility.
+
+Completed reopening now uses the existing current-user canonical minimal request/
+event reader and pure reconciliation before returning a reference receipt. Missing,
+substituted or no-longer-readable canonical evidence refuses; it does not execute
+again or claim approval. Four authored actual-DB cases cover canonical write plus
+completion/reopen/same-reference retry, whole-transaction rollback after completion,
+refusal of old committed references, and unsupported savepoint refusal. ALL UNRUN;
+only TypeScript syntax parsing and diff review performed. The SQL remains unallocated,
+unjournalled and unapplied. No submission/confirmation command or endpoint is mounted,
+and dependency/security/concurrency/retention/erasure acceptance remains incomplete.

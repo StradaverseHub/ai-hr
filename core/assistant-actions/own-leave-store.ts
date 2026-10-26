@@ -1,4 +1,4 @@
-/** SOURCE-ONLY pending-review custody. No route, model tool or execution command is wired here.
+/** SOURCE-ONLY review custody and completed-reference reads. No route, model tool or execution command is wired here.
  * Requires the coordinated review-store and non-admitting-control migrations before runtime use.
  * One caller transaction owns authority, pause check, private row and retirement. No nested commit. */
 import { randomUUID } from 'node:crypto';
@@ -13,13 +13,20 @@ import { readOwnLeaveCandidateTx, type OwnLeaveCandidateResult } from './own-lea
 import { OwnLeaveContentUnavailable, OwnLeaveSealedReview, sealOwnLeaveReview, unsealOwnLeaveReview } from './own-leave-content';
 import { OwnLeavePreparedMetadata } from './own-leave-review';
 import { ownLeaveReviewedDigest } from './own-leave-review-digest';
+import { readOwnLeaveSubmissionReferenceTx } from '../read';
+import { reconcileOwnLeaveConfirmation } from './own-leave-reconciliation';
 
 const StoredReview = z.object({
-  metadata: OwnLeavePreparedMetadata.refine(m => m.state !== 'completed'),
+  metadata: OwnLeavePreparedMetadata,
   sealed: OwnLeaveSealedReview.nullable(),
-}).strict().refine(value => (value.metadata.state === 'awaiting_confirmation') === (value.sealed !== null));
+  receipt: OwnLeaveFinalReceipt.nullable(),
+}).strict().refine(value => (value.metadata.state === 'awaiting_confirmation') === (value.sealed !== null))
+  .refine(value => value.metadata.state === 'completed'
+    ? value.receipt?.state === 'completed' && value.receipt.actionId === value.metadata.actionId
+    : value.receipt === null);
 type StoredReview = z.infer<typeof StoredReview>;
 type PendingResult = { kind: 'prepared'; review: Card };
+type CompletedResult = { kind: 'completed'; receipt: Extract<Receipt, { state: 'completed' }> };
 type RetiredResult = { kind: 'retired'; receipt: Exclude<Receipt, { state: 'completed' }> };
 
 function captureContext(ctx: SessionContext): SessionContext {
@@ -62,6 +69,20 @@ function retired(stored: StoredReview): RetiredResult {
   return { kind: 'retired', receipt };
 }
 
+/** A stored marker is not provenance. Reopen only after the actual canonical own-source reader
+ * confirms both references under the current actor. Never infer approval or retry an effect here. */
+async function completed(tx: Tx, actor: SessionContext, stored: StoredReview): Promise<CompletedResult> {
+  const receipt = stored.receipt;
+  if (stored.metadata.state !== 'completed' || receipt?.state !== 'completed') throw new OwnLeaveContentUnavailable();
+  const source = await readOwnLeaveSubmissionReferenceTx(tx, actor, receipt.leaveRequestId, receipt.submissionEventId);
+  const outcome = reconcileOwnLeaveConfirmation(stored.metadata, receipt, {
+    actionId: stored.metadata.actionId, contractVersion: stored.metadata.contractVersion,
+    reviewedDigest: stored.metadata.reviewedDigest,
+  }, stored.metadata.binding, new Date(), source);
+  if (outcome.status !== 'submission_recorded') throw new OwnLeaveContentUnavailable();
+  return { kind: 'completed', receipt };
+}
+
 /** Inputs must be supplied by the eventual authenticated human-input owner. This creates only a
  * stored REVIEW, never a leave request or evidence that the human clicked to submit it. */
 export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
@@ -88,7 +109,7 @@ export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
 
 /** Fresh Assistant/source access before reopening; no new model admission. This is a frozen saved
  * review, not a current eligibility assertion. Confirmation will need a separate complete recheck. */
-export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, actionIdValue: unknown): Promise<PendingResult | RetiredResult> {
+export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, actionIdValue: unknown): Promise<PendingResult | RetiredResult | CompletedResult> {
   const ctx = captureContext(supplied);
   const actionId = z.string().uuid().safeParse(actionIdValue);
   if (!actionId.success) throw new OwnLeaveContentUnavailable();
@@ -99,7 +120,8 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   if (stored.metadata.actionId !== actionId.data
     || stored.metadata.binding.tenantId !== actor.tenantId || stored.metadata.binding.userId !== actor.userId
     || stored.metadata.binding.personId !== actor.personId) throw new OwnLeaveContentUnavailable();
-  return stored.metadata.state === 'awaiting_confirmation' ? publicReview(stored) : retired(stored);
+  return stored.metadata.state === 'awaiting_confirmation' ? publicReview(stored)
+    : stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
 }
 
 /** Discard is private-content retirement, not an HR effect. It remains available when AI is paused

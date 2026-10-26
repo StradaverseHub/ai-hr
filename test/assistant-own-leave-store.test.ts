@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { appendEvent } from '../db/events';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
@@ -11,6 +11,8 @@ import { setAiAllowance } from '../core/ai-management';
 import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx } from '../core/assistant-actions/own-leave-store';
 import { OwnLeaveContentUnavailable } from '../core/assistant-actions/own-leave-content';
 import { hireEmployee } from '../core/org';
+import { requestLeave } from '../core/leave';
+import { readOwnLeaveCandidateTx } from '../core/assistant-actions/own-leave-candidate';
 import { erasePersonPii } from '../core/pdpa';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -311,5 +313,81 @@ describe('pending own-leave review custody', () => {
     expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toEqual({ kind: 'prepared', review });
     expect(await counts()).toMatchObject({ bodies: 1, pending: 1, requests: 0 });
+  });
+});
+
+/** Authored receipt-custody cases; drafts remain unjournalled and these cases are UNRUN.
+ * These exercise storage after the actual canonical write, not an exposed confirmation command. */
+async function canonicalSubmission(tx: Tx) {
+  const outcome = await readOwnLeaveCandidateTx(tx, ctx, nomination,
+    { employmentId: subject.employmentId, leaveTypeId: base.annualLeaveTypeId }, text, 'en');
+  if (outcome.kind !== 'candidate') throw new Error('Fictional canonical candidate unavailable');
+  const c = outcome.candidate;
+  const result = await requestLeave(ctx, { employmentId: subject.employmentId, leaveTypeId: base.annualLeaveTypeId,
+    startDate: nomination.date, endDate: nomination.date, durationType: 'full_day', ...text }, tx,
+  { employmentId: subject.employmentId, companyId: base.companyId, leaveTypeId: base.annualLeaveTypeId,
+    date: nomination.date, days: c.deductionDays, availableBalance: outcome.privateAvailableBalance,
+    holidayWarnings: c.holidayWarnings });
+  if (!result.submittedEventId) throw new Error('Missing canonical source event');
+  return { requestId: result.requestId, eventId: result.submittedEventId };
+}
+async function completeReference(tx: Tx, review: Awaited<ReturnType<typeof prepare>>, refs: { requestId: string; eventId: string }) {
+  const [row] = await tx.execute<{ review: { metadata: { state: string }; sealed: null; receipt: {
+    actionId: string; contractVersion: 1; state: 'completed'; leaveRequestId: string; submissionEventId: string } } }>(sql`select
+    app.assistant_own_leave_review_complete(${review.actionId}::uuid,${review.reviewedDigest},
+      ${refs.requestId}::uuid,${refs.eventId}::uuid) as review`);
+  return row.review;
+}
+describe('own-leave canonical completion-reference custody', () => {
+  it('commits exact canonical references, deletes review content and reconciles without a second request', async () => {
+    const review = await prepare();
+    const result = await withTenant(ctx, async tx => {
+      const refs = await canonicalSubmission(tx);
+      return { refs, stored: await completeReference(tx, review, refs) };
+    });
+    expect(result.stored).toMatchObject({ metadata: { state: 'completed' }, sealed: null,
+      receipt: { actionId: review.actionId, contractVersion: 1, state: 'completed',
+        leaveRequestId: result.refs.requestId, submissionEventId: result.refs.eventId } });
+    expect(JSON.stringify(result.stored)).not.toContain(text.reason);
+    expect(JSON.stringify(result.stored)).not.toContain(text.employeeRemark);
+    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
+      .toEqual({ kind: 'completed', receipt: result.stored.receipt });
+    const after = await counts();
+    expect(after).toMatchObject({ requests: 1, model_runs: 0, bodies: 0, pending: 0 });
+    expect(await withTenant(ctx, tx => completeReference(tx, review, result.refs))).toEqual(result.stored);
+    await expect(withTenant(ctx, tx => completeReference(tx, review,
+      { ...result.refs, eventId: randomUUID() }))).rejects.toThrow();
+    expect(await counts()).toEqual(after);
+  });
+
+  it('rolls back request, event, completion and content retirement together after a later failure', async () => {
+    const review = await prepare(), before = await counts();
+    await expect(withTenant(ctx, async tx => {
+      const refs = await canonicalSubmission(tx); await completeReference(tx, review, refs);
+      throw new Error('Fictional failure after completion');
+    })).rejects.toThrow('Fictional failure after completion');
+    expect(await counts()).toEqual(before);
+    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
+      .toEqual({ kind: 'prepared', review });
+    const submitted = await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'leave-request.submitted')).orderBy(schema.domainEvent.id);
+    expect(submitted).toEqual([]);
+  });
+
+  it('refuses attaching a previously committed canonical submission to a pending review', async () => {
+    const review = await prepare();
+    const refs = await withTenant(ctx, canonicalSubmission), before = await counts();
+    await expect(withTenant(ctx, tx => completeReference(tx, review, refs))).rejects.toThrow();
+    expect(await counts()).toEqual(before);
+    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
+      .toEqual({ kind: 'prepared', review });
+  });
+
+  it('fails closed for source rows created in an unsupported savepoint and rolls back the whole command', async () => {
+    const review = await prepare(), before = await counts();
+    await expect(withTenant(ctx, tx => tx.transaction(async child => {
+      const refs = await canonicalSubmission(child); return completeReference(child, review, refs);
+    }))).rejects.toThrow();
+    expect(await counts()).toEqual(before);
   });
 });
