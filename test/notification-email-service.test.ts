@@ -54,6 +54,10 @@ describe('isolated workflow email orchestration',()=>{
   vi.mocked(d.send).mockClear();vi.mocked(d.start).mockClear();vi.mocked(d.assessmentTasks).mockResolvedValue({tasks:[{key:'own_plan',count:1,closesAt:null}],words:{subject:'Bad\r\nBcc: elsewhere',opening:'Hello'}});
   expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'skipped'});expect(d.start).not.toHaveBeenCalled();expect(d.send).not.toHaveBeenCalled();
  });
+ it('advertises Letters only through the installed capability and refuses unsupported account mail',async()=>{
+  target.category='letters';target.link_path='/letters/approval/fixture';expect(await createNotificationEmailService(d)({op:'status'})).toMatchObject({letters:false});expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'unavailable'});expect(d.send).not.toHaveBeenCalled();
+  d.lettersReady=vi.fn().mockResolvedValue(true);expect(await createNotificationEmailService(d)({op:'status'})).toMatchObject({letters:true});expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});expect(d.send).toHaveBeenCalledOnce();
+ });
  it('requires the managed secret reference as well as matching relay settings',()=>{
   const config={...defaultEmailConfig,host:'smtp.example.test',from:'hr@example.test',user:'relay'},vaultKey='smtp-'+randomUUID();
   const smtpServer={host:config.host,port:'465',ssl:'true',starttls:'false',auth:'true',authType:'basic',from:config.from,fromDisplayName:config.fromName,replyTo:'',user:'relay',password:'${vault.'+vaultKey+'}'};

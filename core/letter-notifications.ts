@@ -9,7 +9,7 @@ import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {letterStageEnteredAt} from './letter-stage-clock';
 import {resolveEntitlementsTx,isModuleEnabled} from './entitlements';
 
-async function assertConnection(tx:Tx){
+export async function assertLetterNotificationConnection(tx:Tx){
  const [proof]=await tx.execute<{ok:boolean}>(sql`select app.letter_notification_storage_owner() as ok`);
  if(proof?.ok!==true)throw Error('Letters notification projection requires its maintenance connection.');
 }
@@ -19,7 +19,7 @@ async function recipientEligible(tx:Tx,userId:string,companyId:string,confidenti
  return target?.ok===true;
 }
 async function projectJob(tx:Tx,ctx:SessionContext,id:string){
- await assertConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await assertLetterNotificationConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
  const [job]=await tx.select().from(letterJob).where(and(eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.id,id),inArray(letterJob.status,['queued','failed']),lte(letterJob.dueAt,sql`now()`))).for('update');
  if(!job)return {created:0,cancelled:0,deferredEmail:0};
@@ -33,7 +33,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
  if(!configuration)return cancel();const policy=validateLetterPolicy(configuration.policy);
  if(!policy.portalNotifications&&!policy.emailNotifications)return cancel();
  const sourcePayload=source.payload as Record<string,unknown>|null;
- let kind:'approval'|'approvalReminder'|'escalation'|'issued'|'acknowledgementReminder',dueAt:Date|null=null;
+ let kind:'approval'|'approvalReminder'|'escalation'|'issued'|'acknowledgementReminder',dueAt:Date|null=null,waiting=false;
  if(job.payload.artifactId){
   if(!['notification','acknowledgementReminder'].includes(job.kind)||record.state!=='issued'||source.eventType!=='letter.issued'||sourcePayload?.artifactId!==job.payload.artifactId)return cancel();
   const [artifact]=await tx.select().from(letterArtifact).where(and(eq(letterArtifact.id,String(job.payload.artifactId)),eq(letterArtifact.letterId,record.id),eq(letterArtifact.revisionId,record.currentRevisionId!)));
@@ -44,7 +44,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
   if(kind==='acknowledgementReminder'){
    if(policy.acknowledgement==='none')return cancel();
    const [confirmed]=await tx.select({id:letterRecipientEvent.id}).from(letterRecipientEvent).where(and(eq(letterRecipientEvent.artifactId,artifact.id),eq(letterRecipientEvent.tenantId,ctx.tenantId),eq(letterRecipientEvent.kind,policy.acknowledgement==='signature'?'signed':'acknowledged'))).limit(1);if(confirmed)return cancel();
-   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select issued_at+${policy.acknowledgementDueDays}*interval '1 day' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
+   const [clock]=await tx.execute<{due_at:string|Date;pending:boolean}>(sql`select due_at,due_at>now() as pending from (select issued_at+${policy.acknowledgementDueDays}*interval '1 day' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid) due_clock`);dueAt=clock?.due_at?new Date(clock.due_at):null;waiting=clock?.pending===true;
   }
  }else{
   if(record.state!=='submitted'||job.payload.revisionId!==record.currentRevisionId||job.payload.stageIndex!==record.stageIndex||sourcePayload?.revisionId!==record.currentRevisionId||!['notification','approvalReminder','escalation'].includes(job.kind))return cancel();
@@ -63,25 +63,23 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
   const key=kind==='escalation'?`${record.id}:${record.currentRevisionId}:${record.stageIndex}:escalation${suffix}`:`${record.id}:${record.currentRevisionId}:stage:${record.stageIndex}:${job.recipientUserId}${suffix}${kind==='approvalReminder'?':reminder':''}`;
   if(job.dedupeKey!==key)return cancel();
   if(kind!=='approval'){
-   const [clock]=await tx.execute<{due_at:string|Date}>(sql`select ${letterStageEnteredAt(sql`stage_clock.stage_index`,sql`stage_clock.submitted_at`,sql`stage_clock.current_revision_id`)}+${kind==='escalation'?policy.approvalDueHours:policy.reminderHours}*interval '1 hour' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid`);dueAt=clock?.due_at?new Date(clock.due_at):null;
+   const [clock]=await tx.execute<{due_at:string|Date;pending:boolean}>(sql`select due_at,due_at>now() as pending from (select ${letterStageEnteredAt(sql`stage_clock.stage_index`,sql`stage_clock.submitted_at`,sql`stage_clock.current_revision_id`)}+${kind==='escalation'?policy.approvalDueHours:policy.reminderHours}*interval '1 hour' as due_at from letter_record stage_clock where stage_clock.id=${record.id}::uuid) due_clock`);dueAt=clock?.due_at?new Date(clock.due_at):null;waiting=clock?.pending===true;
   }
  }
- if(dueAt){const [clock]=await tx.execute<{pending:boolean}>(sql`select ${dueAt.toISOString()}::timestamptz>now() as pending`);if(clock?.pending){await tx.update(letterJob).set({dueAt,lastError:null}).where(eq(letterJob.id,id));return {created:0,cancelled:0,deferredEmail:0};}}
+ if(dueAt){if(waiting){await tx.update(letterJob).set({dueAt,lastError:null}).where(eq(letterJob.id,id));return {created:0,cancelled:0,deferredEmail:0};}}
  else if(['approvalReminder','escalation','acknowledgementReminder'].includes(kind))return cancel();
- let created=0;
- if(policy.portalNotifications){
-  const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,companyId:record.companyId,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});created=rows.length;
- }
- // Email consent and private sender support are a separate delivery gate. Never call a portal
- // projection "sent", and never drop a queued email obligation after merely creating a bell row.
- await tx.update(letterJob).set({status:policy.emailNotifications?'queued':'completed',attempts:job.attempts+1,lastError:policy.emailNotifications?'emailTransportUnavailable':null,dueAt:policy.emailNotifications?sql`now()+interval '5 minutes'`:job.dueAt,leaseToken:null,leaseUntil:null}).where(eq(letterJob.id,id));
- return {created,cancelled:0,deferredEmail:policy.emailNotifications?1:0};
+ const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,companyId:record.companyId,portalVisible:policy.portalNotifications,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});
+ const created=policy.portalNotifications?rows.length:0;
+ if(policy.emailNotifications){const [existing]=rows.length?rows:await tx.select({id:notification.id}).from(notification).where(and(eq(notification.tenantId,ctx.tenantId),eq(notification.letterJobId,job.id)));if(existing)await tx.execute(sql`select app.letter_email_enqueue(${existing.id}::uuid)`);}
+ // Completion means the channel projections committed. Only the private email outbox owns SMTP outcomes.
+ await tx.update(letterJob).set({status:'completed',attempts:job.attempts+1,lastError:null,leaseToken:null,leaseUntil:null}).where(eq(letterJob.id,id));
+ return {created,cancelled:0,deferredEmail:0};
 }
 export async function projectLetterNotificationsFromSweep(ctx:SessionContext,connection:NotificationSweepConnection,limit=100){
  if(ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(ctx.tenantId)||!Number.isInteger(limit)||limit<1||limit>500)throw Error('Letters projection requires a tenant-bound maintenance context.');
- const ids=await connection.withTenant(ctx,async tx=>{await assertConnection(tx);return tx.select({id:letterJob.id}).from(letterJob).where(and(eq(letterJob.tenantId,ctx.tenantId),inArray(letterJob.status,['queued','failed']),lte(letterJob.dueAt,sql`now()`),sql`${letterJob.kind}<>'eventDraft'`)).orderBy(asc(letterJob.dueAt),asc(letterJob.id)).limit(limit);},{readOnlySnapshot:true});
+ const ids=await connection.withTenant(ctx,async tx=>{await assertLetterNotificationConnection(tx);return tx.select({id:letterJob.id}).from(letterJob).where(and(eq(letterJob.tenantId,ctx.tenantId),inArray(letterJob.status,['queued','failed']),lte(letterJob.dueAt,sql`now()`),sql`${letterJob.kind}<>'eventDraft'`)).orderBy(asc(letterJob.dueAt),asc(letterJob.id)).limit(limit);},{readOnlySnapshot:true});
  const result={created:0,cancelled:0,deferredEmail:0,failed:0};
  for(const {id}of ids){try{const outcome=await connection.withTenant(ctx,tx=>projectJob(tx,ctx,id));result.created+=outcome.created;result.cancelled+=outcome.cancelled;result.deferredEmail+=outcome.deferredEmail;}catch{
-  result.failed++;await connection.withTenant(ctx,async tx=>{await assertConnection(tx);await tx.update(letterJob).set({status:'failed',attempts:sql`${letterJob.attempts}+1`,lastError:'projectionUnavailable',dueAt:sql`now()+interval '5 minutes'`}).where(and(eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.id,id),inArray(letterJob.status,['queued','failed'])));});
+  result.failed++;await connection.withTenant(ctx,async tx=>{await assertLetterNotificationConnection(tx);await tx.update(letterJob).set({status:'failed',attempts:sql`${letterJob.attempts}+1`,lastError:'projectionUnavailable',dueAt:sql`now()+interval '5 minutes'`}).where(and(eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.id,id),inArray(letterJob.status,['queued','failed'])));});
  }}return result;
 }

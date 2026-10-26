@@ -95,12 +95,18 @@ CREATE UNIQUE INDEX employee_document_letter_artifact_uq ON employee_document(le
 CREATE UNIQUE INDEX letter_approve_stage_once_uq ON letter_approval_decision(revision_id,stage_index) WHERE action='approve';
 CREATE INDEX letter_record_scope_idx ON letter_record(tenant_id,company_id,employment_id);
 --> statement-breakpoint
-CREATE FUNCTION app.letter_permission_for_user(subject uuid,co uuid,cap text) RETURNS boolean
+-- The private delivery service derives tenant from its leased row; it never borrows a web principal.
+CREATE FUNCTION app.letter_permission_for_user_at(wanted_tenant uuid,subject uuid,co uuid,cap text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT cap IN ('read','template','generate','approve','issue','report','settings') AND EXISTS(SELECT 1 FROM public.company c JOIN public.app_user u ON u.tenant_id=c.tenant_id AND u.id=subject AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
-  WHERE c.id=co AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL
+  WHERE c.id=co AND c.tenant_id=wanted_tenant AND c.archived_at IS NULL
   AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=c.tenant_id AND r.app_user_id=u.id AND app.access_scope_covers(r.company_id,c.id,c.tenant_id)
     AND coalesce((SELECT g.allowed FROM public.letter_capability_grant g WHERE g.tenant_id=c.tenant_id AND g.company_id=c.id AND g.capability=cap AND g.role=r.role::text),r.role::text IN ('super_admin','hr_admin'))))
+$$;
+REVOKE ALL ON FUNCTION app.letter_permission_for_user_at(uuid,uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.letter_permission_for_user(subject uuid,co uuid,cap text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.letter_permission_for_user_at(app.current_tenant_id(),subject,co,cap)
 $$;
 CREATE FUNCTION app.letter_permission(co uuid,cap text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
@@ -765,6 +771,7 @@ ALTER TABLE notification ALTER COLUMN recipient_employment_id DROP NOT NULL;
 ALTER TABLE notification ADD COLUMN recipient_user_id uuid REFERENCES app_user(id);
 ALTER TABLE notification ADD COLUMN letter_job_id uuid REFERENCES letter_job(id);
 ALTER TABLE notification ADD COLUMN company_id uuid REFERENCES company(id);
+ALTER TABLE notification ADD COLUMN portal_visible boolean NOT NULL DEFAULT true;
 ALTER TABLE notification ADD CONSTRAINT notification_audience_xor CHECK (
  (recipient_employment_id IS NOT NULL AND recipient_user_id IS NULL AND letter_job_id IS NULL AND company_id IS NULL) OR
  (recipient_employment_id IS NULL AND recipient_user_id IS NOT NULL AND letter_job_id IS NOT NULL AND company_id IS NOT NULL));
@@ -786,7 +793,7 @@ $$;
 REVOKE ALL ON FUNCTION app.letter_notification_storage_owner() FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.guard_letter_notification() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
-DECLARE j public.letter_job%ROWTYPE;e public.domain_event%ROWTYPE;target_path text;expected_kind text;
+DECLARE j public.letter_job%ROWTYPE;e public.domain_event%ROWTYPE;target_path text;expected_kind text;portal boolean;
 BEGIN
  IF TG_OP='DELETE' THEN
   IF OLD.recipient_user_id IS NOT NULL THEN RAISE EXCEPTION 'Letter notification history is immutable' USING ERRCODE='42501';END IF;RETURN OLD;
@@ -800,10 +807,11 @@ BEGIN
  IF NOT app.letter_notification_storage_owner() THEN RAISE EXCEPTION 'Letter projection requires its maintenance connection' USING ERRCODE='42501';END IF;
  SELECT * INTO j FROM public.letter_job WHERE id=NEW.letter_job_id AND tenant_id=NEW.tenant_id;
  SELECT * INTO e FROM public.domain_event WHERE id=j.source_event_id AND tenant_id=j.tenant_id AND aggregate_type='letter' AND aggregate_id=j.letter_id;
+ SELECT coalesce((p.policy->>'portalNotifications')::boolean,false) INTO portal FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=b.tenant_id WHERE l.id=j.letter_id AND l.tenant_id=j.tenant_id;
  expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
  target_path:=CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END||j.letter_id::text;
  IF j.id IS NULL OR e.id IS NULL OR j.recipient_user_id IS DISTINCT FROM NEW.recipient_user_id
-  OR NEW.company_id IS DISTINCT FROM j.company_id OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
+  OR NEW.portal_visible IS DISTINCT FROM portal OR NEW.company_id IS DISTINCT FROM j.company_id OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
   OR expected_kind IS NULL OR NEW.kind IS DISTINCT FROM expected_kind
   OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind='letter.issued' THEN 'info' ELSE 'action' END)
   OR NEW.title IS DISTINCT FROM 'letters.notifications.'||substring(NEW.kind FROM 8)
@@ -815,10 +823,10 @@ REVOKE ALL ON FUNCTION app.guard_letter_notification() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER letter_notification_guard BEFORE INSERT OR UPDATE OR DELETE ON notification
  FOR EACH ROW EXECUTE FUNCTION app.guard_letter_notification();
 CREATE POLICY notification_letter_user_read ON notification FOR SELECT USING
- (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current());
+ (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND portal_visible AND app.principal_snapshot_current());
 CREATE POLICY notification_letter_user_update ON notification FOR UPDATE USING
- (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current())
- WITH CHECK (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND app.principal_snapshot_current());
+ (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND portal_visible AND app.principal_snapshot_current())
+ WITH CHECK (tenant_id=app.current_tenant_id() AND recipient_user_id=app.current_user_id() AND portal_visible AND app.principal_snapshot_current());
 --> statement-breakpoint
 ALTER TABLE notification_email_policy DROP CONSTRAINT notification_email_policy_category_check;
 ALTER TABLE notification_email_policy ADD CONSTRAINT notification_email_policy_category_check CHECK(category IN
@@ -873,3 +881,148 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.guard_letter_email_consent() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER letter_email_consent_guard BEFORE INSERT OR UPDATE ON notification_pref FOR EACH ROW EXECUTE FUNCTION app.guard_letter_email_consent();
+--> statement-breakpoint
+ALTER TABLE notification_delivery ADD COLUMN letter_prepared_stamp text,ADD COLUMN letter_prepared_until timestamptz;
+-- A short-lived commercial witness is produced by the canonical TypeScript entitlement resolver.
+-- Configuration changes invalidate it immediately; time-based expiry bounds the lease separately.
+CREATE FUNCTION identity_email.letter_commercial_stamp(wanted_tenant uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT encode(sha256(convert_to(jsonb_build_object(
+  'tenant',(SELECT jsonb_build_array(t.id,t.status) FROM public.tenant t WHERE t.id=wanted_tenant),
+  'modules',(SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.id),'[]'::jsonb) FROM public.tenant_module m WHERE m.tenant_id=wanted_tenant),
+  'settings',(SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY s.key),'[]'::jsonb) FROM public.tenant_setting s WHERE s.tenant_id=wanted_tenant),
+  'catalog',(SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.code),'[]'::jsonb) FROM public.module m),
+  'defaults',(SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY s.key),'[]'::jsonb) FROM public.setting_definition s)
+ )::text,'UTF8')),'hex')
+$$;
+REVOKE ALL ON FUNCTION identity_email.letter_commercial_stamp(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION identity_email.letter_job_current(wanted_tenant uuid,wanted_job uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET TimeZone='Asia/Kuala_Lumpur' AS $$
+DECLARE j public.letter_job%ROWTYPE;l public.letter_record%ROWTYPE;p jsonb;delegation public.letter_approval_decision%ROWTYPE;suffix text;expected_key text;stage_time timestamptz;
+BEGIN
+ SELECT * INTO j FROM public.letter_job WHERE id=wanted_job AND tenant_id=wanted_tenant AND kind<>'eventDraft' AND status<>'cancelled';IF NOT FOUND THEN RETURN false;END IF;
+ SELECT * INTO l FROM public.letter_record WHERE id=j.letter_id AND tenant_id=j.tenant_id AND company_id=j.company_id;IF NOT FOUND THEN RETURN false;END IF;
+ SELECT config.policy INTO p FROM public.letter_generation_batch b JOIN public.letter_policy_version config ON config.id=b.policy_version_id AND config.tenant_id=b.tenant_id WHERE b.id=l.batch_id AND b.tenant_id=l.tenant_id;
+ IF p IS NULL OR (p->>'emailNotifications')::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=j.recipient_user_id AND u.tenant_id=j.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
+ IF j.payload ? 'artifactId' THEN
+  IF l.state<>'issued' OR j.kind NOT IN ('notification','acknowledgementReminder') OR NOT EXISTS(
+   SELECT 1 FROM public.letter_artifact a JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+   WHERE a.id::text=j.payload->>'artifactId' AND a.letter_id=l.id AND a.tenant_id=l.tenant_id AND a.revision_id=l.current_revision_id AND u.id=j.recipient_user_id) THEN RETURN false;END IF;
+  expected_key:=l.id::text||':'||(j.payload->>'artifactId')||':issued:'||j.recipient_user_id::text||CASE WHEN j.kind='acknowledgementReminder' THEN ':acknowledgement' ELSE '' END;
+  IF j.dedupe_key<>expected_key THEN RETURN false;END IF;
+  IF j.kind='acknowledgementReminder' THEN
+   IF p->>'acknowledgement'='none' OR l.issued_at+(p->>'acknowledgementDueDays')::integer*interval '1 day'>now() OR EXISTS(
+    SELECT 1 FROM public.letter_recipient_event e WHERE e.tenant_id=l.tenant_id AND e.letter_id=l.id AND e.artifact_id::text=j.payload->>'artifactId'
+     AND e.kind=(CASE WHEN p->>'acknowledgement'='signature' THEN 'signed' ELSE 'acknowledged' END)) THEN RETURN false;END IF;
+  END IF;RETURN true;
+ END IF;
+ IF l.state<>'submitted' OR j.payload->>'revisionId' IS DISTINCT FROM l.current_revision_id::text OR j.payload->>'stageIndex' IS DISTINCT FROM l.stage_index::text OR j.kind NOT IN ('notification','approvalReminder','escalation') THEN RETURN false;END IF;
+ IF NOT app.letter_permission_for_user_at(wanted_tenant,j.recipient_user_id,l.company_id,'read') OR NOT app.letter_permission_for_user_at(wanted_tenant,j.recipient_user_id,l.company_id,'approve') OR
+  (l.confidential AND NOT app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)) FROM public.role_assignment r WHERE r.tenant_id=l.tenant_id AND r.app_user_id=j.recipient_user_id),l.company_id)) THEN RETURN false;END IF;
+ SELECT * INTO delegation FROM public.letter_approval_decision d WHERE d.letter_id=l.id AND d.tenant_id=l.tenant_id AND d.revision_id=l.current_revision_id AND d.stage_index=l.stage_index AND d.action='delegate' ORDER BY d.created_at DESC,d.id DESC LIMIT 1;
+ suffix:=CASE WHEN delegation.id IS NOT NULL THEN ':delegation:'||delegation.id::text ELSE '' END;
+ IF j.kind='escalation' THEN
+  IF p->>'escalationUserId' IS DISTINCT FROM j.recipient_user_id::text THEN RETURN false;END IF;
+  expected_key:=l.id::text||':'||l.current_revision_id::text||':'||l.stage_index::text||':escalation'||suffix;
+ ELSE
+  IF j.recipient_user_id=l.created_by OR (delegation.id IS NOT NULL AND delegation.delegated_to<>j.recipient_user_id) OR
+   (delegation.id IS NULL AND coalesce(p->'stages'->l.stage_index->'userIds' ? j.recipient_user_id::text,false) IS NOT TRUE) THEN RETURN false;END IF;
+  expected_key:=l.id::text||':'||l.current_revision_id::text||':stage:'||l.stage_index::text||':'||j.recipient_user_id::text||suffix||CASE WHEN j.kind='approvalReminder' THEN ':reminder' ELSE '' END;
+ END IF;
+ IF j.dedupe_key<>expected_key THEN RETURN false;END IF;
+ IF j.kind<>'notification' THEN
+  IF l.stage_index=0 THEN stage_time:=l.submitted_at;ELSE SELECT d.created_at INTO stage_time FROM public.letter_approval_decision d WHERE d.letter_id=l.id AND d.tenant_id=l.tenant_id AND d.revision_id=l.current_revision_id AND d.stage_index=l.stage_index-1 AND d.action='approve';END IF;
+  IF stage_time IS NULL OR stage_time+(CASE WHEN j.kind='escalation' THEN (p->>'approvalDueHours')::integer ELSE (p->>'reminderHours')::integer END)*interval '1 hour'>now() THEN RETURN false;END IF;
+ END IF;RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION identity_email.letter_job_current(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.letter_email_enqueue(wanted_notification uuid) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE added integer;
+BEGIN
+ IF NOT app.letter_notification_storage_owner() THEN RAISE EXCEPTION 'Letter email enqueue requires its maintenance connection' USING ERRCODE='42501';END IF;
+ INSERT INTO public.notification_delivery(tenant_id,notification_id,channel,recipient_user_id,source_event_id,kind,category)
+ SELECT n.tenant_id,n.id,'email',n.recipient_user_id,n.source_event_id,n.kind,'letters'
+ FROM public.notification n JOIN public.domain_event e ON e.id=n.source_event_id AND e.tenant_id=n.tenant_id
+ JOIN public.app_user u ON u.id=n.recipient_user_id AND u.tenant_id=n.tenant_id AND u.archived_at IS NULL
+ JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ JOIN public.notification_pref pref ON pref.tenant_id=n.tenant_id AND pref.recipient_user_id=u.id AND pref.recipient_employment_id IS NULL AND pref.category='letters' AND pref.channel='email' AND pref.enabled AND pref.email_consent_user_id=u.id
+ JOIN public.notification_email_policy policy ON policy.tenant_id=n.tenant_id AND policy.category='letters' AND policy.enabled
+ WHERE n.id=wanted_notification AND n.tenant_id=app.current_tenant_id() AND n.letter_job_id IS NOT NULL
+ AND pref.email_consent_verified_at IS NOT NULL AND e.sequence>pref.email_after_sequence AND e.sequence>policy.after_sequence
+ AND encode(sha256(convert_to(lower(p.primary_email),'UTF8')),'hex')=pref.email_consent_address_hash
+ AND EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.app_user_id=u.id AND i.issuer=pref.email_consent_issuer AND i.subject=pref.email_consent_subject AND i.revoked_at IS NULL)
+ AND identity_email.letter_job_current(n.tenant_id,n.letter_job_id) ON CONFLICT DO NOTHING;
+ GET DIAGNOSTICS added=ROW_COUNT;RETURN added=1;
+END $$;
+REVOKE ALL ON FUNCTION app.letter_email_enqueue(uuid) FROM PUBLIC,ai_hr_app;
+-- Web administrators may review/retry metadata but cannot mint a private send lease or a commercial witness.
+CREATE FUNCTION app.guard_letter_email_delivery() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.category='letters' AND NOT app.letter_notification_storage_owner() THEN RAISE EXCEPTION 'Letter email projection requires its maintenance connection' USING ERRCODE='42501';END IF;RETURN NEW;
+ END IF;
+ IF OLD.category='letters' OR NEW.category='letters' THEN
+  IF (NEW.tenant_id,NEW.notification_id,NEW.channel,NEW.recipient_user_id,NEW.source_event_id,NEW.kind,NEW.category) IS DISTINCT FROM
+     (OLD.tenant_id,OLD.notification_id,OLD.channel,OLD.recipient_user_id,OLD.source_event_id,OLD.kind,OLD.category) THEN RAISE EXCEPTION 'Letter email routing is immutable' USING ERRCODE='42501';END IF;
+  IF ((NEW.letter_prepared_stamp,NEW.letter_prepared_until) IS DISTINCT FROM (OLD.letter_prepared_stamp,OLD.letter_prepared_until) OR (NEW.lease_token IS NOT NULL AND NEW.lease_token IS DISTINCT FROM OLD.lease_token)) AND NOT app.letter_notification_storage_owner() THEN
+   RAISE EXCEPTION 'Letter email lease requires its maintenance connection' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.guard_letter_email_delivery() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER letter_email_delivery_guard BEFORE INSERT OR UPDATE ON notification_delivery FOR EACH ROW EXECUTE FUNCTION app.guard_letter_email_delivery();
+CREATE OR REPLACE FUNCTION app.notification_email_delivery_authorized(p_notification uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM public.notification n WHERE n.id=p_notification AND n.tenant_id=app.current_tenant_id() AND
+  (n.recipient_user_id IS NULL AND app.is_admin() AND app.can_admin_employment(n.recipient_employment_id) OR
+   n.recipient_user_id IS NOT NULL AND n.letter_job_id IS NOT NULL AND app.principal_snapshot_current() AND app.is_admin_for(n.company_id)))
+$$;
+--> statement-breakpoint
+CREATE FUNCTION identity_email.letter_delivery_target(p_id uuid,p_token uuid,p_issuer text)
+RETURNS TABLE(user_id uuid,subject text,email text,category text,link_path text,severity text,locale text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET TimeZone='Asia/Kuala_Lumpur' AS $$
+ SELECT u.id,i.subject,p.primary_email,d.category,n.link_path,n.severity::text,pref.email_locale
+ FROM public.notification_delivery d JOIN public.notification n ON n.id=d.notification_id AND n.tenant_id=d.tenant_id AND n.recipient_user_id=d.recipient_user_id AND n.source_event_id=d.source_event_id AND n.kind=d.kind
+ JOIN public.domain_event e ON e.id=d.source_event_id AND e.tenant_id=d.tenant_id
+ JOIN public.app_user u ON u.id=d.recipient_user_id AND u.tenant_id=d.tenant_id AND u.archived_at IS NULL
+ JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ JOIN public.tenant t ON t.id=d.tenant_id AND t.status IN ('active','trial')
+ JOIN public.notification_pref pref ON pref.tenant_id=d.tenant_id AND pref.recipient_user_id=u.id AND pref.recipient_employment_id IS NULL AND pref.category='letters' AND pref.channel='email' AND pref.enabled AND pref.email_consent_user_id=u.id
+ JOIN public.notification_email_policy policy ON policy.tenant_id=d.tenant_id AND policy.category='letters' AND policy.enabled
+ JOIN public.app_external_identity i ON i.app_user_id=u.id AND i.issuer=p_issuer AND i.issuer=pref.email_consent_issuer AND i.subject=pref.email_consent_subject AND i.revoked_at IS NULL
+ WHERE d.id=p_id AND d.lease_token=p_token AND d.category='letters' AND d.channel='email' AND d.status='pending'
+ AND d.started_at IS NULL AND d.attempts<5 AND d.lease_until>now() AND d.letter_prepared_until>now()
+ AND d.letter_prepared_stamp=identity_email.letter_commercial_stamp(d.tenant_id)
+ AND pref.email_consent_verified_at IS NOT NULL AND e.sequence>pref.email_after_sequence AND e.sequence>policy.after_sequence
+ AND encode(sha256(convert_to(lower(p.primary_email),'UTF8')),'hex')=pref.email_consent_address_hash
+ AND identity_email.letter_job_current(d.tenant_id,n.letter_job_id)
+$$;
+REVOKE ALL ON FUNCTION identity_email.letter_delivery_target(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+-- Preserve the current employment transport verbatim behind the same public nonce-bound entry point.
+DO $$ DECLARE definition text;copied text;BEGIN
+ SELECT pg_get_functiondef('identity_email.delivery_target(uuid,uuid,text)'::regprocedure) INTO definition;
+ copied:=replace(definition,'FUNCTION identity_email.delivery_target(','FUNCTION identity_email.delivery_target_employment(');
+ IF copied=definition THEN RAISE EXCEPTION 'Workflow target definition could not be preserved';END IF;EXECUTE copied;
+END $$;
+REVOKE ALL ON FUNCTION identity_email.delivery_target_employment(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION identity_email.delivery_target(p_id uuid,p_token uuid,p_issuer text)
+RETURNS TABLE(user_id uuid,subject text,email text,category text,link_path text,severity text,locale text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET TimeZone='Asia/Kuala_Lumpur' AS $$
+ SELECT * FROM identity_email.delivery_target_employment(p_id,p_token,p_issuer)
+ UNION ALL SELECT * FROM identity_email.letter_delivery_target(p_id,p_token,p_issuer)
+$$;
+REVOKE ALL ON FUNCTION identity_email.delivery_target(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.internal_auth_letter_mail_ready() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT to_regprocedure('identity_email.letter_delivery_target(uuid,uuid,text)') IS NOT NULL
+  AND to_regprocedure('app.internal_auth_notification_target(uuid,uuid,text)') IS NOT NULL
+  AND to_regprocedure('app.internal_auth_notification_start(uuid,uuid,text,jsonb)') IS NOT NULL
+  AND has_function_privilege('ai_hr_app','app.internal_auth_notification_target(uuid,uuid,text)','EXECUTE')
+  AND has_function_privilege('ai_hr_app','app.internal_auth_notification_summary(uuid,uuid,text)','EXECUTE')
+  AND has_function_privilege('ai_hr_app','app.internal_auth_notification_start(uuid,uuid,text,jsonb)','EXECUTE')
+  AND has_function_privilege('ai_hr_app','app.internal_auth_notification_finish(uuid,uuid,text,text)','EXECUTE')
+$$;
+REVOKE ALL ON FUNCTION app.internal_auth_letter_mail_ready() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.internal_auth_letter_mail_ready() TO ai_hr_app;

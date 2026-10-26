@@ -61,6 +61,7 @@ async function workflowRelay(){
  return activeWorkflowRelay(state,await admin('') as {smtpServer?:Record<string,string>});
 }
 const notifications=createNotificationEmailService({
+ lettersReady:async()=>{try{const [row]=await database`select to_regprocedure('identity_email.letter_delivery_target(uuid,uuid,text)') is not null and has_function_privilege(current_user,'identity_email.delivery_target(uuid,uuid,text)','EXECUTE') as ready`;return row?.ready===true;}catch{return false;}},
  origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
  ready:async()=>{
   if(!process.env.WORKFLOW_EMAIL_ISSUER||!process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||!process.env.WORKFLOW_EMAIL_ORIGIN)return false;

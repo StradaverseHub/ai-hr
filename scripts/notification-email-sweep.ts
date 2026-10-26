@@ -6,6 +6,7 @@ import { sweepOnboarding, refreshOnboardingPersonnel } from '../packs/lifecycle/
 import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
+import {deliverLetterEmailsFromSweep} from '../core/letter-email-delivery';
 import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
 import {createNoticeSweepAccess} from '../core/notice-projection';
 async function main(){
@@ -21,10 +22,10 @@ async function main(){
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);
     const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-    const letters=await projectLetterNotificationsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
-    if(letters.failed>0)failed++;
+    const letters=await projectLetterNotificationsFromSweep(ctx,owner),letterMail=await deliverLetterEmailsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    if(letters.failed>0||letterMail.failed>0)failed++;
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
-    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,...delivered,attendanceCc}));
+    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,letterMail,...delivered,attendanceCc}));
    }catch{failed++;console.error('Workflow email sweep failed for tenant '+tenant.id);}
   }
  }finally{await owner.client.end();}
