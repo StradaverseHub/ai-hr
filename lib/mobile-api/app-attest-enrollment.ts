@@ -3,17 +3,17 @@ import 'server-only';
 import {createHash,timingSafeEqual,webcrypto,X509Certificate,type KeyObject} from 'node:crypto';
 import {Constructed,OctetString,Sequence,fromBER} from 'asn1js';
 import {Certificate,CertificateChainValidationEngine,CryptoEngine} from 'pkijs';
-import {decodeFirstSync} from 'cbor';
+import cbor from 'cbor';
 import pinnedRoot from './apple-app-attest-root.json';
 
-type Reason='invalid_configuration'|'malformed'|'certificate_path'|'nonce_mismatch'|'key_mismatch'|'wrong_app'|'wrong_environment'|'metadata_mismatch';
+type Reason='invalid_configuration'|'malformed'|'certificate_path'|'nonce_mismatch'|'key_mismatch'|'wrong_app'|'wrong_environment'|'metadata_mismatch'|'metadata_unavailable';
 export class AppAttestEnrollmentError extends Error{
   constructor(readonly reason:Reason){super('App Attest enrollment proof check failed');this.name='AppAttestEnrollmentError';}
 }
 function fail(reason:Reason):never{throw new AppAttestEnrollmentError(reason);}
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest();
 const tags=new Proxy(Object.create(null),{get:()=>null});
-const decode=(bytes:Buffer,extendedResults=false)=>decodeFirstSync(bytes,{required:true,preferMap:true,preventDuplicateKeys:true,max_depth:6,tags,extendedResults});
+const decode=(bytes:Buffer,extendedResults=false)=>cbor.decodeFirstSync(bytes,{required:true,preferMap:true,preventDuplicateKeys:true,max_depth:6,tags,extendedResults});
 const rootBytes=Buffer.from(pinnedRoot.der,'base64');
 if(hash(rootBytes).toString('hex')!==pinnedRoot.sha256)throw new Error('App Attest root pin differs');
 const root=new X509Certificate(rootBytes);
@@ -36,20 +36,20 @@ function nonceExtension(cert:Certificate):Buffer{
   if(inner.length!==1||!(inner[0] instanceof OctetString)||inner[0].idBlock.isConstructed)fail('nonce_mismatch');
   const nonce=Buffer.from(inner[0].getValue());if(nonce.length!==32)fail('nonce_mismatch');return nonce;
 }
-export type AppAttestEnrollmentProof={publicKey:KeyObject;keyId:string;environment:'production'|'development';
-  validationCategory:number;bundleVersion:string;receipt:Buffer;receiptVerification:'not_checked';revocation:'not_checked'};
+export type AppAttestKeyProof={publicKey:KeyObject;keyId:string;environment:'production'|'development';
+  metadata:{status:'available';validationCategory:number;bundleVersion:string}|{status:'unavailable'};
+  receipt:Buffer;receiptVerification:'not_checked';revocation:'not_checked'};
+type KeyProofInput={attestation:Buffer;clientDataHash:Buffer;keyId:string;appId:string;environment:'production'|'development';now?:Date};
 
 /** All expected values and now are server-owned, never taken from submitted claims or HTTP headers.
  * The caller must bind clientDataHash to its stored scoped challenge and persist the key uniquely.
  * No online revocation/fraud-receipt service is contacted here. No attendance is accepted here.
  */
-export async function checkAppAttestEnrollment(input:{attestation:Buffer;clientDataHash:Buffer;keyId:string;appId:string;
-  environment:'production'|'development';expectedValidationCategory:number;expectedBundleVersion:string;now?:Date}):Promise<AppAttestEnrollmentProof>{
-  const {attestation,clientDataHash,keyId,appId,environment,expectedValidationCategory,expectedBundleVersion}=input;
+export async function checkAppAttestKeyProof(input:KeyProofInput):Promise<AppAttestKeyProof>{
+  const {attestation,clientDataHash,keyId,appId,environment}=input;
   const now=input.now??new Date();
   if(typeof appId!=='string'||appId.length>300||appId.trim()!==appId||!/^[A-Za-z0-9]{10}\.[A-Za-z0-9][A-Za-z0-9.-]+$/.test(appId)||
-    !['production','development'].includes(environment)||![1,2,3,4,5,6,10].includes(expectedValidationCategory)||
-    typeof expectedBundleVersion!=='string'||expectedBundleVersion.length<1||expectedBundleVersion.length>64||
+    !['production','development'].includes(environment)||
     !(now instanceof Date)||!Number.isFinite(now.getTime()))fail('invalid_configuration');
   if(!Buffer.isBuffer(attestation)||attestation.length<1||attestation.length>65536||!Buffer.isBuffer(clientDataHash)||clientDataHash.length!==32||
     typeof keyId!=='string'||keyId.length!==44||Buffer.from(keyId,'base64').length!==32||Buffer.from(keyId,'base64').toString('base64')!==keyId)fail('malformed');
@@ -84,11 +84,24 @@ export async function checkAppAttestEnrollment(input:{attestation:Buffer;clientD
     const cose=decode(auth.subarray(87),true),key:unknown=cose.value;
     if(!(key instanceof Map)||key.size!==5||key.get(1)!==2||key.get(3)!==-7||key.get(-1)!==1||
       !Buffer.isBuffer(key.get(-2))||!Buffer.isBuffer(key.get(-3))||!key.get(-2).equals(x)||!key.get(-3).equals(y))fail('key_mismatch');
-    if(!Buffer.isBuffer(cose.unused)||cose.unused.length<1)fail('metadata_mismatch');
-    const extensions:unknown=decode(cose.unused);
+    const common={publicKey:leaf.publicKey,keyId,environment,receipt:Buffer.from(receipt),receiptVerification:'not_checked' as const,revocation:'not_checked' as const};
+    if(!Number.isInteger(cose.length)||cose.length<1||cose.length>auth.length-87)fail('malformed');
+    const remainder=auth.subarray(87+cose.length);
+    if(remainder.length===0)return {...common,metadata:{status:'unavailable'}};
+    const extensions:unknown=decode(remainder);
     if(!(extensions instanceof Map)||extensions.size!==2)fail('metadata_mismatch');
     const category:unknown=extensions.get('apple_validation_category_01'),version:unknown=extensions.get('apple_bundle_version_01');
-    if(!Buffer.isBuffer(category)||category.length!==4||category.readUInt32LE()!==expectedValidationCategory||version!==expectedBundleVersion)fail('metadata_mismatch');
-    return {publicKey:leaf.publicKey,keyId,environment,validationCategory:expectedValidationCategory,bundleVersion:expectedBundleVersion,receipt:Buffer.from(receipt),receiptVerification:'not_checked',revocation:'not_checked'};
+    if(!Buffer.isBuffer(category)||category.length!==4||![1,2,3,4,5,6,10].includes(category.readUInt32LE())||typeof version!=='string'||version.length<1||version.length>64)fail('metadata_mismatch');
+    return {...common,metadata:{status:'available',validationCategory:category.readUInt32LE(),bundleVersion:version}};
   }catch(error){if(error instanceof AppAttestEnrollmentError)throw error;fail('malformed');}
+}
+
+/** A strict metadata-complete check. Legacy key proofs cannot silently satisfy this policy. */
+export async function checkAppAttestEnrollment(input:KeyProofInput&{expectedValidationCategory:number;expectedBundleVersion:string}):Promise<AppAttestKeyProof>{
+  if(![1,2,3,4,5,6,10].includes(input.expectedValidationCategory)||typeof input.expectedBundleVersion!=='string'||
+    input.expectedBundleVersion.length<1||input.expectedBundleVersion.length>64)fail('invalid_configuration');
+  const proof=await checkAppAttestKeyProof(input);
+  if(proof.metadata.status==='unavailable')fail('metadata_unavailable');
+  if(proof.metadata.validationCategory!==input.expectedValidationCategory||proof.metadata.bundleVersion!==input.expectedBundleVersion)fail('metadata_mismatch');
+  return proof;
 }

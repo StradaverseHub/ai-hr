@@ -1,7 +1,7 @@
 /** Low-level App Attest assertion checks, never an enrollment or attendance verdict. */
 import 'server-only';
 import {createHash,KeyObject,timingSafeEqual,verify} from 'node:crypto';
-import {decodeFirstSync} from 'cbor';
+import cbor from 'cbor';
 
 type Reason='malformed'|'invalid_configuration'|'invalid_key'|'wrong_app'|'replayed_counter'|'invalid_signature';
 export class AppAttestAssertionError extends Error{
@@ -26,7 +26,7 @@ export function checkAppAttestAssertion(input:{assertion:Buffer;clientData:Buffe
   if(!Buffer.isBuffer(assertion)||assertion.length<1||assertion.length>8192||
     !Buffer.isBuffer(clientData)||clientData.length<1||clientData.length>16384)fail('malformed');
   let decoded:unknown;
-  try{decoded=decodeFirstSync(assertion,{required:true,preferMap:true,preventDuplicateKeys:true,max_depth:4,tags});}
+  try{decoded=cbor.decodeFirstSync(assertion,{required:true,preferMap:true,preventDuplicateKeys:true,max_depth:4,tags});}
   catch{fail('malformed');}
   if(!(decoded instanceof Map)||decoded.size!==2||!decoded.has('signature')||!decoded.has('authenticatorData'))fail('malformed');
   const signature:unknown=decoded.get('signature'),auth:unknown=decoded.get('authenticatorData');
