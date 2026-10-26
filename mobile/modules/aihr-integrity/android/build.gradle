@@ -16,3 +16,8 @@ android {
     abortOnError false
   }
 }
+
+// Pinned to the official Play Integrity setup documentation reviewed 2026-10-27.
+dependencies {
+  implementation 'com.google.android.play:integrity:1.6.0'
+}
