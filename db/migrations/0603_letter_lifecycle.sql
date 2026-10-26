@@ -267,13 +267,24 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=(NEW.policy->>'signatoryUserId')::uuid AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'Letter signatory unavailable';END IF;
   IF NEW.policy->>'signatureAssetId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_asset x WHERE x.id=(NEW.policy->>'signatureAssetId')::uuid AND x.tenant_id=NEW.tenant_id AND x.company_id=NEW.company_id AND x.owner_user_id=(NEW.policy->>'signatoryUserId')::uuid AND x.kind='signature') THEN RAISE EXCEPTION 'Letter signature asset mismatch';END IF;
   IF NEW.policy->>'letterheadAssetId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_asset x WHERE x.id=(NEW.policy->>'letterheadAssetId')::uuid AND x.tenant_id=NEW.tenant_id AND x.company_id=NEW.company_id AND x.kind='letterhead') THEN RAISE EXCEPTION 'Letterhead asset mismatch';END IF;
+ ELSIF TG_TABLE_NAME='letter_merge_field_version' THEN
+  IF jsonb_typeof(NEW.definition) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'Invalid typed field definition' USING ERRCODE='check_violation';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_object_keys(NEW.definition) AS keys(name) WHERE keys.name NOT IN ('key','label','description','kind','source','required','editable','sensitive')) OR jsonb_typeof(NEW.definition->'key') IS DISTINCT FROM 'string' OR jsonb_typeof(NEW.definition->'label') IS DISTINCT FROM 'string' OR jsonb_typeof(NEW.definition->'description') IS DISTINCT FROM 'string' OR jsonb_typeof(NEW.definition->'source') IS DISTINCT FROM 'string' OR jsonb_typeof(NEW.definition->'required') IS DISTINCT FROM 'boolean' OR jsonb_typeof(NEW.definition->'editable') IS DISTINCT FROM 'boolean' OR jsonb_typeof(NEW.definition->'sensitive') IS DISTINCT FROM 'boolean'
+   OR NEW.key !~ '^[a-z][a-zA-Z0-9_.]{0,79}$' OR length(trim(NEW.definition->>'label')) NOT BETWEEN 1 AND 160 OR length(NEW.definition->>'description')>1000 OR NEW.definition->>'source' NOT IN ('employee.name','employee.code','employment.hiredOn','employment.jobTitle','employment.department','company.name','company.registration','company.address','compensation.basicSalary','custom.text','custom.date','custom.currency')
+   OR NEW.definition->>'kind' IS DISTINCT FROM CASE WHEN NEW.definition->>'source' IN ('compensation.basicSalary','custom.currency') THEN 'currency' WHEN NEW.definition->>'source' IN ('employment.hiredOn','custom.date') THEN 'date' ELSE 'text' END
+  THEN RAISE EXCEPTION 'Invalid typed field definition' USING ERRCODE='check_violation';END IF;
+  IF (NEW.definition->>'editable')::boolean AND NEW.definition->>'source' NOT LIKE 'custom.%' OR NEW.definition->>'source' IN ('compensation.basicSalary','custom.currency') AND NOT (NEW.definition->>'sensitive')::boolean THEN RAISE EXCEPTION 'Invalid editable or confidential field mapping' USING ERRCODE='check_violation';END IF;
+  SELECT coalesce(max(f.ordinal),0)+1 INTO next_ordinal FROM public.letter_merge_field_version f WHERE f.tenant_id=NEW.tenant_id AND f.company_id=NEW.company_id AND f.key=NEW.key;
+  IF NEW.ordinal<>next_ordinal OR NEW.key IS DISTINCT FROM NEW.definition->>'key' THEN RAISE EXCEPTION 'Field mapping requires the next immutable version';END IF;
+  IF NOT app.can_admin_payroll_for(NEW.company_id) AND (coalesce((NEW.definition->>'sensitive')::boolean,true) OR NEW.definition->>'source' IN ('compensation.basicSalary','custom.currency') OR coalesce((SELECT (f.definition->>'sensitive')::boolean FROM public.letter_merge_field_version f WHERE f.tenant_id=NEW.tenant_id AND f.company_id=NEW.company_id AND f.key=NEW.key ORDER BY f.ordinal DESC LIMIT 1),false)) THEN RAISE EXCEPTION 'Confidential field mapping permission unavailable' USING ERRCODE='insufficient_privilege';END IF;
+  IF NOT NEW.active AND app.letter_field_in_use(NEW.company_id,NEW.key) THEN RAISE EXCEPTION 'An active template still uses this field' USING ERRCODE='check_violation';END IF;
  ELSIF TG_TABLE_NAME='letter_template_version' THEN
   PERFORM 1 FROM public.letter_template t WHERE t.id=NEW.template_id AND t.tenant_id=NEW.tenant_id AND t.company_id=NEW.company_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Letter template identity mismatch';END IF;
   SELECT coalesce(max(x.ordinal),0)+1 INTO next_ordinal FROM public.letter_template_version x WHERE x.template_id=NEW.template_id;
   IF NEW.ordinal<>next_ordinal OR NEW.status<>'draft' OR NEW.approved_by IS NOT NULL OR NEW.approved_at IS NOT NULL THEN RAISE EXCEPTION 'Create a fresh letter template draft';END IF;
  ELSIF TG_TABLE_NAME='letter_template_field' THEN
-  IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active AND (NOT coalesce((f.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(x.company_id))) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active AND f.id=app.letter_field_latest_version(x.company_id,f.key) AND (NOT coalesce((f.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(x.company_id))) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_generation_batch' THEN
   SELECT * INTO v FROM public.letter_template_version WHERE id=NEW.template_version_id;
   SELECT * INTO p FROM public.letter_policy_version WHERE id=NEW.policy_version_id;
@@ -509,3 +520,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.letter_audit(uuid,uuid,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_audit(uuid,uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
+-- Resolve latest before applying sensitivity: hidden current mappings never resurrect an older visible version.
+CREATE FUNCTION app.letter_field_latest_version(co uuid,field_key text) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT latest.id FROM (SELECT f.id,f.definition FROM public.letter_merge_field_version f
+  WHERE f.tenant_id=app.current_tenant_id() AND f.company_id=co AND f.key=field_key ORDER BY f.ordinal DESC LIMIT 1) latest
+ WHERE app.principal_snapshot_current() AND (app.letter_permission(co,'read') OR app.letter_permission(co,'template'))
+  AND (NOT coalesce((latest.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(co))
+$$;
+REVOKE ALL ON FUNCTION app.letter_field_latest_version(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_field_latest_version(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_field_in_use(co uuid,field_key text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.letter_field_latest_version(co,field_key) IS NOT NULL AND EXISTS(
+  SELECT 1 FROM public.letter_merge_field_version f JOIN public.letter_template_field binding ON binding.field_version_id=f.id AND binding.tenant_id=f.tenant_id
+  JOIN public.letter_template_version v ON v.id=binding.template_version_id AND v.tenant_id=f.tenant_id
+  JOIN public.letter_template t ON t.id=v.template_id AND t.tenant_id=f.tenant_id
+  WHERE f.company_id=co AND f.tenant_id=app.current_tenant_id() AND f.key=field_key AND NOT t.deactivated)
+$$;
+REVOKE ALL ON FUNCTION app.letter_field_in_use(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_field_in_use(uuid,text) TO ai_hr_app;

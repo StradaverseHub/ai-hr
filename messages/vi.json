@@ -10276,7 +10276,8 @@
         "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
         "loginPresentation": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập.",
         "myLetters": "Chỉ các thư đã phát hành cho người đăng nhập trong công việc hiện tại và trước đây. Vai trò đặc quyền không mở rộng phạm vi Thư của tôi.",
-        "letterReports": "Quyền báo cáo thư hiện tại và phạm vi dữ liệu thư được kiểm tra mỗi lần đọc và xuất."
+        "letterReports": "Quyền báo cáo thư hiện tại và phạm vi dữ liệu thư được kiểm tra mỗi lần đọc và xuất.",
+        "letterFields": "Định nghĩa trường yêu cầu quyền mẫu hoặc đọc hiện tại. Ánh xạ bảo mật còn yêu cầu quyền tài chính tương ứng."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -24041,6 +24042,80 @@
         "pdfLimit": "Xuất PDF hỗ trợ tối đa 1.000 thư. Thu hẹp bộ lọc hoặc dùng Excel.",
         "exportLimit": "Xuất Excel hỗ trợ tối đa 50.000 thư. Hãy thu hẹp bộ lọc.",
         "unavailable": "Tạm thời không thể xuất báo cáo. Vui lòng thử lại sau."
+      }
+    },
+    "fields": {
+      "title": "Thư viện trường trộn",
+      "intro": "Quản lý trường có kiểu dữ liệu của nhân viên, việc làm, công ty và trường tùy chỉnh cho mẫu thư.",
+      "noAccess": "Không có thư viện trường trong phạm vi quyền của bạn.",
+      "company": "Công ty",
+      "search": "Tìm trường",
+      "group": "Nhóm",
+      "allGroups": "Tất cả nhóm",
+      "apply": "Áp dụng bộ lọc",
+      "library": "Trường khả dụng",
+      "empty": "Không có trường hiển thị phù hợp với trang và bộ lọc này.",
+      "next": "Các trường tiếp theo",
+      "add": "Thêm trường",
+      "key": "Khóa trường cố định",
+      "label": "Tên hiển thị",
+      "source": "Nguồn dữ liệu",
+      "type": "Kiểu dữ liệu",
+      "keyHelp": "Bắt đầu bằng chữ thường; dùng chữ cái, chữ số, dấu chấm hoặc gạch dưới. Khóa không đổi, ví dụ employeeName.",
+      "descriptionLabel": "Mô tả",
+      "required": "Giá trị bắt buộc",
+      "editable": "Cho phép sửa sau khi tạo",
+      "editableHelp": "Chỉ giá trị tùy chỉnh được phép sửa. Dữ liệu nhân viên và công ty vẫn do hồ sơ gốc quản lý.",
+      "sensitive": "Trường bảo mật",
+      "active": "Hoạt động",
+      "inUse": "Một mẫu đang hoạt động sử dụng trường này. Xem quan hệ phụ thuộc trước khi vô hiệu hóa.",
+      "versionHelp": "Lưu sẽ tạo phiên bản ánh xạ mới không thể ghi đè. Thư hiện có giữ phiên bản trường ban đầu.",
+      "save": "Lưu phiên bản",
+      "saving": "Đang lưu…",
+      "inactive": "Không hoạt động",
+      "version": "Phiên bản trường {number}",
+      "templateVersion": "Phiên bản mẫu {number}",
+      "templateInactive": "Mẫu đã vô hiệu hóa",
+      "dependencies": "Quan hệ phụ thuộc mẫu",
+      "noDependencies": "Không có liên kết mẫu hiển thị trên trang này.",
+      "nextDependencies": "Các liên kết tiếp theo",
+      "history": "Lịch sử ánh xạ",
+      "nextHistory": "Phiên bản cũ hơn",
+      "historicalVersion": "Đây là ánh xạ lịch sử. Mở phiên bản hiển thị mới nhất để sửa.",
+      "saved": "Đã lưu phiên bản trường mới.",
+      "groups": {
+        "employee": "Nhân viên",
+        "employment": "Việc làm",
+        "company": "Công ty",
+        "compensation": "Tiền lương",
+        "custom": "Tùy chỉnh"
+      },
+      "sources": {
+        "employeeName": "Tên nhân viên",
+        "employeeCode": "Mã nhân viên",
+        "hiredOn": "Ngày bắt đầu làm việc",
+        "jobTitle": "Chức danh",
+        "department": "Phòng ban",
+        "companyName": "Tên công ty",
+        "registration": "Số đăng ký công ty",
+        "address": "Địa chỉ công ty",
+        "basicSalary": "Lương cơ bản",
+        "customText": "Văn bản tùy chỉnh",
+        "customDate": "Ngày tùy chỉnh",
+        "customCurrency": "Số tiền tùy chỉnh"
+      },
+      "types": {
+        "text": "Văn bản",
+        "date": "Ngày",
+        "currency": "Số tiền"
+      },
+      "errors": {
+        "invalid": "Kiểm tra khóa trường, tên, nguồn và các tùy chọn được hỗ trợ.",
+        "permission": "Quyền hiện tại không cho phép thay đổi trường này.",
+        "stale": "Đã có ánh xạ mới hơn. Mở phiên bản hiện tại trước khi sửa.",
+        "conflict": "Một mẫu đang hoạt động sử dụng trường này. Xem quan hệ phụ thuộc trước khi vô hiệu hóa.",
+        "configuration": "Sử dụng ánh xạ trường hiện tại được cấp quyền và nguồn dữ liệu được hỗ trợ.",
+        "unavailable": "Không thể lưu trường. Các giá trị đã nhập được giữ lại; vui lòng thử lại sau."
       }
     }
   }

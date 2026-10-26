@@ -10276,7 +10276,8 @@
         "workforceRecords": "Requires effective Workforce view permission for the selected company. Does not grant payroll or approval access.",
         "loginPresentation": "Group administrators only. Settings affect only their own organization; the installation chooses its default login organization.",
         "myLetters": "Only the signed-in person’s issued letters across current and historical employments. Privileged roles do not widen My Letters.",
-        "letterReports": "Current letter report permission and letter data scope are checked for every read and export."
+        "letterReports": "Current letter report permission and letter data scope are checked for every read and export.",
+        "letterFields": "Field definitions require current template or read permission. Confidential mappings also require the canonical financial permission."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -24041,6 +24042,80 @@
         "pdfLimit": "PDF exports support up to 1,000 letters. Narrow the filters or use Excel.",
         "exportLimit": "Excel exports support up to 50,000 letters. Narrow the filters.",
         "unavailable": "The report export is temporarily unavailable. Try again shortly."
+      }
+    },
+    "fields": {
+      "title": "Merge Field Library",
+      "intro": "Maintain typed employee, employment, company and custom fields for letter templates.",
+      "noAccess": "No field library is available within your permissions.",
+      "company": "Company",
+      "search": "Search fields",
+      "group": "Group",
+      "allGroups": "All groups",
+      "apply": "Apply filters",
+      "library": "Available fields",
+      "empty": "No visible fields match this page and these filters.",
+      "next": "Next fields",
+      "add": "Add field",
+      "key": "Stable field key",
+      "label": "Display name",
+      "source": "Data source",
+      "type": "Data type",
+      "keyHelp": "Start with a lowercase letter; use letters, numbers, dots or underscores. The key is permanent, for example employeeName.",
+      "descriptionLabel": "Description",
+      "required": "Required value",
+      "editable": "Allow editing after generation",
+      "editableHelp": "Only custom values may be editable. Employee and company facts remain owned by their original records.",
+      "sensitive": "Confidential field",
+      "active": "Active",
+      "inUse": "An active template uses this field. Review its dependencies before deactivation.",
+      "versionHelp": "Saving creates a new immutable mapping version. Existing letters retain their original field versions.",
+      "save": "Save version",
+      "saving": "Saving…",
+      "inactive": "Inactive",
+      "version": "Field version {number}",
+      "templateVersion": "Template version {number}",
+      "templateInactive": "Template deactivated",
+      "dependencies": "Template dependencies",
+      "noDependencies": "No visible template bindings on this page.",
+      "nextDependencies": "Next dependencies",
+      "history": "Mapping history",
+      "nextHistory": "Older versions",
+      "historicalVersion": "This is a historical mapping. Open the latest visible version to edit.",
+      "saved": "The new field version has been saved.",
+      "groups": {
+        "employee": "Employee",
+        "employment": "Employment",
+        "company": "Company",
+        "compensation": "Payroll",
+        "custom": "Custom"
+      },
+      "sources": {
+        "employeeName": "Employee name",
+        "employeeCode": "Employee code",
+        "hiredOn": "Employment start date",
+        "jobTitle": "Job title",
+        "department": "Department",
+        "companyName": "Company name",
+        "registration": "Company registration number",
+        "address": "Company address",
+        "basicSalary": "Basic salary",
+        "customText": "Custom text",
+        "customDate": "Custom date",
+        "customCurrency": "Custom currency amount"
+      },
+      "types": {
+        "text": "Text",
+        "date": "Date",
+        "currency": "Currency amount"
+      },
+      "errors": {
+        "invalid": "Check the field key, name, source and supported options.",
+        "permission": "Your current permission does not allow this field change.",
+        "stale": "A newer mapping exists. Open the current version before editing.",
+        "conflict": "An active template uses this field. Review the dependencies before deactivation.",
+        "configuration": "Use the current authorised field mapping and a supported data source.",
+        "unavailable": "The field could not be saved. Your entered values are retained; try again shortly."
       }
     }
   }

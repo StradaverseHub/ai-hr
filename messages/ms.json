@@ -10276,7 +10276,8 @@
         "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
         "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk.",
         "myLetters": "Hanya surat yang dikeluarkan kepada individu yang log masuk bagi pekerjaan semasa dan terdahulu. Peranan berkeistimewaan tidak meluaskan Surat Saya.",
-        "letterReports": "Kebenaran laporan surat semasa dan skop data surat disemak pada setiap bacaan dan eksport."
+        "letterReports": "Kebenaran laporan surat semasa dan skop data surat disemak pada setiap bacaan dan eksport.",
+        "letterFields": "Takrif medan memerlukan kebenaran templat atau bacaan semasa. Pemetaan sulit turut memerlukan kebenaran kewangan yang berkuat kuasa."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -24041,6 +24042,80 @@
         "pdfLimit": "Eksport PDF menyokong sehingga 1,000 surat. Kecilkan penapis atau gunakan Excel.",
         "exportLimit": "Eksport Excel menyokong sehingga 50,000 surat. Kecilkan penapis.",
         "unavailable": "Eksport laporan tidak tersedia buat sementara waktu. Cuba sebentar lagi."
+      }
+    },
+    "fields": {
+      "title": "Pustaka Medan Gabungan",
+      "intro": "Urus medan pekerja, pekerjaan, syarikat dan tersuai yang bertip untuk templat surat.",
+      "noAccess": "Tiada pustaka medan tersedia dalam kebenaran anda.",
+      "company": "Syarikat",
+      "search": "Cari medan",
+      "group": "Kumpulan",
+      "allGroups": "Semua kumpulan",
+      "apply": "Gunakan penapis",
+      "library": "Medan tersedia",
+      "empty": "Tiada medan kelihatan sepadan dengan halaman dan penapis ini.",
+      "next": "Medan seterusnya",
+      "add": "Tambah medan",
+      "key": "Kunci medan kekal",
+      "label": "Nama paparan",
+      "source": "Sumber data",
+      "type": "Jenis data",
+      "keyHelp": "Mulakan dengan huruf kecil; gunakan huruf, nombor, titik atau garis bawah. Kunci adalah kekal, contohnya employeeName.",
+      "descriptionLabel": "Penerangan",
+      "required": "Nilai wajib",
+      "editable": "Benarkan suntingan selepas penjanaan",
+      "editableHelp": "Hanya nilai tersuai boleh disunting. Fakta pekerja dan syarikat kekal di bawah rekod asalnya.",
+      "sensitive": "Medan sulit",
+      "active": "Aktif",
+      "inUse": "Templat aktif menggunakan medan ini. Semak kebergantungannya sebelum menyahaktifkan.",
+      "versionHelp": "Simpanan mencipta versi pemetaan baharu yang tidak boleh diubah. Surat sedia ada mengekalkan versi medan asal.",
+      "save": "Simpan versi",
+      "saving": "Sedang menyimpan…",
+      "inactive": "Tidak aktif",
+      "version": "Versi medan {number}",
+      "templateVersion": "Versi templat {number}",
+      "templateInactive": "Templat dinyahaktifkan",
+      "dependencies": "Kebergantungan templat",
+      "noDependencies": "Tiada ikatan templat yang kelihatan pada halaman ini.",
+      "nextDependencies": "Kebergantungan seterusnya",
+      "history": "Sejarah pemetaan",
+      "nextHistory": "Versi terdahulu",
+      "historicalVersion": "Ini pemetaan bersejarah. Buka versi kelihatan terkini untuk menyunting.",
+      "saved": "Versi medan baharu telah disimpan.",
+      "groups": {
+        "employee": "Pekerja",
+        "employment": "Pekerjaan",
+        "company": "Syarikat",
+        "compensation": "Gaji",
+        "custom": "Tersuai"
+      },
+      "sources": {
+        "employeeName": "Nama pekerja",
+        "employeeCode": "Kod pekerja",
+        "hiredOn": "Tarikh mula pekerjaan",
+        "jobTitle": "Jawatan",
+        "department": "Jabatan",
+        "companyName": "Nama syarikat",
+        "registration": "Nombor pendaftaran syarikat",
+        "address": "Alamat syarikat",
+        "basicSalary": "Gaji pokok",
+        "customText": "Teks tersuai",
+        "customDate": "Tarikh tersuai",
+        "customCurrency": "Amaun mata wang tersuai"
+      },
+      "types": {
+        "text": "Teks",
+        "date": "Tarikh",
+        "currency": "Amaun mata wang"
+      },
+      "errors": {
+        "invalid": "Semak kunci medan, nama, sumber dan pilihan yang disokong.",
+        "permission": "Kebenaran semasa anda tidak membenarkan perubahan medan ini.",
+        "stale": "Pemetaan lebih baharu tersedia. Buka versi semasa sebelum menyunting.",
+        "conflict": "Templat aktif menggunakan medan ini. Semak kebergantungan sebelum menyahaktifkan.",
+        "configuration": "Gunakan pemetaan medan semasa yang dibenarkan dan sumber data yang disokong.",
+        "unavailable": "Medan tidak dapat disimpan. Nilai yang dimasukkan dikekalkan; cuba sebentar lagi."
       }
     }
   }

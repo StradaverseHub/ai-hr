@@ -10276,7 +10276,8 @@
         "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
         "loginPresentation": "仅集团管理员可更改登录页外观。",
         "myLetters": "仅限登录本人当前及以往任职期间的已发出信函。特权角色不会扩大“我的信函”的范围。",
-        "letterReports": "每次读取及导出均检查当前信函报表权限和信函数据范围。"
+        "letterReports": "每次读取及导出均检查当前信函报表权限和信函数据范围。",
+        "letterFields": "字段定义需要当前模板或读取权限。保密映射还需要相应的财务权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -24041,6 +24042,80 @@
         "pdfLimit": "PDF 导出最多支持 1,000 封信函。请缩小筛选范围或使用 Excel。",
         "exportLimit": "Excel 导出最多支持 50,000 封信函。请缩小筛选范围。",
         "unavailable": "报表导出暂时不可用，请稍后重试。"
+      }
+    },
+    "fields": {
+      "title": "合并字段库",
+      "intro": "维护供信函模板使用的员工、任职、公司及自定义类型字段。",
+      "noAccess": "您的权限范围内没有可用的字段库。",
+      "company": "公司",
+      "search": "搜索字段",
+      "group": "分组",
+      "allGroups": "所有分组",
+      "apply": "应用筛选",
+      "library": "可用字段",
+      "empty": "当前页面及筛选条件下没有可见的匹配字段。",
+      "next": "下一页字段",
+      "add": "添加字段",
+      "key": "固定字段键",
+      "label": "显示名称",
+      "source": "数据来源",
+      "type": "数据类型",
+      "keyHelp": "以小写字母开头，仅使用字母、数字、点或下划线。键不可更改，例如 employeeName。",
+      "descriptionLabel": "说明",
+      "required": "必填值",
+      "editable": "允许生成后编辑",
+      "editableHelp": "仅自定义值可设为可编辑。员工和公司事实仍由原始记录管理。",
+      "sensitive": "保密字段",
+      "active": "启用",
+      "inUse": "有启用的模板使用此字段。停用前请查看依赖关系。",
+      "versionHelp": "保存会创建不可覆盖的新映射版本。已有信函保留原字段版本。",
+      "save": "保存版本",
+      "saving": "正在保存…",
+      "inactive": "停用",
+      "version": "字段版本 {number}",
+      "templateVersion": "模板版本 {number}",
+      "templateInactive": "模板已停用",
+      "dependencies": "模板依赖关系",
+      "noDependencies": "此页面没有可见的模板绑定。",
+      "nextDependencies": "下一页依赖关系",
+      "history": "映射历史",
+      "nextHistory": "更早版本",
+      "historicalVersion": "这是历史映射。请打开最新可见版本进行编辑。",
+      "saved": "新字段版本已保存。",
+      "groups": {
+        "employee": "员工",
+        "employment": "任职",
+        "company": "公司",
+        "compensation": "薪资",
+        "custom": "自定义"
+      },
+      "sources": {
+        "employeeName": "员工姓名",
+        "employeeCode": "员工编号",
+        "hiredOn": "任职开始日期",
+        "jobTitle": "职位",
+        "department": "部门",
+        "companyName": "公司名称",
+        "registration": "公司注册号",
+        "address": "公司地址",
+        "basicSalary": "基本工资",
+        "customText": "自定义文本",
+        "customDate": "自定义日期",
+        "customCurrency": "自定义币种金额"
+      },
+      "types": {
+        "text": "文本",
+        "date": "日期",
+        "currency": "币种金额"
+      },
+      "errors": {
+        "invalid": "请检查字段键、名称、来源及支持的选项。",
+        "permission": "您当前的权限不允许此字段更改。",
+        "stale": "已有更新的映射，请打开当前版本后再编辑。",
+        "conflict": "有启用的模板使用此字段，停用前请查看依赖关系。",
+        "configuration": "请使用当前授权的字段映射和支持的数据来源。",
+        "unavailable": "无法保存字段。已保留您的输入，请稍后重试。"
       }
     }
   }
