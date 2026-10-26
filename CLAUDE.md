@@ -107,22 +107,24 @@ Minimize clicks, entry and searching; maximize context, defaults, visibility and
 
 ## 3. Read state from the source, never from a file
 
+Before SSH, release or remote gate commands, follow [Operator access](deploy/OPERATOR-ACCESS.md). Actual host addresses, SSH users/ports and keys belong in private configuration; tracked commands use aliases.
+
 Run these before planning anything. Each finds what the others cannot.
 
     # 1. Does production run main? Zero lines = yes. Same excludes as scripts/improve/release.ts.
     cd ~/Projects/ai-hr/.claude/worktrees/mainwt && rsync -azi --delete --dry-run \
-      -e "ssh -p 8288 -o BatchMode=yes" --exclude node_modules --exclude .next --exclude .git \
+      -e "ssh -F .improve/ssh_config -o BatchMode=yes" --exclude node_modules --exclude .next --exclude .git \
       --exclude '.env*' --exclude .turbo --exclude coverage --exclude .claude --exclude graphify-out \
-      --exclude .vitest-attachments --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
-      ./ ubuntu@203.142.6.241:/opt/ai-hr/
+      --exclude .vitest-attachments --exclude /.improve/ --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
+      ./ aihr-staging:/opt/ai-hr/
     # 2. The board: every status with ids. pull / pull-approved / pull-blocked give the full items.
-    IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:status
+    pnpm improve:status
     # 3. Unmerged branches. Then LOOK: an old branch with four commits is not a pending round.
     for b in $(git for-each-ref --format='%(refname:short)' refs/heads/build refs/heads/r*); do
       n=$(git rev-list --count main..$b); [ "$n" != 0 ] && echo "$b: $n unmerged"; done
     # 4. Migration watermark: journal length here vs applied on the box.
     node -e 'console.log(require("./db/migrations/meta/_journal.json").entries.length)'
-    ssh -p 8288 ubuntu@203.142.6.241 'cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
+    ssh -F .improve/ssh_config aihr-staging 'cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
       psql "$MIGRATION_DATABASE_URL" -tAc "select count(*) from drizzle.__drizzle_migrations"'
 
 Merged is not deployed. A merged round with no `build-start` on the board and no branch looks exactly
@@ -215,7 +217,7 @@ Staging first; after staging acceptance, production waits for a subsequent expli
 Follow the owner deployment rule in [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md).
 
 Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
-Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (gate receipt
+Sequence: gate → merge to main → `pnpm improve:release` (gate receipt
 check; tsc; `rsync --delete`; `deploy.sh` on the box; marks the item deployed) — or
 `pnpm improve:deploy <worktree>` for a round that closes NO board item, which is the same steps and no
 board write → `sudo systemctl restart aihr` on the box (you may) → run any
@@ -230,7 +232,7 @@ script the round depends on
   evidence refuses. Run `bash scripts/gate.sh`, then release the same candidate. Official successful
   builds save the continuous-learning record; report and retry any evidence-mirroring warning. Record
   live restart/health separately: a successful build does not prove the new service is active.
-- Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git checkout there. Default `node`
+- Server: `ssh -F .improve/ssh_config aihr-staging`, app `/opt/ai-hr`, no git checkout there. Default `node`
   is v18 and lacks `--env-file`; run scripts as
   `cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.
   Run `deploy.sh` under `setsid nohup … &` and poll its log; it outlives an ssh session. `improve:release`
@@ -306,9 +308,9 @@ script the round depends on
 
 Statuses: open → planned → approved → building → done → deployed; plus contested (re-plan from the
 reporter's latest words), blocked (approved, waiting on an answer; read `block_trail`), rejected,
-cancelled. Commands from mainwt as `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:<cmd>`: status ·
+cancelled. Commands from mainwt as `pnpm improve:<cmd>`: status ·
 pull · pull-approved · pull-blocked · push-plan · block · unblock · build-start · build-complete ·
-release · deploy · mark-deployed · raise. The CLI's default host is LAN-only; always set the host.
+release · deploy · mark-deployed · raise. SSH resolves the private `aihr-staging` alias; see `deploy/OPERATOR-ACCESS.md`.
 `deploy <worktree>` (r357) is `release` without the board write — for a round that closes no item,
 which is a real case and used to be shipped by retyping `rsync --delete` against production.
 

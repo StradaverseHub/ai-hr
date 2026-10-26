@@ -35,8 +35,8 @@ cd "$(dirname "$0")/.." || exit 1
 gate_export_locale
 OUT="${GATE_OUT:-/tmp/aihr-gate-affected}"
 mkdir -p "$OUT"
-HOST="${IMPROVE_SSH_HOST:-203.142.6.241}"
-PORT="${IMPROVE_SSH_PORT:-8288}"
+. scripts/operator-ssh.sh || exit 2
+HOST="$AIHR_OPERATOR_TARGET"
 
 if [ -z "${AIHR_AFFECTED_STAGE:-}" ]; then
   # ── stage 1: classify, unlocked ──────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ if [ -z "${AIHR_AFFECTED_STAGE:-}" ]; then
   BASE="${1:-}"
   BASE_SOURCE=argument
   if [ -z "$BASE" ]; then
-    STATUS=$(ssh -p "$PORT" -o BatchMode=yes -o ConnectTimeout=12 "ubuntu@$HOST" \
+    STATUS=$(ssh "${AIHR_OPERATOR_SSH_OPTS[@]}" "$AIHR_OPERATOR_TARGET" \
       'cd /opt/ai-hr && deploy/deploy-state.sh status' 2>/dev/null)
     DEPLOYED=$(printf '%s\n' "$STATUS" | sed -n 's/^built_ref=//p' | head -1)
     if [ -n "$DEPLOYED" ] && [ "$DEPLOYED" != "-" ] && git cat-file -e "${DEPLOYED}^{commit}" 2>/dev/null; then
