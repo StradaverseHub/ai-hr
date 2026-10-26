@@ -13,3 +13,8 @@ it.each(['en','ms','zh','ta','th','vi'] as const)('renders the secure issued-let
  fireEvent.click(screen.getByRole('button',{name:t('ariaBell',{total:1,unread:1,tasks:0})}));
  expect(screen.getByText(messages.letters.notifications.issued)).toBeTruthy();expect(screen.getByText(messages.letters.notifications.body)).toBeTruthy();expect(screen.queryByText('letters.notifications.issued')).toBeNull();
 });
+
+it('preserves legacy notification text when a projected item has no kind',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><NotificationCenter unread={1} items={[{id:'legacy',title:'Existing notification',body:'Existing message',linkPath:null,severity:'info',readAt:null,createdAt:new Date()}]}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Notifications, 1 waiting: 1 unread and 0 open tasks'}));expect(screen.getByText('Existing notification')).toBeTruthy();expect(screen.getByText('Existing message')).toBeTruthy();
+});

@@ -85,7 +85,7 @@ export function NotificationCenter({
   const tLetter=useTranslations('letters.notifications');
   const notificationText=useCallback((item:NotificationRow)=>item.kind==='employee-home.greeting'
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
-    ?{title:tGreeting('title'),body:tGreeting('body')}:item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder'].includes(item.kind)
+    ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder'].includes(item.kind)
     ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body},[tGreeting,tLetter]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
