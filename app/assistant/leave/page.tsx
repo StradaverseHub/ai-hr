@@ -7,7 +7,7 @@ import {OwnLeaveCommandSection} from '@/components/assistant/own-leave-command-s
 export default async function OwnLeavePage({searchParams}:{searchParams:Promise<{review?:string|string[]}>}){
  const t=await getTranslations('ownLeaveReview.workflow'),query=await searchParams;
  return <div className="mx-auto max-w-3xl space-y-5">
-  <Link href="/assistant" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('back')}</Link>
+  <Link href="/assistant?job=leave" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('back')}</Link>
   <PageHeader title={t('title')} description={t('description')}/>
   <Card className="p-5"><OwnLeaveCommandSection resumeActionId={query.review}/></Card>
  </div>;
