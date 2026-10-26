@@ -21,6 +21,41 @@ function fixture(){
   return {ports,journal:createSubmissionJournal(scope,ports),stored:()=>stored,changeSession:()=>{current=false;}};
 }
 describe('pending submission durability and ownership',()=>{
+  it('persists preparation before a command exists, survives restart and reuses one stable reference',async()=>{
+    const f=fixture(),entry=await f.journal.prepareClock('in',requestId);
+    expect(entry).toMatchObject({kind:'clock',stage:'preparation',requestId});expect(f.stored()?.version).toBe(2);
+    const restarted=createSubmissionJournal(scope,f.ports);
+    expect(await restarted.prepareClock('in',actorId)).toEqual(entry);
+    expect(await restarted.restore(entry)).toEqual({command:entry.command});
+    expect(f.ports.commit).toHaveBeenCalledOnce();expect(f.ports.storeEvidence).not.toHaveBeenCalled();
+    await expect(restarted.prepareClock('out',actorId)).rejects.toBeInstanceOf(PendingSubmissionConflict);
+    await expect(createSubmissionJournal({...scope,actorId:employmentId},f.ports).pending()).rejects.toBeInstanceOf(SubmissionJournalUnavailable);
+  });
+  it('atomically replaces only the same prepared action/reference with an immutable command',async()=>{
+    const f=fixture(),entry=await f.journal.prepareClock('in',requestId);
+    await expect(f.journal.stage('clock',clock.replace(requestId,actorId))).rejects.toBeInstanceOf(PendingSubmissionConflict);
+    await expect(f.journal.stage('clock',clock.replace('"in"','"out"'))).rejects.toBeInstanceOf(PendingSubmissionConflict);
+    const staged=await f.journal.stage('clock',clock,file);
+    expect(staged.createdAt).toBe(entry.createdAt);expect(staged.stage).toBeUndefined();expect(f.stored()?.version).toBe(1);
+    expect(await f.journal.pending()).toEqual([staged]);
+    await expect(f.journal.prepareClock('in',requestId)).rejects.toBeInstanceOf(PendingSubmissionConflict);
+    expect(await f.journal.restore(staged)).toEqual({command:clock,file});
+  });
+  it('retains the unsent attempt after attachment or command persistence fails',async()=>{
+    const f=fixture(),entry=await f.journal.prepareClock('in',requestId);
+    vi.mocked(f.ports.commit).mockRejectedValueOnce(new Error('Full'));
+    await expect(f.journal.stage('clock',clock,file)).rejects.toThrow('Full');
+    expect(await createSubmissionJournal(scope,f.ports).pending()).toEqual([entry]);
+    expect(await f.journal.pending()).toEqual([entry]);
+  });
+  it('records an attempt receipt without treating it as accepted attendance or resolving the attempt',async()=>{
+    const f=fixture(),entry=await f.journal.prepareClock('in',requestId),receipt={requestId,receivedAt:new Date().toISOString()};
+    await f.journal.markAttemptReported(requestId,receipt);
+    const [saved]=await createSubmissionJournal(scope,f.ports).pending();
+    expect(saved).toMatchObject({stage:'preparation',attemptReceipt:receipt,command:entry.command});
+    expect((await f.journal.restore(saved)).command).toBe(entry.command);
+    await expect(f.journal.markAttemptReported(requestId,{...receipt,requestId:actorId})).rejects.toThrow('changed');
+  });
   it('restores the exact command and verified evidence after a fresh controller is created',async()=>{
     const f=fixture(),entry=await f.journal.stage('clock',clock,file);
     const restarted=createSubmissionJournal(scope,f.ports);

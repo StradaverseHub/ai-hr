@@ -6,6 +6,7 @@ import { identityNamespace } from './config';
 import { SessionChangedError } from './errors';
 import { openNativeSubmissionJournal } from './submission-native';
 import { SubmissionJournalUnavailable, type EvidenceFile, type JournalEntry, type SubmissionKind } from './submission-journal';
+import {ClockPreparation} from '../../lib/clock-attempt';
 
 type Journal=Awaited<ReturnType<typeof openNativeSubmissionJournal>>;
 type Restored={entry:JournalEntry;command:string;file?:EvidenceFile};
@@ -13,7 +14,7 @@ let activeGeneration=-1;
 let activeNamespace='';
 let identity:ReturnType<typeof apiGet<'me'>>|null=null;
 const journals=new Map<string,Promise<Journal>>();
-export type PendingSubmissionSummary={employmentId:string;company:string;kind:SubmissionKind;requestId:string;createdAt:number;hasEvidence:boolean};
+export type PendingSubmissionSummary={employmentId:string;company:string;kind:SubmissionKind;requestId:string;createdAt:number;hasEvidence:boolean;stage?:'preparation'};
 /** Fresh identity verification; returns no coordinates, reasons, attachments or temporary file paths. */
 export async function listOwnedPendingSubmissions():Promise<PendingSubmissionSummary[]>{
   const owner=authGeneration(),namespace=identityNamespace();
@@ -27,7 +28,7 @@ export async function listOwnedPendingSubmissions():Promise<PendingSubmissionSum
   for(const employment of me.employments){
     const journal=await ownedJournal(employment.employmentId,owner);assertAuthGeneration(owner);
     for(const entry of await journal.pending())items.push({employmentId:employment.employmentId,company:employment.company,
-      kind:entry.kind,requestId:entry.requestId,createdAt:entry.createdAt,hasEvidence:!!entry.evidence});
+      kind:entry.kind,requestId:entry.requestId,createdAt:entry.createdAt,hasEvidence:!!entry.evidence,...(entry.stage?{stage:entry.stage}:{})});
     assertAuthGeneration(owner);
   }
   return items;
@@ -63,12 +64,12 @@ async function ownedJournal(employmentId:string,owner:number){
 
 /** No automatic replay. Hydration exposes an uncertain claim, then the user checks its receipt. */
 export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|undefined,onRestore:(value:Restored)=>void){
-  const owner=authGeneration(),key=JSON.stringify([owner,employmentId,kind]);
+  const owner=authGeneration(),namespace=identityNamespace(),key=JSON.stringify([owner,namespace,employmentId,kind]);
   const current=useRef(key);current.current=key;
   const restore=useRef(onRestore);restore.current=onRestore;
   const [attempt,setAttempt]=useState(0);
   const [state,setState]=useState<{key:string;ready:boolean;error:unknown}>({key,ready:false,error:null});
-  function check(){assertAuthGeneration(owner);if(current.current!==key)throw new SessionChangedError();}
+  function check(){assertAuthGeneration(owner);if(current.current!==key||identityNamespace()!==namespace)throw new SessionChangedError();}
   useEffect(()=>{
     let disposed=false;
     current.current=key;
@@ -85,6 +86,23 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
     ready:state.key===key&&state.ready,
     error:state.key===key?state.error:null,
     reload:()=>setAttempt(value=>value+1),
+    async prepareClock(action:'in'|'out',requestId:string){
+      check();if(kind!=='clock'||!employmentId||state.key!==key||!state.ready||AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Pending submissions have not been checked');
+      const journal=await ownedJournal(employmentId,owner);check();
+      const entry=await journal.prepareClock(action,requestId);check();
+      if(AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
+      return entry;
+    },
+    async reportAttempt(requestId:string){
+      check();if(kind!=='clock'||!employmentId||state.key!==key||!state.ready||AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
+      const journal=await ownedJournal(employmentId,owner);check();
+      const entry=(await journal.pending()).find(value=>value.kind==='clock'&&value.requestId===requestId);check();
+      if(entry?.stage!=='preparation')throw new SubmissionJournalUnavailable('Pending attempt changed');
+      const restored=await journal.restore(entry);check();
+      const receipt=await apiPost('clock-attempts',ClockPreparation.parse(JSON.parse(restored.command)),{employmentId});check();
+      if(receipt.requestId!==requestId)throw new SubmissionJournalUnavailable('Unexpected attempt receipt');
+      await journal.markAttemptReported(requestId,receipt);check();return receipt;
+    },
     async stage(command:string,file?:EvidenceFile){
       check();if(!employmentId||state.key!==key||!state.ready)throw new SubmissionJournalUnavailable('Pending submissions have not been checked');
       const journal=await ownedJournal(employmentId,owner);check();

@@ -22,6 +22,7 @@ const team=await import('../app/api/mobile/v1/team/route');
 const receipts=await import('../app/api/mobile/v1/submission-receipt/route');
 const abandonment=await import('../app/api/mobile/v1/submission-abandon/route');
 const clockLocation=await import('../app/api/mobile/v1/clock-location/route');
+const attempts=await import('../app/api/mobile/v1/clock-attempts/route');
 let base:Base;
 const today=()=>todayInKualaLumpur();
 function nextMonday(){const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+((8-d.getUTCDay())%7||7));return d.toISOString().slice(0,10);}
@@ -46,6 +47,46 @@ async function abandon(kind:string,requestId:string,employmentId?:string,extra:R
   }));return {status:r.status,body:await r.json()};
 }
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();blocked=false;});afterAll(closeAll);
+
+describe('reported clock attempts are separate from attendance',()=>{
+  async function report(body:unknown,employmentId?:string){
+    const response=await attempts.POST(new Request('https://hr.example.com/api/mobile/v1/clock-attempts'+(employmentId?'?employmentId='+employmentId:''),{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),
+    }));return {status:response.status,headers:response.headers,body:await response.json()};
+  }
+  it('records one minimal immutable attempt under concurrent retries without any punch or clock receipt',async()=>{
+    const a=await hire('Reported Attempt');caller=a.ctx;
+    const command={requestId:randomUUID(),action:'in',claimedAt:Date.now()-86400000};
+    const [first,second]=await Promise.all([report(command),report(command)]);
+    expect(first.status).toBe(200);expect(second.body).toEqual(first.body);expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(first.body).toEqual({requestId:command.requestId,receivedAt:expect.any(String)});
+    expect(new Date(first.body.receivedAt).getTime()).toBeGreaterThan(command.claimedAt);
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.clock.attempt.reported'));
+    expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorId:a.ctx.userId,subjectEmploymentId:a.employmentId,payload:command});
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+    expect(await owner.db.select().from(schema.attendance)).toHaveLength(0);
+    expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`)).body.receipt).toBeNull();
+    expect((await call(clock.GET,'clock')).body.state.clockedIn).toBe(false);
+    expect((await report({...command,claimedAt:command.claimedAt+1})).status).toBe(400);
+    expect((await report({...command,action:'out'})).status).toBe(400);
+  });
+  it('does not let an attempt report bypass server-ordered abandonment',async()=>{
+    const a=await hire('Abandoned Attempt');caller=a.ctx;const command=intent();
+    expect((await abandon('clock',command.requestId)).body.abandoned).toBe(true);
+    expect((await report({requestId:command.requestId,action:command.action,claimedAt:Date.now()})).status).toBe(200);
+    expect((await call(clock.POST,'clock',command)).body).toEqual({outcome:'refused',code:'clock_conflict'});
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+  });
+  it('refuses forged metadata, foreign employment and revoked sessions before reporting',async()=>{
+    const a=await hire('Own Attempt'),peer=await hire('Peer Attempt');caller=a.ctx;
+    const command={requestId:randomUUID(),action:'in',claimedAt:Date.now()};
+    expect((await report(command,peer.employmentId)).status).toBe(400);
+    for(const extra of [{employmentId:peer.employmentId},{actorId:peer.ctx.userId},{lat:3},{verified:true},{claimedAt:-1},{claimedAt:8640000000000001}])
+      expect((await report({...command,...extra})).status).toBe(400);
+    blocked=true;expect((await report(command)).status).toBe(401);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.clock.attempt.reported'))).toHaveLength(0);
+  });
+});
 
 describe('server-ordered pending submission abandonment',()=>{
   it('prevents late clock delivery after explicit discard and retains one minimal terminal audit',async()=>{

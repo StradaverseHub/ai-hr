@@ -73,11 +73,12 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
     {!!message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{message}</Text>}
     {busy&&<Muted>{t('pendingChecking')}</Muted>}
     {items?.map(item=><Card key={JSON.stringify([item.employmentId,item.kind,item.requestId])}>
-      <Text style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t(item.kind==='clock'?'pendingAttendance':'pendingLeave')}</Text>
+      <Text style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t(item.stage==='preparation'?'pendingAttempt':item.kind==='clock'?'pendingAttendance':'pendingLeave')}</Text>
+      {item.stage==='preparation'&&<Muted>{t('attemptSavedNotSent')}</Muted>}
       <Muted>{item.company}</Muted>
       <Row label={t('pendingSaved')} value={new Date(item.createdAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
       <Muted>{t('pendingReference')}</Muted><Text selectable style={{color:palette.text}}>{item.requestId}</Text>
-      <Button title={t('checkReceipt')} disabled={busy} onPress={()=>void reconcile(item,'receipt')}/>
+      {item.stage!=='preparation'&&<Button title={t('checkReceipt')} disabled={busy} onPress={()=>void reconcile(item,'receipt')}/>}
       <Button title={t('pendingReview')} disabled={busy} kind="quiet" onPress={()=>review(item)}/>
       <Button title={t('pendingDiscard')} disabled={busy} kind="quiet" onPress={()=>confirmDiscard(item)}/>
     </Card>)}

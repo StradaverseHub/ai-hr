@@ -66,6 +66,13 @@ const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('keeps an encrypted unsent attempt through restart and never replaces a missing committed slot with empty state',async()=>{
+    const f=fixture(),opened=await f.native.openNativeSubmissionJournal(scope,()=>{}),entry=await opened.prepareClock('in',requestId);
+    const restarted=await f.native.openNativeSubmissionJournal(scope,()=>{});expect(await restarted.pending()).toEqual([entry]);
+    for(const [path,bytes]of f.files)if(path.startsWith('document/'))expect(new TextDecoder().decode(bytes)).not.toContain(requestId);
+    const committed=[...f.files.keys()].find(path=>path.endsWith('journal-1.sealed'))!;expect(committed).toBeTruthy();f.files.delete(committed);
+    await expect((await f.native.openNativeSubmissionJournal(scope,()=>{})).pending()).rejects.toThrow('Missing submission journal');
+  });
   it('reclaims uncommitted encrypted orphans on restart without losing a committed claim',async()=>{
     const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));const opened=await f.native.openNativeSubmissionJournal(scope,()=>{});
     f.secure.setItemAsync.mockRejectedValueOnce(new Error('Commit failed'));

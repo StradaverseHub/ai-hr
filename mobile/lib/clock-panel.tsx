@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect,router } from 'expo-router';
 import { useCallback,useEffect,useRef } from 'react';
 import { AppState,Image,Platform,Pressable,View,Linking } from 'react-native';
 import { DesignText as Text } from './design';
@@ -14,8 +14,8 @@ import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
 import { t,appLocale } from './i18n';
 import { useSubmissionRecovery } from './submission-recovery';
-import { ClockCommand } from '../../lib/mobile-api/contract';
-import {SubmissionJournalFull} from './submission-journal';
+import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
+import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
 import { Button,Card,LoadState,Muted,Row } from './ui';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
 const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
@@ -30,7 +30,12 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const current=clock.data?.state;
   const action=draft?.action??(current?.clockedIn?'out':'in');
   const identity=clock.data?.employmentId;
-  const recovery=useSubmissionRecovery('clock',identity??undefined,({command,file})=>{
+  const recovery=useSubmissionRecovery('clock',identity??undefined,({entry,command,file})=>{
+    if(entry.stage==='preparation'){
+      const saved=ClockPreparation.parse(JSON.parse(command));
+      putClock({employmentId:identity??undefined,action:saved.action,requestId:saved.requestId,attemptStartedAt:saved.claimedAt,
+        attemptReceiptTime:entry.attemptReceipt?.receivedAt,phase:'idle',message:t('attemptSavedNotSent')});return;
+    }
     const parsed=ClockCommand.parse(JSON.parse(command));
     putClock({employmentId:identity??undefined,action:parsed.action,requestId:parsed.requestId,geo:{lat:parsed.lat,lng:parsed.lng,accuracy:parsed.accuracy,sampledAt:parsed.sampledAt},deviceToken:parsed.deviceToken,photo:file,phase:'uncertain',message:t('clockUncertain')});
   });
@@ -42,9 +47,12 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     flight.current=true;
     const owner=authGeneration();
     let photo=draft?.photo;
-    const next:ClockDraft={employmentId:identity,action,phase:'preparing'};
+    let next:ClockDraft={employmentId:identity,action,phase:'preparing'};
     putClock(next);
     try{
+      const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
+      next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
+      if(!putClock(next))return;
       const geo=await capturePosition(current.geofencingRequired);assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
       const locationAssessment=await apiPost('clock-location',geo,{employmentId:identity});assertAuthGeneration(owner);
@@ -54,8 +62,15 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       }
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto()??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
-      if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken,requestId:randomUUID()}))removeLocalFile(photo);
-    }catch(e){removeLocalFile(photo);putClock({employmentId:identity,action,phase:'idle',message:errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
+      if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken}))removeLocalFile(photo);
+    }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
+    finally{flight.current=false;}
+  }
+  async function reportAttempt(){
+    if(flight.current||!draft?.requestId||!draft.attemptStartedAt)return;
+    flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing',message:t('attemptSending')});
+    try{const receipt=await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);}
+    catch(e){putClock({...draft,message:t('attemptReportUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
   async function takePhoto(){
@@ -115,7 +130,12 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     }catch(e){putClock({...draft,message:t('clockUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
-  function cancel(){removeLocalFile(draft?.photo);putClock(null);}
+  function cancel(){
+    removeLocalFile(draft?.photo);
+    if(draft?.phase==='review'&&draft.attemptStartedAt)putClock({employmentId:identity??undefined,action:draft.action,requestId:draft.requestId,
+      attemptStartedAt:draft.attemptStartedAt,attemptReceiptTime:draft.attemptReceiptTime,phase:'idle',message:t('attemptSavedNotSent')});
+    else putClock(null);
+  }
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
     <LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>
@@ -132,6 +152,14 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:48,justifyContent:'center',borderBottomWidth:2,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.accent:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
+        {!!draft?.attemptStartedAt&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
+          <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
+          <Muted>{t('attemptTimeClaim')}</Muted>
+          <Row label={t('attemptClaimedAt')} value={new Date(draft.attemptStartedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
+          <Text selectable style={{color:palette.text}}>{draft.requestId}</Text>
+          {draft.attemptReceiptTime?<><Muted>{t('attemptReported')}</Muted><Row label={t('attemptReceivedAt')} value={new Date(draft.attemptReceiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/></>:<Button title={t('sendAttemptRecord')} disabled={pending} kind="quiet" onPress={()=>void reportAttempt()}/>}
+        </Card>}
+        {draft?.phase==='idle'&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
         {draft?.locationIssue&&['permission_blocked','approximate_permission','services_disabled'].includes(draft.locationIssue)&&<Button title={t('openLocationSettings')} kind="quiet" onPress={()=>{void Linking.openSettings().catch(()=>{});}}/>}
         {draft?.locationAssessment&&<Card>
           {draft.locationAssessment.siteName&&<Row label={t('assignedLocation')} value={draft.locationAssessment.siteName}/>}

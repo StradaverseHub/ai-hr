@@ -4,36 +4,56 @@ import { ModuleKind, transpileModule } from 'typescript';
 import * as React from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as attempt from '../lib/clock-attempt';
 import * as errors from '../mobile/lib/errors';
 import { SubmissionJournalUnavailable } from '../mobile/lib/submission-journal';
 const employmentId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',actorId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function fixture(){
-  let owner=1,control:any;
+  let owner=1,namespace='https://hr.example.com',control:any;
   const native={AppState:{currentState:'active'}};
   const restored=vi.fn(),apiGet=vi.fn<(path:string,params?:Record<string,string>)=>Promise<any>>(async()=>({actorId,employments:[{employmentId,company:'Own company'}]}));
   const apiPost=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({kind:'clock',requestId:'request',receipt:null,abandoned:true}));
-  const entry={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
+  const entry:any={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
   const journal={pending:vi.fn(async()=>[entry]),restore:vi.fn(async()=>({command:entry.command})),
-    stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{})};
+    stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{}),prepareClock:vi.fn(async()=>entry),markAttemptReported:vi.fn(async()=>{})};
   const open=vi.fn(async()=>journal);
   const output={exports:{} as {listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
-    ready:boolean;error:unknown;stage:(command:string)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
+    ready:boolean;error:unknown;prepareClock:(action:string,id:string)=>Promise<unknown>;reportAttempt:(id:string)=>Promise<unknown>;stage:(command:string)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
   }}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/submission-recovery.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,
     {exports:output.exports,module:output,require:(id:string)=>{
       if(id==='react')return React;if(id==='react-native')return native;
       if(id==='./api')return {apiGet,apiPost};if(id==='./auth')return {authGeneration:()=>owner,assertAuthGeneration:(value:number)=>{if(value!==owner)throw new errors.SessionChangedError();}};
-      if(id==='./config')return {identityNamespace:()=>'https://hr.example.com'};
+      if(id==='./config')return {identityNamespace:()=>namespace};
       if(id==='./errors')return errors;if(id==='./submission-native')return {openNativeSubmissionJournal:open};
+      if(id==='../../lib/clock-attempt')return attempt;
       if(id==='./submission-journal')return {SubmissionJournalUnavailable};throw new Error(id);
     }});
   function Probe({employment=employmentId}:{employment?:string}){
     control=output.exports.useSubmissionRecovery('clock',employment,restored);
     return <span>{control.ready?'ready':control.error?'failed':'loading'}</span>;
   }
-  return {Probe,apiGet,apiPost,open,journal,native,restored,control:()=>control,changeAccount:()=>{owner++;},api:output.exports};
+  return {Probe,apiGet,apiPost,open,journal,native,entry,restored,control:()=>control,changeAccount:()=>{owner++;},changeNamespace:()=>{namespace='https://another.example.com';},api:output.exports};
 }
 afterEach(cleanup);
+describe('saved preparation recovery',()=>{
+  it('refuses an obsolete company profile before saving or reporting an attempt',async()=>{
+    const f=fixture();render(<f.Probe/>);await screen.findByText('ready');const previous=f.control();f.changeNamespace();
+    await expect(previous.prepareClock('in','request')).rejects.toBeInstanceOf(errors.SessionChangedError);
+    await expect(previous.reportAttempt('request')).rejects.toBeInstanceOf(errors.SessionChangedError);
+    expect(f.journal.prepareClock).not.toHaveBeenCalled();expect(f.apiPost).not.toHaveBeenCalled();
+  });
+  it('reports the verified immutable preparation and retains it when the server response is lost',async()=>{
+    const f=fixture();f.entry.stage='preparation';f.entry.command=JSON.stringify({requestId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',action:'in',claimedAt:Date.now()});f.entry.requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    render(<f.Probe/>);await screen.findByText('ready');f.apiPost.mockRejectedValueOnce(new errors.UnavailableError());
+    await expect(f.control().reportAttempt(f.entry.requestId)).rejects.toBeInstanceOf(errors.UnavailableError);
+    expect(f.journal.markAttemptReported).not.toHaveBeenCalled();expect(f.journal.resolve).not.toHaveBeenCalled();
+    const receipt={requestId:f.entry.requestId,receivedAt:new Date().toISOString()};f.apiPost.mockResolvedValueOnce(receipt);
+    await expect(f.control().reportAttempt(f.entry.requestId)).resolves.toEqual(receipt);
+    expect(f.apiPost).toHaveBeenCalledWith('clock-attempts',JSON.parse(f.entry.command),{employmentId});
+    expect(f.journal.markAttemptReported).toHaveBeenCalledWith(f.entry.requestId,receipt);expect(f.journal.resolve).not.toHaveBeenCalled();
+  });
+});
 describe('pending inventory and terminal reconciliation',()=>{
   it('lists verified own pending references without decrypting attachments or replaying commands',async()=>{
     const f=fixture(),rows=await f.api.listOwnedPendingSubmissions();
