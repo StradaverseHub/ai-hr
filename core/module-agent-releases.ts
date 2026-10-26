@@ -92,6 +92,12 @@ function captureSignalRefs(value:unknown):readonly SignalRef[]{
   refs.push(Object.freeze({id:item.id.toLowerCase(),jobId:item.jobId.toLowerCase(),receiptDigest:item.receiptDigest,jobReceiptDigest:item.jobReceiptDigest}));}
  if(new Set(refs.map(row=>row.id)).size!==refs.length)return fail();return Object.freeze(refs.sort((a,b)=>a.id.localeCompare(b.id)));
 }
+/** Unified typed/prompt owner interval: active execution shares it; publication/rollback owns it. */
+async function agentReleaseIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusive=true,required=true){
+ const key='agent-release:'+ctx.tenantId+':'+ownerId;const [row]=await tx.execute<{owned:boolean}>(exclusive?
+  sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`:sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as owned`);
+ if(row?.owned!==true&&required)return fail();return row?.owned===true;
+}
 class AgentSignalBusy extends Error{}
 async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusive=false){
  const key='agent-signals:'+ctx.tenantId+':'+ownerId;const [row]=await tx.execute<{owned:boolean}>(exclusive?
@@ -183,7 +189,7 @@ export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{ca
   if(!exact(input,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>ROUTING_POLICY.maxJobs||
     !Number.isSafeInteger(p.hours)||p.hours<1||p.hours>ROUTING_POLICY.maxHours)return fail();
   try{return await withTenant(current,async tx=>{
-    await guard(tx,current,true);const candidate=await candidateTx(tx,current,p.candidateId);
+    await guard(tx,current,true);const nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.owner_user_id!==nominated.owner_user_id)return fail();
     if(candidate.kind!=='typed_route_priority_v1'||candidate.author_user_id===current.userId)return fail();
     const evaluations=Array.from(await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,suite_digest,receipt
       from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidate.id}::uuid order by evaluator_user_id`));
@@ -204,13 +210,16 @@ export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{ca
   });}catch{return fail();}
 }
 export async function rollbackRoutingAgent(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
-  const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
-  try{await withTenant(current,async tx=>{await guard(tx,current,true,false);
-    const [row]=await tx.execute<{id:string}>(sql`select id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid for update nowait`);
-    if(!row)return fail();await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
-      values(${current.tenantId}::uuid,${p.promotionId}::uuid,${current.userId}::uuid,${p.reason}) on conflict(promotion_id) do nothing`);
-  });}catch{return fail();}
+ const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
+ try{await withTenant(current,async tx=>{await guard(tx,current,true,false);
+  const [nominated]=await tx.execute<{id:string;owner_user_id:string}>(sql`select id,owner_user_id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid`);if(!nominated)return fail();
+  await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);
+  const [fresh]=await tx.execute<{id:string}>(sql`select id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid and owner_user_id=${nominated.owner_user_id}::uuid`);if(!fresh)return fail();
+  await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
+   values(${current.tenantId}::uuid,${p.promotionId}::uuid,${current.userId}::uuid,${p.reason}) on conflict(promotion_id) do nothing`);
+ });}catch{return fail();}
 }
+
 export const GOVERNED_JOB_RETENTION_DAYS=30;
 type GovernedJobRow={id:string;user_id:string;promotion_id:string|null;request_nonce:string|null;requested_plan_digest:string|null;receipt:string;created_at:string;expires_at:string|null;fresh:boolean};
 const jobProjection=sql`id,user_id,promotion_id,request_nonce,requested_plan_digest,receipt,created_at::text,expires_at::text,(expires_at>now()) as fresh`;
@@ -282,7 +291,7 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
   const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,started=Date.now();
   if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,['nonce']))return fail();
   try{return await withTenant(current,async tx=>{
-    const fresh=await guard(tx,current,false);
+    const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
     const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
     const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
      where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
@@ -327,13 +336,19 @@ export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unkn
 export async function maintainModuleAgentReleases(ctx:SessionContext,limit=100){
  const current=capture(ctx);if(!Number.isSafeInteger(limit)||limit<1||limit>100)return fail();
  try{return await withTenant(current,async tx=>{await guard(tx,current,true,false);
-  const rows=await tx.execute<{id:string;reason:'expired'|'exhausted'}>(sql`select p.id,case when p.expires_at<=now() then 'expired' else 'exhausted' end as reason
-   from public.ai_agent_promotion p where p.tenant_id=${current.tenantId}::uuid and(p.expires_at<=now() or p.used_jobs>=p.max_jobs)
+  const rows=await tx.execute<{id:string;owner_user_id:string}>(sql`select p.id,p.owner_user_id from public.ai_agent_promotion p
+   where p.tenant_id=${current.tenantId}::uuid and(p.expires_at<=now() or p.used_jobs>=p.max_jobs)
    and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
-   order by p.created_at,p.id limit ${limit} for update skip locked`);
-  for(const row of rows)await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
-   values(${current.tenantId}::uuid,${row.id}::uuid,${current.userId}::uuid,${row.reason}) on conflict(promotion_id) do nothing`);
-  return {retired:rows.length};
+   order by p.owner_user_id,p.created_at,p.id limit ${limit}`);
+  let retired=0;
+  for(const row of rows){if(!await agentReleaseIntervalTx(tx,current,row.owner_user_id,true,false))continue;
+   const [fresh]=await tx.execute<{id:string;reason:'expired'|'exhausted'}>(sql`select p.id,case when p.expires_at<=now() then 'expired' else 'exhausted' end as reason from public.ai_agent_promotion p
+    where p.id=${row.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${row.owner_user_id}::uuid and(p.expires_at<=now() or p.used_jobs>=p.max_jobs)
+    and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
+   if(!fresh)continue;const inserted=await tx.execute<{id:string}>(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
+    values(${current.tenantId}::uuid,${fresh.id}::uuid,${current.userId}::uuid,${fresh.reason}) on conflict(promotion_id) do nothing returning id`);retired+=inserted.length;
+  }
+  return {retired};
  });}catch{return fail();}
 }
 
@@ -415,7 +430,7 @@ export async function promotePromptAgentCandidate(ctx:SessionContext,input:{cand
  const current=capture(ctx),p={...input};if(!exact(p,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>100||
   !Number.isSafeInteger(p.hours)||p.hours<1||p.hours>24)return fail();
  try{return await withTenant(current,async tx=>{
-  const fresh=await guard(tx,current,true);const candidate=await candidateTx(tx,current,p.candidateId);
+  const fresh=await guard(tx,current,true);const nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.owner_user_id!==nominated.owner_user_id)return fail();
   if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
   const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
   const rows=await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,suite_digest,receipt
@@ -448,7 +463,7 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
  if(!exact(input,['fixtureId','consent']))return fail();const fixture=PROMPT_HOLDOUTS.find(row=>row.id===fixtureId);if(!fixture)return fail();
  try{
   const prepared=await withTenant(current,async tx=>{
-   const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');
+   const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
    const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.expires_at::text
     from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='read_plan_prompt_v1'
     where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now() and p.used_jobs<p.max_jobs
@@ -469,7 +484,7 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
    await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,receipt)
     values(${jobId}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${promotion.id}::uuid,${pending})`);
    const cfg=withAiAdmissionCheck(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),'module_agent_evaluation',async carrier=>{
-    await guard(carrier,current,true);const again=await candidateTx(carrier,current,candidate.id);
+    await guard(carrier,current,true);await agentReleaseIntervalTx(carrier,current,current.userId!,false);await signalIntervalTx(carrier,current,current.userId!);const again=await candidateTx(carrier,current,candidate.id);
     const [allowed]=await carrier.execute<{allowed:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p
      where p.id=${promotion.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now()
      and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)) as allowed`);
@@ -483,7 +498,7 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
   try{plan=adjudicatePromptReadPlan(text);}catch{/* No malformed proposal can reach the canonical engines. */}
   const accepted=plan&&plan.decision===fixture.decision&&[...plan.modules].sort().join(',')===[...fixture.modules].sort().join(',');
   const completed=await withTenant(current,async tx=>{
-   const fresh=await guard(tx,current,true,Boolean(accepted));
+   const fresh=await guard(tx,current,true,Boolean(accepted));await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
    const candidate=await candidateTx(tx,current,prepared.candidate.id);
    const [active]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p where p.id=${prepared.promotionId}::uuid
     and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now()
