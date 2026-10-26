@@ -52,6 +52,10 @@ export const MATRIX_ROLES: readonly Role[] = [
   // DOES reach — /operator — is gated in-page and therefore not a matrix column, exactly like
   // /admin/scheduled-actions.
   'operator',
+  // ADR-0142 (0610) — OneHR performance partner. Reaches exactly the scopedSession screens every role
+  // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
+  // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
+  'performance_partner',
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */

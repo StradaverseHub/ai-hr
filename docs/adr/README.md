@@ -84,3 +84,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 - [0139 — Counted database phase reuse](0139-counted-database-phase-reuse.md)
 
 - [ADR-0140: Operator customer workspace](0140-operator-customer-workspace.md)
+- [0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
+- [0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)
