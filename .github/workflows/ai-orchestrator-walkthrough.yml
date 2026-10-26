@@ -37,7 +37,8 @@ jobs:
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
         with: {node: '20'}
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify runner-provided Chrome
+        run: google-chrome --version
       - run: node ../automation/.github/ci/users-browser.mjs
       - if: always()
         run: bash ../automation/.github/ci/postgres.sh stop

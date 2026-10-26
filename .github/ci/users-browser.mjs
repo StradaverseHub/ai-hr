@@ -47,7 +47,7 @@ try{
   upstream.on('error',()=>{response.writeHead(502);response.end();});incoming.pipe(upstream);
  });
  await new Promise(r=>proxy.listen(3187,'127.0.0.1',r));
- const {chromium}=req('playwright');browser=await chromium.launch();
+ const {chromium}=req('playwright');browser=await chromium.launch({channel:'chrome'});report.browserChannel='chrome';report.browserVersion=browser.version();
  const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:1100}});
  await context.addCookies([{name:'__Host-aihr_internal',value:fixture.session,url:origin,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:origin}]);
  page=await context.newPage();page.on('pageerror',e=>report.browserErrors.push(String(e)));page.on('console',m=>{if(m.type()==='error')report.consoleErrors.push(m.text());});
