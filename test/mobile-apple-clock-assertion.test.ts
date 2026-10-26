@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService,revokeOwnIntegrityKey} from '../core/mobile-apple-enrollment';
 import {createAppleClockAssertionService} from '../core/mobile-apple-clock-assertion';
-import {createAppleClockService} from '../core/mobile-apple-clock';
+import {createAppleClockService} from '../packs/attendance/service';
 import {captureNativeClock,abandonNativeClock,ownNativeClockReceipt,AttendancePhotoRequiredError,ClockConflictError} from '../core/attendance-clock';
 import {setAttendancePolicy,setAttendancePhotoSetting,createClockingLocation,setClockingControl,registerDevice} from '../packs/attendance/service';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';

@@ -7,14 +7,9 @@ import type {SessionContext} from '../../db/client';
 import {withAttendanceTenant} from '../../core/module-gate';
 import {myOwnEmploymentSubjectsTx} from '../../core/read';
 import {ModuleNotEnabledError} from '../../core/entitlements';
-import {OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
-import {createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey,AppleKeyEnrollmentError} from '../../core/mobile-apple-enrollment';
-import {createAppleClockService} from '../../core/mobile-apple-clock';
-import {AppleClockAssertionError} from '../../core/mobile-apple-clock-assertion';
-import {IntegrityChallengeError} from '../../core/mobile-integrity-challenge';
-import {ClockConflictError,CorrectedClockConflictError,ClockLocationError,AttendancePhotoRequiredError} from '../../core/attendance-clock';
-import {OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError} from '../../core/attendance';
-import {DeviceNotRegisteredError} from '../../core/attendance-device';
+import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey,AppleKeyEnrollmentError,
+  createAppleClockService,AppleClockAssertionError,IntegrityChallengeError,ClockConflictError,CorrectedClockConflictError,
+  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/service';
 import {ClockPhotoError} from '../attendance-photo';
 import {AppAttestEnrollmentError} from './app-attest-enrollment';
 import {AppAttestAssertionError} from './app-attest-assertion';

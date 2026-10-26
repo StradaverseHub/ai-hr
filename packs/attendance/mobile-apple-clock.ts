@@ -1,16 +1,16 @@
 /** Internal signed online clock carrier. Deployment configuration is not loaded by a public route. */
 import {and,eq} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext} from '../db/client';
-import {attendanceClockCapture,domainEvent} from '../db/schema';
-import {actorOf,appendEvent} from '../db/events';
-import {clockCommandContext} from '../lib/clock-command-context';
-import {captureNativeClockInTx,ClockConflictError} from './attendance-clock';
-import {OutsideGeofenceError,appendGeofenceBlockedEvent} from './attendance';
-import {withAttendanceTenant} from './module-gate';
-import {myOwnEmploymentSubjectsTx} from './read';
-import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {createAppleClockAssertionService,type AppleClockAssertionInput} from './mobile-apple-clock-assertion';
+import type {SessionContext} from '../../db/client';
+import {attendanceClockCapture,domainEvent} from '../../db/schema';
+import {actorOf,appendEvent} from '../../db/events';
+import {clockCommandContext} from '../../lib/clock-command-context';
+import {captureNativeClockInTx,ClockConflictError} from '../../core/attendance-clock';
+import {OutsideGeofenceError,appendGeofenceBlockedEvent} from '../../core/attendance';
+import {withAttendanceTenant} from '../../core/module-gate';
+import {myOwnEmploymentSubjectsTx} from '../../core/read';
+import {OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
+import {createAppleClockAssertionService,type AppleClockAssertionInput} from '../../core/mobile-apple-clock-assertion';
 
 /** The audit link describes checked historical enrollment evidence; no trust tier or assertion of
  * physical presence is created. Native receipt recovery remains available separately.
