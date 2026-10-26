@@ -1,0 +1,23 @@
+// @vitest-environment jsdom
+/** Authored UNRUN. Actual screen composition with isolated network owners; not native import proof. */
+import React from 'react';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+const calls=vi.hoisted(()=>({validate:vi.fn(),commit:vi.fn(),prepare:vi.fn(),assist:vi.fn(),reopen:vi.fn(),record:vi.fn(async()=>{})}));
+vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
+vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:calls.validate,commitImportAction:calls.commit}));
+vi.mock('../app/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:calls.prepare,assistPersonnelImportHeadersAction:calls.assist,reopenPersonnelImportHeadersAction:calls.reopen}));
+vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,rows:[]})}));
+vi.mock('../components/personnel-import-evaluation-panel',async()=>{const R=await import('react');return{PersonnelImportEvaluationPanel:R.forwardRef((_props,ref)=>{R.useImperativeHandle(ref,()=>({binding:()=>undefined,record:calls.record,prepareCommit:async()=>undefined,commitUncertain:()=>{},acceptCommit:()=>{}}));return null;})};});
+import {EmployeeImport} from '../app/admin/personnel/import/employee-import';
+const t=messages.people.import,original='Unclear person,Unclear contact,Unclear start\n Alice ,alice@fixture.test,2020-01-01\n';
+function view(){return render(<NextIntlClientProvider locale="en" messages={messages}><EmployeeImport companies={[{id:'c1',name:'Fictional Company'}]} defaultCompanyId="c1" reference={{departments:['Finance'],positions:['Executive'],costCenters:['CC1'],states:['Selangor'],countries:['Malaysia'],nationalities:['Malaysian'],relationships:['Spouse'],familyRelationships:['spouse','child']}}/></NextIntlClientProvider>);}
+async function acceptHeaders(){fireEvent.change(screen.getByLabelText(t.csvData),{target:{value:original}});fireEvent.click(screen.getByRole('button',{name:t.headerAssistance.reviewHeadings}));for(const [heading,column] of [['Unclear person','full_name'],['Unclear contact','email'],['Unclear start','hired_on']])fireEvent.change(screen.getByLabelText(t.headerAssistance.destination+': '+heading),{target:{value:column}});fireEvent.click(screen.getByRole('button',{name:t.headerAssistance.applyMapping}));await screen.findByText(/Originals and reviewed changes/);}
+beforeEach(()=>{vi.clearAllMocks();calls.validate.mockRejectedValue(Error('Fictional canonical validation still required'));});afterEach(cleanup);
+describe('actual Employee Master review lineage composition',()=>{
+ it('mounts human header mapping and read-only originals without provider access, automatic validation or commit',async()=>{view();await acceptHeaders();expect(screen.getByText(/Current accepted text/)).toBeTruthy();expect(screen.getByText(/alice@fixture.test/)).toBeTruthy();expect(calls.prepare).not.toHaveBeenCalled();expect(calls.assist).not.toHaveBeenCalled();expect(calls.validate).not.toHaveBeenCalled();expect(calls.commit).not.toHaveBeenCalled();});
+ it('retains original values when the actual textarea is manually corrected, marks old evidence superseded and requires fresh canonical validation',async()=>{view();await acceptHeaders();const textarea=screen.getByLabelText(t.csvData) as HTMLTextAreaElement,edited=textarea.value.replace('Alice','Human corrected name');fireEvent.change(textarea,{target:{value:edited}});expect(screen.getByText(/Earlier evidence/)).toBeTruthy();expect(screen.getByText(/alice@fixture.test/)).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:t.validate}));await waitFor(()=>expect(calls.validate).toHaveBeenCalled());expect(calls.validate.mock.calls.at(-1)?.slice(0,2)).toEqual([edited,'c1']);expect(screen.getByText(/Earlier evidence/)).toBeTruthy();expect(calls.commit).not.toHaveBeenCalled();expect(calls.assist).not.toHaveBeenCalled();});
+ it('clears private local lineage only when the user explicitly replaces the source with the sample',async()=>{view();await acceptHeaders();fireEvent.click(screen.getByRole('button',{name:t.loadSample}));expect(screen.queryByText(/Originals and reviewed changes/)).toBeNull();expect(calls.commit).not.toHaveBeenCalled();});
+});

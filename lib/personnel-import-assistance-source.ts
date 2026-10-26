@@ -74,3 +74,19 @@ export function reviewPersonnelWorkbookRoles(workbook:PersonnelWorkbookSource,ro
  return Object.freeze({employee:employees[0].sheet,companions:Object.freeze(Object.fromEntries(['family','allocations','qualification','emergency'].map(role=>[role,selections.find(item=>item.role===role)?.sheet.text??''])) as Record<'family'|'allocations'|'qualification'|'emergency',string>),
   excluded:Object.freeze(omitted.map(item=>item.sheet.sheetName)),roles:Object.freeze(Object.fromEntries(selections.map(item=>[item.sheet.sheetName,item.role]))),excludedAcknowledged:acknowledgedExcluded,original:workbook});
 }
+
+/** The current human-reviewed header revision, with ORIGINAL body values/coordinates. A source's
+ * matrix is custody evidence and must never be overwritten merely to continue a later cleanup pass. */
+export function currentPersonnelImportMatrix(source:PersonnelImportSource):readonly(readonly string[])[]{
+ const matrix=parsePersonnelCsv(source.currentText,'employee');
+ if(!matrix.length||matrix[0].length!==source.matrix[0].length||JSON.stringify(matrix.slice(1))!==JSON.stringify(source.matrix.slice(1)))throw Error('Import source revision unavailable.');
+ return Object.freeze(matrix.map(row=>Object.freeze([...row])));
+}
+/** Local-only accepted revision history. Never use this as a server/provider DTO or import receipt. */
+export type PersonnelImportLocalEvidence=Readonly<{revisionId:string;text:string;kind:'headers';source:PersonnelImportSource}>
+ |Readonly<{revisionId:string;text:string;kind:'preparation';applied:ReturnType<typeof import('./personnel-import-preparation').applyPersonnelImportPreparation>;workbook?:PersonnelWorkbookSource;sheetDecision?:Readonly<{roles:Readonly<Record<string,PersonnelSheetRole>>;excluded:readonly string[];excludedAcknowledged:boolean}>}>;
+export const PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT=8;
+export function appendPersonnelImportLocalEvidence(previous:readonly PersonnelImportLocalEvidence[],entry:PersonnelImportLocalEvidence):readonly PersonnelImportLocalEvidence[]{
+ if(previous.length>=PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT||!entry.revisionId||previous.some(item=>item.revisionId===entry.revisionId)||new TextEncoder().encode(entry.text).byteLength>MAX_IMPORT_CSV_BYTES)throw Error('Local evidence capacity unavailable.');
+ return Object.freeze([...previous,Object.freeze({...entry})]);
+}
