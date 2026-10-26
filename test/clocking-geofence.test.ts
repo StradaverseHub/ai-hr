@@ -71,6 +71,7 @@ import {
 } from '../core/attendance';
 import {previewOwnClockLocation} from '../core/attendance-clock-read';
 import {captureEmployeeClock} from '../core/attendance-clock';
+import {clockCommandContext} from '../lib/clock-command-context';
 import { withTenant, type SessionContext } from '../db/client';
 import { commitClockingImport, createClockingMapping } from '../core/attendance-clocking-import';
 import { importPunchCsv } from './helpers/punch-import';
@@ -568,12 +569,12 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
   it('preview and employee capture share containment and re-read a changed policy before recording',async()=>{
     const a=adminCtx(b),{id:site}=await mkSite(a,{name:'Shared preview',lat:HQ.lat,lng:HQ.lng});
     const e=await hire(a,b.companyId,b.deptA);await assign(a,e.employmentId,[site]);
-    const own=await employeeCtxFor(e.personId),point={...HQ,accuracy:10,sampledAt:Date.now()};
+    const own={...await employeeCtxFor(e.personId),entitlements:a.entitlements},point={...HQ,accuracy:10,sampledAt:Date.now()};
     expect(await previewOwnClockLocation(own,e.employmentId,point)).toMatchObject({outcome:'pass',siteId:site,accuracyM:10});
     expect(await previewOwnClockLocation(own,e.employmentId,{...point,accuracy:301})).toMatchObject({outcome:'outside_site',siteId:site});
     expect(await previewOwnClockLocation(own,e.employmentId,{...point,sampledAt:Date.now()+180000})).toMatchObject({outcome:'future_fix'});
     await setAttendancePolicy(a,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5],geofenceMaximumAccuracyM:5});
-    await expect(captureEmployeeClock(own,{action:'in',requestId:randomUUID(),lat:HQ.lat,lng:HQ.lng,accuracy:10,employmentId:e.employmentId})).rejects.toMatchObject({assessment:{outcome:'poor_accuracy'}});
+    await expect(captureEmployeeClock(own,{action:'in',requestId:randomUUID(),lat:HQ.lat,lng:HQ.lng,accuracy:10,employmentId:e.employmentId,clockContext:clockCommandContext(own.tenantId,own.userId,e.employmentId)})).rejects.toMatchObject({assessment:{outcome:'poor_accuracy'}});
     expect(await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId,e.employmentId))).toHaveLength(0);
   });
   it('inside radius: row stamped per-punch (coords, matched id, distance, radius, pass, web)', async () => {
