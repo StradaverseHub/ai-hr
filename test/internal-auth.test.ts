@@ -181,8 +181,10 @@ describe('first-party authentication with real private storage and existing HR b
     if(setup.step!=='enroll'||!setup.secret)throw new Error('Expected authenticator enrollment.');
     const signedIn=completed(await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true));
     expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:user.personId,grants:[{role:'hr_admin',companyId:base.companyId}]});
+    const changed=(await credentialByLogin('alpha','external.admin'))!.password;
+    expect(changed).not.toBe(c.password);
     expect(await resumeManualAccount(ctx,input.id,'Unused replay passphrase 111!')).toBe(id);
-    expect((await credentialByLogin('alpha','external.admin'))?.password).not.toBe(c.password);
+    expect((await credentialByLogin('alpha','external.admin'))?.password).toBe(changed);
   });
   it('an invited user without employment completes the real internal activation flow once',async()=>{
     const provider:AuthProvider={sendInvitation:async()=>({invitationId:'test'}),revokeInvitation:async()=>{},sendPasswordReset:async()=>{},endSession:async()=>{}};

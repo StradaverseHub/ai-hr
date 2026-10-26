@@ -83,6 +83,12 @@ describe('employee activation actions and lifecycle display', () => {
     expect(m.users).toHaveBeenCalledWith(expect.anything(), { includeArchived: true });
     expect(m.manual).toHaveBeenCalledWith(expect.objectContaining({ selectedPerson: undefined }));
   });
+  it('labels a named standalone login and retains its normal archive and role controls',async()=>{
+    m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});
+    m.candidates.mockResolvedValue([]);await show();const d=within(directory());
+    expect(d.getByText('External admin')).toBeTruthy();expect(d.getByText('No employee record')).toBeTruthy();
+    expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
+  });
   it('delegated admins receive no pending roster or activation controls', async () => {
     m.group.mockReturnValue(false); await show();
     expect(m.candidates).not.toHaveBeenCalled(); expect(m.manual).not.toHaveBeenCalled();
