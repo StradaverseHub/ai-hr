@@ -86,7 +86,7 @@ describe('durable non-vacuous independent routing evaluation',()=>{
   expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:1});expect(await maintainModuleAgentReleases(a.second)).toEqual({retired:0});
   expect((await runGovernedModuleReadPlan(a.author,plan,{nonce:randomUUID()})).mode).toBe('baseline');
  });
- it('an actual executor-held shared interval excludes an independent administrative rollback until its command finishes',async()=>{
+ it('an actual executor owns its shared release interval and refuses concurrent administrative rollback until its command finishes',async()=>{
   const a=await verified(),promotion=await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1});
   let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
   const original=canonical.myOwnEmploymentSubjectsTx;let paused=false;
@@ -95,7 +95,11 @@ describe('durable non-vacuous independent routing evaluation',()=>{
   });
   const pending=runGovernedModuleReadPlan(a.author,{version:1,modules:['employees','ess']},{nonce:randomUUID()});
   let finished:Awaited<ReturnType<typeof runGovernedModuleReadPlan>>|undefined;
-  try{await Promise.race([started,pending.then(()=>{throw Error('Expected the actual canonical reader interval.');})]);await expect(rollbackRoutingAgent(a.second,{promotionId:promotion.promotionId,reason:'human'})).rejects.toThrow('Agent review could not be confirmed.');
+  try{await Promise.race([started,pending.then(()=>{throw Error('Expected the actual canonical reader interval.');})]);
+   // Inspect the real interval independently of Access: rollback must respect Access first, so its
+   // fail-fast refusal alone cannot prove which later release lock the executor owns.
+   const releaseOwned=await withTenant(a.second,async tx=>{const [row]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-release:'+base.tenantId+':'+a.author.userId},0)) as owned`);return row.owned;});expect(releaseOwned).toBe(false);
+   await expect(rollbackRoutingAgent(a.second,{promotionId:promotion.promotionId,reason:'human'})).rejects.toThrow('Agent review could not be confirmed.');
    const [unchanged]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_rollback`);expect(unchanged.n).toBe(0);
   }finally{release();read.mockRestore();finished=await pending;}
   expect(finished?.mode).toBe('promoted');await rollbackRoutingAgent(a.second,{promotionId:promotion.promotionId,reason:'human'});

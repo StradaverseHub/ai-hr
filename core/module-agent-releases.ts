@@ -213,7 +213,11 @@ export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{ca
 }
 export async function rollbackRoutingAgent(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
  const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
- try{await withTenant(current,async tx=>{await guard(tx,current,true,false);
+ try{await withTenant(current,async tx=>{
+  // A running canonical reader owns Access before its shared release interval. Refuse contention
+  // before the principal guard's blocking reentrant acquisition; never wait behind an active job.
+  const [access]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+current.tenantId},0)) as owned`);if(access?.owned!==true)return fail();
+  await guard(tx,current,true,false);
   const [nominated]=await tx.execute<{id:string;owner_user_id:string}>(sql`select id,owner_user_id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid`);if(!nominated)return fail();
   await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);
   const [fresh]=await tx.execute<{id:string}>(sql`select id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid and owner_user_id=${nominated.owner_user_id}::uuid`);if(!fresh)return fail();
@@ -663,7 +667,7 @@ async function currentPlanPermitTx(tx:Tx,permit:ReturnType<typeof openPlanPermit
  const [clock]=await tx.execute<{valid:boolean}>(sql`select ${permit.issuedAt}::timestamptz<=clock_timestamp() and ${permit.expiresAt}::timestamptz>clock_timestamp() as valid`);if(clock?.valid!==true)return fail();
 }
 /** No question or provider text is persisted. Even request digests remain inside authenticated ciphertext. */
-export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}){
+export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}):Promise<{state:'chooser'}|{state:'replayed'|'completed';proposalId:string}>{
  const current=capture(ctx),token=input.permit,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
  if(!exact(input,['permit','question','locale','consent'])||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  const permit=openPlanPermit(current,token),nonce=permit.nonce,questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();
@@ -683,7 +687,7 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
    await tx.execute(sql`insert into public.ai_agent_plan_proposal(id,tenant_id,user_id,request_nonce,promotion_id,state,receipt,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${nonce}::uuid,${promotion.id}::uuid,'reserved',${seal('human-plan',current.tenantId,id,proof)},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);
    return {replayed:false as const,id,candidate,bound};
   });
-  if('unavailable' in prepared)return {state:'chooser' as const};if(prepared.replayed)return {state:'replayed' as const,proposalId:prepared.id};
+  if('unavailable' in prepared)return {state:'chooser' as const};const proposalId=prepared.id;if(typeof proposalId!=='string')return fail();if(prepared.replayed)return {state:'replayed' as const,proposalId};
   const outbound=Object.freeze({system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(question,locale),maxTokens:384,timeoutMs:15000}),expectedInputDigest=draftInputDigest(outbound);
   // Fresh provider configuration is issued only after durable reservation. No transaction spans network.
   const cfg=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const checked=await currentPlanningBindingTx(tx,current,prepared.bound);
@@ -713,7 +717,7 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
    const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||row.state!=='reserved')return fail();const {proof}=openProposal(row,current);
    const state=text===undefined||proof.settled!==true||typeof proof.runId!=='string'?'failed':plan?.decision==='read'?'ready':'refused';
    await tx.execute(sql`update public.ai_agent_plan_proposal set state=${state},receipt=${seal('human-plan',current.tenantId,row.id,{...proof,state,plan:state==='ready'?{version:1,modules:plan!.modules}:null,outputDigest:text===undefined?null:routingDigest(text),elapsedMs:Math.max(0,Date.now()-started),outcome:state})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
-  });return {state:'completed' as const,proposalId:prepared.id};
+  });return {state:'completed' as const,proposalId};
  }catch{return fail();}
 }
 /** Personal proposal erasure survives Assistant grant loss; no raw question or other user's data read. */
@@ -724,7 +728,7 @@ export async function eraseOwnModulePlanProposals(ctx:SessionContext){const curr
 function checkedHumanEvaluation(row:{id:string;evaluator_user_id:string;receipt:string},candidate:CandidateRow,ctx:SessionContext,fingerprint:string){
  const proof=open('human-plan-evaluation',ctx.tenantId,row.id,row.receipt);
  if(proof.version!==1||proof.suiteDigest!==HUMAN_PLAN_SUITE_DIGEST||proof.candidateDigest!==candidate.candidate_digest||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==fingerprint||routingDigest(proof.binding)!==routingDigest(binding(candidate))||!Array.isArray(proof.cases)||proof.cases.length>HUMAN_PLAN_HOLDOUTS.length)return fail();
- const seen=new Set<string>();for(const item of proof.cases){if(!item||typeof item.id!=='string'||seen.has(item.id)||!HUMAN_PLAN_HOLDOUTS.some(f=>f.id===item.id)||!['passed','failed','unavailable'].includes(item.state)||item.state!=='unavailable'&&(typeof item.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.outputDigest)))return fail();seen.add(item.id);}return proof;
+ const seen=new Set<string>();for(const item of proof.cases){if(!item||typeof item.id!=='string'||seen.has(item.id)||!HUMAN_PLAN_HOLDOUTS.some(f=>f.id===item.id)||!['passed','failed','unavailable'].includes(item.state)||item.state!=='unavailable'&&(typeof item.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.outputDigest)))return fail();seen.add(item.id);}return {...proof,cases:proof.cases};
 }
 async function assertHumanPlanEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,fingerprint:string){
  // Group-admin-only evaluation RLS is unchanged. Learned candidates are never lent to other owners.
