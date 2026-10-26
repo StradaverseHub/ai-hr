@@ -32,7 +32,7 @@ it('upgrades populated upstream data through both board migrations without chang
    const [tenant]=await storage.client<{id:string}[]>`insert into tenant(workos_org_id,name) values(${randomUUID()},${'Synthetic upgrade tenant '+index}) returning id`;tenantIds.push(tenant.id);
    const [company]=await storage.client<{id:string}[]>`insert into company(tenant_id,legal_name,country,currency) values(${tenant.id},${'Synthetic upgrade employer '+index},'MY','MYR') returning id`;
    const [person]=await storage.client<{id:string}[]>`insert into person(tenant_id,full_name,primary_email) values(${tenant.id},${'Synthetic upgrade worker '+index},${'upgrade-'+index+'@example.invalid'}) returning id`;
-   const [employee]=await storage.client<{id:string}[]>`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on,employment_type) values(${tenant.id},${person.id},${company.id},'0007','2022-01-01','full_time') returning id`;
+   const [employee]=await storage.client<{id:string}[]>`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) values(${tenant.id},${person.id},${company.id},'0007','2022-01-01') returning id`;
    const [user]=await storage.client<{id:string}[]>`insert into app_user(tenant_id,workos_user_id) values(${tenant.id},${randomUUID()}) returning id`;users.push(user.id);
    await storage.client`insert into role_assignment(tenant_id,app_user_id,role) values(${tenant.id},${user.id},'hr_admin')`;
    const [period]=await storage.client<{id:string}[]>`insert into pay_period(tenant_id,company_id,period,status) values(${tenant.id},${company.id},'2023-01','closed') returning id`;
