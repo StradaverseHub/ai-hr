@@ -8,7 +8,15 @@ backlog, database contention, downtime or inadequate capacity can delay erasure.
 Before exposing review custody, the combined release must verify the reserved migrations, actual
 physical database owner and FORCE-RLS policies, expired-only erasure, rollback, busy interval skip,
 and enough repeated-pass capacity for observed volume. The dedicated `aihr-retention` OS identity
-must already be provisioned and able to read the release and Node runtime. Root owns the separate
+must already be provisioned and able to read the maintenance bundle and Node runtime. The verified
+release must be installed separately at `/opt/aihr-maintenance/current`, including its required
+runtime dependencies. Root owns the bundle, its selection link and every writable parent. Neither
+the web user nor the maintenance user may modify the sources, dependencies, Node binary, selection
+link or their parent directories; reject external symlinks resolving to writable content. Do not
+load this privileged connection through the web application's mutable source/dependency tree.
+The installer must prove actual file ownership/modes and exact verified source/dependency identity
+on the host before starting the service. This template installs none of those prerequisites.
+Root owns the separate
 `/etc/aihr/retention.env` file with mode0600. It contains only the approved maintenance connection;
 never copy the web application's environment or put connection values in Git, arguments or logs.
 The runner refuses app-role connections and has no credential fallback or privilege self-grant.
