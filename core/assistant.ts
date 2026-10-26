@@ -43,6 +43,8 @@ import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
 import { withAssistantRead } from './assistant-read-session';
+import { prepareAssistantConversation } from './assistant-provider-input';
+import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
 import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
 
 /**
@@ -128,6 +130,11 @@ const SYSTEM: string[] = [
     'the asker does not manage them, there is no data, or the request was out of range. That is a correct',
     'answer, not a failure: relay it in your own words, do not apologise for a system error, do not retry',
     'the same call, and never fill the gap with an assumption.',
+    'Keep access refusals and errors brief, warm and lightly cheeky, without teasing or blaming the user.',
+    'Use the safe tool wording as your guide and offer its next step. Never quote raw errors, SQL, status',
+    'codes, stack traces, provider details or internal argument names. Never confirm that a hidden record',
+    'exists, guess why access was refused, suggest bypasses or invent facts to soften a refusal.',
+    'Reply in the language the user used. Keep sensitive HR decisions clear and respectful.',
   ].join(' '),
   [
     'Never compute pay, tax, statutory contributions or entitlement yourself. Those figures come from the',
@@ -147,7 +154,7 @@ const SYSTEM: string[] = [
  * the cache to one entry per person, which is the opposite of what a shared prefix is for. `ConverseArgs`
  * states outright that it must never be a tenant id, user id or email.
  */
-const CACHE_KEY = 'assistant-v1';
+const CACHE_KEY = 'assistant-v2';
 
 /** Every registered name — consulted ONLY to label an audit refusal, never to resolve a call. */
 const ASSISTANT_TOOL_NAMES: ReadonlySet<string> = new Set(ASSISTANT_TOOLS.map((t) => t.spec.name));
@@ -292,14 +299,15 @@ export async function askAssistant(
         break;
       }
 
-      const res = await converse(cfg, {
+      const prepared = prepareAssistantConversation(ctx, cfg, {
         system: SYSTEM,
         turns,
         tools,
         maxTokens: 2048,
         timeoutMs: TURN_TIMEOUT_MS,
         cacheKey: CACHE_KEY,
-      });
+      }, sourceReads, deadline);
+      const res = await converse(prepared.configuration, prepared.args);
       turnCount++;
       spend.inputTokens += res.usage.inputTokens;
       spend.outputTokens += res.usage.outputTokens;
@@ -386,18 +394,19 @@ async function runTools(
         // two apart. An error, not a refusal: there is nothing for the model to relay.
         const exists = ASSISTANT_TOOL_NAMES.has(call.name);
         audit.push({ name: call.name, input: call.input, rowCount: null, refusal: exists ? 'not_offered' : 'unknown_tool' });
-        return { id: call.id, name: call.name, content: 'No such tool.', isError: true };
+        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.tool, isError: true };
       }
       // `input === undefined` means the provider produced arguments we could not parse. AiToolCall's own
       // comment requires this be an isError RESULT rather than a dropped one.
       if (call.input === undefined) {
         audit.push({ name: call.name, input: null, rowCount: null, refusal: 'unparseable_input' });
-        return { id: call.id, name: call.name, content: 'Arguments could not be read.', isError: true };
+        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.arguments, isError: true };
       }
       try {
         const outcome = await tool.run(ctx, call.input, session);
-        const content = serializeAgentReadResult(outcome);
-        sourceReads.push(Object.freeze({ name: call.name, input: call.input, digest: assistantSourceDigest(outcome) }));
+        const publicOutcome = assistantPublicToolResult(outcome);
+        const content = serializeAgentReadResult(publicOutcome);
+        sourceReads.push(Object.freeze({ name: call.name, input: call.input, digest: assistantSourceDigest(publicOutcome) }));
         const rowCount = rowCountOf(outcome);
         audit.push({
           name: call.name,
@@ -412,7 +421,7 @@ async function runTools(
         // The wrapper threw. The message is NOT relayed: it may carry a database error naming a column
         // or a value, and it is going into a model's context and then to a person.
         audit.push({ name: call.name, input: call.input, rowCount: null, refusal: 'tool_error' });
-        return { id: call.id, name: call.name, content: 'That lookup failed.', isError: true };
+        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.lookup, isError: true };
       }
     }),
   ));

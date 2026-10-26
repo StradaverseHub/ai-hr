@@ -16,7 +16,7 @@ const bytes = (value: string) => Buffer.byteLength(value, 'utf8');
 const aad = (binding: AssistantDisclosureBinding) => JSON.stringify(['ai-hr.assistant-disclosure.v1', binding.tenantId, binding.userId, binding.exchangeId]);
 const body = (binding: AssistantDisclosureBinding) => digest(JSON.stringify([binding.question, binding.answer]));
 
-function captureReads(value: unknown): readonly AssistantSourceRead[] {
+export function captureAssistantSourceReads(value: unknown): readonly AssistantSourceRead[] {
   if (!Array.isArray(value) || value.length > ASSISTANT_DISCLOSURE_LIMITS.reads) throw Error();
   const result: AssistantSourceRead[] = [];
   for (let offset = 0; offset < value.length; offset += 16) {
@@ -40,7 +40,7 @@ function captureReads(value: unknown): readonly AssistantSourceRead[] {
 export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, reads: readonly AssistantSourceRead[] | undefined): string | null {
   try {
     if (!isSecretStorable() || !binding.answer || reads === undefined) return null;
-    const captured = captureReads(reads);
+    const captured = captureAssistantSourceReads(reads);
     const plaintext = JSON.stringify({ v: ASSISTANT_DISCLOSURE_VERSION, body: body(binding), reads: captured });
     if (bytes(plaintext) > ASSISTANT_DISCLOSURE_LIMITS.plainBytes) return null;
     const sealed = encryptSecret(plaintext, aad(binding));
@@ -62,6 +62,6 @@ export function openAssistantDisclosure(binding: AssistantDisclosureBinding, tok
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const proof = value as Record<string, unknown>;
     if (!exact(proof, ['v', 'body', 'reads']) || proof.v !== ASSISTANT_DISCLOSURE_VERSION || proof.body !== body(binding)) return null;
-    return captureReads(proof.reads);
+    return captureAssistantSourceReads(proof.reads);
   } catch { return null; }
 }

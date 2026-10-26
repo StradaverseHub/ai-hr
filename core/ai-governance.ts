@@ -30,17 +30,32 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
 }
 
+/** Trusted command checks are additional refusal conditions, never model-supplied capabilities.
+ * The exact current provider/principal is checked first; admission/settlement remain canonical.
+ */
+type AiAdmissionCheck = (tx: Tx, request: Readonly<AiAdmission>) => Promise<void>;
+const issuedConfigurations = new WeakMap<object, { ctx: SessionContext; snapshot: AiProviderSnapshot; feature: AiFeatureId; check?: AiAdmissionCheck }>();
+
 /** Opaque server-only provider/principal binding, not HR disclosure or effect authorization. */
-export function governedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId):ResolvedAiConfig{
+function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId,check?:AiAdmissionCheck):ResolvedAiConfig{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  assertAiProviderSnapshot(snapshot,ctx);
  const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- return Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
+ const resolved=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
+  const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
+   ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});
+  if(!['draft','conversation','image'].includes(capturedRequest.operation)||!Number.isSafeInteger(capturedRequest.reservedTokens)||capturedRequest.reservedTokens<0||capturedRequest.reservedTokens>1000000000||
+   (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiGatewayError('The prepared AI request could not be confirmed.');
   const [admission]=await withTenant(ctx,async tx=>{
    await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
+   if(check)try{await check(tx,capturedRequest);}catch(error){
+    if(error instanceof AiAllowanceError)throw error;
+    throw new AiGatewayError('The current AI source access could not be confirmed.');
+   }
+   assertAiProviderSnapshot(snapshot,ctx);
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
-   return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint,${forcedPause})`);
+   return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
   });
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
@@ -57,4 +72,22 @@ export function governedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
   }
  }})});
+ issuedConfigurations.set(resolved,{ctx,snapshot,feature,check});
+ return resolved;
+}
+
+/** Opaque server-issued configuration. This alone grants no authority over HR source fields. */
+export function governedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId):ResolvedAiConfig{
+ return createGovernedAiConfig(ctx,snapshot,feature);
+}
+
+/** Join an extra trusted source check to the SAME admission transaction, before any reservation.
+ * Serialized/copied configs cannot acquire this binding. Existing checks compose and cannot be
+ * removed by adding another check. No check or transaction handle enters transport/model data.
+ */
+export function withAiAdmissionCheck(configuration:ResolvedAiConfig,feature:AiFeatureId,check:AiAdmissionCheck):ResolvedAiConfig{
+ const issued=issuedConfigurations.get(configuration);
+ if(!issued||issued.feature!==feature||typeof check!=='function')throw new AiGatewayError('The prepared AI request could not be confirmed.');
+ const combined:AiAdmissionCheck=issued.check?async(tx,request)=>{await issued.check!(tx,request);await check(tx,request);}:check;
+ return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,combined);
 }

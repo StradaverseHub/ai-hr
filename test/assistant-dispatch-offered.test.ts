@@ -21,6 +21,7 @@ import * as schema from '../db/schema';
 import type { ConverseResult } from '../lib/ai/types';
 import { askAssistant } from '../core/assistant';
 import { loadAiWorkspace } from '../core/ai-workspace';
+import { ASSISTANT_PUBLIC_REPLIES } from '../lib/ai/assistant-public-replies';
 import { grantAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
 import { hireEmployee } from '../core/org';
@@ -151,7 +152,7 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     expect(audit.find((a) => a.name === 'no_such_tool_anywhere')?.refusal).toBe('unknown_tool');
 
     const [notOffered, unknown] = toolTurn();
-    expect(notOffered).toMatchObject({ id: 'c1', content: 'No such tool.', isError: true });
+    expect(notOffered).toMatchObject({ id: 'c1', content: ASSISTANT_PUBLIC_REPLIES.tool, isError: true });
     // NO ORACLE: a registered-but-not-offered name reads exactly like a name that does not exist.
     expect({ content: notOffered.content, isError: notOffered.isError }).toEqual({ content: unknown.content, isError: unknown.isError });
 
@@ -210,6 +211,30 @@ describe('actual Assistant consumption of bounded agent batches', () => {
     } finally { spy.mockRestore(); }
   });
 
+  it('keeps refusal codes in the server audit and gives the model only the public access reply', async () => {
+    const { ctx } = await employeeWithReleasedPayslip(true);
+    converse.mockResolvedValueOnce(toolUse([{ id: 'private', name: 'employee_profile',
+      input: { employment_id: 'ffffffff-ffff-4fff-bfff-ffffffffffff' } }])).mockResolvedValueOnce(end);
+    const result = await askAssistant(ctx, { question: 'Can you open this profile?' });
+    expect(JSON.parse(toolTurn()[0].content)).toEqual({ ok: false, message: ASSISTANT_PUBLIC_REPLIES.access });
+    expect(JSON.stringify(toolTurn())).not.toContain('not_visible');
+    expect((await auditOf(result.exchangeId))[0].refusal).toBe('not_visible');
+  });
+
+  it('turns a raw source exception into the friendly safe reply without exposing its cause', async () => {
+    const { ctx } = await employeeWithReleasedPayslip(true);
+    const tool = ASSISTANT_TOOLS.find(t => t.spec.name === 'my_payslip_summary')!;
+    const raw = 'PRIVATE_DATABASE_ERROR_SENTINEL: SELECT salary FROM secret_table; provider-key-fragment';
+    const spy = vi.spyOn(tool, 'run').mockRejectedValueOnce(new Error(raw));
+    try {
+      converse.mockResolvedValueOnce(toolUse([{ id: 'failed', name: tool.spec.name, input: { limit: 1 } }])).mockResolvedValueOnce(end);
+      const result = await askAssistant(ctx, { question: 'Read my released payslip.' });
+      expect(toolTurn()).toEqual([{ id: 'failed', name: tool.spec.name, content: ASSISTANT_PUBLIC_REPLIES.lookup, isError: true }]);
+      expect(sentToModel()).not.toContain(raw); expect(JSON.stringify(result)).not.toContain(raw);
+      expect(JSON.stringify(await auditOf(result.exchangeId))).not.toContain(raw);
+    } finally { spy.mockRestore(); }
+  });
+
   it('does not send oversized read content into the next provider turn or persist it as rows', async () => {
     const { ctx } = await employeeWithReleasedPayslip(true);
     const tool = ASSISTANT_TOOLS.find(t => t.spec.name === 'my_payslip_summary')!;
@@ -219,7 +244,7 @@ describe('actual Assistant consumption of bounded agent batches', () => {
       converse.mockResolvedValueOnce(toolUse([{ id: 'large', name: tool.spec.name, input: { limit: 1 } }])).mockResolvedValueOnce(end);
       const result = await askAssistant(ctx, { question: 'Read my released payslip.' });
       expect(spy).toHaveBeenCalledTimes(1);
-      expect(toolTurn()).toEqual([{ id: 'large', name: tool.spec.name, content: 'That lookup failed.', isError: true }]);
+      expect(toolTurn()).toEqual([{ id: 'large', name: tool.spec.name, content: ASSISTANT_PUBLIC_REPLIES.lookup, isError: true }]);
       expect(sentToModel()).not.toContain(sentinel);
       const audit = await auditOf(result.exchangeId);
       expect(audit).toEqual([{ name: tool.spec.name, input: { limit: 1 }, rowCount: null, refusal: 'tool_error' }]);

@@ -1,7 +1,7 @@
 import { AiGatewayError, type AiUsage, type ResolvedAiConfig } from './types';
 import { readOpenRouterOptions } from './providers/openrouter-configuration';
 export type AiOperation='draft'|'conversation'|'image';
-export type AiAdmission={operation:AiOperation;reservedTokens:number};
+export type AiAdmission={operation:AiOperation;reservedTokens:number;inputDigest?:string};
 export type AiGovernance={run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,configuration?:ResolvedAiConfig):Promise<T>};
 /** Reservations are estimates, never presented as provider-reported usage. */
 export const textReservation=(text:string,maxTokens=2048)=>Math.min(1000000000,new TextEncoder().encode(text).length+Math.max(0,maxTokens)+1024);

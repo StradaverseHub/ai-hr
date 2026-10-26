@@ -13,6 +13,7 @@
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
  */
 import { captureAiConfig,governed,textReservation } from './governance';
+import { captureConversationInput, conversationInputDigest } from './conversation-input';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
@@ -136,12 +137,13 @@ export function supportsConverse(provider: AiProvider): boolean {
  */
 export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
   cfg=captureAiConfig(cfg);
+  args=captureConversationInput(args);
   const adapter = adapterFor(cfg.provider);
   if (!adapter.converse) throw new AiGatewayError('This AI provider does not support the assistant.');
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
 }
 
 /**

@@ -81,16 +81,15 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
   }
 }
 
-/** Trusted read owners may explicitly join their already READ ONLY transaction. This is not an
- * implicit transaction lookup: a write-mode admission/effect transaction is deliberately refused.
- * Only canonical named readers leave this boundary; the transaction remains private to its owner.
+/** Explicit carrier-mode prerequisite. Only canonical named readers leave this boundary;
+ * the transaction remains private to the trusted source/admission owner.
  */
-export async function withAssistantReadTx<T>(ctx: SessionContext, tx: Tx,
+async function withBoundAssistantReadsTx<T>(ctx: SessionContext, tx: Tx, modeExpected: 'on' | 'off',
   consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   try {
     const [mode] = await tx.execute<{ readonly: string }>(sql`select current_setting('transaction_read_only') as readonly`);
-    if (mode?.readonly !== 'on') return unavailable();
+    if (mode?.readonly !== modeExpected) return unavailable();
     const fresh = await guard(tx, captured, null);
     const owner = { active: true, principal: principalKey(captured), tx };
     const session = createReads(fresh, tx, () => owner.active);
@@ -101,4 +100,19 @@ export async function withAssistantReadTx<T>(ctx: SessionContext, tx: Tx,
     if (error instanceof AiAllowanceError) throw error;
     return unavailable();
   }
+}
+
+/** Historical/source read owners must already own an actual READ ONLY transaction. */
+export function withAssistantReadTx<T>(ctx: SessionContext, tx: Tx,
+  consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
+  return withBoundAssistantReadsTx(ctx, tx, 'on', consume);
+}
+
+/** Canonical provider admission must write only its own reservation after source checks. Its trusted
+ * owner explicitly supplies that write-mode transaction; tools still receive only named read methods.
+ * This path does NOT promise transaction-level READ ONLY. It grants no model or effect capability.
+ */
+export function withAssistantAdmissionReadsTx<T>(ctx: SessionContext, tx: Tx,
+  consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
+  return withBoundAssistantReadsTx(ctx, tx, 'off', consume);
 }

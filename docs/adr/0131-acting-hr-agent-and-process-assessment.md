@@ -2524,3 +2524,68 @@ Historical replay does not close prepared provider-field admission, all transiti
 writer races, raw storage/retention/erasure or deterministic adjudication of model facts.
 These and the remaining own-leave/provider/all-module governance requirements still
 block the one combined final gate and deployment; no production-readiness claim.
+
+
+### Exact prepared conversation admission and friendly refusals (source-only)
+
+The actual conversation gateway now captures an immutable, bounded protocol snapshot
+before asynchronous admission: system blocks, tool definitions, turns, arguments,
+results and opaque adapter-owned continuation data. It preserves protocol values and
+undefined malformed arguments, normalizes only existing token/timeout defaults and
+refuses accessors, opaque instances, cycles and excessive inputs. No caller-owned
+nested references survive into transport. An ephemeral digest of the exact captured
+request enters admission metadata, never the persistent model-run audit. No opaque
+continuation data is interpreted as authority, logged or persisted.
+
+Actual Assistant preparation matches every non-error outbound tool result to its
+captured canonical read fingerprint and exact call/input graph. Unrelated successful
+reads cannot authenticate substituted output. Error results admit only the three
+fixed public error sentences. Preparation binds an issued provider configuration to
+hr_assistant, the exact request digest and the captured source evidence. Inside the
+SAME actual provider admission transaction, after current provider/principal checking
+and before any reservation, it rechecks the current canonical tool catalogue and
+replays all relevant canonical source reads. Changed facts, source permissions,
+module offerings, payloads or principals refuse before the transport callback. The owning
+exchange deadline is checked before and after replay; provider-snapshot age is also
+rechecked after extra source checks. Added
+trusted checks compose; copied configs, feature substitution and replacing an earlier
+check refuse. Check failures expose only a bounded message, not their caught cause.
+Reservation and settlement stay with their existing canonical owner; provider transport
+begins only after the admission transaction commits.
+
+The admission owner deliberately has a write-mode transaction for its model-run
+reservation. Its source facade still exposes only named canonical read methods, but
+this path does NOT claim database-level READ ONLY. Historical/source read owners keep
+their separately enforced READ ONLY transaction. Fresh checks establish an admission
+boundary, not retroactive removal of already transmitted bytes, universal writer
+coverage, all-module prepared-field protection or adjudication of model facts.
+
+Human additionally requested lightly cheeky permission/error replies rather than raw
+technical messages. The shared public reply catalogue now gives inaccessible and
+missing records the SAME friendly access wording and a useful administrator next step.
+Internal refusal codes remain in server audit; the model receives only the public
+message. Unknown tools share one public reply; malformed arguments and failed lookups
+use fixed friendly sentences. Six locales have matching access/setup/error banners.
+The static system prompt instructs warm, light humour without blame, hidden-record
+confirmation, fabricated reasons, bypass advice or technical-error dumps. Its stable
+cache version advances to assistant-v2 for this intentional global wording change.
+Canonical calculations, permissions, refusal codes and audit semantics are unchanged.
+This tone is guidance, not evidence of evaluated live model behaviour.
+
+Authored UNRUN protocol cases cover immutable retained-input capture across actual
+gateway admission, opaque state preservation, undefined arguments, strict bounds and
+accessor/cycle refusal. Seven actual database cases exercise canonical source replay
+inside admission, positive committed reservation before mocked transport, source drift
+and fresh preparation, module removal, transcript retargeting, unrelated evidence,
+error-body substitution, the owning exchange deadline and composed/feature-bound checks. Existing actual Assistant
+cases now inject a private raw database cause and require only the friendly public
+message in provider material, with no cause in client result or audit; another checks
+that internal refusal codes stay out of model result material. Only provider transport
+is mocked in the admission cases; their DB/SQL paths remain genuinely UNRUN.
+
+Static syntax and diff checks only. First focused pure checks and changed-input
+compiler were prepared, but normal complete-set admission again refused occupied or
+uncertain operator leases, holding none and starting no compiler/tests/DB/application.
+No migrations, provider calls, cloud jobs, staging changes or foreign leases/signals
+were touched. Earlier passing compiler evidence is retained for its older input only.
+All three stages remain incomplete before one combined final gate and deployment.

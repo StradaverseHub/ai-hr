@@ -41,6 +41,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // core/payroll and dragging the engine into every assistant caller.
 import { storedComponentLines } from './payslip-earning-lines';
 import { isModuleEnabled } from './entitlements';
+import { ASSISTANT_PUBLIC_REPLIES } from '../lib/ai/assistant-public-replies';
 import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -109,7 +110,7 @@ const AWAY_WINDOW_DAYS = 62;
 const refuse = (refusal: ToolRefusalCode, message: string): ToolOutcome => ({
   ok: false,
   refusal,
-  message,
+  message: refusal === 'not_visible' || refusal === 'not_your_report' ? ASSISTANT_PUBLIC_REPLIES.access : message,
 });
 
 /**
@@ -586,7 +587,7 @@ const teamLeaveSummary: AssistantTool = {
       'Leave balances and pending-request counts for ONE person who reports to the asking user, directly ' +
       'or through another manager. `pendingCount` is a COUNT OF APPLICATIONS, not a number of days. ' +
       'upcomingFrom / upcomingTo is their next approved leave that has not finished. If the asking user ' +
-      "does not manage that person, the tool refuses with 'not_your_report': say so plainly and do not " +
+      'cannot access those figures, relay the public access message and do not ' +
       'attempt another tool to obtain the same figures. Obtain employment_id from who_is_away or ' +
       'my_reporting_line — do not guess one.',
     inputSchema: schema({
@@ -662,7 +663,7 @@ const employeeProfile: AssistantTool = {
       'do not guess one. It deliberately does NOT return date of birth, gender, marital status, race, ' +
       'religion, nationality, home address, personal phone, personal email or emergency contacts; if ' +
       'asked for any of those, say the assistant does not provide them. If the person is not visible to ' +
-      "the asking user the tool refuses with 'not_visible'; relay that without speculating about whether " +
+      'the asking user, relay the public access message without speculating about whether ' +
       'the record exists.',
     inputSchema: schema({
       employment_id: {
