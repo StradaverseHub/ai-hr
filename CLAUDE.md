@@ -233,6 +233,10 @@ script the round depends on
 - `next build` on the box precedes `db:migrate`; an OOM leaves production untouched. Never
   `typescript.ignoreBuildErrors`.
 
+### Production package publication after staging acceptance
+
+For each accepted staging release, use the final approval command in [Production packages](docs/PRODUCTION-PACKAGES.md). It automatically creates the dated production tag, packages, checksums, manifest and GitHub release notes from the accepted Linux build. Run it only after restart, exact source/build arrival, migration checks and the acceptance walkthrough, with the original acceptance evidence and explicit owner-exception label where applicable. Do not call it just because CI or a build finished. This publication does not deploy to production or authorize a database reset. Keep all SSH configuration and installation secrets private.
+
 ## 8. Verification standards
 
 - **A 200 is not a render check.** `MISSING_MESSAGE`, `FORMATTING_ERROR` and server→client boundary
