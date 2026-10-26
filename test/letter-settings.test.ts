@@ -1,4 +1,5 @@
 import {afterAll,beforeEach,it,expect,vi} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
@@ -53,8 +54,10 @@ it('does not let an ordinary approver enumerate a different owner’s signatures
  await expect(listLetterSettingAssets(reviewer,{companyId:b.companyId,kind:'signature',ownerUserId:signerId})).rejects.toMatchObject({code:'permission'});expect(await withTenant(reviewer,tx=>tx.execute(sql`select * from app.letter_setting_asset_page(${b.companyId}::uuid,'signature',${signerId}::uuid,null,null,25)`))).toHaveLength(0);
 });
 
-it('reports entitlement resolution failures at the service boundary instead of silently hiding destinations',async()=>{
- await expect(letterNavigation({...ctx,entitlements:undefined,entitlementsExempt:undefined,entitlementsError:'fixture entitlement lookup failed'},[b.companyId])).rejects.toMatchObject({name:'EntitlementsResolutionFailedError'});
+it('keeps core navigation available during entitlement lookup outages but rejects a foreign snapshot',async()=>{
+ const expected=await letterNavigation(ctx,[b.companyId]);expect(expected.length).toBeGreaterThan(0);
+ expect(await letterNavigation({...ctx,entitlements:undefined,entitlementsExempt:undefined,entitlementsError:'fixture entitlement lookup failed'},[b.companyId])).toEqual(expected);
+ await expect(letterNavigation({...ctx,entitlements:{...ctx.entitlements!,tenantId:randomUUID()}},[b.companyId])).rejects.toMatchObject({name:'EntitlementsTenantMismatchError'});
 });
 
 it('retains company-scoped Letters history through the deletion guard without disclosing it to an ordinary account',async()=>{
