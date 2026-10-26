@@ -26,7 +26,7 @@ On 26 October 2026 the owner made this repository public; authenticated GitHub m
 
 | Branch | Environment | Target |
 |---|---|---|
-| `alpha` | Staging / internal acceptance | The existing server, previously called production: `ubuntu@203.142.6.241:8288`, application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
+| `alpha` | Staging / internal acceptance | The existing server, previously called production: SSH alias `aihr-staging` (connection settings are private; see [Operator access](../deploy/OPERATOR-ACCESS.md)), application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
 | `main` | New production / live | Reserved for the separate live installation that the owner will set up. Its host, URL, database, credentials and deployment integration are not established by this decision. |
 | `codex/*` and other work branches | Isolated development | Target `alpha` for staging integration; promote a verified release to `main` for the future live environment. |
 

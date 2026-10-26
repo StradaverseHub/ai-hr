@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {followStagingDeployment,requireSuccessfulBuild} from './operator-release.mjs';
+import {STAGING,bindStaging,followStagingDeployment,requireSuccessfulBuild} from './operator-release.mjs';
 const raw=await import(pathToFileURL(join(process.cwd(),'scripts/improve/release.ts')).href);
 const official={...(raw.default??{}),...raw};
 const sha='a'.repeat(40);
@@ -19,3 +19,17 @@ test('Dropped transport reconnects through the official loop; no lost deploy is 
 test('Unobservable deploy still refuses after bounded official retries',()=>{assert.throws(()=>followStagingDeployment(official,()=>{throw Error('offline');},observation),/lost contact/);});
 test('Actual failed terminal state is returned then refused by operator result handling',()=>{const status=followStagingDeployment(official,()=>reply('failed'),observation);assert.equal(status.state,'failed');assert.throws(()=>requireSuccessfulBuild(official,status,sha));});
 test('Wrong deployed source and stale build cannot become success',()=>{for(const patch of [{built_ref:'b'.repeat(40)},{stale_build:'1'}]){const status=followStagingDeployment(official,()=>reply('ok','',patch),observation);assert.throws(()=>requireSuccessfulBuild(official,status,sha));}});
+
+test('Staging release pins the private alias and refuses endpoint or directory overrides',()=>{
+ const env={};
+ bindStaging(env);
+ assert.equal(env.IMPROVE_SSH_HOST,'aihr-staging');
+ assert.equal(env.IMPROVE_SSH_USER,'');
+ assert.equal(env.IMPROVE_SSH_PORT,'');
+ assert.equal(env.IMPROVE_REMOTE_DIR,STAGING.directory);
+ assert.equal(env.AIHR_DEPLOY_STATE_DIR,STAGING.stateDirectory);
+ for(const [key,value] of Object.entries({IMPROVE_SSH_HOST:'other.example.com',IMPROVE_SSH_USER:'other-user',IMPROVE_SSH_PORT:'2222',IMPROVE_REMOTE_DIR:'/tmp/other',AIHR_DEPLOY_STATE_DIR:'/tmp/other-state'})){
+  assert.throws(()=>bindStaging({[key]:value}),/Staging target mismatch/);
+ }
+ assert.doesNotThrow(()=>bindStaging(env));
+});

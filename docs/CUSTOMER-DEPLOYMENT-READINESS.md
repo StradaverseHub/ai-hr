@@ -202,7 +202,7 @@ this repo's call. `deploy/DEPLOY.md` states the manual sequence instead.
 lines redirects stdout and stderr into a file, so cron's own mail path can never fire. There is no Sentry,
 OpenTelemetry, pino or winston in `package.json` — the grep is zero — and there was no `/health` route
 (`app/admin/leave-config/balance-health` is an unrelated admin screen) and no `logrotate` entry for
-ai-hr. A Zabbix agent runs on the host; it reports to `103.13.121.90`, a server this project does not
+ai-hr. A Zabbix agent runs on the host; it reports to a private monitoring server (address omitted) that this project does not
 control, so its rule set is still UNKNOWN from here. The one real thing that already existed is
 `/admin/scheduled-actions`, which shows job history to a group admin — pull-only, no run-now, no
 notification.

@@ -1,13 +1,12 @@
 /** Private staging alias and strict source-pending transport. No release/gate authority. */
 import {existsSync,lstatSync,realpathSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
-export const STAGING=Object.freeze({host:'aihr-staging',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
+export const STAGING=Object.freeze({host:'aihr-staging',port:'',user:'',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const quote=value=>"'"+value.replaceAll("'","'\"'\"'")+"'";
 export function bindStaging(env){
- const values={IMPROVE_SSH_HOST:STAGING.host,IMPROVE_REMOTE_DIR:STAGING.directory,AIHR_DEPLOY_STATE_DIR:STAGING.stateDirectory};
- for(const [key,value]of Object.entries(values)){if(env[key]&&env[key]!==value)throw Error('Staging target mismatch: '+key);env[key]=value;}
- for(const key of ['IMPROVE_SSH_PORT','IMPROVE_SSH_USER'])if(env[key])throw Error('Configure staging user/port in the private SSH alias: '+key);
+ const values={IMPROVE_SSH_HOST:STAGING.host,IMPROVE_SSH_PORT:STAGING.port,IMPROVE_SSH_USER:STAGING.user,IMPROVE_REMOTE_DIR:STAGING.directory,AIHR_DEPLOY_STATE_DIR:STAGING.stateDirectory};
+ for(const [key,value]of Object.entries(values)){if(env[key]!==undefined&&env[key]!==value)throw Error('Staging target mismatch: '+key);env[key]=value;}
  return values;
 }
 export function stagingTransport(candidatePath,environment=process.env){

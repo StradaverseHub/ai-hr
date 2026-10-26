@@ -37,7 +37,7 @@ export function realAuthEnabled(env: Env = process.env): boolean {
   return !switcherOn && missingWorkosSettings(env).length === 0;
 }
 
-/** The public origin users reach the app on (https://aihr.stradaverse.ai), taken from the redirect URI.
+/** The public origin users reach the app on (https://hr.example.com), taken from the redirect URI.
  *  Behind the Cloudflare tunnel the app itself sees http://127.0.0.1:3000, so every absolute URL it builds
  *  for a browser must come from here. Undefined when the redirect URI is unset or not a URL. */
 export function appOrigin(env: Env = process.env): string | undefined {

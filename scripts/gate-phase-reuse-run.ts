@@ -1,3 +1,4 @@
+import {operatorSsh} from './operator-ssh.mjs';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdirSync,readFileSync,writeFileSync,openSync,closeSync,copyFileSync} from 'node:fs';
 import {resolve,join} from 'node:path';
@@ -12,7 +13,7 @@ const [baseline,out]=positional.map(p=>resolve(p)),cwd=process.cwd(),head=git(['
 const frozen=()=>proof(git(['rev-parse','HEAD'])===head&&!git(['status','--porcelain']),'candidate changed');frozen();
 writeFileSync('.gate-receipt.json',JSON.stringify({sha:head,result:'FAIL',tier:'phase-reuse',reason:'Fresh verification and fixture restoration pending'})+'\n');
 function production(){
- const text=execFileSync('ssh',['-p',process.env.IMPROVE_SSH_PORT??'8288','-o','BatchMode=yes','-o','ConnectTimeout=12',`${process.env.IMPROVE_SSH_USER??'ubuntu'}@${process.env.IMPROVE_SSH_HOST??'203.142.6.241'}`,'cd /opt/ai-hr && deploy/deploy-state.sh status'],{encoding:'utf8',timeout:30000});
+ const text=execFileSync('ssh',[...operatorSsh().options,operatorSsh().target,'cd /opt/ai-hr && deploy/deploy-state.sh status'],{encoding:'utf8',timeout:30000});
  return readyProductionBaseline(Object.fromEntries(text.split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return [l.slice(0,i),l.slice(i+1)];})));
 }
 const deployed=production();

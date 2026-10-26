@@ -39,6 +39,7 @@ import {validatePhaseReuse,type PhaseReuseReceipt} from '../gate-phase-reuse-evi
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
  */
 import { execFileSync } from 'node:child_process';
+import { operatorSsh, operatorRsyncShell, operatorSshCommand } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,10 +53,9 @@ import { testingSourceRef, testingUuid } from '../../lib/system-testing/model';
 import { stableTestingJson } from '../../lib/system-testing/hash';
 import { ensurePrivateReleaseDirectory, prepareSystemTestingBuild, publishSystemTestingBuild, systemTestingBuildDirectory } from './system-testing-manifest';
 
-const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
-const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
-const USER = process.env.IMPROVE_SSH_USER ?? 'ubuntu';
-const DIR = process.env.IMPROVE_REMOTE_DIR ?? '/opt/ai-hr';
+const SSH = operatorSsh();
+const TARGET = SSH.target;
+const DIR = SSH.remoteDir;
 
 /**
  * Where deploy/deploy-state.sh keeps its records on the server. Outside the rsynced tree on purpose —
@@ -79,14 +79,14 @@ export function tscEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv
 }
 
 /** SSH options shared by every remote call here: no prompts, and a connect that fails rather than hangs. */
-const SSH_OPTS = ['-p', PORT, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12'];
+const SSH_OPTS = SSH.options;
 
 /** App source ships through one filter. Internal decision/history records remain local and
  * existing server copies are protected from --delete; they are not deployment dependencies. */
-export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOST}:${DIR}/`): string[] {
+export function deploymentRsyncArgs(source: string, destination = `${TARGET}:${DIR}/`): string[] {
   return [
     '-az', '--delete',
-    '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
+    '-e', operatorRsyncShell(SSH),
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
     '--exclude', '.vitest-attachments', '--exclude', '/.improve/',
@@ -105,7 +105,7 @@ export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOS
 
 /** The argv for one remote command. Exported so the tests can drive the REAL command through a shim ssh. */
 export function sshArgs(remoteCommand: string, opts?: { host?: string; user?: string }): string[] {
-  return [...SSH_OPTS, `${opts?.user ?? USER}@${opts?.host ?? HOST}`, remoteCommand];
+  return [...SSH_OPTS, opts?.host || opts?.user ? operatorSsh({ ...process.env, IMPROVE_SSH_HOST: opts.host ?? process.env.IMPROVE_SSH_HOST, IMPROVE_SSH_USER: opts.user ?? process.env.IMPROVE_SSH_USER }).target : TARGET, remoteCommand];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -283,10 +283,10 @@ export function followDeploy(deps: FollowDeps): DeployStatus {
       fails += 1;
       if (fails >= maxFails) {
         throw new Error(
-          `lost contact with ${USER}@${HOST} after ${fails} consecutive attempts. The remote deploy is ` +
+          `lost contact with ${TARGET} after ${fails} consecutive attempts. The remote deploy is ` +
             `DETACHED and may well have finished — this release cannot say, so it is failing rather than ` +
             `reporting a success it did not observe.\n` +
-            `  check it directly:  ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"\n` +
+            `  check it directly:  ${operatorSshCommand(SSH)} ${TARGET} "cd ${DIR} && deploy/deploy-state.sh status"\n` +
             `  last error: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
@@ -306,7 +306,7 @@ export function followDeploy(deps: FollowDeps): DeployStatus {
       if (fails >= maxFails) {
         throw new Error(
           `the server stopped returning a readable deploy state after ${fails} attempts. ` +
-            `Check:  ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
+            `Check:  ${operatorSshCommand(SSH)} ${TARGET} "cd ${DIR} && deploy/deploy-state.sh status"`,
         );
       }
       notice(`… unreadable reply from the server (${fails}/${maxFails}); retrying`);
@@ -341,7 +341,7 @@ export function followDeploy(deps: FollowDeps): DeployStatus {
       throw new Error(
         `the remote deploy has been ${state} for over ${Math.round(deadlineMs / 60_000)} minutes. It is ` +
           `detached and still running; this release is giving up watching it rather than claiming a result.\n` +
-          `  ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
+          `  ${operatorSshCommand(SSH)} ${TARGET} "cd ${DIR} && deploy/deploy-state.sh status"`,
       );
     }
     sleep(pollMs);
@@ -365,7 +365,7 @@ export function deployedVerdict(worktree: string): DeployedVerdict {
     });
     deployedRef = parseDeployStatus(out).built_ref;
   } catch (e) {
-    return { error: `could not read the deployed ref from ${USER}@${HOST}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}` };
+    return { error: `could not read the deployed ref from ${TARGET}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}` };
   }
   if (!deployedRef || deployedRef === '-') return { error: `the box reports no built_ref (got '${deployedRef ?? ''}')` };
   try {
@@ -472,7 +472,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   // 3. rsync the worktree → server (same excludes as deploy; .env.production preserved on the box).
   const src = p.worktree.replace(/\/?$/, '/');
   if (stableTestingJson(prepareSystemTestingBuild({ worktree: p.worktree, candidate: head, buildRecordId: testingBuild.identity.buildRecordId })) !== stableTestingJson(testingBuild)) throw new Error('System Testing release source changed before rsync.');
-  console.log(`→ rsync ${src} → ${USER}@${HOST}:${DIR}/`);
+  console.log(`→ rsync ${src} → ${TARGET}:${DIR}/`);
   run('rsync', deploymentRsyncArgs(src));
 
   // Receiver verifies actual installed catalogue/source bytes and publishes under its fixed private
@@ -511,9 +511,9 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
       `the remote deploy did not finish cleanly (state=${status.state ?? 'unknown'}). ` +
         `Nothing has been marked deployed.\n` +
         (status.log && status.log !== '-'
-          ? `  full output:  ssh -p ${PORT} ${USER}@${HOST} "cat ${status.log}"\n`
+          ? `  full output:  ${operatorSshCommand(SSH)} ${TARGET} "cat ${status.log}"\n`
           : '') +
-        `  current state: ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
+        `  current state: ${operatorSshCommand(SSH)} ${TARGET} "cd ${DIR} && deploy/deploy-state.sh status"`,
     );
   }
   try {
