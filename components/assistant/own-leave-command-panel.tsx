@@ -110,14 +110,14 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
   <p ref={status} role="status" aria-live="polite" tabIndex={-1} className="text-sm outline-none">{busy?label(busy):state.kind==='completed'?m.submitted:state.kind==='uncertain'?(state.actionId?m.uncertain:m.prepareUncertain):state.kind==='retired'?(state.receipt.state==='discarded'?m.discarded:state.receipt.state==='expired'?m.expired:m.refused):state.kind==='review'?m.confirmNote:m.explanation}</p>
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {state.kind==='draft'&&<form onSubmit={prepare} className="space-y-4">
-   <fieldset disabled={busy!==null} className="grid min-w-0 gap-4 sm:grid-cols-2">
+   <fieldset disabled={busy!==null||employments.length===0} className="grid min-w-0 gap-4 sm:grid-cols-2">
     <label htmlFor={id+'-employment'} className="text-sm">{m.employment}<select id={id+'-employment'} required value={employmentId} onChange={e=>{setEmploymentId(e.target.value);setLeaveTypeId('');}} className={inputCls+' mt-1 min-h-11'}><option value="">{m.chooseEmployment}</option>{employments.map(row=><option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
     <label htmlFor={id+'-type'} className="text-sm">{m.leaveType}<select id={id+'-type'} required disabled={!employee} value={leaveTypeId} onChange={e=>setLeaveTypeId(e.target.value)} className={inputCls+' mt-1 min-h-11'}><option value="">{m.chooseLeaveType}</option>{types.map(row=><option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
     <label htmlFor={id+'-date'} className="text-sm">{m.date}<input id={id+'-date'} type="date" required value={date} onChange={e=>setDate(e.target.value)} className={inputCls+' mt-1 min-h-11'}/></label>
     <label htmlFor={id+'-reason'} className="text-sm sm:col-span-2">{m.reason}<textarea id={id+'-reason'} value={reason} onChange={e=>setReason(e.target.value)} maxLength={2000} rows={3} autoComplete="off" className={inputCls+' mt-1'}/></label>
     <label htmlFor={id+'-remark'} className="text-sm sm:col-span-2">{m.remark}<textarea id={id+'-remark'} value={remark} onChange={e=>setRemark(e.target.value)} maxLength={2000} rows={3} autoComplete="off" className={inputCls+' mt-1'}/></label>
    </fieldset>
-   <Button type="submit" disabled={busy!==null} className="min-h-11">{busy==='prepare'?m.preparing:m.prepare}</Button>
+   <Button type="submit" disabled={busy!==null||employments.length===0} className="min-h-11">{busy==='prepare'?m.preparing:m.prepare}</Button>
   </form>}
   {state.kind==='draft'&&!busy&&<Link href="/leave?apply=1" className="inline-flex min-h-11 items-center rounded-md border border-input px-3 py-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('openForm')}</Link>}
   {review&&<Card className="min-w-0 space-y-4 p-5">

@@ -17,6 +17,16 @@ import { OwnLeaveBinding, ownLeaveIntentDigest } from './own-leave-review';
 import { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 import { readOwnLeaveActorTx } from './own-leave-actor';
 
+/** Shared first-slice capability filter, not eligibility or effect authority. Both callers must
+ * obtain identity and eligible type from canonical same-Tx source reads, never posted/model objects. */
+type FirstSliceIdentity = Pick<typeof leaveType.$inferSelect, 'role' | 'code' | 'country' | 'essViewConfig'>;
+type FirstSliceType = Pick<Awaited<ReturnType<typeof listEligibleLeaveTypesFor>>[number], 'paid' | 'requiresDocument' | 'balanceSourceTypeId'>;
+export function ownLeaveFirstSliceTypeQualifies(identity: FirstSliceIdentity | undefined,
+  type: FirstSliceType, country: string | null): identity is FirstSliceIdentity {
+  return !!identity && leaveTypeIs(identity, 'annual') && identity.country === country
+    && type.paid && !type.requiresDocument && type.balanceSourceTypeId === null;
+}
+
 export type { OwnLeaveReviewCandidate } from './own-leave-review-digest';
 export type OwnLeaveCandidateResult =
   | { kind: 'candidate'; candidate: OwnLeaveReviewCandidate;
@@ -72,8 +82,7 @@ export async function readOwnLeaveCandidateTx(
   const [identity] = await tx.select({ role: leaveType.role, code: leaveType.code, country: leaveType.country,
     essViewConfig: leaveType.essViewConfig }).from(leaveType)
     .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, type.id))).limit(1);
-  if (!identity || !leaveTypeIs(identity, 'annual') || identity.country !== subject.country
-    || !type.paid || type.requiresDocument || type.balanceSourceTypeId !== null) return { kind: 'use_leave_form' };
+  if (!ownLeaveFirstSliceTypeQualifies(identity, type, subject.country)) return { kind: 'use_leave_form' };
   const storedRemark = normalizeLeaveEmployeeRemark(text.data.employeeRemark);
   if (type.employeeRemarkRequired && !storedRemark) return { kind: 'needs_employee_remark' };
   // Retain the human's exact text in the intent. If the canonical writer would normalize it,
