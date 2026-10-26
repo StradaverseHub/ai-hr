@@ -8,6 +8,9 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService,revokeOwnIntegrityKey} from '../core/mobile-apple-enrollment';
 import {createAppleClockAssertionService} from '../core/mobile-apple-clock-assertion';
+import {createAppleClockService} from '../core/mobile-apple-clock';
+import {captureNativeClock,abandonNativeClock,ownNativeClockReceipt} from '../core/attendance-clock';
+import {setAttendancePolicy,setAttendancePhotoSetting,createClockingLocation,setClockingControl,registerDevice} from '../packs/attendance/service';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -155,5 +158,87 @@ describe('stored Apple online assertion transaction',()=>{
       if(change==='expiry')expect(outcome).toMatchObject({reason:{reason:'expired'}});
       expect(operation).not.toHaveBeenCalled();expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(begin.challenge.id)).consumedAt).toBeNull();
     }finally{release();await holding.catch(()=>{});}
+  });
+});
+
+describe('signed Apple carrier using the real attendance writer',()=>{
+  const clock=createAppleClockService(settings);
+  const policy=()=>({companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]});
+  async function counts(f:Awaited<ReturnType<typeof fixture>>,id:string){
+    expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(id)).consumedAt).toBeNull();
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+    expect(await owner.db.select().from(schema.attendance)).toHaveLength(0);
+  }
+  it('commits one punch, proof link, counter and recoverable actor receipt under concurrent retries',async()=>{
+    const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    const [a,b]=await Promise.all([clock.complete(f.ctx,f.input,proof),clock.complete(f.ctx,f.input,proof)]);expect(a).toEqual(b);
+    expect(await counter(f.input.keyId)).toBe(1);expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
+    const links=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.clock.integrity.checked'));
+    expect(links).toHaveLength(1);expect(links[0]).toMatchObject({aggregateId:a.id,actorId:f.ctx.userId,subjectEmploymentId:f.input.employmentId,
+      payload:{challengeId:begin.challenge.id,keyId:f.input.keyId,counter:1,proofKind:'apple_key_proof'}});
+    expect(JSON.stringify(links)).not.toContain(proof.assertion.toString('base64'));
+    expect(a).not.toHaveProperty('trustTier');expect(a).not.toHaveProperty('verifiedLocation');
+    await revokeOwnIntegrityKey(f.ctx,{employmentId:f.input.employmentId,keyId:f.input.keyId});
+    expect(await clock.complete(f.ctx,f.input,{...proof,assertion:Buffer.from('receipt reconciliation, not new proof')})).toEqual(a);
+    expect(await ownNativeClockReceipt(f.ctx,f.input.employmentId,f.input.command.requestId)).toEqual(a);
+    await expect(clock.complete(f.ctx,{...f.input,command:{...f.input.command,lat:4}},proof)).rejects.toMatchObject({reason:'binding_conflict'});
+  });
+  it('rolls back the proof and every attendance write on a real punch insertion failure, then retries safely',async()=>{
+    const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    await owner.db.execute(sql`create function app.test_signed_punch_failure() returns trigger language plpgsql as $$begin raise exception 'synthetic punch insertion refusal';end;$$`);
+    await owner.db.execute(sql`create trigger zz_test_signed_punch_failure before insert on attendance_punch for each row execute function app.test_signed_punch_failure()`);
+    try{
+      await expect(clock.complete(f.ctx,f.input,proof)).rejects.toThrow();await counts(f,begin.challenge.id);
+      for(const kind of ['attendance.clock.captured','attendance.clock.integrity.checked','mobile.integrity.assertion.checked'])
+        expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,kind))).toHaveLength(0);
+    }finally{
+      await owner.db.execute(sql`drop trigger zz_test_signed_punch_failure on attendance_punch`);
+      await owner.db.execute(sql`drop function app.test_signed_punch_failure()`);
+    }
+    expect((await clock.complete(f.ctx,f.input,proof)).direction).toBe('in');expect(await counter(f.input.keyId)).toBe(1);
+  });
+  it('keeps current photo policy authoritative and does not consume proof on a missing required photo',async()=>{
+    const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'required'});
+    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toMatchObject({name:'AttendancePhotoRequiredError'});await counts(f,begin.challenge.id);
+    await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'optional'});
+    expect((await clock.complete(f.ctx,f.input,proof)).photoAvailable).toBe(false);
+  });
+  it('preserves uncertainty containment and the separate blocked-attempt audit without accepting attendance',async()=>{
+    const f=await fixture(),input={...f.input,command:{...f.input.command,accuracy:20}},admin=adminCtx(base);
+    const site=await createClockingLocation(admin,{companyIds:[base.companyId],name:'Signed office',lat:3,lng:101,radiusM:10});
+    await setClockingControl(admin,{employmentId:input.employmentId,enabled:true,clockingLocationIds:[site.id]});
+    const begin=await clock.begin(f.ctx,input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    await expect(clock.complete(f.ctx,input,proof)).rejects.toMatchObject({name:'OutsideGeofenceError'});await counts(f,begin.challenge.id);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.geofence.blocked'))).toHaveLength(1);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.clock.integrity.checked'))).toHaveLength(0);
+  });
+  it('cannot retroactively upgrade an existing unsigned capture or bypass server-ordered abandonment',async()=>{
+    const f=await fixture(),begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    const accepted=await captureNativeClock(f.ctx,{...f.input.command,employmentId:f.input.employmentId});
+    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toMatchObject({name:'ClockConflictError'});
+    expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(begin.challenge.id)).consumedAt).toBeNull();
+    expect(await ownNativeClockReceipt(f.ctx,f.input.employmentId,f.input.command.requestId)).toEqual(accepted);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'attendance.clock.integrity.checked'))).toHaveLength(0);
+    const next={...f.input,command:{...f.input.command,requestId:randomUUID()}},pending=await clock.begin(f.ctx,next);
+    await abandonNativeClock(f.ctx,next.employmentId,next.command.requestId);
+    await expect(clock.complete(f.ctx,next,{challengeId:pending.challenge.id,assertion:assertion(pending.context,f.privateKey)})).rejects.toMatchObject({name:'ClockConflictError'});
+    expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(pending.challenge.id)).consumedAt).toBeNull();
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
+  });
+  it('enforces registered-device policy and refuses credential substitution under an issued challenge',async()=>{
+    const f=await fixture();await setAttendancePolicy(adminCtx(base),{...policy(),requireRegisteredDevice:true});
+    const begin=await clock.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)};
+    await expect(clock.complete(f.ctx,f.input,proof)).rejects.toMatchObject({name:'DeviceNotRegisteredError'});await counts(f,begin.challenge.id);
+    const registered=await registerDevice(f.ctx,{employmentId:f.input.employmentId,label:'Signed phone'}),changed={...f.input,deviceToken:registered.deviceToken};
+    await expect(clock.complete(f.ctx,changed,proof)).rejects.toMatchObject({reason:'binding_conflict'});
+    const next={...changed,command:{...changed.command,requestId:randomUUID()}},pending=await clock.begin(f.ctx,next);
+    const receipt=await clock.complete(f.ctx,next,{challengeId:pending.challenge.id,assertion:assertion(pending.context,f.privateKey)});
+    const [capture]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
+    expect(capture.deviceId).toBe(registered.deviceId);
+    const links=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,receipt.id));
+    expect(JSON.stringify(links)).not.toContain(registered.deviceToken);
   });
 });

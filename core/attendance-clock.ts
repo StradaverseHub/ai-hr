@@ -7,7 +7,7 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {myEmployments} from './read';
+import {myEmployments,myEmploymentsTx} from './read';
 import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
@@ -114,8 +114,8 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
   }
 }
 
-async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number }) {
-  const me=native?(await myEmployments(ctx)).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
+async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number },joined?:{tx:Tx;requireNew:boolean}) {
+  const me=native?(await (joined?myEmploymentsTx(joined.tx,ctx):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
   if(!me)throw new OwnClockEmploymentUnavailableError();
   if(!native&&p.employmentId!==undefined&&p.clockContext==null)throw new ClockContextChangedError('Reopen the selected employee clock context.');
   if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
@@ -123,7 +123,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   const point = clockLocation(p);
   if(p.locationStatus!=null&&(!LOCATION_CAPTURE_STATUSES.includes(p.locationStatus)||(p.locationStatus==='recorded')!==!!point))throw new ClockLocationError('Location status must agree with the supplied coordinates.');
   if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
-  return withTenant(ctx, async tx => {
+  const execute=async(tx:Tx)=>{
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
     if(await submissionAbandonedTx(tx,ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
@@ -141,6 +141,9 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '',...(p.locationStatus?[p.locationStatus]:[])])).digest('hex');
     const [accepted] = await tx.select().from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, me.employmentId), eq(attendanceClockCapture.requestId, p.requestId))).limit(1);
     if (accepted) {
+      // A new proof must never retroactively upgrade a capture accepted through another carrier.
+      // The signed-command owner recovers its committed receipt before invoking this writer again.
+      if(joined?.requireNew)throw new ClockConflictError('This clock reference already recorded before this proof');
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
       return publicReceipt(accepted);
     }
@@ -194,13 +197,21 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
-  });
+  };
+  return joined?execute(joined.tx):withTenant(ctx,execute);
 }
 
 /** Native online carrier: own active employment, same transaction and rules, device policy enforced. */
 export async function captureNativeClock(ctx: SessionContext, p: ClockIntent & { lat: number; lng: number; accuracy: number; employmentId: string; deviceToken?: string; sampledAt: number }) {
   try { return await captureEmployeeClockTx(ctx, p, { employmentId: p.employmentId, deviceToken: p.deviceToken, sampledAt: p.sampledAt }); }
   catch (e) { if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e); throw e; }
+}
+
+/** Internal signed-command seam. The parent owns an attendance-gated tenant transaction, verifies
+ * proof and recovers committed receipts. This creates only a NEW capture, with all existing rules;
+ * any throw must escape that parent so proof counters and attendance roll back together. */
+export async function captureNativeClockInTx(ctx:SessionContext,p:ClockIntent&{lat:number;lng:number;accuracy:number;employmentId:string;deviceToken?:string;sampledAt:number},tx:Tx){
+  return captureEmployeeClockTx(ctx,p,{employmentId:p.employmentId,deviceToken:p.deviceToken,sampledAt:p.sampledAt},{tx,requireNew:true});
 }
 
 /** Photo bytes are selected only here, under existing subject visibility. */

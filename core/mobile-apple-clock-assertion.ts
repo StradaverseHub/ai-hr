@@ -15,7 +15,7 @@ import {consumeOwnIntegrityChallenge,issueOwnIntegrityChallenge,type IntegrityCh
 
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const commandSchema=OnlineClockIntegrityData.shape.command.omit({photo:true});
-const intentSchema=z.object({employmentId:uuid,appInstallationId:uuid,keyId:uuid,command:commandSchema,
+const intentSchema=z.object({employmentId:uuid,appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),command:commandSchema,
   evidence:OnlineClockIntegrityData.shape.evidence,
   photo:z.custom<Buffer>(Buffer.isBuffer).optional(),mime:z.enum(['image/jpeg','image/png']).optional(),
 }).strict();
@@ -47,7 +47,9 @@ export function createAppleClockAssertionService(settings:unknown){
   }
   type Snapshot=ReturnType<typeof snapshot>;
   function intent(p:Snapshot){return {employmentId:p.employmentId,requestId:p.command.requestId,appInstallationId:p.appInstallationId,purpose:'clock.online' as const,
-    bindingHash:hash(JSON.stringify(['aihr.apple.clock.binding',1,config,p.keyId,p.command,p.evidence]))};}
+    // The nonce also binds the exact legacy registered-device credential, without publishing it in
+    // canonical client data or audit. It remains a bearer gate, not a hardware-key association.
+    bindingHash:hash(JSON.stringify(['aihr.apple.clock.binding',1,config,p.keyId,p.command,p.evidence,p.deviceToken?hash(p.deviceToken):null]))};}
   function data(ctx:SessionContext,p:Snapshot,challenge:IntegrityChallengeView){
     return OnlineClockIntegrityData.parse({version:1,purpose:'attendance.clock.online',
       scope:{apiOrigin:config.apiOrigin,installationId:challenge.installationId,tenantId:ctx.tenantId,actorId:ctx.userId,
@@ -81,7 +83,7 @@ export function createAppleClockAssertionService(settings:unknown){
       return {challenge,context:data(ctx,p,challenge)};
     },
     async consume<T>(ctx:SessionContext,raw:AppleClockAssertionInput,proof:{challengeId:string;assertion:Buffer},
-      operation:(tx:Tx,checked:{context:OnlineClockIntegrityData;photo:Buffer|undefined;nextCounter:number;proofKind:'apple_key_proof'|'apple_app_metadata'})=>Promise<T>){
+      operation:(tx:Tx,checked:{context:OnlineClockIntegrityData;photo:Buffer|undefined;deviceToken:string|undefined;nextCounter:number;proofKind:'apple_key_proof'|'apple_app_metadata'})=>Promise<T>){
       const p=snapshot(raw),challengeId=uuid.parse(proof.challengeId);
       if(!Buffer.isBuffer(proof.assertion)||proof.assertion.length<1||proof.assertion.length>8192)throw new AppleClockAssertionError('invalid_command');
       const assertion=Buffer.from(proof.assertion);
@@ -99,7 +101,7 @@ export function createAppleClockAssertionService(settings:unknown){
         const [updated]=await tx.update(mobileIntegrityKey).set({assertionCounter:checked.nextCounter}).where(and(
           eq(mobileIntegrityKey.id,enrolled.id),eq(mobileIntegrityKey.assertionCounter,enrolled.assertionCounter),isNull(mobileIntegrityKey.revokedAt))).returning({id:mobileIntegrityKey.id});
         if(!updated)throw new AppleClockAssertionError('counter_unavailable');
-        const value=await operation(tx,{context,photo:p.photo,nextCounter:checked.nextCounter,proofKind:enrolled.proofKind as 'apple_key_proof'|'apple_app_metadata'});
+        const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,nextCounter:checked.nextCounter,proofKind:enrolled.proofKind as 'apple_key_proof'|'apple_app_metadata'});
         await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:challengeId,
           eventType:'mobile.integrity.assertion.checked',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
           payload:{keyId:enrolled.id,counter:checked.nextCounter,proofKind:enrolled.proofKind}});
