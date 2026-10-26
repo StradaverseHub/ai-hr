@@ -13,7 +13,7 @@ function Harness(){const [selected,setSelected]=useState(['position-0']);return 
 describe('paged Overtime position choices',()=>{
  it('loads choices beyond 500 while retaining the current selection',async()=>{
   const user=userEvent.setup();load.mockResolvedValue({ok:true,value:{items:[{id:'position-526',label:'Final position'}],nextCursor:null}});render(<Harness/>);
-  await user.click(screen.getByRole('button',{name:'Load more'}));expect(load).toHaveBeenCalledWith({search:'',cursor:'position-499',selectedIds:['position-0']});expect(screen.getByRole('option',{name:'Position 0'})).toHaveProperty('selected',true);await user.selectOptions(screen.getByRole('listbox'),['position-0','position-526']);expect(screen.getByRole('option',{name:'Final position'})).toHaveProperty('selected',true);expect(screen.queryByRole('button',{name:'Load more'})).toBeNull();
+  await user.click(screen.getByRole('button',{name:'Load more positions'}));expect(load).toHaveBeenCalledWith({search:'',cursor:'position-499',selectedIds:['position-0']});expect(screen.getByRole('option',{name:'Position 0'})).toHaveProperty('selected',true);await user.selectOptions(screen.getByRole('listbox'),['position-0','position-526']);expect(screen.getByRole('option',{name:'Final position'})).toHaveProperty('selected',true);expect(screen.queryByRole('button',{name:'Load more positions'})).toBeNull();
  });
  it('resolves a saved off-page selection instead of dropping its value',async()=>{
   load.mockResolvedValue({ok:true,value:{items:[{id:'off-page',label:'Saved position'}],nextCursor:null}});

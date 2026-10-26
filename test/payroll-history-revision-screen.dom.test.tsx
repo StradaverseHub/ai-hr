@@ -28,7 +28,7 @@ describe('payroll history revision workflow',()=>{
  it('renders source cycle, before-and-after money and bounded pages without truncating the record set',async()=>{
   const user=userEvent.setup();render(wrap(<RevisionPreview plan={plan(Array.from({length:51},(_,i)=>row(i)))}/>));
   expect(screen.getAllByText('Monthly - By Import')).toHaveLength(50);expect(screen.queryByText('0050')).toBeNull();
-  await user.click(screen.getAllByText('Compare values')[0]);const table=screen.getAllByRole('table').find(table=>within(table).queryByRole('columnheader',{name:'Imported value'}));expect(table).toBeDefined();expect(within(table!).getAllByText('MYR 5,000.00').length).toBeGreaterThan(0);expect(within(table!).getAllByText('MYR 6,000.00').length).toBeGreaterThan(0);
+  await user.click(screen.getAllByText('Compare values')[0]);const table=screen.getAllByText('Compare values')[0].closest('details');expect(table).not.toBeNull();expect(within(table!).getAllByText('MYR 5,000.00').length).toBeGreaterThan(0);expect(within(table!).getAllByText('MYR 6,000.00').length).toBeGreaterThan(0);
   await user.click(screen.getByRole('button',{name:'Next'}));expect(screen.getAllByText('Monthly - By Import')).toHaveLength(1);expect(screen.getByText('0050')).toBeVisible();expect(screen.getByText('Page 2 of 2')).toBeVisible();
  });
  it('prevents confirmation when any company has blocking errors',async()=>{

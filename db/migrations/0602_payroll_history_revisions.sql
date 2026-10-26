@@ -49,7 +49,12 @@ REVOKE ALL ON FUNCTION app.payroll_history_attempt_access(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_history_attempt_access(uuid) TO ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE payroll_history_import_attempt ENABLE ROW LEVEL SECURITY;
-CREATE POLICY payroll_history_attempt_read ON payroll_history_import_attempt FOR SELECT USING(app.payroll_history_attempt_access(id));
+-- Inline the new row for INSERT RETURNING. A STABLE function looking up this table cannot
+-- observe a row inserted by its own command; the helper remains appropriate for child rows.
+CREATE POLICY payroll_history_attempt_read ON payroll_history_import_attempt FOR SELECT USING(
+ tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND (created_by=app.current_user_id() OR cardinality(company_ids)>0)
+ AND NOT EXISTS(SELECT 1 FROM unnest(company_ids) c WHERE NOT app.can_admin_payroll_for(c)));
 CREATE POLICY payroll_history_attempt_insert ON payroll_history_import_attempt FOR INSERT WITH CHECK(
  tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.principal_snapshot_current()
  AND NOT EXISTS(SELECT 1 FROM unnest(company_ids) c WHERE NOT app.can_admin_payroll_for(c)));

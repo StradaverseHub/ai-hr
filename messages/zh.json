@@ -6168,7 +6168,9 @@
       "reprocessOutcomeStatusHeading": "处理状态",
       "reprocessOutcomeCategoryHeading": "税务类别",
       "reprocessOutcomeRemarksHeading": "备注",
-      "reprocessLegacyOutcomeUnavailable": "此较早的任务未记录个人处理结果。其已保存的计算历史仍可在下方查看。"
+      "reprocessLegacyOutcomeUnavailable": "此较早的任务未记录个人处理结果。其已保存的计算历史仍可在下方查看。",
+      "publishStateHistory": "导入历史",
+      "historyNoPayment": "历史导入不记录付款日期。"
     },
     "transactions": {
       "title": "交易录入",
@@ -7369,7 +7371,8 @@
       "ytdNote": "年初至今的数字是按计算并向主管机关申报的全额。若雇主承担了部分供款，上方扣除行显示的是实际从员工薪资中扣除的金额，两者出现差异属正常。",
       "ytdToDate": "年初至今",
       "pcbDetailHint": "完整的计算过程——P、税率级距、每一项减免、公式以及代入的数字——都在同一个共享页面上。",
-      "pcbViewCalculation": "查看 PCB / MTD 计算"
+      "pcbViewCalculation": "查看 PCB / MTD 计算",
+      "state_history": "导入历史"
     },
     "backPay": {
       "title": "补发工资（欠薪）",
@@ -21293,7 +21296,8 @@
         "replacementHoliday": "补假日"
       }
     },
-    "positionSearch": "搜索职位"
+    "positionSearch": "搜索职位",
+    "loadMorePositions": "加载更多职位"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",

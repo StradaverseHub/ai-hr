@@ -5,11 +5,13 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,revertPayrollHistoryUpload,listPayrollHistoryAttempts,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
-import {createBatch,myPayslipDetail} from '../core/payroll';
+import {createCompany,createDepartment} from '../core/admin';
+import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
 import {myReleasedPayslipRuns,dashboardStats} from '../core/read';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
+import {payrollPublicationState} from '../lib/payroll-publication';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -36,11 +38,12 @@ afterAll(closeAll);
 describe('immutable payroll history correction and recovery',()=>{
  it('preserves original rows while replacing and reverting the effective money exactly once',async()=>{
   const first=await upload();expect(first.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
-  const initial=await confirm(first);const original=(await effective())[0];expect(Number(original.grossPay)).toBe(5000);
+  const initial=await confirm(first);expect(payrollPublicationState((await listBatches(ctx,[b.companyId]))[0])).toBe('history');await expect(paymentSummaryForBatch(ctx,(await listBatches(ctx,[b.companyId]))[0].id)).rejects.toThrow(/Imported history/);const original=(await effective())[0];expect(Number(original.grossPay)).toBe(5000);
   expect((await confirm(first)).alreadyCommitted).toBe(true);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
   const correction=await upload('6000.00');expect(correction.plan.counts.replaced).toBe(1);expect(correction.plan.rows[0].beforeValues?.grossPay).toBe('5000.00');
   await expect(confirm(correction,false)).rejects.toThrow(/Confirm replacement/);expect(await effective()).toHaveLength(1);
   await confirm(correction);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
+  expect(await listBatches(ctx,[b.companyId])).toMatchObject([{historyImportCycleName:'Monthly',employeeCount:1,batchDate:null}]);
   expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
   const dashboard=await dashboardStats(ctx,[b.companyId]);expect(Number(dashboard.latestPayroll?.net)).toBe(6000);
   await revertPayrollHistoryUpload(ctx,correction.attemptId);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
@@ -51,6 +54,7 @@ describe('immutable payroll history correction and recovery',()=>{
  it('retires a newly created effective entry without erasing its physical snapshot or audit',async()=>{
   const first=await upload();await confirm(first);await revertPayrollHistoryUpload(ctx,first.attemptId);
   expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
+  expect(await listBatches(ctx,[b.companyId])).toEqual([]);expect((await dashboardStats(ctx,[b.companyId])).latestPayroll).toBeNull();
   const logs=await listPayrollHistoryAttempts(ctx);expect(logs.items[0].events.map(event=>event.kind)).toEqual(['confirmed','reverted']);
   expect((await payrollHistorySource(ctx,first.attemptId))?.content.toString()).toContain('0007');
  });
@@ -66,6 +70,17 @@ describe('immutable payroll history correction and recovery',()=>{
   const outcomes=await Promise.allSettled([confirm(a),confirm(b)]);
   expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);
   expect(await effective()).toHaveLength(1);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
+ });
+ it('imports two authorised companies with same-named cycles into distinct canonical records',async()=>{
+  const other=await createCompany(ctx,{legalName:'Fictional second history company',companyLabel:'000BC',country:'MY',currency:'MYR'});
+  const department=await createDepartment(ctx,{companyId:other.id,name:'Fixture department'});await seedPayrollCycleCatalog(ctx,other.id);
+  const second=await hireEmployee(ctx,{person:{fullName:'Second fictional employee',primaryEmail:'second-history@fixture.test'},companyId:other.id,departmentId:department.id,employmentType:'full_time',employeeCode:'0008',hiredOn:`${year-1}-01-01`});
+  const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(),...rows('7000.00','000BC','0008')]));
+  const preview=await previewPayrollHistoryUpload(ctx,{name:'two-companies.csv',content});expect(preview.plan.counts).toEqual({created:2,replaced:0,unchanged:0,invalid:0});expect(new Set(preview.plan.rows.map(row=>row.cycleName))).toEqual(new Set(['Monthly']));expect(new Set(preview.plan.rows.map(row=>row.cycleId)).size).toBe(2);
+  await confirm(preview);expect(new Set((await effective()).map(row=>row.employmentId))).toEqual(new Set([employeeId,second.employmentId]));
+  expect(Number((await dashboardStats(ctx,[b.companyId])).latestPayroll?.net)).toBe(5000);expect(Number((await dashboardStats(ctx,[other.id])).latestPayroll?.net)).toBe(7000);
+  const repeated=await previewPayrollHistoryUpload(ctx,{name:'same-file.csv',content});expect(repeated.plan.counts).toEqual({created:0,replaced:0,unchanged:2,invalid:0});await confirm(repeated);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
+  await revertPayrollHistoryUpload(ctx,preview.attemptId);expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
  });
  it('validates an entire multi-company file before writing any payroll result',async()=>{
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(),...rows('100.00','UNKNOWN','0008')]));

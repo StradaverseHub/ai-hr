@@ -28,7 +28,7 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
  });
  it('uses fresh server context for every public operation and never accepts a computed amount for transfer',()=>{
   const names=[...action.matchAll(/export async function (\w+)/g)].map(match=>match[1]);
-  expect(names).toEqual(['initializeOvertimeStartersAction','saveOvertimeDraftAction','forkOvertimeDraftAction','validateOvertimeAction','activateOvertimeAction','stopOvertimeAction','archiveOvertimeAction','saveOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction']);
+  expect(names).toEqual(['initializeOvertimeStartersAction','saveOvertimeDraftAction','forkOvertimeDraftAction','validateOvertimeAction','activateOvertimeAction','stopOvertimeAction','archiveOvertimeAction','saveOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction','overtimePositionChoicesAction']);
   for(const name of names){const start=action.indexOf(`export async function ${name}`);const next=action.indexOf('\nexport async function',start+1);const body=action.slice(start,next<0?action.length:next);expect(body.length).toBeGreaterThan(100);expect(body,`${name} derives server authority`).toContain('await scopedAdmin()');}
   const transferStart=action.indexOf('export async function transferOvertimePayrollAction');
   const transferEnd=action.indexOf('\nfunction makeSampleInput',transferStart);

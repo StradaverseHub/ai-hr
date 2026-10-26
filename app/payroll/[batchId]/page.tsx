@@ -105,6 +105,7 @@ export default async function BatchPage({
     ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
     : [];
   const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
+    history: t('publishStateHistory'),
     draft: t('publishStateDraft'),
     unpublished: t('publishStateUnpublished'),
     scheduled: t('publishStateScheduled'),
@@ -618,7 +619,7 @@ export default async function BatchPage({
           mandatory reason before flipping Closed→Processed; the service warns if payment was disbursed or
           statutory returns were filed. Gated by PAYROLL_UNLOCK_ENABLED and the granular payroll.unlock
           permission (re-asserted server-side). */}
-      {batch.status === 'closed' && unlockOn && (
+      {batch.status === 'closed' && !batch.historyImportAttemptId && unlockOn && (
         <Card className="overflow-hidden border-amber-300 dark:border-amber-500/40">
           <SectionHeader title={t('unlockTitle')} />
           <div className="space-y-3 px-4 py-4">
@@ -667,11 +668,11 @@ export default async function BatchPage({
                   MISSING_MESSAGE. Same class as the bug r127 shipped and r130 fixed, and found the same
                   way — by rendering the page and reading the dev log, not by any gate step.
                   Read where they live rather than minting a fourth copy (r130's rule). */}
-              <div className="text-sm font-medium">{tList(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</div>
+              <div className="text-sm font-medium">{batch.historyImportAttemptId?`${batch.historyImportCycleName} - By Import`:<>{tList(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</>}</div>
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryPaymentDate')}</div>
-              <div className="text-sm font-medium">{batch.batchDate}</div>
+              <div className="text-sm font-medium">{batch.historyImportAttemptId?t('historyNoPayment'):batch.batchDate}</div>
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryHeadcount')}</div>

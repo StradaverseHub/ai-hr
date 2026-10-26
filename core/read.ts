@@ -5635,7 +5635,7 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
             totals: payrollBatch.totals,
           })
           .from(payrollHistoryEffectiveBatch)
-          .where(scope(payrollBatch.companyId))
+          .where(and(scope(payrollBatch.companyId),or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))))
           .orderBy(desc(payrollBatch.payPeriod))
       : [];
     const head = latestRows[0];

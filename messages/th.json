@@ -6168,7 +6168,9 @@
       "reprocessOutcomeStatusHeading": "สถานะการประมวลผล",
       "reprocessOutcomeCategoryHeading": "ประเภทภาษี",
       "reprocessOutcomeRemarksHeading": "หมายเหตุ",
-      "reprocessLegacyOutcomeUnavailable": "งานก่อนหน้านี้ไม่ได้บันทึกผลรายบุคคล ประวัติการคำนวณที่บันทึกไว้ยังดูได้ด้านล่าง"
+      "reprocessLegacyOutcomeUnavailable": "งานก่อนหน้านี้ไม่ได้บันทึกผลรายบุคคล ประวัติการคำนวณที่บันทึกไว้ยังดูได้ด้านล่าง",
+      "publishStateHistory": "ประวัติที่นำเข้า",
+      "historyNoPayment": "การนำเข้าประวัติไม่ได้บันทึกวันที่ชำระเงิน"
     },
     "transactions": {
       "title": "บันทึกธุรกรรม",
@@ -7369,7 +7371,8 @@
       "ytdNote": "ตัวเลขสะสมทั้งปีคือยอดเต็มตามที่คำนวณและรายงานต่อหน่วยงานที่เกี่ยวข้อง หากนายจ้างรับภาระบางส่วนของเงินสมทบ รายการหักด้านบนจะแสดงยอดที่หักจากพนักงานจริง ทั้งสองจึงอาจต่างกันได้ตามปกติ",
       "ytdToDate": "สะสมทั้งปี",
       "pcbDetailHint": "รายละเอียดการคำนวณทั้งหมด — P ขั้นภาษี ค่าลดหย่อนทุกรายการ สูตร และตัวเลขที่แทนค่า — อยู่บนหน้าจอเดียวที่ใช้ร่วมกัน",
-      "pcbViewCalculation": "ดูการคำนวณ PCB / MTD"
+      "pcbViewCalculation": "ดูการคำนวณ PCB / MTD",
+      "state_history": "ประวัติที่นำเข้า"
     },
     "backPay": {
       "title": "เงินย้อนหลัง (ค้างจ่าย)",
@@ -21293,7 +21296,8 @@
         "replacementHoliday": "วันหยุดนักขัตฤกษ์ชดเชย"
       }
     },
-    "positionSearch": "ค้นหาตำแหน่ง"
+    "positionSearch": "ค้นหาตำแหน่ง",
+    "loadMorePositions": "โหลดตำแหน่งเพิ่มเติม"
   },
   "systemTestingWorkspace": {
     "title": "การทดสอบระบบ",

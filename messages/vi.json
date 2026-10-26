@@ -6168,7 +6168,9 @@
       "reprocessOutcomeStatusHeading": "Trạng thái xử lý",
       "reprocessOutcomeCategoryHeading": "Phân loại thuế",
       "reprocessOutcomeRemarksHeading": "Ghi chú",
-      "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới."
+      "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới.",
+      "publishStateHistory": "Lịch sử đã nhập",
+      "historyNoPayment": "Nhập lịch sử không ghi nhận ngày thanh toán."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -7369,7 +7371,8 @@
       "ytdNote": "Số lũy kế là toàn bộ số tiền như đã tính và báo cáo cho cơ quan chức năng. Khi người sử dụng lao động gánh một phần khoản đóng góp, các dòng khấu trừ ở trên thể hiện số thực sự trừ vào lương nhân viên, nên hai bên có thể khác nhau một cách hợp lệ.",
       "ytdToDate": "Lũy kế từ đầu năm",
       "pcbDetailHint": "Toàn bộ phần tính toán — P, bậc thuế, từng khoản giảm trừ, công thức và các con số được thay vào — nằm trên một màn hình dùng chung.",
-      "pcbViewCalculation": "Xem cách tính PCB / MTD"
+      "pcbViewCalculation": "Xem cách tính PCB / MTD",
+      "state_history": "Lịch sử đã nhập"
     },
     "backPay": {
       "title": "Truy lĩnh (Nợ lương)",
@@ -21293,7 +21296,8 @@
         "replacementHoliday": "Ngày nghỉ lễ bù"
       }
     },
-    "positionSearch": "Tìm chức danh"
+    "positionSearch": "Tìm chức danh",
+    "loadMorePositions": "Tải thêm chức danh"
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",

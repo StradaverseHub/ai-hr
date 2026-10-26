@@ -5444,7 +5444,9 @@
       "reprocessOutcomeStatusHeading": "Processing status",
       "reprocessOutcomeCategoryHeading": "Tax category",
       "reprocessOutcomeRemarksHeading": "Remarks",
-      "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below."
+      "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below.",
+      "publishStateHistory": "Imported history",
+      "historyNoPayment": "No payment date is recorded by a history import."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -7369,7 +7371,8 @@
       "ytdNote": "Year-to-date figures are the full amounts as computed and reported to the authorities. Where the employer bore part of a contribution, the deduction lines above show what was actually taken from the employee, so the two can legitimately differ.",
       "ytdToDate": "Year to date",
       "pcbDetailHint": "The full working — P, the tax bracket, every relief, the formula and the substituted figures — is on one shared screen.",
-      "pcbViewCalculation": "View PCB / MTD calculation"
+      "pcbViewCalculation": "View PCB / MTD calculation",
+      "state_history": "Imported history"
     },
     "backPay": {
       "title": "Back Pay (Arrears)",
@@ -21293,7 +21296,8 @@
         "replacementHoliday": "Replacement Public Holiday"
       }
     },
-    "positionSearch": "Search positions"
+    "positionSearch": "Search positions",
+    "loadMorePositions": "Load more positions"
   },
   "systemTestingWorkspace": {
     "title": "System Testing",

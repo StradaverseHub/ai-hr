@@ -9835,12 +9835,14 @@ export function listBatches(
         // which is exactly where one hard-coded "RM" mislabels somebody's payroll.
         currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
         employeeCount: payrollBatch.employeeCount,
         totals: payrollBatch.totals,
-        batchDate: payrollBatch.batchDate,
+        batchDate: sql<string | null>`case when ${payrollBatch.historyImportAttemptId} is null then ${payrollBatch.batchDate} else null end`,
         // Build #10 follow-up: `remarks` carries the wizard's real cycle selection for advance/midmonth
         // runs (both stored as runType='off_cycle'). Surfaced in the listing's "Payroll Cycle" column so
         // they display distinctly, matching the batch detail page. Read-only; no schema/migration change.
@@ -9870,6 +9872,7 @@ export function listBatches(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
           periodFilter,
+          or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
       )
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
@@ -10568,7 +10571,7 @@ export function preProcessAdvisoryForSelection(
 
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
     if (!batch) return null;
     const slips = await tx
       .select({
@@ -10619,6 +10622,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
         status: payrollBatch.status,
         payPeriod: payrollBatch.payPeriod,
         company: company.legalName,
@@ -10628,6 +10632,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) throw new PaymentSummaryNotReadyError('Payroll batch not found.');
+    if(batch.historyImportAttemptId)throw new PaymentSummaryNotReadyError('Imported history cannot initiate a payment.');
     if (batch.status === 'draft') {
       throw new PaymentSummaryNotReadyError(
         'Process the batch before exporting a payment summary — a draft has no payslips yet.',

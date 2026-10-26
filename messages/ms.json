@@ -6168,7 +6168,9 @@
       "reprocessOutcomeStatusHeading": "Status pemprosesan",
       "reprocessOutcomeCategoryHeading": "Kategori cukai",
       "reprocessOutcomeRemarksHeading": "Catatan",
-      "reprocessLegacyOutcomeUnavailable": "Tugas terdahulu ini tidak merekodkan hasil individu. Sejarah pengiraan yang disimpan masih tersedia di bawah."
+      "reprocessLegacyOutcomeUnavailable": "Tugas terdahulu ini tidak merekodkan hasil individu. Sejarah pengiraan yang disimpan masih tersedia di bawah.",
+      "publishStateHistory": "Sejarah diimport",
+      "historyNoPayment": "Import sejarah tidak merekodkan tarikh bayaran."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -7369,7 +7371,8 @@
       "ytdNote": "Angka setakat tahun ini ialah jumlah penuh seperti yang dikira dan dilaporkan kepada pihak berkuasa. Jika majikan menanggung sebahagian caruman, baris potongan di atas menunjukkan apa yang benar-benar diambil daripada pekerja, jadi kedua-duanya boleh berbeza dengan sah.",
       "ytdToDate": "Setakat tahun ini",
       "pcbDetailHint": "Kertas kerja penuh — P, kumpulan cukai, setiap pelepasan, formula dan angka yang digantikan — berada pada satu skrin yang dikongsi.",
-      "pcbViewCalculation": "Lihat pengiraan PCB / MTD"
+      "pcbViewCalculation": "Lihat pengiraan PCB / MTD",
+      "state_history": "Sejarah diimport"
     },
     "backPay": {
       "title": "Bayaran Tunggakan",
@@ -21293,7 +21296,8 @@
         "replacementHoliday": "Cuti umum gantian"
       }
     },
-    "positionSearch": "Cari jawatan"
+    "positionSearch": "Cari jawatan",
+    "loadMorePositions": "Muatkan lebih banyak jawatan"
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",
