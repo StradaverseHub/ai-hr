@@ -4,8 +4,7 @@ import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } fr
 import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
-import { assertAiPrincipalTx } from './ai-principal';
-import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { assertAiProviderSnapshot, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission } from '../lib/ai/governance';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -31,14 +30,15 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
 }
 
-/** The resolved configuration carries the calling authorization as an opaque, server-only capability. */
-export function governedAiConfig(ctx:SessionContext,cfg:ResolvedAiConfig,feature:AiFeatureId):ResolvedAiConfig{
+/** Opaque server-only provider/principal binding, not HR disclosure or effect authorization. */
+export function governedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId):ResolvedAiConfig{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- cfg={...cfg,...(cfg.provider==='openrouter'?{providerOptions:readOpenRouterOptions(cfg.providerOptions)}:{})};
+ assertAiProviderSnapshot(snapshot,ctx);
+ const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- return Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>):Promise<T>{
+ return Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
   const [admission]=await withTenant(ctx,async tx=>{
-   await assertAiPrincipalTx(tx,ctx);
+   await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint,${forcedPause})`);
   });

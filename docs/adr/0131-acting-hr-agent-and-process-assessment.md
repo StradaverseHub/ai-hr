@@ -2342,3 +2342,52 @@ question starters all twenty module agents: remaining canonical workflows, gover
 feedback/improvement/evaluations, own-leave effect/retention protection and provider
 capability/account-policy/settlement proof remain necessary for the single combined
 final candidate. No interim deployment or final gate is authorized by this checkpoint.
+
+
+### Current provider snapshot at actual admission (source only)
+
+Canonical configuration resolution now issues a frozen request-memory provider
+snapshot only after the fresh actual principal and v2 tenant resolver checks.
+A private WeakSet rejects serialized copies and structural lookalikes. The snapshot
+binds the calling tenant/login/person/role-grant context and has a five-minute maximum
+preparation age; backward/expired clock observations refuse. It records only a private
+in-memory fingerprint of canonical configuration and origin, never a persisted or
+client-visible credential digest. Stored origin includes ciphertext and normalized
+routes; environment origin is distinct even if plaintext key/model happen to match.
+Resolver failure, malformed options or decryption failure cannot fall through to a
+platform key. OpenRouter still has no environment fallback or auto-selected model.
+
+Every actual governed admission rereads the current canonical provider state under
+fresh Access ownership before `ai_admit`. Changed model/key/routes/provider, absent
+current configuration or changed stored/environment origin refuses before a quota
+reservation and before the supplied transport callback. A new explicit preparation
+can use the new authorized configuration; an old request is never silently rerouted.
+This compares current configuration semantics/origin, not a promise to reject every
+no-op edit or a complete historical sequence of disable/re-enable decisions.
+
+The gateway captures only the outgoing provider/model/key/governance and strict
+normalized routing before awaiting admission for text, conversation and image paths;
+metadata probes capture too. Routing lists and config are frozen, and the actual
+captured outgoing configuration is passed to governance. Copying governance onto a
+retargeted key/model/route cannot merely validate the old closure. Mutation of a
+retained caller object while admission waits cannot change the captured transport.
+No network call holds the admission transaction; these checks authorize the actual
+admission boundary, not retroactive deletion of already transmitted provider bytes.
+
+Actual DB cases with fake keys and mocked callbacks/transports are authored UNRUN:
+unchanged admission/reported zero, each configured field change, fallback-origin
+change in both directions, environment rotation, expiry/lookalike refusal, copied
+governance and retained-input mutation during a controlled asynchronous admission
+pause. That pause is not claimed as a real two-connection lock/interleaving proof.
+Existing allowance/principal consumers now resolve real canonical fake configuration
+rather than fabricate governance; their login fixtures acquire actual role assignments.
+The old userless-success expectation is replaced by the required calling-login refusal,
+not a new background exemption. Static AST syntax/diff only; no compiler, executable
+suite, database, application, provider or staging call has run for this checkpoint.
+
+This does NOT authorize the prompt's HR fields or bind prepared source data, retrieval,
+attachments, background jobs, caches or historical answers to current canonical field
+permissions. Those provenance/revocation requirements remain separate release blockers,
+as do all remaining own-leave, provider evaluation/settlement, twenty-module agent and
+feedback/held-out evaluation requirements. All three stages still precede one combined
+final gate and one verified deployment. No H passing coverage is rerun.

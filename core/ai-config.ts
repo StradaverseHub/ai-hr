@@ -14,6 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 import { governedAiConfig } from './ai-governance';
+import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import type { AiFeatureId } from '../lib/ai/features';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -31,7 +32,7 @@ import {
   type ResolvedAiConfig,
   type ValidateResult,
 } from '../lib/ai';
-import { decryptSecret, encryptSecret, keyLast4 } from '../lib/ai/crypto';
+import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
 import { assertAiPrincipalTx } from './ai-principal';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
@@ -139,20 +140,8 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
  */
 export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext, feature: AiFeatureId = 'hr_assistant'): Promise<ResolvedAiConfig | null> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await assertAiPrincipalTx(tx,ctx);
-  let rows:{provider:string;model:string;api_key_ciphertext:string;provider_options:unknown}[];
-  try{rows=(await tx.execute(sql`select provider, model, api_key_ciphertext, provider_options from app.ai_active_provider_config_v2()`)) as unknown as typeof rows;}
-  catch{throw new AiConfigError('AI configuration authority could not be confirmed.');}
-  const row = rows[0];
-  if (row) {
-    if (!isProvider(row.provider)) throw new AiConfigError('Stored AI provider is unknown.');
-    providerModel(row.provider,row.model);
-    const providerOptions=row.provider==='openrouter'?routingOptions(row.provider_options):undefined;
-    const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId); // throws on failure → fail closed
-    return governedAiConfig(ctx,{ provider: row.provider, model: row.model, apiKey, ...(providerOptions?{providerOptions}:{}) },feature);
-  }
-  const fallback=envFallbackConfig();
-  return fallback?governedAiConfig(ctx,fallback,feature):null;
+  const snapshot=await resolveAiProviderSnapshotTx(tx,ctx);
+  return snapshot?governedAiConfig(ctx,snapshot,feature):null;
 }
 
 /** Cheap check for gating the "Draft with AI" affordance — active tenant config OR an env key. */

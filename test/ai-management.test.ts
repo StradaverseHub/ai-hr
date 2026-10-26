@@ -3,7 +3,8 @@ import { eq, sql } from 'drizzle-orm';
 import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { governedAiConfig } from '../core/ai-governance';
+import { resolveActiveAiConfig } from '../core/ai-config';
+import type { AiFeatureId } from '../lib/ai/features';
 import { aiManagementView, allowanceLevel, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
 import { openaiAdapter } from '../lib/ai/providers/openai';
@@ -14,14 +15,14 @@ import { setTenantSetting } from '../core/tenant-settings';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base:Base, group:SessionContext;
-const cfg=()=>governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'pay_rule_draft');
-const call=(context=group,tokens:number|null=10,reserve=100)=>governedAiConfig(context,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'pay_rule_draft').governance!.run({operation:'draft',reservedTokens:reserve},async record=>{if(tokens!==null)record({inputTokens:tokens,outputTokens:0,cachedInputTokens:0});return 'draft';});
+const cfg=async(context=group,feature:AiFeatureId='pay_rule_draft')=>{const resolved=await withTenant(context,tx=>resolveActiveAiConfig(tx,context,feature));if(!resolved)throw new Error('Missing fake fixture configuration');return resolved;};
+const call=async(context=group,tokens:number|null=10,reserve=100)=>(await cfg(context)).governance!.run({operation:'draft',reservedTokens:reserve},async record=>{if(tokens!==null)record({inputTokens:tokens,outputTokens:0,cachedInputTokens:0});return 'draft';});
 const limit=(kind:'company'|'user',id:string,daily:number|null,monthly:number|null,enabled=true)=>setAiAllowance(group,{kind,subjectId:id,dailyRequests:daily,monthlyTokens:monthly,enabled});
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId)).orderBy(schema.aiModelRun.startedAt,schema.aiModelRun.id);
 
 beforeAll(migrateTestDb);
-beforeEach(async()=>{await resetDb();base=await seedBase();group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};});
-afterAll(closeAll);
+beforeEach(async()=>{vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('OPENAI_API_KEY','never-a-real-key');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};});
+afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
 
 describe('central AI allowance admission and durable accounting',()=>{
  it('serializes simultaneous calls at a daily user ceiling and counts blocked calls separately',async()=>{
@@ -51,10 +52,10 @@ describe('central AI allowance admission and durable accounting',()=>{
   await setAiFeature(group,'pay_rule_draft',false);
   const draft=vi.spyOn(openaiAdapter,'generate'),chat=vi.spyOn(openaiAdapter,'converse'),image=vi.spyOn(openaiAdapter,'readImage');
   try{
-   await expect(generateDraft(cfg(),{system:'private instructions',prompt:'private employee text'})).rejects.toThrow('paused');
-   await expect(converse(cfg(),{system:['private instructions'],tools:[],turns:[{role:'user',content:'private text'}]})).rejects.toThrow('paused');
+   await expect(generateDraft(await cfg(),{system:'private instructions',prompt:'private employee text'})).rejects.toThrow('paused');
+   await expect(converse(await cfg(),{system:['private instructions'],tools:[],turns:[{role:'user',content:'private text'}]})).rejects.toThrow('paused');
    const data=Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082','hex');
-   await expect(readImage(cfg(),{data,mimeType:'image/png'})).rejects.toThrow('paused');
+   await expect(readImage(await cfg(),{data,mimeType:'image/png'})).rejects.toThrow('paused');
    expect(draft).not.toHaveBeenCalled();expect(chat).not.toHaveBeenCalled();expect(image).not.toHaveBeenCalled();
    const serialized=JSON.stringify(await runs());expect(serialized).not.toContain('private');expect(serialized).not.toContain('never-a-real-key');
   }finally{vi.restoreAllMocks();}
@@ -62,9 +63,9 @@ describe('central AI allowance admission and durable accounting',()=>{
  it('records provider-reported usage, retains failures without usage and does not silently free capacity',async()=>{
   const adapter=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:8,cachedInputTokens:4,outputTokens:2});return 'draft';});
   try{
-   await expect(generateDraft(cfg(),{system:'system',prompt:'prompt'})).resolves.toBe('draft');
+   await expect(generateDraft(await cfg(),{system:'system',prompt:'prompt'})).resolves.toBe('draft');
    adapter.mockRejectedValueOnce(new Error('transport failed'));
-   await expect(generateDraft(cfg(),{system:'system',prompt:'prompt'})).rejects.toThrow();
+   await expect(generateDraft(await cfg(),{system:'system',prompt:'prompt'})).rejects.toThrow();
    const rows=await runs();expect(rows.find(r=>r.state==='completed')?.actualTokens).toBe(14);const failed=rows.find(r=>r.state==='failed')!;expect(failed.actualTokens).toBeNull();expect(failed.reservedTokens).toBeGreaterThan(0);
   }finally{vi.restoreAllMocks();}
  });
@@ -80,9 +81,10 @@ describe('central AI allowance admission and durable accounting',()=>{
  });
  it('distinguishes reported zero tokens from absent usage and preserves an unsettled reservation',async()=>{
   await call(group,0);expect((await runs())[0].actualTokens).toBe(0);
+  const prepared=await cfg();
   const original=tenantDb.withTenant;
   const write=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(original).mockRejectedValueOnce(new Error('private database failure'));
-  try{await expect(call(group,25)).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
+  try{await expect(prepared.governance!.run({operation:'draft',reservedTokens:100},async record=>{record({inputTokens:25,outputTokens:0,cachedInputTokens:0});return 'draft';})).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
   const pending=(await runs()).find(r=>r.state==='pending');expect(pending).toBeDefined();expect(pending?.actualTokens).toBeNull();expect(pending?.reservedTokens).toBe(100);
  });
  it('honors configured defaults, null fallbacks and platform restrictions in both status and admission',async()=>{
@@ -92,18 +94,18 @@ describe('central AI allowance admission and durable accounting',()=>{
   try{
    const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(true);expect(row.state).toBe('ready');
    await owner.db.insert(schema.tenantSetting).values({tenantId:base.tenantId,key:'performance.ai_360_enabled',value:sql`'null'::jsonb`,source:'platform'});
-   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'performance_360').governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
+   await expect((await cfg(group,'performance_360')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
    await setModule(base.tenantId,'notifications','active');
    await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
    vi.stubEnv('SETTING_KILL','notifications.readiness_nudge_enabled');
    expect((await aiManagementView(group)).features.find(f=>f.id==='readiness_reminders')?.state).toBe('restricted');
-   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'readiness_reminders').governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
+   await expect((await cfg(group,'readiness_reminders')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
   }finally{vi.unstubAllEnvs();}
  });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{
   await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:performance_pm',featureId:'performance_pm',enabled:false}))).rejects.toThrow();
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:true});
-  const stale=governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'performance_pm');
+  const stale=await cfg(group,'performance_pm');
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:false});
   await expect(stale.governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
  });
@@ -133,6 +135,7 @@ describe('scoped administration and inventory',()=>{
  it('allows a company administrator to edit only their company; exposes scoped totals without run rows',async()=>{
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Other Company'}).returning();
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await setAiAllowance(scoped,{kind:'company',subjectId:base.companyId,dailyRequests:5,monthlyTokens:null,enabled:true});
   await expect(setAiAllowance(scoped,{kind:'company',subjectId:other.id,dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('scope');
@@ -192,6 +195,7 @@ describe('tenant default user allowance, usage against limits and attention',()=
  const byDefault=(daily:number|null,monthly:number|null,enabled=true)=>setAiAllowance(group,{kind:'user_default',dailyRequests:daily,monthlyTokens:monthly,enabled});
  const login=async(name:string,role:'employee'|'hr_admin'='employee')=>{
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:name}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:u.id,role,companyId:null});
   return {id:u.id,ctx:{tenantId:base.tenantId,userId:u.id,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
  };
  const run=(userId:string|null,state:'completed'|'pending'|'failed'|'blocked',reserved:number,actual:number|null,feature='pay_rule_draft',reason:string|null=null)=>
@@ -218,12 +222,13 @@ describe('tenant default user allowance, usage against limits and attention',()=
  it('leaves calls without a login and other tenants untouched by the default',async()=>{
   await byDefault(0,0,false);
   await expect(call()).rejects.toThrow('paused');
-  await expect(call({...group,userId:undefined})).resolves.toBe('draft');
+  await expect(call({...group,userId:undefined})).rejects.toThrow('Current AI calling authority');
   const foreign=await seedBase();const foreignGroup:SessionContext={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
   await expect(call(foreignGroup)).resolves.toBe('draft');
  });
  it('refuses the default to company administrators, by service and by raw app-role write, and never removes non-user policies',async()=>{
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await expect(setAiAllowance(scoped,{kind:'user_default',dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('group');
   await expect(withTenant(scoped,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'user_default',scopeKey:'user_default',dailyRequests:0}))).rejects.toMatchObject({cause:{code:'42501'}});
@@ -271,6 +276,7 @@ describe('tenant default user allowance, usage against limits and attention',()=
  it('keeps attention scoped: company administrators see only their companies and no login identities',async()=>{
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Other Company'}).returning();
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await limit('company',base.companyId,1,null);await limit('company',other.id,1,null);await byDefault(1,null);
   await call();await expect(call()).rejects.toThrow('daily');

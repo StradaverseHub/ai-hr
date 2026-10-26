@@ -1,13 +1,13 @@
 /** Actual current-principal controls, authored UNRUN; no provider/network execution. */
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { assertAiPrincipalTx } from '../core/ai-principal';
-import { governedAiConfig } from '../core/ai-governance';
+import { resolveActiveAiConfig } from '../core/ai-config';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b:Base;
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
+beforeAll(migrateTestDb);beforeEach(async()=>{vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('OPENAI_API_KEY','fixture-only');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();b=await seedBase();});afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
 describe('current AI calling principal prerequisite',()=>{
  it('accepts its actual transaction carrier, refuses mismatched tenant/user/grant carriers, and does not mutate context',async()=>{
   const ctx=adminCtx(b),before=JSON.stringify(ctx);await withTenant(ctx,tx=>assertAiPrincipalTx(tx,ctx));
@@ -30,7 +30,7 @@ describe('current AI calling principal prerequisite',()=>{
   await expect(withTenant(ctx,tx=>assertAiPrincipalTx(tx,ctx))).rejects.toThrow();
  });
  it('rechecks the frozen governance binding at actual admission, before a supplied provider callback can run',async()=>{
-  const ctx=adminCtx(b),cfg=governedAiConfig(ctx,{provider:'openai',model:'fictional-model',apiKey:'fixture-only'},'hr_assistant');
+  const ctx=adminCtx(b),cfg=(await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'hr_assistant')))!;
   expect(Object.isFrozen(cfg)).toBe(true);expect(Object.isFrozen(cfg.governance)).toBe(true);
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,b.adminUserId));
   let invoked=false;

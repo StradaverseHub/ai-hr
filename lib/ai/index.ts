@@ -12,7 +12,7 @@
  * The provider client is constructed PER CALL inside each adapter from the resolved key — never cached
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
  */
-import { governed,textReservation } from './governance';
+import { captureAiConfig,governed,textReservation } from './governance';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
@@ -65,6 +65,7 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
+  cfg=captureAiConfig(cfg);
   if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
   return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},record=>generateDraftTransport(cfg,{...args,onUsage:record}));
 }
@@ -81,6 +82,7 @@ async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs)
 export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}
 /** This operation never changes the existing text/conversation paths. Callers authorize the bytes before using it. */
 export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
+ cfg=captureAiConfig(cfg);
  if(!validImageBytes(args.data,args.mimeType)||!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
  if(args.signal?.aborted)throw new AiImageReadError(true);
  return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,args.data.length*2)+2500)},record=>readImageTransport(cfg,{...args,onUsage:record}));
@@ -101,6 +103,7 @@ async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'
 
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */
 export function validateConfig(cfg: ResolvedAiConfig) {
+  cfg=captureAiConfig(cfg);
   return adapterFor(cfg.provider).validate(cfg);
 }
 
@@ -132,6 +135,7 @@ export function supportsConverse(provider: AiProvider): boolean {
  * here.
  */
 export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
+  cfg=captureAiConfig(cfg);
   const adapter = adapterFor(cfg.provider);
   if (!adapter.converse) throw new AiGatewayError('This AI provider does not support the assistant.');
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
