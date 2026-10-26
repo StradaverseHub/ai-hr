@@ -76,14 +76,31 @@ async function readPacket(request: Request): Promise<Packet> {
   finally { clearTimeout(timeout); request.signal.removeEventListener('abort', abort); reader.releaseLock(); }
 }
 
+/** Trusted server construction only. Presence with an undefined origin deliberately refuses rather
+ * than falling back to request Host/URL. This is never parsed from a packet or browser header. */
+export type OwnLeaveOriginPolicy = Readonly<{ publicOrigin: string | undefined }>;
+function fromConfiguredOrigin(request: Request, configured: string | undefined): boolean {
+  if (!configured) return false;
+  try {
+    const expected = new URL(configured);
+    return ['https:', 'http:'].includes(expected.protocol) && expected.origin === configured
+      && request.headers.get('origin') === configured;
+  } catch { return false; }
+}
+
 /** Every operation is explicit POST. GET/reopen cannot become an effect path; scope/locale/user/tenant
  * and confirmation business fields cannot be injected. Authentication failure never reaches owners.
  * Dependencies are bound server-side, not constructed from a posted name, callback or model tool. */
-export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwners<Session>) {
+export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwners<Session>,
+  originPolicy?: OwnLeaveOriginPolicy,
+) {
+  const capturedOrigin = originPolicy === undefined ? undefined : { publicOrigin: originPolicy.publicOrigin };
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') return Response.json({ error: 'unavailable' }, { status: 405, headers: { ...headers, Allow: 'POST' } });
     const site = request.headers.get('sec-fetch-site');
-    if (request.headers.has('authorization') || new URL(request.url).search || !isSameOriginBrowserRequest(request) || (site !== null && site !== 'same-origin')) return failure(403);
+    const sameOrigin = capturedOrigin === undefined ? isSameOriginBrowserRequest(request)
+      : fromConfiguredOrigin(request, capturedOrigin.publicOrigin);
+    if (request.headers.has('authorization') || new URL(request.url).search || !sameOrigin || (site !== null && site !== 'same-origin')) return failure(403);
     if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return failure(415);
     let packet: Packet;
     try { packet = await readPacket(request); } catch { return failure(400); }

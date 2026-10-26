@@ -1,0 +1,18 @@
+/** Real Next/Web Request runtime binding, deliberately UNMOUNTED. The future Node route's POST must
+ * export this owner only after migrations/source/security/browser acceptance. No app/ route imports
+ * this module now; no provider, model tool or arbitrary callback is an effect caller.
+ */
+import 'server-only';
+import { appOrigin } from '../../lib/real-auth';
+import { createOwnLeaveBrowserCommandHandler } from './own-leave-browser';
+import { authenticateOwnLeaveBrowserSession } from './own-leave-server';
+
+/** Deployment selection owns public origin. Missing/invalid configuration refuses before session or
+ * DB work; reflected Host/Forwarded/Origin/requestURL never supplies the allow-list. Resolve per
+ * request, and keep the canonical authenticator's strict cookie selection plus server-owned locale.
+ * Standard Request/Response are supported by installed Next route handlers; no proxy URL rewrite.
+ */
+export async function handleConfiguredOwnLeaveBrowserCommand(request: Request): Promise<Response> {
+  return createOwnLeaveBrowserCommandHandler(authenticateOwnLeaveBrowserSession,
+    { publicOrigin: appOrigin() })(request);
+}

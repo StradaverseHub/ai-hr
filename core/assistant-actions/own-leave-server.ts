@@ -8,7 +8,7 @@ import { isLocale } from '../../i18n/config';
 import { getBrowserCommandSession } from '../../lib/session';
 import { createOwnLeaveBrowserCommandHandler } from './own-leave-browser';
 
-export const handleAuthenticatedOwnLeaveBrowserCommand = createOwnLeaveBrowserCommandHandler(async () => {
+export async function authenticateOwnLeaveBrowserSession() {
   const source = await getBrowserCommandSession();
   // Session resolution is request-scoped; capture before the next await so no shared cached object
   // can retarget this command while locale resolution or the actual source transaction waits.
@@ -16,4 +16,7 @@ export const handleAuthenticatedOwnLeaveBrowserCommand = createOwnLeaveBrowserCo
   const locale = await getLocale();
   if (!isLocale(locale)) throw new Error('Own-leave browser session unavailable.');
   return Object.freeze({ ctx, locale });
-});
+}
+
+/** Generic source/test binding. The eventual public route must use the configured runtime binding. */
+export const handleAuthenticatedOwnLeaveBrowserCommand = createOwnLeaveBrowserCommandHandler(authenticateOwnLeaveBrowserSession);
