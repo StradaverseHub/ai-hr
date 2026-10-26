@@ -78,6 +78,16 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await pick(randomUUID())).toEqual({rows:[],nextCursor:null});expect(await pick(undefined,[])).toEqual({rows:[],nextCursor:null});
   await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await pick()).toEqual({rows:[],nextCursor:null});
  });
+
+ it('filters the picker by the canonical branch, department and inclusive hire-date range',async()=>{
+  const a=await hire('Fictional branch employee A'),z=await hire('Fictional branch employee B'),day=todayInKualaLumpur(),earlier=new Date(Date.parse(day+'T00:00:00Z')-2*86400000).toISOString().slice(0,10);
+  await owner.db.update(employment).set({orgBranch:'Fictional Branch A'}).where(eq(employment.id,a.employmentId));await owner.db.update(employment).set({orgBranch:'Fictional Branch B',hiredOn:earlier}).where(eq(employment.id,z.employmentId));
+  const ctx=admin(),base={companyIds:[b.companyId],limit:25};
+  const picked=await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch A',departmentId:b.deptA,hiredFrom:day,hiredTo:day}));expect(picked.rows.map(row=>row.employmentId)).toEqual([a.employmentId]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,departmentSearch:'Unmatched department '+randomUUID()}))).rows).toEqual([]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch B',hiredFrom:earlier,hiredTo:earlier}))).rows.map(row=>row.employmentId)).toEqual([z.employmentId]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch A',departmentId:b.deptB}))).rows).toEqual([]);
+ });
  it('uses the same filters, status ladder, paging and column values through the bounded projection',async()=>{
   const a=await hire('Fictional Alpha'),z=await hire('Fictional Zulu');
   await owner.db.update(employment).set({employeeCode:'WF-ALPHA',finalConfirmationDate:todayInKualaLumpur()}).where(eq(employment.id,a.employmentId));

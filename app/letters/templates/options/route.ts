@@ -15,7 +15,7 @@ export async function GET(request:Request){
    const page=await listLetterFields(ctx,{companyId,search,after:cursor,limit:25});
    result={rows:page.items.filter(row=>row.active).map(row=>({id:row.id,label:row.definition.label+' · '+row.key,field:{definition:row.definition,ordinal:row.ordinal}})),nextCursor:page.nextCursor};
   }else if(kind==='employee'){
-   const page=await listLetterEmployeeChoices(ctx,{companyId,search,cursor,limit:25});result={rows:page.rows.map(row=>({id:row.employmentId,label:row.name+(row.employeeCode?' · '+row.employeeCode:'')})),nextCursor:page.nextCursor};
+   const page=await listLetterEmployeeChoices(ctx,{companyId,search,cursor,limit:25,departmentId:params.get('departmentId')||undefined,departmentSearch:params.get('department')||undefined,branch:params.get('branch')||undefined,hiredFrom:params.get('hiredFrom')||undefined,hiredTo:params.get('hiredTo')||undefined});result={rows:page.rows.map(row=>({id:row.employmentId,label:row.name+(row.employeeCode?' · '+row.employeeCode:'')})),nextCursor:page.nextCursor};
   }else{
    const page=await (kind==='letterhead'?listLetterTemplateHeads:listLetterSignatories)(ctx,{companyId,search,cursor,limit:25});result={rows:page.rows.map(row=>({id:row.id,label:row.name})),nextCursor:page.nextCursor};
   }

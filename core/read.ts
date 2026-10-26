@@ -1,3 +1,4 @@
+import {isCalendarDate} from '../lib/calendar-date';
 import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 import {workforceEmploymentPredicate} from './workforce-access';
 import {ownPersonPredicate} from './own-person';
@@ -438,13 +439,16 @@ export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: strin
 }
 /** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
  * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
-export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number}){
+export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
   if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
+  if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const where=workforceListWhere({companyIds:input.companyIds,q:input.q},workforceListColumns()),columns=workforcePickerColumns();
-  const [cursor]=input.after?await tx.select({name:columns.name}).from(workforceListSource).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
+  const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
+  const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+  const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
+  const [cursor]=input.after?await tx.select({name:columns.name}).from(source).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
   if(input.after&&!cursor)return {rows:[],nextCursor:null};
-  const rows=await tx.select(columns).from(workforceListSource).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
+  const rows=await tx.select(columns).from(source).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
   return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
 }
 

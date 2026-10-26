@@ -15,3 +15,8 @@ it('keeps pagination bound to the completed search while the user types another 
 it('shows a closed error for an expired session instead of treating login HTML as choices',async()=>{
  const fetcher=vi.fn().mockResolvedValue({ok:false,status:401,headers:new Headers({'content-type':'text/html'})}),user=userEvent.setup();vi.stubGlobal('fetch',fetcher);render(<LetterChoicePicker companyId={companyId} kind="field" labels={labels} onChoose={()=>{}}/>);await user.click(screen.getByRole('button',{name:labels.find}));expect((await screen.findByRole('alert')).textContent).toBe(labels.error);
 });
+
+it('binds bulk choices to shown scoped results and carries the explicit employee filters',async()=>{
+ const rows=[{id:'one',label:'One'},{id:'two',label:'Two'}],choose=vi.fn(),fetcher=vi.fn().mockResolvedValue(response(rows)),user=userEvent.setup();vi.stubGlobal('fetch',fetcher);
+ render(<LetterChoicePicker companyId={companyId} kind="employee" labels={labels} filters={{branch:'North',hiredFrom:'2025-01-01'}} onChoose={()=>{}} onChooseMany={choose} manyLabel="Add shown employees"/>);await user.click(screen.getByRole('button',{name:labels.find}));await user.click(await screen.findByRole('button',{name:'Add shown employees'}));expect(choose).toHaveBeenCalledExactlyOnceWith(rows);const params=new URL('https://fixture.test'+fetcher.mock.calls[0][0]).searchParams;expect(params.get('branch')).toBe('North');expect(params.get('hiredFrom')).toBe('2025-01-01');expect(params.get('companyId')).toBe(companyId);
+});

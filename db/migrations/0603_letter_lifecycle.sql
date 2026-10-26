@@ -583,3 +583,14 @@ GRANT EXECUTE ON FUNCTION app.letter_template_appearance(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 CREATE INDEX letter_batch_author_created_idx ON letter_generation_batch(tenant_id,company_id,created_by,created_at DESC,id DESC);
+
+--> statement-breakpoint
+-- Filter the existing Workforce projection; Branch remains the employee master's org_branch value.
+CREATE FUNCTION app.access_workforce_picker_rows(wanted_branch text,hired_from date,hired_to date) RETURNS SETOF jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT r.value FROM app.access_workforce_list_rows() r(value)
+ JOIN public.employment e ON e.id=(r.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id() AND e.company_id=(r.value->>'companyId')::uuid
+ WHERE (wanted_branch IS NULL OR e.org_branch=wanted_branch) AND (hired_from IS NULL OR e.hired_on>=hired_from) AND (hired_to IS NULL OR e.hired_on<=hired_to)
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_picker_rows(text,date,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_picker_rows(text,date,date) TO ai_hr_app;
