@@ -2828,3 +2828,12 @@ All three stages precede one combined final candidate gate and one verified stag
 Source completeness, focused development checks, migration installation, runtime security and the
 actual human experience are separate claims. An integrated catalogue or source manifest proves
 neither the latter claims nor readiness to release.
+
+Native leave disclosure is fieldwise: `withheld` means at least one ESS component is hidden,
+not that every displayed balance field is forbidden. The specialist preserves the existing
+`projectMineLeaveBalance` projection's permitted available/pending fields, retains the withholding
+notice and never reconstructs omitted components. Under partial disclosure the native projector
+omits legacy accrued/balance aliases; the specialist refuses those aliases rather than imposing
+an all-null rule on permitted summary fields. Independent native-policy cases cover both hiding
+available while showing pending and hiding pending while showing available. Their authored
+assertions are not runtime evidence until executed against the actual canonical owners.
