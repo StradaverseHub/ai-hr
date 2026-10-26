@@ -82,3 +82,33 @@ the central migration coordinator. Only disposable local test databases have app
 database may apply or renumber these drafts until the allocation is resolved. Android key custody,
 assertion verification against stored counters inside command acceptance, versioned API/native
 orchestration and real-device acceptance remain required.
+
+## Stored-key online assertion transaction
+
+The internal Apple online owner derives a challenge binding from the server configuration, stored key
+reference, exact command and reported source facts. It hashes a defensive copy of the exact submitted
+photo bytes itself; a caller-provided photo digest is not accepted. Scope and nonce/lifetime in the
+signed positional context come from the authenticated actor and stored challenge. The enrolled key's
+installation, app identity, environment and configured enrollment metadata must match. Source flags,
+app version and build remain signed client claims. Historical enrollment metadata does not attest the
+currently running build or independently prove presence.
+
+Within challenge consumption, the owner locks the enrolled key, rechecks current employment eligibility
+after any lock wait, rejects revoked keys and verifies the signature against the stored unsigned
+counter. It then rechecks database time against the challenge window, advances the counter only if an
+actual matching row is returned, and invokes the business callback in the same transaction. Callback
+failure rolls back the counter, challenge, callback writes and audit together. Different challenges for
+the same key serialize; a reused counter cannot become valid merely because it targets another request.
+No vendor request occurs while holding these database locks.
+
+The callback must use that transaction and the checked command/photo snapshot for its authoritative
+receipt and writes. Already-consumed challenges return a reconciliation state without re-running the
+callback or claiming that a submitted replacement assertion was checked. The business owner must recover
+its original receipt before deciding the user-facing result. A proof-check event records references and
+counter, not signature bytes, coordinates, photo or vendor receipt.
+
+This remains an internal seam: the current attendance writer owns its own transaction, so it must be
+refactored to join this one before a supported API version can use the service. Existing v1 routes do
+not invoke it. It adds no new migration, integrity tier, location/attendance policy, offline acceptance
+or deployed security guarantee. Real vendor/device evidence, metadata/modern assertion support,
+registered-device policy integration and complete release verification remain required.

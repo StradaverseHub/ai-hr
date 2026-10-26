@@ -187,6 +187,35 @@ only been exercised on disposable local databases here; no staging/shared databa
 No public route or native flow invokes enrollment yet. Android enrolled-key attestation, atomic stored
 assertion counters in command acceptance, vendor receipt/fraud checks and device acceptance remain open.
 
+Stored Apple online assertion owner at `2dd81f984`: three affected database files passed 31 cases,
+including nine new assertion transaction cases, and root TypeScript exited 0. The initial seven-case
+checkpoint `626061acf` also passed its database suite and compiler. Enrollment success uses a synthetic
+vendor port; assertions use real P-256 signatures over the actual canonical command bytes, and counters,
+RLS, locks, photo-byte hashing, audit and rollback use real disposable databases. This is not hardware
+or vendor-distribution acceptance.
+
+Tests cover identical concurrent consumption, two distinct challenges competing for the same counter,
+wrong signatures, changed command/source/photo/installation, failed callback writes, revoked keys,
+own-account eligibility, configured metadata and database counter-write veto. The distinct-challenge
+test holds the first callback until the second owned connection is observed waiting for the key lock;
+only one callback commits. Separate lock-wait cases change eligibility or let a short-lived owned
+fixture expire while the request is observably blocked, then require rollback without invoking the
+business callback. Fixture lifetimes are seeded directly in the disposable database; production
+challenge lifetimes remain unchanged.
+
+Three controlled mutations individually removed the post-lock expiry check, post-lock employment
+check and required returned counter row. Each selected test failed because the request proceeded
+instead of refusing; restoring exact source returned each case to PASS (one selected, eight skipped
+per run). All three harness results were `mutation=1 restored=0 exact=True`. The source has no mutation
+diff. These are targeted transaction-safety results, not a full CI or release witness.
+
+The service is an internal transaction seam, with no new migration or API activation. The existing
+attendance writer still owns its own transaction and must join this transaction before integration.
+Already-consumed means reconcile the business receipt, not reverified replacement proof or accepted
+attendance. Historical enrollment metadata and signed source/version claims do not prove the currently
+running build or physical presence. Modern metadata/assertion fixtures, registered-device policy,
+signed-device runs and full frozen-candidate verification remain required.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
