@@ -1440,6 +1440,8 @@ async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId
  const [snapshot]=await tx.select({profile:employeeStatutoryMy,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('update',{noWait:true});
  return snapshot?{...snapshot,nationality:subject.nationality}:null;
 }
+/** Nomination-only actual native profile ownership, no human/defaulted intent or pending gate. */
+export async function lockReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,personId:string){ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase(),snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,id);if(!snapshot)throw new NoStatutoryProfileError();return{personId:id,statutoryId:snapshot.profile.id};}
 /** Same stored pass-through as the actual Personnel statutory section, resolved under its
  * protected current-person/profile interval. No caller can post or clear these preserved values. */
 function composeReviewedStatutorySectionMY(input:z.infer<typeof reviewedStatutoryInputSchemaMY>,snapshot:NonNullable<Awaited<ReturnType<typeof lockReviewedStatutoryPersonMYTx>>>):StatutoryInput{
@@ -1478,8 +1480,8 @@ export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:Sessio
  ctx=captureStatutoryContext(ctx);
  const ref=z.object({personId:z.uuid().transform(id=>id.toLowerCase()),statutoryId:z.uuid().transform(id=>id.toLowerCase()),eventId:z.uuid().transform(id=>id.toLowerCase())}).strict().parse(structuredClone(p));
  const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,ref.personId);if(!snapshot||snapshot.profile.id!==ref.statutoryId)throw new Error('Statutory review unavailable');
- const [event]=await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,ref.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employee-statutory-my'),eq(domainEvent.aggregateId,ref.statutoryId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),sql`${domainEvent.eventType} in ('statutory.my.created','statutory.my.updated')`));
- if(!event||!event.payload||typeof event.payload!=='object'||Array.isArray(event.payload)||(typeof (event.payload as {personId?:unknown}).personId!=='string'||((event.payload as {personId:string}).personId).toLowerCase()!==ref.personId))throw new Error('Statutory review unavailable');
+ const [event]=await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,personId:sql<string|null>`${domainEvent.payload}->>'personId'`}).from(domainEvent).where(and(eq(domainEvent.id,ref.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employee-statutory-my'),eq(domainEvent.aggregateId,ref.statutoryId),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),sql`${domainEvent.eventType} in ('statutory.my.created','statutory.my.updated')`));
+ if(!event||typeof event.personId!=='string'||event.personId.toLowerCase()!==ref.personId)throw new Error('Statutory review unavailable');
  return {...ref,eventType:event.eventType as 'statutory.my.updated'|'statutory.my.created',currentRecordPresent:true as const,proof:'historical_native_event_current_person_record' as const};
 }
 
