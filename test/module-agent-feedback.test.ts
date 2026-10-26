@@ -47,9 +47,13 @@ describe('private feedback remains opinion and explicit own-user custody', () =>
     await owner.db.execute(sql`update public.ai_agent_feedback set created_at=now()-interval '31 days',expires_at=now()-interval '1 day'`);
     await expect(purgeExpiredAgentFeedback(ctx, 1)).rejects.toThrow();
     expect(await rows()).toHaveLength(1);
-    expect(await purgeExpiredAgentFeedback(admin, 1)).toEqual({removed:1});
+    const [principal]=await owner.db.execute<{grants:{role:string;companyId:string|null}[]}>(sql`select grants from app.principal(${base.adminUserId}::uuid) where tenant_id=${base.tenantId}::uuid`);
+    expect(principal.grants).toEqual([{role:'hr_admin',companyId:null}]);
+    // Use the actual group grant rather than adminCtx's legacy role-only snapshot. No role is added.
+    const groupAdmin:SessionContext={...admin,grants:principal.grants};
+    expect(await purgeExpiredAgentFeedback(groupAdmin, 1)).toEqual({removed:1});
     expect(await rows()).toEqual([]);
-    await expect(purgeExpiredAgentFeedback(admin, 101)).rejects.toThrow();
+    await expect(purgeExpiredAgentFeedback(groupAdmin, 101)).rejects.toThrow();
   });
   it('removes only the current owner feedback and permits erasure after grant revocation', async () => {
     const { admin, ctx, userId, exchangeId } = await fixture();

@@ -43,7 +43,7 @@ describe('explicit Employee Master measurement protocol', () => {
         expect(actions.begin).toHaveBeenCalledTimes(1);
         actions.reopen.mockResolvedValue({ kind: 'evaluation', receipt: receipt({ cohortId, state: 'committed', attemptVersion: 2, canonicalCompletionMarkedAt: '2026-10-26T00:00:02Z', serverWritePhaseMilliseconds: 20, canonicalCounts: { imported: 7, failed: 1, skipped: 2, dependents: 0, qualification: 0, emergency: 0 } }) });
         fireEvent.click(screen.getByRole('button', { name: 'reopen' }));
-        await screen.findByText('7');
+        await waitFor(() => expect(screen.getByText('employeeRows').nextElementSibling?.textContent).toBe('7'));
         expect(status.mock.calls.at(-1)?.[0].committed).toBe(true);
         expect(actions.begin).toHaveBeenCalledTimes(1);
     });
