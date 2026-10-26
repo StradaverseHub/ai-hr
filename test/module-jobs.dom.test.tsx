@@ -42,7 +42,7 @@ describe('deterministic current-user job cards',()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave'}));
   expect(screen.getAllByRole('link').map(link=>link.getAttribute('href')).sort()).toEqual([
    ...AGENT_MODULE_CODES.map(module=>'/assistant?job='+encodeURIComponent(module)),
-   '/admin/personnel/import','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
+   '/assistant/payroll-close','/admin/personnel/import','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
   ].sort());expect(withAssistantRead).not.toHaveBeenCalled();
   expect(screen.getByRole('link',{name:en.assistant.workspace.claimActions.title}).getAttribute('href')).toBe('/assistant/claims');
   expect(screen.getByRole('link',{name:en.assistant.workspace.knowledgeActions.title}).getAttribute('href')).toBe('/assistant/knowledge-base');
@@ -52,6 +52,7 @@ describe('deterministic current-user job cards',()=>{
   expect(screen.getByRole('link',{name:en.assistant.workspace.payComponentActions.title}).getAttribute('href')).toBe('/assistant/pay-codes');
   expect(screen.getByRole('link',{name:en.assistant.workspace.rewardsActions.title}).getAttribute('href')).toBe('/assistant/rewards');
   expect(screen.getByRole('link',{name:en.people.import.title}).getAttribute('href')).toBe('/admin/personnel/import');
+  expect(screen.getByRole('link',{name:en.assistant.workspace.payrollCloseActions.title}).getAttribute('href')).toBe('/assistant/payroll-close');
   const action=screen.getByRole('link',{name:en.ownLeaveReview.workflow.title});expect(action.getAttribute('href')).toBe('/assistant/leave');
   expect(action.parentElement?.textContent).toContain(en.assistant.workspace.jobs.module_leave);
   for(const link of view.container.querySelectorAll<HTMLAnchorElement>('a[href^="/assistant?job="]')){const url=new URL(link.href);expect([...url.searchParams.keys()]).toEqual(['job']);expect(AGENT_MODULE_CODES).toContain(url.searchParams.get('job'));}

@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['employees','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
+  const connected=['payroll','employees','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:module==='employees'?'rechecked_on_import_page':'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe(module==='employees'?'human_workflow_only':'implemented');if(module==='employees')expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'})).toThrow();else expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
@@ -79,4 +79,9 @@ it('offers only the existing human Employee import workflow and never a generic 
  for(const extra of [{rows:[]},{headers:[]},{companyId:'other'},{dataset:'private'},{source:'private'},{commit:true},{route:'/admin/personnel/import?company=other'},{authority:'rechecked_on_review_page'}])expect(()=>checkedModuleHumanHandoffs('employees',rows.map(row=>({...row,...extra})))).toThrow();
  expect(()=>checkedModuleHumanHandoffs('leave',rows)).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'employees',action:'employees.import',phase:'prepare'})).toThrow();
+});
+
+it('offers the actual human Payroll close page without financial inputs, batch selection, release overrides or confirmation',()=>{
+ const rows=moduleHumanActionHandoffs('payroll');expect(rows).toEqual([{module:'payroll',action:'payroll.close',route:'/assistant/payroll-close',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ for(const extra of [{batchId:'other'},{salary:100},{override:true},{releaseTiming:{}},{confirmCloseProcessedRun:true},{route:'/assistant/payroll-close?batch=other'}])expect(()=>checkedModuleHumanHandoffs('payroll',rows.map(row=>({...row,...extra})))).toThrow();
 });
