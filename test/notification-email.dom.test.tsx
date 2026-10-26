@@ -21,7 +21,7 @@ describe('workflow email configuration screens',()=>{
   render(await AdminPage({searchParams:Promise.resolve({})}));
   expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();
   // Explicit product contract, independent of the category array that renders the screen.
-  const expectedCategories = ['attendance','claims','delegation','leave','notice','offboarding','onboarding','payroll','performance','profile','readiness','review','rewards','toil','employee_master_reports'] as const;
+  const expectedCategories = ['attendance','claims','delegation','leave','letters','notice','offboarding','onboarding','payroll','performance','profile','readiness','review','rewards','toil','employee_master_reports'] as const;
   expect(screen.getAllByRole('checkbox')).toHaveLength(expectedCategories.length);
   for (const category of expectedCategories) {
    // A singular exact-name query also refuses duplicate controls or an absent category.
@@ -50,6 +50,6 @@ describe('workflow email configuration screens',()=>{
  });
  it('renders a separate preference form for concurrent employments',async()=>{
   m.identity.mockResolvedValue({emailVerified:true,issuer:'https://fixture.test/auth/tenant',subject:'fixture-user',email:'fictional@demo.test'});m.preferences.mockResolvedValue({employments:[{id:'one',code:'EMP-01'},{id:'two',code:'EMP-02'}],preferences:[],policy:[]});
-  render(await MyPage({searchParams:Promise.resolve({})}));expect(screen.getAllByRole('button',{name:en.workflowEmail.save})).toHaveLength(2);expect(Array.from(document.querySelectorAll<HTMLInputElement>('input[name=employmentId]')).map(i=>i.value)).toEqual(['one','two']);expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).disabled)).toBe(true);
+  render(await MyPage({searchParams:Promise.resolve({})}));expect(screen.getAllByRole('button',{name:en.workflowEmail.save})).toHaveLength(2);expect(Array.from(document.querySelectorAll<HTMLInputElement>('input[name=employmentId]')).map(i=>i.value)).toEqual(['one','two']);expect(screen.queryByRole('checkbox',{name:en.workflowEmail.categories.letters})).toBeNull();expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).disabled)).toBe(true);
  });
 });

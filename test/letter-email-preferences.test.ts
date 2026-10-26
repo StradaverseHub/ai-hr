@@ -1,6 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {afterAll,beforeEach,it,expect} from 'vitest';
-import {eq,sql} from 'drizzle-orm';
+import {eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {readLetterEmailPreferences,saveLetterEmailPreferences} from '../core/letter-email-preferences';
