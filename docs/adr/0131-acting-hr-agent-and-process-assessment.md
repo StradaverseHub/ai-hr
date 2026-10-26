@@ -2119,3 +2119,29 @@ parents still require transitive ownership BEFORE earlier reads/locks. These pub
 manual commands alone do not establish universal source/authority protection or
 app-role/concurrency/security/readiness proof. No compiler/app/tests/DB/build or
 provider/release runtime was executed.
+
+
+### Own-leave browser protocol and canonical binding (26 October 2026; unmounted source)
+
+`own-leave-http.ts` owns an explicit POST-only browser protocol, same-origin request
+check (not a forwarded-host allowlist), same-origin Fetch Metadata when present, no
+query-string controls and JSON-only bounded/fatal-UTF8 parsing. Limits cover actual
+bytes, fragments, declared length and a five-second read deadline/cancellation before
+identity/database dispatch. Each operation has a strict schema: preparation retains
+separate nomination/human selection/text; confirmation posts only stored ID/version/
+reviewed digest. Tenant/session/locale/effect fields cannot be posted. No owner is
+called after failed authentication; there is no automatic effect retry. Once canonical
+confirmation starts, transport loss is uncertain: reopen the same action, never create
+a replacement or claim cancellation rolled back the effect.
+A strict public-result schema rejects accidental private fields before serialization;
+responses are private/no-store, vary by cookie/authorization, nosniff/no-referrer and
+bounded errors with no raw causes. Pure mocked protocol/CSRF/authority-injection/
+private-response/body-size/fatal-UTF8/pre-cancel/stalled-body/empty-fragment cases are
+AUTHORED UNRUN; they do not prove real cookie/session/DB authorization.
+`core/assistant-actions/own-leave-browser.ts` binds this transport to the canonical
+prepare/reopen/discard transaction owners and directly to top-level confirmation
+(no wrapping child transaction/savepoint). The authentication supplier is server-only.
+No route/page/model tool is mounted, no provider or network is invoked. Real route
+session/locale integration, UI, retention/erasure and actual role/RLS/CSRF/concurrency/
+experience acceptance remain release-blocking alongside remaining writer coverage.
+Only three-file AST syntax and diff checks; compiler/tests/app/DB/build remain UNRUN.
