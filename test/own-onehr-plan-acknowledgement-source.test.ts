@@ -1,7 +1,7 @@
 /** Authored UNRUN: actual OneHR human share/conversation/acknowledgement owners. Fictional career
  * words and goals are human fixture inputs, never generated facts, ratings or promotion decisions. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -44,6 +44,17 @@ describe('own OneHR plan acknowledgement source',()=>{
  });
  it('refuses an actually shared plan and a manager attempting the employee acknowledgement',async()=>{
   const a=await fixture(false);await expect(prepare(a)).rejects.toThrow();await perf.reviewOnehrPlan(a.managerCtx,a.intent.planId,(await state(a)).plan.revision,'Agreed','Fictional recorded career conversation',true);await expect(withTenant(a.managerCtx,tx=>prepareOwnOnehrPlanAcknowledgementTx(tx,a.managerCtx,a.intent))).rejects.toThrow();expect((await state(a)).events).toHaveLength(0);
+ });
+ it('refuses a visible manager target before attempting its held row lock',async()=>{
+  const a=await fixture(),before=await state(a);let entered!:()=>void,release!:()=>void;
+  const started=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
+  const held=withTenant(a.admin,async tx=>{await tx.select({id:schema.onehrPlan.id}).from(schema.onehrPlan).where(eq(schema.onehrPlan.id,a.intent.planId)).for('update');entered();await resume;});
+  try{await started;await withTenant(a.managerCtx,async tx=>{
+   await expect(prepareOwnOnehrPlanAcknowledgementTx(tx,a.managerCtx,a.intent)).rejects.toThrow();
+   // A mistaken NOWAIT on the held subordinate would abort this real transaction (25P02).
+   // A successful probe demonstrates the own-only refusal preceded that SQL lock attempt.
+   const [probe]=await tx.execute<{ok:number}>(sql`select 1::integer as ok`);expect(probe.ok).toBe(1);
+  });expect(await state(a)).toEqual(before);}finally{release();await held;}
  });
  it('refuses canonical conversation drift, Assistant revocation and module revocation before effects',async()=>{
   const a=await fixture(),review=await prepare(a);await perf.reviewOnehrPlan(a.managerCtx,a.intent.planId,(await state(a)).plan.revision,'Agreed','Different fictional human conversation',true);const before=await state(a);await expect(confirm(a,review.reviewDigest)).rejects.toThrow();const fresh=await prepare(a);await revokeAssistant(a.admin,{appUserId:a.ctx.userId!});await expect(confirm(a,fresh.reviewDigest)).rejects.toThrow();await grantAssistant(a.admin,{appUserId:a.ctx.userId!});await setModule(base.tenantId,'performance','disabled');await expect(confirm(a,fresh.reviewDigest)).rejects.toThrow();expect(await state(a)).toEqual(before);

@@ -1086,7 +1086,12 @@ async function ownOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,plan
  uuid.parse(planId);assertModuleEnabled(ctx,'performance');
  const query=tx.select({planId:onehrPlan.id,reviewId:onehrPlan.reviewId,employmentId:onehrPlan.employmentId,planYear:onehrPlan.planYear,
   status:onehrPlan.status,planRevision:onehrPlan.revision,acknowledgedAt:onehrPlan.acknowledgedAt,conversationHeldOn:onehrPlan.conversationHeldOn,planVersion:sql<string>`${onehrPlan}.xmin::text`})
-  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId)));
+  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId),
+   // Reviewed own-only selection must exclude a visible subordinate BEFORE taking its row lock.
+   // The canonical isSelf check below still adjudicates; this predicate only narrows lock admission.
+   noWait?sql<boolean>`exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id
+    where e.id=${onehrPlan.employmentId} and e.tenant_id=app.current_tenant_id() and u.id=app.current_user_id()
+     and u.archived_at is null and not app.login_blocked(u.id))`:undefined));
  const [plan]=await(noWait?query.for('update',{noWait:true}):query.for('update'));if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');return plan;
 }
 export async function readOwnOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,planId:string){return ownOnehrPlanAcknowledgementSourceTx(tx,ctx,planId,true);}
