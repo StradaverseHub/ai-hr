@@ -36,6 +36,22 @@ opaque process identifier and unknown continuity after restart where no valid bo
 [API reason rules](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
 These constraints refine the protocol; they do not establish a hardware or signed-build acceptance pass.
 
+Local native-spike verification, 27 October: the source preserved at `626afd5b2` compiled against the
+installed Android SDK, Expo module API and pinned Play Integrity library (`compileDebugKotlin`, exit 0).
+The three focused JavaScript model/capture suites passed 25 tests; root and mobile TypeScript checks
+passed, as did Swift frontend parsing. Swift parsing is syntax evidence only: no iOS framework build,
+entitlement check, vendor attestation or physical-device acceptance was performed. Subsequent changes
+to the JavaScript-tested source were documentation and Android lint configuration only.
+
+Full Android lint did **not** pass. Both `lintDebug` and a narrower `lintAnalyzeDebug` request failed
+in the dependency task `:react-native-worklets:lintAnalyzeDebug` with `Cannot find a KaModule for the
+VirtualFile`, while parsing Kotlin build scripts. The narrower task still invokes dependency analysis,
+so it does not establish a separate clean integrity-module lint result. Google's
+[tracked issue](https://issuetracker.google.com/issues/430991549) describes the matching failure pattern;
+that resemblance is not proof of an installed-version fix. No dependency files were patched or checks
+suppressed to obtain a pass. The integrity module explicitly overrides Expo's non-blocking library
+default with `abortOnError = true`. Preserve lint as an unresolved verification requirement.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
