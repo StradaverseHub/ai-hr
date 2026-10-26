@@ -12,12 +12,12 @@ import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
 const git=(root,...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();
-const api=p=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+p],{timeout:30000,maxBuffer:8*1024**2,encoding:'utf8'}));
+const api=p=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+p],{timeout:3000,maxBuffer:8*1024**2,encoding:'utf8'}));
 function regular(p,max=32*1024**2){const s=lstatSync(p);assert(s.isFile()&&!s.isSymbolicLink()&&s.size>0&&s.size<=max);return readFileSync(p);}
 function owned(p){const s=lstatSync(p);assert(s.isDirectory()&&!s.isSymbolicLink()&&realpathSync(p)===p&&s.uid===process.getuid());return s;}
 function unchanged(source,e){assert(git(source,'rev-parse','HEAD')===e.AIHR_CI_HEAD&&git(ROOT,'rev-parse','HEAD')===e.AIHR_CI_CONTROL_HEAD
  &&git(source,'status','--porcelain','--untracked-files=all')===''&&git(ROOT,'status','--porcelain','--untracked-files=all')==='','Exact clean application source/controller required');}
-const CODE=['.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-build-cache-diagnostic.yml'];
+const CODE=['.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml'];
 function context(source){
  const root=JSON.parse(regular(join(source,'tsconfig.json'))),build=JSON.parse(regular(join(source,'tsconfig.build.json')));
  assert(root.compilerOptions?.incremental===true&&root.extends===undefined&&root.references===undefined&&build.extends==='./tsconfig.json'&&build.references===undefined,'Reviewed exact application config chain required');
@@ -38,7 +38,7 @@ function restore(source,out,e,c,currentRunner){
  const expected=Object.fromEntries(CODE.map(p=>[p,git(ROOT,'rev-parse','HEAD:'+p)]));
  const entries=new Map(tree.tree.filter(t=>t.type==='blob').map(t=>[t.path,t.sha]));
  for(const [p,sha]of Object.entries(expected))assert(entries.get(p)===sha,'Original actual controller code differs: '+p);
- const bytes=execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/artifacts/'+origin.artifactId+'/zip'],{timeout:90000,maxBuffer:64*1024**2});
+ const bytes=execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/artifacts/'+origin.artifactId+'/zip'],{timeout:10000,maxBuffer:64*1024**2});
  assert(bytes.length===artifact.size_in_bytes&&hash(bytes)===origin.digest);
  const dir=join(out,'origin');mkdirSync(dir,{mode:0o700});writeFileSync(join(dir,'authenticated.zip'),bytes,{flag:'wx',mode:0o600});
  for(const [n,v]of Object.entries({run,jobs,artifact,tree,expected}))save(join(dir,n+'.json'),v);

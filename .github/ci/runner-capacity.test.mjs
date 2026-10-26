@@ -35,6 +35,8 @@ test('real shell skips all SDK operations with enough capacity and fails closed 
   const compilerOk=spawnSync('/bin/bash',[script],{env:compilerEnv,encoding:'utf8'});assert.equal(compilerOk.status,0,compilerOk.stderr);assert(compilerOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
   const managedEnv={...compilerEnv,AIHR_CI_CAPACITY_PROFILE:'bounded-whole-compiler',AIHR_COMPILER_CACHE_MODE:'whole',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'typecheck',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main'};
   const managedOk=spawnSync('/bin/bash',[script],{env:managedEnv,encoding:'utf8'});assert.equal(managedOk.status,0,managedOk.stderr);assert(managedOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
+  const buildEnv={...env,AIHR_CI_CAPACITY_PROFILE:'bounded-next-build-diagnostic',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',GITHUB_RUN_ATTEMPT:'1',AIHR_NEXT_BUILD_CACHE_MODE:'cold',AIHR_BUILD_DIAGNOSTIC:'transport-producer',...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+  const buildOk=spawnSync('/bin/bash',[script],{env:buildEnv,encoding:'utf8'});assert.equal(buildOk.status,0,buildOk.stderr);assert(buildOk.stdout.includes('skip unused SDK deletion'));assert(!existsSync(trace));
   for(const [changes,expected] of [[{AIHR_DF_FAIL:'1'},1],[{GITHUB_WORKFLOW_REF:'other'},2],[{AIHR_CI_CAPACITY_PROFILE:'unknown'},2]]){const r=spawnSync('/bin/bash',[script],{env:{...env,...changes},encoding:'utf8'});assert.equal(r.status,expected,r.stderr);assert(!existsSync(trace));}
  }finally{rmSync(dir,{recursive:true});}
 });
@@ -71,11 +73,11 @@ test('normal whole compiler capacity requires its actual job/purpose, closed URL
 
 test('application-build headroom is scoped to the dedicated diagnostic and cannot lower compiler swap admission',async()=>{
  const {compilerSwapFloorKiB}=await import('./runner-capacity.mjs');
- const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-build-cache-diagnostic.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',GITHUB_RUN_ATTEMPT:'1',AIHR_NEXT_BUILD_CACHE_MODE:'cold',AIHR_BUILD_DIAGNOSTIC:'transport-producer',
+ const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',GITHUB_RUN_ATTEMPT:'1',AIHR_NEXT_BUILD_CACHE_MODE:'cold',AIHR_BUILD_DIAGNOSTIC:'transport-producer',
  ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
  assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2-1).decision,'clean');
  assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2).decision,'enough');
  for(const mode of ['cold','warm'])assert(validateCapacityScope('bounded-next-build-diagnostic',{...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}));
- for(const changes of [{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('build-cache-diagnostic','alpha-staging')},{GITHUB_JOB:'typecheck'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_NEXT_BUILD_CACHE_MODE:'other'},{DATABASE_URL:'postgres://live'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>validateCapacityScope('bounded-next-build-diagnostic',{...e,...changes}));
+ for(const changes of [{GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/unrelated.yml@refs/heads/codex/test-suite-efficiency-review-20261025'},{GITHUB_JOB:'typecheck'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_NEXT_BUILD_CACHE_MODE:'other'},{DATABASE_URL:'postgres://live'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>validateCapacityScope('bounded-next-build-diagnostic',{...e,...changes}));
  assert.throws(()=>compilerSwapFloorKiB('bounded-next-build-diagnostic',e));
 });

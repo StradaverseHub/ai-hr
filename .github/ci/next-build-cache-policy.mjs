@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 export const NEXT_STATE_NAME='diagnostic-next-app-compiler-state';
 export const NEXT_STATE_MEMBERS=['build-log.json','build-provenance.json','envelope.json','producer.json','state.json','successful-build.json','system-testing.json'];
-export const NEXT_CACHE_WORKFLOW='.github/workflows/alpha-staging-build-cache-diagnostic.yml';
+export const NEXT_CACHE_WORKFLOW='.github/workflows/alpha-staging-diagnostics.yml';
 export const NEXT_CACHE_REF='StradaverseHub/ai-hr/'+NEXT_CACHE_WORKFLOW+'@refs/heads/codex/test-suite-efficiency-review-20261025';
 export const hash=b=>createHash('sha256').update(b).digest('hex');
 export const validSha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);

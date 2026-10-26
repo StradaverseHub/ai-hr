@@ -46,6 +46,17 @@ on:
         required: false
         default: false
         type: boolean
+      next_build_cache_phase:
+        description: Canonical production build and application compiler graph; disabled unless explicitly measured
+        required: false
+        default: disabled
+        type: choice
+        options: [disabled, cold, warm]
+      next_build_cache_origin:
+        description: 'Warm only: exact original JSON runId, sha, artifactId, digest; never relabel original state'
+        required: false
+        default: ''
+        type: string
       managed_compiler_probe:
         description: Exercise the actual normal whole-compiler cache integration without application tests or deployment
         required: false
@@ -163,6 +174,22 @@ jobs:
       - name: Normal compiler/cache and release-boundary controller checks
         if: ${{ inputs.managed_compiler_probe }}
         run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/release-policy.test.mjs .github/ci/resume-source.test.mjs
+      - name: Canonical application-build cache integrity and resource checks
+        if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+        run: node --test .github/ci/next-build-cache-policy.test.mjs .github/ci/build-production.test.mjs .github/ci/runner-capacity.test.mjs
+      - name: Validate explicit application-cache phase and original selector
+        if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+        env:
+          MODE: ${{ inputs.next_build_cache_phase }}
+          ORIGIN: ${{ inputs.next_build_cache_origin }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {parseNextCacheOrigin} from './.github/ci/next-build-cache-policy.mjs';
+          assert(['cold','warm'].includes(process.env.MODE));
+          if(process.env.MODE==='warm')parseNextCacheOrigin(process.env.ORIGIN);
+          else assert(process.env.ORIGIN==='');
+          NODE
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -640,4 +667,47 @@ jobs:
           name: managed-compiler-cache-diagnostic
           path: ${{ runner.temp }}/whole-compiler-cache/
           if-no-files-found: ignore
+          retention-days: 3
+
+  next-build-cache:
+    if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_BUILD_DIAGNOSTIC: transport-producer
+      AIHR_NEXT_BUILD_CACHE_MODE: ${{ inputs.next_build_cache_phase }}
+      AIHR_NEXT_BUILD_ORIGIN: ${{ inputs.next_build_cache_origin }}
+      AIHR_CI_CAPACITY_PROFILE: bounded-next-build-diagnostic
+      GH_TOKEN: ${{ github.token }}
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', mobile: 'false', capacity_profile: bounded-next-build-diagnostic}
+      - name: Generate the real current Next application types
+        run: pnpm exec next typegen
+      - name: Genuine canonical build, full application compiler and retained-graph refusal controls
+        run: node ../automation/.github/ci/next-build-cache.mjs
+      - name: Publish graph only after actual complete build and owned cleanup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-app-compiler-state
+          path: ${{ runner.temp }}/next-app-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-next-build-cache
+          path: |
+            ${{ runner.temp }}/diagnostic-next-build-cache/
+            !${{ runner.temp }}/diagnostic-next-build-cache/canonical-build/bytes/build-bundle.tar.gz
+          if-no-files-found: error
           retention-days: 3
