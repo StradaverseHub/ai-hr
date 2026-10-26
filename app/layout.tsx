@@ -176,6 +176,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // swallows ONLY EntitlementsResolutionFailedError (the infrastructure state), and still throws for a
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
   const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
+  const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
+  const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
@@ -204,11 +206,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
   const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
-  const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
-  const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
-  const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: false }) : [];
-  const taskNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: true }) : [];
-  const readNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: true }) : [];
+  const notifUnread = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : 0;
+  const taskNotifCount = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : 0;
+  const notifItems = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : [];
+  const taskNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : [];
+  const readNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : [];
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove

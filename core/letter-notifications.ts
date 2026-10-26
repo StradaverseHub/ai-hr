@@ -70,7 +70,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
  else if(['approvalReminder','escalation','acknowledgementReminder'].includes(kind))return cancel();
  let created=0;
  if(policy.portalNotifications){
-  const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});created=rows.length;
+  const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,companyId:record.companyId,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});created=rows.length;
  }
  // Email consent and private sender support are a separate delivery gate. Never call a portal
  // projection "sent", and never drop a queued email obligation after merely creating a bell row.

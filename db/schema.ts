@@ -5408,6 +5408,7 @@ export const notification = pgTable(
     recipientEmploymentId: uuid('recipient_employment_id').references(() => employment.id),
     recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
     letterJobId: uuid('letter_job_id'),
+    companyId: uuid('company_id').references(() => company.id),
     kind: text('kind').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),

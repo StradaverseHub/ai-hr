@@ -764,9 +764,10 @@ GRANT EXECUTE ON FUNCTION app.letter_policy_people(uuid),app.letter_policy_appea
 ALTER TABLE notification ALTER COLUMN recipient_employment_id DROP NOT NULL;
 ALTER TABLE notification ADD COLUMN recipient_user_id uuid REFERENCES app_user(id);
 ALTER TABLE notification ADD COLUMN letter_job_id uuid REFERENCES letter_job(id);
+ALTER TABLE notification ADD COLUMN company_id uuid REFERENCES company(id);
 ALTER TABLE notification ADD CONSTRAINT notification_audience_xor CHECK (
- (recipient_employment_id IS NOT NULL AND recipient_user_id IS NULL AND letter_job_id IS NULL) OR
- (recipient_employment_id IS NULL AND recipient_user_id IS NOT NULL AND letter_job_id IS NOT NULL));
+ (recipient_employment_id IS NOT NULL AND recipient_user_id IS NULL AND letter_job_id IS NULL AND company_id IS NULL) OR
+ (recipient_employment_id IS NULL AND recipient_user_id IS NOT NULL AND letter_job_id IS NOT NULL AND company_id IS NOT NULL));
 CREATE UNIQUE INDEX notification_letter_job_uq ON notification(letter_job_id) WHERE letter_job_id IS NOT NULL;
 CREATE INDEX notification_user_recipient_idx ON notification(tenant_id,recipient_user_id,created_at);
 CREATE FUNCTION app.letter_notification_storage_owner() RETURNS boolean
@@ -802,9 +803,9 @@ BEGIN
  expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
  target_path:=CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END||j.letter_id::text;
  IF j.id IS NULL OR e.id IS NULL OR j.recipient_user_id IS DISTINCT FROM NEW.recipient_user_id
-  OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
+  OR NEW.company_id IS DISTINCT FROM j.company_id OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
   OR expected_kind IS NULL OR NEW.kind IS DISTINCT FROM expected_kind
-  OR NEW.severity::text IS DISTINCT FROM CASE WHEN expected_kind='letter.issued' THEN 'info' ELSE 'action' END
+  OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind='letter.issued' THEN 'info' ELSE 'action' END)
   OR NEW.title IS DISTINCT FROM 'letters.notifications.'||substring(NEW.kind FROM 8)
   OR NEW.body IS DISTINCT FROM 'letters.notifications.body' OR NEW.read_at IS NOT NULL
  THEN RAISE EXCEPTION 'Letter notification identity is invalid' USING ERRCODE='42501';END IF;
