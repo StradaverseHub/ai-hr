@@ -4,6 +4,7 @@ import { keycloakSelected } from '@/lib/identity/config';
 import { listManualIdentityEnrollments } from '@/core/manual-identity';
 import { manualIdentityErrorCodes } from '@/lib/identity/manual-model';
 import { ManualAccountSetup } from './manual-setup';
+import { AccountTargetFields } from './account-target-fields';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
@@ -52,6 +53,7 @@ type Row = {
   invitedCompanyId: string | null;
   /** Manually archived ⇒ Restore is offered. Blocked by termination ⇒ it is not (clear the dates). */
   manuallyArchived: boolean;
+  hasEmployment?: boolean;
 };
 
 export default async function UsersPage({
@@ -96,11 +98,11 @@ export default async function UsersPage({
   const roleOptions = groupAdmin ? ROLES : (['hr_admin'] as const);
   const companyName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? null;
 
-  // The invite form binds an invitation to a PERSON, so offer one option per person (an employee with
+  // The invite form binds an invitation to a PERSON, so offer one option per person (a person with
   // two employments appears once).
   const peopleOptions = [
     ...new Map(
-      employees
+      [...employees,...activationCandidates.map(p=>({personId:p.id,name:p.name,employeeCode:p.code}))]
         .filter((e) => e.personId)
         .map((e) => [e.personId as string, { id: e.personId as string, name: e.name, code: e.employeeCode }]),
     ).values(),
@@ -120,6 +122,7 @@ export default async function UsersPage({
     invitedRole: null,
     invitedCompanyId: null,
     manuallyArchived: Boolean(u.archivedAt),
+    hasEmployment: u.hasEmployment,
   }));
   const peopleWithLogin = new Set(allUsers.map(u => u.personId).filter(Boolean));
   const invitationPeople = new Set(invitations.map(inv => inv.personId).filter(Boolean));
@@ -143,6 +146,7 @@ export default async function UsersPage({
       invitedRole: inv.role,
       invitedCompanyId: inv.companyId,
       manuallyArchived: false,
+      hasEmployment: activationCandidates.find(p=>p.id===inv.personId)?.hasEmployment,
     });
   }
 
@@ -150,7 +154,7 @@ export default async function UsersPage({
     if (peopleWithLogin.has(p.id) || invitationPeople.has(p.id)) continue;
     rows.push({ key: `person:${p.id}`, personId: p.id, status: setupPeople.has(p.id) ? 'preparing' : 'pending',
       name: p.name, email: p.email, appUserId: null, workosUserId: null, roles: [],
-      invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false });
+      invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false, hasEmployment: p.hasEmployment });
   }
 
   // Registry labels include nav, admin.users and module namespaces. Resolve their complete keys.
@@ -202,7 +206,7 @@ export default async function UsersPage({
       {groupAdmin&&<ManualAccountSetup available={keycloakSelected() || internalSelected()} people={peopleOptions} companies={companies}
         roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={selectedPerson}/>}
 
-      {/* Email invitations remain alongside administrator-attested manual setup. Group admins invite an EXISTING employee by
+      {/* Email invitations remain alongside administrator-attested manual setup. Group admins invite a named person with or without employment by
           email + role; there is no open self sign-up. Company-scoped delegated admins manage roles
           but not the login itself. */}
       {groupAdmin && (
@@ -210,48 +214,14 @@ export default async function UsersPage({
           <div id="invite-user"><SectionHeader title={t('inviteTitle')} /></div>
           <div className="px-4 py-3">
             <p className="mb-3 text-xs text-muted-foreground">{t('inviteHint')}</p>
-            <form action={inviteUserAction} className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">{t('invitePerson')}</span>
-                {selectedPerson ? <><input type="hidden" name="personId" value={selectedPerson.id} /><span className="py-2 text-sm">{selectedPerson.name}</span><a href="/admin/users#invite-user" className="text-xs underline">{t('chooseAnotherEmployee')}</a></> : (
-                <select name="personId" required defaultValue="" className={`${inputCls} w-56`}>
-                  <option value="" disabled>
-                    {t('invitePersonPlaceholder')}
-                  </option>
-                  {peopleOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code ? `${p.name} · ${p.code}` : p.name}
-                    </option>
-                  ))}
-                </select>
-                )}
-              </label>
+            <form action={inviteUserAction} className="grid gap-4 sm:grid-cols-2">
+              <AccountTargetFields idPrefix="invite" people={peopleOptions} companies={companies} roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} selectedPerson={selectedPerson}>
               <label className="flex min-w-56 flex-1 flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t('inviteEmail')}</span>
                 <input type="email" name="email" required defaultValue={selectedPerson?.email ?? ''} placeholder="name@company.com" className={inputCls} />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">{t('inviteRole')}</span>
-                <select name="role" defaultValue="employee" className={`${inputCls} w-44`}>
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {t(`role.${r}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">{t('inviteScope')}</span>
-                <select name="companyId" defaultValue="" className={`${inputCls} w-44`}>
-                  <option value="">{t('groupWide')}</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" className={btnPrimary}>
+              </AccountTargetFields>
+              <button type="submit" className={`${btnPrimary} w-fit`}>
                 {t('inviteSubmit')}
               </button>
             </form>
@@ -283,6 +253,7 @@ export default async function UsersPage({
                     {u.name ?? (u.appUserId ? t('unlinkedLogin', { id: (u.workosUserId ?? '').slice(-6) }) : u.email)}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{u.email ?? '—'}</div>
+                  {u.hasEmployment===false&&u.personId&&<p className="text-xs text-muted-foreground">{t('withoutEmployment')}</p>}
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="sr-only">{t('statusColumn')}: </span>
                     <span

@@ -12,7 +12,7 @@ import {listEmployeeActivationCandidates} from '../core/employee-user-activation
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const issuer='https://hr.test/identity/realms/ai-hr',password='Private-temporary-password-827';
-let base:Base,ctx:SessionContext,input:CreateManualAccountInput;
+let base:Base,ctx:SessionContext,input:CreateManualAccountInput & {personId:string};
 const subject=randomUUID();
 beforeAll(migrateTestDb);
 beforeEach(async()=>{

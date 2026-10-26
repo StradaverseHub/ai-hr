@@ -3473,6 +3473,13 @@
       "when": 1792941214167,
       "tag": "0600_login_presentation",
       "breakpoints": true
+    },
+    {
+      "idx": 608,
+      "version": "7",
+      "when": 1792997586564,
+      "tag": "0601_standalone_user_enrollment",
+      "breakpoints": true
     }
   ]
 }

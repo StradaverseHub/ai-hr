@@ -14,3 +14,8 @@ _Avoid_: Fake employee, test person, automatically detected test data
 An employment without the explicit Test record designation. Unmarked does not certify that the record
 is real or has been reviewed.
 _Avoid_: Verified real employee, production-certified employee
+
+**User without an employee record**:
+A named person who can sign in through explicitly granted access without holding an employment.
+Their login does not establish employment, payroll eligibility or a reporting relationship.
+_Avoid_: Dummy employee, fake employee, unlinked identity
