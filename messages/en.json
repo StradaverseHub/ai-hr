@@ -16290,7 +16290,14 @@
         "progress": "Your evidence: {completed}/{total} cases · {failures} recorded failures · {state}",
         "progressUnknown": "Current evaluation evidence for your account is unavailable.",
         "state_complete": "Coverage complete",
-        "state_incomplete": "Coverage incomplete"
+        "state_incomplete": "Coverage incomplete",
+        "signalsTitle": "Your feedback signals",
+        "signalsConsent": "Choose up to 10 of your own completed-job signals to attach to this candidate. This shares no HR text. Ratings guide a candidate; independent checks still decide promotion.",
+        "signal_helpful": "Helpful",
+        "signal_needs_correction": "Needs correction",
+        "signal_incorrect": "Incorrect",
+        "signalsCount": "Verified feedback signals: {count}",
+        "signalsUnknown": "Feedback evidence unavailable"
       },
       "jobs": {
         "title": "Your HR tasks",

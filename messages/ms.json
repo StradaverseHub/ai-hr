@@ -16290,7 +16290,14 @@
         "progress": "Bukti anda: {completed}/{total} kes · {failures} kegagalan direkodkan · {state}",
         "progressUnknown": "Bukti penilaian semasa untuk akaun anda tidak tersedia.",
         "state_complete": "Liputan lengkap",
-        "state_incomplete": "Liputan belum lengkap"
+        "state_incomplete": "Liputan belum lengkap",
+        "signalsTitle": "Isyarat maklum balas anda",
+        "signalsConsent": "Pilih sehingga 10 isyarat tugas selesai milik anda untuk calon ini. Tiada teks HR dikongsi. Penilaian membantu calon; semakan bebas tetap menentukan kenaikan.",
+        "signal_helpful": "Membantu",
+        "signal_needs_correction": "Perlu pembetulan",
+        "signal_incorrect": "Tidak betul",
+        "signalsCount": "Isyarat maklum balas disahkan: {count}",
+        "signalsUnknown": "Bukti maklum balas tidak tersedia"
       },
       "jobs": {
         "title": "Tugas HR anda",

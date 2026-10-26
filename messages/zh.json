@@ -16290,7 +16290,14 @@
         "progress": "你的证据：{completed}/{total} 个用例 · 已记录 {failures} 个失败 · {state}",
         "progressUnknown": "暂无法确认你当前账户的评估证据。",
         "state_complete": "覆盖完整",
-        "state_incomplete": "覆盖尚未完整"
+        "state_incomplete": "覆盖尚未完整",
+        "signalsTitle": "你的反馈信号",
+        "signalsConsent": "最多选择 10 条你自己的已完成任务反馈附加到此候选版本。不会分享人事文本。评分仅供改进参考；是否启用仍由独立验证决定。",
+        "signal_helpful": "有帮助",
+        "signal_needs_correction": "需要修正",
+        "signal_incorrect": "不正确",
+        "signalsCount": "已验证的反馈信号：{count}",
+        "signalsUnknown": "反馈证据暂不可用"
       },
       "jobs": {
         "title": "您的人事任务",

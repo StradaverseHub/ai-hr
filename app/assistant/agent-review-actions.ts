@@ -8,8 +8,8 @@ import {PROMPT_HOLDOUT_REQUEST_LIMIT} from '@/lib/ai/module-agent-prompt-candida
 const failed=()=>redirect('/assistant?error=agent_review');
 const finish=()=>{revalidatePath('/assistant');redirect('/assistant');};
 export async function createAgentCandidateAction(form:FormData){
- const version=Number(form.get('version')),variant=String(form.get('variant')??'');
- try{const ctx=await getBrowserCommandSession();await createPromptAgentCandidate(ctx,{version,configuration:{kind:'read_plan_prompt_v1',variant}});}catch{failed();}finish();
+ const version=Number(form.get('version')),variant=String(form.get('variant')??''),signalIds=form.getAll('signalId').map(value=>String(value));
+ try{const ctx=await getBrowserCommandSession();await createPromptAgentCandidate(ctx,{version,configuration:{kind:'read_plan_prompt_v1',variant},signalIds});}catch{failed();}finish();
 }
 export async function evaluateAgentCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??'');if(form.get('consented')!=='yes')failed();

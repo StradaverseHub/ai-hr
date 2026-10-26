@@ -16290,7 +16290,14 @@
         "progress": "Bằng chứng của bạn: {completed}/{total} trường hợp · {failures} lỗi đã ghi · {state}",
         "progressUnknown": "Chưa có bằng chứng đánh giá hiện tại có thể xác nhận cho tài khoản của bạn.",
         "state_complete": "Đã kiểm tra đủ phạm vi",
-        "state_incomplete": "Chưa kiểm tra đủ phạm vi"
+        "state_incomplete": "Chưa kiểm tra đủ phạm vi",
+        "signalsTitle": "Tín hiệu phản hồi của bạn",
+        "signalsConsent": "Chọn tối đa 10 phản hồi từ công việc đã hoàn tất của chính bạn để đính kèm phiên bản này. Không chia sẻ văn bản nhân sự. Xếp hạng chỉ định hướng; kiểm tra độc lập vẫn quyết định việc phát hành.",
+        "signal_helpful": "Hữu ích",
+        "signal_needs_correction": "Cần chỉnh sửa",
+        "signal_incorrect": "Không chính xác",
+        "signalsCount": "Tín hiệu phản hồi đã xác minh: {count}",
+        "signalsUnknown": "Chưa có bằng chứng phản hồi"
       },
       "jobs": {
         "title": "Tác vụ HR của bạn",

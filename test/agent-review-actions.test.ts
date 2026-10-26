@@ -28,6 +28,12 @@ describe('explicit synthetic evaluation browser commands',()=>{
   expect(await location(()=>tryAgentCandidateAction(form()))).toBe('/assistant');
   expect(boundary.trial).toHaveBeenCalledWith(ctx,{fixtureId:'own-leave',consent:expect.objectContaining({synthetic:true,maxRequests:1})});
  });
+ it('captures explicitly selected own signal IDs before session authentication',async()=>{
+  let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
+  boundary.session.mockImplementationOnce(async()=>{entered();await resume;return ctx;});const input=form();input.append('signalId','original');const pending=location(()=>createAgentCandidateAction(input));
+  await ready;input.set('signalId','retargeted');release();expect(await pending).toBe('/assistant');
+  expect(boundary.create).toHaveBeenCalledWith(ctx,{version:2,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'},signalIds:['original']});
+ });
  it('captures selection and limits before the authenticated session await',async()=>{
   let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
   boundary.session.mockImplementationOnce(async()=>{entered();await resume;return ctx;});const input=form(),pending=location(()=>promoteAgentCandidateAction(input));

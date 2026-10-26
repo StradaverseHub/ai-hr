@@ -13,8 +13,8 @@ import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
-function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,
- candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress}],promotions:[]};}
+function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],
+ candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress,verifiedSignalCount:null}],promotions:[]};}
 beforeEach(()=>{state.locale='en';});afterEach(cleanup);
 describe('human evaluation scope, consent and authenticated progress',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s shows only its fixed trial questions and the real per-click request cap',async locale=>{
@@ -28,6 +28,12 @@ describe('human evaluation scope, consent and authenticated progress',()=>{
   expect(result.container.textContent).toContain(scope.progress.replace('{completed}','12').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));
   for(const checkbox of result.container.querySelectorAll<HTMLInputElement>('input[name="consented"]'))expect(checkbox.required).toBe(true);
   expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
+ });
+ it('offers only explicit own feedback selections and distinguishes verified zero from missing evidence',async()=>{
+  const data=view(null);data.ownSignalChoices=[{id:'own-signal',outcome:'helpful',createdAt:'2026-10-26T00:00:00Z'}];data.candidates[0].verifiedSignalCount=0;
+  const result=render(await ModuleAgentReview({view:data}));const selected=result.container.querySelector<HTMLInputElement>('input[name="signalId"]')!;
+  expect(selected.value).toBe('own-signal');expect(selected.checked).toBe(false);expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.signalsConsent);
+  expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.signalsCount.replace('{count}','0'));
  });
  it('keeps absent authenticated evidence unknown rather than displaying zero completed or failed cases',async()=>{
   const result=render(await ModuleAgentReview({view:view(null)}));expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.progressUnknown);

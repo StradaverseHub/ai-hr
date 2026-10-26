@@ -18,10 +18,12 @@ export async function ModuleAgentReview({view}:{view:View}){
     <input type="hidden" name="version" value={view.nextVersion}/>
     <label className="block text-sm">{t('variant')}<select name="variant" className={`${inputCls} mt-1 w-full`}>
      <option value="concise_v1">{t('concise')}</option><option value="explicit_scope_v1">{t('explicit')}</option>
-    </select></label><button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
+    </select></label>
+    {view.ownSignalChoices.length>0&&<fieldset className="space-y-2"><legend className="text-sm">{t('signalsTitle')}</legend><p className="text-xs text-muted-foreground">{t('signalsConsent')}</p>{view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" name="signalId" value={signal.id}/><span>{t(`signal_${signal.outcome}`)}</span></label>)}</fieldset>}
+    <button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    <div className="space-y-1"><h3 className="text-sm font-medium">{t('candidates')}</h3>
-    {view.candidates.length?view.candidates.map(row=><div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p>
+    {view.candidates.length?view.candidates.map(row=><div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p><p>{row.verifiedSignalCount===null?t('signalsUnknown'):t('signalsCount',{count:row.verifiedSignalCount})}</p>
      {!row.own&&row.kind==='read_plan_prompt_v1'&&<p>{row.progress?t('progress',{completed:row.progress.completedCases,total:row.progress.totalCases,
       failures:row.progress.knownFailures,state:t(row.progress.state==='complete'?'state_complete':'state_incomplete')}):t('progressUnknown')}</p>}
     </div>):<p className="text-xs text-muted-foreground">{t('empty')}</p>}
