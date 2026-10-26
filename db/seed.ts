@@ -2,10 +2,14 @@
  * Demo seed for local dev (resets the dev DB to a known state).
  * Run: `pnpm db:seed`  — structural data via the owner role, employees via the real
  * hireEmployee service (so the seed also exercises the service path).
+ * Existing application tenants with AI review custody now REFUSE even for demo --reseed and the
+ * foreign-tenant override. Offline maintenance is a separate operator procedure; this script cannot
+ * establish it. An empty application database (reserved system tenant only) can still bootstrap.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
+import { assertAiCustodyResetAllowed } from './seed-ai-custody-guard';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
@@ -54,6 +58,11 @@ const TABLES = [
 ];
 
 async function main() {
+  // An existing AI application tenant requires separately established offline maintenance. This
+  // destructive multi-connection fixture cannot establish that contract, even with --reseed or the
+  // foreign-tenant override. Never erase retained reviews/canonical receipts as a demo reset.
+  await assertAiCustodyResetAllowed(owner.db);
+
   // R4 — the only signal that is about the DATABASE rather than about an env file somebody copied.
   // Read through the owner client (no RLS, no tenant context) so it sees every tenant, and read it
   // here rather than at module load because it is the last thing that happens before the TRUNCATE.
