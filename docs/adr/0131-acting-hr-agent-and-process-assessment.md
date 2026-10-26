@@ -1959,3 +1959,21 @@ provider API calls, registry/config/tenant enablement or HR data transfer occurr
 Actual adapter registration, secure tenant routing/key configuration, pre-provider
 fresh permission/minimal-field enforcement, usage settlement, privacy/security tests,
 model/capability evaluation and workspace integration remain required before release.
+
+
+Employment fixed-shift / schedule-group source intervals (UNRUN)
+
+`assignEmployeeShift` and the supplied-transaction `setEmploymentScheduleGroupTx`
+now capture input/context and own the existing Access workforce-write barrier plus
+shared leave configuration/employee interval BEFORE original employment, shift,
+rule/eligibility facts and profile updates/events. The public group wrapper captures
+before opening its transaction. The bulk group owner captures its array/context and
+owns the complete ordered subject set before the first per-employee call, preserving
+its existing one-transaction behavior and canonical refusal rules. No work-week,
+rotation, eligibility, inheritance or audit calculation was replaced.
+Four actual real-employee fixed/public-group/callerTx/bulk cases are authored: held
+last subject, unchanged employment/events, earlier ownership free after rollback,
+release and intended update. ALL UNRUN; AST syntax/diff only. Dated shift arrangement,
+master shift/rule/rotation edits, generator source planning and other earlier writers
+remain pending. Existing bulk/backfill consumers still require verification. This is
+not universal protection, a runtime security pass or readiness to expose own-leave.

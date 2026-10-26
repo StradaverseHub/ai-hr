@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { ensureStandardRule } from '../core/attendance-rule';
 import { saveScheduleGroupControl } from '../core/schedule-group-controls';
-import { createShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster } from '../core/roster';
+import { createShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -66,5 +66,46 @@ describe('roster source participants', () => {
     else if (command === 'assign-bulk' || command === 'rest-bulk') expect(after.roster.filter(row => row.shiftDate === date)).toHaveLength(2);
     else expect(after.roster.find(row => row.employmentId === last && row.shiftDate === date))
       .toMatchObject(command === 'assign' ? { shiftId: shift.id, isRestDay: false } : { shiftId: null, isRestDay: true });
+  });
+});
+
+/** Actual fixed-shift and schedule-group owner cases, authored UNRUN. */
+describe('employment schedule source participants', () => {
+  it.each(['backup', 'group', 'group-caller-tx', 'group-bulk'] as const)
+  ('%s refuses with unchanged employment/events under held last subject, then applies after release', async command => {
+    const ctx = adminCtx(b), rule = await ensureStandardRule(ctx), today = todayInKualaLumpur();
+    const shift = await createShift(ctx, { name: 'Fictional Protected Backup', code: 'FPB', companyId: b.companyId,
+      startTime: '09:00', endTime: '18:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) ids.push((await hireEmployee(ctx, { person: { fullName: 'Fictional Schedule Owner',
+      primaryEmail: `schedule-owner-${randomUUID()}@t.local` }, companyId: b.companyId, departmentId: b.deptA,
+      employmentType: 'full_time', hiredOn: today })).employmentId);
+    ids.sort(); const first = ids[0], last = ids[1];
+    const mutate = () => command === 'backup'
+      ? assignEmployeeShift(ctx, { employmentId: last, shiftType: 'fixed', shiftId: shift.id })
+      : command === 'group-bulk' ? setEmploymentScheduleGroupBulk(ctx, { employmentIds: ids, attendanceRuleId: rule.id })
+        : command === 'group-caller-tx' ? withTenant(ctx, tx => setEmploymentScheduleGroupTx(tx, ctx, { employmentId: last, attendanceRuleId: rule.id }))
+          : setEmploymentScheduleGroup(ctx, { employmentId: last, attendanceRuleId: rule.id });
+    const state = async () => ({
+      employments: await owner.db.select().from(schema.employment).where(eq(schema.employment.tenantId, b.tenantId)).orderBy(schema.employment.id),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned schedule handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [last]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started; await expect(mutate()).rejects.toThrow('Leave source is unavailable'); expect(await state()).toEqual(before);
+      await withTenant(ctx, tx => lockLeaveDependenciesTx(tx, b.tenantId, [first]));
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await mutate(); const after = await state();
+    expect(after.events.length).toBeGreaterThan(before.events.length);
+    if (command === 'backup') expect(after.employments.find(row => row.id === last)).toMatchObject({ defaultShiftId: shift.id, shiftType: 'fixed' });
+    else {
+      const changed = command === 'group-bulk' ? ids : [last];
+      for (const id of changed) expect(after.employments.find(row => row.id === id)?.attendanceRuleId).toBe(rule.id);
+    }
   });
 });

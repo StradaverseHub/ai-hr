@@ -1606,6 +1606,8 @@ export function setEmploymentScheduleGroup(
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, (tx) => setEmploymentScheduleGroupTx(tx, ctx, p));
 }
 
@@ -1630,6 +1632,10 @@ export async function setEmploymentScheduleGroupTx(
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
   const ruleId = p.attendanceRuleId?.trim() || null;
   const [emp] = await tx
     .select({ id: employment.id, before: employment.attendanceRuleId })
@@ -1744,9 +1750,13 @@ export async function setEmploymentScheduleGroupBulk(
   ctx: SessionContext,
   p: { employmentIds: readonly string[]; attendanceRuleId: string | null },
 ): Promise<{ requested: number; changed: number; unchanged: number }> {
+  p={...p,employmentIds:p.employmentIds.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const ids = [...new Set(p.employmentIds.map((v) => v.trim()).filter(Boolean))].sort();
   if (ids.length === 0) throw new NoEmploymentsSelectedError();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
     let changed = 0;
     for (const employmentId of ids) {
       try {
@@ -1837,9 +1847,13 @@ export async function assignEmployeeShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftType: EmployeeShiftType; shiftId: string | null },
 ): Promise<{ id: string }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const shiftId = p.shiftId || null;
   if (!shiftId) throw new BackupShiftRequiredError();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         id: employment.id,
