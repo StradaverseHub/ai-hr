@@ -1,4 +1,5 @@
-import {workforceEmploymentPredicate} from './workforce-access';
+import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
@@ -851,6 +852,20 @@ export type PayrollRunEmployeeRow = {
  * predicate, so a status filter narrowing this list is a visible user choice, not a silent drop. Read-only
  * — no DomainEvent (derived recomputation, substrate's documented skip).
  */
+/** Exact original wizard membership, shared with the minimal human run selector. Current company
+ * IDs are intentional: do not offer historical-company subjects this CREATE source cannot accept. */
+export function payrollRunCurrentCompanyPeriodPredicate(companyIds:string[],payPeriod:string){
+ const [year,month1]=payPeriod.split('-').map(Number),periodStart=`${payPeriod}-01`,periodEnd=`${payPeriod}-${String(daysInMonth(year,month1)).padStart(2,'0')}`;
+ return and(inArray(employment.companyId,companyIds),lte(employment.hiredOn,periodEnd),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)));
+}
+/** Same-Tx minimal period candidates only AFTER the caller's fresh native company/field guard.
+ * Literal text search has no filter language/wildcard expansion, contact lookup or salary query. */
+export async function reviewedPayrollRunEmployeeChoicesTx(tx:Tx,supplied:SessionContext,input:{companyId:string;payPeriod:string;query:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...input};await assertReviewedPayrollScopeCompanyTx(tx,ctx,p.companyId);await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');const q='%'+p.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
+ const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,fullName:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId))
+ .where(and(payrollRunCurrentCompanyPeriodPredicate([p.companyId],p.payPeriod),workforceEmploymentPredicate(sql`${employment.id}`,'view',[p.companyId]),sql`(${person.fullName} ilike ${q} escape ${'\\'} or ${employment.employeeCode} ilike ${q} escape ${'\\'})`)).orderBy(person.fullName,employment.employeeCode,employment.id).limit(21);
+ return{employees:rows.slice(0,20),truncated:rows.length>20};
+}
 export function listEmployeesForPayrollRun(
   ctx: SessionContext,
   companyIds: string | string[],
@@ -862,9 +877,6 @@ export function listEmployeesForPayrollRun(
   const ids = Array.isArray(companyIds) ? companyIds : [companyIds];
   return withTenant(ctx, async (tx) => {
     if (ids.length === 0) return [];
-    const [year, month1] = payPeriod.split('-').map(Number);
-    const periodStart = `${payPeriod}-01`;
-    const periodEnd = `${payPeriod}-${String(daysInMonth(year, month1)).padStart(2, '0')}`;
     const currentAssignment = and(
       eq(assignment.employmentId, employment.id),
       isNull(assignment.validTo),
@@ -909,11 +921,7 @@ export function listEmployeesForPayrollRun(
       .leftJoin(compensation, currentComp)
       .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
       .where(
-        and(
-          inArray(employment.companyId, ids),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-        ),
+        payrollRunCurrentCompanyPeriodPredicate(ids,payPeriod),
       )
       .orderBy(company.legalName, person.fullName);
     return rows as PayrollRunEmployeeRow[];
