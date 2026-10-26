@@ -58,7 +58,12 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   const mine=await getMyLetter(firstSelf,first.record.id);await acknowledgeMyLetter(firstSelf,{letterId:first.record.id,expectedArtifactHash:mine.artifact.contentHash,action:'acknowledge',intent:'I acknowledge this exact issued letter'});
   await owner.db.update(s.letterJob).set({dueAt:sq`now()`}).where(and(eq(s.letterJob.letterId,first.record.id),eq(s.letterJob.kind,'acknowledgementReminder')));expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,cancelled:1,failed:0});
   await issueLetter(ctx,{letterId:second.record.id,expectedRevisionId:second.revision!.id,expectedLockVersion:second.record.lockVersion+1});await voidLetter(ctx,{letterId:second.record.id,expectedLockVersion:second.record.lockVersion+2,reason:'Withdraw the incorrect issued letter before delivery'});
-  expect((await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,second.record.id))).every(job=>job.status==='cancelled')).toBe(true);expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});expect(await listNotifications(secondSelf)).toHaveLength(0);
+  const voidJobs=await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,second.record.id));
+  // The creator's approval notice was already projected before issue/void. Keep its
+  // completed audit evidence; only pending delivery and reminder work is cancelled.
+  expect(voidJobs.filter(job=>job.status==='completed')).toHaveLength(1);expect(voidJobs.find(job=>job.status==='completed')?.payload).toMatchObject({purpose:'creatorDecision',outcome:'approved'});
+  const cancelledJobs=voidJobs.filter(job=>job.status!=='completed');expect(cancelledJobs.length).toBeGreaterThan(0);expect(cancelledJobs.every(job=>job.status==='cancelled')).toBe(true);expect(cancelledJobs.some(job=>job.kind==='acknowledgementReminder')).toBe(true);
+  expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});expect(await listNotifications(secondSelf)).toHaveLength(0);
  });
 
  it('projects durable portal work to an approver account without employment and rejects forged bell rows',async()=>{
