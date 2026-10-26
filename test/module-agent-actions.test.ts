@@ -128,3 +128,10 @@ it('offers only the connected human Knowledge Base review page, never model-auth
  for(const extra of [{title:'generated policy'},{body:'model HR claims'},{audience:'all'},{authorId:'posted'},{upload:'bytes'},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'knowledge_base',action:'knowledge_base.article.create',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'knowledge_base',action:'knowledge_base.article.create',phase:'confirm'})).toThrow();
 });
+
+it('connects human equipment acknowledgement without granting lifecycle provisioning or model confirmation',()=>{
+ expect(getModuleAgentAction('lifecycle','lifecycle.acknowledgement.submit')).toMatchObject({owner:'lifecycle',publicBoundary:'core/lifecycle-self.ts#submitMyAcknowledgement',prepare:{status:'implemented',adapter:'module_lifecycle_ack_review_v1'},confirm:{status:'implemented',inputSchema:'LifecycleAckReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'lifecycle',action:'lifecycle.acknowledgement.submit',phase:'prepare'})).toEqual({kind:'prepare',module:'lifecycle',action:'lifecycle.acknowledgement.submit',adapter:'module_lifecycle_ack_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{caseId:'posted'},{serialNumber:'invented'},{acknowledged:true},{employmentId:'other'},{allocateAsset:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'lifecycle',action:'lifecycle.acknowledgement.submit',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'lifecycle',action:'lifecycle.acknowledgement.submit',phase:'confirm'})).toThrow();
+});
