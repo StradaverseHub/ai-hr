@@ -1,7 +1,7 @@
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
-import { businessUnit, payslipInformationSetting } from '../db/schema';
+import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch } from '../db/schema';
 /**
  * Payroll Transaction View (feedback a4a05174) — the centralized, READ-ONLY transaction inquiry.
  *
@@ -3087,8 +3087,9 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
   const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId,
     period: payrollBatch.payPeriod, runType: payrollBatch.runType, status: payrollBatch.status,
-    needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollBatch)
+    needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollHistoryEffectiveBatch)
     .where(and(eq(payrollBatch.tenantId, ctx.tenantId), inArray(payrollBatch.companyId, [...p.companyIds]),
+      or(isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.employeeCount}>0`),
       inArray(payrollBatch.payPeriod, [p.previousPeriod, p.currentPeriod]),
       p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined))
     .orderBy(asc(payrollBatch.companyId), asc(payrollBatch.payPeriod), asc(payrollBatch.runSeq)).limit(10001);

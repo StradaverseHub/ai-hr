@@ -7,6 +7,7 @@ import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHi
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
+import {payrollComparisonSourcesTx} from '../core/payroll-view';
 import {myReleasedPayslipRuns,dashboardStats} from '../core/read';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
@@ -66,6 +67,15 @@ describe('immutable payroll history correction and recovery',()=>{
   await expect(confirm(b)).rejects.toThrow(/changed/);
   await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/later correction/);
   expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
+ });
+ it('compares only effective imported runs and exact headcounts across correction and recovery',async()=>{
+  const first=await upload();await confirm(first);const next=`${year}-02`;
+  const second=await previewPayrollHistoryUpload(ctx,{name:'february.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('4000.00').map(row=>row.map((cell,index)=>index===1?next:cell))]))});await confirm(second);
+  const compare=()=>withTenant(ctx,tx=>payrollComparisonSourcesTx(tx,ctx,{companyIds:[b.companyId],previousPeriod:period,currentPeriod:next,runType:'all',payItemCode:'BASIC'}));
+  expect((await compare()).sources.map(row=>row.amount).sort()).toEqual(['4000.00','5000.00']);
+  const correction=await upload('6000.00');await confirm(correction);const changed=await compare();expect(changed.runs).toHaveLength(2);expect(changed.sources.map(row=>row.amount).sort()).toEqual(['4000.00','6000.00']);
+  const recovery=await previewPayrollHistoryRevert(ctx,correction.attemptId);await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash);
+  const restored=await compare();expect(restored.runs).toHaveLength(2);expect(restored.sources.map(row=>row.amount).sort()).toEqual(['4000.00','5000.00']);
  });
  it('binds immutable snapshot evidence to actual payroll money and its validated attempt',async()=>{
   const first=await upload();await confirm(first);
