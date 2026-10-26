@@ -106,3 +106,22 @@ policy. It uses the actual `run-unit.mjs` manifest reconstruction, closed databa
 original disk headroom guard and before/after health records. No APT install, test removal,
 time-budget exclusion or release receipt is introduced. Raw full-browser reports use diagnostic
 artifact names and cannot substitute for a trusted complete normal staging witness.
+
+Complete suite run [40337303924](https://github.com/StradaverseHub/ai-hr/actions/runs/40337303924)
+succeeded at controller `fb2ada14640b987c2058fe01df863c2d86a7fcfa`, candidate2127, baseline2127.
+All six report/binding archives were independently authenticated by GitHub digest/size. The strict
+existing `verifyUnitReport` independently accepted18original files and259passing assertions in
+each engine (54file executions/777assertions total), with no failed/pending/todo/omitted cases and
+healthy before/after resource records. The complete diagnostic took160seconds including its
+queue, resolve, image pull, unchanged web/mobile install, all browser cases, artifacts and cleanup.
+Individual jobs took133–143seconds; image initialization27–37seconds, dependency install13–18,
+and original browser cases36–42. This is browser-only evidence, not full CI or deployment.
+
+The prepared v13 normal workflow now uses that same pinned image and shared dependency setup,
+keeps all three original units, two workers and the existing mandatory disk/health guard, and
+retains the Firefox owned-home repair. It removes repeated APT/browser installation from those
+jobs only. Package/image version drift refuses before tests. The other test, compiler, build,
+migration, report verification, deployment and cleanup requirements remain mandatory. The early
+rsync capability cases join mandatory controller checks. This version is not yet published to
+main/alpha or accepted as a complete representative release; a fresh controller check and full
+new-policy measurement remain required. No normal runner size or spending limit is increased.
