@@ -57,6 +57,19 @@ export async function ownClockReceipt(ctx: SessionContext, requestId: string,sel
   });
 }
 
+/** Native recovery binds the immutable capture to its original actor as well as own employment. */
+export async function ownNativeClockReceipt(ctx:SessionContext,employmentId:string,requestId:string){
+  if(!ctx.userId||!UUID.test(requestId))return null;
+  const me=(await myEmployments(ctx)).find(e=>e.employmentId===employmentId);
+  if(!me)return null;
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.select({capture:attendanceClockCapture}).from(attendanceClockCapture)
+      .innerJoin(domainEvent,and(eq(domainEvent.aggregateId,attendanceClockCapture.id),eq(domainEvent.aggregateType,'attendance-clock-capture'),eq(domainEvent.eventType,'attendance.clock.captured')))
+      .where(and(eq(attendanceClockCapture.employmentId,me.employmentId),eq(attendanceClockCapture.requestId,requestId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.actorId,ctx.userId!))).limit(1);
+    return row?publicReceipt(row.capture):null;
+  });
+}
+
 /**
  * r423 — the employee's "Use Geofencing for Clocking" switch decides the geofence here, as it does for every
  * other punch (core/attendance.ts resolveGeofence). ON: the position must fall inside an active assigned

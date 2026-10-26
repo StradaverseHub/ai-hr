@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 import {
-  TasksResponse, MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
+  SubmissionReceiptResponse, TasksResponse, MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -24,6 +24,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'submission-receipt': SubmissionReceiptResponse;
   tasks: TasksResponse;
   clock:ClockResponse; team:TeamResponse; 'leave-options':LeaveOptionsResponse; 'leave-requests':LeaveRequestsResponse;
   design: MobileDesignResponse;
@@ -42,6 +43,7 @@ function url(path: string, params: Record<string, string | undefined>): string {
 }
 
 const responses = {
+  'submission-receipt': SubmissionReceiptResponse,
   tasks: TasksResponse, clock: ClockResponse, team: TeamResponse, 'leave-options': LeaveOptionsResponse,
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,
   payslips: PayslipsResponse, leave: LeaveResponse, notifications: NotificationsResponse,

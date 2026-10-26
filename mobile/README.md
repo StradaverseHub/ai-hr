@@ -317,3 +317,13 @@ results immediately. Unmounted requests are cancelled. Writes retain explicit im
 Multipart attachments expose actual file bytes with their declared MIME, as required by Expo fetch;
 URI-only React Native file parts are not accepted by that transport. Verify this on signed binaries
 and through required/optional photo and document flows before distribution.
+
+### Submission receipt lookup
+
+`GET /api/mobile/v1/submission-receipt` resolves a clock or leave submission by its original request
+reference and own active employment. Both reads also require the original authenticated actor.
+Clock lookup reads the retained capture, independent of the current attendance-day projection;
+leave lookup reads the original transactional event receipt, independent of the latest history page.
+The existing Check receipt controls now use this endpoint. An unknown reference stays uncertain and
+never authorizes a new command or reports success. This read-only lookup is one part of recovery:
+the encrypted restart journal and cold-offline presentation remain separate implementation work.

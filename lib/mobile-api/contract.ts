@@ -190,6 +190,13 @@ export const LeaveResult=z.discriminatedUnion('outcome',[
 ]);
 export type LeaveResult=z.infer<typeof LeaveResult>;
 
+/** Independent receipt lookup. No current-day filter, mutable status or submitted attachment is needed. */
+export const SubmissionReceiptResponse=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),receipt:ClockReceipt.nullable()}),
+  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),receipt:LeaveResult.options[0].nullable()}),
+]);
+export type SubmissionReceiptResponse=z.infer<typeof SubmissionReceiptResponse>;
+
 /** Read-only approval inbox; decisions retain their existing web workflow. */
 export const TasksResponse = z.object({ total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().uuid(), kind: z.enum(['leave', 'leaveCancellation', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview']), subject: z.string().nullable() })) });
 export type TasksResponse = z.infer<typeof TasksResponse>;

@@ -10,7 +10,7 @@ import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(){
-  let drafts:any,sequence=0;const reload=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
+  let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
   const session={employmentId:'own',status:'signedIn',signOut:vi.fn()};
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
@@ -20,12 +20,12 @@ function fixture(){
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
-  const shared={...base,'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiPost:post,useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  const shared={...base,'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:post,useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,capture,reload,teamState,drafts:()=>drafts};
+  return {App,post,get,capture,reload,teamState,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
@@ -62,5 +62,24 @@ describe('native team availability and refresh',()=>{
   });
   it('Home refresh reloads the shared clock read without submitting or discarding a draft',async()=>{
     const f=fixture(),ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');const id=f.drafts().clock.requestId;ui.rerender(<f.App kind="clock" refreshToken={1}/>);expect(f.reload).toHaveBeenCalledTimes(1);expect(f.drafts().clock.requestId).toBe(id);expect(f.post).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('explicit receipt lookup',()=>{
+  it('clock Check receipt resolves the same reference without resubmitting its command',async()=>{
+    const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    f.post.mockRejectedValueOnce(new errors.UnavailableError());fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('checkReceipt');
+    const id=f.drafts().clock.requestId;f.get.mockResolvedValueOnce({kind:'clock',requestId:id,receipt:{recordedAt:'2026-01-01T01:00:00Z'}});
+    fireEvent.click(screen.getByText('checkReceipt'));await screen.findByText('clockRecorded');expect(f.post).toHaveBeenCalledTimes(1);
+    expect(f.get).toHaveBeenCalledWith('submission-receipt',{kind:'clock',requestId:id,employmentId:'own'});
+  });
+  it('leave Check receipt resolves its accepted response instead of merely refreshing history',async()=>{
+    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));f.post.mockResolvedValueOnce({days:1,overrides:[]});
+    fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');f.post.mockRejectedValueOnce(new errors.UnavailableError());
+    fireEvent.click(screen.getByText('submitRequest'));await screen.findByText('checkReceipt');const id=f.drafts().leave.command.requestId;
+    f.get.mockResolvedValueOnce({kind:'leave',requestId:id,receipt:{outcome:'accepted',id:'accepted',holidayWarning:false,maternityAllowanceWarning:false}});
+    fireEvent.click(screen.getByText('checkReceipt'));await screen.findByText('requestRecorded');expect(f.post).toHaveBeenCalledTimes(2);
+    expect(f.get).toHaveBeenCalledWith('submission-receipt',{kind:'leave',requestId:id,employmentId:'own'});
   });
 });

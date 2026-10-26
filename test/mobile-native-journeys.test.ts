@@ -19,6 +19,7 @@ const leave=await import('../app/api/mobile/v1/leave-requests/route');
 const options=await import('../app/api/mobile/v1/leave-options/route');
 const preview=await import('../app/api/mobile/v1/leave-preview/route');
 const team=await import('../app/api/mobile/v1/team/route');
+const receipts=await import('../app/api/mobile/v1/submission-receipt/route');
 let base:Base;
 const today=()=>todayInKualaLumpur();
 function nextMonday(){const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+((8-d.getUTCDay())%7||7));return d.toISOString().slice(0,10);}
@@ -150,5 +151,43 @@ describe('native subjects, teams and bearer boundary',()=>{
     const a=await hire('Offboarded Native');caller=a.ctx;blocked=true;
     for(const [handler,path] of [[clock.GET,'clock'],[leave.GET,'leave-requests'],[options.GET,'leave-options'],[team.GET,'team'],[clock.POST,'clock'],[leave.POST,'leave-requests'],[device.POST,'clock-device']] as const){const r=await handler(new Request('https://hr.example.com/api/mobile/v1/'+path,{headers:{cookie:'dev_user=admin'}}));expect(r.status).toBe(401);expect(r.headers.get('cache-control')).toBe('no-store');}
     expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);expect(await owner.db.select().from(schema.leaveRequest)).toHaveLength(0);
+  });
+});
+
+
+describe('native immutable receipt recovery',()=>{
+  it('recovers a clock receipt after midnight even when the current-day dashboard has no capture',async()=>{
+    const a=await hire('Receipt Clock');caller=a.ctx;const command=intent();
+    const accepted=await call(clock.POST,'clock',command);expect(accepted.body.outcome).toBe('accepted');
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(Date.now()+86400000);
+    try{
+      expect((await call(clock.GET,'clock')).body.state.captures).toHaveLength(0);
+      const recovered=await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}&employmentId=${a.employmentId}`);
+      expect(recovered.status).toBe(200);expect(recovered.body).toEqual({kind:'clock',requestId:command.requestId,receipt:accepted.body.receipt});
+      expect(recovered.headers.get('cache-control')).toBe('no-store');
+    }finally{vi.useRealTimers();}
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
+  });
+  it('returns the original actor-scoped leave response without submitting a second request',async()=>{
+    const a=await hire('Receipt Leave');caller=a.ctx;await fund(a.employmentId);const command=application();
+    const accepted=await call(leave.POST,'leave-requests',command);expect(accepted.body.outcome).toBe('accepted');
+    const recovered=await call(receipts.GET,`submission-receipt?kind=leave&requestId=${command.requestId}&employmentId=${a.employmentId}`);
+    expect(recovered.body).toEqual({kind:'leave',requestId:command.requestId,receipt:accepted.body});
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.leave.submitted'));
+    expect(events).toHaveLength(1);expect(await owner.db.select().from(schema.leaveRequest)).toHaveLength(1);
+  });
+  it('a colleague cannot recover a receipt by guessing its UUID or selecting its employee',async()=>{
+    const a=await hire('Receipt Owner'),b=await hire('Receipt Peer');caller=a.ctx;const command=intent();
+    expect((await call(clock.POST,'clock',command)).body.outcome).toBe('accepted');caller=b.ctx;
+    const guessed=await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`);
+    expect(guessed.body.receipt).toBeNull();
+    expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}&employmentId=${a.employmentId}`)).status).toBe(400);
+    expect(JSON.stringify(guessed.body)).not.toContain(a.employmentId);
+  });
+  it('rejects malformed/ambiguous selectors and returns null for a valid unknown reference',async()=>{
+    const a=await hire('Receipt Validation');caller=a.ctx;
+    for(const query of ['kind=clock&requestId=bad',`kind=clock&kind=leave&requestId=${randomUUID()}`,`kind=unknown&requestId=${randomUUID()}`])expect((await call(receipts.GET,'submission-receipt?'+query)).status).toBe(400);
+    expect((await call(receipts.GET,`submission-receipt?kind=leave&requestId=${randomUUID()}`)).body.receipt).toBeNull();
+    blocked=true;expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${randomUUID()}`)).status).toBe(401);
   });
 });

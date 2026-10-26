@@ -4,7 +4,7 @@ import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
-import { apiPost,type LeaveOptionsResponse,type LeaveCommand } from './api';
+import { apiGet,apiPost,type LeaveOptionsResponse,type LeaveCommand } from './api';
 import { authGeneration,assertAuthGeneration } from './auth';
 import { appendAttachment } from './capture';
 import { useTenantDesign } from './design';
@@ -53,6 +53,18 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
       else putLeave({...draft,phase:'edit',message:result.message,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}},draft.command.requestId);
     }catch(e){putLeave(e instanceof RequestRejectedError?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
   }
+  async function recover(){
+    if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
+    try{
+      const result=await apiGet('submission-receipt',{kind:'leave',requestId:draft.command.requestId,employmentId:options.employmentId});assertAuthGeneration(owner);
+      if(result.kind==='leave'&&result.receipt){
+        if(putLeave({...draft,phase:'done',document:undefined,message:result.receipt.holidayWarning||result.receipt.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId)){
+          removeLocalFile(draft.document);onSubmitted();
+        }
+      }else putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);
+    }catch(e){putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
+    finally{flight.current=false;}
+  }
   if(!draft)return <View style={{gap:10}}><Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('requestLeave')}</Text>{options.items.map(o=><Button key={o.id} title={o.name} kind="quiet" onPress={()=>begin(o.id)}/>)}</View>;
   if(draft.phase==='done')return <Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'600'}}>{t('requestRecorded')}</Text>{draft.message&&<Muted>{draft.message}</Muted>}<Button title={t('viewHistory')} onPress={()=>putLeave(null)}/></Card>;
   const reviewMode=draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting';
@@ -74,7 +86,7 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
       </View>)}
       <Muted>{t('reviewBeforeSubmit')}</Muted>
       <Button title={pending?t('requesting'):draft.phase==='uncertain'?t('retrySameClock'):t('submitRequest')} disabled={!!pending||!!missingConsent||!!blocked} onPress={()=>void submit()}/>
-      {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={onSubmitted} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
+      {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={()=>void recover()} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
     </>:<>
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{selected?.durations.map(d=><Button key={d} title={t(durationLabels[d])} kind={d===draft.command.durationType?'primary':'quiet'} disabled={!!disabled} onPress={()=>edit({durationType:d,endDate:d==='full_day'?draft.command.endDate:draft.command.startDate})}/>)}</View>
       {field(t('startDate'),draft.command.startDate,v=>edit({startDate:v,...(draft.command.durationType!=='full_day'?{endDate:v}:{})}))}

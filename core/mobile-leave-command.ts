@@ -9,6 +9,22 @@ import { requestLeave } from '../packs/leave/service';
 import { LeaveResult,type LeaveCommand } from '../lib/mobile-api/contract';
 import { todayInKualaLumpur } from '../lib/hr-date';
 export class MobileLeaveReplayConflict extends Error{constructor(){super('This submission reference already recorded a different request. Review request history before creating a new application.');}}
+/** Recover only the original actor's receipt, independently of paged request history or its current status. */
+export async function ownMobileLeaveReceipt(ctx:SessionContext,employmentId:string,requestId:string){
+  if(!ctx.userId||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)))return null;
+  if(!(await myEmployments(ctx)).some(e=>e.employmentId===employmentId))return null;
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(
+      eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'mobile-leave-command'),
+      eq(domainEvent.aggregateId,requestId),eq(domainEvent.actorId,ctx.userId!),
+      eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'mobile.leave.submitted'),
+    )).limit(1);
+    if(!row)return null;
+    const response=LeaveResult.parse((row.payload as {response:unknown}).response);
+    if(response.outcome!=='accepted')throw new Error('Invalid persisted leave receipt');
+    return response;
+  });
+}
 export async function submitMobileLeave(ctx:SessionContext,employmentId:string,command:LeaveCommand,document?:{fileName:string;mimeType:string;content:Buffer}){
   if(!ctx.userId||!(await myEmployments(ctx)).some(e=>e.employmentId===employmentId))throw new Error('Own active employment required');
   const {requestId,...intent}=command;

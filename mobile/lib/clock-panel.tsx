@@ -3,7 +3,7 @@ import { useCallback,useEffect,useRef } from 'react';
 import { AppState,Image,Platform,Pressable,View } from 'react-native';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
-import { apiPost,useApi } from './api';
+import { apiGet,apiPost,useApi } from './api';
 import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
@@ -79,6 +79,18 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     }catch(e){if(e instanceof RequestRejectedError){removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t('genericError')});}else putClock({...draft,phase:'uncertain',message:t('clockUncertain')});if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
+  async function recover(){
+    if(flight.current||!identity||!draft?.requestId)return;
+    flight.current=true;const owner=authGeneration();
+    try{
+      const result=await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
+      if(result.kind==='clock'&&result.receipt){
+        if(putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},draft.requestId))removeLocalFile(draft.photo);
+        clock.reload();
+      }else putClock({...draft,message:t('clockUncertain')},draft.requestId);
+    }catch(e){putClock({...draft,message:t('clockUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
+    finally{flight.current=false;}
+  }
   function cancel(){removeLocalFile(draft?.photo);putClock(null);}
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
@@ -104,7 +116,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
           {current.attendancePhotoSetting==='optional'&&draft.phase==='review'&&<Button title={draft.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
           {current.deviceRequired&&!draft.deviceToken&&<><Muted>{t('registrationNotice')}</Muted><Button title={t('registerDevice')} onPress={()=>void register()}/></>}
         </Card>}
-        {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={clock.reload}/><Button title={t('retrySameClock')} onPress={()=>void submit()}/></>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} onPress={()=>void submit()}/></>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
         <Muted>{t('onlineClockOnly')}</Muted>
       </>}
