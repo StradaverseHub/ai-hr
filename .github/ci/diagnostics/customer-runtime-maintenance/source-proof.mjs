@@ -1,0 +1,27 @@
+/** Canonical read-only source/ledger proof for an existing retained baseline. */
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {resolve,join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+const [controller,privatePlan,retainedSource,sshConfig,output]=process.argv.slice(2);
+assert(output&&process.argv.length===7,'Usage: source-proof.mjs <controller> <read-only-plan> <retained-source> <SSH-config> <new-output>');
+const root=resolve(controller),plan=JSON.parse(readFileSync(privatePlan));
+const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();
+assert(git('rev-parse','HEAD')===plan.controller&&git('status','--porcelain')==='');
+const load=async name=>{const raw=await import(pathToFileURL(join(root,name)).href);return {...(raw.default??{}),...raw};};
+const official=await load('scripts/improve/release.ts');
+const {stagingTransport}=await load('.github/ci/staging-transport.mjs');
+const {verifyBaselineMigrationPreflight}=await load('.github/ci/staging-migration-ledger.mjs');
+const transport=stagingTransport(root,{...process.env,AIHR_SSH_CONFIG:resolve(sshConfig)});
+const ssh=(command,options={})=>execFileSync('ssh',transport.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:4*1024**2,...options});
+const state=official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
+assert(state.state==='ok'&&state.ref===plan.baseline&&state.built_ref===plan.baseline&&state.stale_build==='0'&&state.built_build_id===plan.snapshot.baseline.buildId);
+const checksumOutput=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,resolve(retainedSource))],{encoding:'utf8',timeout:120000,maxBuffer:8*1024**2});
+assert(checksumOutput==='','Actual retained baseline source checksum differs; no change made');
+const ledger=verifyBaselineMigrationPreflight({candidatePath:root,baseline:plan.baseline,ssh});
+assert(ledger.rows===plan.baselineMigrationRows);
+const proof={kind:'CANONICAL_READ_ONLY_BASELINE_SOURCE_AND_LEDGER',baseline:plan.baseline,buildId:state.built_build_id,checksumOutput,ledger,observedAt:new Date().toISOString(),hostWrites:false,dataWrites:false};
+const bytes=Buffer.from(JSON.stringify(proof,null,2)+'\n');writeFileSync(output,bytes,{flag:'wx',mode:0o600});
+console.log(JSON.stringify({...proof,evidenceSha256:createHash('sha256').update(bytes).digest('hex')}));

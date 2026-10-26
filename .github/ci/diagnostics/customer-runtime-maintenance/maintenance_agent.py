@@ -8,6 +8,7 @@ import base64
 import datetime as dt
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 
 VERSION = "22.23.3"
 NODE_SHA256 = "df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de"
@@ -132,13 +134,31 @@ def validate_plan(plan, now=None):
     db = plan.get("database", {})
     require(db.get("unfiltered") is True and db.get("readOnly") is True
             and db.get("migrationRows") == plan.get("baselineMigrationRows"), "Unfiltered baseline custody required")
-    require(isinstance(plan.get("expectedPnpmPath"), str)
-            and re.fullmatch(r"/[A-Za-z0-9_./-]+", plan["expectedPnpmPath"]), "Reviewed package-manager path required")
+    require(plan.get("expectedPnpmPath") == "/opt/node22/bin/pnpm", "Pinned target package-manager path required")
     return plan
 
 
 def stable_snapshot(snapshot):
     return {k: v for k, v in snapshot.items() if k != "observedAt"}
+
+
+def extract_verified_node_archive(archive, stage, expected_sha=NODE_SHA256):
+    require(sha(archive) == expected_sha, "Node archive SHA256 differs")
+    # Parse the exact verified bytes. Never reopen an archive pathname after hashing.
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:xz") as package:
+        members = package.getmembers()
+        require(len(members) < 20000, "Unbounded Node archive")
+        top = "node-v" + VERSION + "-linux-x64"
+        for member in members:
+            pieces = Path(member.name).parts
+            require(pieces and pieces[0] == top and not Path(member.name).is_absolute()
+                    and ".." not in pieces and (member.isfile() or member.isdir() or member.issym()),
+                    "Unexpected Node archive member")
+            if member.issym():
+                target = os.path.normpath(str(Path(member.name).parent / member.linkname))
+                require(not os.path.isabs(member.linkname) and target.startswith(top + "/"),
+                        "Node archive link escapes its root")
+        package.extractall(stage, filter="data")
 
 
 class Engine:
@@ -148,6 +168,7 @@ class Engine:
 
     def prepare(self):
         require(self.host.phase() is None, "Operation already exists")
+        self.host.fresh_source_guard()
         private = self.host.proposals()
         require(stable_snapshot(private["snapshot"]) == stable_snapshot(self.plan["snapshot"]),
                 "Actual baseline/proposal changed after review")
@@ -159,6 +180,7 @@ class Engine:
 
     def cutover(self):
         require(self.host.phase() == "prepared", "Preparation required")
+        self.host.fresh_source_guard()
         private = self.host.proposals()
         require(stable_snapshot(private["snapshot"]) == stable_snapshot(self.plan["snapshot"]),
                 "Baseline/proposal changed before service stop")
@@ -181,12 +203,14 @@ class Engine:
 
     def release_started(self):
         require(self.host.phase() == "ready-for-release", "Actual Node22 preflight required")
+        self.host.fresh_source_guard()
         self.host.require_inactive()
         self.host.assert_proposed_configuration()
         self.host.save_phase("release-started")
 
     def recover_before_release(self):
         require(self.host.phase() in PRE_RELEASE, "Automatic recovery forbidden after release started")
+        self.host.fresh_source_guard()
         if self.host.phase() == "prepared":
             self.host.assert_original_active()
             return {"phase": "prepared", "oldServiceStillActive": True, "node22Retained": True}
@@ -203,8 +227,9 @@ class Engine:
 
 
 class RealHost:
-    def __init__(self, plan, operation_dir, archive):
+    def __init__(self, plan, operation_dir, archive, source_proof_sha256):
         self.plan, self.root, self.archive = plan, Path(operation_dir), archive
+        self.source_proof_sha256 = source_proof_sha256
         self.env_path = "/opt/ai-hr/.env.production"
         self.dropin = "/etc/systemd/system/aihr.service.d/40-customer-node22.conf"
         require(str(self.root) == "/var/lib/aihr-runtime-maintenance/" + plan["operation"], "Wrong operation directory")
@@ -226,6 +251,22 @@ class RealHost:
 
     def proposals(self):
         return self.node(self.plan["proposalProgram"])
+
+    def fresh_source_guard(self):
+        # The approved terminal wrapper executes the real canonical rsync checksum
+        # immediately before this invocation; its exact freshly collected receipt
+        # is copied by the hash-bound root bootstrap, never accepted from old plan state.
+        data, info = read_regular(self.root / "fresh-source-proof.json")
+        require(info.st_uid == 0 and sha(data) == self.source_proof_sha256, "Fresh canonical source receipt differs")
+        proof = json.loads(data)
+        observed = dt.datetime.fromisoformat(proof["observedAt"].replace("Z", "+00:00"))
+        age = dt.datetime.now(dt.timezone.utc) - observed
+        require(dt.timedelta(seconds=-60) <= age <= dt.timedelta(seconds=120), "Fresh source observation expired")
+        expected = self.plan["baselineSourceProof"]
+        require(proof.get("kind") == "CANONICAL_READ_ONLY_BASELINE_SOURCE_AND_LEDGER"
+                and proof.get("baseline") == self.plan["baseline"] and proof.get("checksumOutput") == ""
+                and proof.get("ledger") == expected["ledger"] and proof.get("hostWrites") is False
+                and proof.get("dataWrites") is False, "Current source/migration custody differs")
 
     def database(self):
         return self.node(self.plan["databaseProgram"])
@@ -265,7 +306,16 @@ class RealHost:
                 "Private proposed bytes differ")
         exclusive(self.root / "proposed-environment.private", base64.b64decode(private["environment"]))
         exclusive(self.root / "proposed-unit.private", base64.b64decode(private["unit"]))
-        exclusive(self.root / "active-environment.private", base64.b64decode(private["activeEnvironment"]))
+        active = base64.b64decode(private["activeEnvironment"])
+        require(sha(active) == self.plan["snapshot"]["configuration"]["activeProcessEnvironmentSha256"],
+                "Captured process environment custody differs")
+        exclusive(self.root / "active-environment.private", active)
+        properties = self.unit_properties()
+        require(sha(json.dumps(properties, separators=(",", ":")).encode()) ==
+                self.plan["snapshot"]["configuration"]["unitPropertiesSha256"],
+                "Effective unit changed before private backup")
+        exclusive(self.root / "unit-properties.private.json", encoded(properties))
+        exclusive(self.root / "unit-environment.private.json", encoded(self.unit_environment()))
         exclusive(self.root / "backup.json", encoded(records))
         exclusive(self.root / "database-before.json", encoded(self.plan["database"]))
 
@@ -275,25 +325,14 @@ class RealHost:
         require(sha(archive) == NODE_SHA256, "Node archive SHA256 differs")
         stage = Path("/opt/.aihr-node22-" + self.plan["operation"])
         stage.mkdir(mode=0o700)
-        with tarfile.open(self.archive, "r:xz") as package:
-            members = package.getmembers()
-            require(len(members) < 20000, "Unbounded Node archive")
-            top = "node-v" + VERSION + "-linux-x64"
-            for member in members:
-                pieces = Path(member.name).parts
-                require(pieces and pieces[0] == top and not Path(member.name).is_absolute()
-                        and ".." not in pieces and (member.isfile() or member.isdir() or member.issym()),
-                        "Unexpected Node archive member")
-                if member.issym():
-                    target = os.path.normpath(str(Path(member.name).parent / member.linkname))
-                    require(not os.path.isabs(member.linkname) and target.startswith(top + "/"),
-                            "Node archive link escapes its root")
-            # The archive is hash-pinned; Python's data filter additionally excludes unsafe metadata.
-            package.extractall(stage, filter="data")
+        extract_verified_node_archive(archive, stage)
+        top = "node-v" + VERSION + "-linux-x64"
         os.rename(stage / top, "/opt/node22")
         stage.rmdir()
         os.chmod("/opt/node22", 0o755)
         fsync_directory("/opt")
+        self.command(["/opt/node22/bin/node", "/opt/node22/lib/node_modules/corepack/dist/corepack.js",
+                      "enable", "pnpm", "--install-directory", "/opt/node22/bin"])
 
     def verify_node_and_package_manager(self):
         runtime = json.loads(self.command(["/opt/node22/bin/node", "-p",
@@ -304,6 +343,7 @@ class RealHost:
         require(re.fullmatch(r"[a-z_][a-z0-9_-]*", user), "Reviewed ordinary service account required")
         result = self.command(["/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", "-i",
                                "PATH=/opt/node22/bin:/usr/local/bin:/usr/bin:/bin",
+                               "COREPACK_ENABLE_NETWORK=0",
                                self.plan["expectedPnpmPath"], "--version"])
         require(result.strip() == b"10.33.2", "Existing package manager differs; no implicit installation permitted")
 
@@ -333,6 +373,30 @@ class RealHost:
     def reload(self):
         self.command(["/usr/bin/systemctl", "daemon-reload"])
 
+    def unit_properties(self):
+        keys = ("User", "Group", "WorkingDirectory", "ExecStart", "ExecStartEx", "EnvironmentFiles",
+                "UnsetEnvironment", "FragmentPath", "DropInPaths", "ActiveState", "MainPID")
+        return {key: self.command(["/usr/bin/systemctl", "show", "aihr", "--property=" + key, "--value"]).decode().strip()
+                for key in keys}
+
+    def typed_service_property(self, name):
+        manager = json.loads(self.command(["/usr/bin/busctl", "--system", "--json=short", "call",
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "GetUnit", "s", "aihr.service"]))
+        require(manager.get("type") == "o" and len(manager.get("data", [])) == 1
+                and re.fullmatch(r"/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+", manager["data"][0]), "Typed unit differs")
+        return json.loads(self.command(["/usr/bin/busctl", "--system", "--json=short", "get-property",
+            "org.freedesktop.systemd1", manager["data"][0], "org.freedesktop.systemd1.Service", name]))
+
+    def unit_environment(self):
+        value = self.typed_service_property("Environment")
+        require(value.get("type") == "as", "Typed unit environment differs")
+        data = value["data"]
+        if len(data) == 1 and isinstance(data[0], list): data = data[0]
+        require(isinstance(data, list) and all(isinstance(x, str) and "=" in x for x in data), "Unit environment schema differs")
+        pairs = [entry.split("=", 1) for entry in data]
+        require(len(set(k for k, _ in pairs)) == len(pairs), "Duplicate unit environment")
+        return dict(pairs)
+
     def actual_preflight(self):
         self.assert_proposed_configuration()
         # Fixed reviewed checker source executes with real Node22, never a simulated process.version.
@@ -345,9 +409,28 @@ class RealHost:
         require(sha(read_regular(self.env_path)[0]) == self.plan["snapshot"]["proposal"]["environment"]["proposedSha256"]
                 and sha(read_regular(self.dropin)[0]) == self.plan["snapshot"]["proposal"]["unit"]["sha256"],
                 "Proposed configuration differs")
-        executable = self.command(["/usr/bin/systemctl", "show", "aihr.service", "--property=ExecStart", "--value"]).decode()
-        require(executable.count("path=/opt/node22/bin/node ;") == 1
-                and "/opt/node20/bin/node" not in executable, "Reloaded service executable differs")
+        before = json.loads(read_regular(self.root / "unit-properties.private.json")[0])
+        after = self.unit_properties()
+        for key in ("User", "Group", "WorkingDirectory", "EnvironmentFiles", "FragmentPath"):
+            require(after[key] == before[key], "Unrelated effective service property changed")
+        require(set(after["DropInPaths"].split()) == set(before["DropInPaths"].split()) | {self.dropin},
+                "Unexpected effective drop-in source")
+        require(set(after["UnsetEnvironment"].split()) == set(before["UnsetEnvironment"].split()) |
+                {"DEV_TENANT_ID", "DEV_USER_ID", "MIGRATION_DATABASE_URL"}, "Effective service credential exclusion differs")
+        argv = re.findall(r"argv\[\]=([^;]+?)\s*;", before["ExecStart"])
+        require(len(argv) == 1, "Original service arguments differ")
+        expected = argv[0].split(); expected[0] = "/opt/node22/bin/node"
+        typed = self.typed_service_property("ExecStartEx")
+        require(typed.get("type") == "a(sasasttttuii)", "Typed start schema differs")
+        rows = [v for v in (typed.get("data"), typed.get("data", [None])[0])
+                if isinstance(v, list) and len(v) == 1 and isinstance(v[0], list) and len(v[0]) == 10
+                and isinstance(v[0][1], list) and isinstance(v[0][2], list)]
+        require(len(rows) == 1 and rows[0][0][0] == expected[0] and rows[0][0][1] == expected
+                and rows[0][0][2] == [], "Reloaded service arguments or executable flags differ")
+        old_environment = json.loads(read_regular(self.root / "unit-environment.private.json")[0])
+        target = re.findall(r'^Environment="PATH=([^"\n]+)"$', read_regular(self.root / "proposed-unit.private")[0].decode(), re.M)
+        require(len(target) == 1, "Proposed executable search path differs")
+        require(self.unit_environment() == {**old_environment, "PATH": target[0]}, "Unrelated effective unit environment changed")
 
     def _records(self):
         return json.loads(read_regular(self.root / "backup.json")[0])
@@ -384,6 +467,14 @@ class RealHost:
         self.command(["/usr/bin/systemctl", "start", "aihr.service"], timeout=60)
 
     def assert_original_active(self):
+        for attempt in range(30):
+            try:
+                health = self.command(["/usr/bin/curl", "--max-time", "2", "--fail", "--silent", "--output",
+                                       "/dev/null", "--write-out", "%{http_code}", "http://127.0.0.1:3000/health"], timeout=3)
+                if health == b"200": break
+            except Refused:
+                pass
+            time.sleep(1)
         result = self.proposals()["snapshot"]
         require(result["baseline"]["sourceRef"] == self.plan["baseline"]
                 and result["baseline"]["buildId"] == self.plan["snapshot"]["baseline"]["buildId"]
@@ -399,6 +490,7 @@ def main():
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--human-approval", required=True)
     parser.add_argument("--archive", required=True)
+    parser.add_argument("--source-proof-sha256", required=True)
     args = parser.parse_args()
     require(os.geteuid() == 0, "Private terminal sudo is required")
     require(os.path.realpath(__file__) == __file__ and os.stat(__file__).st_uid == 0
@@ -415,7 +507,7 @@ def main():
             and isinstance(grant.get("humanApprovalReference"), str) and len(grant["humanApprovalReference"]) >= 12,
             "Explicit human maintenance approval for these exact artifacts required")
     directory = "/var/lib/aihr-runtime-maintenance/" + plan["operation"]
-    host = RealHost(plan, directory, args.archive)
+    host = RealHost(plan, directory, args.archive, args.source_proof_sha256)
     lock = os.open(Path(directory) / "operation.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

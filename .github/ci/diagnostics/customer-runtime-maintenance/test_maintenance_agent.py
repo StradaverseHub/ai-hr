@@ -2,10 +2,16 @@
 import copy
 import datetime as dt
 import importlib.util
+import io
 import os
 from pathlib import Path
 import tempfile
+import tarfile
 import unittest
+from unittest.mock import patch
+import types
+import sys
+import subprocess
 
 spec = importlib.util.spec_from_file_location("maintenance_agent", Path(__file__).with_name("maintenance_agent.py"))
 m = importlib.util.module_from_spec(spec)
@@ -20,7 +26,7 @@ def plan_fixture():
             "baselineSourceProof": {"baseline": "b" * 40, "checksumOutput": "", "evidenceSha256": "c" * 64},
             "snapshot": {"baseline": {"sourceRef": "b" * 40}, "proposal": {"releaseAuthorized": False}, "hostWrites": False},
             "database": {"unfiltered": True, "readOnly": True, "migrationRows": 3, "digest": "before"},
-            "expectedPnpmPath": "/usr/local/bin/pnpm",
+            "expectedPnpmPath": "/opt/node22/bin/pnpm",
             "witness": {"sha": "a" * 40, "controller": "a" * 40, "baseline": "b" * 40,
                         "result": "PASS", "policyVersion": "aihr-staging-ci/v14", "trustedFullEvidenceAuthenticated": True,
                         "runtime": {"node": m.VERSION, "abi": "127", "platform": "linux", "arch": "x64", "glibc": "2.39", "next": "16.3.8"}}}
@@ -41,6 +47,7 @@ class FakeHost:
         self.proposed = False
         self.release = False
         self.custody = True
+        self.source_matches = True
         self.fail = None
         self.after_stop = None
 
@@ -51,6 +58,10 @@ class FakeHost:
 
     def phase(self):
         return self.current
+
+    def fresh_source_guard(self):
+        self.record("fresh_source_guard")
+        m.require(self.source_matches, "Fixture app source changed with unchanged deployment markers")
 
     def proposals(self):
         self.record("proposals")
@@ -282,6 +293,105 @@ class InputAndFileTests(unittest.TestCase):
             with self.assertRaises(m.Refused):
                 m.atomic_replace(str(path), b"proposal", (b"original", before), "fictional")
             self.assertEqual(path.read_bytes(), b"other owner")
+
+
+class ArchiveTests(unittest.TestCase):
+    def archive(self, name, data=b"reviewed fixture"):
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode="w:xz") as archive:
+            member = tarfile.TarInfo(name); member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+        return output.getvalue()
+
+    def test_path_swapped_after_hash_cannot_substitute_archive_bytes(self):
+        top = "node-v" + m.VERSION + "-linux-x64"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); path = root / "archive.xz"
+            path.write_bytes(self.archive(top + "/bin/node", b"verified executable fixture"))
+            verified, _ = m.read_regular(path)
+            digest = m.sha(verified)
+            path.unlink(); path.write_bytes(self.archive(top + "/bin/node", b"substituted executable"))
+            stage = root / "stage"; stage.mkdir()
+            m.extract_verified_node_archive(verified, stage, expected_sha=digest)
+            self.assertEqual((stage / top / "bin/node").read_bytes(), b"verified executable fixture")
+
+    def test_archive_digest_mismatch_refuses_before_extraction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = self.archive("node-v" + m.VERSION + "-linux-x64/bin/node")
+            with self.assertRaises(m.Refused):
+                m.extract_verified_node_archive(payload, Path(directory), expected_sha="0" * 64)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+
+    def test_traversal_member_refuses_before_any_member_extracted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = self.archive("node-v" + m.VERSION + "-linux-x64/../../outside")
+            with self.assertRaises(m.Refused):
+                m.extract_verified_node_archive(payload, Path(directory), expected_sha=m.sha(payload))
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+class FreshSourceTests(unittest.TestCase):
+    def test_changed_app_source_with_unchanged_build_markers_prevents_prepare(self):
+        plan = plan_fixture(); host = FakeHost(plan); host.source_matches = False
+        with self.assertRaises(m.Refused): m.Engine(host, plan).prepare()
+        self.assertNotIn("backup", host.calls)
+        self.assertNotIn("install_node", host.calls)
+
+    def test_changed_app_source_with_unchanged_build_markers_prevents_cutover(self):
+        plan = plan_fixture(); host = FakeHost(plan); engine = m.Engine(host, plan)
+        engine.prepare(); host.source_matches = False
+        with self.assertRaises(m.Refused): engine.cutover()
+        self.assertNotIn("stop", host.calls)
+
+    def test_changed_app_source_with_unchanged_build_markers_prevents_restoration(self):
+        plan = plan_fixture(); host = FakeHost(plan); engine = m.Engine(host, plan)
+        engine.prepare(); engine.cutover(); host.source_matches = False
+        with self.assertRaises(m.Refused): engine.recover_before_release()
+        self.assertNotIn("restore_configuration", host.calls)
+
+    def test_real_adapter_refuses_stale_or_changed_ledger_receipt(self):
+        plan = plan_fixture(); plan["baselineSourceProof"]["ledger"] = {"rows": 3, "sha256": "original"}
+        for change in ("source", "ledger", "stale"):
+            proof = {"kind": "CANONICAL_READ_ONLY_BASELINE_SOURCE_AND_LEDGER", "baseline": plan["baseline"],
+                     "checksumOutput": "", "ledger": plan["baselineSourceProof"]["ledger"],
+                     "hostWrites": False, "dataWrites": False, "observedAt": dt.datetime.now(dt.timezone.utc).isoformat()}
+            if change == "source": proof["checksumOutput"] = ">f changed app file"
+            if change == "ledger": proof["ledger"] = {"rows": 4}
+            if change == "stale": proof["observedAt"] = (dt.datetime.now(dt.timezone.utc)-dt.timedelta(minutes=3)).isoformat()
+            data = m.encoded(proof); host = object.__new__(m.RealHost)
+            host.plan, host.root, host.source_proof_sha256 = plan, Path("/fictional-private-operation"), m.sha(data)
+            with patch.object(m, "read_regular", return_value=(data, types.SimpleNamespace(st_uid=0))):
+                with self.assertRaises(m.Refused): host.fresh_source_guard()
+
+
+class OperatorTests(unittest.TestCase):
+    def test_changed_source_stops_terminal_wrapper_before_any_upload_or_sudo(self):
+        spec = importlib.util.spec_from_file_location("maintenance_operator", Path(__file__).with_name("operator.py"))
+        operator = importlib.util.module_from_spec(spec); spec.loader.exec_module(operator)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = plan_fixture(); plan["baselineSourceProof"]["ledger"] = {"rows": 3}
+            members = {"maintenance_agent.py": b"fictional agent", "approved-plan.json": m.encoded(plan),
+                       "node.tar.xz": b"fictional archive", "source-proof.mjs": b"fictional proof source"}
+            approval = {"planSha256": m.sha(members["approved-plan.json"]), "agentSha256": m.sha(members["maintenance_agent.py"]),
+                        "scope": "staging-node22-config-and-app-release", "humanApprovalReference": "fictional human approval",
+                        "operatorSha256": m.sha(Path(operator.__file__).read_bytes()),
+                        "sourceProofProgramSha256": m.sha(members["source-proof.mjs"])}
+            members["human-approval.json"] = m.encoded(approval)
+            for name, data in members.items():
+                (root/name).write_bytes(data); (root/name).chmod(0o600)
+            args = ["operator.py", "cutover", "--packet", str(root), "--ssh-config", str(root/"ssh"),
+                    "--controller", str(root/"controller"), "--retained-source", str(root/"baseline"), "--dependency-root", str(root/"deps")]
+            def changed_source(command, **kwargs):
+                proof = {"baseline": plan["baseline"], "checksumOutput": ">f changed app source", "ledger": {"rows": 3}}
+                Path(command[-1]).write_bytes(m.encoded(proof))
+                return subprocess.CompletedProcess(command, 0)
+            with patch.object(sys, "argv", args), patch.object(sys.stdin, "isatty", return_value=True), patch.object(sys.stdout, "isatty", return_value=True), patch.object(operator.subprocess, "run", side_effect=changed_source) as runner:
+                with self.assertRaises(SystemExit): operator.main()
+                self.assertEqual(runner.call_count, 1)
+                self.assertIn("source-proof.mjs", runner.call_args.args[0][3])
+
+
 
 
 if __name__ == "__main__":
