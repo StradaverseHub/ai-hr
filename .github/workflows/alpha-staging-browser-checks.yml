@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
-        with: {capacity_profile: bounded-suite-setup}
+        with: {capacity_profile: legacy}
       - name: Retain original source bindings and transport-only configuration
         run: |
           mkdir -p "$RUNNER_TEMP/browser-tooling"

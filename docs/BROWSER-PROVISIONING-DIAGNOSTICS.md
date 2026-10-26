@@ -29,7 +29,13 @@ References: [Ubuntu package archives](https://ubuntu.com/project/docs/how-ubuntu
 [APT source configuration](https://manpages.ubuntu.com/manpages/resolute/man5/sources.list.5.html),
 [Playwright CI installation](https://playwright.dev/docs/ci).
 
-The mirror comparison has not yet run. A faster diagnostic is not proof of a faster complete
+Initial diagnostic [40329802693](https://github.com/StradaverseHub/ai-hr/actions/runs/40329802693)
+resolved the candidate but all six tooling jobs refused before installation: the managed
+suite capacity profile correctly rejected this separately named diagnostic. The original failure
+is retained. The repair uses the existing browser diagnostic's supported `legacy` preparation;
+the capacity guard is unchanged. Only the six unexecuted comparisons need execution.
+
+The mirror comparison has not yet produced measurements. A faster diagnostic is not proof of a faster complete
 release: normal-workflow adoption requires measured results, source review, coverage and
 verification-policy binding, then a complete frozen submission-to-staging measurement including
 queue, setup, authentication, installation, migrations, restart, source/build arrival and cleanup.
