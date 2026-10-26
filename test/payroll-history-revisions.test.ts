@@ -8,6 +8,7 @@ import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
 import {payrollComparisonSourcesTx} from '../core/payroll-view';
+import {myEaSources} from '../core/reporting';
 import {myReleasedPayslipRuns,dashboardStats} from '../core/read';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
@@ -76,6 +77,13 @@ describe('immutable payroll history correction and recovery',()=>{
   const correction=await upload('6000.00');await confirm(correction);const changed=await compare();expect(changed.runs).toHaveLength(2);expect(changed.sources.map(row=>row.amount).sort()).toEqual(['4000.00','6000.00']);
   const recovery=await previewPayrollHistoryRevert(ctx,correction.attemptId);await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash);
   const restored=await compare();expect(restored.runs).toHaveLength(2);expect(restored.sources.map(row=>row.amount).sort()).toEqual(['4000.00','5000.00']);
+ });
+ it('removes retired history from own EA eligibility and attendance protection owner reads',async()=>{
+  const userId=await createAppUser(b.tenantId,employeePersonId,'employee'),own={...ctx,userId,personId:employeePersonId,roles:['employee'],grants:undefined};
+  const protection=()=>withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${employeeId}::uuid)`));
+  const first=await upload();await confirm(first);expect(await myEaSources(own)).toMatchObject([{employmentId:employeeId,year:String(year),available:true}]);expect(await protection()).toHaveLength(1);
+  const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
+  expect(await myEaSources(own)).toEqual([]);expect(await protection()).toHaveLength(0);
  });
  it('binds immutable snapshot evidence to actual payroll money and its validated attempt',async()=>{
   const first=await upload();await confirm(first);

@@ -183,3 +183,201 @@ GRANT SELECT ON payroll_history_effective_batch TO ai_hr_app;
 --> statement-breakpoint
 CREATE POLICY payroll_history_attempt_lock ON payroll_history_import_attempt FOR UPDATE USING(app.payroll_history_attempt_access(id)) WITH CHECK(false);
 CREATE POLICY payroll_history_record_lock ON payroll_history_import_record FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.can_admin_payroll_for(company_id)) WITH CHECK(false);
+
+--> statement-breakpoint
+-- Existing SECURITY DEFINER metadata readers bypass payslip RLS. Apply the same effective-version
+-- rule inside their canonical owners; ordinary payroll behavior and authorization stay unchanged.
+CREATE OR REPLACE FUNCTION app.my_ea_source_options()
+RETURNS TABLE(employment_id uuid, employee_code text, company_id uuid, company text,
+ country text, year text, available boolean, is_current boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,e.employee_code,c.id,c.legal_name,c.country,left(b.pay_period,4),
+   bool_and(b.status::text='closed' AND (b.released_at IS NULL OR b.released_at<=now())
+     AND b.pay_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$')
+   AND NOT EXISTS(SELECT 1 FROM public.payslip malformed JOIN public.payroll_batch bad ON bad.id=malformed.batch_id AND bad.tenant_id=malformed.tenant_id
+     WHERE app.payroll_history_effective(malformed.id) AND malformed.employment_id=e.id AND malformed.tenant_id=e.tenant_id AND bad.company_id=c.id AND bad.pay_period !~ '^[0-9]{4}'),e.company_id=c.id
+ FROM public.app_user u
+ JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+ JOIN public.payslip p ON p.employment_id=e.id AND p.tenant_id=e.tenant_id
+ JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=e.tenant_id
+ JOIN public.company c ON c.id=b.company_id AND c.tenant_id=e.tenant_id
+ WHERE app.principal_snapshot_current() AND u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND app.payroll_history_effective(p.id) AND b.pay_period ~ '^[0-9]{4}'
+ GROUP BY e.id,e.tenant_id,e.employee_code,c.id,c.legal_name,c.country,left(b.pay_period,4),e.company_id
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.ea_signatory(p_employment_id uuid, p_company_id uuid, p_year text)
+RETURNS TABLE(officer_name text, officer_position text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT sp.full_name, title.title
+  FROM public.employment subject
+  JOIN public.company co ON co.id = p_company_id AND co.tenant_id = subject.tenant_id
+  JOIN public.company_statutory_authority auth
+    ON auth.company_id = co.id AND auth.tenant_id = co.tenant_id AND auth.authority = 'lhdn'
+  JOIN public.person sp ON sp.id = auth.signatory_person_id AND sp.tenant_id = co.tenant_id
+  LEFT JOIN LATERAL (
+    SELECT pos.title
+    FROM public.employment se
+    JOIN public.assignment a ON a.employment_id = se.id AND a.tenant_id = se.tenant_id
+    JOIN public.position pos ON pos.id = a.position_id AND pos.tenant_id = se.tenant_id
+    WHERE se.person_id = sp.id AND se.company_id = co.id AND se.tenant_id = co.tenant_id
+      AND se.hired_on <= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+      AND (se.terminated_on IS NULL OR se.terminated_on >= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+      AND a.superseded_at IS NULL
+      AND a.valid_from <= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+      AND (a.valid_to IS NULL OR a.valid_to > (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+      AND COALESCE(a.company_id, se.company_id) = co.id
+    ORDER BY a.valid_from DESC, se.hired_on DESC, a.id
+    LIMIT 1
+  ) title ON true
+  WHERE subject.id = p_employment_id AND subject.tenant_id = app.current_tenant_id()
+    AND p_year ~ '^[0-9]{4}$'
+    AND (
+      EXISTS (SELECT 1 FROM public.app_user u
+        WHERE u.id = app.current_user_id() AND u.tenant_id = subject.tenant_id AND u.person_id = subject.person_id)
+      OR (app.can_admin_payroll_for(subject.company_id) AND app.can_admin_payroll_for(co.id))
+    )
+    AND (subject.company_id = co.id OR EXISTS (
+      SELECT 1 FROM public.payslip ps
+      JOIN public.payroll_batch pb ON pb.id = ps.batch_id AND pb.tenant_id = ps.tenant_id
+      WHERE app.payroll_history_effective(ps.id) AND ps.employment_id = subject.id AND ps.tenant_id = subject.tenant_id
+        AND pb.company_id = co.id AND pb.pay_period LIKE p_year || '-%'
+    ));
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.attendance_payroll_protection_rows(subject_id uuid)
+RETURNS TABLE(batch_id uuid, status text, pay_period text, policy_config jsonb, attendance_cutoff_day integer)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE subject employment;
+BEGIN
+ SELECT * INTO STRICT subject FROM employment WHERE id=subject_id AND tenant_id=app.current_tenant_id();
+ -- Include former assignment companies even before a draft has generated its first payslip.
+ -- Membership also covers older runs whose original placement predates dated entity history.
+ PERFORM b.id FROM payroll_batch b
+ WHERE b.tenant_id=subject.tenant_id AND (
+  b.company_id=subject.company_id
+  OR EXISTS (SELECT 1 FROM assignment a LEFT JOIN department d ON d.id=a.department_id AND d.tenant_id=a.tenant_id
+             WHERE a.tenant_id=subject.tenant_id AND a.employment_id=subject.id AND coalesce(a.company_id,d.company_id)=b.company_id)
+  OR EXISTS (SELECT 1 FROM payslip ps WHERE app.payroll_history_effective(ps.id) AND ps.tenant_id=subject.tenant_id AND ps.batch_id=b.id AND ps.employment_id=subject.id)
+ ) ORDER BY b.id FOR UPDATE;
+ RETURN QUERY
+ SELECT b.id,b.status::text,b.pay_period::text,
+        CASE WHEN policy.status='active' THEN jsonb_build_object('cutOff',policy.config->'cutOff','frequency',policy.config->'frequency') ELSE NULL END,
+        cfg.attendance_cut_off_day
+ FROM payroll_batch b
+ LEFT JOIN company_payroll_config cfg ON cfg.company_id=b.company_id AND cfg.tenant_id=subject.tenant_id
+ -- A newly assigned destination-company policy cannot change an earlier employer's cut-off.
+ LEFT JOIN payroll_policy assigned ON assigned.id=subject.payroll_policy_id AND assigned.tenant_id=subject.tenant_id AND assigned.company_id=b.company_id
+ LEFT JOIN payroll_policy policy ON policy.id=coalesce(assigned.id,cfg.default_payroll_policy_id) AND policy.tenant_id=subject.tenant_id AND policy.company_id=b.company_id
+ WHERE b.tenant_id=subject.tenant_id AND b.status IN ('processed','closed')
+   AND EXISTS (SELECT 1 FROM payslip ps WHERE app.payroll_history_effective(ps.id) AND ps.batch_id=b.id AND ps.employment_id=subject.id AND ps.tenant_id=subject.tenant_id)
+ ORDER BY b.id;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.leave_payroll_coverage(request_ids uuid[])
+RETURNS TABLE(request_id uuid,employment_id uuid,batch_id uuid,company_id uuid,status text,pay_period text,
+ policy_config jsonb,unpaid_leave_cutoff_day integer,coverage_from date,coverage_to date,segment jsonb,
+ salary_cutoff_day integer,run_policy_config jsonb)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF cardinality(request_ids) IS NULL OR cardinality(request_ids)>10000 OR EXISTS (
+   SELECT 1 FROM unnest(request_ids) wanted(id)
+   LEFT JOIN leave_request lr ON lr.id=wanted.id AND lr.tenant_id=app.current_tenant_id()
+   WHERE lr.id IS NULL OR NOT (app.can_see_employment(lr.employment_id) OR app.can_decide_via_delegation(lr.employment_id))
+ ) OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN
+   RAISE EXCEPTION 'Leave visibility required';
+ END IF;
+ -- NOWAIT is intentional: a leave transaction may already hold the audit-chain lock.
+ -- Waiting on a payroll writer that next appends an event would invert that lock order.
+ -- Refuse atomically and let the caller retry; never leave a decided request with stale pay.
+ PERFORM b.id FROM payroll_batch b WHERE b.tenant_id=app.current_tenant_id()
+ AND b.pay_period >= (SELECT to_char(min(lr.start_date),'YYYY-MM') FROM leave_request lr WHERE lr.id=ANY(request_ids) AND lr.tenant_id=b.tenant_id)
+ AND b.pay_period <= (SELECT to_char(max(lr.end_date)+interval '1 month','YYYY-MM') FROM leave_request lr WHERE lr.id=ANY(request_ids) AND lr.tenant_id=b.tenant_id)
+ AND EXISTS (
+  SELECT 1 FROM leave_request lr JOIN employment e ON e.id=lr.employment_id AND e.tenant_id=lr.tenant_id
+  WHERE lr.id=ANY(request_ids) AND lr.tenant_id=b.tenant_id AND (
+   b.company_id=e.company_id OR EXISTS(SELECT 1 FROM assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.company_id=b.company_id)
+   OR EXISTS(SELECT 1 FROM payslip ps WHERE app.payroll_history_effective(ps.id) AND ps.batch_id=b.id AND ps.employment_id=e.id AND ps.tenant_id=e.tenant_id)
+  )
+ ) ORDER BY b.id FOR UPDATE NOWAIT;
+ RETURN QUERY
+ SELECT lr.id,lr.employment_id,b.id,b.company_id,b.status::text,b.pay_period::text,
+   CASE WHEN policy.status='active' THEN jsonb_build_object('cutOff',policy.config->'cutOff','frequency',policy.config->'frequency',
+     'leave',jsonb_build_object('deductAbsentDays',policy.config->'leave'->'deductAbsentDays')) ELSE NULL END,
+   cfg.unpaid_leave_cut_off_day,ps.coverage_from,ps.coverage_to,jsonb_build_object('segment',jsonb_build_object(
+    'companyId',ps.statutory->'segment'->'companyId','from',ps.statutory->'segment'->'from','to',ps.statutory->'segment'->'to')),
+   cfg.cut_off_day,CASE WHEN run_policy.status='active' THEN jsonb_build_object('cutOff',run_policy.config->'cutOff','frequency',run_policy.config->'frequency') ELSE NULL END
+ FROM leave_request lr JOIN payslip ps ON ps.employment_id=lr.employment_id AND ps.tenant_id=lr.tenant_id
+ JOIN employment e ON e.id=lr.employment_id AND e.tenant_id=lr.tenant_id
+ JOIN payroll_batch b ON b.id=ps.batch_id AND b.tenant_id=lr.tenant_id
+ LEFT JOIN company_payroll_config cfg ON cfg.company_id=b.company_id AND cfg.tenant_id=b.tenant_id
+ LEFT JOIN payroll_policy run_policy ON run_policy.id=cfg.default_payroll_policy_id AND run_policy.tenant_id=b.tenant_id AND run_policy.company_id=b.company_id
+ LEFT JOIN payroll_policy assigned ON assigned.id=e.payroll_policy_id AND assigned.tenant_id=e.tenant_id AND assigned.company_id=b.company_id
+ LEFT JOIN payroll_policy policy ON policy.id=coalesce(assigned.id,cfg.default_payroll_policy_id) AND policy.tenant_id=b.tenant_id AND policy.company_id=b.company_id
+ WHERE app.payroll_history_effective(ps.id) AND lr.id=ANY(request_ids) AND lr.tenant_id=app.current_tenant_id() AND b.status IN ('processed','closed')
+ ORDER BY b.id,lr.id;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.record_leave_payroll_effect(wanted_request uuid,wanted_batch uuid,action text,dates jsonb,revision text DEFAULT 'completed')
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE lr leave_request; b payroll_batch; exception_id uuid; added boolean;
+BEGIN
+ SELECT * INTO lr FROM leave_request WHERE id=wanted_request AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT (app.can_see_employment(lr.employment_id) OR app.can_decide_via_delegation(lr.employment_id))
+   OR action IS NULL OR action NOT IN ('approval','charged_import','cancellation','paid_setting')
+   OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=lr.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN
+   RAISE EXCEPTION 'Leave visibility required';
+ END IF;
+ IF jsonb_typeof(dates) IS DISTINCT FROM 'array' OR jsonb_array_length(dates)=0 OR revision IS NULL OR length(revision)>4096 THEN RAISE EXCEPTION 'Affected dates and source revision required'; END IF;
+ SELECT * INTO b FROM payroll_batch WHERE id=wanted_batch AND tenant_id=lr.tenant_id FOR UPDATE NOWAIT;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM payslip ps WHERE app.payroll_history_effective(ps.id) AND ps.batch_id=b.id AND ps.employment_id=lr.employment_id AND ps.tenant_id=lr.tenant_id) THEN
+   RAISE EXCEPTION 'Leave payroll membership required';
+ END IF;
+ IF b.status='processed' THEN
+   added:=NOT (coalesce(b.recalc_employment_ids,'[]'::jsonb) @> jsonb_build_array(lr.employment_id::text));
+   UPDATE payroll_batch SET needs_recalc_at=coalesce(needs_recalc_at,now()),
+     recalc_employment_ids=CASE WHEN added THEN coalesce(recalc_employment_ids,'[]'::jsonb)||jsonb_build_array(lr.employment_id::text) ELSE recalc_employment_ids END WHERE id=b.id;
+   IF added THEN INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+     VALUES(lr.tenant_id,'payroll-batch',b.id,'payroll-batch.recalc-required','user',app.current_user_id(),
+       jsonb_build_object('addedEmploymentIds',jsonb_build_array(lr.employment_id::text),'leaveRequestId',lr.id,'sourceAction',action)); END IF;
+ ELSIF b.status='closed' THEN
+   IF action NOT IN ('approval','charged_import') OR NOT (lr.status='approved' OR (action='approval' AND lr.status='pending' AND EXISTS (
+    SELECT 1 FROM leave_request_date d WHERE d.leave_request_id=lr.id AND d.tenant_id=lr.tenant_id AND d.status='approved' AND dates @> jsonb_build_array(d.leave_date::text)
+   ))) THEN RAISE EXCEPTION 'Closed payroll cannot be changed by this leave action'; END IF;
+   IF lr.imported_history AND NOT EXISTS(SELECT 1 FROM leave_ledger ll WHERE ll.tenant_id=lr.tenant_id AND ll.source_request_id=lr.id AND ll.entry_type='debit') THEN RETURN; END IF;
+   INSERT INTO payroll_leave_exception(tenant_id,batch_id,employment_id,leave_request_id,source_action,source_revision,affected_dates,created_by)
+    VALUES(lr.tenant_id,b.id,lr.employment_id,lr.id,action,md5(revision),dates,app.current_user_id())
+    ON CONFLICT(tenant_id,batch_id,leave_request_id,source_action,source_revision) DO NOTHING RETURNING id INTO exception_id;
+   IF exception_id IS NOT NULL THEN INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+    VALUES(lr.tenant_id,'payroll-leave-exception',exception_id,'payroll-leave-exception.opened','user',app.current_user_id(),
+      jsonb_build_object('batchId',b.id,'leaveRequestId',lr.id,'sourceAction',action)); END IF;
+ END IF;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.resolve_leave_payroll_exception(wanted_exception uuid,outcome text,adjustment uuid,note text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE item payroll_leave_exception; employer uuid;
+BEGIN
+ SELECT * INTO item FROM payroll_leave_exception WHERE id=wanted_exception AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Payroll leave exception unavailable'; END IF;
+ SELECT company_id INTO employer FROM payroll_batch WHERE id=item.batch_id AND tenant_id=item.tenant_id;
+ IF NOT app.is_admin_for(employer) OR NOT app.can_admin_payroll_for(employer)
+   OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=item.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Payroll HR authority required'; END IF;
+ IF item.status<>'open' OR outcome IS NULL OR outcome NOT IN ('adjustment','no_adjustment') OR note IS NULL OR length(btrim(note))<10 OR length(note)>2000 THEN
+   RAISE EXCEPTION 'An open exception and a clear resolution explanation are required';
+ END IF;
+ IF outcome='adjustment' AND NOT EXISTS (
+   SELECT 1 FROM payroll_batch b JOIN payslip ps ON ps.batch_id=b.id AND ps.tenant_id=b.tenant_id
+   WHERE b.history_import_attempt_id IS NULL AND app.payroll_history_effective(ps.id) AND b.id=adjustment AND b.id<>item.batch_id AND b.tenant_id=item.tenant_id AND b.status='closed' AND b.run_type='adjustment'
+    AND ps.employment_id=item.employment_id AND app.is_admin_for(b.company_id) AND app.can_admin_payroll_for(b.company_id)
+ ) THEN RAISE EXCEPTION 'Select a closed adjustment run containing this employee'; END IF;
+ IF outcome='no_adjustment' AND adjustment IS NOT NULL THEN RAISE EXCEPTION 'No-adjustment resolution cannot reference an adjustment'; END IF;
+ UPDATE payroll_leave_exception SET status='resolved',resolution=outcome,adjustment_batch_id=adjustment,explanation=btrim(note),resolved_by=app.current_user_id(),resolved_at=now() WHERE id=item.id;
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+  VALUES(item.tenant_id,'payroll-leave-exception',item.id,'payroll-leave-exception.resolved','user',app.current_user_id(),
+    jsonb_build_object('resolution',outcome,'adjustmentBatchId',adjustment));
+END $$;
+--> statement-breakpoint
