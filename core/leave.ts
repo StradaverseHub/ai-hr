@@ -12108,6 +12108,35 @@ export async function allowanceLeaveTypesTx(tx:Tx,companyId:string,includeArchiv
 }
 
 
+/** Shared canonical assignment gate for the inbox and the bounded Assistant chooser. Names or
+ * private request bodies do not establish assignment; the CURRENT native step owner does. */
+async function assertPendingLeaveMetadataAssignmentTx(tx:Tx,ctx:SessionContext,employmentId:string,current:{kind:string;approverEmploymentId:string|null;alternates:unknown}|undefined){
+ if(current)await assertCanDecideLeaveStep(tx,ctx,employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
+ else await assertCanDecide(tx,ctx,employmentId,'leave request',scopeOf('leave.application'));
+}
+/** Bounded metadata-only chooser. At most1000 visible request nominations are examined and at most100
+ * assigned choices returned. An unknown scan remainder REFUSES; only an additional permitted task
+ * marks a truncated result. No unassigned candidate count or existence escapes the owner.
+ * Applicant labels are selected ONLY AFTER the same native assignment check as pendingLeaveTaskMetadata. */
+export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionContext){
+ await assertAssignedWorkPrincipalTx(tx,ctx);
+ const nominations=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,createdAt:leaveRequest.createdAt})
+  .from(leaveRequest).innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
+  .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`))
+  .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id)).limit(1001);
+ const tasks:{leaveRequestId:string;currentStepId:string|null;stepIndex:number|null;applicantLabel:string|null;createdAt:Date}[]=[];if(nominations.length>1000)throw Error('Assigned choices unavailable');let truncated=false;
+ for(const row of nominations.slice(0,1000)){
+  const steps=await tx.select({id:leaveApprovalStep.id,status:leaveApprovalStep.status,stepIndex:leaveApprovalStep.stepIndex,kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
+   .from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId,row.id)).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
+  const current=steps.find(step=>step.status==='pending');if(steps.length&&!current)continue;
+  try{await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);}catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
+  if(tasks.length>=100){truncated=true;break;}
+  const [applicant]=await tx.select({name:person.fullName}).from(person).where(and(eq(person.id,row.personId),eq(person.tenantId,ctx.tenantId))).limit(1);
+  tasks.push({leaveRequestId:row.id,currentStepId:current?.id??null,stepIndex:current?.stepIndex??null,applicantLabel:applicant?.name??null,createdAt:row.createdAt});
+ }
+ return{tasks,truncated};
+}
+
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
@@ -12128,8 +12157,7 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
    for(const row of batch){
     const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
     try{
-     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
-     else await assertCanDecide(tx,ctx,row.employmentId,'leave request',scopeOf('leave.application'));
+     await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);
     }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
     result.push(row);
    }
