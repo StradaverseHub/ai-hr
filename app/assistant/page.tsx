@@ -1,3 +1,4 @@
+import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -40,7 +41,7 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -61,6 +62,7 @@ export default async function AssistantPage({
             <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
           </form>
           <form action={eraseModuleProposalsAction}><button type="submit" className="min-h-11 text-xs underline">{t('workspace.planning.erase')}</button></form>
+          <ImportPreparationPrivacy status={sp.importHistory}/>
           <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
         </Card>
       </div>
@@ -146,6 +148,7 @@ export default async function AssistantPage({
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         </Card>
       )}
+      <ImportPreparationPrivacy status={sp.importHistory}/>
     </div>
   );
 }

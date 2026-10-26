@@ -16771,6 +16771,13 @@
         "evaluationConsent": "Saya membenarkan sehingga dua belas permintaan sintetik penyedia yang mungkin dicaj.",
         "evaluate": "Jalankan penilaian tambahan",
         "evaluated": "Penilaian telah direkodkan. Ini bukan bukti penaakulan HR umum atau ketepatan fakta."
+      },
+      "importPrivacy": {
+        "title": "Sejarah penyediaan import",
+        "description": "Memadam cadangan import dan nota perbandingan anda yang disimpan. Rekod pekerja yang diimport kekal dalam Personel.",
+        "clear": "Padam sejarah penyediaan import saya",
+        "erased": "Sejarah penyediaan import anda yang disimpan telah dipadam.",
+        "unavailable": "Pembersihan ini agak degil. Cuba sekali lagi."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

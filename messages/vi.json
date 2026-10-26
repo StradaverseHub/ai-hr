@@ -16771,6 +16771,13 @@
         "evaluationConsent": "Tôi cho phép tối đa mười hai yêu cầu tổng hợp có thể bị tính phí.",
         "evaluate": "Chạy đánh giá bổ sung",
         "evaluated": "Đã ghi nhận đánh giá. Đây không phải bằng chứng về suy luận nhân sự tổng quát hoặc độ chính xác dữ kiện."
+      },
+      "importPrivacy": {
+        "title": "Lịch sử chuẩn bị nhập",
+        "description": "Xóa các đề xuất nhập và ghi chú so sánh đã lưu của bạn. Hồ sơ nhân viên đã nhập vẫn ở phần Nhân sự.",
+        "clear": "Xóa lịch sử chuẩn bị nhập của tôi",
+        "erased": "Lịch sử chuẩn bị nhập đã lưu của bạn đã được xóa.",
+        "unavailable": "Lần dọn dẹp này hơi bướng bỉnh. Bạn thử lại nhé."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

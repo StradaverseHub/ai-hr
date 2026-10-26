@@ -16771,6 +16771,13 @@
         "evaluationConsent": "I authorize up to twelve synthetic provider requests. They may be billed.",
         "evaluate": "Run extra evaluation",
         "evaluated": "The evaluation was recorded. It is not proof of general HR reasoning or factual accuracy."
+      },
+      "importPrivacy": {
+        "title": "Import preparation history",
+        "description": "Clears your saved import suggestions and comparison notes. Imported employee records remain in Personnel.",
+        "clear": "Clear my import preparation history",
+        "erased": "Your saved import preparation history was cleared.",
+        "unavailable": "That cleanup is being stubborn. Give it another try."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",
