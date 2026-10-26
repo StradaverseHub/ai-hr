@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Grant, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { employment, notificationEmailPolicy, notificationPref, notificationDelivery } from '../db/schema';
+import { company, employment, notificationEmailPolicy, notificationPref, notificationDelivery } from '../db/schema';
 import { isAdmin, isGroupAdmin, withEffectiveGrants } from '../lib/authz-model';
 import { notificationPreferenceCategories, notificationPreferenceCategory, notificationEmailLocales, type NotificationEmailLocale } from '../lib/notification-email-model';
 import { isModuleEnabled, resolveEntitlementsTx } from './entitlements';
@@ -55,6 +55,14 @@ export async function readNotificationEmailPreferences(ctx: SessionContext) {
     preferences: await tx.select().from(notificationPref).where(and(eq(notificationPref.tenantId,ctx.tenantId),eq(notificationPref.channel,'email'))).orderBy(asc(notificationPref.recipientEmploymentId),asc(notificationPref.category)),
     policy: await tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId,ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category)),
   }));
+}
+/** Canonical salary-free own-subject choices for the reviewed preferences flow. The caller must
+ * prove the fresh current login/Assistant/module before invoking this supplied-Tx reader. */
+export async function readOwnNotificationEmailChoiceSubjectsTx(tx:Tx,ctx:SessionContext){
+ requireModule(ctx);if(!ctx.userId||!ctx.personId)return [];
+ return tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,companyName:company.legalName})
+  .from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,ctx.tenantId)))
+  .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(17);
 }
 export type EmailConsentIdentity = {issuer:string;subject:string;email:string|null;emailVerified:boolean};
 /** The action obtains identity from the verified server session, never from form fields. */
