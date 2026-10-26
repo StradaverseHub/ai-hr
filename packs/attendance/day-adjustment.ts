@@ -4,7 +4,7 @@ import { type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
 import * as s from '../../db/schema';
 import { withAttendanceTenant } from '../../core/module-gate';
-import { attendanceDayCalculationTx, recomputeDayFigures, decideAttendanceCorrection } from '../../core/attendance';
+import { attendanceDayCalculationTx, recomputeDayFigures, decideAttendanceCorrection, lockAttendanceLeaveDependenciesTx } from '../../core/attendance';
 import { attendanceWorkflowsForTx } from '../../core/attendance-workflow';
 import { assertShiftsAllowedForEmploymentsTx } from '../../core/schedule-shift-eligibility';
 import { punchesForCorrectionTx, clockFingerprint, lockAttendancePayrollTx, markAttendancePayrollTx } from '../../core/attendance-punch-change';
@@ -116,8 +116,10 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
 }
 
 export async function amendExistingAttendanceApplication(ctx:SessionContext,p:{employmentId:string;date:string;correctionId:string;baseline:string;reason:string;checkIn:string|null;checkOut:string|null;expectedStageIndex?:number;confirmPayrollRecalculation?:boolean}){
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the administrator correction in at most 500 characters.');
   return withAttendanceTenant(ctx,async tx=>{
+    await lockAttendanceLeaveDependenciesTx(tx,ctx,[p.employmentId]);
     const employee=await subject(tx,ctx,p.employmentId);if(!employee||employee.self)throw new Error('You cannot decide your own attendance or an employee outside your administrator scope.');
     const payroll=await lockAttendancePayrollTx(tx,p.employmentId,p.date);
     await assertNoDependentAttendanceCreditTx(tx,p.employmentId,p.date);

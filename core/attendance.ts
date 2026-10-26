@@ -1,3 +1,5 @@
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
@@ -2021,12 +2023,27 @@ function deriveDayFromPunchList(
   };
 }
 
+/** Attendance can bank TOIL and ensure its replacement catalogue. Own exclusive configuration
+ * BEFORE any schedule/credit/legacy Attendance lock; callers must roll back the WHOLE Tx on refusal.
+ * This is dependency protection, not authority: original self/admin/device/workflow gates still run. */
+export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
+  const tenantId = ctx.tenantId, ids = [...new Set(employmentIds)].sort();
+  await lockAccessConfigurationTx(tx, tenantId);
+  await lockLeaveDependencyConfigurationTx(tx, tenantId);
+  if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
+}
+function captureAttendanceContext(ctx: SessionContext): SessionContext {
+  return {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
+}
+
 export async function checkInTx(
   ctx: SessionContext,
   p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
@@ -2169,7 +2186,9 @@ export async function checkOutTx(
   p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).
@@ -3866,9 +3885,11 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
 async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
+  await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
   const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
     .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
   if (!visible) return undefined;
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
   const [locked] = await tx.select().from(attendanceCorrection)
     .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
@@ -3912,6 +3933,7 @@ export async function decideAttendanceCorrection(
   p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
   existingTx?: Tx,
 ) {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
   const decide=async (tx:Tx) => {
     const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
@@ -5773,6 +5795,7 @@ export async function cancelPlannedOvertime(
   ctx: SessionContext,
   p: { correctionId: string; today?: string },
 ): Promise<{ status: 'cancelled' }> {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const plan = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
@@ -5983,6 +6006,7 @@ export async function cancelOwnAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string },
 ): Promise<{ status: 'cancelled' }> {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   return withTenant(ctx, async (tx) => {
     const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
@@ -6333,8 +6357,10 @@ export async function addImportedPunchesBatchTx(
   ctx: SessionContext,
   p: { days: ImportedDayInput[]; runId: string },
 ): Promise<{ punchIds: string[][] }> {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const days = p.days.filter((d) => d.punches.length > 0);
   if (days.length === 0) return { punchIds: p.days.map(() => []) };
+  await lockAttendanceLeaveDependenciesTx(tx, ctx, days.map(day=>day.employmentId));
   // Acquire the checked shared policy epoch before any memoized schedule or dated selection.
   // The batch barrier proves actual visible subjects, including first imports with no day row yet.
   const policyConfigured=await lockAttendancePolicyImportTx(tx,ctx,days.map(d=>({employmentId:d.employmentId,date:d.day})));
@@ -6692,6 +6718,7 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
     kind: 'cancelled' | 'withdrawn';
     reason: string;
 }) {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
     if (!['cancelled', 'withdrawn'].includes(p.kind) || !p.reason?.trim() || p.reason.trim().length > 1000)
         throw new Error('A cancellation reason of 1–1000 characters is required.');
     return withTenant(ctx, async (tx) => {

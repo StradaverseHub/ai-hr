@@ -7,8 +7,8 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {myEmployments} from './read';
-import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
+import {myEmployments, myEmployment, myOwnEmploymentSubjectsTx} from './read';
+import { lockAttendanceLeaveDependenciesTx, ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { clockCommandContext } from '../lib/clock-command-context';
@@ -79,6 +79,8 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 }
 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number }) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={...p,...(p.photo?{photo:Buffer.from(p.photo)}:{})}; native=native?{...native}:undefined;
   const me=native?(await myEmployments(ctx)).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
   if(!me)throw new OwnClockEmploymentUnavailableError();
   if(!native&&p.employmentId!==undefined&&p.clockContext==null)throw new ClockContextChangedError('Reopen the selected employee clock context.');
@@ -88,6 +90,13 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   if(p.locationStatus!=null&&(!LOCATION_CAPTURE_STATUSES.includes(p.locationStatus)||(p.locationStatus==='recorded')!==!!point))throw new ClockLocationError('Location status must agree with the supplied coordinates.');
   if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
   return withTenant(ctx, async tx => {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [me.employmentId]);
+    // Outside-Tx selection nominates only. Repeat the SAME original selection owner after Access/
+    // configuration/subject ownership before replay, policy, capture, schedule or legacy day locks.
+    const fresh = native ? (await myEmployments(ctx, {}, tx)).find(row=>row.employmentId===native!.employmentId)
+      : p.employmentId !== undefined ? (await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).find(row=>row.employmentId===p.employmentId)
+      : await myEmployment(ctx, undefined, tx);
+    if (!fresh || fresh.employmentId !== me.employmentId) throw new OwnClockEmploymentUnavailableError();
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
     if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
