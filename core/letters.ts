@@ -8,7 +8,8 @@ import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isModuleEnabled} from './entitlements';
-import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue} from '../lib/letter-model';
+import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
+import {letterDocumentFromEditor} from '../lib/letter-editor';
 import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verification';
@@ -92,9 +93,13 @@ async function templateFields(tx:Tx,ids:string[],co:string):Promise<{id:string;d
  if(rows.length!==unique.length)throw new LetterWorkflowError('configuration','field');validateLetterFields(rows.map(row=>row.definition));
  if(rows.some(row=>row.definition.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}return rows;
 }
-export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;document:unknown;fieldVersionIds:string[]}){return letters(ctx,true,async tx=>{
+type LetterTemplateContent={document:unknown;editor?:never;language?:never}|{editor:unknown;language:LetterDocument['language'];document?:never};
+export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[]}&LetterTemplateContent){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);if(!isCalendarDate(input.effectiveFrom))throw new LetterWorkflowError('invalid','effectiveFrom');
- const fields=await templateFields(tx,input.fieldVersionIds,input.companyId),document=validateLetterDocument(input.document,fields.map(row=>row.definition)),used=new Set(usedLetterFields(document));
+ if('editor' in input&&'document' in input)throw new LetterWorkflowError('invalid','document');
+ const fields=await templateFields(tx,input.fieldVersionIds,input.companyId),definitions=fields.map(row=>row.definition);
+ // Resolve editor tokens against fresh scoped mappings inside the same transaction as the version write.
+ const document=input.editor!==undefined?letterDocumentFromEditor(input.editor,definitions,input.language!):validateLetterDocument(input.document,definitions),used=new Set(usedLetterFields(document));
  let root:typeof letterTemplate.$inferSelect;
  if(input.templateId){const [found]=await tx.select().from(letterTemplate).where(and(eq(letterTemplate.id,uuid(input.templateId)),eq(letterTemplate.companyId,input.companyId))).for('update');if(!found||found.revision!==input.expectedRevision)throw new LetterWorkflowError('stale');root=found;}
  else{[root]=await tx.insert(letterTemplate).values({tenantId:ctx.tenantId,companyId:input.companyId,code:text(input.code,80),createdBy:ctx.userId!}).returning();}

@@ -40,7 +40,7 @@ function blocks(input:unknown[]):LetterBlock[]{return input.map((value):LetterBl
  });})};}
  if(item.type==='letterConditional'){
   const attrs=attributes(item,['condition']);if(content.length!==2)bad('branches');
-  const branch=(value:unknown,expected:string)=>{const child=node(value);if(child.type!=='letterBranch'||child.marks!==undefined||child.text!==undefined)bad('branch');const attrs=attributes(child,['branch']);if(attrs.branch!==expected)bad('branch');return blocks(children(child));};
+  const branch=(value:unknown,expected:string)=>{const child=node(value);if(child.type!=='letterBranch'||child.marks!==undefined||child.text!==undefined)bad('branch');const attrs=attributes(child,['branch']);if(attrs.branch!==expected)bad('branch');const result=blocks(children(child));return result.length===1&&result[0].type==='paragraph'&&result[0].content.length===0?[]:result;};
   return {type:'if',condition:attrs.condition as Extract<LetterBlock,{type:'if'}>['condition'],then:branch(content[0],'then'),otherwise:branch(content[1],'otherwise')};
  }
  return bad('unsupportedBlock');
@@ -57,7 +57,7 @@ function editorBlocks(input:LetterBlock[]):LetterEditorNode[]{return input.map((
  if(block.type==='heading')return {type:'heading',attrs:{level:block.level},content:editorInline(block.content)};
  if(block.type==='list')return {type:block.ordered?'orderedList':'bulletList',...(block.ordered?{attrs:{start:1,type:null}}:{}),content:block.items.map(content=>({type:'listItem',content:[{type:'paragraph',content:editorInline(content)}]}))};
  if(block.type==='table')return {type:'table',content:block.rows.map(row=>({type:'tableRow',content:row.map(content=>({type:'tableCell',attrs:{colspan:1,rowspan:1,colwidth:null,align:null},content:[{type:'paragraph',content:editorInline(content)}]}))}))};
- return {type:'letterConditional',attrs:{condition:block.condition},content:[{type:'letterBranch',attrs:{branch:'then'},content:editorBlocks(block.then)},{type:'letterBranch',attrs:{branch:'otherwise'},content:editorBlocks(block.otherwise)}]};
+ return {type:'letterConditional',attrs:{condition:block.condition},content:[{type:'letterBranch',attrs:{branch:'then'},content:block.then.length?editorBlocks(block.then):[{type:'paragraph'}]},{type:'letterBranch',attrs:{branch:'otherwise'},content:block.otherwise.length?editorBlocks(block.otherwise):[{type:'paragraph'}]}]};
 });}
 export function letterDocumentToEditor(document:LetterDocument,fields:LetterField[]):LetterEditorNode{
  const valid=validateLetterDocument(document,fields);return {type:'doc',content:editorBlocks(valid.blocks)};

@@ -57,6 +57,20 @@ describe('versioned Letters configuration and template owner',()=>{
   await expect(withTenant(author,tx=>tx.update(s.letterTemplateVersion).set({name:'Replaced wording'}).where(eq(s.letterTemplateVersion.id,first.versionId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/immutable/)}});
   expect((await owner.db.select().from(s.letterTemplateVersion).where(eq(s.letterTemplateVersion.id,first.versionId)))[0]).toEqual(approved);
  });
+
+ it('converts editor content using fresh scoped mappings and persists only the canonical document',async()=>{
+  const mapping=await saveLetterField(author,{companyId:b.companyId,definition:field,active:true});
+  const editor={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Dear ',marks:[{type:'bold'}]},{type:'letterField',attrs:{key:field.key}}]}]};
+  const input={companyId:b.companyId,code:'EDITOR',name:'Rich text letter',category:'confirmation',effectiveFrom:todayInKualaLumpur(),editor,language:'en' as const,fieldVersionIds:[mapping.id]};
+  const saved=await saveLetterTemplate(author,input),[version]=await owner.db.select().from(s.letterTemplateVersion).where(eq(s.letterTemplateVersion.id,saved.versionId));
+  expect(version.document).toEqual({version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Dear ',marks:['bold']},{type:'field',key:field.key}]}]});
+  expect(JSON.stringify(version.document)).not.toContain('letterField');
+  await expect(saveLetterTemplate(author,{...input,code:'UNKNOWN',editor:{type:'doc',content:[{type:'paragraph',content:[{type:'letterField',attrs:{key:'unauthorised'}}]}]}})).rejects.toMatchObject({code:'unknownField'});
+  await expect(saveLetterTemplate(author,{...input,code:'RAW',editor:{type:'doc',content:[{type:'html',text:'<script>bad()</script>'}]}})).rejects.toMatchObject({code:'invalid'});
+  await saveLetterField(author,{companyId:b.companyId,expectedOrdinal:mapping.ordinal,definition:{...field,label:'Updated mapping'},active:true});
+  await expect(saveLetterTemplate(author,{...input,code:'STALE'})).rejects.toMatchObject({code:'configuration'});
+  expect(await owner.db.select().from(s.letterTemplateVersion)).toHaveLength(1);
+ });
  it('rejects unknown merge fields before creating a template and prevents deactivating a referenced field',async()=>{
   await expect(saveLetterTemplate(author,{companyId:b.companyId,code:'INVALID',name:'Invalid',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document,fieldVersionIds:[]})).rejects.toMatchObject({code:'unknownField'});expect(await owner.db.select().from(s.letterTemplate)).toHaveLength(0);
   const saved=await draft();await expect(saveLetterField(author,{companyId:b.companyId,definition:field,active:false,expectedOrdinal:1})).rejects.toMatchObject({code:'conflict'});
