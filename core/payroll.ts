@@ -1966,26 +1966,7 @@ export type AdditionalRunInput = {
   };
 export async function createAdditionalRun(
   ctx: SessionContext,
-  p: {
-    companyId: string;
-    payPeriod: string;
-    runType: 'off_cycle' | 'bonus' | 'adjustment';
-    /** Payroll Process wizard (1b): optional payment date (validated, else '<period>-28' default). */
-    paymentDate?: string;
-    /** Payroll Process wizard (1b): a cycle label for off-cycle presets, e.g. 'Advance Salary' / 'Mid-Month'. */
-    remarks?: string;
-    /** Payroll Process wizard (1b): optional subset — generatePayslips already resolves batch.scope for
-     *  every runType, so an additional run can legitimately be scoped the same way the regular run is. */
-    scope?: BatchScope;
-    /**
-     * c11e81aa — the CONFIGURED cycle this run is opened under (payroll_cycle.id). On a NON-regular run
-     * this is load-bearing rather than informational: it is the ONLY thing that tells an "Advance Salary"
-     * run apart from a "Mid-Month" one, both of which are run_type 'off_cycle', and it is what decides
-     * which period-keyed transactions the run collects. Omitted ⇒ the run names no cycle and collects no
-     * period-keyed rows at all, which is exactly what every non-regular run did before this change.
-     */
-    payrollCycleId?: string | null;
-  },
+  p: AdditionalRunInput,
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
