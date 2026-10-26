@@ -3480,6 +3480,62 @@
       "when": 1792941214168,
       "tag": "0601_operator_customer_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 612,
+      "version": "7",
+      "when": 1792997586564,
+      "tag": "0612_standalone_user_enrollment",
+      "breakpoints": true
+    },
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1792997586565,
+      "tag": "0613_ai_action_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1792997586566,
+      "tag": "0614_own_leave_review_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1792997586567,
+      "tag": "0615_openrouter_provider_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1792997586568,
+      "tag": "0616_assistant_disclosure",
+      "breakpoints": true
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1792997586569,
+      "tag": "0617_provider_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1792997586570,
+      "tag": "0618_module_agent_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1792997586571,
+      "tag": "0619_module_agent_improvement",
+      "breakpoints": true
     }
   ]
 }
