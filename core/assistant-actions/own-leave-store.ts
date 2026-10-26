@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { requestLeave, lockLeaveDependenciesTx } from '../../packs/leave/service';
 import { assertAiActionUnpausedTx } from '../ai-governance';
-import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
+import { OwnLeaveConfirmation, OwnLeaveRetirementRequest, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
   type OwnLeaveFinalReceipt as Receipt, type OwnLeavePreparedReview as Card } from '../../lib/assistant-actions/own-leave-contract';
 import { assertAiPrincipalTx } from '../ai-principal';
 import { OwnLeaveReviewIndexResult } from '../../lib/assistant-actions/own-leave-http';
@@ -126,17 +126,19 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
     : stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
 }
 
-/** Discard is private-content retirement, not an HR effect. It remains available when AI is paused
- * or its grant was removed. SQL still requires current same-login/person/source custody, a fresh
- * principal and, while pending, the exact reviewed digest. Terminal retirement reconciles only
- * custody/state after digest deletion. It can never return private content or execute leave. */
-export async function discardOwnLeaveReviewTx(tx: Tx, confirmationValue: unknown): Promise<RetiredResult> {
-  const confirmation = OwnLeaveConfirmation.safeParse(confirmationValue);
-  if (!confirmation.success) throw new OwnLeaveContentUnavailable();
-  const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(
-    ${confirmation.data.actionId}::uuid,true,${confirmation.data.reviewedDigest}) as review`);
-  if (stored.metadata.actionId !== confirmation.data.actionId) throw new OwnLeaveContentUnavailable();
-  return retired(stored);
+/** Same-login privacy-only retirement remains available after person relinking or source/grant
+ * revocation. No lost digest, plaintext reopening or native permission is needed; completed refuses. */
+export async function discardOwnLeaveReviewTx(tx: Tx, retirementValue: unknown): Promise<RetiredResult> {
+ const parsed=OwnLeaveRetirementRequest.safeParse(retirementValue);
+ if(!parsed.success)throw new OwnLeaveContentUnavailable();
+ try{
+ const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${parsed.data.actionId}::uuid,'leave.apply') as receipt`);
+ const receipt=z.object({action:z.literal('leave.apply'),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict().parse(row?.receipt);
+ if(receipt.actionId!==parsed.data.actionId)throw new OwnLeaveContentUnavailable();
+ const final=OwnLeaveFinalReceipt.parse({actionId:receipt.actionId,contractVersion:receipt.contractVersion,state:receipt.state,...(receipt.state==='refused'?{code:'unavailable' as const}:{})});
+ if(final.state==='completed')throw new OwnLeaveContentUnavailable();
+ return {kind:'retired',receipt:final};
+ }catch{throw new OwnLeaveContentUnavailable();}
 }
 
 /** Cleanup is privacy-only. Both SQL owners validate their actual current carrier/principal;
@@ -240,11 +242,12 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
 export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
   const ctx=captureContext(supplied);
   try{
-    await assertAiPrincipalTx(tx,ctx);
+    const [carrier]=await tx.execute<{matches:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid as matches`);
+    if(carrier?.matches!==true)throw new OwnLeaveContentUnavailable();
     const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select action_id as "actionId",state,
       to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
       to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt"
-      from app.assistant_own_leave_reviews_index()`);
+      from app.assistant_legacy_reviews_index('leave.apply')`);
     return OwnLeaveReviewIndexResult.parse({kind:'review_index',reviews:Array.from(rows)});
   }catch{throw new OwnLeaveContentUnavailable();}
 }

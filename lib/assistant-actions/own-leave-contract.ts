@@ -44,6 +44,12 @@ export const OwnLeaveConfirmation = z.object({
   reviewedDigest: OwnLeaveDigest,
 }).strict();
 export type OwnLeaveConfirmation = z.infer<typeof OwnLeaveConfirmation>;
+/** Owner-login private-content retirement; confirmation remains digest-mandatory. */
+export const OwnLeaveRetirement = OwnLeaveConfirmation.omit({ reviewedDigest: true }).strict();
+export type OwnLeaveRetirement = z.infer<typeof OwnLeaveRetirement>;
+export const OwnLeaveRetirementRequest = z.union([OwnLeaveRetirement, OwnLeaveConfirmation]);
+export type OwnLeaveRetirementRequest = z.infer<typeof OwnLeaveRetirementRequest>;
+
 
 /** Bounded codes only. Domain errors, model text and employee reasons never become history codes. */
 export const OwnLeaveRefusalCode = z.enum([

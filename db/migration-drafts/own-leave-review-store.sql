@@ -1826,3 +1826,53 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_leave_decision_reviews_index() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Closed legacy privacy recovery. No source/person/grant authority, digest, body projection or effect.
+-- Current login owns private text retirement even when its old review response/identity was lost.
+CREATE FUNCTION app.assistant_legacy_review_retire(p_id uuid,p_kind text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off'
+  OR p_id IS NULL OR p_kind IS NULL OR p_kind NOT IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save') THEN
+  RAISE EXCEPTION 'Review retirement unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)) THEN
+  RAISE EXCEPTION 'Review retirement unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind=p_kind FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Review retirement unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN
+  UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;
+ END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action',r.action_kind,'contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_legacy_review_retire(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_legacy_review_retire(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Minimal lost-response discovery, including reviews created before the same login was relinked.
+-- Pure metadata reader: no write-mode requirement; READ COMMITTED fresh authority snapshots only.
+-- Actual read-only behavior is covered by authored UNRUN app-role transaction cases.
+CREATE FUNCTION app.assistant_legacy_reviews_index(p_kind text)
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();at_time timestamptz;
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR p_kind IS NULL OR p_kind NOT IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save') THEN
+  RAISE EXCEPTION 'Review index unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)) THEN
+  RAISE EXCEPTION 'Review index unavailable' USING ERRCODE='42501';END IF;
+ at_time:=clock_timestamp();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=t AND r.user_id=u AND r.action_kind=p_kind
+   -- Preserve original per-kind history windows; neither reader widens private source disclosure.
+   AND (p_kind IN ('system_testing.execution.save','claims.submit') OR (r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time))
+  ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_legacy_reviews_index(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_legacy_reviews_index(text) TO ai_hr_app;

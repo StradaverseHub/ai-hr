@@ -6,6 +6,9 @@ export const MODULE_NOTIFICATION_ACTION='notifications.email_preferences.save' a
 const digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const ModuleActionPrepare=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),intent:OwnNotificationPreferencesIntent}).strict();
 export const ModuleActionConfirmation=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const ModuleActionRetirement=ModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const ModuleActionRetirementRequest=z.union([ModuleActionRetirement,ModuleActionConfirmation]);
 export const ModuleActionPreparedReview=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
  createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnNotificationPreferencesReview.omit({reviewDigest:true})}).strict();
 /** Recorded native effect reconciled with current values; never a latest-event or delivery claim. */
@@ -20,6 +23,9 @@ export const ModuleActionReviewIndexResult=z.object({kind:z.literal('module_revi
 import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeHumanContent} from './own-profile-change-contract';
 export const ProfileModuleActionPrepare=OwnProfileChangeHumanContent;
 export const ProfileModuleActionConfirmation=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const ProfileModuleActionRetirement=ProfileModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const ProfileModuleActionRetirementRequest=z.union([ProfileModuleActionRetirement,ProfileModuleActionConfirmation]);
 export const ProfileModuleActionPreparedReview=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
  createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OwnProfileChangeHumanContent,consequence:z.literal('request_hr_review')}).strict();
 export const ProfileModuleActionCompletedReceipt=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),
@@ -31,6 +37,9 @@ export const ProfileModuleActionReviewIndexResult=z.object({kind:z.literal('prof
 import {OWN_CLAIM_DRAFT_ACTION,OwnClaimDraftHumanContent} from './own-claim-contract';
 export const ClaimModuleActionPrepare=OwnClaimDraftHumanContent;
 export const ClaimModuleActionConfirmation=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const ClaimModuleActionRetirement=ClaimModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const ClaimModuleActionRetirementRequest=z.union([ClaimModuleActionRetirement,ClaimModuleActionConfirmation]);
 export const ClaimModuleActionPreparedReview=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
  createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OwnClaimDraftHumanContent,provisionalAmount:z.string().regex(/^\d+\.\d{2}$/),provisionalQuantityKm:z.string().regex(/^-?\d+\.\d{2}$/).nullable(),provisionalTaxable:z.boolean(),consequence:z.literal('draft_only_no_submission_or_reimbursement')}).strict();
 export const ClaimModuleActionCompletedReceipt=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),
@@ -42,6 +51,9 @@ import {OwnReviewAcknowledgementIntent,OwnReviewAcknowledgementReview,OwnReviewA
 export const MODULE_REVIEW_ACK_ACTION='performance.review.acknowledge' as const;
 export const ReviewModuleActionPrepare=z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),contractVersion:z.literal(1),intent:OwnReviewAcknowledgementIntent}).strict();
 export const ReviewModuleActionConfirmation=z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const ReviewModuleActionRetirement=ReviewModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const ReviewModuleActionRetirementRequest=z.union([ReviewModuleActionRetirement,ReviewModuleActionConfirmation]);
 export const ReviewModuleActionPreparedReview=z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnReviewAcknowledgementReview.omit({reviewDigest:true})}).strict();
 export const ReviewModuleActionCompletedReceipt=z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),receipt:OwnReviewAcknowledgementReceipt}).strict();
 export const ReviewModuleActionRetiredReceipt=z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
@@ -51,6 +63,9 @@ import {OwnOnehrPlanAcknowledgementIntent,OwnOnehrPlanAcknowledgementReview,OwnO
 export const MODULE_ONEHR_ACK_ACTION='performance.onehr.plan.acknowledge' as const;
 export const OnehrModuleActionPrepare=z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),contractVersion:z.literal(1),intent:OwnOnehrPlanAcknowledgementIntent}).strict();
 export const OnehrModuleActionConfirmation=z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const OnehrModuleActionRetirement=OnehrModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const OnehrModuleActionRetirementRequest=z.union([OnehrModuleActionRetirement,OnehrModuleActionConfirmation]);
 export const OnehrModuleActionPreparedReview=z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnOnehrPlanAcknowledgementReview.omit({reviewDigest:true})}).strict();
 export const OnehrModuleActionCompletedReceipt=z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),receipt:OwnOnehrPlanAcknowledgementReceipt}).strict();
 export const OnehrModuleActionRetiredReceipt=z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
@@ -61,6 +76,9 @@ import {OwnTestingExecutionIntent,OwnTestingExecutionReview,OwnTestingExecutionR
 export const MODULE_TESTING_EXECUTION_ACTION='system_testing.execution.save' as const;
 export const TestingModuleActionPrepare=z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),contractVersion:z.literal(1),intent:OwnTestingExecutionIntent}).strict();
 export const TestingModuleActionConfirmation=z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const TestingModuleActionRetirement=TestingModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const TestingModuleActionRetirementRequest=z.union([TestingModuleActionRetirement,TestingModuleActionConfirmation]);
 export const TestingModuleActionPreparedReview=z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),review:OwnTestingExecutionReview.omit({reviewDigest:true})}).strict();
 export const TestingModuleActionCompletedReceipt=z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),receipt:OwnTestingExecutionReceipt}).strict();
 export const TestingModuleActionRetiredReceipt=z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
@@ -70,6 +88,9 @@ export const TestingModuleActionReviewIndexResult=z.object({kind:z.literal('test
 import {OWN_CLAIM_SUBMISSION_ACTION,OwnClaimSubmissionHumanContent,OwnClaimSubmissionReview,OwnClaimSubmissionSourceReceipt} from './own-claim-submission-contract';
 export const ClaimSubmissionModuleActionPrepare=OwnClaimSubmissionHumanContent;
 export const ClaimSubmissionModuleActionConfirmation=z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+/** Privacy retirement needs no lost reviewed digest and grants no business authority. */
+export const ClaimSubmissionModuleActionRetirement=ClaimSubmissionModuleActionConfirmation.omit({reviewedDigest:true}).strict();
+export const ClaimSubmissionModuleActionRetirementRequest=z.union([ClaimSubmissionModuleActionRetirement,ClaimSubmissionModuleActionConfirmation]);
 export const ClaimSubmissionModuleActionPreparedReview=z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OwnClaimSubmissionHumanContent,review:OwnClaimSubmissionReview,consequence:z.literal('submitted_for_approval_not_approved_or_reimbursed')}).strict();
 export const ClaimSubmissionModuleActionCompletedReceipt=z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),receipt:OwnClaimSubmissionSourceReceipt,semantics:z.literal('submitted_not_approved_or_reimbursed')}).strict();
 export const ClaimSubmissionModuleActionRetiredReceipt=z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
