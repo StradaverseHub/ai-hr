@@ -22,6 +22,8 @@ Manual controller_only diagnostics require diagnostics_only=true and identical f
 
 Version8 sets duration-first ordering only for normal DB units. The installed Vitest base sequencer still owns sharding. Its project group, project name, isolation and prior-failure priorities remain ahead of duration; unknown files stay required with a positive advisory default. Local default behavior stays unchanged unless explicitly opted in. This execution change and new mandatory sequencing controls require a fresh complete current-policy witness; version7 source/model validation is retained at its actual origin, not relabelled as version8 runtime proof.
 
+Version8 controller-only40278854626 passed301 controls and independently matched all1,958 tracked Node/DOM files at1bef9069a. The real installed-Vitest integration40280567574 passed both parent checks plus both unchanged cases in each private child phase at28dc3c84c, including exact queue/start order, effective worker count, complete membership, inherited sharding and cleanup. Neither diagnostic executes application/database coverage or supplies a full witness. Subsequent merge7f47701bb includes the published Mobile alpha; focused combined reset verification40281355998 passed22/22 with real blocked-lock recovery and owned cleanup. Whole compiler/full release validation remain pending, and older evidence retains its actual origin. See [measured scope and preserved failures](RELEASE-PERFORMANCE.md#real-sequencing-integration-and-released-alpha-reconciliation--26-october-myt).
+
 ## Operator route
 
 From the frozen candidate directory, using its installed toolchain:
