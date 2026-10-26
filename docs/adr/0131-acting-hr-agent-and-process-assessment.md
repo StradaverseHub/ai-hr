@@ -1847,3 +1847,19 @@ release and require the intended canonical mutation and one event. All UNRUN.
 AST syntax/diff review only; replacement-calendar owners, assignments, country seed/
 raw writers and other earlier dependency intervals remain pending. This does not
 establish a universal installed barrier or current security/experience proof.
+
+
+Employment calendar selection intervals — source preparation, UNRUN
+
+Legacy `setEmploymentWorkState` and `setEmploymentHolidayCalendar` capture input/
+context and own the existing Access workforce-write barrier, shared leave configuration
+and the employee BEFORE their original subject/calendar reads and employment updates.
+The dated assignment owner captures its selection/context and takes Access before its
+original live admin predicate, then shared configuration/employee ownership BEFORE
+existing credit/Attendance advisory locks, employment row locks, calendar/replacement
+reconciliation and Payroll work. Original authority predicates, historical range rules,
+calculations and events remain unchanged. Three real-employee two-connection cases
+require no employment/calendar/replacement/attendance/event effect while held, then
+release and verify the intended legacy or dated selection. All authored UNRUN; only
+syntax/diff review. Replacement-calendar and other roster/source writers remain pending;
+no universal dependency barrier, security or concurrency runtime claim is established.

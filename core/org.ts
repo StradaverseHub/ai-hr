@@ -1614,7 +1614,11 @@ export async function setEmploymentWorkState(
   ctx: SessionContext,
   p: { employmentId: string; workState: string | null },
 ) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [before] = await tx
       .select({ workState: employment.workState })
       .from(employment)
@@ -1656,7 +1660,11 @@ export async function setEmploymentHolidayCalendar(
   ctx: SessionContext,
   p: { employmentId: string; selection: HolidayCalendarSelection },
 ) {
+  p = { ...p, selection: p.selection ? { ...p.selection } : p.selection };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [before] = await tx
       .select({ workState: employment.workState, holidayGroupId: employment.holidayGroupId })
       .from(employment)
