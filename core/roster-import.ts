@@ -31,7 +31,9 @@
  */
 import { parseCsvRecords } from '../lib/csv';
 import { isIsoDate, monthOf } from '../lib/roster-month';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx,LeaveDependencyUnavailable} from '../packs/leave/service';
 import { listEmployees } from './read';
 import {
   assertRosterDatesWritable,
@@ -85,7 +87,9 @@ export type RosterImportResult = {
 };
 
 /** One accepted instruction. `brush` matches the grid's vocabulary: a shift id, 'rest', or 'clear'. */
-type Cell = { employmentId: string; employeeCode: string; date: string; brush: string };
+type Cell = { sourceRow:number; employmentId: string; employeeCode: string; date: string; brush: string };
+type RosterImportInput={csvText:string;month:string;companyId:string;fileName?:string;dryRun:boolean};
+type RosterImportPlan={result:RosterImportResult;changes:Cell[];accepted:Cell[]};
 
 const CLEAR_TOKENS = new Set(['off', '-', '—', 'clear']);
 const REST_TOKENS = new Set(['rd', 'rest']);
@@ -104,16 +108,30 @@ export const ROSTER_IMPORT_EMPLOYEE_COLUMNS = ['employee_no', 'employee_number',
  * `month` is the month the ADMIN chose on screen, not something the file can override — that is what
  * makes rule 1 enforceable rather than advisory.
  */
-export async function analyzeRosterImport(
-  ctx: SessionContext,
-  p: { csvText: string; month: string; companyId: string; fileName?: string; dryRun: boolean },
-): Promise<RosterImportResult> {
+export async function analyzeRosterImport(ctx:SessionContext,p:RosterImportInput):Promise<RosterImportResult>{
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // Read-only nomination/preview under configuration ownership. Each actual group below replays
+  // this SAME original raw file after its complete subject ownership; no client preview is trusted.
+  const plan=await withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    return planRosterImport(ctx,p,tx);
+  });
+  if(p.dryRun)return plan.result;
+  assertRosterDatesWritable(ctx,[...new Set(plan.changes.map(cell=>cell.date))]);
+  await commitRosterCells(ctx,plan.changes,p.companyId,plan,p);
+  await recordRosterUpload(ctx,{companyId:p.companyId,month:p.month,fileName:p.fileName??'',employees:plan.result.employees,
+    rowsRead:plan.result.rowsRead,changed:plan.changes.length,rejected:plan.result.rejects.length});
+  return{...plan.result,committed:true};
+}
+
+/** One canonical planner for initial nomination and same-Tx actual group revalidation. */
+async function planRosterImport(ctx:SessionContext,p:RosterImportInput,existingTx:Tx):Promise<RosterImportPlan>{
   const fileName = p.fileName ?? '';
   const { headers, records } = parseCsvRecords(p.csvText);
 
   const [employees, allShifts] = await Promise.all([
-    listEmployees(ctx, [p.companyId]),
-    listShiftsForTenant(ctx, { includeArchived: true }),
+    listEmployees(ctx, [p.companyId],undefined,existingTx),
+    listShiftsForTenant(ctx, { includeArchived: true },existingTx),
   ]);
 
   // Employee number → active employment. Case-insensitive: HR types "a0001" as often as "A0001".
@@ -209,7 +227,7 @@ export async function analyzeRosterImport(
         brush = shiftId;
       }
       seen.add(key);
-      accepted.push({ employmentId: emp.employmentId, employeeCode: emp.code, date: iso, brush });
+      accepted.push({ sourceRow:line, employmentId: emp.employmentId, employeeCode: emp.code, date: iso, brush });
     }
   });
 
@@ -219,7 +237,7 @@ export async function analyzeRosterImport(
   const existing = new Map<string, string>(); // key → brush-equivalent of the stored row
   if (empIds.length > 0 && accepted.length > 0) {
     const dates = accepted.map((c) => c.date).sort();
-    for (const r of await rosterForRange(ctx, { employmentIds: empIds, from: dates[0], to: dates[dates.length - 1] })) {
+    for (const r of await rosterForRange(ctx, { employmentIds: empIds, from: dates[0], to: dates[dates.length - 1] },existingTx)) {
       existing.set(`${r.employmentId}|${r.shiftDate}`, r.isRestDay ? 'rest' : (r.shiftId ?? 'clear'));
     }
   }
@@ -240,23 +258,7 @@ export async function analyzeRosterImport(
     rejects,
     committed: false,
   };
-  if (p.dryRun) return result;
-
-  // Nothing outside the chosen month can be here — every out-of-month cell was rejected above — but the
-  // write path asserts the past-date right anyway, because a guard you can only reach through the UI is
-  // not a guard.
-  assertRosterDatesWritable(ctx, [...new Set(changes.map((c) => c.date))]);
-  await commitRosterCells(ctx, changes, p.companyId);
-  await recordRosterUpload(ctx, {
-    companyId: p.companyId,
-    month: p.month,
-    fileName,
-    employees: resolvedEmployments.size,
-    rowsRead: result.rowsRead,
-    changed: changes.length,
-    rejected: rejects.length,
-  });
-  return { ...result, committed: true };
+  return{result,changes,accepted};
 }
 
 /**
@@ -268,7 +270,21 @@ export async function analyzeRosterImport(
  * call each, never one per cell. Clears have no bulk primitive and are looped; each emits its own
  * event carrying the row it removed, which is what an audit reader wants from a deletion anyway.
  */
-async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: string): Promise<void> {
+async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: string, nomination:RosterImportPlan,input:RosterImportInput): Promise<void> {
+  const sourceKey=(cell:Cell)=>`${cell.sourceRow}|${cell.date}`;
+  const image=(rows:Cell[])=>JSON.stringify(rows.slice().sort((a,b)=>a.sourceRow-b.sourceRow||a.date.localeCompare(b.date)));
+  const writeGroup=async(group:Cell[],write:(tx:Tx)=>Promise<unknown>)=>withTenant(ctx,async tx=>{
+    const ids=[...new Set(group.map(cell=>cell.employmentId))].sort();
+    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+    const fresh=await planRosterImport(ctx,input,tx),keys=new Set(group.map(sourceKey));
+    const expected=nomination.accepted.filter(cell=>keys.has(sourceKey(cell)));
+    // Immutable source-row identity prevents a fresh code lookup from silently targeting another
+    // employment or shift. A newly discovered subject refuses; never acquire a late reverse-order key.
+    if(image(expected)!==image(fresh.accepted.filter(cell=>keys.has(sourceKey(cell))))
+      ||image(group)!==image(fresh.changes.filter(cell=>keys.has(sourceKey(cell)))))throw new LeaveDependencyUnavailable();
+    return write(tx);
+  });
   const byTarget = new Map<string, Map<string, string[]>>(); // brush → employmentId → dates
   for (const c of cells) {
     if (c.brush === 'clear') continue;
@@ -289,11 +305,13 @@ async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: 
       else bySignature.set(sig, { employmentIds: [employmentId], dates: sorted });
     }
     for (const { employmentIds, dates } of bySignature.values()) {
-      if (brush === 'rest') await setRestDayBulk(ctx, { employmentIds, shiftDates: dates, anchorId: companyId });
-      else await assignShiftBulk(ctx, { employmentIds, shiftDates: dates, shiftId: brush });
+      const group=cells.filter(cell=>cell.brush===brush&&employmentIds.includes(cell.employmentId)&&dates.includes(cell.date));
+      await writeGroup(group,tx=>brush==='rest'
+        ?setRestDayBulk(ctx,{employmentIds,shiftDates:dates,anchorId:companyId},tx)
+        :assignShiftBulk(ctx,{employmentIds,shiftDates:dates,shiftId:brush},tx));
     }
   }
   for (const c of cells) {
-    if (c.brush === 'clear') await clearRoster(ctx, { employmentId: c.employmentId, shiftDate: c.date });
+    if (c.brush === 'clear') await writeGroup([c],tx=>clearRoster(ctx, { employmentId: c.employmentId, shiftDate: c.date },tx));
   }
 }

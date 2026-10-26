@@ -1328,8 +1328,9 @@ export function listShifts(ctx: SessionContext, companyId: string, opts?: { incl
  *  tenant-global NULL-company templates authored on the shift-settings page). RLS already scopes to the
  *  caller's tenant. This is what the shift-settings page, the roster picker, and the employee-profile
  *  Fixed-shift picker read, so a template authored once is assignable to any employee tenant-wide. */
-export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean }) {
-  return withTenant(ctx, async tx => {
+export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean },existingTx?:Tx) {
+  opts=opts?{...opts}:undefined;ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const perform = async (tx:Tx) => {
     const conds=opts?.includeArchived?[]:[isNull(shift.archivedAt)];
     const rows=await tx.select().from(shift).where(conds.length?and(...conds):undefined).orderBy(asc(shift.startTime),asc(shift.name));
     const memberships=await tx.select().from(attendanceRuleShift).orderBy(asc(attendanceRuleShift.ruleId),asc(attendanceRuleShift.shiftId));
@@ -1337,7 +1338,8 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
     const ruleIds=[...new Set([...memberships.map(m=>m.ruleId),...versions.map(v=>v.ruleId)])];
     const pools=new Map(ruleIds.map(ruleId=>{const dated=rotationVersionOn(versions.filter(v=>v.ruleId===ruleId),todayInKualaLumpur());return [ruleId,new Set(dated?.allowedShiftIds??memberships.filter(m=>m.ruleId===ruleId).map(m=>m.shiftId))];}));
     return rows.map(sh=>({...sh,allowedRuleIds:ruleIds.filter(ruleId=>pools.get(ruleId)!.has(sh.id))}));
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 // ── cf21e554 STAGE 2 · the shift's own Overtime Schedule ────────────────────────────────────────────
@@ -1876,12 +1878,13 @@ export type EmployeeShiftType = 'fixed' | 'roster';
 export async function assignEmployeeShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftType: EmployeeShiftType; shiftId: string | null },
+  existingTx?: Tx,
 ): Promise<{ id: string }> {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const shiftId = p.shiftId || null;
   if (!shiftId) throw new BackupShiftRequiredError();
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
@@ -1955,7 +1958,8 @@ export async function assignEmployeeShift(
       },
     });
     return { id: p.employmentId };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Legacy default-shift assignment (ec4cbf63). Kept for back-compat: setting a shift is a Fixed
@@ -1965,6 +1969,7 @@ export async function assignDefaultShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftId: string | null },
 ): Promise<{ id: string }> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return assignEmployeeShift(ctx, {
     employmentId: p.employmentId,
     shiftType: 'fixed',
@@ -1994,15 +1999,17 @@ export type UncoveredEmployment = {
 export function employmentsWithoutBackupShift(
   ctx: SessionContext,
   p?: { companyIds?: string[] },
+  existingTx?:Tx,
 ): Promise<UncoveredEmployment[]> {
   // b8aa3466 — `companyIds` exists because the screen that renders this is COMPANY-SCOPED and this read was
   // not. Every other list on Attendance Policy is filtered through getScopeIds, so an admin who can see one
   // of nine companies was being told "12 employees have no backup shift" and shown names from companies
   // they cannot open, with a Fix button that would not reach them. Omitted ⇒ tenant-wide, which is what the
   // backfill script wants (it names its own tenant) and what the coverage gate wants before a global claim.
-  const scope = p?.companyIds;
+  const scope = p?.companyIds?.slice();
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (scope && scope.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) =>
+  const perform=async(tx:Tx)=>
     tx
       .select({
         employmentId: employment.id,
@@ -2019,8 +2026,8 @@ export function employmentsWithoutBackupShift(
           ...(scope ? [inArray(employment.companyId, scope)] : []),
         ),
       )
-      .orderBy(asc(employment.employeeCode), asc(person.fullName)),
-  );
+      .orderBy(asc(employment.employeeCode), asc(person.fullName));
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 export type BackfillBackupShiftResult = {
@@ -2053,9 +2060,15 @@ export async function backfillBackupShift(
   ctx: SessionContext,
   p: { shiftCode: string; apply: boolean },
 ): Promise<BackfillBackupShiftResult> {
-  const before = await employmentsWithoutBackupShift(ctx);
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // Initial discovery is nomination/preview only. It never owns an eventual profile write.
+  const nominated=await withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    return{before:await employmentsWithoutBackupShift(ctx,undefined,tx),shifts:await listShiftsForTenant(ctx,undefined,tx)};
+  });
+  const before=nominated.before;
   const wanted = p.shiftCode.trim().toLowerCase();
-  const matches = (await listShiftsForTenant(ctx)).filter((sh) => (sh.code ?? '').trim().toLowerCase() === wanted);
+  const matches = nominated.shifts.filter((sh) => (sh.code ?? '').trim().toLowerCase() === wanted);
   if (matches.length === 0) throw new Error(`No active shift with code "${p.shiftCode}"`);
   if (matches.length > 1) {
     throw new Error(
@@ -2066,6 +2079,8 @@ export async function backfillBackupShift(
   }
   if (!p.apply) return { before, after: before, assignedShiftId: null, applied: false };
   const target = matches[0];
+  const ids=before.map(row=>row.employmentId),completed=new Set<string>();
+  const image=(rows:UncoveredEmployment[])=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
   for (const row of before) {
     // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
     // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
@@ -2073,7 +2088,16 @@ export async function backfillBackupShift(
     // the truthful label for "works this shift every working day, roster the exceptions", and it is one
     // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
     // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
-    await assignEmployeeShift(ctx, { employmentId: row.employmentId, shiftType: 'fixed', shiftId: target.id });
+    await withTenant(ctx,async tx=>{
+      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+      const current=await employmentsWithoutBackupShift(ctx,undefined,tx);
+      if(image(current)!==image(before.filter(row=>!completed.has(row.employmentId))))throw new LeaveDependencyUnavailable();
+      const freshMatches=(await listShiftsForTenant(ctx,undefined,tx)).filter(sh=>(sh.code??'').trim().toLowerCase()===wanted);
+      if(freshMatches.length!==1||freshMatches[0].id!==target.id)throw new LeaveDependencyUnavailable();
+      await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
+    });
+    completed.add(row.employmentId);
   }
   return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
 }
@@ -2186,10 +2210,10 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
  * guard would now leave the roster intact — but it would also tell the operator the removal succeeded.
  * DO NOT ADD A CALLER THAT SKIPS `assertRosterAdmin`; it is what turns this into a visible refusal.
  */
-export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
+export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string },existingTx?:Tx) {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const perform=async(tx:Tx)=>{
     await assertDutyRosterWriteTx(tx,ctx,[{...p,clear:true}]);
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
     const [row] = await tx
@@ -2212,7 +2236,8 @@ export async function clearRoster(ctx: SessionContext, p: { employmentId: string
       },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 /** Bulk-assign one shift to many employees across many dates (the roster-grid workhorse). One summary
@@ -2546,8 +2571,9 @@ export async function copyRoster(
 }
 
 /** The roster grid for a date window (admin/manager view; RLS scopes which employees are visible). */
-export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[]; from: string; to: string }) {
-  return withTenant(ctx, (tx) => {
+export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[]; from: string; to: string },existingTx?:Tx) {
+  p={...p,employmentIds:p.employmentIds?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const perform=async(tx:Tx)=>{
     const conds = [gte(rosterAssignment.shiftDate, p.from), lte(rosterAssignment.shiftDate, p.to)];
     if (p.employmentIds && p.employmentIds.length > 0) conds.push(inArray(rosterAssignment.employmentId, p.employmentIds));
     return tx
@@ -2568,7 +2594,8 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
       .from(rosterAssignment)
       .where(and(...conds))
       .orderBy(asc(rosterAssignment.shiftDate));
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 // ── 23390097 · Monthly roster grid ──────────────────────────────────
@@ -3000,6 +3027,7 @@ export async function assignRosterRow(
   ctx: SessionContext,
   p: { employmentId: string; shiftDates: string[]; brush: string },
 ): Promise<{ applied: number }> {
+  p={...p,shiftDates:p.shiftDates.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const dates = [...new Set(p.shiftDates)].filter(isIsoDate).sort();
   // Both rights, in order: may this session write the roster at all, then may it write these dates.
   assertRosterAdmin(ctx);
@@ -3026,6 +3054,7 @@ export async function recordRosterUpload(
     rejected: number;
   },
 ): Promise<void> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   await withTenant(ctx, (tx) =>
     appendEvent(tx, {
       tenantId: ctx.tenantId,
