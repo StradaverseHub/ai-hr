@@ -28,7 +28,7 @@ export class AppleClockAssertionError extends Error{
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 
 /** Configuration is deployment-owned. Input photo means exact submitted bytes, never a phone digest.
- * The future attendance owner MUST use the supplied transaction and this command snapshot for its
+ * Attendance callers MUST use the supplied transaction and this command snapshot for their
  * authoritative receipt/writes. No network calls or nested transactions belong in the callback.
  * already_consumed only requests receipt reconciliation; it is not a new proof check or acceptance.
  */

@@ -1,6 +1,7 @@
 /** Synthetic enrollment, real signatures, database locks, counters and transaction rollback. */
 import {createHash,generateKeyPairSync,randomUUID,sign,type KeyObject} from 'node:crypto';
 import cbor from 'cbor';
+import sharp from 'sharp';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
@@ -205,6 +206,19 @@ describe('signed Apple carrier using the real attendance writer',()=>{
     await expect(clock.complete(f.ctx,f.input,proof)).rejects.toBeInstanceOf(AttendancePhotoRequiredError);await counts(f,begin.challenge.id);
     await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'optional'});
     expect((await clock.complete(f.ctx,f.input,proof)).photoAvailable).toBe(false);
+  });
+  it('signs exact required-photo bytes and retains a defensive copy through asynchronous acceptance',async()=>{
+    const f=await fixture();await setAttendancePhotoSetting(adminCtx(base),{employmentId:f.input.employmentId,setting:'required'});
+    const photo=await sharp({create:{width:8,height:8,channels:3,background:'#15806f'}}).png().toBuffer(),digest=createHash('sha256').update(photo).digest('hex');
+    const input={...f.input,photo,mime:'image/png' as const},begin=await clock.begin(f.ctx,input);
+    expect(begin.context.command.photo).toEqual({sha256:digest,byteLength:photo.length,mimeType:'image/png'});
+    const pending=clock.complete(f.ctx,input,{challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)});
+    photo.fill(0); // The caller no longer owns the accepted byte snapshot after invoking completion.
+    const receipt=await pending;expect(receipt.photoAvailable).toBe(true);
+    const [capture]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
+    expect(capture.photoDigest).toBe(digest);expect(capture.photoMimeType).toBe('image/jpeg');
+    expect((await sharp(capture.photoBytes!).metadata()).format).toBe('jpeg');
+    expect(await counter(f.input.keyId)).toBe(1);
   });
   it('preserves uncertainty containment and the separate blocked-attempt audit without accepting attendance',async()=>{
     const f=await fixture(),input={...f.input,command:{...f.input.command,accuracy:20}},admin=adminCtx(base);
