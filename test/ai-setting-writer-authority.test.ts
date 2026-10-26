@@ -1,10 +1,11 @@
-/** Authored UNRUN. Actual app-role setting/event writes and two-connection Access interleavings.
+/** Actual app-role setting/event writes and two-connection Access interleavings.
+ * Failed event/interleaving fixture repairs are source-only and await their targeted rerun.
  * No model, provider, runtime evaluation or module-activation proof is inferred from these cases.
  */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {setTenantSetting,TenantSettingError} from '../core/tenant-settings';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
@@ -17,12 +18,26 @@ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBas
  expect(authority?.allowed).toBe(true);
 });afterAll(closeAll);
 const state=async()=>({settings:await owner.db.select().from(schema.tenantSetting).where(eq(schema.tenantSetting.tenantId,base.tenantId)).orderBy(schema.tenantSetting.key),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.id)});
-async function heldAccess(){
+async function heldAccess(revokeWithinOwnedTransaction=false){
  let ready!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;
  const started=new Promise<void>((yes,no)=>{ready=yes;failed=no;}),finish=new Promise<void>(yes=>{release=yes;});
  const watchdog=setTimeout(()=>{failed(Error('owned setting Access handshake timed out'));release();},10000);
- const holder=withTenant(groupCtx(),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await finish;});void holder.catch(failed);
- await started;return{async close(){release();clearTimeout(watchdog);await holder;}};
+ let revokeActualAuthority:()=>Promise<void>=async()=>{throw Error('Revocation requires the owned owner transaction');};
+ const hold=async(tx:Tx)=>{
+  await lockAccessConfigurationTx(tx,base.tenantId);
+  if(revokeWithinOwnedTransaction)revokeActualAuthority=async()=>{
+   // role_assignment is the actual app.principal owner. Its BEFORE DELETE trigger joins Access;
+   // perform this fixture revocation in the SAME owned holder transaction, never a blocked peer.
+   await tx.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));
+   const principal=await tx.execute<{grants:unknown}>(sql`select grants from app.principal(${base.adminUserId}::uuid) where tenant_id=${base.tenantId}::uuid`);
+   expect(principal).toHaveLength(1);expect(principal[0].grants).toEqual([]);
+  };
+  ready();await finish;
+ };
+ // Owner connection is fixture authority only, without a synthetic application actor or role GUC.
+ const holder=revokeWithinOwnedTransaction?owner.db.transaction(tx=>hold(tx as unknown as Tx)):withTenant(groupCtx(),hold);
+ void holder.catch(failed);
+ await started;return{revokeActualAuthority:()=>revokeActualAuthority(),async close(){release();clearTimeout(watchdog);await holder;}};
 }
 async function waitActualAccessWait(failed:()=>unknown){
  const deadline=Date.now()+4000;let waiting=false;
@@ -60,15 +75,17 @@ describe('current actual authority for tenant settings',()=>{
   const after=await state(),saved=after.settings.find(row=>row.key==='ess.profile_change_fields');
   expect(saved?.value).toEqual(['primaryEmail']);expect(saved?.source).toBe('customer');
   expect(after.events).toHaveLength(before.events.length+1);
-  expect(after.events.at(-1)).toMatchObject({actorId:base.adminUserId,eventType:'tenant-setting.changed',payload:{key:'ess.profile_change_fields',value:['primaryEmail']}});
+  const previousIds=new Set(before.events.map(event=>event.id)),created=after.events.filter(event=>!previousIds.has(event.id));
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({actorId:base.adminUserId,eventType:'tenant-setting.changed',payload:{key:'ess.profile_change_fields',value:['primaryEmail']}});
   expect(after.settings.find(row=>row.key==='claims.input_triage_enabled')).toEqual(before.settings.find(row=>row.key==='claims.input_triage_enabled'));
  });
  it('freshly refuses an administrator revoked while the actual writer is waiting, with no setting/event effect',async()=>{
-  const ctx=groupCtx(),before=await state(),holder=await heldAccess();let failure:unknown;
+  const ctx=groupCtx(),before=await state(),holder=await heldAccess(true);let failure:unknown;
   const writing=setTenantSetting(ctx,{key:'performance.ai_pm_enabled',value:false});void writing.catch(error=>{failure=error;});
   try{
    await waitActualAccessWait(()=>failure);expect(await state()).toEqual(before);
-   await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));
+   await holder.revokeActualAuthority();
   }finally{await holder.close();}
   await expect(writing).rejects.toMatchObject({reason:'not_group_admin'});expect(await state()).toEqual(before);
  });

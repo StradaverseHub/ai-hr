@@ -1,8 +1,9 @@
-/** Authored UNRUN. Real profile setting owners and actual Access lock interleavings; no model/provider. */
+/** Real profile setting owners and actual Access lock interleavings; no model/provider.
+ * Failed event/interleaving fixture repairs are source-only and await their targeted rerun. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {saveProfileEditPolicy,saveProfileVisibilityPolicy,saveOwnPhotoSubmissionSetting,readProfilePresentationPolicy} from '../core/profile-edit-policy';
 import {saveProfileRoutingPolicy} from '../core/profile-routing';
@@ -36,12 +37,26 @@ function command(kind:'edit'|'visibility'|'photo'|'routing',ctx:SessionContext){
  const input={expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:false,rules:[] as ProfileRouteRule[]};
  return{run:()=>saveProfileRoutingPolicy(ctx,input),mutate:()=>{input.enabled=true;input.expectedRevision=randomUUID();input.rules.push({id:randomUUID(),name:'Retargeted',approverEmploymentId:randomUUID(),employmentIds:[],criteria:{companyIds:[randomUUID()]}});},key:PROFILE_ROUTING_KEY,expected:{version:1,enabled:false,rules:[]}};
 }
-async function heldAccess(){
+async function heldAccess(revokeWithinOwnedTransaction=false){
  let ready!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;
  const started=new Promise<void>((yes,no)=>{ready=yes;failed=no;}),finish=new Promise<void>(yes=>{release=yes;});
  const watchdog=setTimeout(()=>{failed(Error('owned profile policy handshake timed out'));release();},10000);
- const holder=withTenant(groupCtx(),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await finish;});void holder.catch(failed);
- await started;return{async close(){release();clearTimeout(watchdog);await holder;}};
+ let revokeActualAuthority:()=>Promise<void>=async()=>{throw Error('Revocation requires the owned owner transaction');};
+ const hold=async(tx:Tx)=>{
+  await lockAccessConfigurationTx(tx,base.tenantId);
+  if(revokeWithinOwnedTransaction)revokeActualAuthority=async()=>{
+   // role_assignment is the actual app.principal owner. Its BEFORE DELETE trigger joins Access;
+   // perform this fixture revocation in the SAME owned holder transaction, never a blocked peer.
+   await tx.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));
+   const principal=await tx.execute<{grants:unknown}>(sql`select grants from app.principal(${base.adminUserId}::uuid) where tenant_id=${base.tenantId}::uuid`);
+   expect(principal).toHaveLength(1);expect(principal[0].grants).toEqual([]);
+  };
+  ready();await finish;
+ };
+ // Owner connection is fixture authority only, without a synthetic application actor or role GUC.
+ const holder=revokeWithinOwnedTransaction?owner.db.transaction(tx=>hold(tx as unknown as Tx)):withTenant(groupCtx(),hold);
+ void holder.catch(failed);
+ await started;return{revokeActualAuthority:()=>revokeActualAuthority(),async close(){release();clearTimeout(watchdog);await holder;}};
 }
 async function observeWait(failed:()=>unknown){
  const deadline=Date.now()+4000;let waiting=false;
@@ -66,12 +81,14 @@ describe('fresh calling authority before administrative profile-policy facts',()
   const after=await state(),saved=after.settings.find(row=>row.key===operation.key);
   if(typeof operation.expected==='boolean')expect(saved?.value).toBe(operation.expected);else expect(saved?.value).toMatchObject(operation.expected);
   expect(after.requests).toEqual(before.requests);expect(after.events).toHaveLength(before.events.length+1);
-  expect(after.events.at(-1)).toMatchObject({actorId:base.adminUserId,eventType:'tenant-setting.changed',payload:{key:operation.key}});
+  const previousIds=new Set(before.events.map(event=>event.id)),created=after.events.filter(event=>!previousIds.has(event.id));
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({actorId:base.adminUserId,eventType:'tenant-setting.changed',payload:{key:operation.key,value:operation.expected}});
  });
  it('refuses authority revoked while waiting, before touching profile policy or withdrawing requests',async()=>{
-  const ctx=groupCtx(),operation=command('visibility',ctx),before=await state(),holder=await heldAccess();let failure:unknown;
+  const ctx=groupCtx(),operation=command('visibility',ctx),before=await state(),holder=await heldAccess(true);let failure:unknown;
   const writing=operation.run();void writing.catch(error=>{failure=error;});
-  try{await observeWait(()=>failure);await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));}
+  try{await observeWait(()=>failure);await holder.revokeActualAuthority();}
   finally{await holder.close();}
   await expect(writing).rejects.toMatchObject({reason:'not_group_admin'});expect(await state()).toEqual(before);
  });
