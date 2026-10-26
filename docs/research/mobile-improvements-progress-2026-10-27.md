@@ -149,3 +149,40 @@ checkout and remains failed/unverified. A clean-database migration-chain pass is
 that live-baseline check. No staging source, runtime or database was changed. Real indoor-device
 measurements, signed-build acceptance, durable failed-preparation attempts, M04 attestation and M05
 offline adjudication remain open; no offline punch acceptance has been enabled.
+
+## Durable preparation attempts
+
+Checkpoint `c83c0d464` commits an encrypted, actor/employment/connection-scoped preparation before GPS
+or required-photo acquisition. Failed acquisition and cancellation retain its reference; matching
+command adoption is atomic under the existing secure pointer. A new version 2 snapshot distinguishes
+an unsent preparation from a transmittable version 1 command, and old version 1 journals remain readable.
+Older binaries refuse the new preparation format rather than treating it as empty. No unresolved
+record is evicted to admit another action. A company-profile change also invalidates retained recovery
+callbacks even when its auth generation is unchanged.
+
+The separate attempt endpoint records only the reference, action and explicitly unverified phone
+claim time, scoped to the verified actor and employment, with an independent server receipt timestamp.
+Concurrent retries return one receipt; changing that claim under its reference refuses. Reporting
+never creates attendance and cannot bypass server-ordered abandonment. Native confirmation obtains
+the attempt receipt before sending the attendance command; a failed report, including an older
+server's 404, retains the exact command without sending or clearing it. Recent own-employment report
+history remains available after the local command is resolved and is clearly separate from attendance.
+
+At frozen `c83c0d464`, both repository/native compilers passed, all 72 cases in four database/API/budget/
+pack-boundary files passed, and all 85 cases in six native journal/recovery/screen/transport files passed.
+Earlier runs remain separate: a new screen fixture initially used a different VM `Error` identity,
+and the new audit service initially selected a nonexistent timestamp column. The fixture now models
+one app runtime; the service uses the real immutable event `occurred_at`. Their repaired cases passed
+before the complete focused rerun. Encryption fixtures exercise pointer loss during command adoption
+and refusal to substitute empty state for a missing committed preparation.
+
+Review then found an over-restriction in M03: approximate permission was refused before containment
+could be evaluated. That contradicted the shared geofence rule. The correction preserves permission
+quality as client metadata, permits an approximate fix when containment/cap pass, and offers Settings
+guidance only when that fix fails. All 27 affected capture/screen cases passed. Permission metadata
+is not smuggled into the strict preview or clock command and is not evidence of authenticity.
+
+These remain local implementation results. Complete CI/publication approval, the live-baseline
+migration rehearsal, signed-device process-termination and keychain acceptance, attestation and
+offline adjudication are still required. Cold-offline identity restoration and automatic punch
+replay remain disabled. This follow-up adds no migration beyond the inherited 0621 geofence change.

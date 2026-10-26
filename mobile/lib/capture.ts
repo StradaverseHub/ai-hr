@@ -8,11 +8,10 @@ import { AppState } from 'react-native';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
 import {LocationCaptureError} from './errors';
-export async function capturePosition(requirePrecise=false){
+export async function capturePosition(){
   const permission=await Location.requestForegroundPermissionsAsync();
   if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
-  if(requirePrecise&&(permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'))
-    throw new LocationCaptureError('approximate_permission',t('locationApproximate'));
+  const permissionAccuracy:'precise'|'approximate'|'unavailable'=permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'?'approximate':permission.android?.accuracy==='fine'||permission.ios?.accuracy==='full'?'precise':'unavailable';
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
   let timeout:ReturnType<typeof setTimeout>|undefined;
   let ended=false;
@@ -30,7 +29,7 @@ export async function capturePosition(requirePrecise=false){
   if(accuracy==null||![lat,lng,accuracy,fix.timestamp].every(Number.isFinite)||Math.abs(lat)>90||Math.abs(lng)>180||accuracy<0||fix.timestamp<=0)
     throw new LocationCaptureError('invalid_fix',t('locationInvalid'));
   if(Math.abs(Date.now()-fix.timestamp)>120000)throw new LocationCaptureError(fix.timestamp>Date.now()?'future_fix':'stale_fix',t(fix.timestamp>Date.now()?'locationFuture':'locationExpired'));
-  return {lat,lng,accuracy,sampledAt:fix.timestamp};
+  return {lat,lng,accuracy,sampledAt:fix.timestamp,permissionAccuracy};
 }
 export async function capturePhoto():Promise<LocalAttachment|null>{
   const permission=await ImagePicker.requestCameraPermissionsAsync();

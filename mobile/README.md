@@ -137,8 +137,10 @@ uncertainty is configured in Attendance company policy settings; blank adds no e
 negative or invalid uncertainty cannot substitute for zero. Non-geofenced employees and manual HR
 entries retain their established behavior.
 
-Enforced native preparation requests precise permission and distinguishes blocked/approximate access,
-services disabled, mock flags, invalid fixes and stale/future samples. Settings recovery is explicit.
+Native preparation distinguishes blocked/approximate access, services disabled, mock flags, invalid
+fixes and stale/future samples. Approximate permission alone never overrides the shared site rule:
+if its reported uncertainty fits, preparation can continue. An approximate fix that fails the rule
+offers explicit precise-permission Settings guidance.
 Services discovery and one position request share a 20-second deadline; no automatic GPS retry follows
 a timeout. A late services response cannot start a new position query. These checks validate reported
 quality, not provider authenticity. Real indoor-site measurements, signed-device permission behavior
@@ -157,6 +159,8 @@ actor/employment/reference, distinguishes its receipt time from the unverified p
 creates attendance from this report. A failed/lost attempt receipt retains the command and prevents
 attendance transmission. Deploy this server capability before distributing the new client; an older
 server refusal retains local evidence. No background replay, offline acceptance or backdating is enabled.
+The Clock screen also retrieves up to 20 recent reports for its selected employment and actor; it
+shows the phone claim and server receipt separately from accepted clock history.
 
 Native commands enforce registered-device policy. The registration token is stored in device-only
 unlocked SecureStore, is scoped to employment, and is deleted on logout/reinstall. This registration

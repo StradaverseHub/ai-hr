@@ -23,7 +23,7 @@ function fixture(){
   const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`request-${++sequence}`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
-  const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
+  const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   const stage=vi.fn(async(command:string,file?:unknown)=>({command,file})),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
@@ -37,6 +37,20 @@ function fixture(){
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
+  it('allows an approximate fix when the shared site rule passes and keeps permission metadata out of the strict preview body',async()=>{
+    const f=fixture();f.clockState.state.geofencingRequired=true;
+    f.capture.mockImplementationOnce(async()=>({lat:3,lng:101,accuracy:500,sampledAt:Date.now(),permissionAccuracy:'approximate' as const}));
+    f.preview.mockResolvedValueOnce({outcome:'pass',siteId:'own',siteName:'Campus',distanceM:0,radiusM:1000,accuracyM:500,maximumAccuracyM:null});
+    render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    expect(f.preview.mock.calls[0][0]).not.toHaveProperty('permissionAccuracy');expect(screen.queryByText('openLocationSettings')).toBeNull();
+    expect(f.post).not.toHaveBeenCalled();
+  });
+  it('offers precise-permission recovery when an approximate fix actually fails the site rule',async()=>{
+    const f=fixture();f.capture.mockImplementationOnce(async()=>({lat:3,lng:101,accuracy:500,sampledAt:Date.now(),permissionAccuracy:'approximate' as const}));
+    f.preview.mockResolvedValueOnce({outcome:'outside_site',siteId:'own',siteName:'Office',distanceM:0,radiusM:50,accuracyM:500,maximumAccuracyM:null});
+    render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('locationApproximate');
+    expect(screen.getByText('openLocationSettings')).toBeTruthy();expect(f.post).not.toHaveBeenCalled();
+  });
   it('keeps an unsent attempt when a required photo is cancelled after location capture',async()=>{
     const f=fixture();f.clockState.state.attendancePhotoSetting='required';render(<f.App kind="clock"/>);
     fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('photoRequired');

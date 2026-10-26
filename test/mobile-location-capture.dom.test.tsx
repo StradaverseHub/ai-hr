@@ -8,7 +8,7 @@ function fixture(){
   const permission={status:'granted',canAskAgain:true,ios:{accuracy:'full'},android:{accuracy:'fine'}};
   const fix={timestamp:Date.now(),mocked:false,coords:{latitude:3,longitude:101,accuracy:5}};
   const location={requestForegroundPermissionsAsync:vi.fn(async()=>permission),hasServicesEnabledAsync:vi.fn(async()=>true),getCurrentPositionAsync:vi.fn(async()=>fix),Accuracy:{High:4}};
-  const module={exports:{} as {capturePosition:(precise?:boolean)=>Promise<unknown>}};
+  const module={exports:{} as {capturePosition:()=>Promise<unknown>}};
   const code=transpileModule(readFileSync('mobile/lib/capture.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
   runInNewContext(code,{exports:module.exports,module,Date,setTimeout,clearTimeout,require:(id:string)=>{
     if(id==='expo-location')return location;
@@ -27,12 +27,11 @@ describe('foreground location quality',()=>{
     await expect(f.capture()).rejects.toMatchObject({issue:'permission_denied'});f.permission.canAskAgain=false;
     await expect(f.capture()).rejects.toMatchObject({issue:'permission_blocked'});expect(f.location.getCurrentPositionAsync).not.toHaveBeenCalled();
   });
-  it('requires precise permission only for an enforced workplace',async()=>{
+  it('retains approximate permission as quality metadata without inventing a stricter geofence policy',async()=>{
     const f=fixture();f.permission.ios.accuracy='reduced';
-    await expect(f.capture(true)).rejects.toMatchObject({issue:'approximate_permission'});
-    await expect(f.capture(false)).resolves.toMatchObject({accuracy:5});
+    await expect(f.capture()).resolves.toMatchObject({accuracy:5,permissionAccuracy:'approximate'});
     f.permission.ios.accuracy='full';f.permission.android.accuracy='coarse';
-    await expect(f.capture(true)).rejects.toMatchObject({issue:'approximate_permission'});
+    await expect(f.capture()).resolves.toMatchObject({permissionAccuracy:'approximate'});
   });
   it('reports disabled services and refuses mock-provider evidence',async()=>{
     const f=fixture();f.location.hasServicesEnabledAsync.mockResolvedValueOnce(false);

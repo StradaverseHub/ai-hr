@@ -54,12 +54,13 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
       next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
       if(!putClock(next))return;
-      const geo=await capturePosition(current.geofencingRequired);assertAuthGeneration(owner);
+      const geo=await capturePosition();assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
-      const locationAssessment=await apiPost('clock-location',geo,{employmentId:identity});assertAuthGeneration(owner);
+      const locationAssessment=await apiPost('clock-location',{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt},{employmentId:identity});assertAuthGeneration(owner);
       if(locationAssessment.outcome!=='pass'&&locationAssessment.outcome!=='not_enforced'){
         removeLocalFile(photo);
-        putClock({...next,phase:'idle',geo,locationAssessment,message:t(locationRefusals[locationAssessment.outcome])});return;
+        const approximate=geo.permissionAccuracy==='approximate'&&['poor_accuracy','outside_site'].includes(locationAssessment.outcome);
+        putClock({...next,phase:'idle',geo,locationAssessment,...(approximate?{locationIssue:'approximate_permission'}:{}),message:t(approximate?'locationApproximate':locationRefusals[locationAssessment.outcome])});return;
       }
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto()??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
