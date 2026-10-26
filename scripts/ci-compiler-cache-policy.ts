@@ -44,17 +44,15 @@ function context(value:CompilerCacheContext){
  assert(Object.values(invoked.actualCompiler).every(digest)&&Object.values(invoked.mobileInputs).every(digest),'Actual compiler and mobile bytes required');
  return value;
 }
-/** No cached success is returned: this only permits graph reuse before a mandatory whole-project compiler invocation. */
-export function compatibleCompilerState(originInput:CompilerCacheContext,currentInput:CompilerCacheContext,comparison:Comparison){
- const origin=context(originInput),current=context(currentInput);
- assert(origin.source===origin.controller&&origin.source!==current.source,'A distinct child source must retain its original producer');
- assert(origin.controller===current.controller&&origin.runId===current.runId,'Do not relabel original cache provenance');
+function matchingInputs(origin:CompilerCacheContext,current:CompilerCacheContext){
  assert(isDeepStrictEqual(origin.runtime,current.runtime),'Compiler runtime/package changes require cold state');
  for(const key of ['tsconfig','lockfile','package','workspace','nextConfig'])assert(origin.inputs[key]===current.inputs[key],'Changed compiler configuration/dependencies require cold state');
  // The actual binary, flags, generated types and inputs remain bound. Resource-only shell changes may differ.
  const {sourceInvocation:oldWrapper,...oldInvocation}=origin.invoked;
  const {sourceInvocation:newWrapper,...newInvocation}=current.invoked;
  assert(digest(oldWrapper)&&digest(newWrapper)&&isDeepStrictEqual(oldInvocation,newInvocation),'Compiler invocation/generated inputs changed');
+}
+function descendantFiles(origin:CompilerCacheContext,current:CompilerCacheContext,comparison:Comparison){
  assert(comparison&&comparison.status==='ahead'&&comparison.behind_by===0
   &&Number.isSafeInteger(comparison.ahead_by)&&comparison.ahead_by>0&&comparison.ahead_by<=32
   &&comparison.total_commits===comparison.ahead_by&&comparison.base_commit?.sha===origin.source
@@ -67,9 +65,31 @@ export function compatibleCompilerState(originInput:CompilerCacheContext,current
  for(const row of comparison.files)assert(typeof row.filename==='string'&&row.filename.length>0&&row.filename.length<=2048
   &&!row.filename.includes('\0')&&!row.filename.split('/').some(part=>part==='..'||part==='.')
   &&['modified','added','removed','renamed','copied','changed'].includes(row.status),'Changed-file inventory refused');
+ return comparison.files.map(row=>({path:row.filename,status:row.status}));
+}
+/** Diagnostic boundary retains its original cache-context contract. */
+export function compatibleCompilerState(originInput:CompilerCacheContext,currentInput:CompilerCacheContext,comparison:Comparison){
+ const origin=context(originInput),current=context(currentInput);
+ assert(origin.source===origin.controller&&origin.source!==current.source,'A distinct child source must retain its original producer');
+ assert(origin.controller===current.controller&&origin.runId===current.runId,'Do not relabel original cache provenance');
+ matchingInputs(origin,current);
+ const changedFiles=descendantFiles(origin,current,comparison);
  return {
   kind:'COMPATIBLE_ANCESTOR_STATE_COMPILER_MUST_RUN',originSource:origin.source,candidateSource:current.source,
-  originalRunId:origin.runId,changedFiles:comparison.files.map(row=>({path:row.filename,status:row.status})),
-  mandatoryWholeCompiler:true,releaseAuthorized:false,
+  originalRunId:origin.runId,changedFiles,mandatoryWholeCompiler:true,releaseAuthorized:false,
+ };
+}
+/** Normal CI records actual producer/current controller and run identities independently. No PASS is reused. */
+export function compilerStateApplicability(originInput:CompilerCacheContext,currentInput:CompilerCacheContext,comparison:Comparison|null){
+ const origin=context(originInput),current=context(currentInput);
+ matchingInputs(origin,current);
+ const identicalSource=origin.source===current.source;
+ if(identicalSource)assert(comparison===null,'Identical source requires no invented ancestry comparison');
+ const changedFiles=identicalSource?[]:descendantFiles(origin,current,comparison as Comparison);
+ return {
+  kind:'ELIGIBLE_COMPILER_GRAPH_COMPILER_MUST_RUN',
+  producer:{source:origin.source,controller:origin.controller,runId:origin.runId,attempt:origin.attempt},
+  candidate:{source:current.source,controller:current.controller,runId:current.runId,attempt:current.attempt},
+  identicalSource,changedFiles,mandatoryWholeCompiler:true,releaseAuthorized:false,
  };
 }

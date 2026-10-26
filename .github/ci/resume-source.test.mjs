@@ -64,3 +64,12 @@ test('A skipped optional diagnostics job is allowed, but cannot conceal extra ex
   assert.equal(assessResumeSource(f).reusable.length, 5);
   f.jobs.at(-1).conclusion = 'success'; assert.throws(() => assessResumeSource(f), /unexpected job/);
 });
+
+test('supplemental compiler graph is authenticated but never supplies test-unit or compiler-release authority',()=>{
+ const f=fixture(),producer={kind:'WHOLE_PROJECT_COMPILER_CACHE_STATE_NOT_TEST_OR_RELEASE',releaseAuthorized:false,source:f.expected.candidate,controller:f.expected.controller,
+ runId:String(f.run.id),attempt:'1',exitCode:0,sourceRestored:true,controllerRestored:true,cacheRemoved:true};
+ put(f,'whole-compiler-state-v1','producer.json',producer,{'compiler-log.json':'{}','envelope.json':'{}','state.json':'{}','swap-cleanup.json':'{}'});
+ const cache=f.artifacts.find(a=>a.name==='whole-compiler-state-v1'),job=f.jobs.find(j=>j.name==='typecheck');job.conclusion='success';cache.created_at=job.started_at;
+ const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert.equal(result.releaseAuthorized,false);assert(result.freshPrerequisites.includes('typecheck'));
+ const bytes=Buffer.from(f.archives.get(cache.name));bytes[bytes.length-1]^=1;f.archives.set(cache.name,bytes);assert.throws(()=>assessResumeSource(f));
+});

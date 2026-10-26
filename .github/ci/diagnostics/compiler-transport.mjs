@@ -105,13 +105,15 @@ function diskSample(source,report,phase){
  const st=statfsSync(source),availableBytes=st.bavail*st.bsize;
  assert(Number.isSafeInteger(availableBytes)&&availableBytes>=0,'Actual compiler disk capacity unavailable');
  report.diskSamples.push({phase,at:new Date().toISOString(),availableBytes,totalBytes:st.blocks*st.bsize});
- if(process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-compiler-diagnostic')assert(availableBytes>=2*1024**3,'Bounded compiler requires2GiB remaining after swap reservation');
+ if(['bounded-compiler-diagnostic','bounded-whole-compiler'].includes(process.env.AIHR_CI_CAPACITY_PROFILE))assert(availableBytes>=2*1024**3,'Bounded compiler requires2GiB remaining after swap reservation');
 }
 async function compile(source,cache,out,report,name,expectedErrorPath=null){
  diskSample(source,report,name+'-before');
  const row={name,startedAt:new Date().toISOString(),expectedErrorPath,processExitCode:null};report.phases.push(row);
  const log=join(out,name+'.log');
- const args=['-v',process.execPath,join(source,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache.file];
+ const command=[process.execPath,join(source,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache.file];
+ const args=process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-whole-compiler'
+  ?['-v','/usr/bin/prlimit','--fsize=67108864','--',...command]:['-v',...command];
  const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=8192'},log});
  Object.assign(row,result,{processExitCode:result.code,endedAt:new Date().toISOString()});
  diskSample(source,report,name+'-after');
@@ -240,3 +242,5 @@ export async function compilerTransport(mode){
  return report;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))compilerTransport(process.argv[2]).then(v=>console.log(JSON.stringify(v))).catch(error=>{console.error(error);process.exitCode=1;});
+
+export {context as compilerContext,sourceClean as assertCompilerSourceClean,createCache as createCompilerCache,compile as runWholeCompiler};

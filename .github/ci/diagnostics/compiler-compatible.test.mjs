@@ -44,3 +44,18 @@ test('diverged/missing/foreign/paginated ancestry and incomplete changed-file in
   {files:Array.from({length:300},(_,i)=>({filename:'f'+i+'.ts',status:'added'}))},{files:[{filename:'../foreign.ts',status:'added'}]}])
   assert.throws(()=>compatibleCompilerState(identity(originSha),identity(head),{...comparison(),...change}));
 });
+
+test('normal CI keeps distinct actual producer and current controller/run identities without reusing a PASS',async()=>{
+ const {compilerStateApplicability}=await import('../../../scripts/ci-compiler-cache-policy.ts');
+ const origin=identity(originSha);origin.controller='d'.repeat(40);
+ const current=identity(head);current.controller='e'.repeat(40);current.runId='999';
+ const result=compilerStateApplicability(origin,current,comparison());
+ assert.deepEqual(result.producer,{source:originSha,controller:origin.controller,runId:'123',attempt:'1'});
+ assert.deepEqual(result.candidate,{source:head,controller:current.controller,runId:'999',attempt:'1'});
+ assert.equal(result.mandatoryWholeCompiler,true);assert.equal(result.releaseAuthorized,false);
+ const same={...current,source:originSha};
+ assert.equal(compilerStateApplicability(origin,same,null).identicalSource,true);
+ assert.throws(()=>compilerStateApplicability(origin,same,comparison()));
+ const changed=structuredClone(current);changed.inputs.tsconfig='f'.repeat(64);
+ assert.throws(()=>compilerStateApplicability(origin,changed,comparison()));
+});

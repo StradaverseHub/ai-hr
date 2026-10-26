@@ -1,12 +1,13 @@
 /** Offline source-integrity assessment. Never a receipt, API authentication or release authority. */
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {requiredEvidence} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
+import {COMPILER_STATE_ARTIFACT,COMPILER_PACKET_MEMBERS} from './compiler-cache-protocol.mjs';
 import {REPOSITORY, REPOSITORY_ID, WORKFLOW_ID, WORKFLOW_PATH, verifyArtifactBytes} from './release-policy.mjs';
 
 const fail = message => {throw Error('Resume source refused: ' + message);};
@@ -17,7 +18,7 @@ const timestamp = value => typeof value === 'string' ? Date.parse(value) : NaN;
 const jobName = unit => unit.kind === 'browser' ? `browser (${unit.engine})` : `test (${unit.id})`;
 
 /** Digest check precedes bounded JSON-only extraction; no caller-supplied extracted object is trusted. */
-function archiveJson(artifact, bytes, filename) {
+function archiveJson(artifact, bytes, filename, members = null) {
   if (!Buffer.isBuffer(bytes) || bytes.length !== artifact.size_in_bytes || bytes.length > maxArchiveBytes)
     fail('archive byte size mismatch: ' + artifact.name);
   verifyArtifactBytes(artifact, bytes);
@@ -28,6 +29,7 @@ function archiveJson(artifact, bytes, filename) {
     writeFileSync(archive, bytes, {flag: 'wx', mode: 0o600});
     execFileSync('python3', [fileURLToPath(new URL('./extract-artifact.py', import.meta.url)), archive, extracted],
       {timeout: 10000, stdio: 'pipe'});
+    if(members&&!isDeepStrictEqual(readdirSync(extracted).sort(),members))fail('supplemental compiler packet members differ');
     return JSON.parse(readFileSync(join(extracted, filename), 'utf8'));
   } finally {
     rmSync(temporary, {recursive: true, force: true});
@@ -83,7 +85,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   const artifactByName = new Map(), artifactIds = new Set();
   for (const artifact of artifacts) {
     const w = artifact?.workflow_run;
-    if (!topology.artifacts.includes(artifact?.name) || artifactByName.has(artifact.name)
+    if ((!topology.artifacts.includes(artifact?.name) && artifact?.name !== COMPILER_STATE_ARTIFACT) || artifactByName.has(artifact.name)
       || !positiveId(artifact.id) || artifactIds.has(artifact.id) || artifact.expired !== false
       || !positiveId(artifact.size_in_bytes) || artifact.size_in_bytes > maxArchiveBytes
       || !/^sha256:[a-f0-9]{64}$/.test(artifact.digest ?? '') || !archives.has(artifact.name))
@@ -99,11 +101,20 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   const planArtifact = artifactByName.get('gate-plan');
   if (!planArtifact) fail('missing archived plan');
 
-  function fromJob(artifact, name, filename) {
+  function fromJob(artifact, name, filename, members = null) {
     const job = byName.get(name), when = timestamp(artifact.created_at);
     if (!job || job.conclusion === 'skipped' || when < timestamp(job.started_at) || when > timestamp(job.completed_at))
       fail('artifact outside producing job: ' + artifact.name);
-    return archiveJson(artifact, archives.get(artifact.name), filename);
+    return archiveJson(artifact, archives.get(artifact.name), filename, members);
+  }
+  const supplemental = artifactByName.get(COMPILER_STATE_ARTIFACT);
+  if(supplemental){
+    const producer=fromJob(supplemental,'typecheck','producer.json',COMPILER_PACKET_MEMBERS);
+    if(byName.get('typecheck').conclusion!=='success'||producer.kind!=='WHOLE_PROJECT_COMPILER_CACHE_STATE_NOT_TEST_OR_RELEASE'||producer.releaseAuthorized!==false
+      ||producer.source!==expected.candidate||producer.controller!==expected.controller||producer.runId!==String(run.id)||producer.attempt!=='1'
+      ||producer.exitCode!==0||producer.sourceRestored!==true||producer.controllerRestored!==true||producer.cacheRemoved!==true)
+      fail('supplemental compiler cache identity differs');
+    // It never supplies a reusable test unit or waives fresh compiler/build prerequisites.
   }
   const plan = fromJob(planArtifact, 'plan', 'ci-plan.json');
   if (!isDeepStrictEqual(plan, expectedPlan)) fail('archived plan differs from independently reconstructed plan');

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted && "$(uname -s)" == Linux ]] || exit 2
-case "${1:-}" in ""|--incremental-diagnostic|--state-transport-producer|--state-transport-consumer) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac
+case "${1:-}" in ""|--incremental-diagnostic|--state-transport-producer|--state-transport-consumer|--whole-cache) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac
 compiler_mode="${1:-}"
 swapfile="$RUNNER_TEMP/aihr-tsc-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.swap"
 owned_swap=0
 owned_file=0
 cleanup() {
   local entry_exit=$?
-  if [[ "$compiler_mode" == --state-transport-producer || "$compiler_mode" == --state-transport-consumer ]]; then
+  if [[ "$compiler_mode" == --state-transport-producer || "$compiler_mode" == --state-transport-consumer || "$compiler_mode" == --whole-cache ]]; then
     local cleanup_exit=0 swap_absent=true file_absent=true active_state
     if [[ "$owned_swap" == 1 ]]; then
       sudo swapoff "$swapfile" || cleanup_exit=1
@@ -39,10 +39,14 @@ cleanup() {
 }
 trap cleanup EXIT
 minimum_swap_kib=20971520
-if [[ "${AIHR_CI_CAPACITY_PROFILE:-legacy}" == bounded-compiler-diagnostic ]]; then
-  [[ "$compiler_mode" == --state-transport-consumer ]] || exit 2
-  minimum_swap_kib=$(node "$(dirname "$0")/runner-capacity.mjs" compiler-swap-floor bounded-compiler-diagnostic)
-fi
+case "${AIHR_CI_CAPACITY_PROFILE:-legacy}" in
+  bounded-compiler-diagnostic)
+    [[ "$compiler_mode" == --state-transport-consumer ]] || exit 2
+    minimum_swap_kib=$(node "$(dirname "$0")/runner-capacity.mjs" compiler-swap-floor bounded-compiler-diagnostic) ;;
+  bounded-whole-compiler)
+    [[ "$compiler_mode" == --whole-cache ]] || exit 2
+    minimum_swap_kib=$(node "$(dirname "$0")/runner-capacity.mjs" compiler-swap-floor bounded-whole-compiler) ;;
+esac
 echo "Compiler storage floor before owned swap: ${minimum_swap_kib} KiB"
 df -Pk "$RUNNER_TEMP"
 free -b
@@ -64,7 +68,9 @@ df -Pk "$RUNNER_TEMP"
 free -b
 export NODE_OPTIONS=--max-old-space-size=8192
 # Whole repository, same strict config; no file exclusions or ignored build errors.
-if [[ "${1:-}" == --state-transport-producer ]]; then
+if [[ "${1:-}" == --whole-cache ]]; then
+  node "$(dirname "$0")/compiler-cache.mjs"
+elif [[ "${1:-}" == --state-transport-producer ]]; then
   node "$(dirname "$0")/diagnostics/compiler-transport.mjs" producer
 elif [[ "${1:-}" == --state-transport-consumer ]]; then
   node "$(dirname "$0")/diagnostics/compiler-transport.mjs" consumer

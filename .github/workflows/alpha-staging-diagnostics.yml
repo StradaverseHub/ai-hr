@@ -46,6 +46,16 @@ on:
         required: false
         default: false
         type: boolean
+      managed_compiler_probe:
+        description: Exercise the actual normal whole-compiler cache integration without application tests or deployment
+        required: false
+        default: false
+        type: boolean
+      managed_compiler_force_invalid:
+        description: Deliberately corrupt only the authenticated private graph copy and require actual cold fallback
+        required: false
+        default: false
+        type: boolean
       compiler_compatible_probe:
         description: Reuse authenticated ancestor compiler state on the changed candidate with actual first-restore error refusal and bounded capacity
         required: false
@@ -130,7 +140,7 @@ jobs:
           python3 .github/ci/build-bundle.test.py
           python3 .github/ci/build-helper-cleanliness.test.py
       - name: Pin typed compiler-cache controller runtime
-        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' }}
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' || inputs.managed_compiler_probe }}
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Validate compatible compiler probe selection
@@ -148,8 +158,11 @@ jobs:
           assert(/^[a-f0-9]{64}$/.test(process.env.ORIGINAL_DIGEST??''));
           NODE
       - name: Compiler transport controller checks
-        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' }}
+        if: ${{ inputs.compiler_transport_probe || inputs.compiler_origin_run != '' || inputs.managed_compiler_probe }}
         run: node --experimental-strip-types --test .github/ci/diagnostics/compiler-state.test.mjs .github/ci/diagnostics/compiler-transport.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs
+      - name: Normal compiler/cache and release-boundary controller checks
+        if: ${{ inputs.managed_compiler_probe }}
+        run: node --experimental-strip-types --test .github/ci/compiler-cache.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/release-policy.test.mjs .github/ci/resume-source.test.mjs
       - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -585,4 +598,46 @@ jobs:
           name: diagnostic-compiler-state-consumer
           path: ${{ runner.temp }}/diagnostic-compiler-transport-consumer/
           if-no-files-found: error
+          retention-days: 3
+
+  compiler-cache-pilot:
+    if: ${{ inputs.managed_compiler_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_COMPILER_CACHE_MODE: whole
+      AIHR_COMPILER_CACHE_PILOT: 'true'
+      AIHR_COMPILER_CACHE_FORCE_INVALID: ${{ inputs.managed_compiler_force_invalid }}
+      AIHR_CI_CAPACITY_PROFILE: bounded-whole-compiler
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', capacity_profile: bounded-whole-compiler}
+      - run: pnpm exec next typegen
+      - name: Exercise actual normal compiler with authenticated graph or mandatory cold fallback
+        run: bash ../automation/.github/ci/typecheck.sh --whole-cache
+      - name: Bind actual owned-resource cleanup before graph publication
+        run: |
+          test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
+          test ! -e "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+          cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: whole-compiler-state-v1
+          path: ${{ runner.temp }}/whole-compiler-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: managed-compiler-cache-diagnostic
+          path: ${{ runner.temp }}/whole-compiler-cache/
+          if-no-files-found: ignore
           retention-days: 3

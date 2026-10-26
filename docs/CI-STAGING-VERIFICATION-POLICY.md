@@ -1,6 +1,6 @@
 # CI staging verification policy
 
-Policy identifier: `aihr-staging-ci/v2`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
+Policy identifier: `aihr-staging-ci/v3`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
 
 ## Evidence authority
 
@@ -49,3 +49,7 @@ More chunks alone cannot fix every resource failure. In diagnostic run [40183692
 Recommended next design: stable batch identities derived from a trusted complete plan, with scheduling concurrency configured separately. Use measured durations to balance work, and investigate individual expensive queries, repeated fixture cleanup and database reset costs. Validate a complete, disjoint inventory at release time rather than treating a fixed count of eight or sixteen as the guarantee. Reusing successful batches after a repair additionally requires explicit invalidation and provenance rules and a versioned, validated release policy; the v2 policy above still requires a fresh whole witness.
 
 The existing `test/global-setup.ts` already migrates a template and clones worker databases. Do not propose that existing mechanism as a new optimization. Further harness work must measure reset/seed/query cost and demonstrate preserved isolation before changing fixture cleanup or replacing resets.
+
+## Supplemental compiler graph namespace — policy v3
+
+The exact mandatory job/test artifact manifest remains unchanged. One optional `whole-compiler-state-v1` artifact is permitted only with the same authenticated run/controller provenance, finite size, digest and fixed JSON namespace. It contains compiler graph data with `releaseAuthorized:false`; it cannot replace a test unit, full gate, build or deployment evidence. The actual compiler still executes on every candidate and misses/refusals compile cold. Failed-only source assessment never obtains coverage or waives fresh prerequisites from this artifact. Unknown or duplicate supplemental artifacts remain refused. The new policy needs a fresh complete representative run; earlier v2 witnesses are not relabelled. See [normal compiler cache](NORMAL-COMPILER-CACHE.md).
