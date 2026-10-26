@@ -16219,7 +16219,30 @@
     "err_budget_daily": "Anda telah menggunakan soalan anda untuk hari ini. Sila cuba esok.",
     "err_invalid_question": "Sila tulis soalan, dan pastikan kurang daripada 2000 aksara.",
     "err_provider_error": "Pembantu tidak dapat dihubungi. Sila cuba lagi.",
-    "err_ai_control": "Bantuan AI dijeda atau telah mencapai had. Hubungi pentadbir anda atau cuba selepas had ditetapkan semula."
+    "err_ai_control": "Bantuan AI dijeda atau telah mencapai had. Hubungi pentadbir anda atau cuba selepas had ditetapkan semula.",
+    "workspace": {
+      "tasks": "Mulakan dengan tugasan",
+      "taskHint": "Pilih soalan, sunting, kemudian pilih Tanya.",
+      "question": "Soalan anda",
+      "working": "Sedang diproses…",
+      "history": "Soalan terkini anda",
+      "leave_available_label": "Baki cuti saya",
+      "leave_available_prompt": "Berapakah baki cuti yang boleh saya gunakan sekarang?",
+      "leave_requests_label": "Jejak cuti saya",
+      "leave_requests_prompt": "Tunjukkan permohonan cuti terkini saya dan status yang direkodkan.",
+      "claim_statuses_label": "Jejak tuntutan saya",
+      "claim_statuses_prompt": "Tunjukkan tuntutan terkini saya dan status yang direkodkan.",
+      "holidays_label": "Cuti umum akan datang",
+      "holidays_prompt": "Cuti umum manakah yang terpakai kepada pekerjaan saya mulai {date}?",
+      "reporting_line_label": "Hubungan pelaporan saya",
+      "reporting_line_prompt": "Kepada siapa saya melapor, dan siapa yang melapor kepada saya?",
+      "work_profile_label": "Rekod kerja saya",
+      "work_profile_prompt": "Tunjukkan rekod kerja saya sendiri, termasuk syarikat dan jabatan.",
+      "payslip_label": "Slip gaji terkini saya",
+      "payslip_prompt": "Tunjukkan ringkasan yang direkodkan pada slip gaji terkini saya yang telah dikeluarkan.",
+      "pay_change_label": "Perubahan gaji saya",
+      "pay_change_prompt": "Jelaskan perubahan yang direkodkan antara dua slip gaji terkini saya yang telah dikeluarkan."
+    }
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",

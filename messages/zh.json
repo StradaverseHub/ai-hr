@@ -16219,7 +16219,30 @@
     "err_budget_daily": "您今天的提问次数已用完。请明天再试。",
     "err_invalid_question": "请输入问题，并保持在 2000 字符以内。",
     "err_provider_error": "无法连接助理。请重试。",
-    "err_ai_control": "AI 辅助已暂停或已达到额度。请联系管理员，或在额度重置后重试。"
+    "err_ai_control": "AI 辅助已暂停或已达到额度。请联系管理员，或在额度重置后重试。",
+    "workspace": {
+      "tasks": "从任务开始",
+      "taskHint": "选择一个问题，编辑后再点击提问。",
+      "question": "你的问题",
+      "working": "处理中…",
+      "history": "你最近的问题",
+      "leave_available_label": "我的假期余额",
+      "leave_available_prompt": "我目前有多少可用假期？",
+      "leave_requests_label": "查看我的请假进度",
+      "leave_requests_prompt": "显示我最近的请假申请及其记录状态。",
+      "claim_statuses_label": "查看我的报销进度",
+      "claim_statuses_prompt": "显示我最近的报销申请及其记录状态。",
+      "holidays_label": "即将到来的公共假期",
+      "holidays_prompt": "从 {date} 起，哪些公共假期适用于我的雇佣关系？",
+      "reporting_line_label": "我的汇报关系",
+      "reporting_line_prompt": "我向谁汇报，谁向我汇报？",
+      "work_profile_label": "我的工作记录",
+      "work_profile_prompt": "显示我本人的工作记录，包括公司和部门。",
+      "payslip_label": "我最新的工资单",
+      "payslip_prompt": "显示我最新已发布工资单的记录摘要。",
+      "pay_change_label": "我的薪资变化",
+      "pay_change_prompt": "解释我最近两张已发布工资单之间已记录的变化。"
+    }
   },
   "controlTower": {
     "howTitle": "控制塔的运作方式",

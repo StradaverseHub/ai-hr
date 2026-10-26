@@ -2300,3 +2300,45 @@ Migration coordination also confirms Operator 0601 remains an isolated unapplied
 draft without a verified rollout date or retirement/reallocation approval. Reserved
 AI 0602–0604 remain unjournaled/unapplied until that actual ordering is resolved;
 no peer migration or fixture is changed to work around it.
+
+
+### Assistant workspace and current-user discovery (source only)
+
+The existing `/assistant` page now consumes a single uncached `loadAiWorkspace`
+service for current-login/grant/entitlement checks, task discovery and its existing
+personal ten-exchange history. The service captures context, verifies the actual
+principal under Access ownership, resolves actual entitlements, and checks the live
+Assistant grant in the same transaction before selecting history. Its explicit
+actual app-user predicate remains mandatory despite broader HR visibility. Stable
+newest-first ordering is bounded to ten rows. No provider configuration, key,
+background work or generation enters the page read.
+
+Eight editable question starters are backed by actual registered read tools across
+Leave, Claims, Organization, Employees and Payroll. Multi-tool tasks require the
+entire offered set; unknown future modules do not manufacture support. The composer
+uses local state only on task selection, focuses the labeled editable question,
+and requires a separate explicit Ask. It posts only the question, never task-derived
+authority, scope, locale or identity. Pending status disables repeat submits and
+question replacement without automatic retries. Calendar starters interpolate the
+server's actual Kuala Lumpur date into the editable question, not a guessed model
+date or volatile system-cache prefix. New controls use existing design tokens,
+visible labels/headings, wrapping, 44px minimum targets and reduced-motion styles.
+All six locales have 21 new nonempty workspace keys and calendar placeholders.
+
+Pure discovery, actual DB login/grant/module/personal-history isolation and bounds,
+and mocked-pending DOM/task-selection/six-locale cases are authored UNRUN. Static
+AST syntax, diff and JSON/key-presence checks only; no compiler, executable tests,
+application, browser, database or provider calls ran. Actual locale/viewport/focus,
+accessibility and canonical journeys still require runtime evidence.
+
+IMPORTANT REMAINING PRIVACY REQUIREMENT: current-login history custody is not a
+proof that every source fact in an older model answer remains authorized after
+role, company, reporting, source or field-policy changes. The inherited stored-answer
+history has no sufficient field/source disclosure receipt yet. Source-provenance and
+current canonical reauthorization (or explicit retirement where it cannot be proven)
+are required before release, alongside source-to-provider version/revocation binding.
+This workspace checkpoint is not a historical-answer revocation pass. Nor are eight
+question starters all twenty module agents: remaining canonical workflows, governed
+feedback/improvement/evaluations, own-leave effect/retention protection and provider
+capability/account-policy/settlement proof remain necessary for the single combined
+final candidate. No interim deployment or final gate is authorized by this checkpoint.

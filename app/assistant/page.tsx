@@ -1,11 +1,10 @@
 import { getTranslations } from 'next-intl/server';
-import { desc, eq } from 'drizzle-orm';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getSession } from '@/lib/session';
-import { withTenant } from '@/db/client';
-import * as schema from '@/db/schema';
-import { mayUseAssistant } from '@/core/assistant-grant';
+import { loadAiWorkspace } from '@/core/ai-workspace';
+import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
-import { Card, ErrorBanner, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { askAssistantAction } from './actions';
 
 /**
@@ -38,7 +37,8 @@ export default async function AssistantPage({
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
-  const access = await mayUseAssistant(s);
+  const workspace = await loadAiWorkspace(s);
+  const access = workspace.access;
 
   if (!access.allowed) {
     return (
@@ -53,24 +53,11 @@ export default async function AssistantPage({
     );
   }
 
-  // The most recent exchanges for THIS user. RLS scopes the table to the tenant; the explicit
-  // app_user_id is what scopes it to the person, exactly as mayUseAssistant does for grants.
-  const history = await withTenant(s, (tx) =>
-    tx
-      .select({
-        id: schema.assistantExchange.id,
-        question: schema.assistantExchange.question,
-        answer: schema.assistantExchange.answer,
-        stop: schema.assistantExchange.stop,
-        hitTurnCap: schema.assistantExchange.hitTurnCap,
-        toolCalls: schema.assistantExchange.toolCalls,
-        askedAt: schema.assistantExchange.askedAt,
-      })
-      .from(schema.assistantExchange)
-      .where(eq(schema.assistantExchange.appUserId, s.userId!))
-      .orderBy(desc(schema.assistantExchange.askedAt))
-      .limit(10),
-  );
+  const { history } = workspace;
+  const today = todayInKualaLumpur();
+  const tasks = workspace.taskIds.map(id => ({
+    id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
+  }));
 
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-2xl space-y-5">
@@ -78,22 +65,14 @@ export default async function AssistantPage({
       <ErrorBanner message={sp.error ? t(`err_${sp.error}`) : undefined} />
 
       <Card className="p-5">
-        <form action={askAssistantAction} className="space-y-3">
-          <textarea
-            name="question"
-            required
-            rows={3}
-            maxLength={2000}
-            placeholder={t('placeholder')}
-            className={`${inputCls} w-full`}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">{t('scopeNote')}</p>
-            <button className={btnPrimary}>{t('ask')}</button>
-          </div>
-        </form>
+        <WorkspaceComposer action={askAssistantAction} tasks={tasks} labels={{
+          tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
+          placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
+        }} />
       </Card>
 
+      {history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
+      <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>
       {history.map((h) => (
         <Card key={h.id} className={`p-5 ${h.id === sp.e ? 'ring-1 ring-primary' : ''}`}>
           <p className="text-sm font-medium">{h.question}</p>
@@ -122,6 +101,7 @@ export default async function AssistantPage({
         </Card>
       ))}
 
+      </section>}
       {history.length === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted-foreground">{t('empty')}</p>

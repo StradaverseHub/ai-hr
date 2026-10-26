@@ -16219,7 +16219,30 @@
     "err_budget_daily": "You have used your questions for today. Please try again tomorrow.",
     "err_invalid_question": "Please write a question, and keep it under 2000 characters.",
     "err_provider_error": "The assistant could not be reached. Please try again.",
-    "err_ai_control": "AI assistance is paused or has reached an allowance. Contact your administrator or try after the allowance resets."
+    "err_ai_control": "AI assistance is paused or has reached an allowance. Contact your administrator or try after the allowance resets.",
+    "workspace": {
+      "tasks": "Start with a task",
+      "taskHint": "Choose a question, edit it, then select Ask.",
+      "question": "Your question",
+      "working": "Working…",
+      "history": "Your recent questions",
+      "leave_available_label": "My leave balance",
+      "leave_available_prompt": "How much leave do I currently have available?",
+      "leave_requests_label": "Track my leave",
+      "leave_requests_prompt": "Show my latest leave requests and their recorded status.",
+      "claim_statuses_label": "Track my claims",
+      "claim_statuses_prompt": "Show my latest claims and their recorded status.",
+      "holidays_label": "Upcoming holidays",
+      "holidays_prompt": "Which public holidays apply to my employment from {date}?",
+      "reporting_line_label": "My reporting line",
+      "reporting_line_prompt": "Who do I report to, and who reports to me?",
+      "work_profile_label": "My work record",
+      "work_profile_prompt": "Show my own work record, including company and department.",
+      "payslip_label": "My latest payslip",
+      "payslip_prompt": "Show the recorded summary of my latest released payslip.",
+      "pay_change_label": "Changes in my pay",
+      "pay_change_prompt": "Explain the recorded changes between my two latest released payslips."
+    }
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",

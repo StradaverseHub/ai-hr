@@ -16219,7 +16219,30 @@
     "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
     "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
     "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại.",
-    "err_ai_control": "Hỗ trợ AI đã tạm dừng hoặc đạt hạn mức. Liên hệ quản trị viên hoặc thử sau khi hạn mức đặt lại."
+    "err_ai_control": "Hỗ trợ AI đã tạm dừng hoặc đạt hạn mức. Liên hệ quản trị viên hoặc thử sau khi hạn mức đặt lại.",
+    "workspace": {
+      "tasks": "Bắt đầu từ một tác vụ",
+      "taskHint": "Chọn câu hỏi, chỉnh sửa rồi nhấn Hỏi.",
+      "question": "Câu hỏi của bạn",
+      "working": "Đang xử lý…",
+      "history": "Câu hỏi gần đây của bạn",
+      "leave_available_label": "Số dư nghỉ phép của tôi",
+      "leave_available_prompt": "Hiện tôi còn bao nhiêu ngày phép có thể sử dụng?",
+      "leave_requests_label": "Theo dõi nghỉ phép",
+      "leave_requests_prompt": "Hiển thị các đơn nghỉ phép gần đây của tôi và trạng thái đã ghi nhận.",
+      "claim_statuses_label": "Theo dõi đề nghị thanh toán",
+      "claim_statuses_prompt": "Hiển thị các đề nghị thanh toán chi phí gần đây của tôi và trạng thái đã ghi nhận.",
+      "holidays_label": "Ngày lễ sắp tới",
+      "holidays_prompt": "Những ngày lễ nào áp dụng cho công việc của tôi từ {date}?",
+      "reporting_line_label": "Quan hệ báo cáo của tôi",
+      "reporting_line_prompt": "Tôi báo cáo cho ai và ai báo cáo cho tôi?",
+      "work_profile_label": "Hồ sơ công việc của tôi",
+      "work_profile_prompt": "Hiển thị hồ sơ công việc của chính tôi, gồm công ty và phòng ban.",
+      "payslip_label": "Phiếu lương mới nhất",
+      "payslip_prompt": "Hiển thị bản tóm tắt đã ghi nhận trên phiếu lương mới nhất đã phát hành của tôi.",
+      "pay_change_label": "Thay đổi lương của tôi",
+      "pay_change_prompt": "Giải thích các thay đổi đã ghi nhận giữa hai phiếu lương đã phát hành gần đây nhất của tôi."
+    }
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",
