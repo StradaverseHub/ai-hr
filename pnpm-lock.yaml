@@ -46,6 +46,9 @@ importers:
       '@workos-inc/authkit-nextjs':
         specifier: ^4.2.0
         version: 4.2.0(@workos-inc/node@10.7.0)(next@16.3.8(@babel/core@7.29.7)(@types/node@20.19.41)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+      cbor:
+        specifier: 10.0.11
+        version: 10.0.11
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -2564,6 +2567,10 @@ packages:
   caniuse-lite@1.0.30001815:
     resolution: {integrity: sha512-uDybUEyfgbyJJ93J1vikTylBX31AkdVYeVPeffMQpf8XN7hSfr0oZOn4VFOIMNvtU5+rHvC5Udg2TgtJKHm23Q==}
 
+  cbor@10.0.11:
+    resolution: {integrity: sha512-vIwORDd/WyB8Nc23o2zNN5RrtFGlR6Fca61TtjkUXueI3Jf2DOZDl1zsshvBntZ3wZHBM9ztjnkXSmzQDaq3WA==}
+    engines: {node: '>=20'}
+
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
@@ -4006,6 +4013,10 @@ packages:
   nodemailer@10.1.0:
     resolution: {integrity: sha512-fXW8AulB25aOTuwfRYV6lqHyfz2VM4rr4SGXH03mE7x5znEUpzL5mu6anARUpZN7744Ziwkmr4AxSLPJsBQspg==}
     engines: {node: '>=20.0.0'}
+
+  nofilter@3.1.0:
+    resolution: {integrity: sha512-l2NNj07e9afPnhAhvgVrCD/oy2Ai1yfLpuo3EpiO1jFTsB4sFz6oIfAfSZyQzVpkZQ9xS8ZS5g1jCBgq4Hwo0g==}
+    engines: {node: '>=12.19'}
 
   oauth4webapi@3.8.8:
     resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
@@ -6904,6 +6915,10 @@ snapshots:
 
   caniuse-lite@1.0.30001815: {}
 
+  cbor@10.0.11:
+    dependencies:
+      nofilter: 3.1.0
+
   ccount@2.0.1: {}
 
   chai@6.2.2: {}
@@ -8672,6 +8687,8 @@ snapshots:
   node-releases@2.0.58: {}
 
   nodemailer@10.1.0: {}
+
+  nofilter@3.1.0: {}
 
   oauth4webapi@3.8.8: {}
 
