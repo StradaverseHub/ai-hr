@@ -1,10 +1,7 @@
--- Centrally reserved source-only: 0614_own_leave_review_store, journal idx 614, timestamp 1792997586566.
--- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
--- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
--- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
--- RESERVED SOURCE DRAFT ONLY. No journal entry or application; never apply manually.
--- Review custody and canonical-reference completion only. No leave executor or endpoint is mounted.
--- Tables have no app-role grants/policies: narrow SECURITY DEFINER functions own all access.
+-- Centrally reserved source-only: 0622_own_leave_review_store, journal idx 615, timestamp 1793023949845.
+-- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
+-- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,

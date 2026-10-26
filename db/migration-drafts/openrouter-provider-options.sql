@@ -1,9 +1,7 @@
--- Centrally reserved source-only: 0615_openrouter_provider_options, journal idx 615, timestamp 1792997586567.
--- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
--- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
--- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
--- No configured key, activation, default route or network call. Older resolver is retained for
--- compatibility; new source must read v2 and validate options before decrypting/using the key.
+-- Centrally reserved source-only: 0623_openrouter_provider_options, journal idx 616, timestamp 1793023949846.
+-- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
+-- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 ALTER TYPE ai_provider ADD VALUE IF NOT EXISTS 'openrouter';
 --> statement-breakpoint
 ALTER TABLE public.ai_provider_config ADD COLUMN provider_options jsonb NOT NULL DEFAULT '{}'::jsonb;

@@ -1,30 +1,43 @@
 # Coordinated migration reservations
 
-This record owns the coordinated **unapplied reservations**, not live database state. Before journalling or applying anything, refresh both canonical branch journals and staging's actual watermark. This review-branch record is not permission to publish, deploy, reorder applied entries or reuse another owner's allocation. Changes require coordination with the listed owners.
+This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch
+journals and the actual staging watermark before journal integration or application. Preserve every
+applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
+owning release gate.
 
-Agreed on 26 October 2026 (Asia/Kuala_Lumpur) by the Standalone users owner and AI dev 2; coordinated in Assess GitHub Actions efficiency. The canonical main/alpha snapshot was Operator commit `ab665101b8c3a108ddffb02f10381305422e118e`, ending at index608 /0601. Actual staging arrival is separately owned by Operator and must be confirmed before promotion.
+## Current coordinated replacement allocation
 
-## Release dependencies
+Agreed on 27 October 2026 (Asia/Kuala_Lumpur) in the existing CI/efficiency coordination chat by the
+coordinator and AI dev 2. Human PR12 advanced `alpha` to
+`43945e5b96b6fcf212718aa9427020ae9a1b582c`, whose499-entry journal preserves the original498 entries
+through frozen `0612_standalone_user_enrollment` and adds `0620_onehr_panel_manager_anonymity`,
+index613, timestamp1793023949843. The independently observed `main`67be journal remains498 entries.
+The coordinator observed staging still at frozen2127 with498 entries at allocation; that is historical
+observation, not proof of the future watermark or evidence human0620 is already applied.
 
-1. Operator owns `0601_operator_customer_workspace`, index608, timestamp1792941214168. Its current release window remains held until verified arrival and handback.
-2. Standalone users retains frozen `0612_standalone_user_enrollment`, index612, timestamp1792997586564. Its owner confirmed Operator must ship first.
-3. AI dev 2 surrendered all earlier **unjournalled**0602–0604 reservations and confirmed the seven reservations below after0612. All seven remain source-only drafts, unjournalled and unapplied at allocation. Development may continue privately; deployment must preserve the dependency order.
-
-## AI dev 2 reservations
+AI dev 2's previous unapplied0613–0620 reservations are **surrendered**. The eight replacements below
+retain their dependency order and follow human0620. Do not rename, alter, discard or replace the human
+migration. Keep historical disposable overlays and their test evidence immutable at their true source
+commits/numbers; their old numbering is not a deployable current allocation.
 
 | Index | Tag | Timestamp | Dependency purpose |
 |---|---|---|---|
-|613|0613_ai_action_controls|1792997586565|Action controls|
-|614|0614_own_leave_review_store|1792997586566|Review custody|
-|615|0615_openrouter_provider_options|1792997586567|Provider options|
-|616|0616_assistant_disclosure|1792997586568|Disclosure|
-|617|0617_provider_readiness|1792997586569|Provider readiness|
-|618|0618_module_agent_feedback|1792997586570|Module feedback|
-|619|0619_module_agent_improvement|1792997586571|Module improvement|
-|620|0620_employee_import_ai_evaluation|1792997586572|Human-selected employee master import assistance and evaluation metadata|
+|614|0621_ai_action_controls|1793023949844|Action controls|
+|615|0622_own_leave_review_store|1793023949845|Review custody|
+|616|0623_openrouter_provider_options|1793023949846|Provider options|
+|617|0624_assistant_disclosure|1793023949847|Disclosure|
+|618|0625_provider_readiness|1793023949848|Provider readiness|
+|619|0626_module_agent_feedback|1793023949849|Module feedback|
+|620|0627_module_agent_improvement|1793023949850|Module improvement|
+|621|0628_employee_import_ai_evaluation|1793023949851|Employee Master preparation/evaluation metadata|
 
-Each timestamp is strictly greater than the frozen0612 timestamp. This does not prove it exceeds a future staging watermark: if another migration advances beyond a reserved timestamp before application, stop and reconcile the unshipped reservation centrally. Do not quietly apply a lower timestamp, overwrite a recorded hash, or amend an applied SQL file. Preserve exact old journal prefixes and all other active reservations.
+All eight remain drafts outside the parent journal and unapplied. Only allocation/header comments
+changed during this resequencing; SQL statements are unchanged. Future journal integration requires
+the owning release authorization and verified prerequisite integration. If any actual watermark or
+competing reservation advances, stop and coordinate again rather than apply a lower timestamp or
+quietly reuse a number.
 
-Owner confirmations are retained in the coordinating chat: Standalone users `01a176f3-edf1-7f03-a2e1-509cda4c6cd6`, AI dev 2 `01a16f03-759a-7630-ab49-3fe0c7d69699`; Operator release owner `01a17395-0003-7023-a41e-576b2ecb0d20`. This allocation edits no SQL, journal, database, migration watermark or release branch. Once integrated into a canonical branch, read its current revision and continue checking actual journals/runtime before further allocation.
-
-Additional allocation coordinated on 26 October 2026: index620 is a source-only unapplied reservation after613–619. The coordinator independently observed staging at498 migrations through frozen0612; that observation does not establish future availability or authorize application. Refresh canonical journals and the actual staging watermark before using this reservation. No SQL or journal is changed by this record.
+Routine coordination owner: CI/efficiency `01a16cee-9004-72c2-aaf0-932d4d0a1582`; AI dev 2
+`01a16f03-759a-7630-ab49-3fe0c7d69699`. Historical allocation evidence remains in that chat and the
+unchanged prior development branches. The completed40356954143 checks retain exact frozen7b2a
+source numbering and results; no old candidate was rewritten or interrupted.

@@ -1,12 +1,7 @@
--- Centrally reserved source-only: 0613_ai_action_controls, journal idx 613, timestamp 1792997586565.
--- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
--- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
--- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
--- SOURCE DRAFT ONLY: no migration number or journal entry has been allocated. Do not apply this
--- manually. Integrate after Board 3's verified release, with a centrally allocated migration, then
--- validate the restricted-owner upgrade and app-role behavior. No endpoint currently calls this API.
--- ADR-0131: deterministic confirmation checks pauses without admitting a model run. The context and
--- applicable-policy selectors are shared with admission. Quotas still apply only to model admissions.
+-- Centrally reserved source-only: 0621_ai_action_controls, journal idx 614, timestamp 1793023949844.
+-- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
+-- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
  RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=public,pg_temp AS $$

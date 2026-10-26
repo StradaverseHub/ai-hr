@@ -1,8 +1,7 @@
--- Centrally reserved source-only: 0619_module_agent_improvement, journal idx 619, timestamp 1792997586571.
--- UNJOURNALED / UNAPPLIED. Earlier unjournaled 0602-0604 reservations are surrendered.
--- Prerequisite order: Operator 0601, then frozen Standalone 0612 (idx612/1792997586564).
--- Refresh canonical overlap and actual staging watermark before journal/application; never skip 0612.
--- Digests/configuration only: no prompts, answers, model self-ratings or cross-user HR learning data.
+-- Centrally reserved source-only: 0627_module_agent_improvement, journal idx 620, timestamp 1793023949850.
+-- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
+-- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE public.ai_agent_candidate (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  owner_user_id uuid NOT NULL REFERENCES public.app_user(id), author_user_id uuid NOT NULL REFERENCES public.app_user(id),

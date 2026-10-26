@@ -1,6 +1,7 @@
--- Centrally reserved source-only: 0620_employee_import_ai_evaluation, idx620, timestamp1792997586572.
--- UNJOURNALED / UNAPPLIED. Depends on coordinated 0612 and AI0613–0619; not a release artifact.
--- Header-only mapping custody. No original file, row values, file name, heading or prompt retained.
+-- Centrally reserved source-only: 0628_employee_import_ai_evaluation, journal idx 621, timestamp 1793023949851.
+-- UNJOURNALED / UNAPPLIED. Supersedes surrendered AI0613-0620 reservations.
+-- Preserve frozen0612 and human0620_onehr_panel_manager_anonymity (idx613/1793023949843).
+-- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE public.personnel_import_assistance_attempt (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
