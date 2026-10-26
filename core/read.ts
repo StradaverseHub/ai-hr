@@ -4761,8 +4761,10 @@ export type ReplacementLeaveLedger = {
   }[];
 };
 
-export function replacementLeaveLedger(ctx: SessionContext, employmentId: string): Promise<ReplacementLeaveLedger> {
-  return withTenant(ctx, async (tx) => {
+export function replacementLeaveLedger(ctx: SessionContext, employmentId: string, existingTx?: Tx): Promise<ReplacementLeaveLedger> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const rows = await tx
       .select({
         id: toilAccrual.id,
@@ -6377,9 +6379,11 @@ export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
 }
 
 /** Own current/historical released run index. No caller-provided employment population. */
-export function myReleasedPayslipRuns(ctx:SessionContext) {
+export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
   assertModuleGate(ctx,'payroll');
-  return withTenant(ctx,async tx=>{
+  return withReadTx(ctx, existingTx,async tx=>{
     if(!ctx.personId)return [];
     return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
       companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
@@ -6489,8 +6493,10 @@ const checkOutSite = alias(clockingLocation, 'check_out_site');
 
 /** The current principal's recent attendance, including per-punch Clocking Location & Geofencing
  *  capture (ADR-0070): matched site name, distance, and pass/not-enforced status per punch. */
-export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10) {
-  return withTenant(ctx, async (tx) => {
+export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const rows=await tx
       .select({
         id: attendance.id,
@@ -6525,8 +6531,10 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
 
 /** Companies this principal may scope to (top-bar company context): group admin → all; otherwise
  *  the companies they're employed at + the companies of their company-scoped grants. */
-export function allowedCompanies(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const isGroupAdmin =
       ctx.grants?.some((g) => (g.role === 'hr_admin' || g.role === 'super_admin') && !g.companyId) ??
       false;

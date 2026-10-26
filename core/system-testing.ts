@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * System Testing (e6be5a3b, r330) — the test-case library and its execution record.
  *
@@ -212,11 +214,14 @@ export type ModuleProgress = {
  */
 export async function listTestCases(
   ctx: SessionContext,
-  p: { moduleCode?: string | null } = {},
+  p: { moduleCode?: string | null } = {}, existingTx?: AiReadTx
 ): Promise<TestCaseSummary[]> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { moduleCode: p.moduleCode };
+
   assertTestingAccess(ctx);
   const filter = p.moduleCode?.trim() || null;
-  return withTenant(ctx, async (tx) => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'system_testing', withTenant, async (tx) => {
     const rows = (await tx.execute(sql`
       SELECT c.id,
              c.case_no,

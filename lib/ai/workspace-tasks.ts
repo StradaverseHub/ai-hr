@@ -3,6 +3,7 @@
  * manufacture an agent or imply verified support. Effect/review commands never enter this list.
  */
 export const AI_WORKSPACE_TASKS = [
+  { id: 'module_overview', module: 'assistant', requiredTools: ['my_module_work'] },
   { id: 'leave_available', module: 'leave', requiredTools: ['my_leave_balances'] },
   { id: 'leave_requests', module: 'leave', requiredTools: ['my_leave_requests'] },
   { id: 'claim_statuses', module: 'claims', requiredTools: ['my_claim_statuses'] },

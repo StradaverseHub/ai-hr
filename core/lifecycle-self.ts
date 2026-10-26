@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * Lifecycle new-hire self-service (ADR-0095). A new hire sees ONLY their own onboarding checklist, through
  * two SECURITY DEFINER functions (migration 0516) that match the signed-in user's own person email to the
@@ -47,8 +49,11 @@ type Raw = {
 };
 
 /** The caller's own onboarding checklist, or null when no case is linked to their account. */
-export async function getMyOnboarding(ctx: SessionContext): Promise<MyOnboarding | null> {
-  return withTenant(ctx, async (tx) => {
+export async function getMyOnboarding(ctx: SessionContext, existingTx?: AiReadTx): Promise<MyOnboarding | null> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'lifecycle', withTenant, async (tx) => {
     if (!ctx.userId) return null;
     const rows = (await tx.execute(sql`select app.lc_my_view() as v`)) as unknown as { v: Raw | null }[];
     const raw = rows[0]?.v;

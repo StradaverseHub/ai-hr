@@ -131,7 +131,7 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
     // arbitrary service imports into tool implementations.
     expect(SOURCE.match(/^import .* from '\.\/assistant-read-session';$/gm)).toEqual(["import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';"]);
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session', '../lib/ai/assistant-public-replies'].sort(),
+      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session', '../lib/ai/assistant-public-replies', '../lib/ai/module-agents'].sort(),
     );
   });
 });
@@ -158,6 +158,7 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       // ADR-0074 item 5 — APPENDED, never inserted. See the prefix-caching note this list guards.
       'my_pay_change',
       'my_claim_statuses',
+      'my_module_work',
     ]);
   });
 

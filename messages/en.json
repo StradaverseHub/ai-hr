@@ -16227,6 +16227,8 @@
       "working": "Working…",
       "answerUnavailable": "This saved answer is unavailable because its source access or facts could not be revalidated. Ask again for a current answer.",
       "history": "Your recent questions",
+      "module_overview_label": "Explore my workflows",
+      "module_overview_prompt": "Which current Assistant module capabilities are available to me? Use my_module_work for assistant. Explain the scope and limits without reading unrelated records.",
       "leave_available_label": "My leave balance",
       "leave_available_prompt": "How much leave do I currently have available?",
       "leave_requests_label": "Track my leave",
@@ -20111,6 +20113,7 @@
     "saved": "AI controls saved.",
     "invalid": "Invalid AI control.",
     "features": {
+      "provider_evaluation": "Provider capability evaluation",
       "hr_assistant": "HR assistant",
       "readiness_reminders": "Readiness reminders",
       "claims_triage": "Claims triage",

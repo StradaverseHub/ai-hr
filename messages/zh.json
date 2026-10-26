@@ -16227,6 +16227,8 @@
       "working": "处理中…",
       "answerUnavailable": "无法重新验证来源访问权限或事实，因此此保存的回答暂不可用。请重新提问以获取当前回答。",
       "history": "你最近的问题",
+      "module_overview_label": "探索我的工作流程",
+      "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",
       "leave_available_label": "我的假期余额",
       "leave_available_prompt": "我目前有多少可用假期？",
       "leave_requests_label": "查看我的请假进度",
@@ -20111,6 +20113,7 @@
     "saved": "AI 控制已保存。",
     "invalid": "AI 控制无效。",
     "features": {
+      "provider_evaluation": "提供商能力评估",
       "hr_assistant": "HR 助手",
       "readiness_reminders": "资料准备提醒",
       "claims_triage": "报销分流",

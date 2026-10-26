@@ -36,6 +36,7 @@
  */
 import type { SessionContext } from '../db/client';
 import type { AiJsonSchema, AiToolSpec } from '../lib/ai/types';
+import { AGENT_MODULE_CODES, isAgentModuleCode } from '../lib/ai/module-agents';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // Reads `statutory.componentLines` BY SHAPE, so this file consumes the kernel's stamp without importing
 // core/payroll and dragging the engine into every assistant caller.
@@ -985,6 +986,31 @@ const myClaimStatuses: AssistantTool = {
   },
 };
 
+const myModuleWork: AssistantTool = {
+  module: null,
+  // The union includes released pay data. A generic ordinary flag must not evade pay controls.
+  sensitivity: 'pay',
+  spec: {
+    name: 'my_module_work',
+    description: 'Read one current-caller canonical module capability. No subject selector or effects. ' +
+      'Approvals covers only your own leave decisions, not an assigned inbox. Notifications expose delivery status, not message facts. ' +
+      'Readiness exposes gap codes, never identifiers. Performance exposes status, never ratings. Rewards exposes cycle status, never pay recommendations. ' +
+      'Money is copied from released stored kernel results: never calculate or infer it. Empty/truncated data is scoped, never a tenant-wide claim. ' +
+      'Catalogue metadata does not establish independent quality evaluation or permission for another tool.',
+    inputSchema: schema({ module: { type: 'string', enum: [...AGENT_MODULE_CODES] } }),
+  },
+  async run(ctx, input, readSession?: AssistantReadSession) {
+    const object = asObject(input);
+    if (Object.keys(object).some(key => key !== 'module') || !isAgentModuleCode(object.module)) {
+      return refuse('invalid_input', 'Choose one supported module.');
+    }
+    const module = object.module;
+    return withAssistantRead(ctx, module, async (read): Promise<ToolOutcome> => ({
+      ok: true, ...(await read.moduleWork(module)),
+    }), readSession);
+  },
+};
+
 /** APPEND ONLY — see the prefix-caching note above. */
 export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   myLeaveBalances,
@@ -999,6 +1025,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   // ADR-0074 item 5. APPENDED, never inserted — one reordered byte invalidates the cached prefix.
   myPayChange,
   myClaimStatuses,
+  myModuleWork,
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════

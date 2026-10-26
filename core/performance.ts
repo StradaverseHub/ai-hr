@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
@@ -1635,8 +1637,11 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
 }
 
 /** The signed-in employee's own reviews (for /me). Released-gated like reviewForViewer. */
-export function myReviews(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'performance', withTenant, async (tx) => {
     if (!ctx.personId) return [];
     return tx
       .select({
@@ -1965,8 +1970,11 @@ export function listGoalsForEmployment(ctx: SessionContext, employmentId: string
 }
 
 /** The signed-in person's own goals across their employment(s) — the /me surface. */
-export function myGoals(ctx: SessionContext): Promise<GoalRow[]> {
-  return withTenant(ctx, async (tx) => {
+export function myGoals(ctx: SessionContext, existingTx?: AiReadTx): Promise<GoalRow[]> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'performance', withTenant, async (tx) => {
     if (!ctx.personId) return [];
     const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
     const ids = mine.map((m) => m.id);

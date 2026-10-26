@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
 import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
@@ -1018,9 +1020,13 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 export function unreadNotificationCount(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { action?: boolean } = {},
+  opts: { action?: boolean } = {}, existingTx?: AiReadTx
 ): Promise<number> {
-  return withTenant(ctx, async (tx) => {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
@@ -1053,9 +1059,12 @@ export type NotificationRow = {
 export function listNotifications(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { limit?: number; read?: boolean; action?: boolean } = {},
+  opts: { limit?: number; read?: boolean; action?: boolean } = {}, existingTx?: AiReadTx
 ): Promise<NotificationRow[]> {
-  return withTenant(ctx, (tx) =>
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
     tx
       .select({
         id: notification.id,

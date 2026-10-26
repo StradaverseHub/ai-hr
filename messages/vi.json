@@ -16227,6 +16227,8 @@
       "working": "Đang xử lý…",
       "answerUnavailable": "Không thể hiển thị câu trả lời đã lưu vì chưa xác minh lại được quyền truy cập nguồn hoặc dữ kiện. Hãy hỏi lại để nhận câu trả lời hiện tại.",
       "history": "Câu hỏi gần đây của bạn",
+      "module_overview_label": "Khám phá quy trình của tôi",
+      "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",
       "leave_available_label": "Số dư nghỉ phép của tôi",
       "leave_available_prompt": "Hiện tôi còn bao nhiêu ngày phép có thể sử dụng?",
       "leave_requests_label": "Theo dõi nghỉ phép",
@@ -20111,6 +20113,7 @@
     "saved": "Đã lưu kiểm soát AI.",
     "invalid": "Kiểm soát AI không hợp lệ.",
     "features": {
+      "provider_evaluation": "Đánh giá năng lực nhà cung cấp",
       "hr_assistant": "Trợ lý HR",
       "readiness_reminders": "Nhắc nhở hồ sơ",
       "claims_triage": "Phân loại yêu cầu chi phí",

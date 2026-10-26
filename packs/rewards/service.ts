@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../../db/client';
+import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
@@ -102,8 +104,11 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   });
 }
 
-export async function listRewardUnits(ctx: SessionContext, companyIds: string[]) {
-  return withRewardsTenant(ctx, async tx => {
+export async function listRewardUnits(ctx: SessionContext, companyIds: string[], existingTx?: AiReadTx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  companyIds = companyIds.slice();
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, async tx => {
     if (!companyIds.length) return [];
     return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))

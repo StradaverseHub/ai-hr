@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * Knowledge Base (ADR-0017). A tenant-shared document repository: Markdown articles authored in-app
  * and uploaded binary files, in one `kb_document` table. RLS makes reads tenant-wide and writes
@@ -71,13 +73,16 @@ export function listDocuments(
     includeArchived?: boolean;
     search?: string;
     locale?: string;
-  } = {},
+  } = {}, existingTx?: AiReadTx
 ) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+
   const localizedTitle =
     opts.locale && opts.locale !== 'en'
       ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
       : sql<string | null>`null`;
-  return withTenant(ctx, async (tx) => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'knowledge_base', withTenant, async (tx) => {
     const rows = await tx
       .select({
         id: kbDocument.id,

@@ -16227,6 +16227,8 @@
       "working": "Sedang diproses…",
       "answerUnavailable": "Jawapan tersimpan ini tidak tersedia kerana akses sumber atau faktanya tidak dapat disahkan semula. Tanya semula untuk jawapan terkini.",
       "history": "Soalan terkini anda",
+      "module_overview_label": "Terokai aliran kerja saya",
+      "module_overview_prompt": "Apakah keupayaan modul Assistant yang tersedia untuk saya? Gunakan my_module_work untuk assistant. Jelaskan skop dan had tanpa membaca rekod yang tidak berkaitan.",
       "leave_available_label": "Baki cuti saya",
       "leave_available_prompt": "Berapakah baki cuti yang boleh saya gunakan sekarang?",
       "leave_requests_label": "Jejak cuti saya",
@@ -20111,6 +20113,7 @@
     "saved": "Kawalan AI disimpan.",
     "invalid": "Kawalan AI tidak sah.",
     "features": {
+      "provider_evaluation": "Penilaian keupayaan penyedia",
       "hr_assistant": "Pembantu HR",
       "readiness_reminders": "Peringatan kesediaan",
       "claims_triage": "Triage tuntutan",
