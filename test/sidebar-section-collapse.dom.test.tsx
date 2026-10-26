@@ -17,6 +17,14 @@ it('Atelier ignores the Classic collapsed preference for the Ops/Strat switch',(
  expect(screen.getByRole('group',{name:messages.nav.workspaceSwitch})).not.toHaveClass('flex-col');
 });
 describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigation',theme=>{
+ it('keeps the general Reports destination shared when switching workspaces without granting employees reporting access',async()=>{
+  document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();const view=render(ui());
+  expect(screen.getByRole('link',{name:messages.nav.reports})).toHaveAttribute('href','/reports');
+  await user.click(screen.getByRole('button',{name:messages.nav.workspaceStrata}));
+  expect(screen.getByRole('link',{name:messages.nav.reports})).toHaveAttribute('href','/reports');
+  view.rerender(ui({isAdmin:false,canApprove:false,canAccessTeam:false}));
+  expect(screen.queryByRole('link',{name:messages.nav.reports})).toBeNull();
+ });
  it('switches workspace without navigation and keeps module collapse keyboard-operable',async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();render(ui());
   const strata=screen.getByRole('button',{name:messages.nav.workspaceStrata});

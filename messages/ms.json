@@ -276,6 +276,7 @@
     "colPosition": "Jawatan"
   },
   "common": {
+    "close": "Tutup",
     "appName": "AIHR",
     "language": "Bahasa",
     "save": "Simpan",
@@ -17527,6 +17528,28 @@
     }
   },
   "rewards": {
+    "bonusPresentation": {
+      "separatePools": "Setiap pelan mempunyai kumpulan wang sendiri. Bayaran sekali gus dibayar daripada kumpulan wang pelan yang sama.",
+      "over": "Melebihi bajet",
+      "empty": "Tiada dana diperuntukkan",
+      "under": "Penggunaan rendah",
+      "within": "Dalam julat",
+      "bonusPeople": "Pekerja dalam larian bonus",
+      "unitMultiplier": "Pengganda unit",
+      "poolUsed": "daripada dana digunakan",
+      "byType": "Penggunaan mengikut jenis",
+      "amount": "Amaun",
+      "share": "% dana",
+      "standardHelp": "Bulan matriks × pengganda unit atau faktor cawangan × prorata",
+      "increaseHelp": "Melebihi pengganda unit atau faktor cawangan",
+      "reductionHelp": "Di bawah pengganda unit atau faktor cawangan",
+      "lumpHelp": "Amaun tetap bagi pekerja yang tidak layak menerima bonus standard",
+      "restrictedCount": "Bilangan kategori tidak tersedia apabila rekod dihadkan.",
+      "poolConstruction": "Cara dana dibentuk",
+      "achievement": "Pencapaian PAT",
+      "poolMultiplier": "Pengganda dana · pencapaian × bulan sasaran",
+      "eligiblePayroll": "Gaji bonus yang layak"
+    },
     "seniorMembershipTitle": "Keahlian Pelan Kanan",
     "seniorMembershipHelp": "Pilih pekerja secara individu untuk Pelan Kanan. Ahli dikecualikan daripada bonus standard dan bayaran sekali gus; kelayakan kenaikan gaji dinilai berasingan.",
     "seniorLegacyHelp": "Semakan ini mengekalkan peraturan gred tersimpan sehingga anda melihat pratonton dan menerima keahlian bernama. Semakan terdahulu tidak berubah.",

@@ -650,6 +650,13 @@ export function Sidebar({
   const [openSections, setOpenSections] = useState<Readonly<Record<string, boolean>>>({});
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const pendingTriggerFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (openKey === null && pendingTriggerFocus.current) {
+      triggerRefs.current[pendingTriggerFocus.current]?.focus();
+      pendingTriggerFocus.current = null;
+    }
+  }, [openKey]);
   // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
   // (mandatory: the Reports children share one pathname and differ only in the query, so this
   // effect never fires when switching report categories).
@@ -1011,7 +1018,7 @@ export function Sidebar({
      only, like Monolith's: the SAME `groups`, `canSeeChild`, `isRowActive` and section state, so which rows
      exist, in which order, and which one is current cannot differ between themes. What differs: the
      workspace line, a Quick actions button (it opens the one command bar, lib/command-bar-events.ts), 16px
-     icons on 30px rows, a module's children inline under a hairline instead of a flyout, and the viewer at
+     icons on 30px rows, a separate theme-scoped submenu track, and the viewer at
      the foot. No collapse to an icon rail: like Monolith, the rail is always open on desktop. */
   if (atelier) {
     const atelierCount = (href: string) => {
@@ -1111,7 +1118,7 @@ export function Sidebar({
         {openNode && <NavFlyoutPanel key={openNode.labelKey} layout="atelier" labelKey={openNode.labelKey}
           items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
           isActive={href=>href===activeChildHref} rowBase="atelier-row" panelId={`atelier-flyout-${openNode.labelKey}`}
-          onClose={()=>setOpenKey(null)} onEscape={()=>{setOpenKey(null);triggerRefs.current[openNode.labelKey]?.focus();}}/>}
+          onClose={()=>setOpenKey(null)} onEscape={()=>{pendingTriggerFocus.current=openNode.labelKey;setOpenKey(null);}}/>}
       </div>
     );
   }

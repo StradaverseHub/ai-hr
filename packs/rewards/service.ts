@@ -91,9 +91,19 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
     const decisions = await tx.select({ id: rewardDecision.id, action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, actorId: rewardDecision.actorId, reason: rewardDecision.reason, createdAt: rewardDecision.createdAt, revision: rewardDecision.revision }).from(rewardDecision).where(eq(rewardDecision.unitId, unitId)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id));
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
     const ecRows = visible.filter(e => e.plan === 'ec');
+    const bonusCounts = (plan: 'standard' | 'h') => {
+      const group = calculated.rows.filter(e => e.plan === plan);
+      // Do not infer confidential category membership from the visible subset or expose hidden counts.
+      if (group.some(e => !visibleIds.has(e.id))) return null;
+      return { eligible: group.filter(e => e.bonusEligible).length,
+        increases: group.filter(e => e.bonusCents > e.standardBonusCents).length,
+        reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
+        lump: group.filter(e => e.lumpCents > 0).length };
+    };
     return { unit, cycle, route: unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries), name: bu?.name ?? 'Business unit', roles, members, decisions,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
+      bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, lumpWorking: calculated.lumpWorking,

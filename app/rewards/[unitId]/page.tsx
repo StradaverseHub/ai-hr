@@ -1,12 +1,13 @@
+import { BonusBudgetCards } from './bonus-budget';
 import { RewardSubmit } from '../submit-button';
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { getRewardUnit, rewardPayrollChoices, rewardSetupChoices } from '@/packs/rewards/service';
 import { performances } from '@/packs/rewards/model';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
-import { importOnehrAction, decideAction, importFactsAction, lumpAction, offcycleAction, postAction, refreshAction } from '../actions';
+import { importOnehrAction, decideAction, importFactsAction, lumpAction, offcycleAction, postAction, refreshAction, bonusMultiplierAction } from '../actions';
 import { redirect } from 'next/navigation';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
@@ -22,6 +23,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const onehrText = await getTranslations('onehr');
   const editable = unit.status === 'draft' && v.canEdit;
   const annual = unit.kind === 'annual';
+  const locale=await getLocale();
   const canSubmit = editable && v.roles.includes(v.route[0]);
   const canApprove = ['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   return <div className="w-full space-y-5">
@@ -36,7 +38,8 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
       <Card><SectionHeader title={t('salaryBudgets')} /><div className="overflow-x-auto"><table className="w-full text-sm"><thead className={theadCls}><tr><th className={thCls}>{t('type')}</th>{(['standard', 'h'] as const).map(plan => <th key={plan} className={`${thCls} text-right`}>{t(plan)} · {t('usedPool')}</th>)}</tr></thead><tbody className={tbodyCls}>{[0, 1, 2].map(i => <tr key={i}><th className="px-4 py-3 text-left font-medium">{t(['merit', 'promotion', 'special'][i])}</th>{(['standard', 'h'] as const).map(plan => <td key={plan} className="px-4 py-3 text-right tabular-nums"><span className={v.budgets[plan].used[i] > v.budgets[plan].pools[i] ? 'font-semibold text-destructive' : ''}>{rm(v.budgets[plan].used[i])}</span><span className="text-muted-foreground"> / {rm(v.budgets[plan].pools[i])}</span></td>)}</tr>)}</tbody></table></div>
         <details className="border-t border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('meritMatrix')}</summary><p className="my-3 text-sm text-muted-foreground">{t('matrixHelp')}</p><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className={thCls}>{t('talent')}</th>{['below', 'within', 'above'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody>{Object.entries(unit.policy.meritMatrix).map(([talent, values]) => <tr key={talent}><th className={thCls}>{talent}</th>{values.map((n, i) => <td key={i} className="px-3 py-2 text-center">{n / 100}%</td>)}</tr>)}</tbody></table></div></details>
       </Card>
-      <Card><SectionHeader title={t('bonusBudget')} /><div className="overflow-x-auto"><table className="w-full text-sm"><thead className={theadCls}><tr><th className={thCls}>{t('type')}</th>{(['standard', 'h'] as const).map(plan => <th key={plan} className={`${thCls} text-right`}>{t(plan)}</th>)}</tr></thead><tbody className={tbodyCls}>{(['bonusPoolCents', 'standardBonusCents', 'increasesCents', 'reductionsCents', 'lumpCents', 'bonusUsedCents', 'balanceCents'] as const).map(key => <tr key={key}><th className="px-4 py-2 text-left font-medium">{t(key)}</th>{(['standard', 'h'] as const).map(plan => <td key={plan} className={`px-4 py-2 text-right tabular-nums ${v.budgets[plan][key] < 0 ? 'text-destructive' : ''}`}>{rm(v.budgets[plan][key])}</td>)}</tr>)}</tbody></table></div>
+      <BonusBudgetCards value={v} t={key=>t(key)} locale={locale} adjustment={v.canConfigure&&unit.policy.bonusStructure==='standard'?<form action={bonusMultiplierAction} className="flex flex-wrap items-end gap-3">{fields}<Field label={t('multiplierAuto')}><input type="number" min="0" step="0.01" name="multiplier" defaultValue={unit.policy.multiplierBp==null?'':unit.policy.multiplierBp/10000} placeholder={t('automatic')} className={inputCls}/></Field><RewardSubmit type="submit" variant="secondary">{t('savePolicy')}</RewardSubmit></form>:undefined}/>
+      <Card>
         <div className="space-y-3 border-t border-border p-4"><h3 className="font-medium">{t('lumpSum')}</h3><p className="max-w-3xl text-sm text-muted-foreground">{t('lumpHelp')}</p><p className="text-sm">{t('suggested')}: <strong className="tabular-nums">{rm(v.suggestedLumpCents)}</strong> · {t('unitAmount')}: <strong className="tabular-nums">{rm(v.lumpUnitCents)}</strong></p>
           {editable && <form action={lumpAction} className="flex flex-wrap items-end gap-3">{fields}<Field label={t('unitAmount')}><input type="number" min="0" step="0.01" name="lump" defaultValue={unit.policy.lumpUnitCents == null ? '' : unit.policy.lumpUnitCents / 100} className={inputCls} placeholder={t('automatic')} /></Field><RewardSubmit type="submit" variant="secondary">{t('saveAmount')}</RewardSubmit></form>}
           <details><summary className="cursor-pointer text-sm">{t('showWorking')}</summary><ul className="mt-2 space-y-1 text-sm">{v.lumpWorking.map(p => <li key={p.plan}>{t(p.plan)}: {rm(p.balanceCents)} / {p.count} → {rm(p.perPersonCents)}</li>)}</ul></details>

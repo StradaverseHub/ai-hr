@@ -230,6 +230,14 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(self.rows).toEqual([]); expect(self.ec?.count).toBe(0);
     await expect(saveRewardEntry({ ...actors.bu!, userId, personId: row.source.personId }, unitId, self.unit.revision, row.id, row.recommendation)).rejects.toThrow(/not available/);
   });
+  it('counts the complete authorized bonus cohort and withholds counts for a partial confidential roster', async () => {
+    const v = await view(), row = v.rows[0];
+    expect(v.bonusCounts.standard).toEqual({eligible:1,increases:0,reductions:0,lump:0});
+    await saveRewardEntry(admin, unitId, v.unit.revision, row.id, row.recommendation, {...row.facts,confidentiality:'bg'});
+    const restricted = await getRewardUnit(actors.bu!, unitId);
+    expect(restricted.rows).toEqual([]); expect(restricted.bonusCounts.standard).toBeNull();
+    expect((await getRewardUnit(actors.bg!, unitId)).bonusCounts.standard?.eligible).toBe(1);
+  });
   it('checks approval order, freezes submitted inputs and can reopen an unposted approval', async () => {
     const v = await view();
     await expect(decideRewardUnit(actors.ec!, unitId, v.unit.revision, 'approve', 'Approved')).rejects.toThrow(/current approval stage/);

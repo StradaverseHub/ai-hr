@@ -276,6 +276,7 @@
     "colPosition": "职位"
   },
   "common": {
+    "close": "关闭",
     "appName": "AIHR",
     "language": "语言",
     "save": "保存",
@@ -17527,6 +17528,28 @@
     }
   },
   "rewards": {
+    "bonusPresentation": {
+      "separatePools": "每个计划使用独立资金池，一次性奖金由同一计划的资金池支付。",
+      "over": "超出预算",
+      "empty": "无可用资金池",
+      "under": "使用不足",
+      "within": "在范围内",
+      "bonusPeople": "奖金人数",
+      "unitMultiplier": "单位系数",
+      "poolUsed": "资金池已使用",
+      "byType": "按类型划分使用情况",
+      "amount": "金额",
+      "share": "资金池占比",
+      "standardHelp": "矩阵月数 × 单位系数或分行系数 × 按比例计算",
+      "increaseHelp": "高于单位系数或分行系数",
+      "reductionHelp": "低于单位系数或分行系数",
+      "lumpHelp": "不符合标准奖金资格人员的固定金额",
+      "restrictedCount": "记录受限时不显示类别人数。",
+      "poolConstruction": "资金池计算依据",
+      "achievement": "PAT达成率",
+      "poolMultiplier": "资金池系数 · 达成率 × 目标月数",
+      "eligiblePayroll": "符合资格的奖金工资基数"
+    },
     "seniorMembershipTitle": "高级计划成员",
     "seniorMembershipHelp": "为高级计划逐一选择员工。成员不参与标准奖金和一次性奖励；加薪资格另行评估。",
     "seniorLegacyHelp": "此评审保留已保存的职级规则，直至您明确预览并采用指定成员。历史评审保持不变。",

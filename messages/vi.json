@@ -276,6 +276,7 @@
     "colPosition": "Chức vụ"
   },
   "common": {
+    "close": "Đóng",
     "appName": "AIHR",
     "language": "Ngôn ngữ",
     "save": "Lưu",
@@ -17527,6 +17528,28 @@
     }
   },
   "rewards": {
+    "bonusPresentation": {
+      "separatePools": "Mỗi chương trình có quỹ riêng. Khoản thưởng cố định được chi từ quỹ của cùng chương trình.",
+      "over": "Vượt ngân sách",
+      "empty": "Chưa có quỹ",
+      "under": "Sử dụng thấp",
+      "within": "Trong giới hạn",
+      "bonusPeople": "Nhân sự trong kỳ thưởng",
+      "unitMultiplier": "Hệ số đơn vị",
+      "poolUsed": "quỹ đã sử dụng",
+      "byType": "Sử dụng theo loại",
+      "amount": "Số tiền",
+      "share": "% quỹ",
+      "standardHelp": "Số tháng ma trận × hệ số đơn vị hoặc chi nhánh × tỷ lệ thời gian",
+      "increaseHelp": "Cao hơn hệ số đơn vị hoặc chi nhánh",
+      "reductionHelp": "Thấp hơn hệ số đơn vị hoặc chi nhánh",
+      "lumpHelp": "Khoản cố định cho người không đủ điều kiện thưởng tiêu chuẩn",
+      "restrictedCount": "Không hiển thị số người theo loại khi hồ sơ bị hạn chế.",
+      "poolConstruction": "Cách hình thành quỹ",
+      "achievement": "Mức hoàn thành PAT",
+      "poolMultiplier": "Hệ số quỹ · mức hoàn thành × số tháng mục tiêu",
+      "eligiblePayroll": "Quỹ lương đủ điều kiện thưởng"
+    },
     "seniorMembershipTitle": "Thành viên Kế hoạch Cấp cao",
     "seniorMembershipHelp": "Chọn từng nhân viên cho Kế hoạch Cấp cao. Thành viên không nhận thưởng tiêu chuẩn và khoản thưởng một lần; điều kiện tăng lương được đánh giá riêng.",
     "seniorLegacyHelp": "Đợt xét duyệt giữ quy tắc cấp bậc đã lưu cho đến khi bạn xem trước và áp dụng thành viên đích danh. Các đợt cũ không thay đổi.",

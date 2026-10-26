@@ -276,6 +276,7 @@
     "colPosition": "Position"
   },
   "common": {
+    "close": "Close",
     "appName": "AIHR",
     "language": "Language",
     "save": "Save",
@@ -17527,6 +17528,28 @@
     }
   },
   "rewards": {
+    "bonusPresentation": {
+      "separatePools": "Each plan has its own pool. Lump sums are paid from the same plan’s pool.",
+      "over": "Over budget",
+      "empty": "No funded pool",
+      "under": "Under-utilised",
+      "within": "In range",
+      "bonusPeople": "People in the bonus run",
+      "unitMultiplier": "Unit multiplier",
+      "poolUsed": "of pool used",
+      "byType": "Utilisation by type",
+      "amount": "Amount",
+      "share": "% of pool",
+      "standardHelp": "Matrix months × unit multiplier or branch factor × proration",
+      "increaseHelp": "Above the unit multiplier or branch factor",
+      "reductionHelp": "Below the unit multiplier or branch factor",
+      "lumpHelp": "Fixed amounts for people outside standard bonus eligibility",
+      "restrictedCount": "Category counts are unavailable where records are restricted.",
+      "poolConstruction": "How the pool is built",
+      "achievement": "PAT achievement",
+      "poolMultiplier": "Pool multiplier · achievement × target months",
+      "eligiblePayroll": "Eligible bonus payroll"
+    },
     "seniorMembershipTitle": "Senior Plan membership",
     "seniorMembershipHelp": "Choose individual employees for the Senior Plan. Members are excluded from standard bonus and lump-sum awards; salary-increase eligibility is assessed separately.",
     "seniorLegacyHelp": "This review keeps its saved grade rule until you explicitly preview and adopt named membership. Historical reviews stay unchanged.",
