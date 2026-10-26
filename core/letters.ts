@@ -1,15 +1,16 @@
 /** Letters use the existing employee identity, purpose access, document folder and DomainEvent owners. */
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob} from '../db/schema';
+import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact} from '../db/schema';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue} from '../lib/letter-model';
-import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,type LetterCapability} from '../lib/letter-workflow';
+import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
+import {renderLetterPdf} from '../lib/letter-pdf';
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
@@ -237,4 +238,46 @@ export function submitLetterBatch(ctx:SessionContext,id:string){return letters(c
 export function withdrawLetterDraft(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'generate');if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(['issued','void','withdrawn'].includes(record.state))throw new LetterWorkflowError('state');const reason=text(input.reason,2000);
  await tx.update(letterRecord).set({state:'withdrawn',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'withdrawn',{reason,revisionId:record.currentRevisionId});return {letterId:record.id};
+});}
+
+const signingCaptions={en:'Approved through authenticated internal approval',ms:'Diluluskan melalui kelulusan dalaman yang disahkan',zh:'经身份验证的内部审批已批准',ta:'அங்கீகரிக்கப்பட்ட உள் ஒப்புதல் மூலம் ஒப்புதல் அளிக்கப்பட்டது',th:'อนุมัติผ่านการอนุมัติภายในที่ยืนยันตัวตนแล้ว',vi:'Được phê duyệt qua quy trình nội bộ đã xác thực'} as const;
+/** A decision, sealed bytes and state transition commit together. Any rendering/storage failure rolls all back. */
+export function decideLetter(ctx:SessionContext,input:{letterId:string;expectedRevisionId:string;expectedLockVersion:number;decision:LetterStageDecision}){return letters(ctx,true,async tx=>{
+ if(!input.decision||!['approve','reject','return'].includes(input.decision.action)||typeof input.decision.comment!=='string'||typeof input.decision.confirmSignature!=='boolean')throw new LetterWorkflowError('invalid','decision');
+ const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'read');await permission(tx,record.companyId,'approve');
+ if(!record.currentRevisionId)throw new LetterWorkflowError('state');uuid(input.expectedRevisionId);
+ const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,record.batchId)),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
+ const [delegation]=await tx.select().from(letterApprovalDecision).where(and(eq(letterApprovalDecision.revisionId,record.currentRevisionId),eq(letterApprovalDecision.stageIndex,record.stageIndex),eq(letterApprovalDecision.action,'delegate'))).orderBy(desc(letterApprovalDecision.createdAt),desc(letterApprovalDecision.id)).limit(1);
+ const next=letterStageDecision({...record,revisionId:record.currentRevisionId},policy,{actorId:ctx.userId!,expectedRevisionId:input.expectedRevisionId,expectedLockVersion:input.expectedLockVersion,decision:input.decision,delegatedUserId:delegation?.delegatedTo});
+ const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId));
+ const [decision]=await tx.insert(letterApprovalDecision).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,stageIndex:record.stageIndex,actorId:ctx.userId!,action:input.decision.action,comment:input.decision.comment.trim(),contentHash:revision.contentHash}).returning();
+ let artifactId:string|null=null;
+ if(next.final){
+  const [signer]=await tx.select({name:person.fullName}).from(appUser).innerJoin(person,eq(person.id,appUser.personId)).where(eq(appUser.id,ctx.userId!));if(!signer)throw new LetterWorkflowError('configuration','signatory');
+  const [template]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,batch.templateVersionId));
+  async function asset(id:string|null,kind:'signature'|'letterhead'){
+   if(!id)return undefined;const [row]=await tx.select().from(letterAsset).where(and(eq(letterAsset.id,id),eq(letterAsset.companyId,record.companyId),eq(letterAsset.kind,kind)));if(!row||kind==='signature'&&row.ownerUserId!==ctx.userId!||hash(row.content)!==row.contentHash)throw new LetterWorkflowError('configuration','asset');return row.content;
+  }
+  const stamp=await asset(policy.signatureAssetId,'signature'),letterhead=await asset(policy.letterheadAssetId,'letterhead');
+  if(policy.signingMode==='stamp'&&!stamp)throw new LetterWorkflowError('configuration','signatureAsset');
+  const language=revision.document.language,timestamp=new Intl.DateTimeFormat(language,{dateStyle:'long',timeStyle:'long',timeZone:'Asia/Kuala_Lumpur'}).format(decision.createdAt);
+  const rendered=await renderLetterPdf({document:revision.document,reference:record.reference,title:template.name,signature:{name:signer.name,caption:signingCaptions[language],timestamp,stamp},letterhead});
+  const bytes=Buffer.from(rendered.bytes);if(bytes.length>10*1024*1024)throw new LetterWorkflowError('configuration','artifactSize');
+  const [artifact]=await tx.insert(letterArtifact).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,content:bytes,contentHash:hash(bytes),signatoryUserId:ctx.userId!,signingMode:policy.signingMode,authenticityTokenHash:hash(randomBytes(32)),createdAt:decision.createdAt}).returning({id:letterArtifact.id});artifactId=artifact.id;
+ }
+ await tx.update(letterRecord).set({state:next.state,stageIndex:next.stageIndex,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
+ if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex);
+ await event(tx,ctx,record.id,'approval.'+input.decision.action,{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,artifactId,contentHash:revision.contentHash});return {letterId:record.id,state:next.state,lockVersion:record.lockVersion+1,artifactId};
+});}
+
+export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string;expectedRevisionId:string;expectedLockVersion:number;delegateUserId:string;reason:string}){return letters(ctx,true,async tx=>{
+ const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'approve');await permission(tx,record.companyId,'read');
+ if(record.state!=='submitted'||!record.currentRevisionId)throw new LetterWorkflowError('state');if(record.currentRevisionId!==input.expectedRevisionId||record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');
+ const reason=text(input.reason,2000),delegate=uuid(input.delegateUserId);if(delegate===record.createdBy||delegate===ctx.userId)throw new LetterWorkflowError('permission');
+ const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${delegate}::uuid,${record.companyId}::uuid,'read') AND app.letter_permission_for_user(${delegate}::uuid,${record.companyId}::uuid,'approve') as ok`);if(!eligible?.ok)throw new LetterWorkflowError('permission');
+ const [revision]=await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId));
+ // The database checks the current stage, previous delegation and personally acting final signatory.
+ const [decision]=await tx.insert(letterApprovalDecision).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,stageIndex:record.stageIndex,actorId:ctx.userId!,action:'delegate',comment:reason,delegatedTo:delegate,contentHash:revision.contentHash}).returning();
+ await tx.update(letterRecord).set({lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
+ await event(tx,ctx,record.id,'approval.delegated',{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,delegateUserId:delegate,reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
 });}

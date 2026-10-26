@@ -35,8 +35,8 @@ export async function renderLetterPdf(input:LetterPdfInput){
     const face=isWinAnsiCodePoint(cp)?null:faces.find(face=>face.chars.has(cp));
     if(char!=='\n'&&!isWinAnsiCodePoint(cp)&&!face)throw new Error('Unsupported letter glyph: '+cp.toString(16));
     const font=face?(strong?face.bold:face.regular):(strong?bold:regular),previous=result.at(-1);
-    if(char!=='\n'&&previous&&previous.text!=='\n'&&previous.font===font&&previous.italic===italic&&previous.underline===underline){previous.text+=char;previous.width=font.widthOfTextAtSize(previous.text,size);}
-    else result.push({text:char,font,width:char==='\n'?0:font.widthOfTextAtSize(char,size),italic,underline});
+    if(char!=='\n'&&previous&&previous.text!=='\n'&&previous.font===font&&previous.italic===italic&&previous.underline===underline)previous.text+=char;
+    else result.push({text:char,font,width:0,italic,underline});
    }
   }
   return result;

@@ -1,9 +1,9 @@
 import {afterAll,beforeEach,describe,expect,it} from 'vitest';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {and,asc,eq} from 'drizzle-orm';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter} from '../core/letters';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
@@ -23,6 +23,19 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(closeAll);
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('seals the current approved revision only after a personally confirmed final signatory decision',async()=>{
+  const created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,created.batchId);
+  const row=(await getLetterGenerationBatch(ctx,created.batchId))!.rows[0],input={letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve' as const,comment:'Reviewed the frozen document',confirmSignature:true}};
+  await expect(decideLetter(ctx,input)).rejects.toMatchObject({code:'selfApproval'});await expect(decideLetter(reviewer,{...input,expectedLockVersion:input.expectedLockVersion-1})).rejects.toMatchObject({code:'stale'});await expect(decideLetter(reviewer,{...input,decision:{...input.decision,confirmSignature:false}})).rejects.toMatchObject({code:'signatureRequired'});expect(await owner.db.select().from(s.letterApprovalDecision)).toHaveLength(0);
+  const result=await decideLetter(reviewer,input);expect(result.state).toBe('approved');expect(result.artifactId).toBeTruthy();
+  const [artifact]=await owner.db.select().from(s.letterArtifact).where(eq(s.letterArtifact.id,result.artifactId!));expect(artifact.revisionId).toBe(row.revision!.id);expect(artifact.signatoryUserId).toBe(reviewer.userId);expect(artifact.content.subarray(0,5).toString()).toBe('%PDF-');expect(artifact.contentHash).toBe(createHash('sha256').update(artifact.content).digest('hex'));
+  await expect(decideLetter(reviewer,input)).rejects.toMatchObject({code:'stale'});expect(await owner.db.select().from(s.letterApprovalDecision)).toHaveLength(1);expect(await owner.db.select().from(s.letterArtifact)).toHaveLength(1);
+ });
+ it('returns with a required reason and cannot submit the old revision again',async()=>{
+  const created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,created.batchId);const row=(await getLetterGenerationBatch(ctx,created.batchId))!.rows[0];
+  const input={letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'return' as const,comment:'',confirmSignature:false}};await expect(decideLetter(reviewer,input)).rejects.toMatchObject({code:'reasonRequired'});
+  expect(await decideLetter(reviewer,{...input,decision:{...input.decision,comment:'Correct the effective date'}})).toMatchObject({state:'returned'});await expect(submitLetterBatch(ctx,created.batchId)).rejects.toMatchObject({code:'state'});expect(await owner.db.select().from(s.letterArtifact)).toHaveLength(0);
+ });
  it('saves missing-field drafts, counts only ready letters, and submits atomically after correction',async()=>{
   const created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom([employees[0]]),operationKey:randomUUID()});
   const preview=await getLetterGenerationBatch(ctx,created.batchId);expect(preview).toMatchObject({ready:1,needsCorrection:1});expect(new Set(preview!.rows.map(row=>row.record.reference)).size).toBe(2);
