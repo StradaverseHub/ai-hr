@@ -1492,7 +1492,7 @@ export function payslipForReview(
         company: company.legalName,
         companyReg: company.registrationNo,
         // r360 — the configured cycle's NAME, off the LEFT join below. See `PayslipReviewRow.cycleName`.
-        cycleName: payrollCycle.name,
+        cycleName: sql<string | null>`case when ${payrollBatch.historyImportAttemptId} is not null then ${payrollBatch.historyImportCycleName} || ' - By Import' else ${payrollCycle.name} end`,
         currency: company.currency,
         // 417d4937 — the run id (see ProcessedPayslipViewRow.batchId).
         batchId: payslip.batchId,
@@ -1516,7 +1516,7 @@ export function payslipForReview(
         // 1b0943d5 (0446) — the coverage window this slip claims, read through `payslipSegmentOf`.
         coverageFrom: payslip.coverageFrom,
         coverageTo: payslip.coverageTo,
-        payDate: payrollBatch.batchDate,
+        payDate: sql<string | null>`case when ${payrollBatch.historyImportAttemptId} is null then ${payrollBatch.batchDate} else null end`,
         informationFields: payslipInformationSetting.fields,
         businessUnit: businessUnit.name,
         division: employment.orgDivision,
@@ -3055,7 +3055,7 @@ export function listFilableRunsForPeriod(
       .select({
         runSeq: payrollBatch.runSeq,
         runType: payrollBatch.runType,
-        cycleName: payrollCycle.name,
+        cycleName: sql<string | null>`case when ${payrollBatch.historyImportAttemptId} is not null then ${payrollBatch.historyImportCycleName} || ' - By Import' else ${payrollCycle.name} end`,
         status: payrollBatch.status,
       })
       .from(payrollBatch)

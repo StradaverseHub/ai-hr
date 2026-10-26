@@ -1146,6 +1146,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // Same scopedAdmin key as the rest of the hub: the screen shows per-employee salary differences.
       '/payroll/back-pay',
       '/payroll/history-import',
+      '/payroll/history-import/logs',
+      '/payroll/history-import/logs/[attemptId]',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
       // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like

@@ -16,7 +16,7 @@ import {readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history
 import type {HistoryRevisionPlan,HistoryRevisionRow,ImportedPayrollValues,HistoryRevisionChange} from '../lib/payroll-history-revisions';
 
 export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
-const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
+function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
@@ -31,7 +31,7 @@ async function principal(tx:Tx,ctx:SessionContext){
 async function permission(tx:Tx,ctx:SessionContext,companyId:string,kind:'import'|'revert'){
  const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) as ok`);
  const roles=[...new Set([...(ctx.roles??[]),...(ctx.grants??[]).map(grant=>grant.role)])];
- const scoped=await tx.execute<{role:string}>(sql`select role from unnest(${roles}::text[]) scoped_role(role) where app.has_role_for(role,${companyId}::uuid)`);
+ const scoped=await tx.execute<{role:string}>(sql`select role from unnest(ARRAY[${sql.join(roles.map(role=>sql`${role}::text`),sql`, `)}]::text[]) scoped_role(role) where app.has_role_for(role,${companyId}::uuid)`);
  if(!row?.ok||!await resolvePayrollPermission(tx,{...ctx,roles:scoped.map(item=>item.role),grants:[]},kind==='import'?'payroll.history.import':'payroll.history.revert',companyId))fail('Payroll history access is unavailable for a company in this file.');
 }
 /** Bound ZIP expansion before a workbook parser allocates worksheet strings. No archive is extracted. */
@@ -109,7 +109,7 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
   const co=candidates[0];
   const cycles=cycleRows.filter(c=>c.companyId===co.id&&[c.id,c.name,c.code].some(v=>key(v)===cycleCode&&cycleCode!==''));
   if(cycles.length!==1){plan.rows.push(invalidRow(index+2,input,'The Pay Cycle code or name is unknown or ambiguous for this company.'));continue;}
-  if(!permissionCache.has(co.id)){try{await permission(tx,ctx,co.id,'import');permissionCache.set(co.id,true);}catch{permissionCache.set(co.id,false);}}
+  if(!permissionCache.has(co.id)){try{await permission(tx,ctx,co.id,'import');permissionCache.set(co.id,true);}catch(error){if(!(error instanceof PayrollHistoryRevisionError))throw error;permissionCache.set(co.id,false);}}
   if(!permissionCache.get(co.id)){plan.rows.push(invalidRow(index+2,input,'Payroll history import permission is unavailable for this company.'));continue;}
   const amount=readHistoryField(input,'amount').replace(/[,_\s]/g,'');
   const numeric=/^\d+(?:\.\d{1,2})?$/.test(amount);
@@ -274,7 +274,7 @@ export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string){
 }
 
 export async function listPayrollHistoryAttempts(ctx:SessionContext,options:{before?:string;limit?:number}={}){
- assertModuleGate(ctx,'payroll');return withTenant(ctx,async tx=>{
+ assertModuleGate(ctx,'payroll');if(options.before&&!uuid.test(options.before))fail('Import cursor unavailable.');return withTenant(ctx,async tx=>{
   await principal(tx,ctx);const limit=Math.min(100,Math.max(1,options.limit??25));
   const rows=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt)
    .where(options.before?sql`(${attempt.createdAt},${attempt.id}) < (select created_at,id from payroll_history_import_attempt where id=${options.before}::uuid)`:undefined)
@@ -286,4 +286,16 @@ export async function listPayrollHistoryAttempts(ctx:SessionContext,options:{bef
 export async function payrollHistorySource(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{await principal(tx,ctx);const [row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:attempt.sourceContent}).from(attempt).where(eq(attempt.id,id));return row??null;});
+}
+
+/** Metadata and original planned differences remain private under the same attempt RLS as its source. */
+export async function getPayrollHistoryAttempt(ctx:SessionContext,id:string){
+ assertModuleGate(ctx,'payroll');if(!uuid.test(id))return null;
+ return withTenant(ctx,async tx=>{
+  await principal(tx,ctx);
+  const [source]=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt).where(eq(attempt.id,id));
+  if(!source)return null;
+  const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+  return {...source,events};
+ });
 }
