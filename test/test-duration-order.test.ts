@@ -31,16 +31,17 @@ it('actual Vitest starts the known long file before a larger short source and ru
    // The wrapper delegates unchanged sorting; it cannot choose or replace any specification.
    const details=join(root,phase+'.sequence.json');
    const chosen="import {writeFileSync} from 'node:fs';import {relative} from 'node:path';"+(phase==='baseline'?"import {BaseSequencer as Delegate} from 'vitest/node';":'import Delegate from '+JSON.stringify(join(repo,'scripts/test-duration-sequencer.mjs'))+';')+
-    'class Sequencer extends Delegate{async sort(files){const out=await super.sort(files);writeFileSync('+JSON.stringify(details)+',JSON.stringify({root:this.ctx.config.root,input:files.map(s=>{const key=s.project.name+":"+relative(this.ctx.config.root,s.moduleId);return {file:s.moduleId,key,stats:this.ctx.cache.getFileStats(key),state:this.ctx.cache.getFileTestResults(key)}}),output:out.map(s=>s.moduleId)}));return out;}}';
+    'class Sequencer extends Delegate{async sort(files){const out=await super.sort(files);writeFileSync('+JSON.stringify(details)+',JSON.stringify({root:this.ctx.config.root,maxWorkers:this.ctx.config.maxWorkers,input:files.map(s=>{const key=s.project.name+":"+relative(this.ctx.config.root,s.moduleId);return {file:s.moduleId,key,stats:this.ctx.cache.getFileStats(key),state:this.ctx.cache.getFileTestResults(key)}}),output:out.map(s=>s.moduleId)}));return out;}}';
    writeFileSync(config,"import {defineConfig} from 'vitest/config';"+chosen+'export default defineConfig({root:'+JSON.stringify(root)+',cacheDir:'+JSON.stringify(join(root,'cache-'+phase))+",test:{include:['test/*.test.ts'],globalSetup:[],setupFiles:[],maxWorkers:1,fileParallelism:false,sequence:{sequencer:Sequencer},testTimeout:5000,hookTimeout:5000}});");
-   const result=spawnSync(process.execPath,[join(repo,'node_modules/vitest/vitest.mjs'),'run','--root',root,'--config',config,'--reporter=json','--outputFile='+output],{cwd:repo,env:{...process.env,ORDER_TRACE_FILE:trace},encoding:'utf8',timeout:12000,maxBuffer:1024*1024,detached:true});
+   const result=spawnSync(process.execPath,[join(repo,'node_modules/vitest/vitest.mjs'),'run','--root',root,'--config',config,'--reporter=json','--outputFile='+output],{cwd:repo,env:{...process.env,VITEST_MAX_WORKERS:'1',VITEST_MAX_WORKERS_NODB:'1',ORDER_TRACE_FILE:trace},encoding:'utf8',timeout:12000,maxBuffer:1024*1024,detached:true});
    if(result.error&&result.pid)try{process.kill(-result.pid,'SIGKILL');}catch{}
    const record={phase,exit:result.status,signal:result.signal,error:result.error?.message};proof.phases.push(record);
    const destination=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
    if(destination){const out=join(destination,'duration-sequence-smoke');mkdirSync(out,{recursive:true});if(existsSync(output))copyFileSync(output,join(out,phase+'.vitest.json'));if(existsSync(details))copyFileSync(details,join(out,phase+'.sequence.json'));writeFileSync(join(out,phase+'.log'),(result.stdout??'')+(result.stderr??''));}
    expect(result.error,result.stderr).toBeUndefined();expect(result.status,result.stderr).toBe(0);expect(result.signal).toBeNull();
    const report=JSON.parse(readFileSync(output,'utf8')),order=readFileSync(trace,'utf8').trim().split('\n');
-   Object.assign(record,{order,passed:report.numPassedTests,failed:report.numFailedTests,registered:report.numTotalTests});
+   const sequencing=JSON.parse(readFileSync(details,'utf8'));expect(sequencing.maxWorkers).toBe(1);
+   Object.assign(record,{order,effectiveWorkers:sequencing.maxWorkers,queued:sequencing.output,passed:report.numPassedTests,failed:report.numFailedTests,registered:report.numTotalTests});
    expect(report.success).toBe(true);expect(report.numTotalTests).toBe(2);expect(report.numPassedTests).toBe(2);expect(report.numFailedTests).toBe(0);expect(report.numPendingTests).toBe(0);
   }
   for(const record of proof.phases){
