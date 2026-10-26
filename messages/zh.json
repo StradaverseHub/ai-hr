@@ -10092,7 +10092,7 @@
         "off": "已关闭",
         "close": "关闭",
         "activate": "激活",
-        "manage": "管理权限",
+        "manage": "管理",
         "range": "{count} 条记录中的 {from}–{to} 条",
         "previous": "上一页",
         "page": "第 {page} 页，共 {pages} 页",

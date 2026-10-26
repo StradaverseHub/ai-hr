@@ -92,7 +92,7 @@ describe('employee activation actions and lifecycle display', () => {
     m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});
     m.candidates.mockResolvedValue([]);await show();const d=within(directory());
     expect(d.getByText('External admin')).toBeTruthy();expect(d.getByText('No employee record')).toBeTruthy();
-    fireEvent.click(d.getByRole('button',{name:'Manage access'}));
+    fireEvent.click(d.getByRole('button',{name:'Manage'}));
     expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
   });
   it('sends display fields to the client directory without full provider identity subjects',async()=>{

@@ -1,5 +1,21 @@
-/* Mobile rows are stacked grids. Atelier's universal 44px cell height must not
-   constrain a cell containing several grants or an expanded access form. */
+/* Stacked mobile cells and expanded forms must grow with their content. */
 :global(:root[data-ui-theme='atelier']) .directoryTable tbody td {
   height: auto;
+}
+
+/* Ordinary desktop users follow the same 44px baseline as the other native tables.
+   Long content can grow naturally; expanded access forms retain automatic height. */
+@media (min-width: 768px) {
+  .directoryTable tbody tr[data-directory-row] > :is(th, td),
+  :global(:root[data-ui-theme='atelier']) .directoryTable tbody tr[data-directory-row] > :is(th, td) {
+    height: 2.75rem;
+  }
+}
+
+/* Keep the house's compact desktop row actions and a larger target on mobile. */
+@media (max-width: 767px) {
+  .directoryTable tbody td :is(button, a).rowAction,
+  :global(:root[data-ui-theme='atelier']) .directoryTable tbody td :is(button, a).rowAction {
+    min-height: 2.75rem;
+  }
 }
