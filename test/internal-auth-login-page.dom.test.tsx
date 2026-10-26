@@ -5,6 +5,7 @@ import en from '../messages/en.json';
 import { activationLoginHref } from '../lib/internal-auth/login-navigation';
 vi.mock('../lib/internal-auth/config', () => ({ internalSelected: () => true, internalConfig: () => ({ organization: 'installation' }) }));
 vi.mock('../lib/internal-auth/web-session', () => ({ currentInternalIdentity: async () => null }));
+vi.mock('../lib/login-presentation-server', () => ({ publicLoginPresentation: async () => undefined }));
 vi.mock('../lib/principals', () => ({ listPrincipals: vi.fn() }));
 vi.mock('../lib/session', () => ({ getSession: vi.fn() }));
 vi.mock('../app/auth-actions', () => ({ signOutUnlinkedAction: vi.fn() }));

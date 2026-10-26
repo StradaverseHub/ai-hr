@@ -18,6 +18,8 @@ let base:Base,customer:Base,operator:SessionContext;
 beforeAll(migrateTestDb);
 beforeEach(async()=>{
   await resetDb();base=await seedBase();customer=await seedBase();
+  // seedBase enables optional packs for HR tests; this customer's contract starts with core only.
+  await owner.db.delete(schema.tenantModule).where(eq(schema.tenantModule.tenantId,customer.tenantId));
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:randomUUID()}).returning();
   await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:u.id,role:'operator',companyId:null});
   operator={tenantId:base.tenantId,userId:u.id,roles:['operator'],grants:[{role:'operator',companyId:null}]};

@@ -25,7 +25,7 @@ export function CustomerCreateForm({countries,modules,defaults,coreNames,interna
     <fieldset><legend className="mb-2 text-sm font-medium">{w('modules')}</legend>
       <div className="grid gap-2 sm:grid-cols-2">{modules.map(m=><label key={m.code} className="flex items-start gap-3 rounded-lg p-2 hover:bg-muted/50">
         <input type="checkbox" name="modules" value={m.code} defaultChecked={defaults.includes(m.code)} className="mt-1 size-4 shrink-0 accent-primary"/>
-        <span className="text-sm"><span className="font-medium">{m.name}</span><span className="mt-0.5 block text-xs text-muted-foreground">{m.description}</span></span>
+        <span className="text-sm"><span className="font-medium">{m.name}</span>{' '}<span className="mt-0.5 block text-xs text-muted-foreground">{m.description}</span></span>
       </label>)}</div><p className="mt-3 text-xs text-muted-foreground">{w('coreIncluded',{modules:coreNames})}</p>
     </fieldset>
     <Result state={state} success={w('creationQueued')}/>
@@ -56,7 +56,7 @@ export function CustomerModuleForm({tenantId,modules,grants,blockers,busy}:{tena
   const held=enabled?(blockers[selected]??[]):[];
   const blocked=scoped||(!enabled&&missing.length>0)||(enabled&&dependents.length>0);
   const names=(codes:string[])=>codes.map(c=>modules.find(m=>m.code===c)?.name??c).join(', ');
-  return <form action={action} className="space-y-4">
+  return <form action={action} onReset={()=>setSelected('')} className="space-y-4">
     <input type="hidden" name="tenantId" value={tenantId}/><input type="hidden" name="action" value={enabled?'deactivate':'activate'}/>
     {busy&&<p role="status" className="text-sm text-muted-foreground">{w('pendingHelp')}</p>}
     <label className="block space-y-1 text-sm font-medium">{w('selectModule')}<select name="moduleCode" required className={inputCls} value={selected} onChange={e=>setSelected(e.target.value)} disabled={busy||pending}>

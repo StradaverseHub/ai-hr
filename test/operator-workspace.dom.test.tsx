@@ -20,7 +20,7 @@ describe('operator tasks and controls',()=>{
   const nav=screen.getByRole('navigation',{name:'Operator workspace'});
   expect(within(nav).getAllByRole('link').map(a=>a.textContent)).toEqual(['Customers','Provisioning','Operator guide']);
   expect(within(nav).getByRole('link',{name:'Customers'})).toHaveAttribute('href','/operator');
-  for(const name of ['Dashboard','My HR','My workspace','Payroll','Company'])expect(within(nav).queryByRole('link',{name,exact:true})).toBeNull();
+  for(const name of ['Dashboard','My HR','My workspace','Payroll','Company'])expect(within(nav).queryByRole('link',{name})).toBeNull();
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
  });
  it('captures the organization code and keeps the catalog defaults in the submitted form',()=>{
@@ -57,6 +57,15 @@ describe('operator tasks and controls',()=>{
   fireEvent.change(screen.getByRole('combobox'),{target:{value:'payroll'}});
   expect(screen.getByText(/preserves its data and existing obligations/)).toBeTruthy();
   expect(screen.getByRole('textbox',{name:/2 payroll batches/})).toBeRequired();
+ });
+ it('clears the previous module controls when a successful action resets the form',()=>{
+  show(<CustomerModuleForm tenantId="test" modules={modules} grants={[]} blockers={{}} busy={false}/>);
+  const select=screen.getByRole('combobox');fireEvent.change(select,{target:{value:'payroll'}});
+  expect(screen.getByRole('textbox',{name:/Purchase or agreement reference/})).toBeTruthy();
+  fireEvent.reset(select.closest('form')!);
+  expect(select).toHaveValue('');
+  expect(screen.queryByRole('textbox',{name:/Purchase or agreement reference/})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Enable module'})).toBeNull();
  });
  it('prevents another submission while a module change is pending',()=>{
   show(<CustomerModuleForm tenantId="test" modules={modules} grants={[]} blockers={{}} busy/>);
