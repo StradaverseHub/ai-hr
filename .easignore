@@ -5,6 +5,7 @@
 !/mobile
 !/lib
 /lib/*
+!/lib/bounded-body.ts
 !/lib/mobile-connection.ts
 !/lib/mobile-workplace-setup.ts
 !/lib/mobile-design.ts

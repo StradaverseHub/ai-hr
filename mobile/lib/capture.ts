@@ -44,6 +44,7 @@ export async function capturePhoto():Promise<LocalAttachment|null>{
   }
 }
 export function appendAttachment(form:FormData,key:string,file:LocalAttachment){
-  // React Native's FormData file-part contract; do not set multipart Content-Type (fetch owns boundary).
-  form.append(key,{uri:file.uri,name:file.name,type:file.mimeType} as unknown as Blob);
+  // Expo fetch accepts the File's bytes; URI-only React Native parts are unsupported.
+  // Fetch owns the multipart boundary. Preserve MIME even for extensionless document caches.
+  form.append(key, {name:file.name,type:file.mimeType,bytes:()=>new File(file.uri).bytes()} as unknown as Blob);
 }

@@ -17,6 +17,11 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { getMobileSession } from '@/lib/session';
 import { JwksUnavailableError } from './jwt';
 import type { ErrorResponse } from './contract';
+import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '../request-budget';
+
+const admit = createRequestAdmission(24);
+const admitSource = createScopedAdmission(16);
+const admitActor = createScopedAdmission(12);
 
 const HEADERS = {
   'cache-control': 'no-store',
@@ -40,38 +45,60 @@ export class MobileBadRequest extends Error {
 }
 
 export type MobileSessionResolver = () => Promise<SessionContext>;
+export type MobileBudget = typeof takeRequestBudget;
 
 export function mobileRoute<S extends z.ZodType>(
   schema: S,
   fn: (s: SessionContext, req: Request) => Promise<z.input<S>>,
   // Injectable for tests only; production always resolves through getMobileSession().
   resolve: MobileSessionResolver = () => getMobileSession(),
+  budget: MobileBudget = takeRequestBudget,
 ): (req: Request) => Promise<Response> {
   return async (req: Request) => {
-    let s: SessionContext;
+    let release: (() => void) | undefined;
+    let releaseSource: (() => void) | undefined;
+    let releaseActor: (() => void) | undefined;
     try {
-      s = await resolve();
-    } catch (e) {
-      if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
-      // WorkOS keys unreachable, or the database behind principal_by_subject: an availability fault.
-      console.error('[mobile-api] session resolution failed', e instanceof JwksUnavailableError ? e.message : e);
+      release = admit();
+      const source = trustedRequestSource(req);
+      if (source) { releaseSource = admitSource(source); await budget(['mobile-source', source], 180, 60); }
+      let s: SessionContext;
+      try {
+        s = await resolve();
+      } catch (e) {
+        if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
+        // WorkOS keys unreachable, or the database behind principal_by_subject: an availability fault.
+        console.error('[mobile-api] session resolution failed', e instanceof JwksUnavailableError ? e.message : e);
+        return mobileError(503, 'unavailable');
+      }
+      const write = req.method !== 'GET' && req.method !== 'HEAD';
+      releaseActor = admitActor(JSON.stringify([s.tenantId, s.userId ?? s.personId ?? 'unbound']));
+      await budget(['mobile-actor', s.tenantId, s.userId ?? s.personId ?? 'unbound', write ? 'write' : 'read'], write ? 30 : 180, 60);
+      if (new URL(req.url).pathname.endsWith('/clock-device')) await budget(['mobile-enrollment', s.tenantId, s.userId ?? 'unbound'], 5, 3600);
+      let out: unknown;
+      try {
+        out = await fn(s, req);
+      } catch (e) {
+        if (e instanceof RequestBudgetExceeded) throw e;
+        if (e instanceof MobileBadRequest) return mobileError(400, 'bad_request');
+        if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
+        console.error(`[mobile-api] ${new URL(req.url).pathname} failed`, e);
+        return mobileError(500, 'internal');
+      }
+      const parsed = schema.safeParse(out);
+      if (!parsed.success) {
+        // Contract drift between core and the published shape. Never send the unparsed body.
+        console.error(`[mobile-api] ${new URL(req.url).pathname} response broke its contract`, parsed.error.issues);
+        return mobileError(500, 'internal');
+      }
+      return mobileJson(200, parsed.data);
+    } catch (error) {
+      if (error instanceof RequestBudgetExceeded) return Response.json({ error: 'unavailable' } satisfies ErrorResponse, {
+        status: 429, headers: { ...HEADERS, 'retry-after': String(error.retryAfter) },
+      });
+      // A failed budget store must never grant an unmetered request.
+      console.error('[mobile-api] request admission unavailable');
       return mobileError(503, 'unavailable');
-    }
-    let out: unknown;
-    try {
-      out = await fn(s, req);
-    } catch (e) {
-      if (e instanceof MobileBadRequest) return mobileError(400, 'bad_request');
-      if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
-      console.error(`[mobile-api] ${new URL(req.url).pathname} failed`, e);
-      return mobileError(500, 'internal');
-    }
-    const parsed = schema.safeParse(out);
-    if (!parsed.success) {
-      // Contract drift between core and the published shape. Never send the unparsed body.
-      console.error(`[mobile-api] ${new URL(req.url).pathname} response broke its contract`, parsed.error.issues);
-      return mobileError(500, 'internal');
-    }
-    return mobileJson(200, parsed.data);
+    } finally { releaseActor?.(); releaseSource?.(); release?.(); }
   };
 }

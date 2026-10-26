@@ -1,7 +1,7 @@
 # Native app foundation
 
 Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
-admits only this app and its five shared contracts/helpers. The mobile `.easignore` also protects
+admits only this app and its six shared contracts/helpers. The mobile `.easignore` also protects
 standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
 server code, local credentials and generated native/build folders must be absent.
 The backend release filter also excludes native build folders and signing inputs; mobile binaries
@@ -305,3 +305,15 @@ ad hoc profile containing the test device UDID. Local SDK 57 iOS builds require 
 is insufficient. This request does not authorize public App Store/Play Store submission. Use synthetic
 data until the physical-device matrix above passes. Installing a binary does not activate the current
 server's internal login, enroll a user or activate SMTP.
+
+### Reliability transport changes
+
+The native API uses Expo's stream-capable fetch, validates successful responses with the shared
+endpoint schemas, and bounds response reads to 1 MiB with a 15-second exchange deadline that remains
+active through the body. Server-side mobile uploads have a 30-second body deadline as well as byte
+limits. Malformed/oversized/stalled responses remain unavailable, never accepted command receipts.
+Same-scope refresh keeps displayed data and offers an error/retry; scope changes still hide previous
+results immediately. Unmounted requests are cancelled. Writes retain explicit immutable retry behavior.
+Multipart attachments expose actual file bytes with their declared MIME, as required by Expo fetch;
+URI-only React Native file parts are not accepted by that transport. Verify this on signed binaries
+and through required/optional photo and document flows before distribution.

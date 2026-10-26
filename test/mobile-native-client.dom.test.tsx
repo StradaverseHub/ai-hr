@@ -2,25 +2,31 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transpileModule, ModuleKind } from 'typescript';
 import * as React from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import * as contract from '../lib/mobile-api/contract';
+import {readBoundedBody} from '../lib/bounded-body';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
 import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError } from '../mobile/lib/errors';
 
 /** Execute the shipped client/hook. Only the native ports are replaced, not the request logic. */
+const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
 function clientFixture() {
   let generation = 0;
   const config = { apiUrl: 'https://hr.example.com' };
-  const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ name: 'Employment one' }), { status: 200 }));
+  const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => Response.json(new URL(url).pathname.endsWith('/clock') ? {outcome:'refused',code:'clock_conflict'} : employee('Employment one')));
   const auth = { authGeneration: () => generation,
     assertAuthGeneration(owner: number) { if (owner !== generation) throw new SessionChangedError(); },
     getAccessToken: vi.fn(async () => 'access-token'), refresh: vi.fn(async () => 'rotated-token') };
   const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>)=>Promise<unknown>;
-    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { name: string } | null } } };
+    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null } } };
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, setTimeout, clearTimeout,
+  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'react') return React;
+      if (id === 'expo/fetch') return {fetch:response};
+      if (id === '../../lib/bounded-body') return {readBoundedBody};
+      if (id === '../../lib/mobile-api/contract') return contract;
       if (id === './auth') return auth;
       if (id === './config') return { config, apiOriginProblem, configProblem: () => null };
       if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError };
@@ -29,7 +35,7 @@ function clientFixture() {
     } });
   return { api: output.exports, config, response, auth, changeSession() { generation += 1; } };
 }
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
   it('preserves the exact multipart command across the single 401 refresh and leaves Content-Type to fetch',async()=>{
@@ -76,8 +82,8 @@ describe('native employment data isolation in the rendered hook', () => {
   it('hides the previous employment before the next request resolves', async () => {
     const f = clientFixture(); const onSignInRequired = vi.fn();
     function Screen({ employmentId }: { employmentId: string }) {
-      const result = f.api.useApi('me', { employmentId }, onSignInRequired) as { data: { name: string } | null };
-      return <div>{result.data?.name ?? 'Loading employment'}</div>;
+      const result = f.api.useApi('me', { employmentId }, onSignInRequired) as { data: { person: {name:string} } | null };
+      return <div>{result.data?.person.name ?? 'Loading employment'}</div>;
     }
     const rendered = render(<Screen employmentId="one" />);
     expect(await screen.findByText('Employment one')).toBeInTheDocument();
@@ -87,8 +93,41 @@ describe('native employment data isolation in the rendered hook', () => {
     expect(screen.queryByText('Employment one')).not.toBeInTheDocument();
     expect(screen.getByText('Loading employment')).toBeInTheDocument();
     await waitFor(() => expect(f.response).toHaveBeenCalledTimes(2));
-    await act(async () => { release(new Response(JSON.stringify({ name: 'Employment two' }))); });
+    await act(async () => { release(Response.json(employee('Employment two'))); });
     expect(await screen.findByText('Employment two')).toBeInTheDocument();
     expect(onSignInRequired).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('native response safety and refresh resilience',()=>{
+  it('keeps same-scope data visible during a refresh and after a failed refresh',async()=>{
+    const f=clientFixture(),onAuth=vi.fn();
+    function App(){const result=f.api.useApi('me',{},onAuth) as any;return <><span>{result.data?.person.name}</span><span>{result.error?'Refresh failed':''}</span><button onClick={result.reload}>Refresh</button></>;}
+    render(<App/>);await screen.findByText('Employment one');
+    let release!:(r:Response)=>void;f.response.mockReturnValueOnce(new Promise(resolve=>{release=resolve;}));
+    fireEvent.click(screen.getByText('Refresh'));expect(screen.getByText('Employment one')).toBeInTheDocument();
+    await act(async()=>release(new Response('',{status:503})));
+    expect(await screen.findByText('Refresh failed')).toBeInTheDocument();expect(screen.getByText('Employment one')).toBeInTheDocument();expect(onAuth).not.toHaveBeenCalled();
+  });
+  it('discards cached content on a definitive permission refusal',async()=>{
+    const f=clientFixture(),onAuth=vi.fn();
+    function App(){const result=f.api.useApi('me',{},onAuth) as any;return <><span>{result.data?.person.name}</span><span>{result.error?'Refused':''}</span><button onClick={result.reload}>Refresh</button></>;}
+    render(<App/>);await screen.findByText('Employment one');f.response.mockResolvedValueOnce(new Response('',{status:403}));
+    fireEvent.click(screen.getByText('Refresh'));await screen.findByText('Refused');expect(screen.queryByText('Employment one')).not.toBeInTheDocument();
+  });
+  it.each([{}, {apiVersion:'v1',person:{name:42}}, {apiVersion:'v99'}])('rejects malformed business response %j without retrying or signing out',async payload=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(Response.json(payload));
+    await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(UnavailableError);expect(f.response).toHaveBeenCalledTimes(1);expect(f.auth.refresh).not.toHaveBeenCalled();
+  });
+  it('caps actual streamed response bytes even without Content-Length',async()=>{
+    const f=clientFixture(),cancel=vi.fn();f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(1024*1024+1));},cancel})));
+    await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(UnavailableError);expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('keeps the deadline alive when headers arrive but the body stalls',async()=>{
+    vi.useFakeTimers();const f=clientFixture(),cancel=vi.fn();
+    f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(){},cancel})));
+    const pending=f.api.apiGet('me').catch(e=>e);await vi.advanceTimersByTimeAsync(15_001);
+    expect(await pending).toBeInstanceOf(UnavailableError);expect(cancel).toHaveBeenCalledOnce();expect(f.auth.refresh).not.toHaveBeenCalled();
   });
 });
