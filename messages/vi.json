@@ -10275,7 +10275,8 @@
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
         "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
         "loginPresentation": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập.",
-        "myLetters": "Chỉ các thư đã phát hành cho người đăng nhập trong công việc hiện tại và trước đây. Vai trò đặc quyền không mở rộng phạm vi Thư của tôi."
+        "myLetters": "Chỉ các thư đã phát hành cho người đăng nhập trong công việc hiện tại và trước đây. Vai trò đặc quyền không mở rộng phạm vi Thư của tôi.",
+        "letterReports": "Quyền báo cáo thư hiện tại và phạm vi dữ liệu thư được kiểm tra mỗi lần đọc và xuất."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -23955,6 +23956,92 @@
         "unavailable": "Tính năng thư tạm thời không khả dụng. Vui lòng thử lại sau."
       },
       "download": "Tải PDF"
+    },
+    "reports": {
+      "title": "Báo cáo thư",
+      "description": "Theo dõi phát hành, phê duyệt, xác nhận và thời gian xử lý trong phạm vi được cấp quyền.",
+      "generatedBy": "Người tạo",
+      "generatedAt": "Thời điểm tạo",
+      "period": "Tạo trong khoảng thời gian",
+      "timezone": "Múi giờ",
+      "dataHash": "Dấu vân tay tập dữ liệu",
+      "summary": "Tổng hợp",
+      "details": "Chi tiết thư",
+      "unknown": "Không có dữ liệu",
+      "yes": "Có",
+      "no": "Không",
+      "company": "Công ty",
+      "allCompanies": "Tất cả công ty được cấp quyền",
+      "department": "Phòng ban",
+      "allDepartments": "Tất cả phòng ban được cấp quyền",
+      "from": "Tạo từ ngày",
+      "to": "Tạo đến ngày",
+      "apply": "Áp dụng bộ lọc",
+      "periodHelp": "Đếm các thư được tạo trong khoảng thời gian đã chọn theo trạng thái hiện tại. Phòng ban dựa trên phân công có hiệu lực tại ngày tạo thư. Chọn tối đa một năm.",
+      "noAccess": "Bạn không có quyền báo cáo thư cho công ty khả dụng.",
+      "reset": "Đặt lại bộ lọc",
+      "working": "Đang chuẩn bị xuất…",
+      "provenance": "Nguồn gốc báo cáo",
+      "empty": "Không có thư phù hợp trên trang này và với bộ lọc đã chọn.",
+      "next": "Các thư tiếp theo",
+      "ambiguousDepartment": "Không xác định được phòng ban vì các phân công theo ngày bị xung đột.",
+      "exportHelp": "Mỗi lần xuất tối đa 50.000 thư sang Excel hoặc 1.000 thư sang PDF. Thu hẹp bộ lọc cho phạm vi lớn hơn.",
+      "excel": "Xuất Excel",
+      "pdf": "Xuất PDF",
+      "columns": {
+        "reference": "Số tham chiếu",
+        "employee_name": "Nhân viên",
+        "employee_code": "Mã nhân viên",
+        "company_name": "Công ty",
+        "department_name": "Phòng ban",
+        "category": "Loại thư",
+        "state": "Trạng thái",
+        "created_at": "Thời điểm tạo",
+        "submitted_at": "Thời điểm gửi",
+        "approved_at": "Thời điểm phê duyệt",
+        "issued_at": "Thời điểm phát hành",
+        "viewed_at": "Thời điểm mở",
+        "acknowledged_at": "Thời điểm xác nhận",
+        "approval_due_at": "Hạn phê duyệt",
+        "acknowledgement_due_at": "Hạn xác nhận",
+        "approval_overdue": "Phê duyệt quá hạn",
+        "acknowledgement_overdue": "Xác nhận quá hạn",
+        "approval_hours": "Thời gian phê duyệt (giờ)",
+        "issue_hours": "Tạo đến phát hành (giờ)",
+        "acknowledgement_hours": "Phát hành đến xác nhận (giờ)"
+      },
+      "metrics": {
+        "total": "Tổng số thư",
+        "issued": "Thư đang có hiệu lực",
+        "void": "Thư đã hủy",
+        "historicalIssued": "Tất cả lần phát hành đã ghi nhận",
+        "pendingApproval": "Chờ phê duyệt",
+        "pendingAcknowledgement": "Chờ xác nhận nhận thư",
+        "approvalOverdue": "Phê duyệt quá hạn",
+        "acknowledgementOverdue": "Xác nhận quá hạn",
+        "meanApprovalHours": "Thời gian phê duyệt trung bình (giờ)",
+        "meanIssueHours": "Thời gian trung bình từ tạo đến phát hành (giờ)",
+        "meanAcknowledgementHours": "Thời gian trung bình từ phát hành đến xác nhận (giờ)"
+      },
+      "states": {
+        "draft": "Bản nháp",
+        "submitted": "Đã gửi",
+        "returned": "Đã trả lại",
+        "rejected": "Bị từ chối",
+        "approved": "Đã phê duyệt",
+        "issued": "Đã phát hành",
+        "void": "Đã hủy",
+        "withdrawn": "Đã rút"
+      },
+      "errors": {
+        "invalid": "Kiểm tra bộ lọc và chọn khoảng thời gian không quá một năm.",
+        "permission": "Không có quyền báo cáo thư cho phạm vi này.",
+        "stale": "Báo cáo đã thay đổi. Hãy làm mới trước khi xuất.",
+        "incomplete": "Xuất dữ liệu cần toàn bộ báo cáo. Hãy làm mới và thử lại.",
+        "pdfLimit": "Xuất PDF hỗ trợ tối đa 1.000 thư. Thu hẹp bộ lọc hoặc dùng Excel.",
+        "exportLimit": "Xuất Excel hỗ trợ tối đa 50.000 thư. Hãy thu hẹp bộ lọc.",
+        "unavailable": "Tạm thời không thể xuất báo cáo. Vui lòng thử lại sau."
+      }
     }
   }
 }

@@ -86,6 +86,7 @@ const nextConfig: NextConfig = {
         headers: [{ key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' }],
       },
       {source:'/me/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
+      {source:'/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
     ];
   },
 };

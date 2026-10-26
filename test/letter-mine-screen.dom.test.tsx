@@ -25,6 +25,9 @@ it('shows a recorded confirmation without presenting a fresh confirmation action
 it('does not render foreign letter information even for a privileged route caller',async()=>{
  mocks.detail.mockRejectedValue(new LetterWorkflowError('permission'));await expect(MyLetterPage({params:Promise.resolve({letterId:id}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');
 });
+it('treats unknown error query values as plain unavailable feedback',async()=>{
+ render(await MyLetterPage({params:Promise.resolve({letterId:id}),searchParams:Promise.resolve({error:'__proto__'})}));expect(screen.getByRole('alert').textContent).toBe('errors.unavailable');
+});
 it('keeps pending acknowledgement distinct from opening a new letter and paginates the personal list',async()=>{
  mocks.list.mockResolvedValue({rows:[{id,reference:'HR/2026/00001',state:'issued',issuedAt:new Date('2026-10-26T10:00:00Z'),acknowledgement:'acknowledge',viewed:false,confirmed:null}],nextCursor:id});render(await MyLettersPage({searchParams:Promise.resolve({})}));expect(screen.getByText('new')).toBeTruthy();expect(screen.getByText('pendingAcknowledgement')).toBeTruthy();expect(screen.getByRole('link',{name:'next'}).getAttribute('href')).toBe('/me/letters?cursor='+id);
 });

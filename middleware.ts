@@ -133,7 +133,7 @@ function refuseUnconfigured(): NextResponse {
 
 /** True for requests that cannot follow a redirect to AuthKit: route handlers and server actions. */
 function wantsStatusNotRedirect(req: NextRequest): boolean {
-  return req.nextUrl.pathname.startsWith('/api/') || req.headers.has('next-action');
+  return req.nextUrl.pathname.startsWith('/api/') || req.nextUrl.pathname==='/letters/reports/export' || req.headers.has('next-action');
 }
 
 /**

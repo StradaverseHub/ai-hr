@@ -72,6 +72,9 @@ describe('real sign-in on, signed out (real SDK)', () => {
     expect(res.status).toBe(401);
     expect(res.headers.get('location')).toBeNull();
   });
+  it('a private letter export refuses a signed-out fetch instead of downloading a login page',async()=>{
+    const response=await (await loadMiddleware())(req('/letters/reports/export'));expect(response.status).toBe(401);expect(response.headers.get('location')).toBeNull();
+  });
 
   it('a server action answers 401 too', async () => {
     const res = await (await loadMiddleware())(req('/leave', { method: 'POST', headers: { 'next-action': 'abc123' } }));

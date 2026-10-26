@@ -10275,7 +10275,8 @@
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
         "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
         "loginPresentation": "仅集团管理员可更改登录页外观。",
-        "myLetters": "仅限登录本人当前及以往任职期间的已发出信函。特权角色不会扩大“我的信函”的范围。"
+        "myLetters": "仅限登录本人当前及以往任职期间的已发出信函。特权角色不会扩大“我的信函”的范围。",
+        "letterReports": "每次读取及导出均检查当前信函报表权限和信函数据范围。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -23955,6 +23956,92 @@
         "unavailable": "信函功能暂时不可用，请稍后重试。"
       },
       "download": "下载 PDF"
+    },
+    "reports": {
+      "title": "信函报表",
+      "description": "在授权范围内跟踪信函发出、审批、收悉确认及处理时长。",
+      "generatedBy": "生成人",
+      "generatedAt": "生成时间",
+      "period": "创建时间范围",
+      "timezone": "时区",
+      "dataHash": "数据集指纹",
+      "summary": "汇总",
+      "details": "信函详情",
+      "unknown": "不可用",
+      "yes": "是",
+      "no": "否",
+      "company": "公司",
+      "allCompanies": "所有授权公司",
+      "department": "部门",
+      "allDepartments": "所有授权部门",
+      "from": "创建起始日期",
+      "to": "创建截止日期",
+      "apply": "应用筛选",
+      "periodHelp": "统计选定期间内创建的信函及其当前状态。部门依据生成日期的有效任职记录确定。日期范围最多为一年。",
+      "noAccess": "您没有可用公司的信函报表权限。",
+      "reset": "重置筛选",
+      "working": "正在准备导出…",
+      "provenance": "报表来源",
+      "empty": "当前页面及筛选条件下没有匹配的信函。",
+      "next": "下一页信函",
+      "ambiguousDepartment": "有效日期任职记录存在冲突，无法确定部门。",
+      "exportHelp": "每次最多导出 50,000 封信函至 Excel，或 1,000 封至 PDF。范围较大时请缩小筛选条件。",
+      "excel": "导出 Excel",
+      "pdf": "导出 PDF",
+      "columns": {
+        "reference": "编号",
+        "employee_name": "员工",
+        "employee_code": "员工编号",
+        "company_name": "公司",
+        "department_name": "部门",
+        "category": "信函类别",
+        "state": "状态",
+        "created_at": "创建时间",
+        "submitted_at": "提交时间",
+        "approved_at": "批准时间",
+        "issued_at": "发出时间",
+        "viewed_at": "打开时间",
+        "acknowledged_at": "确认时间",
+        "approval_due_at": "审批截止时间",
+        "acknowledgement_due_at": "收悉确认截止时间",
+        "approval_overdue": "审批逾期",
+        "acknowledgement_overdue": "收悉确认逾期",
+        "approval_hours": "审批时长（小时）",
+        "issue_hours": "创建至发出（小时）",
+        "acknowledgement_hours": "发出至确认（小时）"
+      },
+      "metrics": {
+        "total": "信函总数",
+        "issued": "当前有效的已发信函",
+        "void": "已作废信函",
+        "historicalIssued": "所有已记录的发出次数",
+        "pendingApproval": "待审批",
+        "pendingAcknowledgement": "待确认收悉",
+        "approvalOverdue": "逾期审批",
+        "acknowledgementOverdue": "逾期收悉确认",
+        "meanApprovalHours": "平均审批时长（小时）",
+        "meanIssueHours": "平均创建至发出时长（小时）",
+        "meanAcknowledgementHours": "平均发出至确认时长（小时）"
+      },
+      "states": {
+        "draft": "草稿",
+        "submitted": "已提交",
+        "returned": "已退回",
+        "rejected": "已拒绝",
+        "approved": "已批准",
+        "issued": "已发出",
+        "void": "已作废",
+        "withdrawn": "已撤回"
+      },
+      "errors": {
+        "invalid": "请检查筛选条件，日期范围不得超过一年。",
+        "permission": "此范围的信函报表权限不可用。",
+        "stale": "报表已变更，请刷新后再导出。",
+        "incomplete": "导出需要完整报表，请刷新后重试。",
+        "pdfLimit": "PDF 导出最多支持 1,000 封信函。请缩小筛选范围或使用 Excel。",
+        "exportLimit": "Excel 导出最多支持 50,000 封信函。请缩小筛选范围。",
+        "unavailable": "报表导出暂时不可用，请稍后重试。"
+      }
     }
   }
 }

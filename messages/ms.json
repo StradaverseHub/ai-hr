@@ -10275,7 +10275,8 @@
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
         "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
         "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk.",
-        "myLetters": "Hanya surat yang dikeluarkan kepada individu yang log masuk bagi pekerjaan semasa dan terdahulu. Peranan berkeistimewaan tidak meluaskan Surat Saya."
+        "myLetters": "Hanya surat yang dikeluarkan kepada individu yang log masuk bagi pekerjaan semasa dan terdahulu. Peranan berkeistimewaan tidak meluaskan Surat Saya.",
+        "letterReports": "Kebenaran laporan surat semasa dan skop data surat disemak pada setiap bacaan dan eksport."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -23955,6 +23956,92 @@
         "unavailable": "Surat tidak tersedia buat sementara waktu. Cuba sebentar lagi."
       },
       "download": "Muat turun PDF"
+    },
+    "reports": {
+      "title": "Laporan Surat",
+      "description": "Jejaki pengeluaran, kelulusan, pengakuan dan tempoh pemprosesan dalam skop kebenaran anda.",
+      "generatedBy": "Dijana oleh",
+      "generatedAt": "Dijana pada",
+      "period": "Dicipta dalam tempoh",
+      "timezone": "Zon waktu",
+      "dataHash": "Cap jari set data",
+      "summary": "Ringkasan",
+      "details": "Butiran surat",
+      "unknown": "Tidak tersedia",
+      "yes": "Ya",
+      "no": "Tidak",
+      "company": "Syarikat",
+      "allCompanies": "Semua syarikat yang dibenarkan",
+      "department": "Jabatan",
+      "allDepartments": "Semua jabatan yang dibenarkan",
+      "from": "Dicipta dari",
+      "to": "Dicipta hingga",
+      "apply": "Gunakan penapis",
+      "periodHelp": "Kiraan meliputi surat yang dicipta dalam tempoh dipilih mengikut status semasa. Jabatan menggunakan penempatan bertarikh pada tarikh penjanaan. Pilih maksimum satu tahun.",
+      "noAccess": "Anda tiada kebenaran laporan surat bagi syarikat yang tersedia.",
+      "reset": "Tetapkan semula penapis",
+      "working": "Sedang menyediakan eksport…",
+      "provenance": "Asal usul laporan",
+      "empty": "Tiada surat sepadan pada halaman ini dengan penapis dipilih.",
+      "next": "Surat seterusnya",
+      "ambiguousDepartment": "Jabatan tidak tersedia kerana penempatan bertarikh bercanggah.",
+      "exportHelp": "Eksport sehingga 50,000 surat ke Excel atau 1,000 ke PDF. Kecilkan penapis untuk skop lebih besar.",
+      "excel": "Eksport Excel",
+      "pdf": "Eksport PDF",
+      "columns": {
+        "reference": "Rujukan",
+        "employee_name": "Pekerja",
+        "employee_code": "Kod pekerja",
+        "company_name": "Syarikat",
+        "department_name": "Jabatan",
+        "category": "Kategori surat",
+        "state": "Status",
+        "created_at": "Dicipta pada",
+        "submitted_at": "Dihantar pada",
+        "approved_at": "Diluluskan pada",
+        "issued_at": "Dikeluarkan pada",
+        "viewed_at": "Dibuka pada",
+        "acknowledged_at": "Disahkan pada",
+        "approval_due_at": "Tarikh akhir kelulusan",
+        "acknowledgement_due_at": "Tarikh akhir pengakuan",
+        "approval_overdue": "Kelulusan tertunggak",
+        "acknowledgement_overdue": "Pengakuan tertunggak",
+        "approval_hours": "Tempoh kelulusan (jam)",
+        "issue_hours": "Cipta hingga keluar (jam)",
+        "acknowledgement_hours": "Keluar hingga sah (jam)"
+      },
+      "metrics": {
+        "total": "Jumlah surat",
+        "issued": "Surat dikeluarkan yang aktif",
+        "void": "Surat batal",
+        "historicalIssued": "Semua pengeluaran direkodkan",
+        "pendingApproval": "Menunggu kelulusan",
+        "pendingAcknowledgement": "Menunggu pengakuan",
+        "approvalOverdue": "Kelulusan tertunggak",
+        "acknowledgementOverdue": "Pengakuan tertunggak",
+        "meanApprovalHours": "Purata tempoh kelulusan (jam)",
+        "meanIssueHours": "Purata cipta hingga keluar (jam)",
+        "meanAcknowledgementHours": "Purata keluar hingga sah (jam)"
+      },
+      "states": {
+        "draft": "Draf",
+        "submitted": "Dihantar",
+        "returned": "Dikembalikan",
+        "rejected": "Ditolak",
+        "approved": "Diluluskan",
+        "issued": "Dikeluarkan",
+        "void": "Batal",
+        "withdrawn": "Ditarik balik"
+      },
+      "errors": {
+        "invalid": "Semak penapis dan pilih tempoh tidak melebihi satu tahun.",
+        "permission": "Kebenaran laporan surat tidak tersedia untuk skop ini.",
+        "stale": "Laporan telah berubah. Muat semula sebelum mengeksport.",
+        "incomplete": "Eksport memerlukan laporan lengkap. Muat semula dan cuba lagi.",
+        "pdfLimit": "Eksport PDF menyokong sehingga 1,000 surat. Kecilkan penapis atau gunakan Excel.",
+        "exportLimit": "Eksport Excel menyokong sehingga 50,000 surat. Kecilkan penapis.",
+        "unavailable": "Eksport laporan tidak tersedia buat sementara waktu. Cuba sebentar lagi."
+      }
     }
   }
 }
