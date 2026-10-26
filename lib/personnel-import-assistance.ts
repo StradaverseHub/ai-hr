@@ -22,7 +22,10 @@ export const PersonnelImportHeaderProposalSchema=z.object({version:z.literal(1),
 export type PersonnelImportHeaderProposal=z.infer<typeof PersonnelImportHeaderProposalSchema>;
 export const PersonnelImportHeaderAssistanceRequestSchema=z.object({version:z.literal(1),companyId:z.string().uuid(),operationNonce:z.string().uuid(),headers:z.array(PersonnelImportHeaderSchema).min(1).max(128),sourceRevision:Digest,registryDigest:Digest,mode:z.enum(['deterministic','ai']),consent:z.object({headersReviewed:z.literal(true),sendHeadingsOnly:z.boolean()}).strict()}).strict().superRefine((value,ctx)=>{if(value.mode==='ai'&&(!value.consent.sendHeadingsOnly||value.headers.length>32))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Header proposal unavailable'});});
 export type PersonnelImportHeaderAssistanceRequest=z.infer<typeof PersonnelImportHeaderAssistanceRequestSchema>;
+export const PersonnelImportHeaderAssistanceCommandSchema=z.object({attemptId:z.string().uuid(),attemptVersion:z.literal(1),request:PersonnelImportHeaderAssistanceRequestSchema}).strict();
+export type PersonnelImportHeaderAssistanceCommand=z.infer<typeof PersonnelImportHeaderAssistanceCommandSchema>;
 export type PersonnelImportHeaderAssistanceResult=Readonly<{kind:'proposal';attemptId:string;attemptVersion:number;proposal:PersonnelImportHeaderProposal}>|Readonly<{kind:'unavailable';message:string}>;
+export type PersonnelImportHeaderPreparationResult=Readonly<{kind:'prepared';attemptId:string;attemptVersion:number;sourceRevision:string;registryDigest:string}>|Readonly<{kind:'unavailable';message:string}>;
 export const personnelImportHeadersRevisionText=(headers:readonly PersonnelImportHeader[])=>JSON.stringify(headers.map(h=>({columnIndex:h.columnIndex,heading:h.heading})));
 export const personnelImportSourceRevisionText=(headersDigest:string,registryDigest:string)=>JSON.stringify([headersDigest,registryDigest]);
 export function capturePersonnelImportHeaders(value:unknown):readonly PersonnelImportHeader[]{

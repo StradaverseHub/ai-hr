@@ -1,13 +1,17 @@
 /** Authored UNRUN: real owner/app-role custody and rollback; fictional headings, no provider API. */
 import {randomUUID} from 'node:crypto';
-import {sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,expect,it,vi} from 'vitest';
-import {withTenant} from '../db/client';
-import {preparePersonnelImportAssistanceTx,claimPersonnelImportAssistanceTx,completePersonnelImportAssistanceTx,failPersonnelImportAssistanceTx,type PersonnelImportAssistanceBinding} from '../core/personnel-import-assistance-store';
+import {withTenant,type Tx,type SessionContext} from '../db/client';
+import {preparePersonnelImportAssistanceTx,readPersonnelImportAssistanceTx,claimPersonnelImportAssistanceTx,completePersonnelImportAssistanceTx,failPersonnelImportAssistanceTx,type PersonnelImportAssistanceBinding} from '../core/personnel-import-assistance-store';
 import {personnelImportHeaderDigests} from '../lib/personnel-import-assistance.server';
 import type {PersonnelImportHeaderProposal} from '../lib/personnel-import-assistance';
 import {runAiRetentionTick} from '../scripts/ai-retention-runner';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import * as schema from '../db/schema';
+import * as gateway from '../lib/ai';
+import {preparePersonnelImportHeaders,assistPersonnelImportHeaders,reopenPersonnelImportHeaders} from '../core/personnel-import-assistance';
+import {retireExpiredAiCustodyTx} from '../core/ai-retention-maintenance';
 let base:Base;
 beforeAll(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-header-custody-secret-0123456789');await migrateTestDb();});
 beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
@@ -46,6 +50,7 @@ it('refuses invented run IDs and rolls the real admission back when its durable 
 });
 it('keeps source and expiry immutable to the app role, refuses expired and cross-tenant reopening, but permits own erasure',async()=>{
  const {value,binding}=await prepare(),before=await rows();await expect(withTenant(ctx(),tx=>tx.execute(sql`update public.personnel_import_assistance_attempt set expires_at=now()+interval '1 year' where id=${binding.attemptId}::uuid`))).rejects.toThrow();expect(await rows()).toEqual(before);
+ for(const attempted of [sql`update public.personnel_import_assistance_attempt set source_revision=${'b'.repeat(64)} where id=${binding.attemptId}::uuid`,sql`update public.personnel_import_assistance_attempt set header_indexes='[241]'::jsonb where id=${binding.attemptId}::uuid`,sql`update public.personnel_import_assistance_attempt set company_id=${randomUUID()}::uuid where id=${binding.attemptId}::uuid`]){await expect(withTenant(ctx(),tx=>tx.execute(attempted))).rejects.toThrow();expect(await rows()).toEqual(before);}
  const foreign=await seedBase();await expect(withTenant(adminCtx(foreign),tx=>preparePersonnelImportAssistanceTx(tx,adminCtx(foreign),value))).rejects.toThrow();expect(await rows()).toEqual(before);
  await owner.db.execute(sql`update public.personnel_import_assistance_attempt set created_at=now()-interval '20 minutes',expires_at=now()-interval '5 minutes' where id=${binding.attemptId}::uuid`);
  await expect(withTenant(ctx(),tx=>preparePersonnelImportAssistanceTx(tx,ctx(),value))).rejects.toThrow();await withTenant(ctx(),tx=>tx.execute(sql`delete from public.personnel_import_assistance_attempt where id=${binding.attemptId}::uuid`));expect(await rows()).toHaveLength(0);
@@ -63,4 +68,37 @@ it('physically retires expired header custody without touching active custody or
  const facts=()=>owner.db.execute(sql`select (select count(*) from public.person) as people,(select count(*) from public.employment) as employments,(select count(*) from public.domain_event) as events`);
  const canonical=await facts();expect(await runAiRetentionTick(owner)).toMatchObject({importAssistance:1,backlog:false});
  expect(await rows()).toEqual([before]);expect(await facts()).toEqual(canonical);expect(await runAiRetentionTick(owner)).toMatchObject({tenants:0,importAssistance:0,backlog:false});
+});
+
+it('never recreates an expired/actually retired dispatched identity during execute or recovery',async()=>{
+ const request={version:1,companyId:base.companyId,operationNonce:randomUUID(),headers,...personnelImportHeaderDigests(headers),mode:'ai',consent:{headersReviewed:true,sendHeadingsOnly:true}};
+ const {headersDigest:_,...packet}=request,prepared=await preparePersonnelImportHeaders(ctx(),packet);expect(prepared.kind).toBe('prepared');if(prepared.kind!=='prepared')throw Error('owned fixture preparation failed');
+ const [row]=await rows();const b:PersonnelImportAssistanceBinding={attemptId:prepared.attemptId,attemptVersion:prepared.attemptVersion,companyId:base.companyId,sourceRevision:packet.sourceRevision,registryDigest:packet.registryDigest,inputDigest:row.input_digest as string};
+ await withTenant(ctx(),async tx=>{const [admitted]=await tx.execute<{run_id:string;allowed:boolean}>(sql`select * from app.ai_admit('personnel_import_mapping','draft','openai','fictional/header-model',100,false)`);expect(admitted.allowed).toBe(true);await claimPersonnelImportAssistanceTx(tx,ctx(),b,admitted.run_id);});
+ const originalRuns=await owner.db.execute(sql`select * from public.ai_model_run order by id`);expect(originalRuns).toHaveLength(1);
+ await owner.db.execute(sql`update public.personnel_import_assistance_attempt set created_at=now()-interval '20 minutes',expires_at=now()-interval '5 minutes' where id=${b.attemptId}::uuid`);
+ const retired=await owner.db.transaction(tx=>retireExpiredAiCustodyTx(tx as unknown as Tx));expect(retired.importAssistance).toBe(1);expect(await rows()).toHaveLength(0);
+ const spy=vi.spyOn(gateway,'generateDraft').mockRejectedValue(Error('provider must not be reached'));try{const command={attemptId:b.attemptId,attemptVersion:b.attemptVersion,request:packet};expect((await reopenPersonnelImportHeaders(ctx(),command)).kind).toBe('unavailable');expect((await assistPersonnelImportHeaders(ctx(),command)).kind).toBe('unavailable');expect(spy).not.toHaveBeenCalled();}finally{spy.mockRestore();}
+ expect(await rows()).toHaveLength(0);expect(await owner.db.execute(sql`select * from public.ai_model_run order by id`)).toEqual(originalRuns);
+});
+it('isolates another real login in the same tenant across direct read, reopen and actual claim',async()=>{
+ const {value,binding}=await prepare('ai'),before=await rows(),[p]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional Other Caller',primaryEmail:randomUUID()+'@fixture.test'}).returning({id:schema.person.id}),userId=await createAppUser(base.tenantId,p.id,'hr_admin');
+ const other:SessionContext={tenantId:base.tenantId,userId,personId:p.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+ const [actual]=await withTenant(other,tx=>tx.execute<{current:boolean}>(sql`select app.current_user_id()=${userId}::uuid and app.principal_snapshot_current() as current`));expect(actual.current).toBe(true);
+ expect(await withTenant(other,tx=>tx.execute(sql`select id from public.personnel_import_assistance_attempt where id=${binding.attemptId}::uuid`))).toHaveLength(0);
+ await expect(withTenant(other,tx=>readPersonnelImportAssistanceTx(tx,other,binding,value))).rejects.toThrow();
+ await expect(withTenant(other,tx=>claimPersonnelImportAssistanceTx(tx,other,binding,randomUUID()))).rejects.toThrow();expect(await rows()).toEqual(before);
+});
+it('freshly refuses real revoked Workforce authority after preparation before any claim or completion',async()=>{
+ const {value,binding}=await prepare(),before=await rows();
+ await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.tenantId,base.tenantId),eq(schema.roleAssignment.appUserId,base.adminUserId)));
+ const actual=await owner.db.execute<{grants:unknown}>(sql`select grants from app.principal(${base.adminUserId}::uuid) where tenant_id=${base.tenantId}::uuid`);expect(actual).toHaveLength(1);expect(actual[0].grants).toEqual([]);
+ await expect(withTenant(ctx(),tx=>readPersonnelImportAssistanceTx(tx,ctx(),binding,value))).rejects.toThrow();await expect(withTenant(ctx(),tx=>completePersonnelImportAssistanceTx(tx,ctx(),binding,result(binding)))).rejects.toThrow();expect(await rows()).toEqual(before);expect(await owner.db.execute(sql`select id from public.ai_model_run`)).toHaveLength(0);
+});
+it('refuses a failed real model run and changed mode/header bindings without sealing any proposal',async()=>{
+ const {value,binding}=await prepare('ai');let runId='';await withTenant(ctx(),async tx=>{const [admitted]=await tx.execute<{run_id:string}>(sql`select * from app.ai_admit('personnel_import_mapping','draft','openai','fictional/header-model',100,false)`);runId=admitted.run_id;await claimPersonnelImportAssistanceTx(tx,ctx(),binding,runId);});
+ await withTenant(ctx(),tx=>tx.execute(sql`select app.ai_settle_observed(${runId}::uuid,false,null,'missing',null,null,null,null,null)`));const before=await rows();
+ await expect(withTenant(ctx(),tx=>completePersonnelImportAssistanceTx(tx,ctx(),binding,result(binding)))).rejects.toThrow();
+ for(const changed of [{...value,mode:'deterministic' as const},{...value,headerIndexes:[241]},{...value,operationNonce:randomUUID()}])await expect(withTenant(ctx(),tx=>readPersonnelImportAssistanceTx(tx,ctx(),binding,changed))).rejects.toThrow();
+ expect(await rows()).toEqual(before);
 });
