@@ -835,9 +835,9 @@ describe('module catalog — the pack correspondence, both directions', () => {
     // …and the form has to USE it. Read-the-file, the same ratchet this suite applies to the migration:
     // a constant nothing imports is a comment.
     const page = repoFile('app/operator/page.tsx');
-    expect(page, 'the operator form must default-tick from the catalog constant').toContain(
-      'DEFAULT_PROVISION_MODULE_CODES.includes(m.code)',
-    );
+    expect(page, 'the operator form must receive the catalog defaults').toContain('defaults={DEFAULT_PROVISION_MODULE_CODES}');
+    const form = repoFile('app/operator/customer-forms.tsx');
+    expect(form, 'the rendered form must tick the supplied catalog defaults').toContain('defaultChecked={defaults.includes(m.code)}');
     // THE NEGATIVE, which is the whole point of the change: the page must not consult the environment
     // for this at all — not directly, and not by handing `process.env` to a helper that indexes it.
     expect(
