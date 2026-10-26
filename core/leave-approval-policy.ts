@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * ADR-0039 2B-2 + ADR-0071 — the configurable leave approval chain, now a SCOPED RULE MATRIX. A
  * leave_approval_policy row is a RULE whose `levels` is an ordered list of approver level kinds, scoped by
@@ -395,10 +396,13 @@ export async function setLeaveApprovalPolicy(
   ctx: SessionContext,
   p: { companyId: string; levels: string[]; reason?: string | null },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const levels = sanitizeLevels(p.levels);
   const reason = normalizeReason(p.reason);
   if (levels.length === 0) throw new Error('An approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 4ec5a940 — capture the prior chain BEFORE the write, so the audit event carries a real before→after
     // comparison (forward-only). The default rule row holds the chain.
     const [existing] = await tx
@@ -583,8 +587,11 @@ function eqOrNull(col: Parameters<typeof eq>[0], v: string | null) {
 
 /** Create a scoped approval rule. Admin-only (RLS). Guards against a functionally-identical active rule. */
 export async function createLeaveApprovalRule(ctx: SessionContext, p: LeaveApprovalRuleInput) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanRuleInput(p);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, null);
     const [row] = await tx
       .insert(leaveApprovalPolicy)
@@ -627,9 +634,13 @@ export async function updateLeaveApprovalRule(
   // cleanRuleInput (which validates the scoping tuple) is untouched.
   opts?: { reason?: string | null },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  opts=opts?structuredClone(opts):undefined;
   const c = cleanRuleInput(p);
   const reason = normalizeReason(opts?.reason);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
     // 4ec5a940 — snapshot the prior rule scope + chain BEFORE the update, for a real before→after audit diff.
     const [prev] = await tx
@@ -702,7 +713,10 @@ export async function updateLeaveApprovalRule(
 
 /** Soft-archive a rule (active=false — never hard delete; rules are referential/auditable). Admin-only. */
 export async function archiveLeaveApprovalRule(ctx: SessionContext, ruleId: string, companyId: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
       .update(leaveApprovalPolicy)
       .set({ active: false, updatedAt: sql`now()` })
@@ -835,6 +849,7 @@ export async function setLeaveEscalationPolicy(
     reason?: string | null;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const target: LeaveEscalationTarget = p.target === 'specific_role' ? 'specific_role' : 'next_level';
   const days = p.escalateAfterDays ?? null;
   if (p.enabled) {
@@ -851,6 +866,8 @@ export async function setLeaveEscalationPolicy(
   }
   const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({
         enabled: company.escalationEnabled,
