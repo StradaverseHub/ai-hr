@@ -49,7 +49,7 @@ export function letterCompanyAccess(ctx:SessionContext){return letters(ctx,false
 });}
 /** Pickers expose safe metadata and an explicit cursor; signature bytes never enter template forms. */
 export function listLetterTemplateHeads(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
- await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+ await anyPermission(tx,input.companyId,['read','template','settings']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
  const rows=await tx.select({id:letterAsset.id,name:letterAsset.name}).from(letterAsset).where(and(eq(letterAsset.companyId,input.companyId),eq(letterAsset.kind,'letterhead'),input.cursor?gt(letterAsset.id,input.cursor):undefined,needle?ilike(letterAsset.name,needle):undefined)).orderBy(asc(letterAsset.id)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
 export function listLetterEmployeeChoices(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){return letters(ctx,false,async tx=>{
@@ -78,6 +78,19 @@ export function addLetterAsset(ctx:SessionContext,input:{companyId:string;kind:'
  await event(tx,ctx,saved.id,'asset.created',{companyId:input.companyId,kind:input.kind,contentHash:hash(input.content)});return saved;
 });}
 export function letterAssetChoices(ctx:SessionContext,co:string){return letters(ctx,false,async tx=>{await permission(tx,co,'settings');return tx.execute<{id:string;name:string;owner_user_id:string;kind:string}>(sql`select * from app.letter_asset_choices(${co}::uuid)`);});}
+/** Asset pickers expose names and ownership only. Signature pixels remain an owner-only reader. */
+export function listLetterSettingAssets(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';ownerUserId?:string;cursor?:string;search?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ if(!['letterhead','signature'].includes(input.kind))throw new LetterWorkflowError('invalid','asset');uuid(input.companyId);if(input.ownerUserId)uuid(input.ownerUserId);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit),search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');
+ if(input.kind==='signature'&&input.ownerUserId===ctx.userId)await anyPermission(tx,input.companyId,['settings','approve']);else await permission(tx,input.companyId,'settings');
+ const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
+ const rows=await tx.execute<{id:string;name:string;ownerUserId:string;kind:'letterhead'|'signature';createdAt:Date}>(sql`select id,name,owner_user_id as "ownerUserId",kind,created_at as "createdAt" from app.letter_setting_asset_page(${input.companyId}::uuid,${input.kind},${input.ownerUserId??null}::uuid,${input.cursor??null}::uuid,${needle},${limit+1})`);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+export function readLetterAsset(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
+ const [asset]=await tx.select().from(letterAsset).where(eq(letterAsset.id,uuid(id)));if(!asset)throw new LetterWorkflowError('permission');
+ if(asset.kind==='signature'){if(asset.ownerUserId!==ctx.userId)throw new LetterWorkflowError('permission');await permission(tx,asset.companyId,'approve');}else await anyPermission(tx,asset.companyId,['read','template','settings']);
+ if(hash(asset.content)!==asset.contentHash)throw new LetterWorkflowError('configuration','assetHash');await event(tx,ctx,asset.id,'asset.viewed',{companyId:asset.companyId,kind:asset.kind,contentHash:asset.contentHash});return {content:asset.content,mimeType:asset.mimeType};
+});}
 export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string;enabled:boolean;policy:unknown;expectedOrdinal?:number},options:{transport?:NotificationEmailTransport}={}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);const policy=validateLetterPolicy(input.policy),category=text(input.category,100);
  if(typeof input.enabled!=='boolean')throw new LetterWorkflowError('invalid','enabled');
@@ -99,7 +112,7 @@ export function listLetterPolicies(ctx:SessionContext,input:{companyId:string;cu
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].category:null};
 });}
 export function getLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string}){return letters(ctx,false,async tx=>{
- await permission(tx,input.companyId,'settings');const [row]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);return row?{...row,policy:validateLetterPolicy(row.policy)}:null;
+ await permission(tx,input.companyId,'settings');const [row]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);if(!row)return null;const policy=validateLetterPolicy(row.policy),people=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_policy_people(${row.id}::uuid)`),[appearance]=await tx.execute<{letterhead_name:string|null;signature_name:string|null}>(sql`select * from app.letter_policy_appearance(${row.id}::uuid)`);return {...row,policy,people:Array.from(people,row=>({id:row.id,name:row.name})),appearance:appearance??{letterhead_name:null,signature_name:null}};
 });}
 export function readLetterPermissions(ctx:SessionContext,companyId:string){return letters(ctx,false,async tx=>{
  await permission(tx,companyId,'settings');return tx.select({role:letterCapabilityGrant.role,capability:letterCapabilityGrant.capability,allowed:letterCapabilityGrant.allowed}).from(letterCapabilityGrant).where(eq(letterCapabilityGrant.companyId,companyId)).orderBy(asc(letterCapabilityGrant.role),asc(letterCapabilityGrant.capability));

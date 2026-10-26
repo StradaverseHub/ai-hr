@@ -1,9 +1,9 @@
 import {beforeEach,it,expect,vi} from 'vitest';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {LetterWorkflowError} from '../lib/letter-workflow';
-const mocks=vi.hoisted(()=>({session:vi.fn(),fields:vi.fn(),heads:vi.fn(),signers:vi.fn(),employees:vi.fn(),delegates:vi.fn()}));
+const mocks=vi.hoisted(()=>({session:vi.fn(),fields:vi.fn(),heads:vi.fn(),signers:vi.fn(),employees:vi.fn(),delegates:vi.fn(),assets:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
-vi.mock('../core/letters',()=>({listLetterFields:mocks.fields,listLetterTemplateHeads:mocks.heads,listLetterSignatories:mocks.signers,listLetterEmployeeChoices:mocks.employees,listLetterDelegates:mocks.delegates}));
+vi.mock('../core/letters',()=>({listLetterFields:mocks.fields,listLetterTemplateHeads:mocks.heads,listLetterSignatories:mocks.signers,listLetterEmployeeChoices:mocks.employees,listLetterDelegates:mocks.delegates,listLetterSettingAssets:mocks.assets}));
 import {GET} from '../app/letters/templates/options/route';
 const companyId='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 const request=(kind='field',extra='')=>new Request(`https://fixture.test/letters/templates/options?companyId=${companyId}&kind=${kind}${extra}`);
@@ -30,4 +30,8 @@ it('binds delegation choices to one authorized letter and strips private candida
  mocks.delegates.mockResolvedValue({rows:[{id,name:'Eligible reviewer',email:'PRIVATE CONTACT'}],nextCursor:null});const response=await GET(request('delegate','&letterId='+id+'&q=review'));
  expect(await response.json()).toEqual({rows:[{id,label:'Eligible reviewer'}],nextCursor:null});expect(mocks.delegates).toHaveBeenCalledExactlyOnceWith(ctx,{letterId:id,search:'review',cursor:undefined,limit:25});
  mocks.delegates.mockClear();expect((await GET(request('delegate'))).status).toBe(400);expect(mocks.delegates).not.toHaveBeenCalled();
+});
+
+it('passes the chosen signature owner to the metadata-only settings reader',async()=>{
+ mocks.assets.mockResolvedValue({rows:[{id,name:'Owner signature',ownerUserId:id,content:'PRIVATE PIXELS'}],nextCursor:null});const response=await GET(request('signature','&ownerUserId='+id));expect(await response.json()).toEqual({rows:[{id,label:'Owner signature'}],nextCursor:null});expect(mocks.assets).toHaveBeenCalledExactlyOnceWith(ctx,{companyId,kind:'signature',ownerUserId:id,search:undefined,cursor:undefined,limit:25});mocks.assets.mockClear();expect((await GET(request('signature','&ownerUserId=foreign'))).status).toBe(400);expect(mocks.assets).not.toHaveBeenCalled();
 });

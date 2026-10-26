@@ -1,18 +1,18 @@
 import {afterAll,beforeEach,it,expect,vi} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
-import type {SessionContext} from '../db/client';
-import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess} from '../core/letters';
+import {withTenant,type SessionContext} from '../db/client';
+import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterSettingAssets,readLetterAsset} from '../core/letters';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
-let b:Base,ctx:SessionContext,signerId:string;
+let b:Base,ctx:SessionContext,signerId:string,signerPersonId:string;
 const relay=(status:NotificationEmailStatus|null):NotificationEmailTransport=>async<T>()=>status as unknown as T;
 function policy():LetterPolicy{return {version:1,stages:[{key:'signatory',label:'Authorised signatory',userIds:[signerId],allowDelegation:false}],signatoryUserId:signerId,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false};}
 beforeEach(async()=>{
  vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://letters.fixture.test/callback');await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);
- const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional settings signatory',primaryEmail:'settings-signer@fixture.test'}).returning();signerId=await createAppUser(b.tenantId,person.id,'hr_admin');
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional settings signatory',primaryEmail:'settings-signer@fixture.test'}).returning();signerPersonId=person.id;signerId=await createAppUser(b.tenantId,person.id,'hr_admin');
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 it('rejects stale configuration saves and pages only the latest immutable policy per category',async()=>{
  const first=await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy(),expectedOrdinal:0});
@@ -33,5 +33,18 @@ it('rejects a fake PNG before preserving an immutable asset',async()=>{
  const fake=Buffer.alloc(32);Buffer.from('89504e470d0a1a0a','hex').copy(fake);fake.writeUInt32BE(1,16);fake.writeUInt32BE(1,20);await expect(addLetterAsset(ctx,{companyId:b.companyId,kind:'letterhead',name:'Not an image',content:fake})).rejects.toMatchObject({code:'invalid',detail:'png'});expect(await owner.db.select().from(s.letterAsset)).toHaveLength(0);
 });
 it('lets a settings-only administrator choose eligible names without granting letter-content access',async()=>{
- const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional configuration administrator',primaryEmail:'configuration-admin@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee');await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(await letterCompanyAccess(editor)).toContainEqual(expect.objectContaining({id:b.companyId,settings:true,read:false}));const choices=await listLetterSignatories(editor,{companyId:b.companyId,limit:25});expect(choices.rows).toContainEqual({id:signerId,name:'Fictional settings signatory'});expect(choices.rows.every(row=>Object.keys(row).sort().join(',')==='id,name')).toBe(true);
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional configuration administrator',primaryEmail:'configuration-admin@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee');await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(await letterCompanyAccess(editor)).toContainEqual(expect.objectContaining({id:b.companyId,settings:true,read:false}));const choices=await listLetterSignatories(editor,{companyId:b.companyId,limit:25});expect(choices.rows).toContainEqual({id:signerId,name:'Fictional settings signatory'});expect(choices.rows.every(row=>Object.keys(row).sort().join(',')==='id,name')).toBe(true);const content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64'),head=await addLetterAsset(ctx,{companyId:b.companyId,kind:'letterhead',name:'Shared company header',content});expect((await readLetterAsset(editor,head.id)).content).toEqual(content);
+});
+
+it('pages asset metadata and keeps another signatory’s pixels private even from a settings administrator',async()=>{
+ const content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64'),signer={...ctx,userId:signerId,personId:signerPersonId};
+ const image=await addLetterAsset(signer,{companyId:b.companyId,kind:'signature',name:'Private signature',content});await addLetterAsset(ctx,{companyId:b.companyId,kind:'letterhead',name:'Head one',content});await addLetterAsset(ctx,{companyId:b.companyId,kind:'letterhead',name:'Head two',content});
+ const page=await listLetterSettingAssets(ctx,{companyId:b.companyId,kind:'letterhead',limit:1});expect(page.rows).toHaveLength(1);expect(page.nextCursor).toBeTruthy();const next=await listLetterSettingAssets(ctx,{companyId:b.companyId,kind:'letterhead',limit:1,cursor:page.nextCursor!});expect(next.rows).toHaveLength(1);expect(next.rows[0].id).not.toBe(page.rows[0].id);expect(next.nextCursor).toBeNull();expect((await readLetterAsset(ctx,page.rows[0].id)).content).toEqual(content);
+ const choices=await listLetterSettingAssets(ctx,{companyId:b.companyId,kind:'signature',ownerUserId:signerId});expect(choices.rows).toMatchObject([{id:image.id,ownerUserId:signerId}]);expect(Object.keys(choices.rows[0]).sort()).toEqual(['createdAt','id','kind','name','ownerUserId']);await expect(readLetterAsset(ctx,image.id)).rejects.toMatchObject({code:'permission'});expect((await readLetterAsset(signer,image.id)).content).toEqual(content);
+ await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...policy(),signingMode:'stamp',signatureAssetId:image.id},expectedOrdinal:0});expect(await getLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation'})).toMatchObject({people:[{id:signerId,name:'Fictional settings signatory'}],appearance:{signature_name:'Private signature',letterhead_name:null}});
+});
+it('does not let an ordinary approver enumerate a different owner’s signatures through the metadata helper',async()=>{
+ const content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64');await addLetterAsset({...ctx,userId:signerId,personId:signerPersonId},{companyId:b.companyId,kind:'signature',name:'Existing private signature',content});
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional ordinary approver',primaryEmail:'ordinary-approver@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee');for(const capability of ['read','approve'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability,allowed:true});const reviewer={...ctx,userId,personId:person.id,roles:['employee']};
+ await expect(listLetterSettingAssets(reviewer,{companyId:b.companyId,kind:'signature',ownerUserId:signerId})).rejects.toMatchObject({code:'permission'});expect(await withTenant(reviewer,tx=>tx.execute(sql`select * from app.letter_setting_asset_page(${b.companyId}::uuid,'signature',${signerId}::uuid,null,null,25)`))).toHaveLength(0);
 });

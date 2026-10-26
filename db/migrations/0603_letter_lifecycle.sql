@@ -723,3 +723,38 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_staff_batch_metadata(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_staff_batch_metadata(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.letter_setting_asset_page(co uuid,asset_kind text,asset_owner uuid,after_id uuid,wanted_search text,row_limit integer)
+RETURNS TABLE(id uuid,name text,owner_user_id uuid,kind text,created_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT a.id,a.name,a.owner_user_id,a.kind,a.created_at FROM public.letter_asset a
+ WHERE a.tenant_id=app.current_tenant_id() AND a.company_id=co AND a.kind=asset_kind
+ AND asset_kind IN ('letterhead','signature') AND app.principal_snapshot_current()
+ AND (app.letter_permission(co,'settings') OR asset_kind='signature' AND asset_owner=app.current_user_id() AND app.letter_permission(co,'approve'))
+ AND (asset_owner IS NULL OR a.owner_user_id=asset_owner)
+ AND (after_id IS NULL OR a.id>after_id) AND (wanted_search IS NULL OR a.name ILIKE wanted_search)
+ ORDER BY a.id LIMIT greatest(1,least(coalesce(row_limit,101),101))
+$$;
+REVOKE ALL ON FUNCTION app.letter_setting_asset_page(uuid,text,uuid,uuid,text,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_setting_asset_page(uuid,text,uuid,uuid,text,integer) TO ai_hr_app;
+DROP POLICY letter_asset_read ON letter_asset;
+CREATE POLICY letter_asset_read ON letter_asset FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (kind='letterhead' AND (app.letter_permission(company_id,'read') OR app.letter_permission(company_id,'template') OR app.letter_permission(company_id,'settings')) OR owner_user_id=app.current_user_id()));
+
+--> statement-breakpoint
+CREATE FUNCTION app.letter_policy_people(subject uuid) RETURNS TABLE(id uuid,name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT u.id,p.full_name FROM public.letter_policy_version v
+ JOIN public.app_user u ON u.tenant_id=v.tenant_id JOIN public.person p ON p.id=u.person_id AND p.tenant_id=v.tenant_id
+ WHERE v.id=subject AND v.tenant_id=app.current_tenant_id() AND app.letter_permission(v.company_id,'settings')
+ AND (u.id=(v.policy->>'escalationUserId')::uuid OR EXISTS(SELECT 1 FROM jsonb_array_elements(v.policy->'stages') stage WHERE stage->'userIds' ? u.id::text)) ORDER BY u.id
+$$;
+CREATE FUNCTION app.letter_policy_appearance(subject uuid) RETURNS TABLE(letterhead_name text,signature_name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT head.name,signature.name FROM public.letter_policy_version v
+ LEFT JOIN public.letter_asset head ON head.id=(v.policy->>'letterheadAssetId')::uuid AND head.tenant_id=v.tenant_id AND head.company_id=v.company_id AND head.kind='letterhead'
+ LEFT JOIN public.letter_asset signature ON signature.id=(v.policy->>'signatureAssetId')::uuid AND signature.tenant_id=v.tenant_id AND signature.company_id=v.company_id AND signature.kind='signature' AND signature.owner_user_id=(v.policy->>'signatoryUserId')::uuid
+ WHERE v.id=subject AND v.tenant_id=app.current_tenant_id() AND app.letter_permission(v.company_id,'settings')
+$$;
+REVOKE ALL ON FUNCTION app.letter_policy_people(uuid),app.letter_policy_appearance(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_policy_people(uuid),app.letter_policy_appearance(uuid) TO ai_hr_app;
