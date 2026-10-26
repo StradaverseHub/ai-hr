@@ -1,6 +1,9 @@
 /** UNMOUNTED own-human Attendance request source. All canonical input shapes are retained; own
  * unclocked testimony still fails the native other-HR rule, and clockChanges still needs native admin.
  * Attachments, web-punch removal, decisions and on-behalf requests remain separate unavailable actions. */
+import {z} from 'zod';
+import {pgSqlState} from '../../lib/db-error';
+import {lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx} from '../leave-dependency-lock';
 import {and,eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {attendanceCorrection,domainEvent,employment} from '../../db/schema';
@@ -14,10 +17,33 @@ const fail=():never=>{throw Error('Attendance request could not be confirmed.');
 function inputOf(intent:OwnAttendanceCorrectionIntent):AttendanceCorrectionRequestInput{
  const {version:_,clockChanges,unclockedWork,...input}=intent;return {...input,clockChanges:clockChanges??undefined,unclockedWork:unclockedWork??undefined};
 }
+const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+export async function assertOwnAttendanceCorrectionActorTx(tx:Tx,supplied:SessionContext){
+ const current=capture(supplied);await assertAiPrincipalTx(tx,current);
+ const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'attendance');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');if(!fresh.personId)return fail();return fresh;
+}
 async function guard(tx:Tx,supplied:SessionContext,employmentId:string){
- const current={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};await assertAiPrincipalTx(tx,current);
- const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'attendance');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');
- if(!fresh.personId)return fail();const [own]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId))).limit(1);if(!own)return fail();return fresh;
+ const fresh=await assertOwnAttendanceCorrectionActorTx(tx,supplied);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);
+ const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);
+ const [before]=await nominate();if(!before)return fail();await lockLeaveDependenciesTx(tx,fresh.tenantId,[before.id]);
+ const [credit]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${fresh.tenantId+':'+before.id},0)) as owned`);if(credit?.owned!==true)return fail();
+ const [after]=await nominate();if(!after||after.id!==before.id||after.companyId!==before.companyId)return fail();return fresh;
+}
+/** Conditional native policy/day/Payroll locks remain canonical. Bound their waits without raising
+ * any existing nonzero bound; SQL failures abort the whole caller transaction, never retry/continue. */
+async function bounded<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
+ const [prior]=await tx.execute<{saved:string;milliseconds:number;unit:string}>(sql`select current_setting('lock_timeout') as saved,setting::integer as milliseconds,unit from pg_settings where name='lock_timeout'`);
+ if(!prior||prior.unit!=='ms'||!Number.isSafeInteger(prior.milliseconds)||prior.milliseconds<0)return fail();
+ const limit=prior.milliseconds===0?1000:Math.min(prior.milliseconds,1000);await tx.execute(sql`select set_config('lock_timeout',${String(limit)+'ms'},true)`);let result:T;
+ try{result=await work();}catch(error){if(!pgSqlState(error)){try{await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);}catch{/* Unusable caller Tx MUST roll back. */}}throw error;}
+ await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);return result;
+}
+/** Initial own config/employee/credit ownership. Pending custody must ALSO run the real canonical
+ * preparation from its decrypted immutable human input BEFORE custody row ownership. Completed
+ * reconciliation locks only its actual native correction, never runs pending-only preparation. */
+export async function withOwnAttendanceCorrectionIntervalTx<T>(tx:Tx,supplied:SessionContext,reference:{employmentId:string;correctionId:string|null},work:(fresh:SessionContext,source:{employmentId:string;companyId:string})=>Promise<T>):Promise<T>{
+ const ctx=capture(supplied),p=z.object({employmentId:z.uuid(),correctionId:z.uuid().nullable()}).strict().parse(structuredClone(reference));return bounded(tx,async()=>{const fresh=await guard(tx,ctx,p.employmentId),[source]=await tx.select({employmentId:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);if(!source)return fail();
+ if(p.correctionId){const [row]=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.id,p.correctionId),eq(attendanceCorrection.tenantId,fresh.tenantId),eq(attendanceCorrection.employmentId,p.employmentId))).limit(1).for('update',{noWait:true});if(!row)return fail();}return work(fresh,source);});
 }
 function publicRequest(prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){
  const p=prepared.data;return OwnAttendanceCorrectionIntent.parse({version:1,employmentId:p.employmentId,date:p.date,checkIn:p.checkIn,checkOut:p.checkOut,requestedOtMinutes:p.requestedOtMinutes,
