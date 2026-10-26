@@ -1612,3 +1612,32 @@ consumers remain UNRUN. Scheduled apply, edit/reverse and prepared/future Moveme
 earlier source-read intervals integrated; the leaf alone is not proof that every caller planned under
 stable dependencies. Other organization writers remain pending. No universal barrier or security,
 performance, runtime or Assistant effect-completion claim follows from static checks; no release.
+
+
+### Scheduled apply, reversal and rehearsal outer ownership (unrun)
+
+Scheduled application now owns exclusive configuration after canonical Workforce authorization and
+before projecting due events; the sweep also acquires it before capturing the earlier grade value.
+Reversal owns it before its canonical projection/rollback. Rehearsal takes the existing Access lock
+then exclusive configuration in its OUTER transaction, before the preparation callback. Its nested
+savepoint's intentional rollback therefore cannot release ownership before the exact bounded replay.
+Existing replay/context/transaction bindings and canonical business bodies remain unchanged.
+
+An authored two-connection case runs the real rehearsal to rollback, pauses before replay, requires a
+canonical adjustment command to refuse without ledger/batch/event changes, then commits the exact
+replay and applies the adjustment after release. This and affected scheduled/reversal/rehearsal/sweep
+contracts remain UNRUN. Edit still resolves its catalogue before its write transaction: that source
+resolution must move inside a protected transaction rather than receive a late lock. Other direct
+organization, catalogue, authority and leave writers remain pending; no universal or security/runtime
+proof, no deployment, and no app/DB/compiler/test execution in this source checkpoint.
+
+
+### Movement correction resolves its catalogue inside the protected write transaction (unrun)
+
+Correction previously resolved a custom catalogue code in a separate transaction before planning its
+actual write. It now captures scalar input, performs canonical Workforce authorization, takes exclusive
+configuration ownership, and resolves the active/inactive-correction semantics in that SAME transaction.
+Existing validation, projection, rollback/replay and returned behavior classification stay under this
+interval. The now-unused separate-transaction resolver wrapper is removed. This closes the earlier
+correction-specific gap; configuration writers for the Movement catalogue and remaining organization /
+leave owners still require integration. All affected correction and transaction tests remain UNRUN.
