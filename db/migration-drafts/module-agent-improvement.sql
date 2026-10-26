@@ -183,9 +183,11 @@ BEGIN
     WHERE CASE wanted_kind WHEN 'job' THEN r->>'jobId' ELSE r->>'id' END=wanted_id::text));
 END $$;
 REVOKE ALL ON FUNCTION app.agent_signal_custody_visible(text,uuid,uuid,uuid) FROM PUBLIC;
--- Deliberate guarded BOOL only: physical table owners must evaluate PUBLIC policy expressions.
--- Missing actual app identity returns false before any candidate/provenance SQL is executed.
-GRANT EXECUTE ON FUNCTION app.agent_signal_custody_visible(text,uuid,uuid,uuid) TO PUBLIC;
+-- Trusted app role only. A separately provisioned physical maintenance table owner requires
+-- explicit EXECUTE on this one guarded helper; table ownership alone never grants candidate
+-- SELECT, app membership, BYPASSRLS or arbitrary SQL logins authority over claimed GUCs.
+-- Missing actual app identity still returns false before candidate/provenance SQL is executed.
+GRANT EXECUTE ON FUNCTION app.agent_signal_custody_visible(text,uuid,uuid,uuid) TO ai_hr_app;
 CREATE POLICY ai_agent_job_feedback_signal_owner ON public.ai_agent_job_feedback FOR SELECT TO PUBLIC
  USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_feedback'::regclass))
   AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
