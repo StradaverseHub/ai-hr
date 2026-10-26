@@ -1,4 +1,6 @@
 'use client';
+import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages} from '@/components/personnel-import-header-review';
+import {capturePersonnelImportSource,applyPersonnelHeaderMapping,type PersonnelImportSource} from '@/lib/personnel-import-assistance-source';
 import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
@@ -79,6 +81,24 @@ export function EmployeeImport({
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
+  const headerMessages:PersonnelImportHeaderReviewMessages={title:t('headerAssistance.title'),
+localOnly:t('headerAssistance.localOnly'),
+sheet:t('headerAssistance.sheet'),
+column:t('headerAssistance.column'),
+sourceHeading:t('headerAssistance.sourceHeading'),
+sampleValues:t('headerAssistance.sampleValues'),
+destination:t('headerAssistance.destination'),
+chooseField:t('headerAssistance.chooseField'),
+unresolved:t('headerAssistance.unresolved'),
+ambiguous:t('headerAssistance.ambiguous'),
+duplicate:t('headerAssistance.duplicate'),
+applyMapping:t('headerAssistance.applyMapping'),
+cancel:t('headerAssistance.cancel'),
+reviewHeadings:t('headerAssistance.reviewHeadings'),
+invalidSource:t('headerAssistance.invalidSource'),
+acceptedRevision:t('headerAssistance.acceptedRevision'),
+sourceChanged:t('headerAssistance.sourceChanged'),
+unknownSheet:t('headerAssistance.unknownSheet')};
   const nricMessage = useNricPolicyMessage();
   const nricTexts = useTranslations('peopleGeneral');
   const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
@@ -93,6 +113,9 @@ export function EmployeeImport({
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
   const [csv, setCsv] = useState('');
+  const [importSource,setImportSource]=useState<PersonnelImportSource|null>(null);
+  const [reviewHeaders,setReviewHeaders]=useState(false);
+  const [headerNotice,setHeaderNotice]=useState<string|null>(null);
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
   const [dependentsCsv, setDependentsCsv] = useState('');
@@ -126,6 +149,7 @@ export function EmployeeImport({
     setResult(null);
     setPhase('idle');
     setError(null);
+    setReviewHeaders(false);setHeaderNotice(null);
   };
 
   // Validate an explicit string rather than the `csv` state: after a file read the state update
@@ -164,12 +188,15 @@ export function EmployeeImport({
     try {
       // The reader maps the first requested companion to dependentsText, so Family must stay first.
       // A workbook without Family returns empty dependentsText, even when allocations are present.
-      const { name, text, dependentsText,extraTexts } = await readImportFile(file, {
+      const { name, format,text, dependentsText,extraTexts,source } = await readImportFile(file, {
+        captureSource:true,
         extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
         allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       if (revision !== inputRevision.current) return;
       setCsv(text);
+      try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
+
       setDependentsCsv(dependentsText);
       const allocations=extraTexts?.[ALLOCATION_SHEET]??'';setAllocationsCsv(allocations);
       const registers=Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,extraTexts?.[PERSONNEL_REGISTER_SHEETS[kind]]??'']));
@@ -497,7 +524,7 @@ export function EmployeeImport({
                 value={csv}
                 onChange={(e) => {
                   if (commitPending.current) return;
-                  setCsv(e.target.value);
+                  setCsv(e.target.value);setImportSource(null);
                   setFileName(null);
                   reset();
                 }}
@@ -506,6 +533,25 @@ export function EmployeeImport({
             </Field>
           </div>
         </details>
+
+        <div className="space-y-3">
+          <Button type="button" variant="outline" disabled={pending||reading||committing||!csv.trim()} onClick={()=>{
+            if(commitPending.current)return;
+            try{const source=importSource?.currentText===csv?importSource:capturePersonnelImportSource({text:csv,format:'paste'},crypto.randomUUID());setImportSource(source);setReviewHeaders(true);setHeaderNotice(null);}
+            catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
+          }}>{headerMessages.reviewHeadings}</Button>
+          {headerNotice&&<p role="status" className="text-sm text-muted-foreground">{headerNotice}</p>}
+          {reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource}
+            options={{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}}
+            choices={employeeTemplate.columns.map(column=>({key:column.key,label:employeeColumnLabel(column.key)}))}
+            messages={headerMessages} disabled={pending||reading||committing}
+            onCancel={()=>setReviewHeaders(false)} onApply={(destinations,revision)=>{
+              if(commitPending.current)return;
+              if(importSource.revisionId!==revision||importSource.currentText!==csv){setHeaderNotice(headerMessages.sourceChanged);setReviewHeaders(false);return;}
+              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());reset();setCsv(accepted.text);setImportSource(accepted.source);setHeaderNotice(headerMessages.acceptedRevision);}
+              catch{setHeaderNotice(headerMessages.invalidSource);}
+            }}/>}
+        </div>
 
         <StepHeading num={4} label={t('step4')} />
         <div className="flex flex-wrap items-center gap-2">
@@ -516,7 +562,7 @@ export function EmployeeImport({
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;
-              setCsv(SAMPLE);
+              setCsv(SAMPLE);setImportSource(null);
               setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
@@ -638,7 +684,7 @@ export function EmployeeImport({
               type="button"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
-                setCsv('');
+                setCsv('');setImportSource(null);
                 setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();

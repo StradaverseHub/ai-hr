@@ -2338,6 +2338,26 @@
           "referenceGuide": "下拉列表使用 Reference 中的准确系统代码，标签仅作说明。旧文件中的唯一标签仍受支持；预览会按行所属公司检查。",
           "baselineGuide": "当前工资为空时，绿色工资计算保持空白。检查和预览会提供权威工资基准，包括空白或重复的员工行。已记录的零工资仍作为工资基准。"
         }
+      },
+      "headerAssistance": {
+        "title": "核对列标题",
+        "localOnly": "此核对在浏览器中进行。文件和单元格内容不会发送给 AI 服务商。",
+        "sheet": "工作表",
+        "column": "列",
+        "sourceHeading": "原始标题",
+        "sampleValues": "本地示例值",
+        "destination": "导入字段",
+        "chooseField": "选择字段",
+        "unresolved": "请选择此标题对应的字段。",
+        "ambiguous": "此标题可能对应多个字段，请选择一个。",
+        "duplicate": "每个导入字段只能对应一列。",
+        "applyMapping": "应用已核对的标题",
+        "cancel": "取消",
+        "reviewHeadings": "核对列标题",
+        "invalidSource": "无法准备此文件的标题核对。请使用当前模板或检查 CSV。",
+        "acceptedRevision": "标题已更新。导入前请验证此版本。",
+        "sourceChanged": "源数据已更改，请重新打开标题核对。",
+        "unknownSheet": "源文本"
       }
     },
     "wizard": {

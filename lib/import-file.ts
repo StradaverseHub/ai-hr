@@ -1,3 +1,4 @@
+import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
 /**
  * Import file reader — the FILE → CSV-TEXT step of an import, and nothing else.
  *
@@ -77,6 +78,8 @@ export type ImportFileRead = {
    */
   dependentsText: string;
   extraTexts?:Record<string,string>;
+  /** Opt-in client-local worksheet provenance, never an action argument. */
+  source?:PersonnelWorksheetSource;
 };
 
 /** True when the name looks like a CSV. Extension-based on purpose: browsers report wildly
@@ -107,7 +110,7 @@ export async function readImportFile(
   file: File,
   /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
    *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
-  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[] },
+  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean },
 ): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
@@ -116,6 +119,7 @@ export async function readImportFile(
   let text: string;
   let dependentsText = '';
   let extraTexts:Record<string,string>|undefined;
+  let source:PersonnelWorksheetSource|undefined;
   if (format === 'csv') {
     if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
     try {
@@ -128,8 +132,9 @@ export async function readImportFile(
     const wanted = opts?.extraSheets ?? [];
     let extra: Record<string, string> = {};
     try {
-      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets);
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource);
       text = decoded.first;
+      source=decoded.source;
       extra = decoded.extra;
     } catch (e) {
       // The decoder's one meaningful failure is a workbook whose first sheet holds nothing; it is a
@@ -146,7 +151,7 @@ export async function readImportFile(
   }
   if (text.trim() === '') throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 
-  return { name: file.name, format, text, dependentsText,...extraTexts?{extraTexts}:{} };
+  return { name: file.name, format, text, dependentsText,...extraTexts?{extraTexts}:{},...source?{source}:{} };
 }
 
 /** Error code → i18n key under the importer's namespace. Exported (rather than inlined in the

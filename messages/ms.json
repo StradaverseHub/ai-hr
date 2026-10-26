@@ -2338,6 +2338,26 @@
           "referenceGuide": "Senarai juntai menggunakan kod sistem tepat daripada Reference. Label menerangkan setiap kod. Label unik daripada fail lama masih disokong; pratonton menyemak syarikat baris.",
           "baselineGuide": "Apabila gaji semasa kosong, pengiraan gaji hijau kekal kosong. Semak dan pratonton menyediakan asas gaji yang berautoriti, termasuk bagi baris pekerja kosong atau berulang. Nilai sifar yang direkodkan tetap menjadi asas gaji."
         }
+      },
+      "headerAssistance": {
+        "title": "Semak tajuk lajur",
+        "localOnly": "Semakan ini berjalan dalam pelayar anda. Tiada fail atau nilai sel dihantar kepada penyedia AI.",
+        "sheet": "Lembaran kerja",
+        "column": "Lajur",
+        "sourceHeading": "Tajuk asal",
+        "sampleValues": "Nilai contoh setempat",
+        "destination": "Medan import",
+        "chooseField": "Pilih medan",
+        "unresolved": "Pilih medan untuk tajuk ini.",
+        "ambiguous": "Tajuk ini mungkin sepadan dengan beberapa medan. Pilih satu.",
+        "duplicate": "Setiap medan import hanya boleh menerima satu lajur.",
+        "applyMapping": "Gunakan tajuk yang disemak",
+        "cancel": "Batal",
+        "reviewHeadings": "Semak tajuk lajur",
+        "invalidSource": "Fail ini tidak dapat disediakan untuk semakan tajuk. Gunakan templat semasa atau semak CSV.",
+        "acceptedRevision": "Tajuk dikemas kini. Sahkan semakan ini sebelum mengimport.",
+        "sourceChanged": "Sumber telah berubah. Buka semula semakan tajuk.",
+        "unknownSheet": "Teks sumber"
       }
     },
     "wizard": {

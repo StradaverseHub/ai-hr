@@ -2338,6 +2338,26 @@
           "referenceGuide": "Danh sách thả xuống dùng đúng mã hệ thống từ Reference. Nhãn giải thích từng mã. Nhãn riêng biệt trong tệp cũ vẫn được hỗ trợ; xem trước kiểm tra công ty của dòng.",
           "baselineGuide": "Khi lương hiện tại để trống, các phép tính lương màu xanh vẫn để trống. Bước Kiểm tra và xem trước cung cấp mức lương cơ sở từ dữ liệu chính thức, kể cả cho dòng nhân viên trống hoặc lặp lại. Giá trị 0 đã ghi nhận vẫn là mức lương cơ sở."
         }
+      },
+      "headerAssistance": {
+        "title": "Kiểm tra tiêu đề cột",
+        "localOnly": "Việc kiểm tra diễn ra trong trình duyệt. Tệp và giá trị ô không được gửi đến nhà cung cấp AI.",
+        "sheet": "Trang tính",
+        "column": "Cột",
+        "sourceHeading": "Tiêu đề gốc",
+        "sampleValues": "Giá trị mẫu cục bộ",
+        "destination": "Trường nhập",
+        "chooseField": "Chọn trường",
+        "unresolved": "Chọn trường tương ứng với tiêu đề này.",
+        "ambiguous": "Tiêu đề có thể khớp nhiều trường. Hãy chọn một trường.",
+        "duplicate": "Mỗi trường nhập chỉ được nhận một cột.",
+        "applyMapping": "Áp dụng tiêu đề đã kiểm tra",
+        "cancel": "Hủy",
+        "reviewHeadings": "Kiểm tra tiêu đề cột",
+        "invalidSource": "Không thể chuẩn bị tệp để kiểm tra tiêu đề. Hãy dùng mẫu hiện tại hoặc kiểm tra CSV.",
+        "acceptedRevision": "Đã cập nhật tiêu đề. Hãy xác thực phiên bản này trước khi nhập.",
+        "sourceChanged": "Nguồn đã thay đổi. Hãy mở lại phần kiểm tra tiêu đề.",
+        "unknownSheet": "Văn bản nguồn"
       }
     },
     "wizard": {

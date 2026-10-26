@@ -2338,6 +2338,26 @@
           "referenceGuide": "Dropdowns use exact system codes from Reference. Labels explain each code. A distinct label from an older file remains supported; preview checks the row company.",
           "baselineGuide": "When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline."
         }
+      },
+      "headerAssistance": {
+        "title": "Review column headings",
+        "localOnly": "This review runs in your browser. No file or cell values are sent to an AI provider.",
+        "sheet": "Worksheet",
+        "column": "Column",
+        "sourceHeading": "Original heading",
+        "sampleValues": "Local sample values",
+        "destination": "Import field",
+        "chooseField": "Choose a field",
+        "unresolved": "Choose the field this heading belongs to.",
+        "ambiguous": "This heading could match more than one field. Choose one.",
+        "duplicate": "Each import field can receive only one column.",
+        "applyMapping": "Apply reviewed headings",
+        "cancel": "Cancel",
+        "reviewHeadings": "Review column headings",
+        "invalidSource": "We could not prepare this file for header review. Use the current template or check the CSV.",
+        "acceptedRevision": "Headings updated. Validate this revision before importing.",
+        "sourceChanged": "The source changed. Open header review again.",
+        "unknownSheet": "Source text"
       }
     },
     "wizard": {

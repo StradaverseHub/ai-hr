@@ -1,3 +1,4 @@
+import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
 /**
  * Spreadsheet (.xlsx / .xls) support for the Leave Data Import & Migration Tool.
  *
@@ -93,7 +94,8 @@ export async function workbookToCsvTexts(
   extraSheetNames: readonly string[] = [],
   includeFirstNamed=false,
   allowedSheetNames?:readonly string[],
-): Promise<{ first: string; extra: Record<string, string> }> {
+  captureSource=false,
+): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
   // callers handing us File.arrayBuffer() output OR raw bytes (and to SheetJS's own type drift).
@@ -145,7 +147,29 @@ export async function workbookToCsvTexts(
     const csv = sheetCsv(found);
     if (csv !== '') extra[wanted] = csv;
   }
-  return { first, extra };
+  // Opt-in metadata comes from the SAME decoded workbook, never a second workbook parser. Bounds
+  // prevent a sparse worksheet range allocating unbounded client memory. Legacy decode still works
+  // if provenance exceeds these assistance-only bounds; no fictional physical coordinates are made.
+  let source:PersonnelWorksheetSource|undefined;
+  const firstSheet=wb.Sheets[firstName],ref=firstSheet?.['!ref'];
+  if(captureSource&&ref){
+    const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+    if(height<=10000&&width<=256&&height*width<=200000){
+      const captured=[];
+      for(let row=range.s.r;row<=range.e.r;row++){
+        const cells=[];
+        for(let column=range.s.c;column<=range.e.c;column++){
+          const cell=firstSheet[XLSX.utils.encode_cell({r:row,c:column})],value=cell?.v;
+          const decoded=value instanceof Date?toIsoDate(value):typeof value==='number'?numberToPlainString(value):value==null?'':String(value);
+          cells.push({column:column+1,raw:value instanceof Date?value.toISOString():typeof value==='number'||typeof value==='boolean'||typeof value==='string'?value:null,
+            display:cell?.w??String(value??''),decoded,kind:cell?.t??'blank',...(typeof cell?.f==='string'?{formula:cell.f}:{})});
+        }
+        if(cells.some(cell=>cell.decoded.trim()!==''))captured.push({row:row+1,cells});
+      }
+      source={sheetName:firstName,rows:captured};
+    }
+  }
+  return { first, extra,...source?{source}:{} };
 }
 
 /**
