@@ -258,6 +258,47 @@ Existing public routes still use their established carrier; this local internal 
 establish production enforcement or physical presence. Hardware/vendor acceptance, supported-version
 rollout policy and complete frozen-candidate verification remain open.
 
+HTTP assembly checkpoint `afb1a6e4f` passed 28 database cases across the new HTTP handlers and signed
+writer, plus root TypeScript. At `32c611dc0`, the carrier moved into the attendance pack and the adapter
+used its facade; those suites plus the unchanged import guard passed 30 cases and root TypeScript.
+No import-ratchet allowlist exception was introduced. Review then isolated the optional stack behind
+the pack's narrow `mobile-integrity` facade so ordinary attendance imports do not load vendor crypto.
+
+At `01c5f2a72`, five affected suites passed all 66 cases: real HTTP wrapper/DB behavior, signed writer,
+vendor import isolation, pack boundaries and established native journeys. Root TypeScript exited 0.
+The isolation fixtures make both optional Apple owners throw if evaluated; the ordinary attendance
+facade and current v1 clock handler still load. No filesystem route was registered for the new protocol.
+
+At `a97b647a8`, all thirteen affected HTTP cases and three portable contract cases passed, with root
+TypeScript exiting 0. The HTTP tests inject only bearer resolution and the trusted configuration read;
+clock keys are seeded through a synthetic vendor enrollment port, then checked with real signatures
+and the actual attendance writer/RLS. The default enrollment verifier rejects malformed vendor proof.
+This is not a positive hardware/vendor HTTP enrollment or signed-device acceptance witness.
+
+Coverage includes explicit own-employment selection before configuration, peer/admin refusal, forbidden
+client authority, deployment origin despite forged Host/app headers, bounded JSON/multipart and canonical
+base64, malformed proof without consumption/fallback, concurrent stable receipts, key inventory/revoke
+during configuration outage, revoked bearer refusal, invalid configuration, shared issuance capacity and
+retained-reference recovery. Expected refusals produce closed codes without raw error logs. Typed poor
+accuracy remains distinct. Configuration timeout, caller abort and cooperative read rejection abort the
+read and ignore late completion without issuing a challenge or punch. Response compatibility fixtures
+discard private/additive envelope fields and accept bounded future discovery names, while unknown
+outcomes, codes, versions and client authority still refuse.
+
+The handler factory requires a trusted company/deployment configuration owner; none is selected from
+request data. A new rollout policy, supported older-carrier behavior and human exception path must be
+owned before route registration. This work adds no migration, feature environment flag, mandatory
+hardware policy, native flow or deployment; it preserves existing v1 responses and receipt recovery.
+
+Controlled HTTP mutations at `a97b647a8` independently removed the own-subject pre-configuration guard
+and canonical base64 comparison. Each selected HTTP test failed, then passed after exact restoration
+(one selected, twelve skipped). The scope mutation specifically reached the trusted configuration port
+for a peer before the deeper service refused it. A third mutation re-exported the optional vendor stack
+through the ordinary attendance facade; both legacy import-isolation cases failed by evaluating the
+deliberately unavailable Apple owner, then both passed after restoration. All three harness results
+were `mutation=1 restored=0 exact=True`; no mutation diff remains. These are targeted boundary checks,
+not an official full gate, route activation or deployment witness.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.

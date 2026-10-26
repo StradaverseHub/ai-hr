@@ -144,3 +144,43 @@ The link records key/challenge references, counter and historical enrollment pro
 signature, photo, coordinates, vendor receipt or bearer credential. The ordinary public clock receipt
 gains no trust tier or verified-presence claim. A supported API/configuration boundary, native durable
 orchestration and signed-device acceptance still precede activation; current public routes are unchanged.
+
+## Versioned HTTP assembly
+
+`createIntegrityHttpHandlers` assembles the enrollment, inventory, revocation and signed online clock
+handlers through the existing bearer-only mobile wrapper. Its portable protocol v1 contracts separate
+prepared, enrolled, accepted, refused and unavailable outcomes. Capability discovery describes protocol
+support; it grants no attendance policy exemption, verified presence or offline acceptance. A prepared
+response includes the canonical context and state, with no private binding digest or database row.
+
+Every operation requires an explicit, unique own-employment selector and repeats active own-profile
+eligibility before configuration reads. Tenant, actor, expected app/environment/origin, verification
+function and policy are never request fields. Configuration is a trusted server assembly port, read
+afresh for that subject. An absent/invalid configuration returns unavailability without issuing proof
+material. The port receives an abort signal and a bounded deadline; a late read cannot initiate issuance
+after the handler has timed out. Key inventory and revocation do not depend on that configuration port.
+
+Enrollment JSON and canonical base64 have separate encoded/decoded bounds. Clock requests use bounded
+multipart bodies, one command part and at most one exact JPEG/PNG attachment. Unknown/duplicate fields,
+forged authority, ambiguous encodings and invalid photo metadata refuse before vendor verification.
+Expected proof/domain refusals map to closed codes without raw errors or per-request failure logs;
+unexpected failures retain the common private support-reference behavior. All responses retain
+no-store headers and shared actor/source admission, with additional transactional issuance limits.
+No handler automatically retries, generates replacement keys or falls back to unsigned clocking.
+
+Response envelopes discard additive fields so supported older clients can keep reading their known
+shape. Discovery accepts bounded future feature names, which grant no authority by themselves.
+Request authority, operation outcomes, refusal codes and signed-context versions stay closed; an
+unknown outcome/version cannot be treated as acceptance. Expected location-quality failures preserve
+a closed typed reason rather than a raw error. Configuration cancellation is normalized whether the
+read ignores abort or cooperatively rejects; neither a late value nor a cancellation error starts
+issuance after the request has stopped.
+
+The signed carrier lives inside the attendance pack. Its narrow `mobile-integrity` facade keeps vendor
+crypto imports separate from the ordinary attendance facade, so an inactive optional stack cannot
+prevent established clock routes from loading. Import-ratchet exceptions are not added for the adapter.
+
+No filesystem API route is registered yet. Route assembly still requires the company-owned rollout
+policy/configuration source, supported-version behavior, treatment of older carriers and the human
+exception path from the approved review. Do not invent a deployment-wide feature environment flag or
+blanket hardware refusal as a substitute. This assembly changes no existing v1 response or deployment.
