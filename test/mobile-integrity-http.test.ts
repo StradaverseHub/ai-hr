@@ -7,6 +7,7 @@ import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService} from '../core/mobile-apple-enrollment';
+import {createClockingLocation,setClockingControl,setAttendancePolicy} from '../packs/attendance/service';
 import {createIntegrityHttpHandlers} from '../lib/mobile-api/integrity-routes';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
@@ -58,7 +59,7 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
     expect(a.body).toMatchObject({outcome:'prepared',protocol:1,state:'active',context:{apiOrigin:settings.apiOrigin,actorId:e.ctx.userId,employmentId:e.employmentId,target:settings.target}});
     expect(a.body).not.toHaveProperty('challenge');expect(a.body).not.toHaveProperty('bindingHash');
     expect((await call('enrollmentBegin',e.employmentId,intent)).body).toEqual(a.body);
-    expect(configuration).toHaveBeenCalledWith(expect.objectContaining({userId:e.ctx.userId}),e.employmentId);
+    expect(configuration).toHaveBeenCalledWith(expect.objectContaining({userId:e.ctx.userId}),e.employmentId,expect.any(AbortSignal));
     expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
   });
   it('rejects peer/admin selectors before configuration and client-supplied authority before issuance',async()=>{
@@ -134,5 +135,26 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
     for(let i=0;i<3;i++)expect((await call('enrollmentBegin',e.employmentId,{...intent,requestId:randomUUID()})).status).toBe(200);
     const refused=await call('enrollmentBegin',e.employmentId,{...intent,requestId:randomUUID()});expect(refused.status).toBe(429);expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0);
     expect((await call('enrollmentBegin',e.employmentId,intent)).body).toEqual(first.body);expect(await owner.db.select().from(schema.mobileIntegrityChallenge)).toHaveLength(4);
+  });
+  it.each(['timeout','abort'] as const)('stops issuance on configuration %s and ignores a late configuration result',async(mode)=>{
+    const e=await employee();caller=e.ctx;let finish!:(value:unknown)=>void,entered!:()=>void,readSignal:AbortSignal|undefined;
+    const started=new Promise<void>(resolve=>{entered=resolve;}),configuration=new Promise<unknown>(resolve=>{finish=resolve;});
+    const delayed=createIntegrityHttpHandlers(async(_ctx,_id,signal)=>{readSignal=signal;entered();return configuration;},async()=>e.ctx,{configurationTimeoutMs:50});
+    const controller=new AbortController(),pending=delayed.enrollmentBegin(new Request('https://hr.example.com/?employmentId='+e.employmentId,{
+      method:'POST',signal:controller.signal,headers:{'content-type':'application/json'},body:JSON.stringify({requestId:randomUUID(),appInstallationId:randomUUID()}),
+    }));
+    await started;if(mode==='abort')controller.abort();
+    const response=await pending;expect(response.status).toBe(200);expect(await response.json()).toEqual({outcome:'unavailable',code:'configuration_unavailable'});
+    expect(readSignal?.aborted).toBe(true);finish(settings);await new Promise(resolve=>setImmediate(resolve));
+    expect(await owner.db.select().from(schema.mobileIntegrityChallenge)).toHaveLength(0);expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+  });
+  it('preserves a typed uncertainty reason without exposing raw error details or accepting a punch',async()=>{
+    const f=await enrolled(),admin=adminCtx(base),site=await createClockingLocation(admin,{companyIds:[base.companyId],name:'HTTP office',lat:3,lng:101,radiusM:50});
+    await setClockingControl(admin,{employmentId:f.employmentId,enabled:true,clockingLocationIds:[site.id]});
+    await setAttendancePolicy(admin,{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5],geofenceMaximumAccuracyM:1});
+    const begin=await call('clockBegin',f.employmentId,f.input,{form:true});
+    const result=await call('clockComplete',f.employmentId,{...f.input,challengeId:begin.body.context.challenge.id,assertion:assertion(begin.body.context,f.privateKey)},{form:true});
+    expect(result.body).toEqual({outcome:'refused',code:'location_required',locationReason:'poor_accuracy'});
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.assertionCounter).toBe(0);
   });
 });

@@ -31,10 +31,6 @@ export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
 export * from '../../core/mobile-clock-attempt';
-export {createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey,AppleKeyEnrollmentError} from '../../core/mobile-apple-enrollment';
-export {AppleClockAssertionError} from '../../core/mobile-apple-clock-assertion';
-export {IntegrityChallengeError} from '../../core/mobile-integrity-challenge';
-export {createAppleClockService} from './mobile-apple-clock';
 export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.

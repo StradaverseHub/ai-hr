@@ -9,7 +9,7 @@ import {myOwnEmploymentSubjectsTx} from '../../core/read';
 import {ModuleNotEnabledError} from '../../core/entitlements';
 import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey,AppleKeyEnrollmentError,
   createAppleClockService,AppleClockAssertionError,IntegrityChallengeError,ClockConflictError,CorrectedClockConflictError,
-  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/service';
+  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/mobile-integrity';
 import {ClockPhotoError} from '../attendance-photo';
 import {AppAttestEnrollmentError} from './app-attest-enrollment';
 import {AppAttestAssertionError} from './app-attest-assertion';
@@ -19,11 +19,13 @@ import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler
 import {mobileInput,mobileForm} from './body';
 
 class NotConfigured extends Error{}
+class ConfigurationReadUnavailable extends Error{}
 type Refusal=z.infer<typeof C.IntegrityRefused>|z.infer<typeof C.IntegrityUnavailable>;
 const unavailable=(code:z.infer<typeof C.IntegrityUnavailable>['code']):Refusal=>({outcome:'unavailable',code});
 const refused=(code:z.infer<typeof C.IntegrityRefused>['code']):Refusal=>({outcome:'refused',code});
 function expected(error:unknown):Refusal|undefined{
   if(error instanceof NotConfigured)return unavailable('not_configured');
+  if(error instanceof ConfigurationReadUnavailable)return unavailable('configuration_unavailable');
   if(error instanceof ModuleNotEnabledError)return unavailable('module_unavailable');
   if(error instanceof OwnClockEmploymentUnavailableError)return refused('subject_unavailable');
   if(error instanceof AppleKeyEnrollmentError){
@@ -45,7 +47,8 @@ function expected(error:unknown):Refusal|undefined{
   if(error instanceof CorrectedClockConflictError)return refused('corrected_day');
   if(error instanceof ClockConflictError)return refused('clock_conflict');
   if(error instanceof AttendancePhotoRequiredError)return refused('photo_required');
-  if(error instanceof OutsideGeofenceError)return refused('outside_geofence');
+  if(error instanceof GeofenceQualityError)return {outcome:'refused',code:'location_required',locationReason:error.assessment.outcome==='poor_accuracy'?'poor_accuracy':error.assessment.outcome==='invalid_location'?'invalid_location':'location_required'};
+  if(error instanceof OutsideGeofenceError)return {outcome:'refused',code:'outside_geofence',...(error.info.reason?{locationReason:error.info.reason}:{})};
   if(error instanceof ClockLocationError||error instanceof GeolocationRequiredError||error instanceof GeofenceQualityError)return refused('location_required');
   if(error instanceof DeviceNotRegisteredError)return refused('device_required');
   if(error instanceof ClockPhotoError)return refused('photo_invalid');
@@ -78,10 +81,25 @@ async function form<S extends z.ZodType>(req:Request,schema:S){
  * afresh after own-subject authorization; enrollment keys remain listable/revocable during outages.
  * Responses distinguish preparation/unavailability/refusal from acceptance. No handler falls back.
  */
-export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string)=>Promise<unknown|null>,resolve?:MobileSessionResolver){
-  async function settings(ctx:SessionContext,id:string){
-    const raw=await configuration(ctx,id);if(raw===null)throw new NotConfigured();
-    const parsed=AppleEnrollmentSettings.safeParse(raw);if(!parsed.success)throw new AppleKeyEnrollmentError('configuration_unavailable');return parsed.data;
+export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number}={}){
+  const timeout=options.configurationTimeoutMs??3000;
+  if(!Number.isInteger(timeout)||timeout<1||timeout>10000)throw new Error('Invalid configuration deadline');
+  async function settings(ctx:SessionContext,id:string,signal:AbortSignal){
+    if(signal.aborted)throw new ConfigurationReadUnavailable();
+    const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined,abort:()=>void=()=>{};
+    const stopped=new Promise<never>((_,reject)=>{
+      abort=()=>{controller.abort();reject(new ConfigurationReadUnavailable());};
+      signal.addEventListener('abort',abort,{once:true});timer=setTimeout(abort,timeout);
+    });
+    try{
+      const reading=Promise.resolve().then(()=>{
+        if(controller.signal.aborted)throw new ConfigurationReadUnavailable();return configuration(ctx,id,controller.signal);
+      });
+      const raw=await Promise.race([reading,stopped]);
+      if(controller.signal.aborted||signal.aborted)throw new ConfigurationReadUnavailable();
+      if(raw===null)throw new NotConfigured();
+      const parsed=AppleEnrollmentSettings.safeParse(raw);if(!parsed.success)throw new AppleKeyEnrollmentError('configuration_unavailable');return parsed.data;
+    }finally{clearTimeout(timer);signal.removeEventListener('abort',abort);controller.abort();}
   }
   function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){
     return mobileRoute(schema,async(ctx,req)=>{
@@ -91,17 +109,17 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
   }
   return {
     capabilities:route(C.IntegrityCapabilities,async(ctx,req)=>{
-      const id=await selected(ctx,req);await settings(ctx,id);
+      const id=await selected(ctx,req);await settings(ctx,id,req.signal);
       return {outcome:'capabilities',protocol:1,platform:'ios',features:['key_enrollment','online_clock_assertion'],offline:false};
     }),
     enrollmentBegin:route(C.IntegrityEnrollmentPrepared,async(ctx,req)=>{
       const id=await selected(ctx,req),input=parse(C.IntegrityEnrollmentIntent,await mobileInput(req,1024));
-      const result=await createAppleEnrollmentService(await settings(ctx,id)).begin(ctx,{...input,employmentId:id});
+      const result=await createAppleEnrollmentService(await settings(ctx,id,req.signal)).begin(ctx,{...input,employmentId:id});
       return {outcome:'prepared',protocol:1,context:result.context,clientDataHash:result.clientDataHash,alias:result.alias,state:result.challenge.state};
     }),
     enrollmentComplete:route(C.IntegrityEnrollmentResult,async(ctx,req)=>{
       const id=await selected(ctx,req),{attestation,...input}=parse(C.IntegrityEnrollmentProof,await mobileInput(req,96*1024));
-      const key=await createAppleEnrollmentService(await settings(ctx,id)).complete(ctx,{...input,employmentId:id,attestation:bytes(attestation,65536)});
+      const key=await createAppleEnrollmentService(await settings(ctx,id,req.signal)).complete(ctx,{...input,employmentId:id,attestation:bytes(attestation,65536)});
       return {outcome:'enrolled',key};
     }),
     keys:route(C.IntegrityKeysResult,async(ctx,req)=>({outcome:'keys',items:await listOwnIntegrityKeys(ctx,await selected(ctx,req))})),
@@ -111,12 +129,12 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
     }),
     clockBegin:route(C.IntegrityClockPrepared,async(ctx,req)=>{
       const id=await selected(ctx,req),{command,...photo}=await form(req,C.IntegrityClockIntent);
-      const result=await createAppleClockService(await settings(ctx,id)).begin(ctx,{...command,...photo,employmentId:id});
+      const result=await createAppleClockService(await settings(ctx,id,req.signal)).begin(ctx,{...command,...photo,employmentId:id});
       return {outcome:'prepared',protocol:1,context:result.context,state:result.challenge.state};
     }),
     clockComplete:route(C.IntegrityClockResult,async(ctx,req)=>{
       const id=await selected(ctx,req),{command:{challengeId,assertion,...command},...photo}=await form(req,C.IntegrityClockProof);
-      const receipt=await createAppleClockService(await settings(ctx,id)).complete(ctx,{...command,...photo,employmentId:id},{challengeId,assertion:bytes(assertion,8192)});
+      const receipt=await createAppleClockService(await settings(ctx,id,req.signal)).complete(ctx,{...command,...photo,employmentId:id},{challengeId,assertion:bytes(assertion,8192)});
       return {outcome:'accepted',receipt};
     }),
   };

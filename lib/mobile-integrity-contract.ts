@@ -16,7 +16,8 @@ export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,pla
   environment:z.enum(['production','development']),proofKind:z.enum(['apple_key_proof','apple_app_metadata']),
   createdAt:z.string().datetime(),revokedAt:z.string().datetime().nullable()}).strict();
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
-  'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required'])}).strict();
+  'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),
+  locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()}).strict();
 export const IntegrityUnavailable=z.object({outcome:z.literal('unavailable'),code:z.enum(['not_configured','configuration_unavailable','metadata_unavailable','proof_unavailable','module_unavailable'])}).strict();
 const state=z.enum(['active','expired','consumed']);
 const result=<S extends z.ZodType>(success:S)=>z.union([success,IntegrityRefused,IntegrityUnavailable]);
