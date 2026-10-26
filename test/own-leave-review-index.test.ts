@@ -21,7 +21,7 @@ async function subject(b=base,role:'employee'|'hr_admin'='employee'){
  return{...hired,ctx,companyId:b.companyId};
 }
 type Subject=Awaited<ReturnType<typeof subject>>;
-async function terminal(who:Subject,createdAt:Date,id=randomUUID(),state:'discarded'|'expired'|'refused'='discarded'){
+async function terminal(who:Subject,createdAt:Date,id:string=randomUUID(),state:'discarded'|'expired'|'refused'='discarded'){
  const expiresAt=new Date(createdAt.getTime()+600000);
  await owner.db.execute(sql`insert into app.assistant_own_leave_review(id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at)
   values(${id}::uuid,${who.ctx.tenantId}::uuid,${who.ctx.userId}::uuid,${who.personId}::uuid,${who.employmentId}::uuid,${who.companyId}::uuid,NULL,NULL,${state},${createdAt},${expiresAt})`);
