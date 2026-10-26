@@ -2460,7 +2460,8 @@
         "clearCount": "此操作会将当前 {count} 个明确字段标记为已审核，不会纳入记录、排除数据或运行导入。",
         "clearConfirm": "接受这 {count} 个字段",
         "clearCancel": "取消",
-        "excludeField": "排除此字段；保留原始证据"
+        "excludeField": "排除此字段；保留原始证据",
+        "reason_date_format": "明确的日期格式可改写为 ISO，不改变所写的公历年、月、日。接受前请审核原始内容。"
       }
     },
     "wizard": {

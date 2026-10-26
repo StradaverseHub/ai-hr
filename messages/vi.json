@@ -2460,7 +2460,8 @@
         "clearCount": "Thao tác này đánh dấu {count} trường rõ hiện tại là đã xem xét. Không bao gồm hồ sơ, loại dữ liệu hay chạy nhập.",
         "clearConfirm": "Chấp nhận {count} trường này",
         "clearCancel": "Hủy",
-        "excludeField": "Loại trường này; giữ bằng chứng gốc"
+        "excludeField": "Loại trường này; giữ bằng chứng gốc",
+        "reason_date_format": "Có thể viết định dạng ngày rõ ràng thành ISO mà không đổi năm, tháng hoặc ngày Gregory đã ghi. Xem xét bản gốc trước khi chấp nhận."
       }
     },
     "wizard": {

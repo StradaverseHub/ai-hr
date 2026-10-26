@@ -2460,7 +2460,8 @@
         "clearCount": "Tindakan ini menandakan {count} medan jelas sebagai disemak. Ia tidak menyertakan rekod, mengecualikan data atau menjalankan import.",
         "clearConfirm": "Terima {count} medan ini",
         "clearCancel": "Batal",
-        "excludeField": "Kecualikan medan ini; kekalkan bukti asal"
+        "excludeField": "Kecualikan medan ini; kekalkan bukti asal",
+        "reason_date_format": "Format tarikh yang jelas boleh ditulis sebagai ISO tanpa mengubah tahun, bulan atau hari Gregorian yang dinyatakan. Semak sumber asal sebelum menerima."
       }
     },
     "wizard": {

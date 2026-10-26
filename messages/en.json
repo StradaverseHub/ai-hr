@@ -2460,7 +2460,8 @@
         "clearCount": "This action will mark {count} currently clear fields as reviewed. It will not include records, exclude data or run an import.",
         "clearConfirm": "Accept these {count} fields",
         "clearCancel": "Cancel",
-        "excludeField": "Exclude this field; keep its original evidence"
+        "excludeField": "Exclude this field; keep its original evidence",
+        "reason_date_format": "An unambiguous date format can be written as ISO without changing the stated Gregorian year, month or day. Review the original before accepting."
       }
     },
     "wizard": {

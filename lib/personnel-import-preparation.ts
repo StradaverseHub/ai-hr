@@ -4,11 +4,12 @@
  */
 import {personnelImportHeaderCandidates,personnelImportField,personnelImportFields,personnelColumnLabel,normalizePersonnelImportValue,personnelScalarIssue,type PersonnelImportHeaderOptions} from './personnel-import-contract';
 import {buildPersonnelCsv,parseStrictPersonnelCsvWithSource,parsePersonnelCsv,PERSONNEL_CSV_FRAME} from './personnel-csv';
+import {proposePersonnelDateFormat} from './personnel-import-preparation-date';
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {MAX_IMPORT_CSV_BYTES} from './import-file';
 import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
 export const PERSONNEL_PREPARATION_LIMITS=Object.freeze({rows:500,columns:128,cells:16000,bytes:MAX_IMPORT_CSV_BYTES});
-export type PreparationReason='canonical_header'|'type_shape'|'unknown_label'|'ambiguous_label'|'trim'|'canonical_choice'|'ambiguous_date'|'ambiguous_number'|'identity_review'|'formula_review'|'duplicate_record'|'required_missing'|'scalar_invalid'|'conflicting_field';
+export type PreparationReason='canonical_header'|'type_shape'|'unknown_label'|'ambiguous_label'|'trim'|'canonical_choice'|'date_format'|'ambiguous_date'|'ambiguous_number'|'identity_review'|'formula_review'|'duplicate_record'|'required_missing'|'scalar_invalid'|'conflicting_field';
 export type PreparationCell=Readonly<{row:number;column:number;value:string;raw:string|number|boolean|null;span?:Readonly<{start:number;end:number}>;kind?:string;formula?:string}>;
 export type PreparationField=Readonly<{id:string;label:string;cells:readonly PreparationCell[];candidates:readonly string[];suggestedField:string|null;suggestedValue:string;reasons:readonly PreparationReason[]}>;
 export type PreparationRecord=Readonly<{id:string;rows:readonly number[];fields:readonly PreparationField[]}>;
@@ -26,10 +27,10 @@ function shapeCandidates(values:readonly string[],options:PersonnelImportHeaderO
 }
 function field(id:string,label:string,cells:readonly PreparationCell[],candidates:readonly string[],options:PersonnelImportHeaderOptions,typeShape=false):PreparationField{
  const suggestedField=!typeShape&&candidates.length===1?candidates[0]:null,raw=cells.map(cell=>cell.value).join(' '),trimmed=raw.trim();
- const suggestedValue=suggestedField?normalizePersonnelImportValue(suggestedField,trimmed,'employee',options.resolvers??[]):trimmed;
+ const choiceValue=suggestedField?normalizePersonnelImportValue(suggestedField,trimmed,'employee',options.resolvers??[]):trimmed,descriptor=suggestedField?personnelImportField(suggestedField):undefined,date=descriptor?.type==='date'&&!cells.some(cell=>cell.formula)?proposePersonnelDateFormat(choiceValue,descriptor.unit==='month'?'month':'day'):null,suggestedValue=date?.value??choiceValue;
  const reasons:PreparationReason[]=[typeShape?'type_shape':candidates.length===1?'canonical_header':candidates.length?'ambiguous_label':'unknown_label'];
- if(raw!==trimmed)reasons.push('trim');if(suggestedValue!==trimmed)reasons.push('canonical_choice');const descriptor=suggestedField?personnelImportField(suggestedField):undefined;
- if(descriptor?.type==='date'&&trimmed&&!/^\d{4}-\d{2}(?:-\d{2})?$/.test(trimmed))reasons.push('ambiguous_date');
+ if(raw!==trimmed)reasons.push('trim');if(choiceValue!==trimmed)reasons.push('canonical_choice');if(date&&date.value!==choiceValue)reasons.push('date_format');
+ if(descriptor?.type==='date'&&trimmed&&!date&&!/^\d{4}-\d{2}(?:-\d{2})?$/.test(trimmed))reasons.push('ambiguous_date');
  if(descriptor&&['number','currency'].includes(descriptor.type)&&trimmed&&!/^-?\d+(?:\.\d+)?$/.test(trimmed))reasons.push('ambiguous_number');
  if(descriptor&&(descriptor.sensitivity==='identity'||descriptor.sensitivity==='bank'||descriptor.ownerField==='employeeCode')&&cells.some(cell=>typeof cell.raw==='number'))reasons.push('identity_review');
  if(cells.some(cell=>cell.formula))reasons.push('formula_review');if(descriptor?.ownerField==='employeeCode'&&trimmed&&!isValidEmployeeCode(trimmed))reasons.push('scalar_invalid');if(descriptor&&personnelScalarIssue(descriptor,suggestedValue))reasons.push('scalar_invalid');
