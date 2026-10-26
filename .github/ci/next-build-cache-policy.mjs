@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 export const NEXT_STATE_NAME='diagnostic-next-app-compiler-state';
+export const NEXT_RECOVERY_MEMBERS=['envelope.json','next-check-log.json','producer.json','retained-build.json','state.json'];
 export const NEXT_STATE_MEMBERS=['build-log.json','build-provenance.json','envelope.json','producer.json','state.json','successful-build.json','system-testing.json'];
 export const NEXT_CACHE_WORKFLOW='.github/workflows/alpha-staging-diagnostics.yml';
 export const NEXT_CACHE_REF='StradaverseHub/ai-hr/'+NEXT_CACHE_WORKFLOW+'@refs/heads/codex/test-suite-efficiency-review-20261025';
@@ -14,7 +15,7 @@ export function assertNextCacheInvocation(e){
   &&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF===NEXT_CACHE_REF
   &&e.GITHUB_JOB==='next-build-cache'&&e.GITHUB_RUN_ATTEMPT==='1'&&validId(e.GITHUB_RUN_ID)
   &&validSha(e.AIHR_CI_HEAD)&&e.AIHR_CI_HEAD===e.AIHR_CI_CONTROL_HEAD&&e.GITHUB_SHA===e.AIHR_CI_CONTROL_HEAD
-  &&['cold','warm'].includes(e.AIHR_NEXT_BUILD_CACHE_MODE)&&e.AIHR_BUILD_DIAGNOSTIC==='transport-producer','Exact first-attempt build-cache diagnostic required');
+  &&['cold','warm','recover'].includes(e.AIHR_NEXT_BUILD_CACHE_MODE)&&e.AIHR_BUILD_DIAGNOSTIC==='transport-producer','Exact first-attempt build-cache diagnostic required');
  for(const k of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])
   assert(e[k]==='postgres://nobody:nothing@127.0.0.1:1/no_database','Build cache diagnostic cannot reach a database');
 }
@@ -55,7 +56,7 @@ export function validateNextState(bytes,envelope,expectedSource,context,{now=Dat
  assert(data.version==='5.9.3'&&Array.isArray(data.fileNames)&&data.fileNames.length>0&&data.fileNames.length<=100000
   &&new Set(data.fileNames).size===data.fileNames.length&&data.fileNames.every(p=>typeof p==='string'&&p.length>0),'Complete bounded application graph required');
  assert(envelope?.kind==='NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN'&&envelope.releaseAuthorized===false&&envelope.source===expectedSource
-  &&validSha(envelope.controller)&&validId(envelope.runId)&&envelope.attempt==='1'&&envelope.actualCanonicalBuildExit===0
+  &&validSha(envelope.controller)&&validId(envelope.runId)&&envelope.attempt==='1'&&envelope.completedCommandExit===0&&['canonical-build','application-compiler-recovery'].includes(envelope.completedCommand)
   &&envelope.bytes===bytes.length&&envelope.sha256===hash(bytes)&&envelope.files===data.fileNames.length,'Original graph bytes/build provenance differ');
  assert(isDeepStrictEqual(validateNextContext(envelope.context),validateNextContext(context)),'Application compiler inputs changed');
  const age=now-Date.parse(envelope.completedAt);assert(Number.isFinite(age)&&age>=-60000&&age<=86400000,'Application compiler graph expired');

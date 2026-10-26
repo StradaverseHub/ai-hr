@@ -34,7 +34,7 @@ export function assertBuildInvocation(environment){
 export function assertDiagnosticBuildInvocation(environment){
  assertBuildIdentity(environment);
  const original=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.AIHR_NEXT_BUILD_CACHE_MODE===undefined;
- const cache=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.GITHUB_JOB==='next-build-cache'&&['cold','warm'].includes(environment.AIHR_NEXT_BUILD_CACHE_MODE);
+ const cache=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.GITHUB_JOB==='next-build-cache'&&['cold','warm','recover'].includes(environment.AIHR_NEXT_BUILD_CACHE_MODE);
  if(environment.CI!=='true'||environment.RUNNER_ENVIRONMENT!=='github-hosted'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||environment.AIHR_CI_HEAD!==environment.AIHR_CI_CONTROL_HEAD||environment.AIHR_BUILD_DIAGNOSTIC!=='transport-producer'
   ||typeof environment.RUNNER_NAME!=='string'||!environment.RUNNER_NAME.length||environment.RUNNER_NAME.length>200

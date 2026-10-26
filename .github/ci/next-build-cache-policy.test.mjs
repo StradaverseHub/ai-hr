@@ -9,7 +9,7 @@ const binaries=['typescript/package.json','typescript/lib/tsc.js','typescript/li
 const context={runtime:{node:'20.20.2',abi:'115',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8',typescript:'5.9.3'},sourcePath:'/home/runner/work/ai-hr/ai-hr/source',nodeOptions:'--max-old-space-size=6144',inputs:Object.fromEntries(inputs.map(p=>[p,digest])),compiler:Object.fromEntries(binaries.map(p=>[p,digest])),generatedTypes:[{path:'validator.ts',bytes:123,sha256:digest}]};
 const bytes=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/page.tsx','../../lib/member.ts']}));
 const completedAt='2026-10-26T00:00:00.000Z',now=Date.parse(completedAt)+1000;
-const envelope={kind:'NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN',releaseAuthorized:false,source:sha,controller:sha,runId:'123',attempt:'1',actualCanonicalBuildExit:0,bytes:bytes.length,sha256:hash(bytes),files:2,context,completedAt};
+const envelope={kind:'NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN',releaseAuthorized:false,source:sha,controller:sha,runId:'123',attempt:'1',completedCommand:'canonical-build',completedCommandExit:0,bytes:bytes.length,sha256:hash(bytes),files:2,context,completedAt};
 test('only explicit managed first-attempt build/cache purpose with closed URLs is admitted',()=>{
  assertNextCacheInvocation(env);assertNextCacheInvocation({...env,AIHR_NEXT_BUILD_CACHE_MODE:'warm'});
  for(const [k,v]of Object.entries({GITHUB_ACTIONS:'false',CI:'false',RUNNER_ENVIRONMENT:'self-hosted',GITHUB_REPOSITORY:'other/repo',GITHUB_REPOSITORY_ID:'1',GITHUB_EVENT_NAME:'push',GITHUB_WORKFLOW_REF:'other',GITHUB_JOB:'build',GITHUB_RUN_ATTEMPT:'2',GITHUB_RUN_ID:'0',AIHR_CI_HEAD:other,AIHR_NEXT_BUILD_CACHE_MODE:'other',DATABASE_URL:'postgres://live'}))assert.throws(()=>assertNextCacheInvocation({...env,[k]:v}),k);
@@ -33,7 +33,7 @@ test('successful actual first-attempt job and bounded exact artifact namespace a
 });
 test('state bytes/version/configuration/runtime/age and full graph count stay bound, never PASS',()=>{
  assert.equal(validateNextContext(context),context);assert.equal(validateNextState(bytes,envelope,sha,context,{now}).fileNames.length,2);
- for(const c of [{releaseAuthorized:true},{source:other},{controller:'bad'},{actualCanonicalBuildExit:1},{sha256:'d'.repeat(64)},{bytes:bytes.length+1},{files:1},{completedAt:'invalid'},{completedAt:'2026-10-24T00:00:00Z'}])assert.throws(()=>validateNextState(bytes,{...envelope,...c},sha,context,{now}));
+ for(const c of [{releaseAuthorized:true},{source:other},{controller:'bad'},{completedCommandExit:1},{sha256:'d'.repeat(64)},{bytes:bytes.length+1},{files:1},{completedAt:'invalid'},{completedAt:'2026-10-24T00:00:00Z'}])assert.throws(()=>validateNextState(bytes,{...envelope,...c},sha,context,{now}));
  for(const c of [{...context,nodeOptions:'--max-old-space-size=8192'},{...context,runtime:{...context.runtime,node:'22.23.3'}},{...context,inputs:{...context.inputs,'tsconfig.build.json':'d'.repeat(64)}},{...context,compiler:{...context.compiler,'typescript/lib/tsc.js':'d'.repeat(64)}},{...context,generatedTypes:[]}])assert.throws(()=>validateNextState(bytes,envelope,sha,c,{now}));
  assert.throws(()=>validateNextState(Buffer.concat([bytes,Buffer.from(' ')]),envelope,sha,context,{now}));
  for(const data of [{version:'5.8.1',fileNames:['a']},{version:'5.9.3',fileNames:[]},{version:'5.9.3',fileNames:['a','a']}])assert.throws(()=>validateNextState(Buffer.from(JSON.stringify(data)),envelope,sha,context,{now}));
@@ -44,4 +44,10 @@ test('same source or complete bounded ancestor only; no source identity is relab
  assert.deepEqual(assertNextAncestry(sha,other,c),['lib/member.ts']);
  for(const change of [{status:'diverged'},{behind_by:1},{ahead_by:33},{commits:[]},{files:[]},{files:[{filename:'../secret',status:'modified'}]}])assert.throws(()=>assertNextAncestry(sha,other,{...c,...change}));
  assert.throws(()=>assertNextAncestry(sha,sha,c));
+});
+
+test("compiler-only recovery remains explicit graph data and unknown or failed completion refuses",()=>{
+ assertNextCacheInvocation({...env,AIHR_NEXT_BUILD_CACHE_MODE:"recover"});
+ assert.equal(validateNextState(bytes,{...envelope,completedCommand:"application-compiler-recovery"},sha,context,{now}).fileNames.length,2);
+ for(const change of [{completedCommand:"made-up-PASS"},{completedCommandExit:1}])assert.throws(()=>validateNextState(bytes,{...envelope,...change},sha,context,{now}));
 });

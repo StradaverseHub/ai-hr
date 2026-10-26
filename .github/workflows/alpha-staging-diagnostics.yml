@@ -51,7 +51,7 @@ on:
         required: false
         default: disabled
         type: choice
-        options: [disabled, cold, warm]
+        options: [disabled, cold, warm, recover]
       next_build_cache_origin:
         description: 'Warm only: exact original JSON runId, sha, artifactId, digest; never relabel original state'
         required: false
@@ -186,7 +186,7 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import {parseNextCacheOrigin} from './.github/ci/next-build-cache-policy.mjs';
-          assert(['cold','warm'].includes(process.env.MODE));
+          assert(['cold','warm','recover'].includes(process.env.MODE));
           if(process.env.MODE==='warm')parseNextCacheOrigin(process.env.ORIGIN);
           else assert(process.env.ORIGIN==='');
           NODE
@@ -691,10 +691,12 @@ jobs:
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 1, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-alpha
         with: {node: '20.20.2', mobile: 'false', capacity_profile: bounded-next-build-diagnostic}
+      - name: Prove actual launcher can load typed release helpers before expensive work
+        run: node --test ../automation/.github/ci/next-build-launcher.test.mjs
       - name: Generate the real current Next application types
         run: pnpm exec next typegen
       - name: Genuine canonical build, full application compiler and retained-graph refusal controls
-        run: node ../automation/.github/ci/next-build-cache.mjs
+        run: pnpm exec tsx ../automation/.github/ci/next-build-cache.mjs
       - name: Publish graph only after actual complete build and owned cleanup
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

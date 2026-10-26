@@ -17,7 +17,7 @@ export function validateCapacityScope(profile,e){
   &&e.GITHUB_REPOSITORY_ID==='1333414856'&&(profile==='bounded-whole-compiler'?['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME):e.GITHUB_EVENT_NAME==='workflow_dispatch'),'Bounded capacity requires actual managed context');
  const prefix='StradaverseHub/ai-hr/.github/workflows/',suffix='@refs/heads/codex/test-suite-efficiency-review-20261025';
  if(profile==='bounded-next-build-diagnostic'){
-  assert(e.GITHUB_WORKFLOW_REF===prefix+'alpha-staging-diagnostics.yml'+suffix&&e.GITHUB_JOB==='next-build-cache'&&e.GITHUB_RUN_ATTEMPT==='1'&&['cold','warm'].includes(e.AIHR_NEXT_BUILD_CACHE_MODE)&&e.AIHR_BUILD_DIAGNOSTIC==='transport-producer','Only the explicit bounded application build diagnostic');
+  assert(e.GITHUB_WORKFLOW_REF===prefix+'alpha-staging-diagnostics.yml'+suffix&&e.GITHUB_JOB==='next-build-cache'&&e.GITHUB_RUN_ATTEMPT==='1'&&['cold','warm','recover'].includes(e.AIHR_NEXT_BUILD_CACHE_MODE)&&e.AIHR_BUILD_DIAGNOSTIC==='transport-producer','Only the explicit bounded application build diagnostic');
   for(const k of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])assert(e[k]==='postgres://nobody:nothing@127.0.0.1:1/no_database','Build diagnostic cannot reach a database');
   return true;
  }

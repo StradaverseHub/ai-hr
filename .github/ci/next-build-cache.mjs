@@ -7,7 +7,7 @@ import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {NEXT_STATE_NAME,NEXT_STATE_MEMBERS,hash,assertNextCacheInvocation,parseNextCacheOrigin,validateNextOrigin,validateNextContext,validateNextState,assertNextAncestry} from './next-build-cache-policy.mjs';
+import {NEXT_STATE_NAME,NEXT_STATE_MEMBERS,NEXT_RECOVERY_MEMBERS,hash,assertNextCacheInvocation,parseNextCacheOrigin,validateNextOrigin,validateNextContext,validateNextState,assertNextAncestry} from './next-build-cache-policy.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
@@ -17,7 +17,7 @@ function regular(p,max=32*1024**2){const s=lstatSync(p);assert(s.isFile()&&!s.is
 function owned(p){const s=lstatSync(p);assert(s.isDirectory()&&!s.isSymbolicLink()&&realpathSync(p)===p&&s.uid===process.getuid());return s;}
 function unchanged(source,e){assert(git(source,'rev-parse','HEAD')===e.AIHR_CI_HEAD&&git(ROOT,'rev-parse','HEAD')===e.AIHR_CI_CONTROL_HEAD
  &&git(source,'status','--porcelain','--untracked-files=all')===''&&git(ROOT,'status','--porcelain','--untracked-files=all')==='','Exact clean application source/controller required');}
-const CODE=['.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml'];
+const CODE=['.github/ci/next-state-recovery.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml'];
 function context(source){
  const root=JSON.parse(regular(join(source,'tsconfig.json'))),build=JSON.parse(regular(join(source,'tsconfig.build.json')));
  assert(root.compilerOptions?.incremental===true&&root.extends===undefined&&root.references===undefined&&build.extends==='./tsconfig.json'&&build.references===undefined,'Reviewed exact application config chain required');
@@ -31,37 +31,50 @@ function context(source){
  return validateNextContext({runtime,sourcePath:source,nodeOptions:process.env.NODE_OPTIONS,inputs,compiler,generatedTypes:generated});
 }
 function restore(source,out,e,c,currentRunner){
- const origin=parseNextCacheOrigin(e.AIHR_NEXT_BUILD_ORIGIN);assert(String(origin.runId)!==e.GITHUB_RUN_ID,'Original successful run must be separate');
+ const origin=parseNextCacheOrigin(e.AIHR_NEXT_BUILD_ORIGIN);assert(String(origin.runId)!==e.GITHUB_RUN_ID,'Original successful state run must be separate');
  const run=api('actions/runs/'+origin.runId),jobs=api('actions/runs/'+origin.runId+'/attempts/1/jobs?per_page=100'),artifact=api('actions/artifacts/'+origin.artifactId);
- const job=validateNextOrigin(origin,run,jobs,artifact);
- const tree=api('git/trees/'+origin.sha+'?recursive=1');assert(tree.truncated===false);
- const expected=Object.fromEntries(CODE.map(p=>[p,git(ROOT,'rev-parse','HEAD:'+p)]));
- const entries=new Map(tree.tree.filter(t=>t.type==='blob').map(t=>[t.path,t.sha]));
+ const job=validateNextOrigin(origin,run,jobs,artifact),tree=api('git/trees/'+origin.sha+'?recursive=1');assert(tree.truncated===false);
+ const expected=Object.fromEntries(CODE.map(p=>[p,git(ROOT,'rev-parse','HEAD:'+p)])),entries=new Map(tree.tree.filter(t=>t.type==='blob').map(t=>[t.path,t.sha]));
  for(const [p,sha]of Object.entries(expected))assert(entries.get(p)===sha,'Original actual controller code differs: '+p);
  const bytes=execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/artifacts/'+origin.artifactId+'/zip'],{timeout:10000,maxBuffer:64*1024**2});
  assert(bytes.length===artifact.size_in_bytes&&hash(bytes)===origin.digest);
  const dir=join(out,'origin');mkdirSync(dir,{mode:0o700});writeFileSync(join(dir,'authenticated.zip'),bytes,{flag:'wx',mode:0o600});
  for(const [n,v]of Object.entries({run,jobs,artifact,tree,expected}))save(join(dir,n+'.json'),v);
  execFileSync('python3',[join(ROOT,'.github/ci/extract-artifact.py'),join(dir,'authenticated.zip'),join(dir,'packet')],{timeout:15000,stdio:'inherit'});
- const p=join(dir,'packet');assert(isDeepStrictEqual(readdirSync(p).sort(),NEXT_STATE_MEMBERS));
- const read=n=>JSON.parse(regular(join(p,n)));
- const envelope=read('envelope.json'),old=read('producer.json'),build=read('build-provenance.json'),prepared=read('system-testing.json'),successful=read('successful-build.json'),log=read('build-log.json');
- assert(old.exitCode===0&&old.sourceRestored&&old.controllerRestored&&old.ownedBuildRemoved&&old.ownedRecordsRemoved&&old.source===origin.sha&&old.controller===origin.sha&&old.runId===String(origin.runId)&&old.actualCanonicalBuild.code===0
-  &&old.kind==='ACTUAL_NEXT_BUILD_CACHE_DIAGNOSTIC_NOT_RELEASE'&&old.releaseAuthorized===false,'Original completed command and cleanup required');
+ const p=join(dir,'packet'),read=n=>JSON.parse(regular(join(p,n))),old=read('producer.json'),envelope=read('envelope.json');
+ const recovered=old.kind==='RECOVERED_NEXT_APPLICATION_COMPILER_STATE_NOT_BUILD_OR_RELEASE';
+ assert(isDeepStrictEqual(readdirSync(p).sort(),recovered?NEXT_RECOVERY_MEMBERS:NEXT_STATE_MEMBERS),'Exact purpose-specific state packet required');
+ assert(old.exitCode===0&&old.sourceRestored&&old.controllerRestored&&(recovered?old.ownedNextOutputRemoved:old.ownedBuildRemoved)&&old.ownedRecordsRemoved
+  &&old.source===origin.sha&&old.controller===origin.sha&&old.runId===String(origin.runId)&&old.releaseAuthorized===false,'Original successful state command and cleanup required');
  assert(old.runner.name!==currentRunner.name&&old.runner.bootSha256!==currentRunner.bootSha256&&old.runner.sourcePath===currentRunner.sourcePath,'Fresh VM at the same application path required');
- assert(build.kind==='diagnostic-system-testing-build-not-release'&&build.releaseAuthorized===false&&build.source===origin.sha&&build.controller===origin.sha&&build.runId===Number(origin.runId)&&build.runAttempt===1
-  &&build.preparedSha256===hash(regular(join(p,'system-testing.json')))&&build.successfulObservationSha256===hash(regular(join(p,'successful-build.json'))),'Original canonical build bytes differ');
- assert(isDeepStrictEqual(prepared.identity,successful.identity)&&prepared.identity.sourceRef===origin.sha&&successful.nextBuildId===build.nextBuildId&&successful.preparedRecordSha256===build.preparedSha256
-  &&successful.kind==='successful-system-testing-build'&&successful.activeServiceVerified===false&&successful.manualExecutionVerified===false,'Actual successful build identity differs');
- assert(log.kind==='RAW_CANONICAL_NEXT_BUILD_OUTPUT'&&hash(Buffer.from(log.text))===old.buildLogSha256&&/\bCompiled successfully in /.test(log.text)&&/Finished TypeScript in /.test(log.text)&&!/Skipping validation of types|Finished TypeScript config validation|\berror TS\d+:/.test(log.text),'Actual canonical compiler/build output required');
- assert(Date.parse(old.actualCanonicalBuild.startedAt)>=Date.parse(job.started_at)&&Date.parse(old.actualCanonicalBuild.endedAt)<=Date.parse(job.completed_at),'Original build outside job');
- assert(envelope.controller===origin.sha&&envelope.runId===String(origin.runId)&&envelope.nextBuildId===build.nextBuildId&&envelope.buildRecordId===build.buildRecordId);
+ let buildId,recordId;
+ const phase=recovered?old.actualApplicationCompiler:old.actualCanonicalBuild;
+ assert(phase.code===0&&phase.signal===null&&!phase.timedOut&&Date.parse(phase.startedAt)>=Date.parse(job.started_at)&&Date.parse(phase.endedAt)<=Date.parse(job.completed_at),'Original complete command outside job or failed');
+ if(recovered){
+  assert(envelope.completedCommand==='application-compiler-recovery');
+  const log=read('next-check-log.json'),retained=read('retained-build.json');
+  assert(log.kind==='RAW_ACTUAL_NEXT_APPLICATION_CHECK'&&hash(Buffer.from(log.text))===old.compilerLogSha256&&log.text.includes('ACTUAL_NEXT_APPLICATION_TYPECHECK_COMPLETED')&&!/\berror TS\d+:/.test(log.text),'Actual recovered application compiler required');
+  assert(isDeepStrictEqual(retained,old.retainedBuild)&&retained.kind==='RETAINED_SUCCESSFUL_BUILD_PHASE_FROM_FAILED_COLLECTOR_NOT_GATE'
+   &&retained.originalRunId===40250429043&&retained.originalSource==='b5a75d5ac09b3f2b01841609874a4e83eb405d54'&&retained.originalJobConclusion==='failure'
+   &&retained.canonicalCommandExit===0&&retained.freshBuildExecuted===false&&retained.releaseAuthorized===false,'Retained original build identity is not a new build/PASS');
+  buildId=retained.buildId;recordId=retained.buildRecordId;
+ }else{
+  assert(old.kind==='ACTUAL_NEXT_BUILD_CACHE_DIAGNOSTIC_NOT_RELEASE'&&envelope.completedCommand==='canonical-build');
+  const build=read('build-provenance.json'),prepared=read('system-testing.json'),successful=read('successful-build.json'),log=read('build-log.json');
+  assert(build.kind==='diagnostic-system-testing-build-not-release'&&build.releaseAuthorized===false&&build.source===origin.sha&&build.controller===origin.sha&&build.runId===Number(origin.runId)&&build.runAttempt===1
+   &&build.preparedSha256===hash(regular(join(p,'system-testing.json')))&&build.successfulObservationSha256===hash(regular(join(p,'successful-build.json'))),'Original canonical build bytes differ');
+  assert(isDeepStrictEqual(prepared.identity,successful.identity)&&prepared.identity.sourceRef===origin.sha&&successful.nextBuildId===build.nextBuildId&&successful.preparedRecordSha256===build.preparedSha256&&successful.kind==='successful-system-testing-build','Actual successful build identity differs');
+  assert(log.kind==='RAW_CANONICAL_NEXT_BUILD_OUTPUT'&&hash(Buffer.from(log.text))===old.buildLogSha256&&/\bCompiled successfully in /.test(log.text)&&/Finished TypeScript in /.test(log.text)&&!/Skipping validation of types|Finished TypeScript config validation|\berror TS\d+:/.test(log.text),'Actual canonical compiler/build output required');
+  buildId=build.nextBuildId;recordId=build.buildRecordId;
+  assert(envelope.nextBuildId===buildId&&envelope.buildRecordId===recordId);
+ }
+ assert(envelope.controller===origin.sha&&envelope.runId===String(origin.runId));
  const comparison=origin.sha===e.AIHR_CI_HEAD?null:api('compare/'+origin.sha+'...'+e.AIHR_CI_HEAD+'?per_page=100');
  const changedFiles=assertNextAncestry(origin.sha,e.AIHR_CI_HEAD,comparison);save(join(dir,'comparison.json'),comparison);
  const state=regular(join(p,'state.json'),64*1024**2);validateNextState(state,envelope,origin.sha,c);
  const cache=join(source,'.next/cache');if(!existsSync(cache))mkdirSync(cache,{mode:0o700});owned(cache);assert(!existsSync(join(cache,'.tsbuildinfo')));
  writeFileSync(join(cache,'.tsbuildinfo'),state,{flag:'wx',mode:0o600});
- return {origin,oldBuildId:build.nextBuildId,oldBuildRecordId:build.buildRecordId,originalStateSha256:hash(state),changedFiles,originalRunner:old.runner,mandatoryCanonicalBuild:true,releaseAuthorized:false};
+ return {origin,producerPurpose:envelope.completedCommand,oldBuildId:buildId,oldBuildRecordId:recordId,originalStateSha256:hash(state),changedFiles,originalRunner:old.runner,mandatoryCanonicalBuild:true,releaseAuthorized:false};
 }
 async function main(){
  const e=process.env;assertNextCacheInvocation(e);
@@ -89,6 +102,8 @@ async function main(){
   assert(result.row.code===0&&result.row.signal===null&&!result.row.timedOut,'Actual canonical build failed');
   assert(/\bCompiled successfully in /.test(buildLog)&&/Finished TypeScript in /.test(buildLog)&&!/Skipping validation of types|Finished TypeScript config validation|\berror TS\d+:/.test(buildLog),'Required production compiler did not run successfully');
   report.buildLogSha256=hash(Buffer.from(buildLog));
+  // Retain raw completed compiler state before post-build readers can fail. It is never published as accepted state on failure.
+  writeFileSync(join(out,'raw-application-state.json'),regular(join(source,'.next/cache/.tsbuildinfo'),64*1024**2),{flag:'wx',mode:0o600});
   recordIdentity=owned(recordDir);
   buildResult=JSON.parse(regular(join(output,'build-provenance.json')));
   const prepared=JSON.parse(regular(join(output,'system-testing.json'))),config=JSON.parse(regular(join(source,'.next/required-server-files.json')));
@@ -98,7 +113,7 @@ async function main(){
   if(report.restored)assert(buildResult.nextBuildId!==report.restored.oldBuildId&&buildResult.buildRecordId!==report.restored.oldBuildRecordId,'A fresh build/owned record is mandatory after restore');
   assert(isDeepStrictEqual(context(source),c),'Compiler generated/config inputs changed during canonical build');
   stateBytes=regular(join(source,'.next/cache/.tsbuildinfo'),64*1024**2);const state=JSON.parse(stateBytes);
-  stateEnvelope={kind:'NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN',source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD,runId:e.GITHUB_RUN_ID,attempt:'1',context:c,actualCanonicalBuildExit:0,completedAt:result.row.endedAt,bytes:stateBytes.length,sha256:hash(stateBytes),files:state.fileNames.length,nextBuildId:buildResult.nextBuildId,buildRecordId:buildResult.buildRecordId,releaseAuthorized:false};
+  stateEnvelope={kind:'NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN',source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD,runId:e.GITHUB_RUN_ID,attempt:'1',context:c,completedCommand:'canonical-build',completedCommandExit:0,completedAt:result.row.endedAt,bytes:stateBytes.length,sha256:hash(stateBytes),files:state.fileNames.length,nextBuildId:buildResult.nextBuildId,buildRecordId:buildResult.buildRecordId,releaseAuthorized:false};
   validateNextState(stateBytes,stateEnvelope,e.AIHR_CI_HEAD,c);report.graph={files:state.fileNames.length,bytes:stateBytes.length,sha256:hash(stateBytes)};
   if(report.mode==='warm'){
    fixture=join(source,'lib/aihr-next-cache-control-'+randomUUID());mkdirSync(fixture,{mode:0o700});const rel=fixture.slice(source.length+1);
@@ -137,4 +152,5 @@ async function main(){
  rmSync(join(out,'canonical-build/bytes/build-bundle.tar.gz'));
  return report;
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().then(v=>console.log(JSON.stringify(v))).catch(error=>{console.error(error);process.exitCode=1;});
+export {context as nextBuildContext,unchanged as assertNextBuildSource};
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))(process.env.AIHR_NEXT_BUILD_CACHE_MODE==='recover'?import('./next-state-recovery.mjs').then(m=>m.recoverNextApplicationState(ROOT)):main()).then(v=>console.log(JSON.stringify(v))).catch(error=>{console.error(error);process.exitCode=1;});

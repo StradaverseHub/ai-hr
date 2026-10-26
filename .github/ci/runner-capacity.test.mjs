@@ -77,7 +77,7 @@ test('application-build headroom is scoped to the dedicated diagnostic and canno
  ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
  assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2-1).decision,'clean');
  assert.equal(capacityDecision('bounded-next-build-diagnostic',12*1024**2).decision,'enough');
- for(const mode of ['cold','warm'])assert(validateCapacityScope('bounded-next-build-diagnostic',{...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}));
+ for(const mode of ['cold','warm','recover'])assert(validateCapacityScope('bounded-next-build-diagnostic',{...e,AIHR_NEXT_BUILD_CACHE_MODE:mode}));
  for(const changes of [{GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/unrelated.yml@refs/heads/codex/test-suite-efficiency-review-20261025'},{GITHUB_JOB:'typecheck'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_NEXT_BUILD_CACHE_MODE:'other'},{DATABASE_URL:'postgres://live'},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>validateCapacityScope('bounded-next-build-diagnostic',{...e,...changes}));
  assert.throws(()=>compilerSwapFloorKiB('bounded-next-build-diagnostic',e));
 });
