@@ -7,6 +7,7 @@ export type SpecialistHoldout=Readonly<{id:string;module:AgentModuleCode;data:un
 const b=(rows:unknown[],truncated=false)=>({rows,truncated}),f=(module:AgentModuleCode,id:string,data:unknown,expected:SpecialistFinding[]):SpecialistHoldout=>Object.freeze({id:module+':'+id,module,data,expected:Object.freeze(['scope_current_caller' as const,...expected].sort())});
 const states:SpecialistHoldout[]=[
  f('employees','active',{rows:[{status:'active',employeeCode:'FIC',company:'Fictional',hiredOn:'2020-01-01',terminatedOn:null}],truncated:false},['employment_active']),
+ f('employees','notice-still-active',b([{status:'active_serving_notice',hiredOn:'2020-01-01',terminatedOn:'2099-12-31'}]),['employment_active']),
  f('employees','multiple-and-terminated',b([{status:'active',terminatedOn:null},{status:'terminated',terminatedOn:'2026-01-01'}]),['choose_actual_employment','employment_active','employment_inactive']),
  f('org','administrative',b([{company:'Fictional',reportingLines:[{name:'Permitted manager',lineType:'administrative'}]}]),['reporting_recorded']),
  f('org','only-functional',b([{reportingLines:[{name:'Permitted functional manager',lineType:'functional'}]}]),['reporting_recorded','administrative_manager_missing']),
@@ -35,7 +36,7 @@ const states:SpecialistHoldout[]=[
  f('rewards','posted',b([{cycle:'Fictional cycle',status:'posted'}]),['reward_posted_not_processed_or_paid']),
  f('lifecycle','remaining',{status:'in_progress',progress:{done:1,total:2,percent:50},steps:[{label:'Human equipment acknowledgement',applicable:true,done:false}]},['lifecycle_steps_remaining']),
  f('lifecycle','not-applicable-not-complete',{status:'in_progress',progress:{done:1,total:2,percent:50},steps:[{label:'Applicable native step',applicable:true,done:true},{label:'Not applicable',applicable:false,done:false}]},['lifecycle_progress_unknown']),
- f('lifecycle','complete',{status:'completed',progress:{done:2,total:2,percent:100},steps:[{label:'Native verified step',applicable:true,done:true}]},['lifecycle_progress_complete']),
+ f('lifecycle','complete',{status:'completed',progress:{done:2,total:2,percent:100},steps:[{label:'Native verified step',applicable:true,done:true},{label:'Second native verified step',applicable:true,done:true}]},['lifecycle_progress_complete']),
  f('lifecycle','unknown-progress',{status:'in_progress',progress:{done:null,total:null,percent:null},steps:[]},['lifecycle_progress_unknown']),
  f('toil','banked',b([{active:2,taken:0,expired:0,convertedToPay:0,leaveUnit:'day',soonestExpiry:'2026-02-01',rows:b([{workedDate:'2026-01-01',expiresOn:'2026-02-01',daysCredited:2,daysTaken:0,remaining:2,status:'active'}])}]),['credit_recorded_not_new_eligibility']),
  f('toil','expired-converted',b([{active:0,taken:0,expired:2,convertedToPay:1,leaveUnit:'day',rows:b([{status:'expired'}])}]),['credit_expired_not_available','credit_pay_conversion_not_payslip']),
