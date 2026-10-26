@@ -10646,6 +10646,8 @@ export const aiModelRun=pgTable('ai_model_run',{
  id:id(),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
  featureId:text('feature_id').notNull(),operation:text('operation').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),
  state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
+ reportedInputTokens:bigint('reported_input_tokens',{mode:'number'}),reportedOutputTokens:bigint('reported_output_tokens',{mode:'number'}),reportedCachedInputTokens:bigint('reported_cached_input_tokens',{mode:'number'}),
+ openrouterAccountCostCredits:numeric('openrouter_account_cost_credits'),observedRoundTripMs:doublePrecision('observed_round_trip_ms'),providerObservationStatus:text('provider_observation_status').$type<'missing'|'reported'|'conflicting'|'invalid'>(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
 },t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
 

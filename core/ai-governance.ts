@@ -1,6 +1,7 @@
+import {createAiRunAccounting} from '../lib/ai/run-accounting';
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
-import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } from '../lib/ai/types';
+import { AiGatewayError,AiAllowanceError,type AiUsage,type AiRunObservation,type ResolvedAiConfig } from '../lib/ai/types';
 import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
@@ -43,7 +44,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
  assertAiProviderSnapshotFeature(snapshot,feature);
  const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- const resolved=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
+ const resolved=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void,observe?:(observation:AiRunObservation)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
   const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});
   if(!['draft','conversation','image'].includes(capturedRequest.operation)||!Number.isSafeInteger(capturedRequest.reservedTokens)||capturedRequest.reservedTokens<0||capturedRequest.reservedTokens>1000000000||
@@ -65,12 +66,15 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    throw new AiGatewayError('The AI request could not be admitted.');
   }
   let actual:number|null=null;
+  const accounting=createAiRunAccounting(cfg.provider);
   const record=(usage:AiUsage)=>{const values=[usage.inputTokens,usage.outputTokens,usage.cachedInputTokens];if(values.every(n=>Number.isSafeInteger(n)&&n>=0))actual=values.reduce((a,b)=>a+b,0);};
   let succeeded=false;
-  try{const result=await call(record);succeeded=true;return result;}
+  try{const result=await call(record,accounting.observe);succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
-   try { await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle(${admission.run_id}::uuid,${succeeded},${actual}::bigint)`)); }
+   try { const observed=accounting.snapshot(actual);await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
+    ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
+    ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`)); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
   }
  }})});

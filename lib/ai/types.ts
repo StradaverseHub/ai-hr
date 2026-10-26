@@ -23,6 +23,8 @@ export type GenerateArgs = {
   timeoutMs?: number;
   signal?: AbortSignal;
   onUsage?: (usage: AiUsage) => void;
+  /** Trusted adapter receipt; the gateway overwrites caller callbacks before dispatch. */
+  onObservation?: (observation: AiRunObservation) => void;
 };
 export type AiImageMime='image/png'|'image/jpeg'|'image/gif'|'image/webp';
 export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number;onUsage?:(usage:AiUsage)=>void};
@@ -159,7 +161,13 @@ export type AiUsage = {
   cachedInputTokens: number;
 };
 
+/** One normalized terminal nonstreaming receipt. No raw provider body, key or estimated pricing. */
+export type AiRunObservation=Readonly<{version:1;provider:'openrouter';accountCostUnit:'openrouter_account_credits';
+ usage:Readonly<AiUsage>|null;accountCostCredits:number|null;elapsedMs:number|null}>;
+
 export type ConverseArgs = {
+  /** Internal adapter-only callback, attached after strict gateway input capture; never serialized. */
+  onObservation?: (observation:AiRunObservation)=>void;
   /**
    * Ordered system blocks. An ARRAY, not a string, because Anthropic can only carry a prompt-cache
    * breakpoint on a block (`system?: string | Array<TextBlockParam>`). Every element must be STABLE per

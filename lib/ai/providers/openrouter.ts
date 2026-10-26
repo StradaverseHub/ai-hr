@@ -68,6 +68,7 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
         const result = await transport(configuration(cfg), { system: [args.system], turns: [{ role: 'user', content: args.prompt }],
           tools: [], maxTokens: args.maxTokens ?? 2048, ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }) }, args.signal);
         if (result.completion.usageReported) args.onUsage?.(result.completion.usage);
+        args.onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:result.accounting.usage,accountCostCredits:result.accounting.accountCostCredits,elapsedMs:result.elapsedMs}));
         if (result.completion.stop !== 'end' || result.completion.toolCalls.length || !result.completion.text.trim()) throw unavailable();
         return result.completion.text.trim();
       } catch { throw unavailable(); }
@@ -75,7 +76,10 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
     async converse(cfg, args) {
       try {
         if (!cfg.governance) throw unavailable();
-        return (await transport(configuration(cfg), args)).completion;
+        const {onObservation,...request}=args;
+        const result=await transport(configuration(cfg),request);
+        onObservation?.(Object.freeze({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:result.accounting.usage,accountCostCredits:result.accounting.accountCostCredits,elapsedMs:result.elapsedMs}));
+        return result.completion;
       } catch { throw unavailable(); }
     },
     validate: cfg => metadata(fetcher, cfg),

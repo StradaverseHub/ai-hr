@@ -68,7 +68,7 @@ function adapterFor(provider: AiProvider): AiAdapter {
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   cfg=captureAiConfig(cfg);
   if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
-  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},record=>generateDraftTransport(cfg,{...args,onUsage:record}));
+  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},(record,observe)=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
 }
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
@@ -143,7 +143,7 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async(record,observe)=>{const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:observe}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
 }
 
 /**

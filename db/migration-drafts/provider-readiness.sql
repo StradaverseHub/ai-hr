@@ -159,3 +159,53 @@ REVOKE ALL ON FUNCTION app.ai_provider_candidate_view_v1(),app.ai_provider_evalu
 GRANT EXECUTE ON FUNCTION app.ai_provider_candidate_view_v1(),app.ai_provider_evaluation_candidate_v1(text),
  app.ai_provider_candidate_save_v1(text,text,text,jsonb),app.ai_provider_evaluation_record_v1(uuid,uuid,uuid,text,text,jsonb),
  app.ai_provider_evaluation_consume_v1(uuid,text,text),app.ai_provider_candidate_promote_v1(uuid),app.ai_provider_candidate_remove_v1() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Additive terminal accounting only. Historical rows stay NULL; no estimated price/backfill.
+ALTER TABLE public.ai_model_run
+ ADD COLUMN reported_input_tokens bigint,
+ ADD COLUMN reported_output_tokens bigint,
+ ADD COLUMN reported_cached_input_tokens bigint,
+ ADD COLUMN openrouter_account_cost_credits numeric,
+ ADD COLUMN observed_round_trip_ms double precision,
+ ADD COLUMN provider_observation_status text;
+--> statement-breakpoint
+ALTER TABLE public.ai_model_run ADD CONSTRAINT ai_model_run_observation_fields CHECK(coalesce((
+ (provider_observation_status IS NULL AND num_nonnulls(reported_input_tokens,reported_output_tokens,reported_cached_input_tokens,openrouter_account_cost_credits,observed_round_trip_ms)=0)
+ OR (provider_observation_status IN ('missing','conflicting','invalid') AND num_nonnulls(reported_input_tokens,reported_output_tokens,reported_cached_input_tokens,openrouter_account_cost_credits,observed_round_trip_ms)=0)
+ OR (provider_observation_status='reported' AND provider='openrouter'
+  AND num_nonnulls(reported_input_tokens,reported_output_tokens,reported_cached_input_tokens) IN (0,3)
+  AND (reported_input_tokens IS NULL OR (reported_input_tokens BETWEEN 0 AND 1000000000 AND reported_output_tokens BETWEEN 0 AND 1000000000 AND reported_cached_input_tokens BETWEEN 0 AND 1000000000 AND reported_input_tokens+reported_output_tokens+reported_cached_input_tokens<=1000000000 AND actual_tokens IS NOT DISTINCT FROM reported_input_tokens+reported_output_tokens+reported_cached_input_tokens))
+  AND (openrouter_account_cost_credits IS NULL OR (openrouter_account_cost_credits>=0 AND openrouter_account_cost_credits<'Infinity'::numeric))
+  AND (observed_round_trip_ms IS NULL OR (observed_round_trip_ms>=0 AND observed_round_trip_ms<'Infinity'::double precision)))
+),false));
+--> statement-breakpoint
+-- Same pending-run/current-tenant/current-user owner and lock order as historical app.ai_settle.
+-- The trusted server adapter owns response provenance; this SQL never certifies provider capability.
+CREATE FUNCTION app.ai_settle_observed(wanted_run uuid,succeeded boolean,tokens bigint,observation_status text,
+ input_count bigint,output_count bigint,cached_count bigint,account_credits numeric,round_trip_ms double precision)
+ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual_provider text;
+BEGIN
+ IF observation_status IS NULL OR observation_status NOT IN ('missing','reported','conflicting','invalid')
+  OR (observation_status<>'reported' AND num_nonnulls(input_count,output_count,cached_count,account_credits,round_trip_ms)<>0)
+  OR num_nonnulls(input_count,output_count,cached_count) NOT IN (0,3)
+  OR (input_count IS NOT NULL AND (input_count NOT BETWEEN 0 AND 1000000000 OR output_count NOT BETWEEN 0 AND 1000000000 OR cached_count NOT BETWEEN 0 AND 1000000000 OR input_count+output_count+cached_count>1000000000 OR tokens IS DISTINCT FROM input_count+output_count+cached_count))
+  OR (account_credits IS NOT NULL AND NOT(account_credits>=0 AND account_credits<'Infinity'::numeric))
+  OR (round_trip_ms IS NOT NULL AND NOT(round_trip_ms>=0 AND round_trip_ms<'Infinity'::double precision))
+ THEN RAISE EXCEPTION 'Invalid AI accounting observation'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(app.current_tenant_id()::text));
+ SELECT r.provider INTO actual_provider FROM public.ai_model_run r
+ WHERE r.id=wanted_run AND r.tenant_id=app.current_tenant_id() AND r.user_id IS NOT DISTINCT FROM app.current_user_id() AND r.state='pending'
+ FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'AI request not found'; END IF;
+ IF observation_status='reported' AND actual_provider<>'openrouter' THEN RAISE EXCEPTION 'Invalid AI accounting observation'; END IF;
+ PERFORM app.ai_settle(wanted_run,succeeded,tokens);
+ UPDATE public.ai_model_run SET reported_input_tokens=input_count,reported_output_tokens=output_count,
+  reported_cached_input_tokens=cached_count,openrouter_account_cost_credits=account_credits,
+  observed_round_trip_ms=round_trip_ms,provider_observation_status=observation_status
+ WHERE id=wanted_run AND tenant_id=app.current_tenant_id() AND user_id IS NOT DISTINCT FROM app.current_user_id();
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_settle_observed(uuid,boolean,bigint,text,bigint,bigint,bigint,numeric,double precision) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.ai_settle_observed(uuid,boolean,bigint,text,bigint,bigint,bigint,numeric,double precision) TO ai_hr_app;
