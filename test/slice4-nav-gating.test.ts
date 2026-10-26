@@ -47,7 +47,7 @@ const sessionWith = (modules: Record<string, boolean>) => ({
 });
 
 describe('slice 4 — which modules the rail may advertise', () => {
-  it('every code it gates is a real, SELLABLE catalog module', () => {
+  it('every navigation owner is a real catalog module', () => {
     // A typo here would silently hide nothing (an unknown code is simply never matched), so the list is
     // checked against the catalog rather than trusted.
     for (const code of MODULE_CODES_WITH_NAV) {
@@ -95,11 +95,12 @@ describe('slice 4 — which modules the rail may advertise', () => {
     // leave is core: a tenant cannot not-have it. Even an explicit disabled row must not remove it,
     // because a rail without My Absence is a broken product, not a downgraded one.
     const codes = visibleModuleCodes(
-      sessionWith({ attendance: false, claims: false, leave: false, payroll: false, performance: false }),
+      sessionWith({ employees: false, attendance: false, claims: false, leave: false, payroll: false, performance: false }),
     );
     expect(codes, 'fixture resolves a real snapshot').not.toBeNull();
     expect(codes).toContain('leave');
-    expect(codes).toEqual(['leave']);
+    expect(codes).toContain('employees');
+    expect(codes).toEqual(['employees','leave']);
   });
 
   it('FAILS OPEN: a session with no snapshot expresses no opinion, and null is not []', () => {
@@ -110,7 +111,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
     expect(visibleModuleCodes(undefined)).toBeNull();
     // …and the empty set remains expressible, so the two are genuinely different values.
     const noneOn = visibleModuleCodes(
-      sessionWith({ attendance: false, claims: false, leave: false, payroll: false, performance: false }),
+      sessionWith({ employees: false, attendance: false, claims: false, leave: false, payroll: false, performance: false }),
     );
     expect(Array.isArray(noneOn), 'a resolved snapshot yields an array, never null').toBe(true);
   });

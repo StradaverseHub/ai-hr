@@ -6,6 +6,7 @@ import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
+import {visibleModuleCodes} from '../lib/nav-entitlements';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,signerId:string,signerPersonId:string;
@@ -51,8 +52,9 @@ it('does not let an ordinary approver enumerate a different owner’s signatures
 });
 
 it('resolves real navigation permissions only in the selected company and immediately removes revoked access',async()=>{
+ expect(await letterNavigation(ctx,[b.companyId])).toEqual(['/letters/templates','/letters/fields','/letters/generate','/letters/approval','/letters/register','/letters/reports','/letters/settings']);
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional scoped configuration user',primaryEmail:'nav-settings@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other company'}).returning();
- await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(await letterNavigation(editor,[b.companyId])).toEqual(['/letters/settings']);expect(await letterNavigation(editor,[other.id])).toEqual([]);await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:false});expect(await letterNavigation(editor,[b.companyId])).toEqual([]);
+ await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(visibleModuleCodes(editor)).toContain('employees');expect(await letterNavigation(editor,[b.companyId])).toEqual(['/letters/settings']);expect(await letterNavigation(editor,[other.id])).toEqual([]);await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:false});expect(await letterNavigation(editor,[b.companyId])).toEqual([]);
 });
 
 it('refuses activation of a reference format whose company code is unavailable without allocating a counter',async()=>{

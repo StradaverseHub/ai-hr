@@ -32,6 +32,8 @@ import { isModuleEnabled, type EntitledContext } from '@/core/entitlements';
  * trap ADR-0080 rung 2 records against listPacks.
  */
 export const MODULE_CODES_WITH_NAV = [
+  // Letters and own-letter ESS rows use the existing core Employees entitlement.
+  'employees',
   // Workflow notification configuration is owned by the notifications entitlement.
   'notifications',
   'attendance',
