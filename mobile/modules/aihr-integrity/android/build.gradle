@@ -12,9 +12,6 @@ android {
     versionCode 1
     versionName "0.1.0"
   }
-  lintOptions {
-    abortOnError false
-  }
 }
 
 // Pinned to the official Play Integrity setup documentation reviewed 2026-10-27.
