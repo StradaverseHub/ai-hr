@@ -10,6 +10,7 @@ import {expectedMigrationLedger,expectedBaselineMigrationLedger,validateMigratio
 import {stagingEnvironmentProbeCommand} from './staging-environment.mjs';
 import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
+import {probeStagingProfile} from './staging-preflight.mjs';
 export {STAGING,bindStaging};
 export function followStagingDeployment(official,ssh,observation={}){
  return official.followDeploy({...observation,run:offset=>ssh(official.buildFollowCommand(offset),{encoding:null,stdio:['ignore','pipe','inherit']})});
@@ -31,14 +32,15 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
  const initial=current(),baseline=baselineRules.readyProductionBaseline(initial);
  cleanHead(candidatePath);cleanHead(controllerRoot);
+ const profilePreflight=await probeStagingProfile({candidatePath,ssh});
  const expectedBaseline=expectedBaselineMigrationLedger(candidatePath,baseline);
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const evidence=await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
- save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,execute,packetTransport});
+ save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==evidence.controller)throw Error('Verified source changed');};
- const revalidate=async({announced=false}={})=>{await revalidateCi(evidence);validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await revalidateCi(evidence);validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
