@@ -39,7 +39,7 @@ CREATE TABLE letter_template_field (
 --> statement-breakpoint
 CREATE TABLE letter_generation_batch (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),template_version_id uuid NOT NULL REFERENCES letter_template_version(id),policy_version_id uuid NOT NULL REFERENCES letter_policy_version(id),
- created_by uuid NOT NULL REFERENCES app_user(id),operation_key uuid NOT NULL,source_event_id uuid REFERENCES domain_event(id),created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_batch_operation_uq UNIQUE(tenant_id,created_by,operation_key),CONSTRAINT letter_batch_source_event_uq UNIQUE(tenant_id,source_event_id,template_version_id)
+ selection jsonb NOT NULL,input_hash text NOT NULL CHECK(input_hash ~ '^[0-9a-f]{64}$'),created_by uuid NOT NULL REFERENCES app_user(id),operation_key uuid NOT NULL,source_event_id uuid REFERENCES domain_event(id),created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_batch_operation_uq UNIQUE(tenant_id,created_by,operation_key),CONSTRAINT letter_batch_source_event_uq UNIQUE(tenant_id,source_event_id,template_version_id)
 );
 --> statement-breakpoint
 CREATE TABLE letter_record (
@@ -337,7 +337,7 @@ BEGIN
   IF NOT app.letter_permission(OLD.company_id,'generate') OR OLD.state NOT IN ('draft','returned','rejected') OR NEW.state<>'draft' OR NEW.stage_index<>0 OR NOT EXISTS(SELECT 1 FROM public.letter_revision r WHERE r.id=NEW.current_revision_id AND r.letter_id=OLD.id AND r.tenant_id=OLD.tenant_id) THEN RAISE EXCEPTION 'Refresh requires a new editable revision and restarted approval';END IF;
   NEW.submitted_at:=NULL;NEW.approved_at:=NULL;
  ELSIF OLD.state IN ('draft','returned','rejected') AND NEW.state IN ('submitted','withdrawn') THEN
-  IF NOT app.letter_permission(OLD.company_id,'generate') OR OLD.current_revision_id IS NULL OR NEW.stage_index<>0 THEN RAISE EXCEPTION 'Letter submission unavailable';END IF;
+  IF NOT app.letter_permission(OLD.company_id,'generate') OR NEW.state='submitted' AND OLD.current_revision_id IS NULL OR NEW.stage_index<>0 THEN RAISE EXCEPTION 'Letter submission unavailable';END IF;
   IF NEW.state='submitted' THEN IF OLD.state<>'draft' THEN RAISE EXCEPTION 'Returned or rejected letters require a new revision before resubmission';END IF;NEW.submitted_at:=now();END IF;
  ELSIF OLD.state='submitted' AND (NEW.state IN ('submitted','approved','returned','rejected','withdrawn')) THEN
   IF NEW.state='withdrawn' THEN

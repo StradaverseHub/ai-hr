@@ -13,7 +13,7 @@ async function draft(){const definition=await saveLetterField(author,{companyId:
 function policy():LetterPolicy{return {version:1,stages:[{key:'signatory',label:'Authorised Signatory',userIds:[approver.userId!],allowDelegation:false}],signatoryUserId:approver.userId!,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false};}
 beforeEach(async()=>{
  await resetDb();b=await seedBase();author=await entitledCtx(b);
- const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional letter approver'}).returning();
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional letter approver',primaryEmail:'letter-approver@fixture.test'}).returning();
  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');approver={...author,userId,personId:person.id};
 });afterAll(closeAll);
 describe('versioned Letters configuration and template owner',()=>{

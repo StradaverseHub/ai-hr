@@ -10937,6 +10937,7 @@ export const letterTemplateField=pgTable('letter_template_field',{
 },t=>[primaryKey({columns:[t.templateVersionId,t.fieldVersionId]})]);
 export const letterGenerationBatch=pgTable('letter_generation_batch',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),policyVersionId:uuid('policy_version_id').notNull().references(()=>letterPolicyVersion.id),
+ selection:jsonb('selection').notNull().$type<{employmentIds:string[];customValues:Record<string,Record<string,import('../lib/letter-model').LetterValue|null>>;sourceAsOfDate:string}>(),inputHash:text('input_hash').notNull(),
  createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),createdAt:createdAt(),
 },t=>[uniqueIndex('letter_batch_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('letter_batch_source_event_uq').on(t.tenantId,t.sourceEventId,t.templateVersionId)]);
 export const letterRecord=pgTable('letter_record',{
