@@ -4,7 +4,7 @@ import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } fr
 import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
-import { assertAiProviderSnapshot, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
+import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission } from '../lib/ai/governance';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -40,6 +40,7 @@ const issuedConfigurations = new WeakMap<object, { ctx: SessionContext; snapshot
 function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId,check?:AiAdmissionCheck):ResolvedAiConfig{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  assertAiProviderSnapshot(snapshot,ctx);
+ assertAiProviderSnapshotFeature(snapshot,feature);
  const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
  const resolved=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
@@ -54,6 +55,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
     throw new AiGatewayError('The current AI source access could not be confirmed.');
    }
    assertAiProviderSnapshot(snapshot,ctx);
+   assertAiProviderSnapshotFeature(snapshot,feature);
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
   });

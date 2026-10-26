@@ -116,3 +116,12 @@ export function withAssistantAdmissionReadsTx<T>(ctx: SessionContext, tx: Tx,
   consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
   return withBoundAssistantReadsTx(ctx, tx, 'off', consume);
 }
+
+/** A trusted governed read job may reserve its bounded promotion permit in its own write-mode
+ * transaction. Its consumers still receive only current-principal canonical readers, whose lifetime
+ * ends with this callback. This is neither provider admission nor a model effect capability.
+ */
+export function withAssistantJobReadsTx<T>(ctx: SessionContext, tx: Tx,
+  consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
+  return withBoundAssistantReadsTx(ctx, tx, 'off', consume);
+}
