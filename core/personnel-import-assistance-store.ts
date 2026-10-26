@@ -11,9 +11,10 @@ import {assertWorkforceCompanyTx} from './workforce-access';
 import {capturePersonnelImportHeaderProposal,type PersonnelImportHeaderProposal} from '../lib/personnel-import-assistance';
 import {PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST} from '../lib/personnel-import-assistance.server';
 
-export type PersonnelImportAssistanceBinding=Readonly<{attemptId:string;attemptVersion:number;companyId:string;sourceRevision:string;registryDigest:string;inputDigest:string}>;
-type Prepare=Readonly<{companyId:string;operationNonce:string;sourceRevision:string;registryDigest:string;headersDigest:string;inputDigest:string;headerIndexes:readonly number[];mode:'deterministic'|'ai';consent:Readonly<{headersReviewed:true;sendHeadingsOnly:boolean}>}>;
-type Row={operation_nonce:string;id:string;company_id:string;version:number;source_revision:string;registry_digest:string;headers_digest:string;input_digest:string;header_indexes:number[];mode:'deterministic'|'ai';state:'ready'|'dispatched'|'completed'|'failed';ai_run_id:string|null;receipt:string|null;fresh:boolean};
+import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding} from '../lib/personnel-import-evaluation';
+export type PersonnelImportAssistanceBinding=Readonly<{attemptId:string;attemptVersion:number;companyId:string;sourceRevision:string;registryDigest:string;inputDigest:string;evaluationBinding?:EmployeeImportEvaluationBinding}>;
+type Prepare=Readonly<{companyId:string;operationNonce:string;sourceRevision:string;registryDigest:string;headersDigest:string;inputDigest:string;headerIndexes:readonly number[];mode:'deterministic'|'ai';evaluationBinding?:EmployeeImportEvaluationBinding;consent:Readonly<{headersReviewed:true;sendHeadingsOnly:boolean}>}>;
+type Row={evaluation_id:string|null;evaluation_version:number|null;operation_nonce:string;id:string;company_id:string;version:number;source_revision:string;registry_digest:string;headers_digest:string;input_digest:string;header_indexes:number[];mode:'deterministic'|'ai';state:'ready'|'dispatched'|'completed'|'failed';ai_run_id:string|null;receipt:string|null;fresh:boolean};
 const capture=(ctx:SessionContext)=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const fail=():never=>{throw new AiGatewayError('Let’s review those headings again before trying this import.');};
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(v);
@@ -24,13 +25,13 @@ async function guard(tx:Tx,ctx:SessionContext,companyId:string){
  await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
 }
 function binding(value:PersonnelImportAssistanceBinding){
- const p={...value};if(!uuid(p.attemptId)||!uuid(p.companyId)||p.attemptVersion!==1||!digest(p.sourceRevision)||!digest(p.registryDigest)||!digest(p.inputDigest)||p.registryDigest!==PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST)return fail();return Object.freeze(p);
+ const p={...value,...(value.evaluationBinding?{evaluationBinding:EmployeeImportEvaluationBindingSchema.parse(value.evaluationBinding)}:{})};if(!uuid(p.attemptId)||!uuid(p.companyId)||p.attemptVersion!==1||!digest(p.sourceRevision)||!digest(p.registryDigest)||!digest(p.inputDigest)||p.registryDigest!==PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST)return fail();return Object.freeze(p);
 }
 async function rowTx(tx:Tx,ctx:SessionContext,p:PersonnelImportAssistanceBinding):Promise<Row>{
  await guard(tx,ctx,p.companyId);
- const [row]=await tx.execute<Row>(sql`select id,operation_nonce,company_id,version,source_revision,registry_digest,headers_digest,input_digest,header_indexes,mode,state,ai_run_id,receipt,(expires_at>now()) as fresh
+ const [row]=await tx.execute<Row>(sql`select id,evaluation_id,evaluation_version,operation_nonce,company_id,version,source_revision,registry_digest,headers_digest,input_digest,header_indexes,mode,state,ai_run_id,receipt,(expires_at>now()) as fresh
   from public.personnel_import_assistance_attempt where id=${p.attemptId}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid for update nowait`);
- if(!row?.fresh||row.company_id!==p.companyId||row.version!==p.attemptVersion||row.source_revision!==p.sourceRevision||row.registry_digest!==p.registryDigest||row.input_digest!==p.inputDigest)return fail();return row;
+ if(!row?.fresh||row.company_id!==p.companyId||row.version!==p.attemptVersion||row.source_revision!==p.sourceRevision||row.registry_digest!==p.registryDigest||row.input_digest!==p.inputDigest||row.evaluation_id!==(p.evaluationBinding?.attemptId??null)||row.evaluation_version!==(p.evaluationBinding?.attemptVersion??null))return fail();return row;
 }
 function proposal(row:Row,ctx:SessionContext):PersonnelImportHeaderProposal{
  if(!row.receipt||!isSecretStorable())return fail();try{
@@ -39,15 +40,15 @@ function proposal(row:Row,ctx:SessionContext):PersonnelImportHeaderProposal{
  }catch{return fail();}
 }
 export async function preparePersonnelImportAssistanceTx(tx:Tx,ctx:SessionContext,input:Prepare){
- ctx=capture(ctx);const p=structuredClone(input);if(!uuid(p.operationNonce)||!digest(p.sourceRevision)||!digest(p.registryDigest)||!digest(p.headersDigest)||!digest(p.inputDigest)||p.registryDigest!==PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST||p.sourceRevision!==createHash('sha256').update(JSON.stringify([p.headersDigest,p.registryDigest])).digest('hex')||!['deterministic','ai'].includes(p.mode)||
+ ctx=capture(ctx);const copied=structuredClone(input),p={...copied,...(copied.evaluationBinding?{evaluationBinding:EmployeeImportEvaluationBindingSchema.parse(copied.evaluationBinding)}:{})};if(!uuid(p.operationNonce)||!digest(p.sourceRevision)||!digest(p.registryDigest)||!digest(p.headersDigest)||!digest(p.inputDigest)||p.registryDigest!==PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST||p.sourceRevision!==createHash('sha256').update(JSON.stringify([p.headersDigest,p.registryDigest])).digest('hex')||!['deterministic','ai'].includes(p.mode)||
   p.consent?.headersReviewed!==true||(p.mode==='ai'&&p.consent?.sendHeadingsOnly!==true)||!Array.isArray(p.headerIndexes)||p.headerIndexes.length<1||p.headerIndexes.length>128||(p.mode==='ai'&&p.headerIndexes.length>32)||
   p.headerIndexes.some(n=>!Number.isSafeInteger(n)||n<0||n>16383)||new Set(p.headerIndexes).size!==p.headerIndexes.length||!isSecretStorable())return fail();
  await guard(tx,ctx,p.companyId);
- await tx.execute(sql`insert into public.personnel_import_assistance_attempt(id,tenant_id,user_id,company_id,operation_nonce,source_revision,registry_digest,headers_digest,input_digest,header_indexes,mode)
-  values(${randomUUID()}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${p.companyId}::uuid,${p.operationNonce}::uuid,${p.sourceRevision},${p.registryDigest},${p.headersDigest},${p.inputDigest},${JSON.stringify(p.headerIndexes)}::jsonb,${p.mode})
+ await tx.execute(sql`insert into public.personnel_import_assistance_attempt(id,tenant_id,user_id,company_id,operation_nonce,source_revision,registry_digest,headers_digest,input_digest,header_indexes,mode,evaluation_id,evaluation_version)
+  values(${randomUUID()}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${p.companyId}::uuid,${p.operationNonce}::uuid,${p.sourceRevision},${p.registryDigest},${p.headersDigest},${p.inputDigest},${JSON.stringify(p.headerIndexes)}::jsonb,${p.mode},${p.evaluationBinding?.attemptId??null}::uuid,${p.evaluationBinding?.attemptVersion??null})
   on conflict(tenant_id,user_id,operation_nonce) do nothing`);
  const [found]=await tx.execute<{id:string}>(sql`select id from public.personnel_import_assistance_attempt where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and operation_nonce=${p.operationNonce}::uuid`);
- if(!found)return fail();const b={attemptId:found.id,attemptVersion:1,companyId:p.companyId,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,inputDigest:p.inputDigest};
+ if(!found)return fail();const b={attemptId:found.id,attemptVersion:1,companyId:p.companyId,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,inputDigest:p.inputDigest,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{})};
  const row=await rowTx(tx,ctx,b);if(row.mode!==p.mode||row.headers_digest!==p.headersDigest||JSON.stringify(row.header_indexes)!==JSON.stringify(p.headerIndexes)||!['ready','completed'].includes(row.state))return fail();
  return Object.freeze({attemptId:row.id,attemptVersion:row.version,sourceRevision:row.source_revision,state:row.state as 'ready'|'completed',...(row.state==='completed'?{proposal:proposal(row,ctx)}:{})});
 }
@@ -79,7 +80,7 @@ export async function readPersonnelImportAssistanceTx(tx:Tx,ctx:SessionContext,i
  ctx=capture(ctx);const p=binding(input),e=structuredClone(expected),row=await rowTx(tx,ctx,p);
  if(row.operation_nonce!==e.operationNonce||row.mode!==e.mode||row.headers_digest!==e.headersDigest||
   JSON.stringify(row.header_indexes)!==JSON.stringify(e.headerIndexes)||e.companyId!==p.companyId||e.sourceRevision!==p.sourceRevision||
-  e.registryDigest!==p.registryDigest||e.inputDigest!==p.inputDigest||e.consent?.headersReviewed!==true||
+  e.registryDigest!==p.registryDigest||e.inputDigest!==p.inputDigest||(e.evaluationBinding?.attemptId??null)!==(p.evaluationBinding?.attemptId??null)||(e.evaluationBinding?.attemptVersion??null)!==(p.evaluationBinding?.attemptVersion??null)||e.consent?.headersReviewed!==true||
   (row.mode==='ai'&&e.consent.sendHeadingsOnly!==true))return fail();
  return Object.freeze({attemptId:row.id,attemptVersion:row.version,sourceRevision:row.source_revision,state:row.state,...(row.state==='completed'?{proposal:proposal(row,ctx)}:{})});
 }

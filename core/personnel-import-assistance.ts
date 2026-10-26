@@ -6,6 +6,7 @@ import {draftInputDigest} from '../lib/ai/draft-input';
 import {PERSONNEL_IMPORT_ASSISTANCE_REGISTRY,PersonnelImportHeaderAssistanceRequestSchema,PersonnelImportHeaderAssistanceCommandSchema,PersonnelImportHeaderMappingSchema,capturePersonnelImportHeaders,capturePersonnelImportHeaderProposal,type PersonnelImportHeaderProposal,type PersonnelImportHeaderAssistanceResult,type PersonnelImportHeaderPreparationResult} from '../lib/personnel-import-assistance';
 import {personnelImportHeaderDigests} from '../lib/personnel-import-assistance.server';
 import {personnelImportHeaderCandidates} from '../lib/personnel-import-contract';
+import {assertEmployeeImportEvaluationActiveTx,registerEmployeeImportEvaluationRunTx} from './personnel-import-evaluation';
 import {assertAiPrincipalTx} from './ai-principal';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {resolveActiveAiConfig} from './ai-config';
@@ -24,14 +25,14 @@ function packet(value:unknown){
  if(p.sourceRevision!==digests.sourceRevision||p.registryDigest!==digests.registryDigest)throw unavailable();
  const prompt=JSON.stringify({headings:headers,fields:PERSONNEL_IMPORT_ASSISTANCE_REGISTRY});
  const inputDigest=draftInputDigest({system:SYSTEM,prompt,maxTokens:MAX_TOKENS});
- const preparation=Object.freeze({companyId:p.companyId,operationNonce:p.operationNonce,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,headersDigest:digests.headersDigest,inputDigest,headerIndexes:headers.map(h=>h.columnIndex),mode:p.mode,consent:p.consent});
+ const preparation=Object.freeze({companyId:p.companyId,operationNonce:p.operationNonce,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,headersDigest:digests.headersDigest,inputDigest,headerIndexes:headers.map(h=>h.columnIndex),mode:p.mode,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),consent:p.consent});
  return{p,headers,prompt,inputDigest,preparation};
 }
 const context=(supplied:SessionContext)=>({...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))});
 /** Explicit NEW preparation only. It cannot resolve a provider, reserve tokens or dispatch. */
 export async function preparePersonnelImportHeaders(supplied:SessionContext,value:unknown):Promise<PersonnelImportHeaderPreparationResult>{
- const ctx=context(supplied);try{const {p,preparation}=packet(value);const prepared=await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);return preparePersonnelImportAssistanceTx(tx,ctx,preparation);});
-  return Object.freeze({kind:'prepared',attemptId:prepared.attemptId,attemptVersion:prepared.attemptVersion,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest});
+ const ctx=context(supplied);try{const {p,preparation}=packet(value);const prepared=await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);if(p.evaluationBinding)await assertEmployeeImportEvaluationActiveTx(tx,ctx,p.evaluationBinding,p.companyId,p.mode==='ai');return preparePersonnelImportAssistanceTx(tx,ctx,preparation);});
+  return Object.freeze({kind:'prepared',attemptId:prepared.attemptId,attemptVersion:prepared.attemptVersion,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),sourceRevision:p.sourceRevision,registryDigest:p.registryDigest});
  }catch{return Object.freeze({kind:'unavailable',message:PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE});}
 }
 /** Server-session-only execute. An EXISTING issued identity is mandatory; never inserts or retries. */
@@ -43,13 +44,13 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
  const ctx=context(supplied);
  try{
   const command=PersonnelImportHeaderAssistanceCommandSchema.parse(value),{p,headers,prompt,inputDigest,preparation}=packet(command.request);
-  binding=Object.freeze({attemptId:command.attemptId,attemptVersion:command.attemptVersion,companyId:p.companyId,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,inputDigest});
+  binding=Object.freeze({attemptId:command.attemptId,attemptVersion:command.attemptVersion,companyId:p.companyId,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,inputDigest,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{})});
   const exact=binding;
-  const initial=await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);const prepared=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);const cfg=!reopen&&prepared.state==='ready'&&p.mode==='ai'?await resolveActiveAiConfig(tx,ctx,FEATURE):null;return{prepared,cfg};});
+  const initial=await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);const prepared=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(!reopen&&prepared.state==='ready'&&p.evaluationBinding)await assertEmployeeImportEvaluationActiveTx(tx,ctx,p.evaluationBinding,p.companyId,p.mode==='ai');const cfg=!reopen&&prepared.state==='ready'&&p.mode==='ai'?await resolveActiveAiConfig(tx,ctx,FEATURE):null;return{prepared,cfg};});
   if(initial.prepared.state==='completed'){
    const proposal=capturePersonnelImportHeaderProposal(initial.prepared.proposal,headers);
    if(proposal.sourceRevision!==p.sourceRevision||proposal.registryDigest!==p.registryDigest)throw unavailable();
-   return Object.freeze({kind:'proposal',attemptId:exact.attemptId,attemptVersion:exact.attemptVersion,proposal});
+   return Object.freeze({kind:'proposal',attemptId:exact.attemptId,attemptVersion:exact.attemptVersion,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),proposal});
   }
   if(reopen||initial.prepared.state!=='ready')throw unavailable();
   let proposal:PersonnelImportHeaderProposal;
@@ -59,8 +60,8 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
    proposal=capturePersonnelImportHeaderProposal({version:1,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,mappings},headers);
   }else{
    if(!initial.cfg||headers.length>32||p.consent.sendHeadingsOnly!==true)throw unavailable();
-   let cfg=withAiAdmissionCheck(initial.cfg,FEATURE,async tx=>{await guard(tx,ctx,p.companyId);const current=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(current.state!=='ready'||current.attemptId!==exact.attemptId||current.attemptVersion!==exact.attemptVersion)throw unavailable();});
-   cfg=withAiAdmissionLifecycle(cfg,FEATURE,{async admitted(tx,event){if(event.request.operation!=='draft'||event.request.inputDigest!==exact.inputDigest)throw unavailable();await claimPersonnelImportAssistanceTx(tx,ctx,exact,event.runId);dispatched=true;}});
+   let cfg=withAiAdmissionCheck(initial.cfg,FEATURE,async tx=>{await guard(tx,ctx,p.companyId);if(p.evaluationBinding)await assertEmployeeImportEvaluationActiveTx(tx,ctx,p.evaluationBinding,p.companyId,true);const current=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(current.state!=='ready'||current.attemptId!==exact.attemptId||current.attemptVersion!==exact.attemptVersion)throw unavailable();});
+   cfg=withAiAdmissionLifecycle(cfg,FEATURE,{async admitted(tx,event){if(event.request.operation!=='draft'||event.request.inputDigest!==exact.inputDigest)throw unavailable();await claimPersonnelImportAssistanceTx(tx,ctx,exact,event.runId);if(p.evaluationBinding)await registerEmployeeImportEvaluationRunTx(tx,ctx,p.evaluationBinding,p.companyId,exact.attemptId,event.runId);dispatched=true;}});
    // COMPLETE outbound payload: reviewed headings and STATIC registry. No company/tenant/attempt IDs,
    // source hashes, filenames, sheets, rows, catalogue values or cells. One explicit call, no retries.
    const text=await generateDraft(cfg,{system:SYSTEM,prompt,maxTokens:MAX_TOKENS,timeoutMs:20000});
@@ -69,7 +70,7 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
    proposal=capturePersonnelImportHeaderProposal({version:1,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,mappings:raw.mappings},headers);
   }
   await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);await completePersonnelImportAssistanceTx(tx,ctx,exact,proposal);});
-  return Object.freeze({kind:'proposal',attemptId:exact.attemptId,attemptVersion:exact.attemptVersion,proposal});
+  return Object.freeze({kind:'proposal',attemptId:exact.attemptId,attemptVersion:exact.attemptVersion,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),proposal});
  }catch{
   // A competing recovery/execute must never mark another invocation's live dispatch failed.
   if(dispatched&&binding&&!reopen)try{const exact=binding;await withTenant(ctx,tx=>failPersonnelImportAssistanceTx(tx,ctx,exact));}catch{/* Retained custody remains authoritative; never authorize resend. */}

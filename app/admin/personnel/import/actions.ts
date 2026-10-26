@@ -5,7 +5,7 @@ import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegister
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import {getBrowserCommandSession} from '@/lib/session';
-import {beginEmployeeImportEvaluation,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
+import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,associateReusedEmployeeImportHeader,eraseOwnImportEvaluationMetadata,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
 import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding,type EmployeeImportEvaluationReceipt,type EmployeeImportEvaluationPublicResult} from '@/lib/personnel-import-evaluation';
 import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
 import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
@@ -67,7 +67,7 @@ export async function commitImportAction(
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,allocationToken?:string,evaluationBinding?:EmployeeImportEvaluationBinding,
 ): Promise<ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}> {
-  if(evaluationBinding!==undefined)return commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken);
+  if(evaluationBinding!==undefined)return commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);
   const s = await requireAdmin();
   if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
   const { records } = parseEmployee(csv);
@@ -90,13 +90,17 @@ function measuredInputs(csv:string,companyId:string,dependentsCsv?:string,regist
  if(Buffer.byteLength([captured.csv,captured.dependentsCsv??'',captured.allocationsCsv??'',...Object.values(captured.registers??{})].join(''),'utf8')>900000)throw Error(EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE);
  return{companyId:captured.companyId,records:parseEmployee(captured.csv).records,dependentRecords:familyRecords(captured.dependentsCsv),registerRecords:registerRecords(captured.registers),allocationRecords:parseCostAllocationCsv(captured.allocationsCsv??'')};
 }
-/** Explicit opt-in metadata preparation. No model dispatch, employee write or inferred dataset quality. */
-export async function prepareEmployeeImportEvaluationAction(csv:string,companyId:string,metadata:unknown,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string):Promise<EmployeeImportEvaluationPublicResult>{
- try{const inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),captured=structuredClone(metadata),ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await beginEmployeeImportEvaluation(ctx,inputs,captured)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+/** Begins before cleaning: no rows, headers or parseable CSV are needed or accepted. */
+export async function beginEmployeeImportEvaluationAction(metadata:unknown):Promise<EmployeeImportEvaluationPublicResult>{
+ try{const captured=structuredClone(metadata),ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await beginEmployeeImportEvaluation(ctx,captured)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
 }
-async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string){
+/** Bind the actual canonical effect input only after local cleaning/mapping and preview are ready. */
+export async function prepareEmployeeImportEvaluationCommitAction(preparation:unknown,csv:string,companyId:string,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string):Promise<EmployeeImportEvaluationPublicResult>{
+ try{const captured=structuredClone(preparation),inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await prepareEmployeeImportEvaluationCommit(ctx,captured,inputs)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+}
+async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string){
  try{const inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),captured=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
-  const result=await commitEmployeeImport(ctx,{...inputs,allocationToken,evaluationBinding:captured});revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');return result;
+  const result=await commitEmployeeImport(ctx,{...inputs,allocationToken,fileName:fileName??'',evaluationBinding:captured});revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');return result;
  }catch{throw Error(EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE);}
 }
 /** Recovery is metadata/event reconciliation only. It can NEVER re-import the original source. */
@@ -105,4 +109,13 @@ export async function reopenEmployeeImportEvaluationAction(binding:EmployeeImpor
 }
 export async function recordEmployeeImportEvaluationTelemetryAction(binding:EmployeeImportEvaluationBinding,companyId:string,value:unknown):Promise<EmployeeImportEvaluationPublicResult>{
  try{const captured=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),company=companyId,event=structuredClone(value),ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await recordEmployeeImportEvaluationTelemetry(ctx,captured,company,event)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+}
+
+/** Explicit reuse association; previous job's model charge is never assigned a second time. */
+export async function associateReusedEmployeeImportHeaderAction(value:unknown,companyId:string):Promise<EmployeeImportEvaluationPublicResult>{
+ try{const captured=structuredClone(value),company=companyId,ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await associateReusedEmployeeImportHeader(ctx,captured,company)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+}
+/** Identity-only own-history erasure remains available after Workforce/module/Assistant revocation. */
+export async function eraseOwnImportEvaluationMetadataAction():Promise<void>{
+ try{await eraseOwnImportEvaluationMetadata(await getBrowserCommandSession());revalidatePath('/assistant');revalidatePath('/admin/personnel/import');}catch{throw Error(EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE);}
 }
