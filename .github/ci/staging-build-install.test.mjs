@@ -82,9 +82,9 @@ test('an existing parent symlink cannot redirect a new installation',t=>{
  assert.throws(()=>initializePrivateInstall(fixture().grant,{home}));assert.deepEqual(readdirSync(foreign),[]);
 });
 test('actual systemd descriptor requires the pinned Node and Next startup path',()=>{
- const source='/opt/ai-hr',descriptor='{ path=/opt/node20/bin/node ; argv[]=/opt/node20/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -p 3000 ; ignore_errors=no ; }';
+ const source='/opt/ai-hr',descriptor='{ path=/opt/node22/bin/node ; argv[]=/opt/node22/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -p 3000 ; ignore_errors=no ; }';
  assert.equal(assertServiceDescriptor(descriptor,source),true);
- for(const text of [descriptor.replaceAll('node20','node24'),descriptor.replace('/opt/ai-hr/node_modules','/tmp/other/node_modules'),descriptor+descriptor,descriptor.replace('next start','next dev'),''])assert.throws(()=>assertServiceDescriptor(text,source));
+ for(const text of [descriptor.replaceAll('node22','node24'),descriptor.replaceAll('node22','node20'),descriptor.replace('/opt/ai-hr/node_modules','/tmp/other/node_modules'),descriptor+descriptor,descriptor.replace('next start','next dev'),'']){assert.notEqual(text,descriptor,'Refusal control must actually change the descriptor');assert.throws(()=>assertServiceDescriptor(text,source));}
 });
 test('all four Next dotenv inputs refuse compile-affecting private keys without returning values',t=>{
  const source=privateFixture(t);

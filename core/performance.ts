@@ -46,6 +46,7 @@ import {
   performanceReview,
   person,
   reportingLine,
+  onehrCycle,
   reviewCycle,
   reviewGoal,
 } from '../db/schema';
@@ -224,6 +225,22 @@ const canAdminPerfCtx = (ctx: SessionContext, companyId: string | null) => {
  *  has no per-row company_id — matching the coarse `is_admin()` the calibration RLS uses (0099). */
 const isAdminOrPerfCompCtx = (ctx: SessionContext) =>
   isAdminCtx(ctx) || (ctx.grants ?? []).some((g) => g.role === 'performance_comp_partner');
+
+/**
+ * ADR-0142 — company-scoped OneHR-NATIVE administration gate: canAdminPerfCtx's set PLUS the OneHR
+ * performance partner, resolved against `ctx.grants` (never `ctx.roles`, ADR-0049 §4). It gates ONLY reads
+ * and lists of OneHR-native cycles. Generic cycle lifecycle (create/open/release/close), merit/bonus actions,
+ * calibration of generic cycles and cycleDetail's compensation roster keep canAdminPerfCtx /
+ * isAdminOrPerfCompCtx, which the performance partner never passes. The DB (app.onehr_cycle_admin →
+ * app.assessment_admin_for, 0611) is authoritative for live grants and subtree descendants.
+ */
+const canAdminOnehrCtx = (ctx: SessionContext, companyId: string | null) => {
+  if (canAdminPerfCtx(ctx, companyId)) return true;
+  // Company scope is the DB's: a partner granted on a parent company administers its subsidiaries
+  // (app.is_company_descendant), which an exact companyId match here would wrongly hide. Every caller
+  // has already required app.onehr_cycle_admin for the row; this only asks that the session holds the role.
+  return (ctx.grants ?? []).some((g) => g.role === 'performance_partner');
+};
 
 function assertRatingInScale(scale: RatingScale, value: number, label: string) {
   if (!scale.some((s) => s.value === value)) {
@@ -1397,6 +1414,83 @@ export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
         pendingComp: k?.pendingComp ?? 0,
       };
     });
+  });
+}
+
+/** ADR-0142 — a OneHR-native cycle row for the performance-administration list, with NO pay figure. */
+export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
+
+/**
+ * ADR-0142 — the OneHR-native cycles this session administers (the performance partner's landing list).
+ * Generic cycles never appear, and no compensation-derived count (pendingComp) is computed: the partner's
+ * performance_review visibility is limited to OneHR-native rows (0611) and merit status is not its business.
+ * Gated twice: app.onehr_cycle_admin per row (authoritative) and canAdminOnehrCtx (grant-scoped UX mirror).
+ */
+export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCycleSummary[]> {
+  return withTenant(ctx, async (tx) => {
+    const cycles = (
+      await tx
+        .select({ cycle: reviewCycle })
+        .from(reviewCycle)
+        .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+        .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
+        .orderBy(desc(reviewCycle.periodStart), reviewCycle.id)
+    )
+      .map((r) => r.cycle)
+      .filter((c) => canAdminOnehrCtx(ctx, c.companyId));
+    if (cycles.length === 0) return [];
+    const counts = await tx
+      .select({
+        cycleId: performanceReview.cycleId,
+        total: sql<number>`count(*)::int`,
+        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+      })
+      .from(performanceReview)
+      .where(
+        inArray(
+          performanceReview.cycleId,
+          cycles.map((c) => c.id),
+        ),
+      )
+      .groupBy(performanceReview.cycleId);
+    const byId = new Map(counts.map((c) => [c.cycleId, c]));
+    return cycles.map((c) => {
+      const k = byId.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        companyId: c.companyId,
+        periodStart: c.periodStart,
+        periodEnd: c.periodEnd,
+        status: c.status,
+        releasedAt: c.releasedAt,
+        total: k?.total ?? 0,
+        submitted: k?.submitted ?? 0,
+        acknowledged: k?.acknowledged ?? 0,
+      };
+    });
+  });
+}
+
+/** ADR-0142 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
+export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<string>> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.execute<{ id: string }>(sql`select c.id from company c where app.onehr_admin(c.id)`);
+    return new Set(rows.map((r) => r.id));
+  });
+}
+
+/** ADR-0142 — true when `cycleId` is a OneHR-native cycle this session may administer (DB-authoritative). */
+export function isOnehrAdminCycle(ctx: SessionContext, cycleId: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cycleId)) return Promise.resolve(false);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ companyId: reviewCycle.companyId, ok: sql<boolean>`app.onehr_cycle_admin(${reviewCycle.id})` })
+      .from(reviewCycle)
+      .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(eq(reviewCycle.id, cycleId));
+    return !!row?.ok && canAdminOnehrCtx(ctx, row.companyId);
   });
 }
 

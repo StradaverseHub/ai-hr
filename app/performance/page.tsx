@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { canManagePerfComp, isAdmin, requireModule } from '@/lib/authz';
+import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
 import { onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
-import { listCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
+import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
@@ -34,16 +34,21 @@ export default async function PerformancePage({
   const { s,scopeIds } = await scopedSession();
   const t = await getTranslations('performance.list');
   const admin = isAdmin(s) || canManagePerfComp(s);
+  // ADR-0142 — a session whose only performance authority is the OneHR performance partner administers
+  // OneHR-native cycles: it sees those cycles and the OneHR panels, never generic cycles, pending pay or
+  // the new-cycle form (cycle creation stays with HR).
+  const onehrOnly = isOnehrOnlyPerformanceAdmin(s);
+  const performanceAdmin = admin || onehrOnly;
   const manager = (s.roles ?? []).includes('manager');
-  if (!admin && !manager) redirect('/');
+  if (!performanceAdmin && !manager) redirect('/');
   const sp = await searchParams;
   const { error } = sp;
   const today = todayInKualaLumpur();
 
   const [cycles, pending, companies, checkinData, onehr] = await Promise.all([
-    admin ? listCycles(s) : Promise.resolve([]),
+    (admin ? listCycles(s) : onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])) as Promise<(OnehrAdminCycleSummary & { pendingComp?: number })[]>,
     managerPendingReviews(s),
-    admin ? listCompanies(s) : Promise.resolve([]),
+    admin ? listCompanies(s) : onehrOnly ? Promise.all([listCompanies(s), listOnehrAdminCompanyIds(s)]).then(([rows, ids]) => rows.filter((c) => ids.has(c.id))) : Promise.resolve([]),
     managerCheckIns(s),
     onehrAssignments(s),
   ]);
@@ -64,9 +69,9 @@ export default async function PerformancePage({
         <PageHeader title={t('title')} description={t('description')} />
       </div>
       <ErrorBanner message={error} />
-      {admin&&<PerformanceAdminAssistant/>}
-      {admin&&<PerformanceOverview session={s}/>}
-      {admin&&<PerformanceGuideReportPanel companies={companies.map(c=>({id:c.id,name:c.name}))}/>}
+      {performanceAdmin&&<PerformanceAdminAssistant/>}
+      {performanceAdmin&&<PerformanceOverview session={s}/>}
+      {performanceAdmin&&<PerformanceGuideReportPanel companies={companies.map(c=>({id:c.id,name:c.name}))}/>}
       <Link href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
       {(onehr.reviews.length>0||onehr.sessions.length>0)&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{to('assignments')}</h2>{onehr.reviews.map(r=><p key={r.id}><Link className="text-primary hover:underline" href={`/performance/review/${r.id}`}>{r.name} · {r.cycle} · {r.periodEnd}</Link></p>)}{onehr.sessions.map(c=><p key={c.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${c.id}`}>{c.name}</Link></p>)}</Card>}
 
@@ -161,7 +166,7 @@ export default async function PerformancePage({
         </Card>
       )}
 
-      {admin && (
+      {performanceAdmin && (
         <>
           <Card className="overflow-hidden" data-tour="performance-cycles">
             <SectionHeader title={t('reviewCycles')} count={cycles.length} />
@@ -177,7 +182,7 @@ export default async function PerformancePage({
                     <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
                     <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                     <th className="px-4 py-2 text-right font-medium">{t('colProgress')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('colPendingPay')}</th>
+                    {admin && <th className="px-4 py-2 text-right font-medium">{t('colPendingPay')}</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -202,13 +207,15 @@ export default async function PerformancePage({
                         {c.acknowledged}/{c.submitted}/{c.total}
                         <div className="text-[10px] uppercase">{t('progressLegend')}</div>
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {c.pendingComp > 0 ? (
-                          <span className="font-medium text-amber-600 dark:text-amber-400">{c.pendingComp}</span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
+                      {admin && (
+                        <td className="px-4 py-3 text-right tabular-nums">
+                          {(c.pendingComp ?? 0) > 0 ? (
+                            <span className="font-medium text-amber-600 dark:text-amber-400">{c.pendingComp}</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -217,12 +224,14 @@ export default async function PerformancePage({
             <Pager basePath="/performance" state={pgState} />
           </Card>
 
-          <Card data-tour="performance-new-cycle">
-            <details>
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-              <NewCycleForm companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />
-            </details>
-          </Card>
+          {admin && (
+            <Card data-tour="performance-new-cycle">
+              <details>
+                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
+                <NewCycleForm companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />
+              </details>
+            </Card>
+          )}
         </>
       )}
     </div>

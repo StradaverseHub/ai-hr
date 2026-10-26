@@ -39,7 +39,7 @@ export function validateNextOrigin(origin,run,jobs,artifact){
 }
 export function validateNextContext(c){
  assert(c&&isDeepStrictEqual(Object.keys(c).sort(),['compiler','generatedTypes','inputs','nodeOptions','runtime','sourcePath']),'Next compiler context differs');
- assert(isDeepStrictEqual(c.runtime,{node:'20.20.2',abi:'115',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8',typescript:'5.9.3'}),'Exact application-build runtime required');
+ assert(isDeepStrictEqual(c.runtime,{node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8',typescript:'5.9.3'}),'Exact application-build runtime required');
  assert(c.nodeOptions==='--max-old-space-size=6144'&&/^\/home\/runner\/work\/ai-hr\/ai-hr\/source$/.test(c.sourcePath),'Actual application build path/heap required');
  const inputs=['tsconfig.json','tsconfig.build.json','pnpm-lock.yaml','package.json','pnpm-workspace.yaml','next.config.ts','deploy/css-cache-guard.sh','cssInputs'];
  assert(isDeepStrictEqual(Object.keys(c.inputs).sort(),inputs.sort())&&Object.values(c.inputs).every(v=>/^[a-f0-9]{64}$/.test(v)),'All application compiler/config/CSS inputs required');

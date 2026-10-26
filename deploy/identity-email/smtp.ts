@@ -8,7 +8,8 @@ import {employeeMasterMailMessage} from './report-message';
 type ManagedMessage={subject:string;text:string;html?:string;messageId:string;attachment?:MasterPreparedAttachment};
 async function sendManagedSmtp(config:EmailConfig,password:string|undefined,email:string,mail:ManagedMessage) {
  const c=config;
- const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:true,
+ if(c.authentication==='microsoft365')throw new Error('Microsoft 365 application credentials require internal authentication.');
+ const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:c.security==='tls',...(c.security==='starttls'?{requireTLS:true}:{}),
   auth:c.auth?{user:c.user,pass:password!}:undefined,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},
   connectionTimeout:10_000,greetingTimeout:8_000,socketTimeout:15_000,disableFileAccess:true,disableUrlAccess:true});
  try{

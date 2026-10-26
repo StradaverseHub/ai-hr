@@ -22,6 +22,10 @@ On 26 October 2026 the owner made this repository public; authenticated GitHub m
 
 [Standard public Ubuntu runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) provide four CPUs and 16 GB RAM. Record actual execution resources and timings; results from the earlier private runners do not prove current performance. The existing complete-coverage, release-coordination and staging/main deployment rules remain in force.
 
+## Private production package distribution
+
+Owner decision, 26 October 2026: production release assets belong only in the separate **private** `StradaverseHub/ai-hr-releases` repository (ID `1434418441`). Public source visibility does not authorize public production downloads. Dated source tags identify the accepted commit and are mirrored unchanged to the private repository; packages, checksums, manifests and release notes are published there. See [Production packages](PRODUCTION-PACKAGES.md) for the explicit human staging-acceptance command. Publication does not authorize production deployment.
+
 ## Branch and environment roles
 
 | Branch | Environment | Target |

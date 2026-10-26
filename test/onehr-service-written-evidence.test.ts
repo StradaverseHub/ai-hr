@@ -408,6 +408,18 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.updateAssessmentFramework(a,cycleId,cycle.revision,{action:'remove_behaviour',statementId:statement.id})).rejects.toThrow(/archived/);
   });
 
+  it('ADR-0142 VF-01: a manager who is also a performance partner cannot finalize the review; HR can',async()=>{
+    await complete(true,'Verified delivery across the period.');
+    // The manager passes performance_review RLS on the manager path, so only the actor check refuses this.
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:mgr.userId!,companyId:b.companyId,role:'performance_partner'});
+    const partnerMgr:SessionContext={...mgr,roles:['manager','performance_partner'],grants:[{role:'performance_partner',companyId:b.companyId}]};
+    await expect(perf.freezeOnehrReview(partnerMgr,reviewId,(await view(a)).revision)).rejects.toThrow(/Only an HR administrator can finalize this assessment/);
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([]);
+    const [open]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,reviewId));expect(open.closedAt).toBeNull();
+    // Non-vacuous: the same complete review freezes for HR.
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toHaveLength(1);
+  });
   it('freezes reviewer authorship with the result and rejects changes to the underlying authored record',async()=>{
     await complete(true,'Verified delivery across the period.');
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);

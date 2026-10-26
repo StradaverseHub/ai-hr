@@ -1,17 +1,17 @@
 /** Real private files and fake read-only systemctl replies; no app, system service or database. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fingerprintStagingEnvironment,stagingEnvironmentProbeCommand} from './staging-environment.mjs';
 function fixture(t){
- const root=mkdtempSync(join(tmpdir(),'staging-env-')),source=join(root,'source');mkdirSync(source,{mode:0o700});t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'staging-env-'))),source=join(root,'source');mkdirSync(source,{mode:0o700});t.after(()=>rmSync(root,{recursive:true,force:true}));
  const unit=join(root,'aihr.service'),external=join(root,'runtime.env');
  writeFileSync(unit,'[Service]\nEnvironmentFile='+external+'\n',{mode:0o600});writeFileSync(external,'PRIVATE_TOKEN=never-export-secret\n',{mode:0o600});
  writeFileSync(join(source,'.env.production'),'MIGRATION_DATABASE_URL=postgres://private-example\n',{mode:0o600});
- const values={Environment:'PATH=/opt/node20/bin:/usr/bin NODE_ENV=production',EnvironmentFiles:external+' (ignore_errors=no)',PassEnvironment:'',UnsetEnvironment:'MIGRATION_DATABASE_URL',
-  PAMName:'',RootDirectory:'',RootImage:'',DynamicUser:'no',User:'aihr',Group:'',WorkingDirectory:source,ExecStart:'{ path=/opt/node20/bin/node ; argv[]=/opt/node20/bin/node '+source+'/node_modules/next/dist/bin/next start -p 3000 ; pid=1 ; }',
+ const values={Environment:'PATH=/opt/node22/bin:/usr/bin NODE_ENV=production',EnvironmentFiles:external+' (ignore_errors=no)',PassEnvironment:'',UnsetEnvironment:'MIGRATION_DATABASE_URL',
+  PAMName:'',RootDirectory:'',RootImage:'',DynamicUser:'no',User:'aihr',Group:'',WorkingDirectory:source,ExecStart:'{ path=/opt/node22/bin/node ; argv[]=/opt/node22/bin/node '+source+'/node_modules/next/dist/bin/next start -p 3000 ; pid=1 ; }',
   FragmentPath:unit,DropInPaths:'',LoadCredential:'',LoadCredentialEncrypted:'',SetCredential:'',SetCredentialEncrypted:'',ImportCredential:''};
  let manager='PATH=/usr/bin\nSERVER_TOKEN=never-export-secret\n',pid=1;
  const systemctl=args=>args[0]==='show-environment'?manager:Object.entries({...values,ExecStart:values.ExecStart.replace('pid=1','pid='+pid++)}).map(([k,v])=>k+'='+v).join('\n')+'\n';

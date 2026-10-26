@@ -24,6 +24,23 @@ beforeAll(migrateTestDb); beforeEach(async () => {
 const view=()=>internalEmailRequest<EmailSettingsView>({op:'view',actor});
 async function draft() {const initial=await view();await internalEmailRequest({op:'save',actor,revision:initial.revision,config,password:secret});return (await view()).draft!;}
 describe('HR-owned SMTP settings with actual private storage and authority',()=>{
+  it('keeps an application secret encrypted and activates only the tested draft after explicit receipt',async()=>{
+    const oauth:EmailConfig={...config,host:'smtp.office365.com',port:587,security:'starttls',user:'hr@example.test',authentication:'microsoft365',oauth2:{tenantId:randomUUID(),clientId:randomUUID()}};
+    await internalEmailRequest({op:'save',actor,revision:(await view()).revision,config:oauth,password:secret});let current=await view();const id=current.draft!.id;
+    expect(current.draft).toMatchObject({hasPassword:true,config:oauth,testedAt:null});expect(current.active).toBeNull();
+    await expect(internalEmailRequest({op:'apply',actor,draftId:id,received:true})).rejects.toMatchObject({code:'needsTest'});
+    const send=vi.fn(async()=>{});await internalEmailRequest({op:'test',actor,draftId:id},send);
+    expect(send).toHaveBeenCalledWith({config:oauth,password:secret},expect.objectContaining({to:'owner@example.test'}));
+    await expect(internalEmailRequest({op:'apply',actor,draftId:id,received:false})).rejects.toMatchObject({code:'needsReceipt'});
+    await internalEmailRequest({op:'apply',actor,draftId:id,received:true});current=await view();expect(current.active).toMatchObject({...oauth,hasPassword:true});
+    expect(JSON.stringify(current)).not.toContain(secret);expect(JSON.stringify(await owner.client`select * from app_internal_auth_record`)).not.toContain(secret);expect(JSON.stringify(await owner.client`select * from domain_event`)).not.toContain(secret);
+    for(const patch of [{user:'other@example.test'},{oauth2:{...oauth.oauth2!,clientId:randomUUID()}},{oauth2:{...oauth.oauth2!,tenantId:randomUUID()}},{authentication:undefined,oauth2:undefined}])await expect(internalEmailRequest({op:'save',actor,revision:current.revision,config:{...oauth,...patch},password:''})).rejects.toMatchObject({code:'invalid'});
+    await internalEmailRequest({op:'save',actor,revision:current.revision,config:oauth,password:''});expect((await view()).draft).toMatchObject({hasPassword:true,testedAt:null});
+  });
+  it('never carries a basic password into application authentication',async()=>{
+    await draft();const oauth:EmailConfig={...config,host:'smtp.office365.com',port:587,security:'starttls',user:'hr@example.test',authentication:'microsoft365',oauth2:{tenantId:randomUUID(),clientId:randomUUID()}};
+    await expect(internalEmailRequest({op:'save',actor,revision:(await view()).revision,config:oauth,password:''})).rejects.toMatchObject({code:'invalid'});
+  });
   it('stores relay secrets only as authenticated ciphertext and never returns them to the settings view',async()=>{
     const saved=await draft();expect(saved.hasPassword).toBe(true);expect(saved.config).toEqual(config);expect(saved.testedAt).toBeNull();expect(await recoveryMailReady()).toBe(false);
     expect(await readActiveRelayTx(client)).toBeNull();

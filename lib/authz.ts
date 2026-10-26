@@ -2,8 +2,8 @@ import { redirect } from 'next/navigation';
 import type { SessionContext } from '../db/client';
 import { getSession } from './session';
 import { isModuleEnabled } from '@/core/entitlements';
-import {isAdmin,hasTeamAccess,canManagePayroll,canManagePerfComp} from './authz-model';
-export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner} from './authz-model';
+import {isAdmin,hasTeamAccess,canManagePayroll,canManagePerfComp,canAdminOnehr} from './authz-model';
+export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin} from './authz-model';
 
 /** Page-level team gate; scopedSession and the model enforce fresh company/report/module scope. */
 export async function requireTeamAccess(s?: SessionContext): Promise<SessionContext> {
@@ -60,5 +60,17 @@ export async function requirePayrollAccess(): Promise<SessionContext> {
 export async function requirePerfCompAccess(): Promise<SessionContext> {
   const s = await getSession();
   if (!canManagePerfComp(s)) redirect('/');
+  return s;
+}
+
+/**
+ * ADR-0142 — the performance-administration screens that also serve OneHR-native cycles. Admits the
+ * perf-comp set PLUS the OneHR performance partner; a page that admits through this guard must still send
+ * a partner-only session away from anything generic (notFound for a non-OneHR cycle). The OneHR services
+ * re-check app.onehr_cycle_admin on every read, and RLS is the backstop.
+ */
+export async function requireOnehrAdminAccess(): Promise<SessionContext> {
+  const s = await getSession();
+  if (!canAdminOnehr(s)) redirect('/');
   return s;
 }

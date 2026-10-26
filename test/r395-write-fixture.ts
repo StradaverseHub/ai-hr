@@ -139,8 +139,8 @@ const tally = (bucket: string, key: string, o: Outcome) => {
 
 /** One isolated fixture per Vitest file; optional reports identify their partition explicitly. */
 let registered = false;
-export function registerR395WriteFixture(reportLabel: 'primary' | 'secondary') {
-  if (registered || !['primary','secondary'].includes(reportLabel)) throw new Error('One named r395 write fixture per isolated file');
+export function registerR395WriteFixture(reportLabel: 'primary' | 'secondary' | 'tertiary') {
+  if (registered || !['primary','secondary','tertiary'].includes(reportLabel)) throw new Error('One named r395 write fixture per isolated file');
   registered = true;
 beforeAll(async () => {
   await setupOrg();

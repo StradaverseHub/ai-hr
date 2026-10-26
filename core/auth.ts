@@ -75,6 +75,8 @@ export const ROLES = new Set([
   'super_admin',
   'payroll_partner',
   'performance_comp_partner',
+  // ADR-0142 — repeated in 0611's app_invitation_role_customer_set and app.consume_invitation guard A.
+  'performance_partner',
 ]);
 const INVITE_TTL_DAYS = 7;
 

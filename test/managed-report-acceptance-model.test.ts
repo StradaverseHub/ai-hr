@@ -18,7 +18,7 @@ describe('one closed internal report acceptance course',()=>{
   expect(()=>reportAcceptanceHumanReady.parse({...ready,reports:{...ready.reports,monthly:ready.reports.weekly}})).toThrow();
  });
  it('accepts only the eight reviewed installed component basenames, never paths or config secrets',()=>{
-  const components=Object.fromEntries(['internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','internal-report-schedule.cjs','internal-report-tick','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py'].map(name=>[name,sha]));
+  const components=Object.fromEntries(['smtp-token-peer.py','internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','internal-report-schedule.cjs','internal-report-tick','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py'].map(name=>[name,sha]));
   expect(reportAcceptanceComponents.parse(components)).toEqual(components);expect(()=>reportAcceptanceComponents.parse({...components,'../other.cjs':sha})).toThrow();expect(()=>reportAcceptanceComponents.parse({...components,DATABASE_URL:'private'})).toThrow();
  });
  it('allows only distinct authenticated roles on the exact VM loopback DB',()=>{

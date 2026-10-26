@@ -10471,7 +10471,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Payroll Partner",
         "performance_comp_partner": "Performance & Comp Partner",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Performance Partner"
       },
       "scope": {
         "assistantWorkspace": "A signed-in account can open the Assistant shell. Available facts and actions depend on current Assistant access, enabled modules, pauses and native permissions for each company and record. Saved-review discovery and discard require the original signed-in owner; they do not grant effect permission.",
@@ -10506,7 +10507,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
-        "performance": "Managers and above; what appears follows your actual reporting lines.",
+        "performance": "Managers and above, and Performance Partners for their companies’ OneHR cycles only; what appears follows your actual reporting lines and scope.",
         "profileChanges": "Review profile changes assigned to you within your current HR authority. Old requests retain their recorded routing.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
@@ -15651,7 +15652,8 @@
       "super_admin": "Super Admin",
       "payroll_partner": "Payroll Partner",
       "performance_comp_partner": "Perf/Comp Partner",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Performance Partner"
     }
   },
   "commandBar": {
@@ -19661,7 +19663,14 @@
     "activeTitle": "Active relay",
     "activeSummary": "{host}:{port} · From {from}",
     "notConfigured": "No supported relay is active. Invitations and password recovery remain unavailable.",
-    "tlsHelp": "Use implicit TLS (usually port 465) with a trusted certificate. STARTTLS on port 587 is not supported by this screen.",
+    "tlsHelp": "TLS is required: implicit TLS (usually port 465) or required STARTTLS (usually port 587). Server certificates are verified. Microsoft 365 uses STARTTLS on port 587.",
+    "microsoft365Authentication": "Microsoft 365 — application OAuth2",
+    "tenantId": "Directory (tenant) ID",
+    "clientId": "Application (client) ID",
+    "clientSecret": "Client secret",
+    "clientSecretKept": "Leave blank to keep the secret for this same tenant, application and mailbox.",
+    "clientSecretNeeded": "Enter the client secret value, not its secret ID.",
+    "microsoft365Help": "Your Microsoft 365 administrator must grant SMTP.SendAsApp and admin consent, register the application in Exchange, and restrict access to the sending mailbox. The username is that mailbox. AI HR automatically obtains short-lived tokens. A different From mailbox also needs Send As permission.",
     "draftTitle": "Relay draft",
     "host": "SMTP host",
     "port": "Port",

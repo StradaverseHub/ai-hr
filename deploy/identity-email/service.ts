@@ -22,11 +22,11 @@ const requestSchema=z.discriminatedUnion('op',[
  z.object({op:z.literal('apply'),actor:identityEmailActorSchema,draftId:z.uuid(),received:z.boolean()}).strict(),
 ]);
 function smtp(c:EmailConfig,vaultKey:string|null):Record<string,string> {
- return {host:c.host,port:String(c.port),ssl:'true',starttls:'false',auth:String(c.auth),authType:'basic',from:c.from,fromDisplayName:c.fromName,replyTo:c.replyTo,user:c.auth?c.user:'',...(c.auth&&vaultKey?{password:'${vault.'+vaultKey+'}'}:{})};
+ return {host:c.host,port:String(c.port),ssl:String(c.security==='tls'),starttls:String(c.security==='starttls'),auth:String(c.auth),authType:'basic',from:c.from,fromDisplayName:c.fromName,replyTo:c.replyTo,user:c.auth?c.user:'',...(c.auth&&vaultKey?{password:'${vault.'+vaultKey+'}'}:{})};
 }
 function config(r:Realm):EmailSettingsView['active'] {
  const s=r.smtpServer;if(!s?.host) return null;
- const parsed=emailConfigSchema.safeParse({host:s.host,port:Number(s.port||465),security:s.ssl==='true'?'tls':'unsupported',auth:s.auth==='true',user:s.user||'',from:s.from||'',fromName:s.fromDisplayName||'',replyTo:s.replyTo||''});
+ const parsed=emailConfigSchema.safeParse({host:s.host,port:Number(s.port||465),security:s.ssl==='true'?'tls':s.starttls==='true'?'starttls':'unsupported',auth:s.auth==='true',user:s.user||'',from:s.from||'',fromName:s.fromDisplayName||'',replyTo:s.replyTo||''});
  return parsed.success?{...parsed.data,hasPassword:!!s.password}:null;
 }
 /** Serialized mutations protect drafts from concurrent saves/tests/applies within this installation. */
@@ -48,6 +48,7 @@ export function createEmailService(d:EmailDependencies) {
   const view=():EmailSettingsView=>{const draft=state.drafts[actorKey];return {active,revision,testRecipient:d.testRecipient,draft:draft?{id:draft.id,config:draft.config,hasPassword:!!draft.vaultKey,testedAt:draft.testedAt}:null};};
   if(req.op==='view') return view();
   if(req.op==='save') {
+   if(req.config.authentication==='microsoft365')throw new EmailSettingsError('invalid');
    if(req.revision!==revision) throw new EmailSettingsError('conflict');
    let vaultKey=state.drafts[actorKey]?.vaultKey||(managed?state.active?.vaultKey:null)||null;
    if(req.config.auth && req.password) {vaultKey='smtp-'+randomUUID();await d.vault(vaultKey,req.password);}
