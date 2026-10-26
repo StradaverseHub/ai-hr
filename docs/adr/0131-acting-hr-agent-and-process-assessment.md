@@ -2791,3 +2791,19 @@ approval/rejection, reason, consent or digest. Native assigned authority and cur
 remain required; a recorded intermediate decision may leave the request pending. These source
 changes and authored regression cases require their actual migration, security, concurrency,
 erasure and browser verification before release.
+
+### Shared Assistant page authentication and access reference
+
+The Assistant workspace and its human review pages inherit one selected-browser-session layout.
+Local development therefore requires a selected login for these pages, matching the existing human
+command carrier; the convenience development identity is not their page identity. This uses the
+configured authentication provider and does not activate a different provider or environment.
+
+The access reference has one conditional Assistant column covering the actual descendant routes.
+Role eligibility is not an Assistant grant or native effect permission. Current grants, modules,
+pauses, company/record/field authority and source checks remain with each reader or command. A
+still-signed-in owner may discover or discard its own minimal saved-review metadata after effect
+access is revoked. The route-completeness check follows the actual awaited layout session call,
+so a new Assistant page or a removed layout guard cannot silently disappear from the reference.
+These source changes require their authored authentication, reference-grid and experience checks;
+static route/JSON/syntax inspection is not runtime authentication proof.

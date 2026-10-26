@@ -10474,6 +10474,7 @@
         "operator": "Người vận hành"
       },
       "scope": {
+        "assistantWorkspace": "Tài khoản đã đăng nhập có thể mở giao diện Trợ lý. Thông tin và thao tác khả dụng phụ thuộc vào quyền Trợ lý hiện tại, mô-đun đã bật, trạng thái tạm dừng và quyền gốc đối với từng công ty, hồ sơ. Chỉ chủ tài khoản đăng nhập ban đầu được tìm và hủy bản xem xét đã lưu; việc này không cấp quyền thực hiện thao tác.",
         "accessConfiguration": "Chỉ mở khi có quyền Quản lý bảo mật và quyền đang có hiệu lực. Vai trò riêng lẻ không cấp quyền truy cập màn hình này.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",

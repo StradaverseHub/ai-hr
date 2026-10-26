@@ -55,11 +55,11 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
@@ -100,6 +100,8 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
+  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},

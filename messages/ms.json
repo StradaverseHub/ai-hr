@@ -10474,6 +10474,7 @@
         "operator": "Operator"
       },
       "scope": {
+        "assistantWorkspace": "Akaun yang telah log masuk boleh membuka ruang Pembantu. Fakta dan tindakan yang tersedia bergantung pada akses Pembantu semasa, modul yang diaktifkan, jeda dan kebenaran asal bagi setiap syarikat serta rekod. Mencari dan membuang semakan tersimpan memerlukan pemilik log masuk asal; ini tidak memberi kebenaran untuk melaksanakan tindakan.",
         "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses.",
         "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",

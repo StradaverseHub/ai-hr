@@ -10474,6 +10474,7 @@
         "operator": "Operator"
       },
       "scope": {
+        "assistantWorkspace": "A signed-in account can open the Assistant shell. Available facts and actions depend on current Assistant access, enabled modules, pauses and native permissions for each company and record. Saved-review discovery and discard require the original signed-in owner; they do not grant effect permission.",
         "accessConfiguration": "Opens only with the current effective Manage security and permissions grant. A role alone never grants this screen.",
         "approvals": "Managers and above; what appears follows your actual reporting lines.",
         "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
