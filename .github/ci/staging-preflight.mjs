@@ -10,7 +10,12 @@ import {cleanHead} from './release-ci.mjs';
 import {STAGING_BUILD_RUNTIME} from './build-production.mjs';
 import {stagingTransport} from './staging-transport.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
-export const DEPLOY_RUNTIME_SELECTION="if [ -d /opt/node24/bin ]; then export PATH=\"/opt/node24/bin:$PATH\"\nelif [ -d /opt/node22/bin ]; then export PATH=\"/opt/node22/bin:$PATH\"\nelif [ -d /opt/node20/bin ]; then export PATH=\"/opt/node20/bin:$PATH\"\nfi";
+export const DEPLOY_RUNTIME_SELECTION='  [ -x /opt/node20/bin/node ] || { echo "CI build installation requires its pinned Node20 runtime" >&2; exit 1; }\n  export PATH="/opt/node20/bin:$PATH"';
+export function validateCandidateRuntimeSelection(source){
+ const branch='\nif [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then\n'+DEPLOY_RUNTIME_SELECTION+'\nelif [ -d /opt/node24/bin ];';
+ assert(source.split(branch).length===2,'Candidate CI runtime selection differs; review preflight protocol');
+}
+
 
 export function stagingProfileProbeCommand(checker){
  assert(typeof checker==='function','Actual candidate customer checker required');
@@ -21,7 +26,7 @@ export function stagingProfileProbeCommand(checker){
   "const errors=profile==='customer'?customerEnvironmentErrors():[];\n"+
   "const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync('node_modules/next/package.json','utf8')).version};\n"+
   'console.log(JSON.stringify({kind:"STAGING_PROFILE_PREFLIGHT_ONLY",checkerSha256:'+JSON.stringify(hash(source))+',profile,runtime,errors,ok:errors.length===0,releaseAuthorized:false}));\n';
- // Match deploy.sh's default mode predicate and shell-sourced environment. Do not substitute a
+ // Match deploy.sh's CI-specific runtime branch, default profile predicate and shell-sourced environment. Do not substitute a
  // developer env, Node --env-file precedence, or merely the current service's login result.
  return "bash -s <<'AIHR_PROFILE_PREFLIGHT_SHELL'\nset -eu\ncd /opt/ai-hr\ntest -f .env.production\n"+DEPLOY_RUNTIME_SELECTION+"\nset -a\n. ./.env.production\nset +a\nnode --input-type=module <<'AIHR_PROFILE_PREFLIGHT_NODE'\n"+script+'AIHR_PROFILE_PREFLIGHT_NODE\nAIHR_PROFILE_PREFLIGHT_SHELL';
 }
@@ -36,7 +41,7 @@ export function validateStagingProfile(report,checker){
 }
 export async function probeStagingProfile({candidatePath,ssh}){
  candidatePath=resolve(candidatePath);const candidate=cleanHead(candidatePath),file=join(candidatePath,'deploy/check-customer-env.mjs'),sourceSha256=hash(readFileSync(file));
- const deploySource=readFileSync(join(candidatePath,'deploy/deploy.sh'),'utf8');assert(deploySource.split(DEPLOY_RUNTIME_SELECTION).length===2,'Candidate runtime selection differs; review preflight protocol');
+ const deploySource=readFileSync(join(candidatePath,'deploy/deploy.sh'),'utf8');validateCandidateRuntimeSelection(deploySource);
  const checkerUrl=pathToFileURL(file);checkerUrl.searchParams.set('source',sourceSha256);
  const {customerEnvironmentErrors}=await import(checkerUrl.href);
  const output=ssh(stagingProfileProbeCommand(customerEnvironmentErrors),{timeout:30000,maxBuffer:64*1024});

@@ -6,7 +6,7 @@ import {readFileSync,constants} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {customerEnvironmentErrors} from '../../deploy/check-customer-env.mjs';
 import {STAGING_BUILD_RUNTIME as runtime} from './build-production.mjs';
-import {stagingProfileProbeCommand,validateStagingProfile,DEPLOY_RUNTIME_SELECTION} from './staging-preflight.mjs';
+import {stagingProfileProbeCommand,validateStagingProfile,DEPLOY_RUNTIME_SELECTION,validateCandidateRuntimeSelection} from './staging-preflight.mjs';
 const fixture={NODE_ENV:'production',AUTH_PROVIDER:'internal',ALLOW_DEMO_SESSION:'false',AUTH_PUBLIC_ORIGIN:'https://hr.customer.org',AUTH_SESSION_KEY:'a'.repeat(64),AI_CONFIG_SECRET:'private-fixture-config-value',AUDIT_HASH_CHAIN_ENABLED:'true',DATABASE_URL:'postgres://ai_hr_app:private-fixture-db@127.0.0.1/hr',MIGRATION_DATABASE_URL:'postgres://ai_hr_owner:private-fixture-owner@127.0.0.1/hr'};
 function observe(changes={}){
  const command=stagingProfileProbeCommand(customerEnvironmentErrors),delimiter="<<'AIHR_PROFILE_PREFLIGHT_NODE'\n";
@@ -36,4 +36,5 @@ test('canonical operator awaits profile check before archive verifier and repeat
  assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await revalidateCi(evidence);'));
 });
 
-test('runtime priority matches actual deploy Bash selection, including future installed runtimes',()=>{const source=readFileSync(new URL('../../deploy/deploy.sh',import.meta.url),'utf8');assert.equal(source.split(DEPLOY_RUNTIME_SELECTION).length,2);assert(DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node24/bin')<DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node22/bin'));assert(DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node22/bin')<DEPLOY_RUNTIME_SELECTION.indexOf('/opt/node20/bin'));});
+test('CI runtime branch is line-anchored and refuses a default-only substring match',()=>{const source=readFileSync(new URL('../../deploy/deploy.sh',import.meta.url),'utf8');assert.doesNotThrow(()=>validateCandidateRuntimeSelection(source));const marker='if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then';assert(source.includes(marker));assert.throws(()=>validateCandidateRuntimeSelection(source.replace(marker,'elif [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then')));});
+test('early probe mirrors the CI-specific pinned runtime branch, not the default runtime preference',()=>{const command=stagingProfileProbeCommand(customerEnvironmentErrors);assert(command.includes('CI build installation requires its pinned Node20 runtime'));});
