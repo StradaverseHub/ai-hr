@@ -2752,7 +2752,10 @@ async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDr
  if(!fresh.personId||!fresh.userId)throw new ClaimError('The own draft source is unavailable');
  const subjects=await myOwnEmploymentSubjectsTx(tx,fresh,{profileEdit:true}),own=subjects.find(row=>row.employmentId===p.employmentId);
  if(!own||!own.companyProof.companyId||own.companyProof.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
- const [subject]=await tx.select({id:employment.id,companyId:employment.companyId,gradeId:employment.gradeId,revision:sql<string>`${employment}.xmin::text`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,fresh.personId))).limit(1).for('update',{noWait:true});
+ // assertAiPrincipalTx already owns canonical Access before these fresh own-employment facts.
+ // Native identity/company/lifecycle and grade writers join that same interval; a read-only own
+ // draft action must not acquire employment UPDATE ownership or gain Workforce write authority.
+ const [subject]=await tx.select({id:employment.id,companyId:employment.companyId,gradeId:employment.gradeId,revision:sql<string>`${employment}.xmin::text`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,fresh.personId))).limit(1);
  if(!subject||subject.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
  const [type]=await tx.select({id:claimType.id,revision:sql<string>`xmin::text`}).from(claimType).where(and(eq(claimType.tenantId,ctx.tenantId),eq(claimType.id,p.claimTypeId))).limit(1).for('update',{noWait:true});
  if(!type)throw new ClaimError('The own draft source is unavailable');
@@ -2762,7 +2765,7 @@ async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDr
  if([policies,items,fields].some(rows=>rows.length>500))throw new ClaimError('The own draft source is unavailable');
  let draft:{id:string;revision:string}|null=null,attachments:{id:string;revision:string}[]=[];
  if(p.id){
-  const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id))).limit(1).for('update',{noWait:true});
+  const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id),eq(claimRequest.employmentId,p.employmentId))).limit(1).for('update',{noWait:true});
   if(!row||row.employmentId!==p.employmentId||row.status!=='draft')throw new ClaimError('The own draft source is unavailable');draft={id:row.id,revision:row.revision};
   const rows=await tx.select({id:claimAttachment.id,employmentId:claimAttachment.employmentId,revision:sql<string>`xmin::text`}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,ctx.tenantId),eq(claimAttachment.claimRequestId,p.id))).orderBy(claimAttachment.id).limit(26).for('share',{noWait:true});
   if(rows.length>25||rows.some(row=>row.employmentId!==p.employmentId))throw new ClaimError('The own draft source is unavailable');attachments=rows.map(({id,revision})=>({id,revision}));
