@@ -1,6 +1,6 @@
 # Canonical Next application compiler-state diagnostic
 
-This isolated manual diagnostic prepares the next release-efficiency measurement. The first genuine canonical build passed, but its post-build collector failed as recorded below. No restored-state warm build is verified yet. It does not change the normal release workflow, authorize a deployment or waive any required test/compiler/build/migration/arrival check.
+This isolated manual diagnostic prepares the next release-efficiency measurement. The first genuine canonical build passed, but its post-build collector failed as recorded below. Application compiler-state recovery and the first fresh-runner warm canonical build are now independently verified; normal release adoption is still unfinished. It does not change the normal release workflow, authorize a deployment or waive any required test/compiler/build/migration/arrival check.
 
 The installed Next16.3.8 documentation identifies persistent compiler data under .next/cache. Both actual installed application type-check implementations write .next/cache/.tsbuildinfo; the current normal cache preserves only .next/cache/turbopack. Application build TypeScript is separate from the complete repository compiler and uses the unchanged strict tsconfig.build.json.
 
@@ -12,7 +12,29 @@ The parent collector was launched with plain Node20 and failed on its later impo
 
 The explicit recover phase repairs only missing application compiler-state capture. It pins that exact original failed-run/artifact tuple, authenticates the known post-build error and actual passed child, retains original source/build/record identity and requires the current authenticated source comparison to change only CI/docs, with exact original application compiler inputs. It runs the actual installed Next application compiler on the current frozen source, records its own zero exit and new state, and does not repeat the production build. Its purpose is RECOVERED_NEXT_APPLICATION_COMPILER_STATE_NOT_BUILD_OR_RELEASE. Successful current compiler/cleanup evidence is distinct from the retained earlier build phase.
 
-Recovered state uses an exact five-JSON namespace (envelope, next-check-log, producer, retained-build and state), admitted only by its explicit purpose and authenticated successful current state-capture job. The original seven-JSON canonical-build schema remains separate. Both are optimization data, never PASS or release authority. Warm still requires a genuine new canonical build and fresh System Testing record/BUILD_ID, then actual dependency/new-root refusal controls. Recovery and warm runtime results are pending.
+Recovered state uses an exact five-JSON namespace (envelope, next-check-log, producer, retained-build and state), admitted only by its explicit purpose and authenticated successful current state-capture job. The original seven-JSON canonical-build schema remains separate. Both are optimization data, never PASS or release authority. Warm still requires a genuine new canonical build and fresh System Testing record/BUILD_ID, then actual dependency/new-root refusal controls. Recovery and warm runtime results are recorded below.
+
+## Verified recovery and warm canonical build — 26 October 2026 MYT
+
+[Compiler-only recovery 40251477042](https://github.com/StradaverseHub/ai-hr/actions/runs/40251477042) on exact source/controller `62704177c4045a187d6a787e5ab13e39599b8410` passed the actual installed Next application compiler in 130.168 s. It captured 4,617 graph files; root independently reconstructed all 2,709 tracked application roots from the exact frozen configuration and required every one in that graph. No production build was repeated. Source/owned-output cleanup passed, and minimum sampled disk availability was 11,777,249,280 bytes. Complete submission through last job was 199.640180 s; occupied runner time 193 s, not billing. Its graph artifact 12620427924 has ZIP SHA256 `c3580f1d1ba0c1170012c152f9cecf403f297c006602057451de9ce98bb4c425`.
+
+[Warm canonical build 40251838329](https://github.com/StradaverseHub/ai-hr/actions/runs/40251838329), on the same 627 source/controller but a different actual hosted runner and boot identity, authenticated that successful state producer, its actual critical controller Git blobs and original graph bytes. Restoration took 2.060 s. It then genuinely ran the canonical production build, including all application compilation/type checks, fresh compiled System Testing identity and byte packaging.
+
+| Actual observation | Retained original cold build, source b5 | Warm canonical build, source 627 |
+| --- | ---: | ---: |
+| Canonical production build |297.573s |191.107s |
+| Byte bundle packaging |33.672s |32.087s |
+| Complete canonical child command |334.396s |226.800s |
+| Next printed compilation interval |2.4min |2.5min |
+| Next printed application TypeScript interval |2.3min |26.6s |
+
+The source comparison changes only CI/docs; root config, dependencies, compiler binaries, generated types, CSS inputs and all application roots remain bound. Printed Next intervals are rounded, so do not treat the 2.3 minute value as a precise timestamp. Actual build elapsed was 35.78% lower and canonical-child elapsed 32.18% lower in this one different-VM comparison; ordinary runner variation remains. No Turbopack cache was transferred in this diagnostic, and JavaScript compilation still ran.
+
+The new build is `qKoTRwGP6NoIWimPbF1Yi` with fresh owned record `60bbcc36-01c4-4be6-a54e-11b3fe786d3c`, distinct from the retained old build and UUID. All 4,617 graph files and 2,709 tracked application roots remain present. The actual Next CLI controls then passed: added valid dependency/consumer12.888s/4,619 files/exit0; changed dependency with unchanged consumer12.768s/4,619/exit1/exactTS2322; new invalid root12.669s/4,620/exit1/exactTS2322; restored application source12.266s/4,617/exit0. The two expected refusal exits are actual wrapper1 values, not application passes or a full gate.
+
+Root independently checked API identities/digests, raw original and current source/config/compiler bindings, graph bytes/counts, complete application-root membership, fresh build/preparation/observation and actual error-control diagnostics and cleanup. New packet artifact 12621207674 has ZIP SHA256 `2c6d5c29ee248d9b2832f0e3eaddd21358d32baba2bab63d923c34ae80a410d0`. Original and new state bytes both total 913,792 with SHA256 `a4089facf276e6ca95af79cbc85a746de7232aea4fc06887fa06af1780ab9372`. Minimum sampled disk free was 9,806,864,384 bytes. These samples are not exact peak usage.
+
+The complete warm diagnostic, including queue/setup, the build/package and four extra compiler controls, took 340.646551 s (5m41s); occupied runner time 334 s. All three investigation runs together occupied 911 s / 15.18 runner-minutes, not authoritative billing. The first workflow remains FAILURE, recovery is compiler-only SUCCESS and the warm canonical diagnostic is SUCCESS. Private raw archives/logs and independent readers remain in `scratchpad/next-application-cache-20261026/`. No application suites, complete-repository compiler, migration, staging build transfer/restart or deployment were run by these diagnostics. Normal application-cache/build-capacity/promotion integration and a complete representative under 600 second release still require verification.
 
 ## Exact measurement
 

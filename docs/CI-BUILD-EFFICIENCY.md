@@ -1,6 +1,10 @@
 # CI build efficiency and deployment boundaries
 
-Prepared on 25 October 2026 in the isolated optimization review branch. No GitHub cache was created, cloud build dispatched, staging deployment changed or main/live deployment enabled by this work. Linux cold/warm measurements remain pending.
+The isolated branch now has independently verified canonical Linux build-byte transport and Next application compiler-state reuse. Normal authenticated promotion and complete release adoption remain unfinished. The original optional Turbopack cache below has no measured cold/warm result; it is separate from the newly verified application TypeScript state.
+
+## Current measured application compiler result — 26 October 2026 MYT
+
+The [application-state diagnostic](NEXT-APPLICATION-COMPILER-CACHE.md) retained the real 297.573 s canonical build despite a later collector failure, repaired only the typed launcher/missing state capture, then genuinely built on a fresh runner in 191.107 s using authenticated state. Actual Next printed TypeScript 2.3min → 26.6s; all 2,709 tracked application roots remain in 4,617 graph files, and real dependency/new-root refusals plus restored-source success passed. The first failed workflow stays red. Whole warm diagnostic 340.647 s includes four extra compiler controls and is not a test gate, normal workflow or staging release. Bounded build capacity retained at least 9.13 GiB sampled build disk headroom while skipping SDK deletion. No normal build/test admission or main/live deployment was enabled. See the linked provenance and scope before reuse.
 
 ## Verified setup
 
