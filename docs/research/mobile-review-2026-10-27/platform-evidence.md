@@ -85,6 +85,32 @@ No production process or API used the mutation. Certificate-chain attestation, r
 stored challenge issuance/consumption, atomic counter updates, Android vendor verification and attendance
 adjudication are still required. The pure checker returns a next counter and deliberately persists nothing.
 
+Enrollment-key proof follow-up at `774500510`: five focused suites passed 44 tests; root TypeScript
+exited 0. The immutable MIT-licensed captured production/development fixtures validate certificate paths
+to Apple's pinned root at historical issuance times and fail with current/too-early server dates.
+The root was read from Apple's certificate-authority site; its DER SHA-256 is
+`1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932`.
+[Apple root](https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem),
+[captured fixtures](https://github.com/uebelack/node-app-attest/tree/f16c4bb71b737466872bc8b8a7dfd215364eaa83/test/fixtures).
+
+The initial `a6d7cb6e4` guide-sample attempt failed four tests despite passing TypeScript. Investigation
+confirmed the published guide certificate's nonce is `h7fQbZOkKU5G8BHma2zEAPC6sgcpl2xhlYC0KuYL/24=`:
+it equals SHA-256(authenticator data || raw `example_server_challenge`), whereas SHA-256(authenticator
+data || SHA-256(challenge)) is `HRzniRKJfeiM/p/OVSGqs3q/sJ3FRIM/8RVhJVLPdfM=`. The verifier retains
+the documented 32-byte input-hash requirement and refuses this sample. Its signed bundle value is `1`,
+while nearby explanatory prose says `1.0`; the actual bytes are preserved in the fixture.
+[Current guide](https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide).
+
+The two captured legacy fixtures have consistent nonce/key/app/environment proofs but no signed
+distribution/build metadata. The key-proof result reports that absence; strict metadata-complete
+enrollment refuses it. The decoder's empty `unused` value was null; the repair derives the remainder
+from the checked consumed length and does not ignore suffixes. A controlled path-result bypass at
+`774500510` caused one expired-certificate refusal test to fail (nine passed); exact source restoration
+returned all ten enrollment-proof tests to PASS with no diff. The positive modern-metadata path lacks
+a valid complete signed fixture and is not accepted as verified. Fraud-receipt validation, current
+revocation, actor/key/challenge persistence, Android vendor checks, physical devices and full CI remain
+open. The new helpers make no business writes and are not activated in v1 routes.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.

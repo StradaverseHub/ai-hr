@@ -56,3 +56,19 @@ the caller must reconstruct client data and atomically consume the stored challe
 with the result. The helper is server-only and is not wired into v1 routes. Public interoperability
 fixtures establish compatibility with that sample, not hardware origin or a verified enrollment.
 Unknown authenticator extensions currently require explicit support rather than unparsed acceptance.
+
+Enrollment key proofs use a code-pinned Apple root and maintained bounded ASN.1/PKI parsers. They check
+ordered certificate signatures and a PKIX path at server time, P-256 public-key identity, certificate
+nonce, app/environment, zero initial counter, credential ID and matching COSE coordinates. A key proof
+is distinct from metadata-complete enrollment: legacy proofs retain unavailable distribution/build
+metadata, and the strict enrollment check refuses that state. Neither helper assigns a trust tier,
+persists ownership, consumes a challenge or verifies the separate fraud receipt/current revocation.
+The PKI/ASN.1 v4 dependencies require Node 20.19+ or 22.12+; actual release runtime compatibility must
+be verified before rollout. No public API route currently imports this enrollment primitive.
+
+The current Apple validation-guide sample is not a complete positive protocol witness: its certificate
+nonce matches raw example-challenge bytes, while the documented algorithm and our native bridge use a
+32-byte challenge hash. Keep that sample as a refusal case; never try alternate hash constructions to
+pass it. The captured production/development fixtures validate key proofs at their historical issuance
+times and lack modern metadata. Metadata-complete positive acceptance still needs a valid signed sample
+from the supported device/build population. Missing evidence cannot become verified by fixture editing.
