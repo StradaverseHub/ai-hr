@@ -2,7 +2,7 @@
 import type {Tx} from '../db/client';
 import {createMaintenanceDb,type MaintenanceDatabase} from '../db/maintenance-client';
 import { sql } from 'drizzle-orm';
-import { retireExpiredAiCustodyTx } from '../core/ai-retention-maintenance';
+import { retireExpiredAiCustodyTx,expiredAiCustodyQueueSql } from '../core/ai-retention-maintenance';
 
 export async function runAiRetentionTick(owner: MaintenanceDatabase) {
   return owner.db.transaction(async tx => {
@@ -10,11 +10,7 @@ export async function runAiRetentionTick(owner: MaintenanceDatabase) {
     // run this aggregate with an app principal or bypass the same expired-only RLS policies.
     const result = await retireExpiredAiCustodyTx(tx as unknown as Tx);
     const [queue] = await tx.execute<{ remaining: boolean; oldest_age_seconds: number | null }>(sql`with oldest as (
-      (select expires_at from app.assistant_own_leave_review
-        where state='awaiting_confirmation' and expires_at<=now() order by expires_at limit 1)
-      union all
-      (select expires_at from public.ai_agent_feedback
-        where expires_at<=now() order by expires_at limit 1)
+      ${expiredAiCustodyQueueSql()}
     ) select exists(select 1 from oldest) as remaining,
       extract(epoch from now()-min(expires_at))::float8 as oldest_age_seconds from oldest`);
     if (!queue || typeof queue.remaining !== 'boolean' ||
