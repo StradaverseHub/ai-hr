@@ -1,7 +1,7 @@
-# AIHR Personnel
+# AIHR
 
-Personnel distinguishes a person from each employment they hold. These terms distinguish identity, access and deliberate
-HR classification of an employment.
+Personnel distinguishes a person from each employment they hold. These terms distinguish identity,
+access, HR classification and employee submission outcomes.
 
 ## Language
 
@@ -19,3 +19,14 @@ _Avoid_: Verified real employee, production-certified employee
 A named person who can sign in through explicitly granted access without holding an employment.
 Their login does not establish employment, payroll eligibility or a reporting relationship.
 _Avoid_: Dummy employee, fake employee, unlinked identity
+
+## Employee submissions
+
+**Pending submission**:
+An employee's specific clock or leave request whose accepted or refused outcome has not yet been confirmed.
+_Avoid_: Recorded attendance, approved leave
+
+**Submission abandonment**:
+An employee's decision to prevent an unaccepted pending submission from being recorded. An already
+accepted request keeps its outcome and follows the normal attendance correction or leave cancellation process.
+_Avoid_: Delete attendance, cancel approved leave, erase history

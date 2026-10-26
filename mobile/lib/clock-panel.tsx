@@ -15,6 +15,7 @@ import { SlideConfirm } from './slide-confirm';
 import { t,appLocale } from './i18n';
 import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand } from '../../lib/mobile-api/contract';
+import {SubmissionJournalFull} from './submission-journal';
 import { Button,Card,LoadState,Muted,Row } from './ui';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
@@ -30,7 +31,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const identity=clock.data?.employmentId;
   const recovery=useSubmissionRecovery('clock',identity??undefined,({command,file})=>{
     const parsed=ClockCommand.parse(JSON.parse(command));
-    putClock({action:parsed.action,requestId:parsed.requestId,geo:{lat:parsed.lat,lng:parsed.lng,accuracy:parsed.accuracy,sampledAt:parsed.sampledAt},deviceToken:parsed.deviceToken,photo:file,phase:'uncertain',message:t('clockUncertain')});
+    putClock({employmentId:identity??undefined,action:parsed.action,requestId:parsed.requestId,geo:{lat:parsed.lat,lng:parsed.lng,accuracy:parsed.accuracy,sampledAt:parsed.sampledAt},deviceToken:parsed.deviceToken,photo:file,phase:'uncertain',message:t('clockUncertain')});
   });
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
   const label=action==='in'?t('clockIn'):t('clockOut');
@@ -40,7 +41,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     flight.current=true;
     const owner=authGeneration();
     let photo=draft?.photo;
-    const next:ClockDraft={action,phase:'preparing'};
+    const next:ClockDraft={employmentId:identity,action,phase:'preparing'};
     putClock(next);
     try{
       const geo=await capturePosition();assertAuthGeneration(owner);
@@ -84,7 +85,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       let refused=false;
       if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.requestId);refused=true;}catch{}
       if(refused){removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t('genericError')},draft.requestId);}
-      else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':'submissionSaveFailed')},draft.requestId);
+      else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.requestId);
       if(e instanceof SignInRequiredError)void signOut();
     }
     finally{flight.current=false;}
@@ -94,10 +95,14 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     flight.current=true;const owner=authGeneration();
     try{
       const result=await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
+      if(result.kind!=='clock'||result.requestId!==draft.requestId)throw new Error('Unexpected submission receipt');
       if(result.kind==='clock'&&result.receipt){
         await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
         if(putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},draft.requestId))removeLocalFile(draft.photo);
         clock.reload();
+      }else if(result.abandoned){
+        await recovery.resolve(draft.requestId);assertAuthGeneration(owner);removeLocalFile(draft.photo);
+        putClock({action:draft.action,phase:'idle',message:t('pendingDiscarded')},draft.requestId);
       }else putClock({...draft,message:t('clockUncertain')},draft.requestId);
     }catch(e){putClock({...draft,message:t('clockUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}

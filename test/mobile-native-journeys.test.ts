@@ -20,6 +20,7 @@ const options=await import('../app/api/mobile/v1/leave-options/route');
 const preview=await import('../app/api/mobile/v1/leave-preview/route');
 const team=await import('../app/api/mobile/v1/team/route');
 const receipts=await import('../app/api/mobile/v1/submission-receipt/route');
+const abandonment=await import('../app/api/mobile/v1/submission-abandon/route');
 let base:Base;
 const today=()=>todayInKualaLumpur();
 function nextMonday(){const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+((8-d.getUTCDay())%7||7));return d.toISOString().slice(0,10);}
@@ -38,7 +39,75 @@ async function call(fn:(r:Request)=>Promise<Response>,path:string,body?:unknown,
   return {status:response.status,headers:response.headers,body:await response.json()};
 }
 const register=async()=>device.POST(new Request('https://hr.example.com/api/mobile/v1/clock-device',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:'Native test phone'})}));
+async function abandon(kind:string,requestId:string,employmentId?:string,extra:Record<string,unknown>={}){
+  const r=await abandonment.POST(new Request('https://hr.example.com/api/mobile/v1/submission-abandon'+(employmentId?'?employmentId='+employmentId:''),{
+    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,requestId,...extra}),
+  }));return {status:r.status,body:await r.json()};
+}
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();blocked=false;});afterAll(closeAll);
+
+describe('server-ordered pending submission abandonment',()=>{
+  it('prevents late clock delivery after explicit discard and retains one minimal terminal audit',async()=>{
+    const a=await hire('Discard Clock');caller=a.ctx;const command=intent();
+    const first=await abandon('clock',command.requestId);
+    expect(first).toEqual({status:200,body:{kind:'clock',requestId:command.requestId,receipt:null,abandoned:true}});
+    expect(await abandon('clock',command.requestId)).toEqual(first);
+    expect((await call(clock.POST,'clock',command)).body).toEqual({outcome:'refused',code:'clock_conflict'});
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.submission.abandoned'));
+    expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorId:a.ctx.userId,subjectEmploymentId:a.employmentId,payload:{kind:'clock'}});
+    expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`)).body.abandoned).toBe(true);
+  });
+  it('returns an already accepted clock receipt without removing or correcting attendance',async()=>{
+    const a=await hire('Accepted Clock');caller=a.ctx;const command=intent(),accepted=await call(clock.POST,'clock',command);
+    expect(accepted.body.outcome).toBe('accepted');
+    expect((await abandon('clock',command.requestId)).body).toEqual({kind:'clock',requestId:command.requestId,receipt:accepted.body.receipt,abandoned:false});
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.submission.abandoned'))).toHaveLength(0);
+  });
+  it('prevents a discarded leave intent from creating a request or attachment',async()=>{
+    const a=await hire('Discard Leave');caller=a.ctx;await fund(a.employmentId);const command=application();
+    expect((await abandon('leave',command.requestId)).body.abandoned).toBe(true);
+    expect((await call(leave.POST,'leave-requests',command)).body).toMatchObject({outcome:'refused',code:'leave_refused'});
+    expect(await owner.db.select().from(schema.leaveRequest)).toHaveLength(0);
+    expect(await owner.db.select().from(schema.leaveRequestAttachment)).toHaveLength(0);
+    expect((await call(receipts.GET,`submission-receipt?kind=leave&requestId=${command.requestId}`)).body.abandoned).toBe(true);
+  });
+  it('returns accepted leave without withdrawing it or reversing its ledger',async()=>{
+    const a=await hire('Accepted Leave');caller=a.ctx;await fund(a.employmentId);const command=application();
+    const accepted=await call(leave.POST,'leave-requests',command);expect(accepted.body.outcome).toBe('accepted');
+    const before=await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id);
+    expect((await abandon('leave',command.requestId)).body).toEqual({kind:'leave',requestId:command.requestId,receipt:accepted.body,abandoned:false});
+    expect(await owner.db.select().from(schema.leaveRequest)).toHaveLength(1);
+    expect(await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id)).toEqual(before);
+  });
+  it.each(['clock','leave'] as const)('serializes a concurrent %s transmission and discard into one terminal outcome',async(kind)=>{
+    const a=await hire('Concurrent Discard');caller=a.ctx;if(kind==='leave')await fund(a.employmentId);
+    const command=kind==='clock'?intent():application();
+    const [submission,discard]=await Promise.all([call(kind==='clock'?clock.POST:leave.POST,kind==='clock'?'clock':'leave-requests',command),abandon(kind,command.requestId)]);
+    expect(discard.status).toBe(200);
+    const facts=await owner.db.select().from(kind==='clock'?schema.attendanceClockCapture:schema.leaveRequest);
+    if(discard.body.abandoned){expect(facts).toHaveLength(0);expect(submission.body.outcome).toBe('refused');}
+    else{expect(facts).toHaveLength(1);expect(submission.body.outcome).toBe('accepted');expect(discard.body.receipt).toEqual(kind==='clock'?submission.body.receipt:submission.body);}
+  });
+  it('does not let another actor abandon the original intent, even with its guessed reference',async()=>{
+    const a=await hire('Original Actor'),peer=await hire('Peer Actor'),command=intent();caller=peer.ctx;
+    expect((await abandon('clock',command.requestId,a.employmentId)).status).toBe(400);
+    expect((await abandon('clock',command.requestId,undefined,{actorId:a.ctx.userId})).status).toBe(400);
+    expect((await abandon('clock',command.requestId)).body.abandoned).toBe(true);
+    caller=a.ctx;expect((await call(clock.POST,'clock',command)).body.outcome).toBe('accepted');
+    expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`)).body.abandoned).toBeUndefined();
+  });
+  it('refuses malformed selectors and revoked sessions without an abandonment write',async()=>{
+    const a=await hire('Strict Discard');caller=a.ctx;
+    expect((await abandon('clock','not-a-reference')).status).toBe(400);
+    expect((await abandon('other',randomUUID())).status).toBe(400);
+    blocked=true;expect((await abandon('leave',randomUUID())).status).toBe(401);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.submission.abandoned'))).toHaveLength(0);
+  });
+});
 
 describe('native online attendance',()=>{
   it('enforces device policy, stores device attribution and refuses a revoked-device replay',async()=>{

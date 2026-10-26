@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 import {
-  SubmissionReceiptResponse, TasksResponse, MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
+  SubmissionAbandonResponse, SubmissionReceiptResponse, TasksResponse, MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -49,7 +49,7 @@ const responses = {
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,
   payslips: PayslipsResponse, leave: LeaveResponse, notifications: NotificationsResponse,
 };
-const commands = { clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const commands = { 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
@@ -100,8 +100,8 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
 }
 
 export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<Endpoints[P]>{return apiRequest(path,params,undefined,signal);}
-type Commands = {clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
-export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|{label:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
+type Commands = {'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
+export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
   const form=body instanceof FormData;
   return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
 }

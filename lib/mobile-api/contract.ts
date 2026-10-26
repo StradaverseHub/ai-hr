@@ -194,10 +194,16 @@ export type LeaveResult=z.infer<typeof LeaveResult>;
 
 /** Independent receipt lookup. No current-day filter, mutable status or submitted attachment is needed. */
 export const SubmissionReceiptResponse=z.discriminatedUnion('kind',[
-  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),receipt:ClockReceipt.nullable()}),
-  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),receipt:LeaveResult.options[0].nullable()}),
+  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),receipt:ClockReceipt.nullable(),abandoned:z.literal(true).optional()}),
+  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),receipt:LeaveResult.options[0].nullable(),abandoned:z.literal(true).optional()}),
 ]);
 export type SubmissionReceiptResponse=z.infer<typeof SubmissionReceiptResponse>;
+export const SubmissionAbandonCommand=z.object({kind:z.enum(['clock','leave']),requestId:z.string().uuid()}).strict();
+export const SubmissionAbandonResponse=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),abandoned:z.boolean(),receipt:ClockReceipt.nullable()}).refine(v=>v.abandoned===(v.receipt===null)),
+  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),abandoned:z.boolean(),receipt:LeaveResult.options[0].nullable()}).refine(v=>v.abandoned===(v.receipt===null)),
+]);
+export type SubmissionAbandonResponse=z.infer<typeof SubmissionAbandonResponse>;
 
 /** Read-only approval inbox; decisions retain their existing web workflow. */
 export const TasksResponse = z.object({ total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().uuid(), kind: z.enum(['leave', 'leaveCancellation', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview']), subject: z.string().nullable() })) });

@@ -6,7 +6,7 @@ export type SubmissionStoragePorts = {
   readPointer():Promise<string|null>;
   writePointer(value:string):Promise<void>;
   readSlot(slot:0|1):Promise<Uint8Array|null>;
-  writeSlot(slot:0|1,value:Uint8Array):Promise<void>;
+  writeSlot(slot:0|1,value:Uint8Array,snapshot:JournalSnapshot):Promise<void>;
   seal(value:Uint8Array):Promise<Uint8Array>;
   open(value:Uint8Array):Promise<Uint8Array>;
 };
@@ -41,7 +41,7 @@ export function createSubmissionStorage(scope:SubmissionScope,ports:SubmissionSt
       if(plaintext.byteLength>MAX_BYTES)throw new SubmissionJournalUnavailable('Submission journal is full');
       const encrypted=await ports.seal(plaintext);ports.assertCurrent();
       if(encrypted.byteLength>MAX_BYTES+64)throw new SubmissionJournalUnavailable('Submission journal is full');
-      await ports.writeSlot(checked.revision%2 as 0|1,encrypted);ports.assertCurrent();
+      await ports.writeSlot(checked.revision%2 as 0|1,encrypted,checked);ports.assertCurrent();
       // Recheck before the commit point; only one serialized owner may use this scope.
       if(revision(await ports.readPointer())!==current)throw new SubmissionJournalUnavailable('Submission revision changed');
       ports.assertCurrent();await ports.writePointer(String(checked.revision));ports.assertCurrent();

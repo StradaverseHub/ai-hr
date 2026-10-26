@@ -10,18 +10,19 @@ const employmentId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',actorId='aaaaaaaa-aaaa
 function fixture(){
   let owner=1,control:any;
   const native={AppState:{currentState:'active'}};
-  const restored=vi.fn(),apiGet=vi.fn(async()=>({actorId,employments:[{employmentId}]}));
-  const entry={kind:'clock',requestId:'request',command:'original command'};
+  const restored=vi.fn(),apiGet=vi.fn<(path:string,params?:Record<string,string>)=>Promise<any>>(async()=>({actorId,employments:[{employmentId,company:'Own company'}]}));
+  const apiPost=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({kind:'clock',requestId:'request',receipt:null,abandoned:true}));
+  const entry={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
   const journal={pending:vi.fn(async()=>[entry]),restore:vi.fn(async()=>({command:entry.command})),
     stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{})};
   const open=vi.fn(async()=>journal);
-  const output={exports:{} as {useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
+  const output={exports:{} as {listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
     ready:boolean;error:unknown;stage:(command:string)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
   }}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/submission-recovery.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,
     {exports:output.exports,module:output,require:(id:string)=>{
       if(id==='react')return React;if(id==='react-native')return native;
-      if(id==='./api')return {apiGet};if(id==='./auth')return {authGeneration:()=>owner,assertAuthGeneration:(value:number)=>{if(value!==owner)throw new errors.SessionChangedError();}};
+      if(id==='./api')return {apiGet,apiPost};if(id==='./auth')return {authGeneration:()=>owner,assertAuthGeneration:(value:number)=>{if(value!==owner)throw new errors.SessionChangedError();}};
       if(id==='./config')return {identityNamespace:()=>'https://hr.example.com'};
       if(id==='./errors')return errors;if(id==='./submission-native')return {openNativeSubmissionJournal:open};
       if(id==='./submission-journal')return {SubmissionJournalUnavailable};throw new Error(id);
@@ -30,9 +31,43 @@ function fixture(){
     control=output.exports.useSubmissionRecovery('clock',employment,restored);
     return <span>{control.ready?'ready':control.error?'failed':'loading'}</span>;
   }
-  return {Probe,apiGet,open,journal,native,restored,control:()=>control,changeAccount:()=>{owner++;}};
+  return {Probe,apiGet,apiPost,open,journal,native,restored,control:()=>control,changeAccount:()=>{owner++;},api:output.exports};
 }
 afterEach(cleanup);
+describe('pending inventory and terminal reconciliation',()=>{
+  it('lists verified own pending references without decrypting attachments or replaying commands',async()=>{
+    const f=fixture(),rows=await f.api.listOwnedPendingSubmissions();
+    expect(rows).toEqual([{employmentId,company:'Own company',kind:'clock',requestId:'request',createdAt:expect.any(Number),hasEvidence:false}]);
+    expect(rows[0]).not.toHaveProperty('command');expect(f.journal.restore).not.toHaveBeenCalled();expect(f.apiPost).not.toHaveBeenCalled();
+  });
+  it('keeps a lost discard reply pending, then resolves its confirmed abandonment without resending',async()=>{
+    const f=fixture(),[row]=await f.api.listOwnedPendingSubmissions();f.apiPost.mockRejectedValueOnce(new errors.UnavailableError());
+    await expect(f.api.reconcileOwnedPendingSubmission(row,'abandon')).rejects.toBeInstanceOf(errors.UnavailableError);
+    expect(f.journal.resolve).not.toHaveBeenCalled();
+    f.apiGet.mockResolvedValueOnce({kind:'clock',requestId:'request',receipt:null,abandoned:true});
+    await f.api.reconcileOwnedPendingSubmission(row,'receipt');expect(f.journal.resolve).toHaveBeenCalledWith('clock','request');
+    expect(f.apiPost).toHaveBeenCalledTimes(1);expect(f.apiPost).toHaveBeenCalledWith('submission-abandon',{kind:'clock',requestId:'request'},{employmentId});
+  });
+  it('never resolves unknown or mismatched receipt references',async()=>{
+    const f=fixture(),[row]=await f.api.listOwnedPendingSubmissions();
+    f.apiGet.mockResolvedValueOnce({kind:'clock',requestId:'request',receipt:null});await f.api.reconcileOwnedPendingSubmission(row,'receipt');
+    expect(f.journal.resolve).not.toHaveBeenCalled();
+    f.apiGet.mockResolvedValueOnce({kind:'clock',requestId:'different',receipt:{id:'recorded'}});
+    await expect(f.api.reconcileOwnedPendingSubmission(row,'receipt')).rejects.toThrow('Unexpected submission receipt');expect(f.journal.resolve).not.toHaveBeenCalled();
+  });
+  it('refuses forged employment selectors before any abandonment call',async()=>{
+    const f=fixture(),[row]=await f.api.listOwnedPendingSubmissions();
+    await expect(f.api.reconcileOwnedPendingSubmission({...row,employmentId:actorId},'abandon')).rejects.toThrow('ownership');
+    expect(f.apiPost).not.toHaveBeenCalled();expect(f.journal.resolve).not.toHaveBeenCalled();
+  });
+  it('does not clean up the previous account after logout during an admitted discard',async()=>{
+    const f=fixture(),[row]=await f.api.listOwnedPendingSubmissions();let release!:(value:unknown)=>void;
+    f.apiPost.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+    const pending=f.api.reconcileOwnedPendingSubmission(row,'abandon');const assertion=expect(pending).rejects.toBeInstanceOf(errors.SessionChangedError);
+    await waitFor(()=>expect(f.apiPost).toHaveBeenCalledOnce());f.changeAccount();release({kind:'clock',requestId:'request',receipt:null,abandoned:true});
+    await assertion;expect(f.journal.resolve).not.toHaveBeenCalled();
+  });
+});
 describe('submission recovery authorization and foreground boundary',()=>{
   it('hydrates a local claim only after the server verifies actor and employment',async()=>{
     const f=fixture();render(<f.Probe/>);await screen.findByText('ready');
@@ -56,7 +91,7 @@ describe('submission recovery authorization and foreground boundary',()=>{
   });
   it('does not authorize transmission when encryption finishes after backgrounding',async()=>{
     const f=fixture();render(<f.Probe/>);await screen.findByText('ready');
-    f.journal.stage.mockImplementationOnce(async()=>{f.native.AppState.currentState='background';return {kind:'clock',requestId:'request',command:'original command'};});
+    f.journal.stage.mockImplementationOnce(async()=>{f.native.AppState.currentState='background';return {kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};});
     await expect(f.control().stage('original command')).rejects.toThrow('Unlock the app');
     expect(f.journal.resolve).not.toHaveBeenCalled();
   });

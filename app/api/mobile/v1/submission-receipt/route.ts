@@ -1,6 +1,6 @@
 import {z} from 'zod';
-import {ownNativeClockReceipt} from '@/packs/attendance/service';
-import {ownMobileLeaveReceipt} from '@/core/mobile-leave-command';
+import {ownNativeClockDisposition} from '@/packs/attendance/service';
+import {ownMobileLeaveDisposition} from '@/core/mobile-leave-command';
 import {SubmissionReceiptResponse} from '@/lib/mobile-api/contract';
 import {mobileRoute,MobileBadRequest} from '@/lib/mobile-api/handler';
 import {mobileEmployment} from '@/lib/mobile-api/request';
@@ -12,6 +12,6 @@ export const GET = mobileRoute(SubmissionReceiptResponse,async(s,req)=>{
   const employmentId=await mobileEmployment(s,req);
   if(!employmentId||!parsed.success)throw new MobileBadRequest('Invalid receipt selector');
   const {kind,requestId}=parsed.data;
-  return kind==='clock'?{kind,requestId,receipt:await ownNativeClockReceipt(s,employmentId,requestId)}:
-    {kind,requestId,receipt:await ownMobileLeaveReceipt(s,employmentId,requestId)};
+  return kind==='clock'?{kind,requestId,...await ownNativeClockDisposition(s,employmentId,requestId)}:
+    {kind,requestId,...await ownMobileLeaveDisposition(s,employmentId,requestId)};
 });

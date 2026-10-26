@@ -5,8 +5,8 @@ import { authGeneration } from './auth';
 import { useSession } from './session';
 import type { LeaveCommand,LeavePreviewResponse } from './api';
 export type LocalAttachment={uri:string;name:string;mimeType:string;size:number};
-export type ClockDraft={action:'in'|'out';phase:'idle'|'preparing'|'review'|'submitting'|'uncertain'|'done';requestId?:string;geo?:{lat:number;lng:number;accuracy:number;sampledAt:number};photo?:LocalAttachment;deviceToken?:string;message?:string;receiptTime?:string};
-export type LeaveDraft={command:LeaveCommand;document?:LocalAttachment;phase:'edit'|'previewing'|'review'|'submitting'|'uncertain'|'done';preview?:LeavePreviewResponse;message?:string};
+export type ClockDraft={employmentId?:string;action:'in'|'out';phase:'idle'|'preparing'|'review'|'submitting'|'uncertain'|'done';requestId?:string;geo?:{lat:number;lng:number;accuracy:number;sampledAt:number};photo?:LocalAttachment;deviceToken?:string;message?:string;receiptTime?:string};
+export type LeaveDraft={employmentId?:string;command:LeaveCommand;document?:LocalAttachment;phase:'edit'|'previewing'|'review'|'submitting'|'uncertain'|'done';preview?:LeavePreviewResponse;message?:string};
 export function removeLocalFile(file?:LocalAttachment){if(file)try{const local=new File(file.uri);if(local.exists)local.delete();}catch{/* The cache is also purged at the next launch. */}}
 type Drafts={clock:ClockDraft|null;leave:LeaveDraft|null};
 const Ctx=createContext<{clock:ClockDraft|null;leave:LeaveDraft|null;putClock:(value:ClockDraft|null,expectedId?:string)=>boolean;putLeave:(value:LeaveDraft|null,expectedId?:string)=>boolean}|null>(null);

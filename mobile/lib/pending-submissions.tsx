@@ -1,0 +1,75 @@
+import {useEffect,useRef,useState} from 'react';
+import {Alert} from 'react-native';
+import {router} from 'expo-router';
+import {DesignText as Text,useTenantDesign} from './design';
+import {listOwnedPendingSubmissions,reconcileOwnedPendingSubmission,type PendingSubmissionSummary} from './submission-recovery';
+import {SignInRequiredError} from './errors';
+import {useSession} from './session';
+import {t,appLocale} from './i18n';
+import {useJourneyDrafts,removeLocalFile} from './journey-drafts';
+import {Button,Card,LoadState,Muted,Row,Screen,Title} from './ui';
+
+/** Read/reconcile pending intents before a voluntary exit. Forced logout never enters this screen. */
+export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|'company'}){
+  const {signOut,setEmploymentId}=useSession(),{palette}=useTenantDesign();
+  const drafts=useJourneyDrafts();
+  const [items,setItems]=useState<PendingSubmissionSummary[]|null>(null),[error,setError]=useState<Error|null>(null);
+  const [attempt,setAttempt]=useState(0),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+  const alive=useRef(true),flight=useRef(false),exiting=useRef(false);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+  function continueExit(){
+    if(exiting.current)return;exiting.current=true;
+    if(intent==='company')router.replace('/company');else void signOut();
+  }
+  useEffect(()=>{
+    let active=true;setItems(null);setError(null);
+    void listOwnedPendingSubmissions().then(next=>{
+      if(!active)return;
+      setItems(next.sort((a,b)=>a.createdAt-b.createdAt||a.requestId.localeCompare(b.requestId)));
+      if(!next.length&&intent!=='review')continueExit();
+    }).catch(e=>{if(active){setError(e instanceof Error?e:new Error());if(e instanceof SignInRequiredError)void signOut();}});
+    return()=>{active=false;};
+  },[attempt,intent]);
+  async function reconcile(item:PendingSubmissionSummary,action:'receipt'|'abandon'){
+    if(!alive.current||flight.current)return;flight.current=true;setBusy(true);setMessage('');
+    try{
+      const result=await reconcileOwnedPendingSubmission(item,action);
+      if(!alive.current)return;
+      if(result.receipt||result.abandoned){
+        if(item.kind==='clock'&&drafts.clock?.employmentId===item.employmentId&&drafts.clock.requestId===item.requestId){removeLocalFile(drafts.clock.photo);drafts.putClock(null,item.requestId);}
+        if(item.kind==='leave'&&drafts.leave?.employmentId===item.employmentId&&drafts.leave.command.requestId===item.requestId){removeLocalFile(drafts.leave.document);drafts.putLeave(null,item.requestId);}
+        setItems(previous=>previous?.filter(entry=>!(entry.employmentId===item.employmentId&&entry.kind===item.kind&&entry.requestId===item.requestId))??null);
+        setMessage(t(result.receipt?'pendingAlreadyRecorded':'pendingDiscarded'));
+      }else setMessage(t('pendingUnknown'));
+    }catch(e){if(alive.current){setMessage(t('pendingActionFailed'));if(e instanceof SignInRequiredError)void signOut();}}
+    finally{flight.current=false;if(alive.current)setBusy(false);}
+  }
+  function confirmDiscard(item:PendingSubmissionSummary){
+    Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[
+      {text:t('cancel'),style:'cancel'},
+      {text:t('pendingDiscard'),style:'destructive',onPress:()=>void reconcile(item,'abandon')},
+    ]);
+  }
+  function review(item:PendingSubmissionSummary){
+    setEmploymentId(item.employmentId);router.replace(item.kind==='clock'?'/':'/leave');
+  }
+  return <Screen>
+    <Title>{t(intent==='logout'?'pendingBeforeLogout':intent==='company'?'pendingBeforeCompany':'pendingTitle')}</Title>
+    <Muted>{t('pendingRetention')}</Muted>
+    <LoadState loading={items===null&&!error} error={error} onRetry={()=>setAttempt(value=>value+1)}/>
+    {!!error&&<Muted>{t('pendingCountUnavailable')}</Muted>}
+    {items!==null&&<Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingCount',{n:items.length})}</Text>}
+    {!!message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{message}</Text>}
+    {items?.map(item=><Card key={JSON.stringify([item.employmentId,item.kind,item.requestId])}>
+      <Text style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t(item.kind==='clock'?'pendingAttendance':'pendingLeave')}</Text>
+      <Muted>{item.company}</Muted>
+      <Row label={t('pendingSaved')} value={new Date(item.createdAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
+      <Muted>{t('pendingReference')}</Muted><Text selectable style={{color:palette.text}}>{item.requestId}</Text>
+      <Button title={t('checkReceipt')} disabled={busy} onPress={()=>void reconcile(item,'receipt')}/>
+      <Button title={t('pendingReview')} disabled={busy} kind="quiet" onPress={()=>review(item)}/>
+      <Button title={t('pendingDiscard')} disabled={busy} kind="quiet" onPress={()=>confirmDiscard(item)}/>
+    </Card>)}
+    {intent!=='review'&&<Button title={t(intent==='company'?'pendingKeepCompany':'pendingKeepLogout')} onPress={continueExit}/>}
+    <Button title={t('back')} kind="quiet" onPress={()=>router.back()}/>
+  </Screen>;
+}

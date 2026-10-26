@@ -11,6 +11,7 @@ import { useTenantDesign } from './design';
 import { SignInRequiredError,RequestRejectedError } from './errors';
 import { LeaveCommand as LeaveCommandSchema } from '../../lib/mobile-api/contract';
 import { useSubmissionRecovery } from './submission-recovery';
+import {SubmissionJournalFull} from './submission-journal';
 import { t,type MessageKey } from './i18n';
 import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment } from './journey-drafts';
 import { useSession } from './session';
@@ -20,12 +21,12 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
   const {palette,design}=useTenantDesign();const {signOut}=useSession();
   const {leave:draft,putLeave}=useJourneyDrafts();const flight=useRef(false);
   const recovery=useSubmissionRecovery('leave',options.employmentId??undefined,({command,file})=>{
-    putLeave({command:LeaveCommandSchema.parse(JSON.parse(command)),document:file,phase:'uncertain',message:t('leaveUncertain')});
+    putLeave({employmentId:options.employmentId??undefined,command:LeaveCommandSchema.parse(JSON.parse(command)),document:file,phase:'uncertain',message:t('leaveUncertain')});
   });
   const selected=options.items.find(o=>o.id===draft?.command.leaveTypeId);
   const pending=draft?.phase==='submitting'||draft?.phase==='previewing';
   const disabled=pending||draft?.phase==='uncertain';
-  function begin(id:string){removeLocalFile(draft?.document);putLeave({phase:'edit',command:{requestId:randomUUID(),leaveTypeId:id,startDate:today,endDate:today,durationType:'full_day'}});}
+  function begin(id:string){removeLocalFile(draft?.document);putLeave({employmentId:options.employmentId??undefined,phase:'edit',command:{requestId:randomUUID(),leaveTypeId:id,startDate:today,endDate:today,durationType:'full_day'}});}
   function edit(patch:Partial<LeaveCommand>){if(!draft||disabled)return;putLeave({...draft,phase:'edit',preview:undefined,message:undefined,command:{...draft.command,...patch,requestId:randomUUID(),overrideConsent:[]}});}
   function checkbox(label:string,value:boolean,change:()=>void){return <Pressable accessibilityRole="checkbox" accessibilityState={{checked:value,disabled:!!disabled}} disabled={disabled} onPress={change} style={{minHeight:48,flexDirection:'row',gap:12,alignItems:'center'}}><View style={{width:24,height:24,borderWidth:1,borderColor:value?palette.accent:palette.border,borderRadius:4,alignItems:'center',justifyContent:'center'}}><Text style={{color:palette.accent}}>{value?'✓':''}</Text></View><Text style={{color:palette.text,flex:1,lineHeight:21}}>{label}</Text></Pressable>;}
   function field(label:string,value:string,change:(value:string)=>void,multiline=false){return <View style={{gap:6,flex:1}}><Text style={{color:palette.muted,fontSize:14}}>{label}</Text><TextInput accessibilityLabel={label} editable={!disabled} value={value} onChangeText={change} multiline={multiline} autoCorrect={multiline} autoCapitalize={multiline?'sentences':'none'} maxLength={multiline?2000:32} placeholderTextColor={palette.muted} style={{color:palette.text,minHeight:48,borderWidth:1,borderColor:palette.border,borderRadius:design.schemaVersion===2?design.composition.layout.radius:design.corners==='soft'?12:4,padding:12,fontSize:16,textAlignVertical:'top'}}/></View>;}
@@ -65,7 +66,7 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
     }catch(e){
       let refused=false;
       if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.command.requestId);refused=true;}catch{}
-      putLeave(refused?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t(sent?'leaveUncertain':'submissionSaveFailed')},draft.command.requestId);
+      putLeave(refused?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t(sent?'leaveUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.command.requestId);
       if(e instanceof SignInRequiredError)void signOut();
     }finally{flight.current=false;}
   }
@@ -73,11 +74,15 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
     if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
     try{
       const result=await apiGet('submission-receipt',{kind:'leave',requestId:draft.command.requestId,employmentId:options.employmentId});assertAuthGeneration(owner);
+      if(result.kind!=='leave'||result.requestId!==draft.command.requestId)throw new Error('Unexpected submission receipt');
       if(result.kind==='leave'&&result.receipt){
         await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);
         if(putLeave({...draft,phase:'done',document:undefined,message:result.receipt.holidayWarning||result.receipt.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId)){
           removeLocalFile(draft.document);onSubmitted();
         }
+      }else if(result.abandoned){
+        await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);removeLocalFile(draft.document);
+        putLeave({...draft,phase:'edit',document:undefined,message:t('pendingDiscarded'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}},draft.command.requestId);
       }else putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);
     }catch(e){putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { apiGet } from './api';
+import { apiGet,apiPost } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { identityNamespace } from './config';
 import { SessionChangedError } from './errors';
@@ -13,6 +13,40 @@ let activeGeneration=-1;
 let activeNamespace='';
 let identity:ReturnType<typeof apiGet<'me'>>|null=null;
 const journals=new Map<string,Promise<Journal>>();
+export type PendingSubmissionSummary={employmentId:string;company:string;kind:SubmissionKind;requestId:string;createdAt:number;hasEvidence:boolean};
+/** Fresh identity verification; returns no coordinates, reasons, attachments or temporary file paths. */
+export async function listOwnedPendingSubmissions():Promise<PendingSubmissionSummary[]>{
+  const owner=authGeneration(),namespace=identityNamespace();
+  const previous=activeGeneration===owner&&activeNamespace===namespace&&identity?await identity:null;
+  assertAuthGeneration(owner);
+  const me=await apiGet('me');assertAuthGeneration(owner);
+  if(identityNamespace()!==namespace||!me.actorId||previous?.actorId&&previous.actorId!==me.actorId)throw new SessionChangedError();
+  if(activeGeneration!==owner||activeNamespace!==namespace){journals.clear();activeGeneration=owner;activeNamespace=namespace;}
+  identity=Promise.resolve(me);
+  const items:PendingSubmissionSummary[]=[];
+  for(const employment of me.employments){
+    const journal=await ownedJournal(employment.employmentId,owner);assertAuthGeneration(owner);
+    for(const entry of await journal.pending())items.push({employmentId:employment.employmentId,company:employment.company,
+      kind:entry.kind,requestId:entry.requestId,createdAt:entry.createdAt,hasEvidence:!!entry.evidence});
+    assertAuthGeneration(owner);
+  }
+  return items;
+}
+/** Only an accepted receipt or server-ordered abandonment authorizes local cleanup. */
+export async function reconcileOwnedPendingSubmission(item:PendingSubmissionSummary,action:'receipt'|'abandon'){
+  const owner=authGeneration(),namespace=identityNamespace();
+  const check=()=>{assertAuthGeneration(owner);if(identityNamespace()!==namespace)throw new SessionChangedError();};
+  if(AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
+  const journal=await ownedJournal(item.employmentId,owner);check();
+  if(!(await journal.pending()).some(entry=>entry.kind===item.kind&&entry.requestId===item.requestId))throw new SubmissionJournalUnavailable('Pending submission changed');
+  check();
+  const result=action==='abandon'?await apiPost('submission-abandon',{kind:item.kind,requestId:item.requestId},{employmentId:item.employmentId}):
+    await apiGet('submission-receipt',{kind:item.kind,requestId:item.requestId,employmentId:item.employmentId});
+  check();
+  if(result.kind!==item.kind||result.requestId!==item.requestId)throw new SubmissionJournalUnavailable('Unexpected submission receipt');
+  if(result.receipt||result.abandoned){await journal.resolve(item.kind,item.requestId);check();}
+  return result;
+}
 async function ownedJournal(employmentId:string,owner:number){
   assertAuthGeneration(owner);
   const namespace=identityNamespace();

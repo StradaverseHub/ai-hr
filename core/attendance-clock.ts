@@ -2,7 +2,7 @@ import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '../lib/at
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import type { SessionContext,Tx } from '../db/client';
 import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent, employeeDevice } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
@@ -13,6 +13,7 @@ import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-devi
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
+import {abandonSubmissionTx,submissionAbandonedTx} from './mobile-submission-state';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // r434 — both classes now live in core/attendance.ts (the shared writers throw them too); re-exported so
@@ -59,14 +60,32 @@ export async function ownClockReceipt(ctx: SessionContext, requestId: string,sel
 
 /** Native recovery binds the immutable capture to its original actor as well as own employment. */
 export async function ownNativeClockReceipt(ctx:SessionContext,employmentId:string,requestId:string){
-  if(!ctx.userId||!UUID.test(requestId))return null;
-  const me=(await myEmployments(ctx)).find(e=>e.employmentId===employmentId);
-  if(!me)return null;
-  return withTenant(ctx,async tx=>{
-    const [row]=await tx.select({capture:attendanceClockCapture}).from(attendanceClockCapture)
+  return (await ownNativeClockDisposition(ctx,employmentId,requestId)).receipt;
+}
+async function nativeClockReceiptTx(tx:Tx,ctx:SessionContext,employmentId:string,requestId:string){
+  if(!ctx.userId)return null;
+  const [row]=await tx.select({capture:attendanceClockCapture}).from(attendanceClockCapture)
       .innerJoin(domainEvent,and(eq(domainEvent.aggregateId,attendanceClockCapture.id),eq(domainEvent.aggregateType,'attendance-clock-capture'),eq(domainEvent.eventType,'attendance.clock.captured')))
-      .where(and(eq(attendanceClockCapture.employmentId,me.employmentId),eq(attendanceClockCapture.requestId,requestId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.actorId,ctx.userId!))).limit(1);
-    return row?publicReceipt(row.capture):null;
+      .where(and(eq(attendanceClockCapture.employmentId,employmentId),eq(attendanceClockCapture.requestId,requestId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.actorId,ctx.userId))).limit(1);
+  return row?publicReceipt(row.capture):null;
+}
+export async function ownNativeClockDisposition(ctx:SessionContext,employmentId:string,requestId:string){
+  if(!ctx.userId||!UUID.test(requestId)||!(await myEmployments(ctx)).some(e=>e.employmentId===employmentId))return {receipt:null};
+  return withTenant(ctx,async tx=>{
+    const receipt=await nativeClockReceiptTx(tx,ctx,employmentId,requestId);
+    const abandoned=!receipt&&await submissionAbandonedTx(tx,ctx,employmentId,'clock',requestId);
+    return {receipt,...(abandoned?{abandoned:true as const}:{})};
+  });
+}
+/** Accept-or-abandon is serialized with the original capture; it never changes a recorded punch. */
+export async function abandonNativeClock(ctx:SessionContext,employmentId:string,requestId:string){
+  if(!ctx.userId||!UUID.test(requestId)||!(await myEmployments(ctx)).some(e=>e.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
+  return withTenant(ctx,async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+employmentId},0))`);
+    const receipt=await nativeClockReceiptTx(tx,ctx,employmentId,requestId);
+    if(receipt)return {receipt,abandoned:false};
+    await abandonSubmissionTx(tx,ctx,employmentId,'clock',requestId);
+    return {receipt:null,abandoned:true};
   });
 }
 
@@ -103,6 +122,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
+    if(await submissionAbandonedTx(tx,ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
     if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
     const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
     if (native?.deviceToken && !nativeDevice) throw new DeviceNotRegisteredError();

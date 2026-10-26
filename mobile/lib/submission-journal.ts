@@ -11,6 +11,7 @@ export type JournalEntry = {
 export type JournalSnapshot = { version: 1; revision: number; scope: SubmissionScope; entries: JournalEntry[] };
 export class PendingSubmissionConflict extends Error {}
 export class SubmissionJournalUnavailable extends Error {}
+export class SubmissionJournalFull extends SubmissionJournalUnavailable {}
 export type JournalPorts = {
   assertCurrent(): void;
   read(): Promise<JournalSnapshot | null>;
@@ -20,6 +21,7 @@ export type JournalPorts = {
   storeEvidence(kind: SubmissionKind, id: string, bytes: Uint8Array): Promise<string>;
   restoreEvidence(reference: string, file: Omit<EvidenceFile, 'uri'>): Promise<EvidenceFile>;
   deleteEvidence(reference: string): Promise<void>;
+  reclaim?: (snapshot:JournalSnapshot)=>Promise<void>;
 };
 const digestSchema=z.string().regex(/^[0-9a-f]{64}$/);
 const scopeSchema=z.object({namespace:z.string().min(1).max(2048),actorId:z.string().uuid(),employmentId:z.string().uuid()}).strict();
@@ -54,6 +56,8 @@ export function createSubmissionJournal(scope: SubmissionScope, ports: JournalPo
     if(!state){
       const stored=await ports.read();ports.assertCurrent();
       state=stored?parseJournalSnapshot(stored,scope):{version:1,revision:0,scope:{...scope},entries:[]};
+      try{await ports.reclaim?.(state);}catch{/* Cleanup must never erase or hide a committed pending entry. */}
+      ports.assertCurrent();
     }
     return state;
   }
@@ -61,6 +65,8 @@ export function createSubmissionJournal(scope: SubmissionScope, ports: JournalPo
     const previous=await load();
     const next:JournalSnapshot={...previous,revision:previous.revision+1,entries};
     ports.assertCurrent();await ports.commit(next);ports.assertCurrent();state=next;
+    try{await ports.reclaim?.(next);}catch{/* Durable state remains authoritative if cleanup needs a later retry. */}
+    ports.assertCurrent();
   }
   return {
     pending(){return enqueue(async()=>{const snapshot=await load();return structuredClone(snapshot.entries);});},

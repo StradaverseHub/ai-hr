@@ -9,10 +9,13 @@ import * as storage from '../mobile/lib/submission-storage';
 /** Execute the shipped native adapter. Files/Keychain/native AES are ports; AES-GCM uses real crypto. */
 function fixture(){
   const files=new Map<string,Uint8Array>(),directories=new Set<string>(),secrets=new Map<string,string>();
+  let occupiedBytes=0;
   const uri=(...parts:unknown[])=>parts.map(p=>typeof p==='string'?p:(p as {uri:string}).uri).join('/');
   class Directory {
     uri:string;constructor(...parts:unknown[]){this.uri=uri(...parts);}
     get exists(){return directories.has(this.uri);}
+    get size(){return occupiedBytes+[...files].filter(([path])=>path.startsWith(this.uri+'/')).reduce((total,[,bytes])=>total+bytes.byteLength,0);}
+    list(){return [...files.keys()].filter(path=>path.startsWith(this.uri+'/')&&!path.slice(this.uri.length+1).includes('/')).map(path=>new File(path));}
     create(){directories.add(this.uri);directories.add('document/aihr-submissions-v1');}
     delete(){for(const key of directories)if(key.startsWith(this.uri))directories.delete(key);for(const key of files.keys())if(key.startsWith(this.uri+'/'))files.delete(key);}
   }
@@ -20,6 +23,7 @@ function fixture(){
     uri:string;constructor(...parts:unknown[]){this.uri=uri(...parts);}
     get exists(){return files.has(this.uri);}
     get size(){return files.get(this.uri)?.byteLength??0;}
+    get name(){return this.uri.split('/').at(-1)!;}
     async bytes(){return files.get(this.uri)!.slice();}
     write(value:Uint8Array){files.set(this.uri,value.slice());}
     delete(){files.delete(this.uri);}
@@ -56,12 +60,30 @@ function fixture(){
     if(id==='expo-secure-store')return secure;if(id==='expo-crypto')return crypto;
     if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;throw new Error(id);
   }});
-  return {native:output.exports,files,directories,secrets,secure};
+  return {native:output.exports,files,directories,secrets,secure,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
 }
 const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',employmentId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'};
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('reclaims uncommitted encrypted orphans on restart without losing a committed claim',async()=>{
+    const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));const opened=await f.native.openNativeSubmissionJournal(scope,()=>{});
+    f.secure.setItemAsync.mockRejectedValueOnce(new Error('Commit failed'));
+    await expect(opened.stage('clock',command,{uri:'photo',name:'photo',mimeType:'image/jpeg',size:3})).rejects.toThrow('Commit failed');
+    expect([...f.files.keys()].filter(path=>path.startsWith('document/'))).toHaveLength(2);
+    const restarted=await f.native.openNativeSubmissionJournal(scope,()=>{});expect(await restarted.pending()).toEqual([]);
+    expect([...f.files.keys()].filter(path=>path.startsWith('document/'))).toHaveLength(0);
+    const entry=await restarted.stage('clock',command,{uri:'photo',name:'photo',mimeType:'image/jpeg',size:3});
+    const again=await f.native.openNativeSubmissionJournal(scope,()=>{});expect(await again.pending()).toEqual([entry]);
+    expect((await again.restore(entry)).command).toBe(command);
+  });
+  it('refuses new evidence at the installation cap but still allows pending resolution and cleanup',async()=>{
+    const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));const opened=await f.native.openNativeSubmissionJournal(scope,()=>{});
+    await opened.stage('clock',command,{uri:'photo',name:'photo',mimeType:'image/jpeg',size:3});
+    f.occupy(64*1024*1024);await opened.resolve('clock',requestId);expect(await opened.pending()).toEqual([]);
+    await expect(opened.stage('clock',command,{uri:'photo',name:'photo',mimeType:'image/jpeg',size:3})).rejects.toBeInstanceOf(journal.SubmissionJournalFull);
+    expect([...f.files.keys()].filter(path=>path.startsWith('document/'))).toHaveLength(1);
+  });
   it('persists encrypted metadata and evidence and restores the same bytes after restart',async()=>{
     const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));
     const opened=await f.native.openNativeSubmissionJournal(scope,()=>{});

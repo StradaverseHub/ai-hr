@@ -2,10 +2,12 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, CryptoDigestAlgorithm, digest, digestStringAsync, randomUUID } from 'expo-crypto';
-import { createSubmissionJournal, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
+import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
 import { createSubmissionStorage } from './submission-storage';
 
 const KEY='aihr.submissions.key.v1';
+const MAX_INSTALL_BYTES=64*1024*1024;
+const METADATA_RESERVE=2*65536;
 const OPTIONS={keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY};
 let keyWork:Promise<unknown>=Promise.resolve();
 function serializedKey<T>(run:()=>Promise<T>){const next=keyWork.then(run);keyWork=next.then(()=>undefined,()=>undefined);return next;}
@@ -34,7 +36,13 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointerKey=`aihr.submissions.${keyId.slice(0,16)}.${scopeId}`;
   const directory=new Directory(root(),scopeId);
-  if(!directory.exists)directory.create({intermediates:true});
+  let committedEntryCount=0;
+  function ensureDirectory(){if(!directory.exists)directory.create({intermediates:true});}
+  function admitBytes(additional:number){
+    const used=root().exists?root().size:0;
+    if(used==null||!Number.isFinite(used)||used<0)throw new SubmissionJournalUnavailable('Submission storage cannot be inspected');
+    if(used+Math.max(0,additional)>MAX_INSTALL_BYTES)throw new SubmissionJournalFull('Pending submission storage is full');
+  }
   const aad=(name:string)=>new TextEncoder().encode(`aihr-submissions-v1:${scopeId}:${name}`);
   async function seal(value:Uint8Array,name:string){
     assertCurrent();const result=await aesEncryptAsync(value,key,{additionalData:aad(name)});assertCurrent();return result.combined();
@@ -56,11 +64,28 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
     readPointer:()=>SecureStore.getItemAsync(pointerKey,OPTIONS),
     writePointer:value=>SecureStore.setItemAsync(pointerKey,value,OPTIONS),
     readSlot:slot=>read(`journal-${slot}.sealed`,65536+64),
-    async writeSlot(slot,bytes){assertCurrent();new File(directory,`journal-${slot}.sealed`).write(bytes);},
+    async writeSlot(slot,bytes,snapshot){
+      assertCurrent();const file=new File(directory,`journal-${slot}.sealed`);
+      // Resolution must remain possible at the cap; its smaller committed state permits reclamation.
+      if(snapshot.entries.length>=committedEntryCount)admitBytes(bytes.byteLength-(file.exists?file.size:0));
+      ensureDirectory();file.write(bytes);
+    },
     seal:bytes=>seal(bytes,'journal'),open:bytes=>open(bytes,'journal'),
   });
   return createSubmissionJournal(scope,{
-    assertCurrent,...storage,digest:hash,
+    assertCurrent,digest:hash,
+    async read(){const snapshot=await storage.read();committedEntryCount=snapshot?.entries.length??0;return snapshot;},
+    async commit(snapshot){await storage.commit(snapshot);committedEntryCount=snapshot.entries.length;},
+    async reclaim(snapshot){
+      assertCurrent();if(!directory.exists)return;
+      const retained=new Set(snapshot.entries.flatMap(entry=>entry.evidence?[entry.evidence.reference]:[]));
+      if(snapshot.revision)retained.add(`journal-${snapshot.revision%2}.sealed`);
+      for(const item of directory.list()){
+        assertCurrent();if(!(item instanceof File))continue;
+        const name=item.name;
+        if((/^journal-[01]\.sealed$/.test(name)||/^[0-9a-f-]{36}\.sealed$/i.test(name))&&!retained.has(name))item.delete();
+      }
+    },
     async readEvidence(file){
       assertCurrent();const native=new File(file.uri);
       if(!native.exists||native.size!==file.size)throw new SubmissionJournalUnavailable('Pending evidence changed');
@@ -68,7 +93,7 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
     },
     async storeEvidence(_kind,_id,bytes){
       const name=`${randomUUID()}.sealed`,encrypted=await seal(bytes,name);assertCurrent();
-      new File(directory,name).write(encrypted);return name;
+      admitBytes(encrypted.byteLength+METADATA_RESERVE);ensureDirectory();new File(directory,name).write(encrypted);return name;
     },
     async restoreEvidence(reference,metadata){
       const name=evidenceName(reference),encrypted=await read(name,metadata.size+64);
