@@ -284,6 +284,7 @@ BEGIN
  ELSIF TG_TABLE_NAME='letter_record' THEN
   SELECT * INTO b FROM public.letter_generation_batch WHERE id=NEW.batch_id;
   IF b.id IS NULL OR b.tenant_id<>NEW.tenant_id OR b.company_id<>NEW.company_id OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.company_id=NEW.company_id) THEN RAISE EXCEPTION 'Letter employment or batch identity mismatch';END IF;
+  IF NEW.original_letter_id IS NOT NULL AND (NOT app.letter_permission(NEW.company_id,'issue') OR NOT app.letter_can_read(NEW.original_letter_id) OR NOT EXISTS(SELECT 1 FROM public.letter_record original WHERE original.id=NEW.original_letter_id AND original.tenant_id=NEW.tenant_id AND original.company_id=NEW.company_id AND original.employment_id=NEW.employment_id AND original.state IN ('issued','void'))) THEN RAISE EXCEPTION 'Reissue requires an authorised original for the same employee';END IF;
   IF NEW.state<>'draft' OR NEW.current_revision_id IS NOT NULL OR NEW.stage_index<>0 OR NEW.lock_version<>1 OR NEW.submitted_at IS NOT NULL OR NEW.approved_at IS NOT NULL OR NEW.issued_at IS NOT NULL OR NEW.voided_at IS NOT NULL THEN RAISE EXCEPTION 'New letters must start as drafts';END IF;
   IF NEW.original_letter_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_record prior WHERE prior.id=NEW.original_letter_id AND prior.tenant_id=NEW.tenant_id AND prior.company_id=NEW.company_id AND prior.employment_id=NEW.employment_id AND prior.state IN ('issued','void')) THEN RAISE EXCEPTION 'Reissue identity mismatch';END IF;
  ELSIF TG_TABLE_NAME IN ('letter_revision','letter_approval_decision','letter_artifact','letter_recipient_event') THEN
@@ -493,3 +494,17 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.verify_letter_status(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.verify_letter_status(text) TO ai_hr_app;
+--> statement-breakpoint
+-- General DomainEvent reads remain admin-scoped. Letter staff receive only their authorised letter's history.
+CREATE FUNCTION app.letter_audit(subject uuid,before_event uuid,page_size integer)
+RETURNS TABLE(id uuid,event_type text,actor_type text,actor_id uuid,payload jsonb,occurred_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF page_size IS NULL OR page_size<1 OR page_size>101 OR NOT app.letter_can_read(subject) OR NOT EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND app.letter_permission(l.company_id,'read')) THEN RAISE EXCEPTION 'Letter audit access unavailable' USING ERRCODE='insufficient_privilege';END IF;
+ RETURN QUERY SELECT e.id,e.event_type,e.actor_type::text,e.actor_id,e.payload,e.occurred_at FROM public.domain_event e
+ WHERE e.tenant_id=app.current_tenant_id() AND e.aggregate_type='letter' AND e.aggregate_id=subject
+ AND (before_event IS NULL OR e.sequence<(SELECT c.sequence FROM public.domain_event c WHERE c.id=before_event AND c.tenant_id=app.current_tenant_id() AND c.aggregate_type='letter' AND c.aggregate_id=subject))
+ ORDER BY e.sequence DESC LIMIT page_size;
+END $$;
+REVOKE ALL ON FUNCTION app.letter_audit(uuid,uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_audit(uuid,uuid,integer) TO ai_hr_app;

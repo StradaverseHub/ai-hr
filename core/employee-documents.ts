@@ -362,9 +362,10 @@ export function getEmployeeDocument(
       .limit(1);
     if (!row) return null;
     if(row.letterArtifactId){
-      const [sealed]=await tx.select({content:letterArtifact.content}).from(letterArtifact).innerJoin(letterRecord,and(eq(letterRecord.id,letterArtifact.letterId),eq(letterRecord.currentRevisionId,letterArtifact.revisionId),eq(letterRecord.state,'issued'))).where(eq(letterArtifact.id,row.letterArtifactId));
+      const [sealed]=await tx.select({content:letterArtifact.content,letterId:letterRecord.id,contentHash:letterArtifact.contentHash}).from(letterArtifact).innerJoin(letterRecord,and(eq(letterRecord.id,letterArtifact.letterId),eq(letterRecord.currentRevisionId,letterArtifact.revisionId),eq(letterRecord.state,'issued'))).where(eq(letterArtifact.id,row.letterArtifactId));
       if(!sealed)return null;
       row.content=sealed.content;
+      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'letter',aggregateId:sealed.letterId,eventType:'letter.downloaded',actor:actorOf(ctx),payload:{artifactId:row.letterArtifactId,artifactHash:sealed.contentHash,documentId}});
     }
     // SUBSTRATE (documented exception): audit the download per expected_function §6.
     await appendEvent(tx, {
@@ -373,7 +374,7 @@ export function getEmployeeDocument(
       aggregateId: documentId,
       eventType: 'employee-document.downloaded',
       actor: actorOf(ctx),
-      subjectEmploymentId: row.employmentId,
+      subjectEmploymentId: row.letterArtifactId?null:row.employmentId,
       payload: { fileName: row.fileName },
     });
     return { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType, employmentId: row.employmentId };
