@@ -3,7 +3,7 @@ import {and,desc,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../../db/client';
 import {withPerformanceTenant} from '../../../core/module-gate';
-import {company,employment,onehrCycle,onehrReview,reviewCycle} from '../../../db/schema';
+import {company,onehrCycle,onehrReview,reviewCycle} from '../../../db/schema';
 import {todayInKualaLumpur} from '../../../lib/hr-date';
 import {generateDraft,redactPII} from '../../../lib/ai';
 import {assessmentAiConfigTx,assessmentAiStateTx} from './ai-settings';
