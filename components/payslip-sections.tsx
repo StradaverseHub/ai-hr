@@ -30,4 +30,3 @@ export function PayslipBlock({ title, children, tone = "slate", aligned = false 
     </Card>
   );
 }
-

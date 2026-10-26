@@ -113,7 +113,7 @@ describe('immutable payroll history correction and recovery',()=>{
   const recovery=await previewPayrollHistoryRevert(ctx,preview.attemptId);expect(recovery.count).toBe(2);await revertPayrollHistoryUpload(ctx,preview.attemptId,recovery.previewHash);expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
  });
  it('refuses accumulated batch overflow during preview before any payroll writes',async()=>{
-  await hireEmployee(ctx,{person:{fullName:'Second overflow fixture'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0008',hiredOn:`${year-1}-01-01`});
+  await hireEmployee(ctx,{person:{fullName:'Second overflow fixture',primaryEmail:'overflow@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0008',hiredOn:`${year-1}-01-01`});
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('6000000000.00'),...rows('6000000000.00','000AC','0008')]));
   const preview=await previewPayrollHistoryUpload(ctx,{name:'overflow.csv',content});expect(preview.plan.counts.invalid).toBe(2);expect(preview.plan.rows.every(row=>row.reasons.some(reason=>reason.includes('batch total')))).toBe(true);
   await expect(confirm(preview)).rejects.toThrow(/Correct the file/);expect(await owner.db.select().from(schema.payslip)).toEqual([]);expect(await owner.db.select().from(schema.payrollBatch)).toEqual([]);
@@ -155,7 +155,7 @@ describe('immutable payroll history correction and recovery',()=>{
   await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/already been reverted/);
  });
  it('labels recorded audit actors without granting a personnel directory or foreign attempt lookup',async()=>{
-  await owner.db.update(schema.person).set({fullName:'Payroll audit owner'}).where(eq(schema.person.id,ctx.personId!));
+  const [actor]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Payroll audit owner',primaryEmail:'payroll-audit-owner@fixture.test'}).returning();await owner.db.update(schema.appUser).set({personId:actor.id}).where(eq(schema.appUser.id,ctx.userId!));ctx={...ctx,personId:actor.id};
   const first=await upload();await confirm(first);const detail=await getPayrollHistoryAttempt(ctx,first.attemptId);
   expect(detail?.createdByName).toBe('Payroll audit owner');expect(detail?.events).toMatchObject([{actorId:ctx.userId,actorName:'Payroll audit owner'}]);expect((await listPayrollHistoryAttempts(ctx)).items[0].createdByName).toBe('Payroll audit owner');
   const unrelated=await createAppUser(b.tenantId,employeePersonId,'employee');
