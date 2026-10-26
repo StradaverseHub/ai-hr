@@ -1,3 +1,4 @@
+import {lockPayrollPeriodsTx,lockPayrollBatchPeriodTx} from './payroll-period-lock';
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
@@ -1725,7 +1726,9 @@ export async function createBatch(
     payrollCycleId?: string | null;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
     // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month), and there is still exactly one
     // of those. What changed for item 23e7dac3 (ADR-0085 step 5) is WHICH runs count as "already there":
     // the test used to be "any batch for this company-month", which also refused the regular run when a
@@ -1757,10 +1760,11 @@ export async function createBatch(
     // — which replaces the claim this comment used to make, that the snapshot happened at first
     // payslip generation. Nothing did that.
     const [existingPeriod] = await tx
-      .select({ id: payPeriod.id })
+      .select({ id: payPeriod.id, status: payPeriod.status })
       .from(payPeriod)
       .where(and(eq(payPeriod.companyId, p.companyId), eq(payPeriod.period, p.payPeriod)))
       .limit(1);
+    if(existingPeriod?.status==='closed')throw new Error('This pay period is closed.');
     let periodId = existingPeriod?.id;
     if (!periodId) {
       const [createdPeriod] = await tx
@@ -1958,12 +1962,14 @@ export async function createAdditionalRun(
     payrollCycleId?: string | null;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
     // Message preserved verbatim: it is user-visible and asserted by existing tests. The TYPE is now
     // ModuleNotEnabledError so a caller can distinguish "not entitled" from any other failure.
     throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
   return withTenant(ctx, async (tx) => {
+    await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
     const [existingPeriod] = await tx
       .select({ id: payPeriod.id, status: payPeriod.status })
       .from(payPeriod)
@@ -2378,7 +2384,9 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
  * months). A closed period is never touched.
  */
 export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -3550,7 +3558,8 @@ export async function generatePayslips(
     reprocessSubset?: { employmentIds: string[]; reason?: string; actorId?: string };
   },
 ) {
-  return withTenant(ctx, (tx) => generatePayslipsTx(tx, ctx, p));
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  return withTenant(ctx, async tx=>{await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
 }
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
@@ -8088,7 +8097,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 }
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -8510,6 +8521,7 @@ async function unwindAppliedLoanRepayments(
  * after the corrected re-run).
  */
 export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // Ships dark behind a flag (approved plan): enable per environment after review.
   if (!settingEnabled(ctx, 'payroll.reset_enabled')) {
     // SettingNotEnabledError, not ModuleNotEnabledError('payroll'): this tenant owns Payroll. What is
@@ -8523,6 +8535,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new ResetReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -8768,6 +8781,7 @@ async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: Payroll
  * the same-month adjustment-run correction path instead.
  */
 export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if (!settingEnabled(ctx, 'payroll.unlock_enabled')) {
     // See resetProcessedBatch — a risk switch being off is not "Payroll is not on your plan".
     throw new SettingNotEnabledError('payroll.unlock_enabled', 'Payroll unlock is not enabled.');
@@ -8775,6 +8789,7 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -8867,6 +8882,7 @@ export async function reprocessSelectedEmployees(
   ctx: SessionContext,
   p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
     throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
@@ -8876,6 +8892,7 @@ export async function reprocessSelectedEmployees(
   // Phase 1 — validate + permission + enqueue (idempotent). Its own tx so the job row commits before the
   // recompute runs (so a poll can observe 'running', and a crash mid-recompute leaves a re-runnable job).
   const enq = await withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
       .from(payrollBatch)
@@ -8977,10 +8994,12 @@ export async function reprocessSelectedEmployees(
   try {
     for (const employmentId of enq.employmentIds) {
       await withTenant(ctx, async (tx) => {
+        const ownedBatch=await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
         // One authoritative checkpoint: exact job row + batch lock stay held until this employee's
         // money AND outcome commit. Duplicate/resumed workers see committed outcomes before acting.
         const [currentJob] = await tx.select().from(payrollReprocessJob)
           .where(eq(payrollReprocessJob.id, job.id)).limit(1).for('update');
+        if(currentJob.batchId!==ownedBatch.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(enq.employmentIds))throw new Error('Payroll job source changed.');
         const prior = currentJob.result as ReprocessJobResult | null;
         if (currentJob.status!=='running' || prior?.workerToken!==workerToken)
           throw new Error('This payroll processing attempt was superseded by a recovered worker.');
@@ -9517,6 +9536,7 @@ export async function removeEmployeePayroll(
   ctx: SessionContext,
   p: { batchId: string; employmentIds: string[]; reason?: string },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // The SAME operator-controlled risk switch Reset rides — deliberately not a new one, so nothing has
   // to be flipped for this to appear wherever Reset already does.
   if (!settingEnabled(ctx, 'payroll.reset_enabled')) {
@@ -9533,6 +9553,7 @@ export async function removeEmployeePayroll(
   if (requested.length === 0) throw new RemoveNoEmployeesError();
 
   return withTenant(ctx, async (tx) => {
+    await lockPayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,

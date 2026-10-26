@@ -1,3 +1,4 @@
+import {lockPayrollPeriodsTx} from './payroll-period-lock';
 /**
  * Import Payroll History — bulk-load PRE-COMPUTED historical payroll for data migration.
  *
@@ -66,7 +67,7 @@
  * single shared tx aborts on first failed insert).
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company,
   employeeStatutoryMy,
@@ -325,6 +326,16 @@ export async function listImportCodes(ctx: SessionContext): Promise<ImportCodeEn
  * (RLS-scoped reads only; writes nothing). Returns the preview plus the resolved months the commit path
  * replays. PRIVATE — the two public exports are the only surface.
  */
+/** Same availability owner used by the public analysis and EACH actual period commit. */
+async function occupiedHistoryPeriodsTx(tx:Tx,companyId:string,periods:string[]):Promise<Set<string>>{
+    if (periods.length === 0) return new Set<string>();
+    const rows = await tx
+      .select({ period: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(and(eq(payrollBatch.companyId, companyId), inArray(payrollBatch.payPeriod, periods)));
+    return new Set(rows.map((r) => r.period));
+}
+
 async function analyze(
   ctx: SessionContext,
   companyId: string,
@@ -630,14 +641,7 @@ async function analyze(
 
   // ── Which periods are already occupied. Read once for every period the file mentions.
   const periods = [...new Set([...buckets.values()].map((b) => b.period))];
-  const occupiedPeriods = await withTenant(ctx, async (tx) => {
-    if (periods.length === 0) return new Set<string>();
-    const rows = await tx
-      .select({ period: payrollBatch.payPeriod })
-      .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, companyId), inArray(payrollBatch.payPeriod, periods)));
-    return new Set(rows.map((r) => r.period));
-  });
+  const occupiedPeriods=await withTenant(ctx,tx=>occupiedHistoryPeriodsTx(tx,companyId,periods));
 
   // Tax numbers, for the CP39 readiness warning.
   const taxByCode = new Map<string, string | null>();
@@ -903,6 +907,7 @@ export async function commitPayrollHistoryImport(
   ctx: SessionContext,
   p: { companyId: string; records: PayrollHistoryRecord[] },
 ): Promise<HistoryImportResult> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const { preview, months, statutoryVersion } = await analyze(ctx, p.companyId, p.records);
   const issues = [...preview.issues];
   let imported = 0;
@@ -918,6 +923,8 @@ export async function commitPayrollHistoryImport(
   for (const [period, rows] of byPeriod) {
     try {
       await withTenant(ctx, async (tx) => {
+        await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:period}]);
+        if((await occupiedHistoryPeriodsTx(tx,p.companyId,[period])).has(period))throw new Error('This payroll period now has an existing record. Preview the history import again.');
         // Find-or-create the pay_period parent (mirror createBatch). Status starts 'open' here; it is
         // flipped to 'closed' below within the same tx.
         const [existingPeriod] = await tx
