@@ -1,3 +1,5 @@
+import {assertAiPrincipalTx} from './ai-principal';
+import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -663,10 +665,22 @@ export async function evaluateBatchAnomalies(
  *
  * Null when the batch does not exist, matching `gatherContext`.
  */
+/** Provider source replay only, with the caller's ACTUAL admission transaction. This does not
+ * admit the historical null-user SYSTEM carrier or alter the ordinary detector evaluator/loader.
+ * Native Payroll batch/employment scope is required BEFORE any financial/bank-derived facts. */
+export async function loadBatchContextsTx(tx:Tx,supplied:SessionContext,input:{batchId:string}):Promise<DetectorContext[]|null>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={batchId:input.batchId};await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'payroll');
+ const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(b.company_id)
+ and not exists(select 1 from public.payslip s where s.batch_id=b.id and s.tenant_id=b.tenant_id and app.can_admin_payroll_employment(s.employment_id) is not true)) as allowed`);if(authority?.allowed!==true)throw Error('Current payroll source unavailable.');
+ return (await gatherContext(tx,ctx.tenantId,p.batchId))?.contexts??null;
+}
+
 export async function loadBatchContexts(
   ctx: SessionContext,
   p: { batchId: string },
+  existingTx?:Tx,
 ): Promise<DetectorContext[] | null> {
+  if(existingTx)return(await gatherContext(existingTx,ctx.tenantId,p.batchId))?.contexts??null;
   return withTenant(ctx, async (tx) => (await gatherContext(tx, ctx.tenantId, p.batchId))?.contexts ?? null);
 }
 

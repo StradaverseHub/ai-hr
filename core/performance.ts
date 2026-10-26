@@ -1,3 +1,7 @@
+import {withAiAdmissionCheck} from './ai-governance';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import {assertAiPrincipalTx} from './ai-principal';
+import {resolveEntitlementsTx} from './entitlements';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
@@ -18,7 +22,7 @@ import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssess
  * event log, setCompensation (effective-dated merit) and setPayrollInput (bonus as additional-
  * remuneration MTD).
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPerformanceTenant` — all 49 exported entry
@@ -2856,14 +2860,14 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
 
 export type DraftSignals = { hasSelf: boolean; goals: number; priorRatings: number; peerNotes: number };
 
-export async function draftManagerReview(
-  ctx: SessionContext,
-  p: { reviewId: string },
-): Promise<{ draft: string; signals: DraftSignals }> {
-  // 1) Authorize, resolve the tenant's AI config, and gather signals in a short read transaction. NO
-  //    provider call inside the tx (decryption is CPU only; the multi-second network call is outside).
-  const gathered = await withTenant(ctx, async (tx) => {
-    const { review, cycle } = await loadReview(tx, p.reviewId);
+/** Actual current manager/admin and module owner BEFORE private review fields. Same native source
+ * queries/preflight as the ordinary draft, reusable only inside the actual admission transaction. */
+async function managerReviewDraftSourceTx(tx:Tx,supplied:SessionContext,reviewId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'performance');
+ const [nomination]=await tx.select({employmentId:performanceReview.employmentId}).from(performanceReview).where(eq(performanceReview.id,reviewId)).limit(1);if(!nomination)throw new PerfError('Current review source is unavailable.');
+ await assertCanDecide(tx,fresh,nomination.employmentId,'AI review draft');
+    const { review, cycle } = await loadReview(tx, reviewId);
     if (cycle.status !== 'open') {
       throw new PerfError(`The cycle is ${cycle.status}; a draft can only be prepared while it is open`);
     }
@@ -2907,12 +2911,22 @@ export async function draftManagerReview(
       .from(peerFeedback)
       .where(eq(peerFeedback.subjectEmploymentId, review.employmentId));
 
-    // The tenant's active AI provider/model + decrypted key (or platform env fallback). Fail closed
-    // when an active config is present but undecryptable — never fall through to a shared env key.
-    const aiCfg = await resolveActiveAiConfig(tx, ctx, 'performance_pm');
-    if (!aiCfg) throw new PerfError('AI drafting is not configured for this tenant.');
 
-    return { review, cycle, scale, goals, prior, peers, aiCfg };
+ return {review,cycle,scale,goals,prior,peers};
+}
+function managerDraftSourceDigest(value:Awaited<ReturnType<typeof managerReviewDraftSourceTx>>){const sort=(rows:readonly unknown[])=>rows.map(row=>JSON.stringify(row)).sort();return createHash('sha256').update(JSON.stringify([value.review,value.cycle,value.scale,sort(value.goals),sort(value.prior),sort(value.peers)])).digest('hex');}
+
+export async function draftManagerReview(
+  ctx: SessionContext,
+  p: { reviewId: string },
+): Promise<{ draft: string; signals: DraftSignals }> {
+  // 1) Authorize, resolve the tenant's AI config, and gather signals in a short read transaction. NO
+  //    provider call inside the tx (decryption is CPU only; the multi-second network call is outside).
+  p={reviewId:p.reviewId};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const gathered = await withTenant(ctx, async tx => {
+    const source=await managerReviewDraftSourceTx(tx,ctx,p.reviewId),aiCfg=await resolveActiveAiConfig(tx,ctx,'performance_pm');
+    if(!aiCfg)throw new PerfError('AI drafting is not configured for this tenant.');
+    return {...source,aiCfg};
   });
 
   // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
@@ -2958,14 +2972,16 @@ export async function draftManagerReview(
   ].join(' ');
 
   // 3) Call the gateway OUTSIDE any DB transaction, against the resolved provider/model.
-  const draft = await generateDraft(aiCfg, {
-    system,
-    prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`,
-    maxTokens: 1536,
+  const args=Object.freeze({system,prompt:`Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`,maxTokens:1536});
+  const expectedSource=managerDraftSourceDigest(gathered),expectedInput=draftInputDigest(args);
+  const bound=withAiAdmissionCheck(aiCfg,'performance_pm',async(tx,request)=>{
+    if(request.operation!=='draft'||request.inputDigest!==expectedInput||managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');
   });
+  const draft=await generateDraft(bound,args);
 
   // 4) Audit that a draft was generated (AGENT actor, PII-free payload). No state was changed.
   await withTenant(ctx, async (tx) => {
+    if(managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'performance-review',

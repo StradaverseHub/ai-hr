@@ -1,3 +1,5 @@
+import {withAiAdmissionCheck} from './ai-governance';
+import {draftInputDigest} from '../lib/ai/draft-input';
 /**
  * ADR-0084 §2.6 / §3 item 3 — JUDGMENT-GRADE DETECTION. The first place in this product where a model
  * can CREATE a payroll finding rather than explain one somebody else created.
@@ -57,14 +59,14 @@
  * raised again on identical figures.** That is §2.4's learn half, made operational for the price of a
  * WHERE clause.
  */
-import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, desc, eq, gte, inArray, isNull,sql } from 'drizzle-orm';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { generateDraft } from '../lib/ai';
 import { digestOf, recordProposal, type Adjudication } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
-import { settingEnabled } from './entitlements';
-import { loadBatchContexts } from './payroll-anomaly';
+import { settingEnabled,resolveEntitlementsTx } from './entitlements';
+import { loadBatchContextsTx,loadBatchContexts } from './payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID, type DetectorContext, type Finding, type PayslipFigures } from './payroll-anomaly-detectors';
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -559,36 +561,24 @@ const EMPTY: HypothesisRun = {
  *
  * Nothing here can change a figure, and nothing here can produce a `block`.
  */
+/** Same native detector contexts and canonical feature computation, never a second money engine. */
+async function hypothesisSourceTx(tx:Tx,supplied:SessionContext,p:{batchId:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},contexts=ctx.userId?await loadBatchContextsTx(tx,ctx,p):await loadBatchContexts(ctx,p,tx);if(!contexts)throw Error('Current payroll source unavailable.');
+ const fresh=ctx.userId?{...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)}:ctx;if(!settingEnabled(fresh,'payroll.anomaly_hypotheses_enabled'))throw Error('Current payroll source unavailable.');
+ const features=buildFeatures(contexts),verdicts=await tx.select({id:schema.payrollAnomalyVerdict.id,employmentId:schema.payrollAnomalyVerdict.employmentId,version:sql<string>`${schema.payrollAnomalyVerdict}.xmin::text`}).from(schema.payrollAnomalyVerdict).where(and(eq(schema.payrollAnomalyVerdict.batchId,p.batchId),eq(schema.payrollAnomalyVerdict.disposition,'auto_clear'),isNull(schema.payrollAnomalyVerdict.supersededAt),isNull(schema.payrollAnomalyVerdict.resolvedAt))).orderBy(schema.payrollAnomalyVerdict.id);
+ const digest=digestOf({contexts:[...contexts].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)),features:[...features].sort(([a],[b])=>a.localeCompare(b)),verdicts});return{contexts,features,verdicts,digest};
+}
+
 export async function proposeHypotheses(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<HypothesisRun> {
+  p={batchId:p.batchId};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // The literal, not HYPOTHESIS_SETTING_KEY — see that constant's note.
   if (!settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled')) return { ...EMPTY, disabled: true };
 
-  const contexts = await loadBatchContexts(ctx, { batchId: p.batchId });
-  if (!contexts) throw new Error('batch not found');
-  if (contexts.length < MIN_COHORT) return { ...EMPTY, cohortTooSmall: true };
-
-  const features = buildFeatures(contexts);
-
-  const verdicts = await withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: schema.payrollAnomalyVerdict.id,
-        employmentId: schema.payrollAnomalyVerdict.employmentId,
-      })
-      .from(schema.payrollAnomalyVerdict)
-      .where(
-        and(
-          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
-          eq(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
-          isNull(schema.payrollAnomalyVerdict.supersededAt),
-          isNull(schema.payrollAnomalyVerdict.resolvedAt),
-        ),
-      ),
-  );
-
+  const source=await withTenant(ctx,tx=>hypothesisSourceTx(tx,ctx,p)),{contexts,features,verdicts}=source;
+  if(contexts.length<MIN_COHORT)return{...EMPTY,cohortTooSmall:true};
   // WORST FIRST, so the blast-radius cap keeps the most unusual rather than the alphabetically luckiest.
   const candidates = verdicts
     .map((v) => ({ ...v, f: features.get(v.employmentId) }))
@@ -688,11 +678,8 @@ export async function proposeHypotheses(
 
     let raw = '';
     try {
-      raw = await generateDraft(cfg, {
-        system: SYSTEM,
-        prompt: featuresAsText(c.f),
-        maxTokens: MAX_TOKENS,
-      });
+      const args=Object.freeze({system:SYSTEM,prompt:featuresAsText(c.f),maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),bound=withAiAdmissionCheck(cfg,'payroll_hypotheses',async(tx,request)=>{if(!ctx.userId||request.operation!=='draft'||request.inputDigest!==expectedInput||(await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');});
+      raw=await generateDraft(bound,args);
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks.
       continue;
@@ -735,6 +722,7 @@ export async function proposeHypotheses(
 
   if (writes.length > 0) {
     await withTenant(ctx, async (tx) => {
+      if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');
       await tx.insert(schema.payrollAnomalyFinding).values(
         writes.map((w) => ({
           tenantId: ctx.tenantId,
