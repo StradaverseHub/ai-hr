@@ -46,3 +46,13 @@ challenge/counter with the attendance result. An input object cannot establish i
 key ownership or installation. The new helpers are protocol primitives only; existing v1 clock routes
 and live attendance do not yet accept or trust this evidence. Offline permits require a distinct purpose
 and protocol, rather than extending the online challenge's lifetime.
+
+The server assertion primitive uses a pinned CBOR decoder with an 8 KiB input cap, finite nesting,
+duplicate-key and trailing-byte refusal, exact map/byte fields and disabled semantic conversions.
+It checks the supported 37-byte iOS authenticator header, deployment-owned App ID hash, a strictly
+increasing unsigned 32-bit counter, and the P-256 DER signature for Apple's nonce construction.
+It returns only a proposed next counter. Its public key must already have passed attestation verification;
+the caller must reconstruct client data and atomically consume the stored challenge/update the counter
+with the result. The helper is server-only and is not wired into v1 routes. Public interoperability
+fixtures establish compatibility with that sample, not hardware origin or a verified enrollment.
+Unknown authenticator extensions currently require explicit support rather than unparsed acceptance.

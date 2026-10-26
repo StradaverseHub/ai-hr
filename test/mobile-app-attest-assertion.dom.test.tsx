@@ -47,6 +47,11 @@ describe('server App Attest assertion proof checker',()=>{
     for(const previousCounter of [undefined,-1,0.5,NaN,0x100000000])reason(()=>checkAppAttestAssertion({...original,previousCounter:previousCounter as number}),'invalid_configuration');
     for(const publicKey of [pair.publicKey,pair.privateKey,fixture.publicKey])reason(()=>checkAppAttestAssertion({...original,publicKey:publicKey as typeof original.publicKey}),'invalid_key');
   });
+  it('rejects malformed deployment app identifiers without normalizing their identity bytes',()=>{
+    const original=reference();
+    for(const appId of ['',original.appId+'\n',' '+original.appId,'short.io.app','A'.repeat(301)])
+      reason(()=>checkAppAttestAssertion({...original,appId}),'invalid_configuration');
+  });
   it('rejects trailing CBOR, duplicate keys and unexpected map fields',()=>{
     const original=reference(),decoded=decodeFirstSync(original.assertion),{signature,authenticatorData}=decoded;
     const duplicate=Buffer.concat([Buffer.from([0xa3]),encode('signature'),encode(signature),encode('signature'),encode(signature),encode('authenticatorData'),encode(authenticatorData)]);

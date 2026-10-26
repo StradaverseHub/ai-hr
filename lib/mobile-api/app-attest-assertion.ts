@@ -19,7 +19,7 @@ const hash=(data:Buffer)=>createHash('sha256').update(data).digest();
  */
 export function checkAppAttestAssertion(input:{assertion:Buffer;clientData:Buffer;publicKey:KeyObject;appId:string;previousCounter:number}):{nextCounter:number}{
   const {assertion,clientData,publicKey,appId,previousCounter}=input;
-  if(typeof appId!=='string'||appId.length>300||!/^[A-Za-z0-9]{10}\.[A-Za-z0-9][A-Za-z0-9.-]+$/.test(appId)||
+  if(typeof appId!=='string'||appId.length>300||appId.trim()!==appId||!/^[A-Za-z0-9]{10}\.[A-Za-z0-9][A-Za-z0-9.-]+$/.test(appId)||
     !Number.isInteger(previousCounter)||previousCounter<0||previousCounter>0xffffffff)fail('invalid_configuration');
   if(!(publicKey instanceof KeyObject)||publicKey.type!=='public'||publicKey.asymmetricKeyType!=='ec'||
     publicKey.asymmetricKeyDetails?.namedCurve!=='prime256v1')fail('invalid_key');
