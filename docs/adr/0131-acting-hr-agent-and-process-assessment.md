@@ -1863,3 +1863,32 @@ require no employment/calendar/replacement/attendance/event effect while held, t
 release and verify the intended legacy or dated selection. All authored UNRUN; only
 syntax/diff review. Replacement-calendar and other roster/source writers remain pending;
 no universal dependency barrier, security or concurrency runtime claim is established.
+
+
+Combined release sequence and replacement-calendar participants
+
+The human superseded the staged deployment recommendation: finish own-leave,
+provider integration, AI workspace and module agents, then run ONE combined final
+release gate on the complete clean candidate and deploy once verified. Focused
+development checks and required security/experience/type/build/migration proof
+remain necessary; retain authentic passing evidence and repair/retest only failures
+or changed inputs. No separate final gates or intermediate stage deployments.
+Local-only/no Actions and separate live-provider/data-transfer authorization persist.
+
+Replacement policy publication now captures inputs/context and takes Access before
+its original current-company permission predicate, then exclusive leave configuration
+before company row/history reads and publication. Reconciliation (public and supplied
+transaction kernel) captures context/window, Access, original admin predicate, then
+shared configuration/employee ownership before employment rows, calendar/roster facts,
+allocator/history writes and Payroll guards. The queue sweep commits its nomination
+claim separately before calling this kernel; dated calendar callers already own the
+same earlier interval. Manual adjustment captures inputs/context, takes Access before
+allocation nomination/authority, owns the nominated employee before row locks, and
+rereads the exact allocation/employee binding before existing eligibility/Payroll work.
+
+Four actual two-connection policy/public-reconcile/callerTx/manual cases are authored
+with unchanged allocation/revision/policy/queue/event checks while held, then release
+and canonical behavior. ALL UNRUN; only syntax/diff/source review. No allocator math,
+calendar eligibility, authority or historical rules were replaced. Roster/Attendance/
+TOIL and other earlier source writers still need integration and runtime proof; this
+is not universal protection, a completed gate or readiness for Assistant exposure.

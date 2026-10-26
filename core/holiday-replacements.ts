@@ -2,6 +2,8 @@
 import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import {actorOf,appendEvent} from '../db/events';
 import {attendance,company,employment,holiday,replacementHoliday,replacementHolidayPolicy,replacementHolidayRevision,replacementHolidayQueue} from '../db/schema';
 import {isAdmin} from '../lib/authz-model';
@@ -19,6 +21,8 @@ const isoDate=(value:string)=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(D
 async function authority(tx:Tx,employmentId:string){const [row]=await tx.execute(sql`select app.can_admin_employment(${employmentId}::uuid) as allowed`) as unknown as {allowed:boolean}[];if(!row?.allowed)throw new Error('You cannot administer this employee.');}
 export function listReplacementHolidayPolicies(ctx:SessionContext,companyIds:readonly string[]){return withTenant(ctx,tx=>tx.select().from(replacementHolidayPolicy).where(inArray(replacementHolidayPolicy.companyId,[...companyIds])).orderBy(asc(replacementHolidayPolicy.companyId),asc(replacementHolidayPolicy.effectiveFrom)));}
 export function saveReplacementHolidayPolicy(ctx:SessionContext,p:{companyId:string;effectiveFrom:string;regime:ReplacementPolicy['regime'];confirmed:boolean;restMode:ReplacementPolicy['restMode'];halfEligible:boolean;searchDays:number;reason:string}){
+ p={...p};
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can set replacement holiday policy.');
  if(!isoDate(p.effectiveFrom)||p.effectiveFrom<todayInKualaLumpur())throw new Error('Choose today or a future policy effective date. Historical cases require review.');
  if(!['MY_EA_60D','MY_SABAH_103','company_confirmed'].includes(p.regime)||!['scheduled_rest','last_weekly_rest'].includes(p.restMode))throw new Error('Choose a supported, confirmed policy definition.');
@@ -26,8 +30,10 @@ export function saveReplacementHolidayPolicy(ctx:SessionContext,p:{companyId:str
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record the policy basis in 3 to 2000 characters.');
  if(p.regime==='MY_EA_60D'&&(p.restMode!=='last_weekly_rest'||!p.halfEligible))throw new Error('The Employment Act policy uses the designated last weekly rest day and includes half working days. Use an explicitly confirmed company rule for a different policy.');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [permission]=await tx.execute(sql`select app.is_admin_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
   if(!permission?.allowed)throw new Error('You cannot administer this company.');
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [c]=await tx.select().from(company).where(eq(company.id,p.companyId)).for('update');if(!c)throw new Error('Company unavailable.');
   const versions=await tx.select().from(replacementHolidayPolicy).where(eq(replacementHolidayPolicy.companyId,p.companyId)).orderBy(asc(replacementHolidayPolicy.effectiveFrom));
   if(versions.some(v=>v.effectiveFrom>=p.effectiveFrom))throw new Error('Choose a date later than every saved policy version. Published policy history is retained.');
@@ -40,7 +46,11 @@ async function saveRevision(tx:Tx,ctx:SessionContext,row:typeof replacementHolid
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'holiday-replacement',aggregateId:row.id,eventType:row.manual?'holiday.replacement.manually-adjusted':'holiday.replacement.reconciled',subjectEmploymentId:row.employmentId,actor:actorOf(ctx),payload:{sourceHolidayId:row.sourceHolidayId,sourceDate:row.sourceDate,policyId:row.policyId,before:before?{date:before.replacementDate,status:before.status,reason:before.reason}:null,after:{date:row.replacementDate,proposedDate:row.proposedDate,status:row.status,reason:row.reason},manualReason:row.manualReason}});
 }
 export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,employmentId:string,options?:{sourceWindow:{from:string;to:string}}){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ options=options?.sourceWindow?{sourceWindow:{...options.sourceWindow}}:options;
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  await authority(tx,employmentId);
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
  const [emp]=await tx.select().from(employment).where(eq(employment.id,employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
  const [c]=await tx.select().from(company).where(eq(company.id,emp.companyId));if(!c)throw new Error('Company unavailable.');
  const existing=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.employmentId,employmentId)).orderBy(asc(replacementHoliday.sourceDate),asc(replacementHoliday.sourceHolidayId));
@@ -136,16 +146,21 @@ export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,em
  const calendarConflicts=recorded.filter(row=>row.date>=from&&row.date<=to&&(row.dayType==='holiday')!==effectiveDates.has(row.date)).map(row=>({date:row.date,recorded:row.dayType,holiday:effectiveDates.has(row.date)}));
  return {changed,review,calendarConflicts};
 }
-export function reconcileReplacementHolidays(ctx:SessionContext,employmentId:string){if(!isAdmin(ctx))throw new Error('Only an HR administrator can reconcile replacement holidays.');return withTenant(ctx,tx=>reconcileReplacementHolidaysTx(tx,ctx,employmentId));}
+export function reconcileReplacementHolidays(ctx:SessionContext,employmentId:string){ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};if(!isAdmin(ctx))throw new Error('Only an HR administrator can reconcile replacement holidays.');return withTenant(ctx,tx=>reconcileReplacementHolidaysTx(tx,ctx,employmentId));}
 export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:string;date:string|null;reason:string;policyId?:string|null;releaseToAutomatic?:boolean}){
+ p={...p};
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can adjust replacement holidays.');
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record an adjustment reason in 3 to 2000 characters.');
  if(p.date&&!isoDate(p.date))throw new Error('Choose a valid replacement date.');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [found]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId));if(!found)throw new Error('Replacement unavailable.');
   await authority(tx,found.employmentId);
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[found.employmentId]);
   const [emp]=await tx.select().from(employment).where(eq(employment.id,found.employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
   const [old]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId)).for('update');
+  if(!old||old.employmentId!==found.employmentId||old.employmentId!==emp.id)throw new Error('Replacement unavailable.');
   const adjustmentDate=p.releaseToAutomatic?old.replacementDate:p.date;
   const [original]=await tx.select().from(holiday).where(eq(holiday.id,old.sourceHolidayId));if(!original)throw new Error('Original holiday unavailable.');
   if(adjustmentDate&&!p.releaseToAutomatic){const proof=await provenCompanyDatesTx(tx,[{employmentId:emp.id,date:original.holidayDate},{employmentId:emp.id,date:adjustmentDate}]);for(const date of [original.holidayDate,adjustmentDate]){const coverage=proof.get(`${emp.id}|${date}`);if(!coverage||coverage.reason||coverage.companyId!==old.companyId)throw new Error('The original and replacement dates must have proven assignment coverage in their recorded company and employment tenure.');}}
