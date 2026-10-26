@@ -14,6 +14,7 @@ import { isCalendarDate } from '../lib/calendar-date';
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
 // r285 (a3a3acd6) — `closedPeriodsTx` + `overlapsClosedPeriod` are the repo's SINGLE definition of payroll
 // evidence (core/pay-components.ts:1977). setEmploymentInfo's closed-payroll gate reuses them rather than
@@ -689,6 +690,12 @@ export async function terminateEmploymentTx(
   ctx: SessionContext,
   p: TerminateEmploymentInput,
 ) {
+  p = { ...p, ...(p.movement ? { movement: { ...p.movement } } : {}) };
+  // Termination changes both this employment and its assignment/reporting dependency graph.
+  // Access must precede dependency ownership; the canonical consequence assertion repeats Access.
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
   // ae9350f2 — the coded reason is the single source of the classification when it is present. An unknown
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.

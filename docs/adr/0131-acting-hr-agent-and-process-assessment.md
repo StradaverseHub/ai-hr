@@ -1591,3 +1591,24 @@ refusal, then acceptance after release with one frozen snapshot and a repeated-d
 leaves state unchanged. Dates derive from the real business clock; no fake clock or guard relaxation.
 These and all changed offboarding/termination/Access/snapshot/leave consumers remain UNRUN. Static
 syntax/source review is not authorization, app-role, lock-order or effect-completion runtime proof.
+
+
+### Direct termination and ordinary Movement creation participate (unrun)
+
+Source tracing found three production callers of terminateEmploymentTx: the direct wrapper, Movement's
+termination leg and accepted resignation. The leaf now takes existing Access workforce-write ownership,
+then exclusive configuration and its employment barrier before the canonical fixed-consequence guard,
+assignment/reporting reads/writes and events. Accepted resignation already owns that interval. Ordinary
+manual/caller-transaction Movement creation additionally takes exclusive configuration immediately
+after its canonical Workforce authorization, before custom type resolution or current-state planning.
+This protects the earlier planning interval for that entry, rather than adding only a late write lock.
+The existing type, closed-payroll, exit-date authority and canonical termination owners are unchanged.
+
+Three authored two-connection cases hold a real employee's participating interval and require direct,
+manual Movement and caller-transaction Movement termination to refuse with identical employment,
+assignment, reporting and event state. After release they require the real termination/closed assignment
+and exactly one canonical termination event. All cases and affected lifecycle/Movement/Access/Payroll
+consumers remain UNRUN. Scheduled apply, edit/reverse and prepared/future Movement paths still need their
+earlier source-read intervals integrated; the leaf alone is not proof that every caller planned under
+stable dependencies. Other organization writers remain pending. No universal barrier or security,
+performance, runtime or Assistant effect-completion claim follows from static checks; no release.

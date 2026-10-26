@@ -23,6 +23,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
 import {MOVEMENT_FLAT_FIELDS,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
   appUser,
@@ -2738,7 +2739,11 @@ export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovemen
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
 export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+  rawInput = { ...rawInput };
   await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
+  // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
+  // that resolution and before current-state planning, not merely when the termination leg writes.
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   return dispatchMovementEventTx(tx,ctx,rawInput);
 }
 
