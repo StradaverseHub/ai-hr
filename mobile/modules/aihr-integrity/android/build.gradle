@@ -12,6 +12,10 @@ android {
     versionCode 1
     versionName "0.1.0"
   }
+  // Expo's library plugin defaults this to false. Keep integrity findings release-blocking.
+  lint {
+    abortOnError = true
+  }
 }
 
 // Pinned to the official Play Integrity setup documentation reviewed 2026-10-27.
