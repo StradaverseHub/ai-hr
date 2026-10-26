@@ -1,0 +1,36 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+import {render,screen,cleanup} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {createTranslator} from 'next-intl';
+import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import th from '../messages/th.json';import ta from '../messages/ta.json';import viMessages from '../messages/vi.json';
+const mocks=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'th'|'ta'|'vi',access:vi.fn(),list:vi.fn(),detail:vi.fn(),audit:vi.fn(),templates:vi.fn(),update:vi.fn()}));
+const catalogues={en,ms,zh,th,ta,vi:viMessages};
+vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
+vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'actual-user'},scopeIds:['00000000-0000-4000-8000-000000000001']})}));
+vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterRegister:mocks.list,getStaffLetter:mocks.detail,letterAudit:mocks.audit,listLetterTemplates:mocks.templates}));
+vi.mock('../app/letters/register/actions',()=>({updateRegister:mocks.update}));
+vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');}}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.errors'|'letters.register'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{errors:c.letters.errors,register:c.letters.register,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
+import RegisterPage from '../app/letters/register/page';
+import DetailPage from '../app/letters/register/[letterId]/page';
+const companyId='00000000-0000-4000-8000-000000000001',letterId='00000000-0000-4000-8000-000000000002',revisionId='00000000-0000-4000-8000-000000000003',versionId='00000000-0000-4000-8000-000000000004';
+function detail(state='issued'){return {record:{id:letterId,companyId,state,employmentId:'subject',reference:'HR/0001',lockVersion:7,retainUntil:'2030-01-01',legalHold:true,originalLetterId:null},revision:{id:revisionId},metadata:{title:'Fictional sealed letter',category:'confirmation',companyName:'Fictional company'},employee:{name:'Fictional employee',code:'0007'}};}
+beforeEach(()=>{cleanup();vi.clearAllMocks();mocks.locale='en';mocks.access.mockResolvedValue([{id:companyId,name:'Fictional company',read:true,issue:true,generate:true,settings:true},{id:'outside',name:'Outside context',read:true,issue:true}]);mocks.list.mockResolvedValue({rows:[{id:letterId,reference:'HR/0001',state:'issued',employeeName:'Fictional employee',employeeCode:'0007',title:'Fictional sealed letter',category:'confirmation',templateVersion:1,issuedAt:new Date('2026-01-01T00:00:00Z'),approvedAt:new Date('2025-12-31T00:00:00Z'),signatoryName:'Fictional signer'}],nextCursor:letterId});mocks.detail.mockResolvedValue(detail());mocks.audit.mockResolvedValue({rows:[{id:'event',type:'letter.issued',actorType:'user',actorName:'Fictional issuer',at:new Date('2026-01-01T00:00:00Z'),payload:null}],nextCursor:letterId});mocks.templates.mockResolvedValue({rows:[{version:{id:versionId,name:'Current approved template',ordinal:2}}],nextCursor:null});mocks.update.mockResolvedValue({error:'stale'});});
+it('keeps register filters in the current company and preserves actual signatory metadata',async()=>{
+ render(await RegisterPage({searchParams:Promise.resolve({companyId,q:'0007',from:'2026-01-01',to:'2026-01-31',state:'void'})}));expect(screen.queryByRole('option',{name:'Outside context'})).toBeNull();expect(screen.getByText('Fictional signer')).toBeTruthy();expect(mocks.list).toHaveBeenCalledExactlyOnceWith({tenantId:'fixture',userId:'actual-user'},{companyId,state:'void',search:'0007',category:undefined,issuedFrom:'2026-01-01',issuedTo:'2026-01-31',cursor:undefined,limit:25});
+});
+it('keeps ready-to-issue filtering separate from issue-date filters',async()=>{
+ render(await RegisterPage({searchParams:Promise.resolve({companyId,mode:'ready',from:'2026-01-01'})}));expect(screen.queryByLabelText(en.letters.register.issuedFrom)).toBeNull();expect(mocks.list.mock.calls[0][1]).toMatchObject({state:'approved',issuedFrom:undefined,issuedTo:undefined});
+});
+it('shows the current Void status and links replacement drafts without offering issuance',async()=>{
+ mocks.detail.mockResolvedValue(detail('void'));render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));const c=en.letters.register;expect(screen.getByRole('alert').textContent).toBe(c.voidHelp);expect(screen.queryByRole('button',{name:c.issue})).toBeNull();expect(screen.queryByRole('button',{name:c.void})).toBeNull();expect(screen.getByRole('link',{name:'Current approved template · Template version 2'}).getAttribute('href')).toBe('/letters/generate/new?versionId='+versionId+'&reissueOf='+letterId);expect(screen.getByRole('link',{name:c.openPdf}).getAttribute('href')).toBe('/letters/register/'+letterId+'/document?inline=1');expect(screen.getByText('Fictional issuer')).toBeTruthy();
+});
+it('requires deliberate issuance confirmation against the displayed sealed revision',async()=>{
+ mocks.detail.mockResolvedValue(detail('approved'));render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));const c=en.letters.register;expect(screen.getByRole('checkbox',{name:c.issueConfirm})).toHaveProperty('required',true);expect(screen.getByRole('checkbox',{name:c.issueConfirm})).toHaveProperty('checked',false);expect(document.querySelector('input[name="expectedRevisionId"]')).toHaveProperty('value',revisionId);expect(screen.queryByRole('heading',{name:c.reissue})).toBeNull();
+});
+it('retains a revocation reason after the owner refuses a stale action',async()=>{
+ render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));const c=en.letters.register,user=userEvent.setup(),reason=screen.getAllByLabelText(c.reason)[0];await user.type(reason,'Issued to the wrong recipient');await user.click(screen.getByRole('checkbox',{name:c.voidConfirm}));await user.click(screen.getByRole('button',{name:c.void}));await screen.findByRole('alert');expect(reason).toHaveProperty('value','Issued to the wrong recipient');expect(screen.getByRole('checkbox',{name:c.voidConfirm})).toHaveProperty('checked',true);expect(screen.getByLabelText(c.retainUntil)).toHaveProperty('min','2030-01-01');expect(screen.getByRole('checkbox',{name:c.legalHold})).toHaveProperty('checked',true);
+});
+it.each(['en','ms','zh','th','ta','vi'] as const)('renders the real register and controls in %s',async locale=>{
+ mocks.locale=locale;render(await RegisterPage({searchParams:Promise.resolve({companyId})}));const c=catalogues[locale].letters.register;expect(screen.getByRole('heading',{name:c.title})).toBeTruthy();expect(screen.getByRole('link',{name:c.ready})).toBeTruthy();cleanup();render(await DetailPage({params:Promise.resolve({letterId}),searchParams:Promise.resolve({})}));expect(screen.getByRole('checkbox',{name:c.voidConfirm})).toHaveProperty('required',true);expect(screen.getByRole('checkbox',{name:c.legalHold})).toBeTruthy();
+});

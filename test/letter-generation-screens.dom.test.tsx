@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
-const mocks=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'ta'|'th'|'vi',access:vi.fn(),templates:vi.fn(),batches:vi.fn(),template:vi.fn(),batch:vi.fn(),create:vi.fn(),update:vi.fn()}));
+const mocks=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'ta'|'th'|'vi',access:vi.fn(),templates:vi.fn(),batches:vi.fn(),template:vi.fn(),batch:vi.fn(),create:vi.fn(),update:vi.fn(),detail:vi.fn()}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'actual-user'},scopeIds:['00000000-0000-4000-8000-000000000001']})}));
-vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.templates,listLetterGenerationBatches:mocks.batches,getLetterTemplate:mocks.template,getLetterGenerationBatch:mocks.batch}));
+vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.templates,listLetterGenerationBatches:mocks.batches,getLetterTemplate:mocks.template,getLetterGenerationBatch:mocks.batch,getStaffLetter:mocks.detail}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:mocks.create,updateGeneration:mocks.update}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.generate'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{generate:c.letters.generate,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
 import GeneratePage from '../app/letters/generate/page';
@@ -32,4 +32,9 @@ it('retains the selected roster and custom inputs after a refused draft save',as
 });
 it.each(['en','ms','zh','ta','th','vi'] as const)('renders the actual new-generation filters in %s',async locale=>{
  mocks.locale=locale;render(await NewPage({searchParams:Promise.resolve({versionId})}));const copy=catalogues[locale].letters.generate;expect(screen.getByLabelText(copy.form.department)).toBeTruthy();expect(screen.getByLabelText(copy.form.branch)).toBeTruthy();expect(screen.getByLabelText(copy.form.hiredFrom)).toHaveProperty('type','date');expect(screen.getByRole('button',{name:copy.form.create})).toHaveProperty('disabled',true);
+});
+
+it('keeps a replacement draft fixed to the original recipient and names the fresh approval requirement',async()=>{
+ mocks.detail.mockResolvedValue({record:{id:letterId,companyId,employmentId:employeeId,state:'void',reference:'ORIGINAL/0001'},employee:{name:'Original fictional employee',code:'0007'}});
+ render(await NewPage({searchParams:Promise.resolve({versionId,reissueOf:letterId})}));expect(screen.getByText('Original fictional employee · 0007')).toBeTruthy();expect(screen.getByText('Replacement for ORIGINAL/0001. This creates a new draft and requires fresh approval.')).toBeTruthy();expect(screen.queryByRole('button',{name:'Find'})).toBeNull();expect(screen.queryByRole('button',{name:/Remove:/})).toBeNull();expect(document.querySelector('input[name="employmentId"]')).toHaveProperty('value',employeeId);expect(document.querySelector('input[name="reissueOf"]')).toHaveProperty('value',letterId);
 });

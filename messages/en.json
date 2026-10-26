@@ -10280,7 +10280,8 @@
         "letterFields": "Field definitions require current template or read permission. Confidential mappings also require the canonical financial permission.",
         "letterTemplates": "Current company scope and Letters read/template permissions. Confidential mappings also require financial access.",
         "letterGenerate": "Current company context, Letters generate/read permissions and current Workforce and financial access.",
-        "letterApproval": "Current company context, Letters read/approve access and the assigned current approval stage."
+        "letterApproval": "Current company context, Letters read/approve access and the assigned current approval stage.",
+        "letterRegister": "Current company context and current Letters read, issue, generate or settings permissions for each action."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -24276,7 +24277,8 @@
         "withdrawn": "Letter removed from this batch. Its history is retained.",
         "submitted": "The ready letters were submitted for approval.",
         "missing": "Missing: {field}",
-        "unavailable": "Unavailable"
+        "unavailable": "Unavailable",
+        "reissue": "Replacement for {reference}. This creates a new draft and requires fresh approval."
       },
       "form": {
         "department": "Department contains",
@@ -24339,6 +24341,72 @@
       "signatureRequired": "Confirm authorization to apply your signature or stamp.",
       "decision": "Decision",
       "first": "First page"
+    },
+    "register": {
+      "title": "Issued Letter Register",
+      "intro": "Find issued letters, review sealed PDFs and manage their recorded lifecycle.",
+      "ready": "Ready to issue",
+      "issued": "Issued letters",
+      "search": "Employee, code or reference",
+      "category": "Letter category",
+      "issuedFrom": "Issued from",
+      "issuedTo": "Issued to",
+      "allStates": "All statuses",
+      "empty": "No matching letters.",
+      "open": "Open record",
+      "openPdf": "Open sealed PDF",
+      "download": "Download PDF",
+      "sealedHelp": "Review the sealed PDF before issuing. Issuance files these exact bytes in the employee folder.",
+      "voidHelp": "This letter is Void. Its QR verification is invalid. The retained PDF is a historical record.",
+      "issue": "Issue letter",
+      "issueConfirm": "I reviewed the sealed PDF and confirm issuance to this employee.",
+      "void": "Void letter",
+      "voidConfirm": "I confirm that this issued letter must be marked Void.",
+      "reason": "Reason",
+      "working": "Applying…",
+      "saved": "The letter record was updated.",
+      "original": "Original letter",
+      "reissue": "Create replacement draft",
+      "reissueHelp": "Choose a current approved template. The replacement retains its original link and requires fresh approval.",
+      "retention": "Retention and legal hold",
+      "retainUntil": "Retain at least until",
+      "legalHold": "Legal hold",
+      "saveRetention": "Save retention",
+      "audit": "Audit history",
+      "nextAudit": "Older events",
+      "system": "System or external actor",
+      "unavailable": "Unavailable",
+      "noAccess": "You do not have letter access in this company context.",
+      "approvalHistory": "Approval history",
+      "signatory": "Signatory",
+      "approvalDate": "Approval date",
+      "events": {
+        "revision_created": "Revision created",
+        "reissue_drafted": "Replacement drafted",
+        "draft_validation_failed": "Draft requires correction",
+        "submitted": "Submitted for approval",
+        "withdrawn": "Withdrawn",
+        "approval_approve": "Approved",
+        "approval_reject": "Rejected",
+        "approval_return": "Returned for correction",
+        "approval_delegated": "Approval delegated",
+        "issued": "Issued",
+        "voided": "Marked Void",
+        "downloaded": "PDF opened or downloaded",
+        "recipient_acknowledged": "Receipt acknowledged",
+        "recipient_signed": "Employee signed",
+        "retention_changed": "Retention changed"
+      }
+    },
+    "errors": {
+      "invalid": "Check the required inputs and confirmations.",
+      "permission": "Your current letter permissions do not allow this action.",
+      "stale": "This letter changed. Reload it and review the current record before trying again.",
+      "conflict": "This action conflicts with the current letter record.",
+      "configuration": "Review the current letter configuration before proceeding.",
+      "unavailable": "The action could not be completed. Your inputs are retained.",
+      "state": "This action is not available for the letter’s current status.",
+      "reasonRequired": "Enter a reason."
     }
   }
 }

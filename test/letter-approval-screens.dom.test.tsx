@@ -10,7 +10,7 @@ vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',user
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterApprovalQueue:mocks.queue,getStaffLetter:mocks.detail}));
 vi.mock('../app/letters/approval/actions',()=>({decideApproval:mocks.decide,delegateApproval:mocks.delegate,bulkApprove:mocks.bulk}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');}}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.approval'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{approval:c.letters.approval,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.errors'|'letters.approval'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{errors:c.letters.errors,approval:c.letters.approval,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
 import ApprovalPage from '../app/letters/approval/page';
 import DetailPage from '../app/letters/approval/[letterId]/page';
 const companyId='00000000-0000-4000-8000-000000000001',letterId='00000000-0000-4000-8000-000000000002',revisionId='00000000-0000-4000-8000-000000000003',otherId='00000000-0000-4000-8000-000000000004';

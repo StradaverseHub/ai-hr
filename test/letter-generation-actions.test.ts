@@ -26,3 +26,9 @@ it('delegates whole-batch submission to the current owner and keeps stale failur
  const data=new FormData();data.set('action','submit');data.set('batchId',batchId);await expect(updateGeneration(null,data)).rejects.toThrow('REDIRECT:');expect(mocks.submit).toHaveBeenCalledExactlyOnceWith(ctx,batchId);
  mocks.revalidate.mockClear();mocks.submit.mockRejectedValue(new LetterWorkflowError('stale','sourceChanged'));expect(await updateGeneration(null,data)).toEqual({error:'stale'});mocks.submit.mockRejectedValue(new Error('PRIVATE SQL'));expect(await updateGeneration(null,data)).toEqual({error:'unavailable'});expect(mocks.revalidate).not.toHaveBeenCalled();
 });
+
+it('binds a replacement draft to the original employee and keeps its immutable source link',async()=>{
+ const data=form();data.set('reissueOf',letterId);mocks.detail.mockResolvedValue({record:{id:letterId,state:'void',companyId,employmentId:employeeId}});
+ await expect(createGeneration(null,data)).rejects.toThrow('REDIRECT:/letters/generate/'+batchId+'?notice=created');expect(mocks.create.mock.calls[0][1]).toMatchObject({reissueOf:letterId,employmentIds:[employeeId]});mocks.create.mockClear();
+ data.set('employmentId',operationKey);expect(await createGeneration(null,data)).toEqual({error:'permission'});expect(mocks.create).not.toHaveBeenCalled();
+});

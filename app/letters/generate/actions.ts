@@ -16,13 +16,15 @@ function failure(error:unknown,fields:LetterField[]=[]):GenerationActionState{
  return {error:error instanceof LetterWorkflowError?error.code:'unavailable'};
 }
 export async function createGeneration(_previous:GenerationActionState,form:FormData):Promise<GenerationActionState>{
+ const reissueOf=value(form,'reissueOf');if(reissueOf&&!uuid.test(reissueOf))return {error:'invalid'};
  const companyId=value(form,'companyId'),templateVersionId=value(form,'versionId'),operationKey=value(form,'operationKey'),selected=form.getAll('employmentId');
  if(!uuid.test(companyId)||!uuid.test(templateVersionId)||!uuid.test(operationKey)||!selected.length||selected.length>500||selected.some(id=>typeof id!=='string'||!uuid.test(id)))return {error:'invalid'};
  const ctx=await getSession();let saved;let fields:LetterField[]=[];
  try{
   const template=await getLetterTemplate(ctx,templateVersionId);if(!template||template.root.companyId!==companyId)return {error:'permission'};fields=template.fields.map(field=>field.definition);
+  if(reissueOf){const original=await getStaffLetter(ctx,reissueOf);if(!original||original.record.companyId!==companyId||!['issued','void'].includes(original.record.state)||selected.length!==1||selected[0]!==original.record.employmentId)return {error:'permission'};}
   const custom=letterCustomValues(form,fields),customValues=Object.fromEntries((selected as string[]).map(id=>[id,custom]));
-  saved=await createLetterDraftBatch(ctx,{companyId,templateVersionId,employmentIds:selected as string[],operationKey,customValues});
+  saved=await createLetterDraftBatch(ctx,{companyId,templateVersionId,employmentIds:selected as string[],operationKey,customValues,...(reissueOf?{reissueOf}:{})});
  }catch(error){return failure(error,fields);}
  revalidatePath('/letters/generate');redirect('/letters/generate/'+saved!.batchId+'?notice=created');
 }

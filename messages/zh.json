@@ -10280,7 +10280,8 @@
         "letterFields": "字段定义需要当前模板或读取权限。保密映射还需要相应的财务权限。",
         "letterTemplates": "依据当前公司范围及信函读取或模板权限。机密映射还须具备财务访问权限。",
         "letterGenerate": "依据当前公司范围、信函生成与读取权限，以及当前员工资料和财务访问权限。",
-        "letterApproval": "当前公司范围、信函读取及审批权限，以及当前分配的审批阶段。"
+        "letterApproval": "当前公司范围、信函读取及审批权限，以及当前分配的审批阶段。",
+        "letterRegister": "当前公司范围及各操作所需的当前信函读取、签发、生成或设置权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -24276,7 +24277,8 @@
         "withdrawn": "信函已从此批次移除，其历史记录予以保留。",
         "submitted": "已就绪信函已提交审批。",
         "missing": "缺少：{field}",
-        "unavailable": "不可用"
+        "unavailable": "不可用",
+        "reissue": "重新签发 {reference}。此操作会创建新草稿，并须重新审批。"
       },
       "form": {
         "department": "部门名称包含",
@@ -24339,6 +24341,72 @@
       "signatureRequired": "请确认授权使用您的签名或印章。",
       "decision": "审批决定",
       "first": "首页"
+    },
+    "register": {
+      "title": "已签发信函登记册",
+      "intro": "查找已签发信函、审核封存 PDF 并管理其生命周期记录。",
+      "ready": "待签发",
+      "issued": "已签发信函",
+      "search": "员工、编号或参考号",
+      "category": "信函类别",
+      "issuedFrom": "签发开始日期",
+      "issuedTo": "签发结束日期",
+      "allStates": "所有状态",
+      "empty": "没有匹配的信函。",
+      "open": "打开记录",
+      "openPdf": "打开封存 PDF",
+      "download": "下载 PDF",
+      "sealedHelp": "签发前请审核封存 PDF。签发时将把这些原始字节存入员工文档夹。",
+      "voidHelp": "此信函已作废，二维码验证无效。保留的 PDF 仅为历史记录。",
+      "issue": "签发信函",
+      "issueConfirm": "我已审核封存 PDF，并确认向此员工签发。",
+      "void": "作废信函",
+      "voidConfirm": "我确认必须将此已签发信函标记为作废。",
+      "reason": "原因",
+      "working": "正在处理…",
+      "saved": "信函记录已更新。",
+      "original": "原始信函",
+      "reissue": "创建补发草稿",
+      "reissueHelp": "选择当前已批准的模板。补发信函保留原始链接，并须重新审批。",
+      "retention": "保留期限与法律保留",
+      "retainUntil": "至少保留至",
+      "legalHold": "法律保留",
+      "saveRetention": "保存保留设置",
+      "audit": "审计历史",
+      "nextAudit": "更早的事件",
+      "system": "系统或外部参与者",
+      "unavailable": "不可用",
+      "noAccess": "您在当前公司范围内没有信函访问权限。",
+      "approvalHistory": "审批历史",
+      "signatory": "签署人",
+      "approvalDate": "批准日期",
+      "events": {
+        "revision_created": "已创建版本",
+        "reissue_drafted": "已创建补发草稿",
+        "draft_validation_failed": "草稿需要修改",
+        "submitted": "已提交审批",
+        "withdrawn": "已撤回",
+        "approval_approve": "已批准",
+        "approval_reject": "已拒绝",
+        "approval_return": "已退回修改",
+        "approval_delegated": "已委派审批",
+        "issued": "已签发",
+        "voided": "已标记作废",
+        "downloaded": "已打开或下载 PDF",
+        "recipient_acknowledged": "已确认收件",
+        "recipient_signed": "员工已签署",
+        "retention_changed": "已更改保留设置"
+      }
+    },
+    "errors": {
+      "invalid": "请检查必填项和确认选项。",
+      "permission": "您当前的信函权限不允许执行此操作。",
+      "stale": "信函已更改。请重新加载并审核当前记录后重试。",
+      "conflict": "此操作与当前信函记录冲突。",
+      "configuration": "请先检查当前信函配置。",
+      "unavailable": "未能完成操作。您的输入已保留。",
+      "state": "信函当前状态不允许执行此操作。",
+      "reasonRequired": "请输入原因。"
     }
   }
 }

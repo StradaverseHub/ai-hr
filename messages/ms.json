@@ -10280,7 +10280,8 @@
         "letterFields": "Takrif medan memerlukan kebenaran templat atau bacaan semasa. Pemetaan sulit turut memerlukan kebenaran kewangan yang berkuat kuasa.",
         "letterTemplates": "Skop syarikat semasa dan kebenaran baca/templat Surat. Pemetaan sulit turut memerlukan akses kewangan.",
         "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa.",
-        "letterApproval": "Konteks syarikat semasa, akses baca/lulus Surat dan peringkat kelulusan semasa yang ditugaskan."
+        "letterApproval": "Konteks syarikat semasa, akses baca/lulus Surat dan peringkat kelulusan semasa yang ditugaskan.",
+        "letterRegister": "Konteks syarikat semasa dan kebenaran Surat semasa untuk setiap tindakan."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -24276,7 +24277,8 @@
         "withdrawn": "Surat dibuang daripada kelompok ini. Sejarahnya disimpan.",
         "submitted": "Surat yang sedia telah dihantar untuk kelulusan.",
         "missing": "Tiada: {field}",
-        "unavailable": "Tidak tersedia"
+        "unavailable": "Tidak tersedia",
+        "reissue": "Penggantian untuk {reference}. Draf baharu akan diwujudkan dan memerlukan kelulusan baharu."
       },
       "form": {
         "department": "Jabatan mengandungi",
@@ -24339,6 +24341,72 @@
       "signatureRequired": "Sahkan kebenaran untuk menggunakan tandatangan atau cop anda.",
       "decision": "Keputusan",
       "first": "Halaman pertama"
+    },
+    "register": {
+      "title": "Daftar Surat Dikeluarkan",
+      "intro": "Cari surat dikeluarkan, semak PDF terkunci dan urus kitar hayat yang direkodkan.",
+      "ready": "Sedia dikeluarkan",
+      "issued": "Surat dikeluarkan",
+      "search": "Pekerja, kod atau rujukan",
+      "category": "Kategori surat",
+      "issuedFrom": "Dikeluarkan dari",
+      "issuedTo": "Dikeluarkan hingga",
+      "allStates": "Semua status",
+      "empty": "Tiada surat yang sepadan.",
+      "open": "Buka rekod",
+      "openPdf": "Buka PDF terkunci",
+      "download": "Muat turun PDF",
+      "sealedHelp": "Semak PDF terkunci sebelum mengeluarkan surat. Pengeluaran menyimpan bait yang sama dalam folder pekerja.",
+      "voidHelp": "Surat ini Batal. Pengesahan QR tidak sah. PDF yang disimpan ialah rekod sejarah.",
+      "issue": "Keluarkan surat",
+      "issueConfirm": "Saya telah menyemak PDF terkunci dan mengesahkan pengeluaran kepada pekerja ini.",
+      "void": "Batalkan surat",
+      "voidConfirm": "Saya mengesahkan bahawa surat yang dikeluarkan ini mesti ditandakan Batal.",
+      "reason": "Sebab",
+      "working": "Sedang memproses…",
+      "saved": "Rekod surat telah dikemas kini.",
+      "original": "Surat asal",
+      "reissue": "Cipta draf penggantian",
+      "reissueHelp": "Pilih templat semasa yang diluluskan. Penggantian mengekalkan pautan asal dan memerlukan kelulusan baharu.",
+      "retention": "Penyimpanan dan penahanan undang-undang",
+      "retainUntil": "Simpan sekurang-kurangnya hingga",
+      "legalHold": "Penahanan undang-undang",
+      "saveRetention": "Simpan tetapan penyimpanan",
+      "audit": "Sejarah audit",
+      "nextAudit": "Peristiwa terdahulu",
+      "system": "Sistem atau pihak luar",
+      "unavailable": "Tidak tersedia",
+      "noAccess": "Anda tiada akses surat dalam konteks syarikat ini.",
+      "approvalHistory": "Sejarah kelulusan",
+      "signatory": "Penandatangan",
+      "approvalDate": "Tarikh kelulusan",
+      "events": {
+        "revision_created": "Semakan dicipta",
+        "reissue_drafted": "Draf penggantian dicipta",
+        "draft_validation_failed": "Draf memerlukan pembetulan",
+        "submitted": "Dihantar untuk kelulusan",
+        "withdrawn": "Ditarik balik",
+        "approval_approve": "Diluluskan",
+        "approval_reject": "Ditolak",
+        "approval_return": "Dikembalikan untuk pembetulan",
+        "approval_delegated": "Kelulusan diwakilkan",
+        "issued": "Dikeluarkan",
+        "voided": "Ditandakan Batal",
+        "downloaded": "PDF dibuka atau dimuat turun",
+        "recipient_acknowledged": "Penerimaan diakui",
+        "recipient_signed": "Ditandatangani pekerja",
+        "retention_changed": "Penyimpanan diubah"
+      }
+    },
+    "errors": {
+      "invalid": "Semak input dan pengesahan yang diperlukan.",
+      "permission": "Kebenaran surat semasa anda tidak membenarkan tindakan ini.",
+      "stale": "Surat ini telah berubah. Muat semula dan semak rekod semasa sebelum mencuba lagi.",
+      "conflict": "Tindakan ini bercanggah dengan rekod surat semasa.",
+      "configuration": "Semak konfigurasi surat semasa sebelum meneruskan.",
+      "unavailable": "Tindakan tidak dapat diselesaikan. Input anda dikekalkan.",
+      "state": "Tindakan ini tidak tersedia untuk status surat semasa.",
+      "reasonRequired": "Masukkan sebab."
     }
   }
 }

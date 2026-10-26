@@ -10280,7 +10280,8 @@
         "letterFields": "Định nghĩa trường yêu cầu quyền mẫu hoặc đọc hiện tại. Ánh xạ bảo mật còn yêu cầu quyền tài chính tương ứng.",
         "letterTemplates": "Theo phạm vi công ty hiện tại và quyền đọc/mẫu Thư. Ánh xạ bảo mật còn yêu cầu quyền truy cập tài chính.",
         "letterGenerate": "Theo ngữ cảnh công ty hiện tại, quyền tạo/đọc Thư và quyền truy cập Nhân sự và tài chính hiện tại.",
-        "letterApproval": "Phạm vi công ty hiện tại, quyền đọc/phê duyệt thư và bước phê duyệt hiện tại được giao."
+        "letterApproval": "Phạm vi công ty hiện tại, quyền đọc/phê duyệt thư và bước phê duyệt hiện tại được giao.",
+        "letterRegister": "Phạm vi công ty hiện tại và quyền Thư hiện tại cần cho từng thao tác."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -24276,7 +24277,8 @@
         "withdrawn": "Đã bỏ thư khỏi lô này. Lịch sử vẫn được lưu giữ.",
         "submitted": "Đã gửi các thư sẵn sàng để phê duyệt.",
         "missing": "Thiếu: {field}",
-        "unavailable": "Không khả dụng"
+        "unavailable": "Không khả dụng",
+        "reissue": "Thư thay thế cho {reference}. Thao tác này tạo bản nháp mới và yêu cầu phê duyệt lại."
       },
       "form": {
         "department": "Tên phòng ban chứa",
@@ -24339,6 +24341,72 @@
       "signatureRequired": "Xác nhận cho phép áp dụng chữ ký hoặc con dấu của bạn.",
       "decision": "Quyết định",
       "first": "Trang đầu"
+    },
+    "register": {
+      "title": "Sổ đăng ký thư đã phát hành",
+      "intro": "Tìm thư đã phát hành, xem PDF đã niêm phong và quản lý lịch sử vòng đời.",
+      "ready": "Sẵn sàng phát hành",
+      "issued": "Thư đã phát hành",
+      "search": "Nhân viên, mã hoặc số tham chiếu",
+      "category": "Loại thư",
+      "issuedFrom": "Phát hành từ",
+      "issuedTo": "Phát hành đến",
+      "allStates": "Tất cả trạng thái",
+      "empty": "Không có thư phù hợp.",
+      "open": "Mở hồ sơ",
+      "openPdf": "Mở PDF đã niêm phong",
+      "download": "Tải PDF",
+      "sealedHelp": "Xem PDF đã niêm phong trước khi phát hành. Việc phát hành lưu đúng các byte này vào thư mục nhân viên.",
+      "voidHelp": "Thư này đã bị hủy. Xác minh QR không hợp lệ. PDF được giữ lại là hồ sơ lịch sử.",
+      "issue": "Phát hành thư",
+      "issueConfirm": "Tôi đã xem PDF đã niêm phong và xác nhận phát hành cho nhân viên này.",
+      "void": "Hủy thư",
+      "voidConfirm": "Tôi xác nhận phải đánh dấu thư đã phát hành này là Đã hủy.",
+      "reason": "Lý do",
+      "working": "Đang xử lý…",
+      "saved": "Đã cập nhật hồ sơ thư.",
+      "original": "Thư gốc",
+      "reissue": "Tạo bản nháp thay thế",
+      "reissueHelp": "Chọn mẫu đã được phê duyệt đang có hiệu lực. Thư thay thế giữ liên kết với thư gốc và phải được phê duyệt lại.",
+      "retention": "Lưu giữ và bảo toàn pháp lý",
+      "retainUntil": "Lưu giữ ít nhất đến",
+      "legalHold": "Bảo toàn pháp lý",
+      "saveRetention": "Lưu thiết lập lưu giữ",
+      "audit": "Lịch sử kiểm toán",
+      "nextAudit": "Sự kiện cũ hơn",
+      "system": "Hệ thống hoặc tác nhân bên ngoài",
+      "unavailable": "Không khả dụng",
+      "noAccess": "Bạn không có quyền truy cập thư trong phạm vi công ty này.",
+      "approvalHistory": "Lịch sử phê duyệt",
+      "signatory": "Người ký",
+      "approvalDate": "Ngày phê duyệt",
+      "events": {
+        "revision_created": "Đã tạo phiên bản",
+        "reissue_drafted": "Đã tạo bản nháp thay thế",
+        "draft_validation_failed": "Bản nháp cần chỉnh sửa",
+        "submitted": "Đã gửi phê duyệt",
+        "withdrawn": "Đã rút lại",
+        "approval_approve": "Đã phê duyệt",
+        "approval_reject": "Đã từ chối",
+        "approval_return": "Đã trả lại để sửa",
+        "approval_delegated": "Đã ủy quyền phê duyệt",
+        "issued": "Đã phát hành",
+        "voided": "Đã đánh dấu hủy",
+        "downloaded": "Đã mở hoặc tải PDF",
+        "recipient_acknowledged": "Đã xác nhận nhận thư",
+        "recipient_signed": "Nhân viên đã ký",
+        "retention_changed": "Đã thay đổi lưu giữ"
+      }
+    },
+    "errors": {
+      "invalid": "Kiểm tra các mục nhập và xác nhận bắt buộc.",
+      "permission": "Quyền thư hiện tại của bạn không cho phép thao tác này.",
+      "stale": "Thư đã thay đổi. Tải lại và xem hồ sơ hiện tại trước khi thử lại.",
+      "conflict": "Thao tác này xung đột với hồ sơ thư hiện tại.",
+      "configuration": "Xem lại cấu hình thư hiện tại trước khi tiếp tục.",
+      "unavailable": "Không thể hoàn tất thao tác. Nội dung bạn nhập được giữ lại.",
+      "state": "Thao tác này không khả dụng với trạng thái hiện tại của thư.",
+      "reasonRequired": "Nhập lý do."
     }
   }
 }

@@ -676,3 +676,50 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_approval_actor_label(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_approval_actor_label(uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.letter_audit_actor_label(subject uuid,actor text) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT p.full_name FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.id::text=actor AND u.tenant_id=app.current_tenant_id() AND app.letter_can_read(subject)
+ AND EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=u.tenant_id AND app.letter_permission(l.company_id,'read'))
+ AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=u.tenant_id AND e.aggregate_type='letter' AND e.aggregate_id=subject AND e.actor_type='user' AND e.actor_id=actor)
+$$;
+REVOKE ALL ON FUNCTION app.letter_audit_actor_label(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_audit_actor_label(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Generation inputs belong to the full cohort. A delegated reviewer receives only the metadata
+-- needed for the one letter they can read, never the other employees' custom merge values.
+CREATE FUNCTION app.letter_batch_financial_access(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current() AND NOT EXISTS(SELECT 1 FROM public.letter_record l WHERE l.batch_id=subject AND l.tenant_id=app.current_tenant_id() AND l.confidential AND NOT app.can_admin_payroll_for(l.company_id))
+$$;
+REVOKE ALL ON FUNCTION app.letter_batch_financial_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_batch_financial_access(uuid) TO ai_hr_app;
+CREATE FUNCTION app.letter_batch_can_read(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.letter_generation_batch b
+ WHERE b.id=subject AND b.tenant_id=app.current_tenant_id() AND app.letter_permission(b.company_id,'read')
+ AND app.letter_batch_financial_access(b.id)
+ AND (b.created_by=app.current_user_id() OR
+  (EXISTS(SELECT 1 FROM public.letter_record l WHERE l.batch_id=b.id)
+   AND (SELECT count(*) FROM public.letter_record l WHERE l.batch_id=b.id)=jsonb_array_length(b.selection->'employmentIds')
+   AND NOT EXISTS(SELECT 1 FROM public.letter_record l WHERE l.batch_id=b.id AND NOT app.letter_can_read(l.id)))))
+$$;
+REVOKE ALL ON FUNCTION app.letter_batch_can_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_batch_can_read(uuid) TO ai_hr_app;
+DROP POLICY letter_generation_batch_read ON letter_generation_batch;
+-- Keep the creator test on NEW's row: a STABLE table-reading helper cannot see an INSERT's
+-- own RETURNING row. The financial predicate reads children independently and still applies
+-- after creation, including when financial grants are later revoked.
+CREATE POLICY letter_generation_batch_read ON letter_generation_batch FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.letter_permission(company_id,'read') AND ((created_by=app.current_user_id() AND app.letter_batch_financial_access(id)) OR app.letter_batch_can_read(id)));
+CREATE FUNCTION app.letter_staff_batch_metadata(subject uuid)
+RETURNS TABLE(id uuid,tenant_id uuid,company_id uuid,template_version_id uuid,policy_version_id uuid,source_as_of_date text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT b.id,b.tenant_id,b.company_id,b.template_version_id,b.policy_version_id,b.selection->>'sourceAsOfDate'
+ FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND app.letter_permission(l.company_id,'read') AND app.letter_can_read(l.id)
+$$;
+REVOKE ALL ON FUNCTION app.letter_staff_batch_metadata(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_staff_batch_metadata(uuid) TO ai_hr_app;
