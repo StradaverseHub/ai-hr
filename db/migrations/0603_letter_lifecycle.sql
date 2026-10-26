@@ -610,7 +610,7 @@ LANGUAGE sql STABLE AS $$ SELECT app.grants_admin_for(grants,wanted_company) OR 
 --> statement-breakpoint
 -- Preserve the public wrappers' volatility/security attributes and their existing grant semantics.
 CREATE OR REPLACE FUNCTION app.has_role_for(p_role text,p_company uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.grants_have_role_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_role,p_company)
 $$;
 CREATE OR REPLACE FUNCTION app.is_admin_for(p_company uuid) RETURNS boolean
@@ -631,3 +631,34 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A letter reviewer can see the subject's label without receiving directory access or contact data.
+CREATE FUNCTION app.letter_staff_identity(subject uuid) RETURNS TABLE(employee_name text,employee_code text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT p.full_name,e.employee_code FROM public.letter_record l
+ JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id AND e.company_id=l.company_id
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=l.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND app.letter_permission(l.company_id,'read') AND app.letter_can_read(l.id)
+$$;
+REVOKE ALL ON FUNCTION app.letter_staff_identity(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_staff_identity(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.letter_delegate_choices(subject uuid,after_id uuid,wanted_search text,row_limit integer)
+RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT u.id,p.full_name FROM public.letter_record l
+ JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+ JOIN public.letter_policy_version policy ON policy.id=b.policy_version_id AND policy.tenant_id=l.tenant_id
+ JOIN public.app_user u ON u.tenant_id=l.tenant_id JOIN public.person p ON p.id=u.person_id AND p.tenant_id=l.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND app.letter_can_read(l.id)
+ AND app.letter_approver_eligible(app.current_user_id(),l.company_id,l.confidential)
+ AND l.state='submitted' AND l.created_by<>app.current_user_id() AND l.stage_index<jsonb_array_length(policy.policy->'stages')-1
+ AND coalesce((policy.policy->'stages'->l.stage_index->>'allowDelegation')::boolean,false)
+ AND coalesce((SELECT decision.delegated_to=app.current_user_id() FROM public.letter_approval_decision decision WHERE decision.revision_id=l.current_revision_id AND decision.stage_index=l.stage_index AND decision.action='delegate' ORDER BY decision.created_at DESC,decision.id DESC LIMIT 1),(policy.policy->'stages'->l.stage_index->'userIds') ? app.current_user_id()::text)
+ AND u.id<>l.created_by AND u.id<>app.current_user_id() AND app.letter_approver_eligible(u.id,l.company_id,l.confidential)
+ AND (after_id IS NULL OR u.id>after_id) AND (wanted_search IS NULL OR p.full_name ILIKE wanted_search)
+ ORDER BY u.id LIMIT greatest(1,least(coalesce(row_limit,101),101))
+$$;
+REVOKE ALL ON FUNCTION app.letter_delegate_choices(uuid,uuid,text,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_delegate_choices(uuid,uuid,text,integer) TO ai_hr_app;

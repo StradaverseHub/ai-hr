@@ -8,14 +8,17 @@ import {adminCtx,entitledCtx,owner,resetDb,seedBase,closeAll,type Base} from './
 let b:Base;
 beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 it('preserves the original current-principal financial policy for every role and group/company/subtree scope',async()=>{
- const [child]=await owner.db.insert(company).values({tenantId:b.tenantId,parentId:b.companyId,legalName:'Fictional child'}).returning(),[sibling]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional sibling'}).returning();
- for(const role of roleEnum.enumValues)for(const scope of [null,b.companyId]){
+ const [child]=await owner.db.insert(company).values({tenantId:b.tenantId,parentCompanyId:b.companyId,legalName:'Fictional child'}).returning(),[sibling]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional sibling'}).returning();
+ for(const role of roleEnum.enumValues)for(const scope of (role==='super_admin'?[null]:[null,b.companyId])){
   const [user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'policy-parity-'+randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role,companyId:scope});
   const ctx={...adminCtx(b),userId:user.id,personId:null,roles:[role],grants:[{role,companyId:scope}]};
   for(const target of [b.companyId,child.id,sibling.id]){
-   const [result]=await withTenant(ctx,tx=>tx.execute<{actual:boolean;original:boolean}>(sql`select app.can_admin_payroll_for(${target}::uuid) as actual,
+   const [result]=await withTenant(ctx,tx=>tx.execute<{actual:boolean;original:boolean;roleActual:boolean;roleOriginal:boolean;adminActual:boolean;adminOriginal:boolean}>(sql`select app.has_role_for(${role},${target}::uuid) as "roleActual",
+    exists(select 1 from app.current_grants() g where g.role=${role} and (g.company_id is null or g.company_id=${target}::uuid or app.is_company_descendant(${target}::uuid,g.company_id))) as "roleOriginal",
+    app.is_admin_for(${target}::uuid) as "adminActual",exists(select 1 from app.current_grants() g where g.role in ('hr_admin','super_admin') and (g.company_id is null or g.company_id=${target}::uuid or app.is_company_descendant(${target}::uuid,g.company_id))) as "adminOriginal",
+    app.can_admin_payroll_for(${target}::uuid) as actual,
     exists(select 1 from app.current_grants() g where g.role in ('hr_admin','super_admin','payroll_partner') and (g.company_id is null or g.company_id=${target}::uuid or app.is_company_descendant(${target}::uuid,g.company_id))) as original`));
-   expect(result.actual,JSON.stringify({role,scope,target})).toBe(result.original);
+   const context=JSON.stringify({role,scope,target});expect(result.actual,context).toBe(result.original);expect(result.roleActual,context).toBe(result.roleOriginal);expect(result.adminActual,context).toBe(result.adminOriginal);
   }
  }
 });
@@ -26,6 +29,6 @@ it('requires actual financial grants for confidential-letter candidates without 
  expect(await check()).toEqual({ordinary:true,confidential:false});await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'payroll_partner',companyId:b.companyId});expect(await check()).toEqual({ordinary:true,confidential:true});
 });
 it('uses existing descendant scope for a current HR grant and refuses a foreign tenant',async()=>{
- const ctx=await entitledCtx(b),[child]=await owner.db.insert(company).values({tenantId:b.tenantId,parentId:b.companyId,legalName:'Fictional descendant'}).returning(),[user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'scoped-'+randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
+ const ctx=await entitledCtx(b),[child]=await owner.db.insert(company).values({tenantId:b.tenantId,parentCompanyId:b.companyId,legalName:'Fictional descendant'}).returning(),[user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'scoped-'+randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
  const [eligible]=await withTenant(ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${user.id}::uuid,${child.id}::uuid,true) as ok`));expect(eligible.ok).toBe(true);const foreign=await seedBase();const [blocked]=await withTenant(ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${user.id}::uuid,${foreign.companyId}::uuid,true) as ok`));expect(blocked.ok).toBe(false);
 });
