@@ -7,6 +7,7 @@ Run this from a trusted controller checkout on the operator's Mac after the rele
 ```sh
 python3 scripts/releases/approve_staging.py \
   --accept-staging \
+  --github-account GITHUB_ACCOUNT_WITH_ACCESS \
   --ref FULL_APPROVED_COMMIT_SHA \
   --build-id EXACT_ACCEPTED_BUILD_ID \
   --ssh-config /absolute/path/to/private/ssh_config \
@@ -16,7 +17,7 @@ python3 scripts/releases/approve_staging.py \
 
 Use the original staging acceptance evidence, not a newly fabricated PASS receipt. Add `--owner-exception` when the owner explicitly approved an exception. This label and the evidence file's SHA256 are included in the published private manifest; the original evidence remains private. The publisher does not interpret arbitrary evidence as proof of a full gate or replace the existing release verification rules. Human acceptance of the test workflows remains the release owner's responsibility.
 
-Use `--check` instead of `--accept-staging` for a read-only preflight. Preflight needs no evidence file and reports the running build ID; it never records acceptance or makes GitHub writes. Without either mode, the command refuses to run. A publication must supply the human-accepted build ID and refuses if staging has since rebuilt the same commit. Python 3.9+ with timezone data, Git, OpenSSH and authenticated `gh` are required. No application dependencies, local database or development build are needed. SSH config and verified host keys stay private, and SSH uses strict host-key checking. An organization owner must create the empty private `StradaverseHub/ai-hr-releases` repository and grant the operator write access. The publisher refuses a public or differently named destination and pins its numeric identity across retries. The GitHub account needs contents write access to both repositories; no production SSH credentials are supplied to GitHub Actions.
+Use `--check` instead of `--accept-staging` for a read-only preflight. Preflight needs no evidence file and reports the running build ID; it never records acceptance or makes GitHub writes. Without either mode, the command refuses to run. A publication must supply the human-accepted build ID and refuses if staging has since rebuilt the same commit. Python 3.9+ with timezone data, Git, OpenSSH and authenticated `gh` are required. No application dependencies, local database or development build are needed. SSH config and verified host keys stay private, and SSH uses strict host-key checking. An organization owner must create the empty private `StradaverseHub/ai-hr-releases` repository and grant the operator write access. The publisher verifies the destination’s numeric repository ID (`1434418441`) and write access, and refuses a public or differently named destination and pins its numeric identity across retries. The GitHub account needs contents write access to both repositories; no production SSH credentials are supplied to GitHub Actions. `--github-account` selects an account already authenticated locally with `gh`; omit it to use the current account. The selected token stays in child-process environments, is never printed or stored in release state, and does not switch the shared GitHub login. Git transport honors local hooks and explicitly disables `push.followTags` so unrelated tags cannot be copied.
 
 ## What happens after approval
 

@@ -19,13 +19,14 @@ class GitHub:
     def __init__(self, repository=release.RELEASE_REPOSITORY):
         self.repository = repository
         self.private = repository == release.RELEASE_REPOSITORY
-        self.repo_id = 77 if self.private else release.REPOSITORY_ID
+        self.repo_id = release.RELEASE_REPOSITORY_ID if self.private else release.REPOSITORY_ID
+        self.write_access = True
         self.heads = {'alpha': SHA, 'main': SHA}; self.ancestors = set()
         self.refs = {}; self.objects = {}; self.release = None; self.calls = []; self.fail_upload = False
 
     def api(self, path, method='GET', value=None):
         self.calls.append((path, method))
-        if path == '': return {'private': self.private, 'id': self.repo_id, 'full_name': self.repository}
+        if path == '': return {'private': self.private, 'id': self.repo_id, 'full_name': self.repository, 'permissions': {'push': self.write_access}}
         if path.startswith('git/ref/heads/'): return {'object': {'sha': self.heads[path.split('/')[-1]]}}
         if path.startswith('compare/'):
             base, head = path.removeprefix('compare/').split('?')[0].split('...')
@@ -213,9 +214,30 @@ class Tests(unittest.TestCase):
             self.assertFalse(self.source.refs); self.assertIsNone(self.github.release)
 
     def test_private_repository_identity_is_pinned_across_resume(self):
-        self.publish(); self.github.repo_id += 1
+        self.publish(); self.state['releaseRepositoryId'] += 1
         with self.assertRaisesRegex(ValueError, 'identity changed'): self.publish()
         self.assertEqual(len(self.source.refs), 1)
+
+    def test_read_only_destination_cannot_allocate_tags(self):
+        self.github.write_access = False
+        with self.assertRaises(ValueError): self.publish()
+        self.assertFalse(self.source.refs)
+
+    def test_account_selection_is_local_and_never_mutates_shared_credentials(self):
+        import os
+        with patch.dict(os.environ, {'GH_TOKEN': 'another-process-token', 'GITHUB_TOKEN': 'another-token'}), \
+             patch.object(release, 'run', return_value=b'stored-test-account-token\n') as command:
+            env = release.github_environment('stradaverse-hub')
+            self.assertEqual(env['GH_TOKEN'], 'stored-test-account-token')
+            self.assertNotIn('GITHUB_TOKEN', env)
+            self.assertEqual(env['GIT_TERMINAL_PROMPT'], '0')
+            self.assertEqual(os.environ['GH_TOKEN'], 'another-process-token')
+            self.assertEqual(command.call_args.args[0], ['gh','auth','token','--hostname','github.com','--user','stradaverse-hub'])
+            self.assertNotIn('GH_TOKEN', command.call_args.kwargs['env'])
+            self.assertNotIn('GITHUB_TOKEN', command.call_args.kwargs['env'])
+        with patch.object(release, 'run') as command, self.assertRaises(ValueError):
+            release.github_environment('bad/account')
+        command.assert_not_called()
 
     def test_public_source_never_receives_release_assets(self):
         self.assertFalse(self.source.private)
@@ -382,7 +404,7 @@ class CommandTests(unittest.TestCase):
     def invoke(self, *args):
         import contextlib
         output = io.StringIO()
-        with patch.object(release, 'ROOT', self.root), patch.object(release, 'GitHub', side_effect=lambda repository=release.REPOSITORY: self.source if repository == release.REPOSITORY else self.github), \
+        with patch.object(release, 'ROOT', self.root), patch.object(release, 'GitHub', side_effect=lambda repository=release.REPOSITORY, environment=None: self.source if repository == release.REPOSITORY else self.github), \
              patch('subprocess.run', side_effect=self.process), contextlib.redirect_stdout(output):
             release.main(self.args + list(args))
         return output.getvalue()
@@ -400,6 +422,12 @@ class CommandTests(unittest.TestCase):
         self.assertFalse(result['publicationPerformed']); self.assertEqual(result['buildId'], BUILD)
         self.assertTrue(all(method == 'GET' for _, method in self.github.calls))
         self.assertFalse(list((self.root/'.improve/production-releases').glob('*/state.json')))
+
+    def test_cli_passes_selected_account_without_switching_shared_login(self):
+        with patch.object(release, 'github_environment', return_value={'GH_TOKEN': 'test-only-token'}) as select:
+            self.invoke('--check', '--github-account', 'stradaverse-hub')
+        select.assert_called_once_with('stradaverse-hub')
+        self.assertTrue(all(method == 'GET' for _, method in self.github.calls))
 
     def test_rebuilt_same_commit_is_not_silently_accepted(self):
         self.snapshot['buildId'] = 'rebuilt-after-acceptance'
@@ -435,6 +463,9 @@ class CommandTests(unittest.TestCase):
     def test_actual_tag_transport_preserves_commit_and_annotation_without_branch_push(self):
         bare = Path(self.tmp.name)/'private.git'
         self.original_process(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        self.original_process(['git', 'config', 'push.followTags', 'true'], cwd=self.root, check=True)
+        self.original_process(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                              'tag', '-am', 'Unrelated annotation', 'unrelated-tag', self.sha], cwd=self.root, check=True)
         tag = 'prod-2026-10-26.1'
         self.original_process(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
                               'tag', '-am', 'Accepted source identity', tag, self.sha], cwd=self.root, check=True)
@@ -454,7 +485,8 @@ class CommandTests(unittest.TestCase):
         refs = self.original_process(['git', '--git-dir', str(bare), 'for-each-ref', '--format=%(refname)'], check=True, capture_output=True).stdout.decode().splitlines()
         self.assertEqual(refs, ['refs/tags/'+tag])
         push = next(c for c in commands if 'push' in c)
-        self.assertNotIn('--force', push); self.assertEqual(push[-1], obj+':refs/tags/'+tag)
+        self.assertNotIn('--force', push); self.assertNotIn('--no-verify', push)
+        self.assertIn('--no-follow-tags', push); self.assertEqual(push[-1], obj+':refs/tags/'+tag)
 
     def test_changed_evidence_on_resume_refuses(self):
         self.invoke(*self.approval); self.evidence.write_text('different acceptance')

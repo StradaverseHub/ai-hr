@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 REPOSITORY = 'StradaverseHub/ai-hr'
 REPOSITORY_ID = 1333414856
 RELEASE_REPOSITORY = 'StradaverseHub/ai-hr-releases'
+RELEASE_REPOSITORY_ID = 1434418441
 ROOT = Path(__file__).resolve().parents[2]
 SHA = re.compile(r'^[0-9a-f]{40}$')
 BUILD = re.compile(r'^[A-Za-z0-9_-]{1,100}$')
@@ -181,20 +182,37 @@ print(json.dumps({'sha':p['sha'],'buildId':build,'pid':pid,'buildMtime':(root/'.
 '''
 
 
+def github_environment(account=None):
+    """Use a stored account only in child processes; never switch shared gh state."""
+    env = os.environ.copy()
+    env.update(GH_HOST='github.com', GIT_TERMINAL_PROMPT='0', GH_PROMPT_DISABLED='1')
+    if account:
+        require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', account), 'Invalid GitHub account')
+        lookup = env.copy()
+        for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
+            lookup.pop(name, None)
+        token = run(['gh', 'auth', 'token', '--hostname', 'github.com', '--user', account], env=lookup).decode().strip()
+        require(token and '\n' not in token and '\r' not in token, 'Stored GitHub account has no valid token')
+        env['GH_TOKEN'] = token
+        env.pop('GITHUB_TOKEN', None)
+    return env
+
+
 class GitHub:
-    def __init__(self, repository=REPOSITORY):
+    def __init__(self, repository=REPOSITORY, environment=None):
         self.repository = repository
+        self.environment = environment
 
     def api(self, path, method='GET', value=None):
         args = ['gh', 'api', f'repos/{self.repository}' + ('/' + path if path else ''), '--method', method]
         if value is not None:
             args += ['--input', '-']
-        return json.loads(run(args, input=None if value is None else json.dumps(value).encode()))
+        return json.loads(run(args, input=None if value is None else json.dumps(value).encode(), env=self.environment))
 
     def asset(self, asset):
         require(asset['size'] <= 4 * 1024**2, 'Oversized release metadata')
         return run(['gh', 'api', '-H', 'Accept: application/octet-stream',
-                    f'repos/{self.repository}/releases/assets/{asset["id"]}'])
+                    f'repos/{self.repository}/releases/assets/{asset["id"]}'], env=self.environment)
 
     def releases(self):
         for page in range(1, 11):
@@ -205,18 +223,18 @@ class GitHub:
         raise ValueError('Release inventory exceeds bound')
 
     def upload(self, tag, files):
-        run(['gh', 'release', 'upload', tag, '--repo', self.repository, *map(str, files)])
+        run(['gh', 'release', 'upload', tag, '--repo', self.repository, *map(str, files)], env=self.environment)
 
 
     def mirror(self, source, state):
         require(self.repository == RELEASE_REPOSITORY and source.repository == REPOSITORY, 'Invalid tag transport')
-        run(['git', 'fetch', '--no-tags', '--no-write-fetch-head',
-             f'https://github.com/{REPOSITORY}.git', state['tagObject']], cwd=ROOT)
+        git = ['git', '-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential']
+        run(git + ['fetch', '--no-tags', '--no-write-fetch-head',
+                   f'https://github.com/{REPOSITORY}.git', state['tagObject']], cwd=ROOT, env=self.environment)
         require(run(['git', 'rev-parse', state['tagObject'] + '^{commit}'], cwd=ROOT).decode().strip()
                 == state['sha'], 'Fetched source tag differs')
-        run(['git', '-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential',
-             'push', '--porcelain', '--no-verify', f'https://github.com/{RELEASE_REPOSITORY}.git',
-             state['tagObject'] + ':refs/tags/' + state['tag']], cwd=ROOT)
+        run(git + ['push', '--porcelain', '--no-follow-tags', f'https://github.com/{RELEASE_REPOSITORY}.git',
+                   state['tagObject'] + ':refs/tags/' + state['tag']], cwd=ROOT, env=self.environment)
 
 
 def branches(github, sha):
@@ -240,8 +258,8 @@ def branches(github, sha):
 def private_destination(github):
     repo = github.api('')
     require(repo['private'] is True and repo['full_name'] == RELEASE_REPOSITORY
-            and isinstance(repo['id'], int) and repo['id'] > 0,
-            'Production assets require the separate private release repository')
+            and repo['id'] == RELEASE_REPOSITORY_ID and repo.get('permissions', {}).get('push') is True,
+            'Production assets require write access to the verified private release repository')
     return repo['id']
 
 
@@ -420,6 +438,7 @@ def main(argv=None):
     parser.add_argument('--service', default='aihr')
     parser.add_argument('--approval-evidence', type=Path, help='Original acceptance/gate evidence; required for publication; only its SHA256 is published')
     parser.add_argument('--build-id', help='Exact build ID accepted by the human staging reviewer; required for publication')
+    parser.add_argument('--github-account', help='Existing local gh account with write access to both repositories; no global account switch')
     parser.add_argument('--owner-exception', action='store_true', help='Explicitly label owner-exception acceptance; never relabel as a full PASS')
     intent = parser.add_mutually_exclusive_group(required=True)
     intent.add_argument('--check', action='store_true', help='Read-only preflight: do not approve, tag, package or publish')
@@ -441,8 +460,9 @@ def main(argv=None):
         require(0 < args.approval_evidence.stat().st_size <= 16 * 1024**2, 'Invalid acceptance evidence size')
     # Source is always git archive of the exact accepted commit, never local working-tree changes.
     require(run(['git', 'rev-parse', args.ref + '^{commit}'], cwd=ROOT).decode().strip() == args.ref, 'Source commit missing')
-    source = GitHub(); branches(source, args.ref)
-    github = GitHub(RELEASE_REPOSITORY); private_destination(github)
+    environment = github_environment(args.github_account)
+    source = GitHub(environment=environment); branches(source, args.ref)
+    github = GitHub(RELEASE_REPOSITORY, environment=environment); private_destination(github)
     root = args.output_root.resolve(); root.mkdir(parents=True, exist_ok=True, mode=0o700); root.chmod(0o700)
     with (root / '.publisher.lock').open('a') as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
