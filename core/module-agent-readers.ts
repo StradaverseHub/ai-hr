@@ -4,6 +4,7 @@
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_CAPABILITIES, isAgentModuleCode, type AgentModuleCode } from '../lib/ai/module-agents';
+import {MODULE_AGENT_ACTIONS,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 import {isAdmin} from '../lib/authz-model';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
@@ -37,6 +38,10 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
     await assertAiActionUnpausedTx(tx, fresh, 'hr_assistant');
     assertModuleEnabled(fresh, module);
     const capability = MODULE_AGENT_CAPABILITIES.find(entry => entry[0] === module)![1];
+    // All Assistant/orchestrator paths share this closed module boundary. A declaration is not
+    // authority: the actual current principal/module checks above still precede every source read.
+    const nominated=parseModuleAgentActionNomination({module,action:MODULE_AGENT_ACTIONS[module].read.id,phase:'read'});
+    if(nominated.kind!=='read'||nominated.module!==module||nominated.capability!==capability)return unavailable();
     const own = async () => {
       const subjects = await reads.myOwnEmploymentSubjectsTx(tx, fresh);
       // Refuse rather than silently omit an unprotected subject from the claimed own-person scope.
