@@ -314,14 +314,25 @@ export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
 
-async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,stageIndex:number){
+// Pending work follows the frozen revision and current stage. Completed delivery history stays intact.
+async function cancelLetterStageJobs(tx:Tx,letterId:string,revisionId:string,stageIndex:number){
+ await tx.update(letterJob).set({status:'cancelled',leaseToken:null,leaseUntil:null}).where(and(eq(letterJob.letterId,letterId),inArray(letterJob.status,['queued','failed']),inArray(letterJob.kind,['notification','approvalReminder','escalation']),sql`${letterJob.payload}->>'revisionId'=${revisionId}`,sql`${letterJob.payload}->>'stageIndex'=${String(stageIndex)}`));
+}
+async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,stageIndex:number,delegation?:{userId:string;decisionId:string}){
  if(!policy.portalNotifications&&!policy.emailNotifications)return;
- for(const userId of policy.stages[stageIndex].userIds.filter(userId=>userId!==record.createdBy)){
-  const key=`${record.id}:${revisionId}:stage:${stageIndex}:${userId}`;
-  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'notification',recipientUserId:userId,dedupeKey:key,payload:{revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()`}).onConflictDoNothing();
-  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'approvalReminder',recipientUserId:userId,dedupeKey:key+':reminder',payload:{revisionId,stageIndex},dueAt:sql`now()+${policy.reminderHours}*interval '1 hour'`}).onConflictDoNothing();
+ const enteredAt=sql`(select ${letterStageEnteredAt(sql`stage_record.stage_index`,sql`stage_record.submitted_at`,sql`stage_record.current_revision_id`)} from letter_record stage_record where stage_record.id=${record.id}::uuid)`;
+ const audience=delegation?[delegation.userId]:policy.stages[stageIndex].userIds;
+ for(const userId of audience.filter(userId=>userId!==record.createdBy)){
+  const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${userId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);if(!eligible?.ok)continue;
+  const key=`${record.id}:${revisionId}:stage:${stageIndex}:${userId}${delegation?':delegation:'+delegation.decisionId:''}`;
+  const payload={revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications};
+  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'notification',recipientUserId:userId,dedupeKey:key,payload,dueAt:sql`now()`}).onConflictDoNothing();
+  await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'approvalReminder',recipientUserId:userId,dedupeKey:key+':reminder',payload,dueAt:sql`${enteredAt}+${policy.reminderHours}*interval '1 hour'`}).onConflictDoNothing();
  }
- if(policy.escalationUserId)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'escalation',recipientUserId:policy.escalationUserId,dedupeKey:`${record.id}:${revisionId}:${stageIndex}:escalation`,payload:{revisionId,stageIndex},dueAt:sql`now()+${policy.approvalDueHours}*interval '1 hour'`}).onConflictDoNothing();
+ if(policy.escalationUserId){
+  const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${policy.escalationUserId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);
+  if(eligible?.ok)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,kind:'escalation',recipientUserId:policy.escalationUserId,dedupeKey:`${record.id}:${revisionId}:${stageIndex}:escalation${delegation?':delegation:'+delegation.decisionId:''}`,payload:{revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`${enteredAt}+${policy.approvalDueHours}*interval '1 hour'`}).onConflictDoNothing();
+ }
 }
 export function submitLetterBatch(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
  const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch)throw new LetterWorkflowError('permission');await permission(tx,batch.companyId,'generate');
@@ -334,6 +345,7 @@ export function submitLetterBatch(ctx:SessionContext,id:string){return letters(c
 });}
 export function withdrawLetterDraft(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'generate');if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(['issued','void','withdrawn'].includes(record.state))throw new LetterWorkflowError('state');const reason=text(input.reason,2000);
+ if(record.currentRevisionId)await cancelLetterStageJobs(tx,record.id,record.currentRevisionId,record.stageIndex);
  await tx.update(letterRecord).set({state:'withdrawn',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'withdrawn',{reason,revisionId:record.currentRevisionId});return {letterId:record.id};
 });}
 
@@ -365,6 +377,7 @@ async function decideLetterTx(ctx:SessionContext,tx:Tx,input:LetterDecisionInput
   const bytes=Buffer.from(rendered.bytes);if(bytes.length>10*1024*1024)throw new LetterWorkflowError('configuration','artifactSize');
   const [artifact]=await tx.insert(letterArtifact).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,content:bytes,contentHash:hash(bytes),signatoryUserId:ctx.userId!,signingMode:policy.signingMode,authenticityTokenHash:hash(verificationToken),createdAt:decision.createdAt}).returning({id:letterArtifact.id});artifactId=artifact.id;
  }
+ await cancelLetterStageJobs(tx,record.id,revision.id,record.stageIndex);
  await tx.update(letterRecord).set({state:next.state,stageIndex:next.stageIndex,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex);
  await event(tx,ctx,record.id,'approval.'+input.decision.action,{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,artifactId,contentHash:revision.contentHash});return {letterId:record.id,state:next.state,lockVersion:record.lockVersion+1,artifactId};
@@ -379,6 +392,9 @@ export function delegateLetterApproval(ctx:SessionContext,input:{letterId:string
  // The database checks the current stage, previous delegation and personally acting final signatory.
  const [decision]=await tx.insert(letterApprovalDecision).values({tenantId:ctx.tenantId,letterId:record.id,revisionId:revision.id,stageIndex:record.stageIndex,actorId:ctx.userId!,action:'delegate',comment:reason,delegatedTo:delegate,contentHash:revision.contentHash}).returning();
  await tx.update(letterRecord).set({lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
+ const batch=await staffBatchTx(tx,record.id),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
+ await cancelLetterStageJobs(tx,record.id,revision.id,record.stageIndex);
+ await queueLetterStage(tx,ctx,record,policy,revision.id,record.stageIndex,{userId:delegate,decisionId:decision.id});
  await event(tx,ctx,record.id,'approval.delegated',{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,delegateUserId:delegate,reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
 });}
 

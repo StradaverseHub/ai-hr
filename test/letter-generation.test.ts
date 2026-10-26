@@ -27,6 +27,25 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('moves pending stage jobs to the delegated reviewer without restarting the deadline and cancels obsolete work',async()=>{
+  const [existing]=await owner.db.select().from(s.letterPolicyVersion);
+  const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional reminder delegate',primaryEmail:'reminder-delegate@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'hr_admin'),delegate={...ctx,userId:delegateId,personId:delegatePerson.id};
+  const [blockedPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional unavailable reviewer'}).returning(),blockedId=await createAppUser(b.tenantId,blockedPerson.id,'hr_admin');
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!,ctx.userId!,blockedId],allowDelegation:true},...existing.policy.stages]}});
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()});
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,blockedId));
+  await submitLetterBatch(ctx,made.batchId);const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0];
+  const jobs=()=>owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,row.record.id));
+  const original=await jobs();expect(original).toHaveLength(2);expect(original.every(job=>job.recipientUserId===reviewer.userId)).toBe(true);const deadline=original.find(job=>job.kind==='approvalReminder')!.dueAt;
+  await delegateLetterApproval(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,delegateUserId:delegateId,reason:'Delegate the pending review'});
+  const delegated=await jobs();expect(delegated.filter(job=>job.recipientUserId===reviewer.userId).every(job=>job.status==='cancelled')).toBe(true);
+  const pending=delegated.filter(job=>job.status==='queued');expect(pending).toHaveLength(2);expect(pending.every(job=>job.recipientUserId===delegateId)).toBe(true);expect(pending.find(job=>job.kind==='approvalReminder')!.dueAt).toEqual(deadline);expect(pending.every(job=>job.payload.portal===true&&job.payload.email===false)).toBe(true);
+  const current=(await getStaffLetter(delegate,row.record.id))!;await decideLetter(delegate,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:current.record.lockVersion,decision:{action:'approve',comment:'Reviewed the frozen document',confirmSignature:false}});
+  const advanced=await jobs();expect(advanced.filter(job=>job.payload.stageIndex===0).every(job=>job.status==='cancelled')).toBe(true);expect(advanced.filter(job=>job.status==='queued')).toHaveLength(2);expect(advanced.filter(job=>job.status==='queued').every(job=>job.payload.stageIndex===1&&job.recipientUserId===reviewer.userId)).toBe(true);
+  const final=(await getStaffLetter(ctx,row.record.id))!;await withdrawLetterDraft(ctx,{letterId:row.record.id,expectedLockVersion:final.record.lockVersion,reason:'Withdraw before final approval'});expect((await jobs()).every(job=>job.status==='cancelled')).toBe(true);
+  expect((await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,(await getLetterGenerationBatch(ctx,made.batchId))!.rows[1].record.id))).every(job=>job.status==='queued')).toBe(true);
+ });
+
  it('pages retained decisions without using a truncated history to decide the current delegated actor',async()=>{
   const [previous]=await owner.db.select().from(s.letterPolicyVersion);
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previous.policy,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...previous.policy.stages]}});
