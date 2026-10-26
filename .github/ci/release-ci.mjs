@@ -4,10 +4,11 @@ import {mkdirSync,readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
+import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
+import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
 export const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024*1024}).trim();
@@ -38,10 +39,11 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const dir=join(controllerRoot,'scratchpad',`validated-ci-${runId}-${randomUUID()}`);mkdirSync(dir,{recursive:true,mode:0o700});
  const save=(name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
  save('run.json',run);save('jobs.json',jobs);save('artifacts.json',artifacts);
+ try{save('archive-downloads.json',await downloadCiArchives(artifacts,dir));}
+ catch(error){save('archive-downloads-failed.json',error.report??{error:String(error),releaseAuthorized:false});throw error;}
  for(const artifact of artifacts){
-  const bytes=execFileSync('gh',['api',`repos/${REPOSITORY}/actions/artifacts/${artifact.id}/zip`],{maxBuffer:artifact.name===BUILD_ARTIFACT?BUILD_ZIP_MAX:64*1024*1024,timeout:120000});
+  const path=join(dir,artifact.name+'.zip'),bytes=readCiArchive(artifact,path);
   verifyArtifactBytes(artifact,bytes);
-  const path=join(dir,artifact.name+'.zip');writeFileSync(path,bytes,{flag:'wx',mode:0o600});
   if(bytes.length!==artifact.size_in_bytes)throw Error('Artifact API/archive byte size differs');
   const binary=artifact.name===BUILD_ARTIFACT;
   execFileSync('python3',[fileURLToPath(new URL(binary?'./build-transport-extract.py':'./extract-artifact.py',import.meta.url)),path,join(dir,artifact.name),...(binary?[artifact.digest.slice(7)]:[])],{stdio:'inherit',timeout:60000});

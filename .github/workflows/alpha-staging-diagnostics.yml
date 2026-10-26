@@ -775,6 +775,7 @@ jobs:
           set -euo pipefail
           python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
           node --test --test-reporter=spec .github/ci/staging-transport.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-transport.log"
+          node --test --test-reporter=spec .github/ci/archive-downloads.test.mjs .github/ci/migration-history.test.mjs 2>&1 | tee "$RUNNER_TEMP/transport-history-controls.log"
       - name: Private installer authority and read-only byte inventory refusals
         run: |
           set -euo pipefail
@@ -811,6 +812,7 @@ jobs:
             ${{ runner.temp }}/filesystem-activation.json
             ${{ runner.temp }}/filesystem-activation.log
             ${{ runner.temp }}/staging-transport.log
+            ${{ runner.temp }}/transport-history-controls.log
             ${{ runner.temp }}/staging-build-install.log
             ${{ runner.temp }}/build-bundle.log
             ${{ runner.temp }}/staging-ci-promotion.log

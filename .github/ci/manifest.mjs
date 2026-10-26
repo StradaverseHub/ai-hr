@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
 export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'},scheduling:DB_SCHEDULING};
-export const DB_BATCH_FILES=32;
+export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];
 export const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');

@@ -43,17 +43,17 @@ test('Classifier omissions, duplicates and invented paths cannot reduce the trus
 
 test('measured 993-file database inventory changes isolation boundaries without removing any case file or increasing per-job resources',()=>{
  const p=fixture(993,972),units=p.units.filter(u=>u.kind==='db'),files=names('db',993),before=balanceDatabaseFiles(files,64);
- assert.equal(DB_BATCH_FILES,32);assert.equal(before.length,16);assert.equal(units.length,32);
+ assert.equal(DB_BATCH_FILES,24);assert.equal(before.length,16);assert.equal(units.length,42);
  assert.deepEqual(units.flatMap(u=>u.files).sort(),before.flat().sort());
- assert(units.every(u=>u.files.length>0&&u.files.length<=32));
+ assert(units.every(u=>u.files.length>0&&u.files.length<=24));
  assert.equal(p.units.filter(u=>u.kind==='nodb').length,4);assert.equal(p.units.filter(u=>u.kind==='browser').length,3);
- assert.equal(requiredEvidence(p).jobs.length,47);assert.equal(requiredEvidence(p).artifacts.length,42);
+ assert.equal(requiredEvidence(p).jobs.length,57);assert.equal(requiredEvidence(p).artifacts.length,52);
  assert.equal(CI_EXECUTION.workers,2);assert.deepEqual(CI_EXECUTION.postgres,{memoryBytes:2*1024**3,jit:'on'});
 });
 test('increased matrix admission keeps every job on a free standard runner and refuses an old wider unit as current coverage',()=>{
  const yaml=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');
  const runners=[...yaml.matchAll(/^    runs-on: (.+)$/gm)].map(m=>m[1]);assert(runners.length>=10);assert(runners.every(r=>r==='ubuntu-24.04'));
- assert(yaml.includes("options: ['4', '8', '16', '20', '32', '40']")&&yaml.includes("default: '40'")&&yaml.includes("fromJSON(inputs.test_parallelism || '40')"));
+ assert(yaml.includes("options: ['4', '8', '16', '20', '32', '40', '48']")&&yaml.includes("default: '48'")&&yaml.includes("fromJSON(inputs.test_parallelism || '48')"));
  const p=fixture(993,972),db=names('db',993),old=balanceDatabaseFiles(db,64);p.units=p.units.filter(u=>u.kind!=='db').concat(old.map(files=>({id:'db-old',kind:'db',files})));
  assert.throws(()=>requiredEvidence(p));
 });
