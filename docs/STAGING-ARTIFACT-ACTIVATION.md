@@ -2,11 +2,11 @@
 
 Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; an opt-in build-artifact installation path is now prepared in deploy.sh but is not integrated with the operator or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
 
-## Opt-in installation source prepared — verification pending
+## Opt-in installation source prepared — private fixtures verified
 
 The isolated review branch now contains an opt-in installation path in the existing deployment spine. It uses a fresh installation UUID independently of the original CI build-record UUID, a bounded private operator grant, source/package/environment/runtime verification, full staged byte inventory, native recipient checks, atomic exchange, service restart and post-activation runtime/health confirmation. Original CI successful-build bytes and timestamps are preserved. CI mode pins Node20 instead of following a newer optional host toolchain.
 
-This source is not enabled through the CI operator yet and has never installed an artifact on staging. Full source checksum, migration-ledger arrival, owned-resource cleanup and complete operator integration remain unfinished. The source grants no full-PASS baseline or deployment proof. The next bounded hosted diagnostic exercises private grant/store/input refusals and read-only inventory tampering, with no application build, database, network-to-staging or service operation.
+This source is not enabled through the CI operator yet and has never installed an artifact on staging. Full source checksum, migration-ledger arrival, owned-resource cleanup and complete operator integration remain unfinished. The source grants no full-PASS baseline or deployment proof. The bounded hosted diagnostic below verified private grant/store/input refusals and read-only inventory tampering, with no application build, database, network-to-staging or service operation.
 
 ## Atomic directory primitive
 
@@ -51,3 +51,11 @@ Actual Linuxx86_64/glibc2.39:9 filesystem cases passed,0failed,0skipped, with6 a
 The authenticated artifact is12625281796,1455bytes, ZIP SHA25606eac192d945daf936b000d8d5e73142364cd38a91d60f7809577ca4d226aa2b. Its exact three-member inventory, raw logs, counts and Python producer identity reconcile with the successful first-attempt job121378642214. Private originals and independent review remain in scratchpad/staging-activation-20261026/.
 
 Submission before the dispatch request through job completion:20.859296s. Occupied runner time:16s, not authoritative billed minutes. No app dependencies/compiler/build/test suites, PostgreSQL, SSH or staging operations ran. This result proves the filesystem/transport diagnostic only; it is not an application gate, installation or under600second complete release.
+
+## Hosted installer fixtures verified — 26 October 2026 MYT
+
+[Run40265640789](https://github.com/StradaverseHub/ai-hr/actions/runs/40265640789) passed on exact source/controller9ca0fecf8cb6e8c886ef80194139e474e45ee789. Independent API and authenticated artifact review found one executed job121387326466, with every application/compiler/database/build diagnostic skipped. Eleven installer grant/store/service/input/dotenv groups,28 byte-bundle cases,5 transport groups and9 Linux exchange cases passed, with no failures or skips among these53 cases. The kernel cases performed6 actual exchanges.
+
+Artifact12626007913 is3273bytes, ZIP SHA256c6154894449515f490c10cf78185fd0de93b7a58cfb185cc57cf22a338c47c29, exactly five expected JSON/log members. The job occupied17seconds; workflow created-to-updated was22seconds. Those are diagnostic timings, not submission-to-release timings or billing. Private originals are retained in scratchpad/staging-install-20261026/.
+
+No installer stage/activate/confirm-runtime command ran on staging. Operator grant transfer, actual recipient native verification, migration/source arrival and owned cleanup remain unverified. Private Linux fixture success does not certify the complete deployment spine.
