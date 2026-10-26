@@ -1199,3 +1199,12 @@ REVOKE ALL ON FUNCTION app.letter_automation_transition_allowed(jsonb,jsonb) FRO
 -- A queued, failed or completed generation reserves its source across rule versions.
 CREATE UNIQUE INDEX letter_automation_source_once_uq ON letter_job(tenant_id,(regexp_replace(dedupe_key,':[0-9a-f-]{36}$','')))
  WHERE kind='eventDraft' AND status IN ('queued','failed','completed');
+--> statement-breakpoint
+CREATE FUNCTION app.letter_automation_rule_metadata(subject uuid) RETURNS TABLE(owner_name text,eligible boolean,template_code text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p.full_name,app.letter_automation_owner_eligible_at(r.tenant_id,r.created_by,r.company_id,r.confidential),t.code
+ FROM public.letter_automation_rule_version r JOIN public.letter_template t ON t.id=r.template_id AND t.tenant_id=r.tenant_id JOIN public.app_user u ON u.id=r.created_by AND u.tenant_id=r.tenant_id LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=r.tenant_id
+ WHERE r.id=subject AND r.tenant_id=app.current_tenant_id() AND app.letter_permission(r.company_id,'read') AND app.letter_permission(r.company_id,'settings') AND (NOT r.confidential OR app.can_admin_payroll_for(r.company_id))
+$$;
+REVOKE ALL ON FUNCTION app.letter_automation_rule_metadata(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_automation_rule_metadata(uuid) TO ai_hr_app;
