@@ -9,15 +9,15 @@ The first installation administrator is **yanli.lam@stradaverse.ai**, as instruc
 Review the files, take a database/configuration backup, and run from a tested application release:
 
 ```bash
-sudo env AUTH_PUBLIC_ORIGIN=https://sfm.stradaprop.com bash /opt/ai-hr/deploy/keycloak/install.sh
-sudo env AUTH_PUBLIC_ORIGIN=https://sfm.stradaprop.com /opt/node20/bin/node --import tsx /opt/ai-hr/deploy/keycloak/configure.ts
+sudo env AUTH_PUBLIC_ORIGIN=https://hr.example.com bash /opt/ai-hr/deploy/keycloak/install.sh
+sudo env AUTH_PUBLIC_ORIGIN=https://hr.example.com /opt/node20/bin/node --import tsx /opt/ai-hr/deploy/keycloak/configure.ts
 ```
 
 For an installation without reliable GitHub access, supply `KEYCLOAK_ARCHIVE_FILE=/root/keycloak-26.8.0.tar.gz` alongside `AUTH_PUBLIC_ORIGIN`. The archive is still checked against the pinned digest before extraction. Java package discovery consumes the complete listing under pipefail; the built public distribution is made readable to the service before its writable data directory is restricted.
 
 The installer fails rather than overwriting an existing installation. Partial failures need operator inspection before a retry. It does not stop unrelated services. Check `systemctl status aihr-keycloak`, its private journal, and `http://127.0.0.1:9000/identity/health/ready`. The configured Java heap is 640 MiB and service limit is 1 GiB; monitor actual RSS and app build pressure on the current 4 GiB host. This is a single-node deployment, not high availability.
 
-`/etc/aihr-keycloak/app.env` holds generated application/client credentials. `/etc/aihr-keycloak/initial-owner.json` holds the subject and one-time owner password. Both are root-only. Hand the temporary password to the named owner through an approved secure channel; do not paste it in logs or chat. First login requires a password change and authenticator enrollment. The operator-attested owner email is verified during bootstrap; invitations still require recipient email verification. The temporary master administrator is deleted after realm setup. The owner can administer the realm using `ssh -p 8288 -L 8081:127.0.0.1:8080 ubuntu@203.142.6.241` and `http://localhost:8081/identity/admin/ai-hr/console/`; public `/identity/admin/` and the master realm are blocked.
+`/etc/aihr-keycloak/app.env` holds generated application/client credentials. `/etc/aihr-keycloak/initial-owner.json` holds the subject and one-time owner password. Both are root-only. Hand the temporary password to the named owner through an approved secure channel; do not paste it in logs or chat. First login requires a password change and authenticator enrollment. The operator-attested owner email is verified during bootstrap; invitations still require recipient email verification. The temporary master administrator is deleted after realm setup. The owner can administer the realm using `ssh -L 8081:127.0.0.1:8080 aihr-staging` and `http://localhost:8081/identity/admin/ai-hr/console/`; public `/identity/admin/` and the master realm are blocked.
 
 ## Account link and cutover
 
@@ -30,7 +30,7 @@ cd /opt/ai-hr
 sudo /opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx scripts/keycloak-link-owner.ts --app-user-id=22222222-2222-2222-2222-222222222222
 ```
 
-4. Test private service discovery, the exact public issuer and clients. Back up the existing public Nginx TLS virtual host (`/etc/nginx/conf.d/aihr-sfm.conf` on this installation), then change its app upstream from `127.0.0.1:3000` to the tested loopback edge `127.0.0.1:3001`. Preserve its certificates and all other directives, run `nginx -t`, reload and verify public discovery plus public admin refusals. The separate `cloudflared-aihr.service` quick tunnel is not this site's public ingress; do not restart it or change its URL. Keep the TLS configuration backup for rollback.
+4. Test private service discovery, the exact public issuer and clients. Back up the existing public Nginx TLS virtual host (`/etc/nginx/conf.d/aihr-site.conf` on this installation), then change its app upstream from `127.0.0.1:3000` to the tested loopback edge `127.0.0.1:3001`. Preserve its certificates and all other directives, run `nginx -t`, reload and verify public discovery plus public admin refusals. The separate `cloudflared-aihr.service` quick tunnel is not this site's public ingress; do not restart it or change its URL. Keep the TLS configuration backup for rollback.
 5. Install the private email settings service after linking the owner:
 
 ```bash

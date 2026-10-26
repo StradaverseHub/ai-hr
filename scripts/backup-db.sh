@@ -63,7 +63,7 @@
 #   BACKUP_RETAIN_DAYS    default 14.   BACKUP_RETAIN_MIN  default 7 (a floor, see "RETENTION").
 #   BACKUP_STAGING        local working directory (default ${TMPDIR:-/tmp}/ai-hr-backup)
 #   BACKUP_STATUS_FILE    machine-readable outcome (default $BACKUP_STAGING/backup-status.txt)
-#   BACKUP_SSH_OPTS       default "-o BatchMode=yes"; put a non-default port here (e.g. "-p 8288").
+#   BACKUP_SSH_OPTS       default "-o BatchMode=yes"; put a non-default port here (e.g. "-p 2222").
 #   BACKUP_KEEP_LOCAL=1   keep the staged copy after a successful ship (default: delete it, so the
 #                         box does not slowly refill with the dumps this item is about).
 #   PG_BIN                force a specific postgres client bin directory.

@@ -1,3 +1,4 @@
+import {operatorSsh} from './operator-ssh.mjs';
 import { execFileSync,spawnSync } from 'node:child_process';
 import { mkdirSync,readFileSync,writeFileSync,openSync,closeSync,existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,7 +15,7 @@ const frozen=()=>{if(git(['rev-parse','HEAD'])!==sha||git(['status','--porcelain
 const args=process.argv.slice(2),forced=args.includes('--full')||args.includes('--shadow'),explicit=args.find(a=>!a.startsWith('--'));
 let deployed=explicit,baseFailure:string|undefined;
 if(!deployed){try{
- const status=execFileSync('ssh',['-p',process.env.IMPROVE_SSH_PORT??'8288','-o','BatchMode=yes','-o','ConnectTimeout=12',`${process.env.IMPROVE_SSH_USER??'ubuntu'}@${process.env.IMPROVE_SSH_HOST??'203.142.6.241'}`,'cd /opt/ai-hr && deploy/deploy-state.sh status'],{encoding:'utf8',timeout:30000});
+ const status=execFileSync('ssh',[...operatorSsh().options,operatorSsh().target,'cd /opt/ai-hr && deploy/deploy-state.sh status'],{encoding:'utf8',timeout:30000});
  deployed=readyProductionBaseline(Object.fromEntries(status.split('\n').filter(line=>line.includes('=')).map(line=>{const at=line.indexOf('=');return [line.slice(0,at),line.slice(at+1)];})));
 }catch(e){baseFailure='Production baseline unavailable: '+String(e);deployed=git(['rev-parse','main']);}}
 const deployedSha=git(['rev-parse',deployed!]),env=environmentHash();let base=deployedSha,baselineFull:ReturnType<typeof reusableFullBaseline>=null,plan:ImpactPlan;

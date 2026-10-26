@@ -1,3 +1,5 @@
+> Historical procedure: installation-specific endpoints are documentation examples. Use private operator configuration and the current embedded-authentication guide.
+
 # WorkOS cutover runbook — turning on real logins
 
 Switching a deployment from the demo identity switcher to real WorkOS auth. The application code is
@@ -17,13 +19,13 @@ procedure.
 > - **`SHARE_PASSWORD` can go.** `deploy.sh` and `middleware.ts` now accept EITHER the demo gate OR a complete
 >   real-sign-in configuration (switcher off + all four WorkOS settings). Neither still refuses.
 
-> **2026-10-07 — owner's decision: cut over on `sfm.stradaprop.com`.** AI HR has been public there since the
+> **2026-10-07 — owner's decision: cut over on `hr.example.com`.** AI HR has been public there since the
 > 2026-10-06 ops round (Cloudflare proxy → nginx 443 on the box → 127.0.0.1:3000). Wherever this runbook says
-> `aihr.stradaverse.ai`, read `sfm.stradaprop.com`: redirect URI `https://sfm.stradaprop.com/callback`,
-> sign-out redirect `https://sfm.stradaprop.com/login`, homepage `https://sfm.stradaprop.com/`. Step 1a (the
+> `hr.example.com`, read `hr.example.com`: redirect URI `https://hr.example.com/callback`,
+> sign-out redirect `https://hr.example.com/login`, homepage `https://hr.example.com/`. Step 1a (the
 > named tunnel) is NOT used. Instead, BEFORE real logins: install a Cloudflare Origin CA certificate on nginx
 > (`~ubuntu/install-origin-cert.sh`, run with sudo; it validates the pair and restores on failure) and set the
-> `stradaprop.com` zone's SSL/TLS mode to **Full (strict)** — the old origin certificate expired 2026-05-12, so
+> `example.com` zone's SSL/TLS mode to **Full (strict)** — the old origin certificate expired 2026-05-12, so
 > until then the Cloudflare → box hop is encrypted but unauthenticated.
 >
 > State on 2026-10-07: WorkOS Production has NO redirect URIs (the WorkOS MCP still answers FORBIDDEN for
@@ -42,19 +44,19 @@ procedure.
 > admin) and then given an `operator` grant by hand as the owner role (ADR-0079: the only way that tier is
 > granted), so the owner sees both the tenant's admin screens and the Operator console (/operator).
 
-## 1a. HTTPS for aihr.stradaverse.ai (this deployment)
+## 1a. HTTPS for hr.example.com (this deployment)
 
-The box (LAN `10.20.30.20`, NAT `203.142.6.241`) has no public port 80, and its public 443 belongs to the
-`sfm.stradaprop.com` site on the same nginx — do not touch that file. AI HR is reached through a Cloudflare
+The box (LAN `192.0.2.10`, NAT `203.0.113.10`) has no public port 80, and its public 443 belongs to the
+`hr.example.com` site on the same nginx — do not touch that file. AI HR is reached through a Cloudflare
 tunnel instead; until r390 that was a *quick* tunnel (`cloudflared-aihr.service`, a random
 `*.trycloudflare.com` address that changes on every restart).
 
-1. Cloudflare dashboard, zone `stradaverse.ai`: delete the DNS-only `aihr` A record (it conflicts with the
+1. Cloudflare dashboard, zone `example.com`: delete the DNS-only `aihr` A record (it conflicts with the
    tunnel's CNAME).
 2. Zero Trust → Networks → Tunnels → Create a tunnel (cloudflared), name `aihr`. Public hostname
-   `aihr.stradaverse.ai` → Service `HTTP` → `127.0.0.1:3000`. Copy the install token.
+   `hr.example.com` → Service `HTTP` → `127.0.0.1:3000`. Copy the install token.
 3. On the box: `sudo cloudflared service install <token>`. It runs beside the quick tunnel, so nothing
-   changes for current users. Check `https://aihr.stradaverse.ai/health`.
+   changes for current users. Check `https://hr.example.com/health`.
 4. After the cutover is verified: `sudo systemctl disable --now cloudflared-aihr` (the quick tunnel).
 
 **Read step 0 before doing anything.** The order matters: get it wrong and nobody can log in, including you.
@@ -92,10 +94,10 @@ Not automatable and deliberately not scripted — it involves account creation a
 1. Create/choose the WorkOS environment for this deployment.
 2. Add the redirect URI: `https://<your-host>/callback` — must match exactly, including scheme and any
    trailing path. A mismatch fails at the callback with an opaque provider error. For this deployment:
-   Production environment (`client_01KVVRP1CG86KEDFEMQF71Q3QJ`), `https://aihr.stradaverse.ai/callback`,
-   set as default. Add the **sign-out redirect** `https://aihr.stradaverse.ai/login`: the app passes
+   Production environment (`client_01KVVRP1CG86KEDFEMQF71Q3QJ`), `https://hr.example.com/callback`,
+   set as default. Add the **sign-out redirect** `https://hr.example.com/login`: the app passes
    exactly that as `returnTo` on Log out (r390, `app/auth-actions.ts`), and WorkOS only returns the browser
-   to a listed address. Set the app homepage to `https://aihr.stradaverse.ai/`.
+   to a listed address. Set the app homepage to `https://hr.example.com/`.
 3. Collect: **API key**, **Client ID**.
 4. Generate a cookie password (32+ chars): `openssl rand -base64 32`.
 
@@ -111,7 +113,7 @@ NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://<your-host>/callback
 ```
 
 Leave `ALLOW_DEMO_SESSION=true` for now. **Deploy** (not just restart) so the build inlines the redirect
-URI: `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:deploy <mainwt path>`.
+URI: `IMPROVE_SSH_HOST=203.0.113.10 pnpm improve:deploy <mainwt path>`.
 
 Nothing changes yet — the switcher is still on. That is intentional: it lets you verify the WorkOS side
 in step 4 while still having a way in.
