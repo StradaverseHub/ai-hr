@@ -14,7 +14,7 @@ function fixture(){
 test('owned cleanup requires the actual empty checksum output, fresh observation and exact original build tuple',()=>{
  const f=fixture();assert.equal(validateCleanupRequest(f.request,f.grant),f.request);
  for(const change of [{output:'>f.. sourcechanged\n'},{arrival:{...f.arrival,nextBuildId:'another'}},{checkedAt:new Date(Date.now()-61000).toISOString()}])assert.throws(()=>createCleanupRequest(f.grant,{...f.input,...change}));
- for(const mutate of [r=>r.installId=f.grant.build.buildRecordId,r=>r.source='e'.repeat(40),r=>r.witnessFingerprint='e'.repeat(64),r=>r.outputSha256=installHash('nonempty'),r=>r.extra=true,r=>r.authorizationSha256='f'.repeat(64)]){
+ for(const mutate of [r=>r.installId=f.grant.build.buildRecordId,r=>r.source='e'.repeat(40),r=>r.witnessFingerprint='f'.repeat(64),r=>r.outputSha256=installHash('nonempty'),r=>r.extra=true,r=>r.authorizationSha256='f'.repeat(64)]){
   const r=structuredClone(f.request);mutate(r);assert.throws(()=>validateCleanupRequest(r,f.grant));
  }
 });
