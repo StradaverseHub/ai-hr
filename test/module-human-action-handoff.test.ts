@@ -6,9 +6,9 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
+  const connected=['employees','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
-   for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
+   for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:module==='employees'?'rechecked_on_import_page':'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe(module==='employees'?'human_workflow_only':'implemented');if(module==='employees')expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'})).toThrow();else expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
  });
  it('rejects foreign routes, query selectors, appended native actions, posted roles and truncated declarations',()=>{
@@ -72,4 +72,11 @@ it('offers the fixed pay-code human page without model rules, classification or 
 it('offers only the whole-unit Rewards human page without amounts, unit selectors or model approval',()=>{
  const rows=moduleHumanActionHandoffs('rewards');expect(rows).toEqual([{module:'rewards',action:'rewards.post',route:'/assistant/rewards',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{unitId:'other'},{awards:[]},{newBasic:100},{employeeIds:[]},{approved:true},{route:'/assistant/rewards?unit=other'}])expect(()=>checkedModuleHumanHandoffs('rewards',rows.map(row=>({...row,...extra})))).toThrow();
+});
+
+it('offers only the existing human Employee import workflow and never a generic importer or model-filled file',()=>{
+ const rows=moduleHumanActionHandoffs('employees');expect(rows).toEqual([{module:'employees',action:'employees.import',route:'/admin/personnel/import',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_import_page'}]);
+ for(const extra of [{rows:[]},{headers:[]},{companyId:'other'},{dataset:'private'},{source:'private'},{commit:true},{route:'/admin/personnel/import?company=other'},{authority:'rechecked_on_review_page'}])expect(()=>checkedModuleHumanHandoffs('employees',rows.map(row=>({...row,...extra})))).toThrow();
+ expect(()=>checkedModuleHumanHandoffs('leave',rows)).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'employees',action:'employees.import',phase:'prepare'})).toThrow();
 });

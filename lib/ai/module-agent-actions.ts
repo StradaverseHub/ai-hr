@@ -92,7 +92,7 @@ function declaration<M extends AgentModuleCode>(module:M,owner:CanonicalOwner,pu
  * The one shared Assistant coordinates these module-owned boundaries; it owns no generic HR effect.
  */
 export const MODULE_AGENT_ACTIONS=Object.freeze({
- employees:declaration('employees','personnel','core/import.ts#commitEmployeeImport','core/module-agent-readers.ts#createModuleAgentReaders',[pending<'employees'>('employees.import','personnel','core/import.ts#commitEmployeeImport','human_workflow_only')]),
+ employees:declaration('employees','personnel','core/import.ts#commitEmployeeImport','app/admin/personnel/import/actions.ts#validateImportAction+commitImportAction',[pending<'employees'>('employees.import','personnel','core/import.ts#commitEmployeeImport','human_workflow_only')]),
  org:declaration('org','organization','core/workforce-commands.ts#setReportingLine','core/assistant-actions/org-action-review-store.ts#prepareOrgActionReview+confirmOrgActionReview',[orgReportingChange]),
  leave:declaration('leave','leave','packs/leave/service.ts#requestLeave','core/assistant-actions/own-leave-store.ts#prepareOwnLeaveReviewTx+confirmOwnLeaveReview',[leaveApply]),
  ess:declaration('ess','profile','core/profile.ts#requestProfileChange','core/assistant-actions/module-action-review-store.ts#prepareProfileModuleActionReview+confirmProfileModuleActionReview',[profileRequest]),
