@@ -1,6 +1,6 @@
 /** Strict human browser transport. No model tools, posted actor, source receipt or executor. */
 import {z} from 'zod';
-import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionPreparedReview,ModuleActionCompletedReceipt,ModuleActionRetiredReceipt,ModuleActionReviewIndexResult,ProfileModuleActionPrepare,ProfileModuleActionConfirmation,ProfileModuleActionPreparedReview,ProfileModuleActionCompletedReceipt,ProfileModuleActionRetiredReceipt,ProfileModuleActionReviewIndexResult} from './module-action-review-contract';
+import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionPreparedReview,ModuleActionCompletedReceipt,ModuleActionRetiredReceipt,ModuleActionReviewIndexResult,ProfileModuleActionPrepare,ProfileModuleActionConfirmation,ProfileModuleActionPreparedReview,ProfileModuleActionCompletedReceipt,ProfileModuleActionRetiredReceipt,ProfileModuleActionReviewIndexResult,MODULE_REVIEW_ACK_ACTION,MODULE_ONEHR_ACK_ACTION,ReviewModuleActionPrepare,ReviewModuleActionConfirmation,ReviewModuleActionPreparedReview,ReviewModuleActionCompletedReceipt,ReviewModuleActionRetiredReceipt,ReviewModuleActionReviewIndexResult,OnehrModuleActionPrepare,OnehrModuleActionConfirmation,OnehrModuleActionPreparedReview,OnehrModuleActionCompletedReceipt,OnehrModuleActionRetiredReceipt,OnehrModuleActionReviewIndexResult} from './module-action-review-contract';
 export const ModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('list')}).strict(),
  z.object({operation:z.literal('prepare'),input:ModuleActionPrepare}).strict(),
@@ -54,11 +54,54 @@ export const ProfileActionChoices=z.discriminatedUnion('kind',[
 ]);
 export type ProfileActionChoices=z.infer<typeof ProfileActionChoices>;
 type ProfileOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ProfileModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>}>;
-const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket]);
+export const ReviewModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('prepare'),input:ReviewModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('confirm'),confirmation:ReviewModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('discard'),confirmation:ReviewModuleActionConfirmation}).strict(),
+]);
+export const OnehrModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('prepare'),input:OnehrModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('confirm'),confirmation:OnehrModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('discard'),confirmation:OnehrModuleActionConfirmation}).strict(),
+]);
+export const PerformanceModuleActionBrowserPacket=z.union([ReviewModuleActionBrowserPacket,OnehrModuleActionBrowserPacket]);
+export type PerformanceModuleActionBrowserPacket=z.infer<typeof PerformanceModuleActionBrowserPacket>;
+export const ReviewModuleActionBrowserResult=z.discriminatedUnion('kind',[ReviewModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ReviewModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ReviewModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ReviewModuleActionRetiredReceipt}).strict()]);
+export const OnehrModuleActionBrowserResult=z.discriminatedUnion('kind',[OnehrModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:OnehrModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:OnehrModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:OnehrModuleActionRetiredReceipt}).strict()]);
+export type PerformanceModuleActionBrowserResult=z.infer<typeof ReviewModuleActionBrowserResult>|z.infer<typeof OnehrModuleActionBrowserResult>;
+export function parsePerformanceModuleActionBrowserResult(packet:PerformanceModuleActionBrowserPacket,value:unknown):PerformanceModuleActionBrowserResult{
+ const result=packet.action===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionBrowserResult.parse(value):OnehrModuleActionBrowserResult.parse(value),operation=packet.operation;
+ const index=result.kind==='review_module_review_index'||result.kind==='onehr_module_review_index';
+ if(!(operation==='list'?index:operation==='prepare'?result.kind==='prepared':operation==='confirm'?result.kind==='completed'||result.kind==='retired':operation==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
+ const expected=operation==='reopen'?packet.actionId:operation==='confirm'||operation==='discard'?packet.confirmation.actionId:null;if(expected&&expected!==id)throw Error('Module action response unavailable.');
+ if(operation==='prepare'){if(result.kind!=='prepared')throw Error('Module action response unavailable.');const reviewed=result.review.review,source=reviewed.engine==='standard_cycle_only'?reviewed.reviewId:reviewed.planId;const selected=packet.action===MODULE_REVIEW_ACK_ACTION?packet.input.intent.reviewId:packet.input.intent.planId;if(source!==selected)throw Error('Module action response unavailable.');}
+ return result;
+}
+export const PerformanceActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.discriminatedUnion('action',[
+  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),sourceId:z.uuid(),employmentId:z.uuid(),cycleName:z.string().min(1).max(240),periodStart:z.iso.date(),periodEnd:z.iso.date()}).strict(),
+  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),sourceId:z.uuid(),employmentId:z.uuid(),reviewId:z.uuid(),planYear:z.number().int(),conversationHeldOn:z.iso.date().nullable()}).strict(),
+ ])).max(25).refine(rows=>new Set(rows.map(row=>row.action+':'+row.sourceId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type PerformanceActionChoices=z.infer<typeof PerformanceActionChoices>;
+type PerformanceOwners<Session>=Readonly<{
+ list(session:Session,action:typeof MODULE_REVIEW_ACK_ACTION|typeof MODULE_ONEHR_ACK_ACTION):Promise<unknown>;
+ prepare(session:Session,input:z.infer<typeof ReviewModuleActionPrepare>|z.infer<typeof OnehrModuleActionPrepare>):Promise<unknown>;
+ reopen(session:Session,action:typeof MODULE_REVIEW_ACK_ACTION|typeof MODULE_ONEHR_ACK_ACTION,id:string):Promise<unknown>;
+ confirm(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
+ discard(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
+}>;
+const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket]);
 type SharedBrowserPacket=z.infer<typeof SharedBrowserPacket>;
 export type ModuleActionBrowserOwners<Session>=Readonly<{
  authenticate():Promise<Session>;
  profile?:ProfileOwners<Session>;
+ performance?:PerformanceOwners<Session>;
  list(session:Session):Promise<unknown>;
  prepare(session:Session,input:z.infer<typeof ModuleActionPrepare>):Promise<unknown>;
  reopen(session:Session,actionId:string):Promise<unknown>;
@@ -92,7 +135,9 @@ export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBro
   let input:SharedBrowserPacket;try{input=await packet(request);}catch{return unavailable(400);}
   let session:Session;try{session=await owners.authenticate();}catch{return unavailable(401);}
   if(request.signal.aborted)return unavailable(408);
-  try{if('action' in input){const profile=owners.profile;if(!profile)return unavailable(503);const result=input.operation==='list'?await profile.list(session):input.operation==='prepare'?await profile.prepare(session,input.input):input.operation==='reopen'?await profile.reopen(session,input.actionId):input.operation==='confirm'?await profile.confirm(session,input.confirmation):await profile.discard(session,input.confirmation);return Response.json(parseProfileModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+  try{if('action' in input&&(input.action===MODULE_REVIEW_ACK_ACTION||input.action===MODULE_ONEHR_ACK_ACTION)){const performance=owners.performance;if(!performance)return unavailable(503);const result=input.operation==='list'?await performance.list(session,input.action):input.operation==='prepare'?await performance.prepare(session,input.input):input.operation==='reopen'?await performance.reopen(session,input.action,input.actionId):input.operation==='confirm'?await performance.confirm(session,input.confirmation):await performance.discard(session,input.confirmation);return Response.json(parsePerformanceModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action==='ess.profile.request'){const profile=owners.profile;if(!profile)return unavailable(503);const result=input.operation==='list'?await profile.list(session):input.operation==='prepare'?await profile.prepare(session,input.input):input.operation==='reopen'?await profile.reopen(session,input.actionId):input.operation==='confirm'?await profile.confirm(session,input.confirmation):await profile.discard(session,input.confirmation);return Response.json(parseProfileModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input)return unavailable(400);
    const result=input.operation==='list'?await owners.list(session):input.operation==='prepare'?await owners.prepare(session,input.input):input.operation==='reopen'?await owners.reopen(session,input.actionId):input.operation==='confirm'?await owners.confirm(session,input.confirmation):await owners.discard(session,input.confirmation);
    return Response.json(parseModuleActionBrowserResult(input.operation,result),{status:200,headers:responseHeaders});
   }catch{return unavailable(503);}

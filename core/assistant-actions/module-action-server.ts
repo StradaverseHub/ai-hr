@@ -2,10 +2,10 @@
 import 'server-only';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
-import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews} from './module-action-review-store';
+import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
 import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
@@ -14,6 +14,8 @@ import {readOwnNotificationEmailChoiceSubjectsTx} from '../notification-email';
 import {myOwnEmploymentSubjectsTx} from '../read';
 import {readOwnProfileWorkspace} from '../profile-edit';
 import {PERSONNEL_FIELDS} from '../../lib/personnel-field-registry';
+import {ownPerformanceAcknowledgementChoicesTx} from '../../packs/performance/service';
+import {MODULE_REVIEW_ACK_ACTION} from '../../lib/assistant-actions/module-action-review-contract';
 /** Minimal source choices only after fresh authority; this read does not prepare or execute effects. */
 export async function readNotificationModuleActionChoices(supplied:SessionContext):Promise<{kind:'choices';employments:{employmentId:string;employeeCode:string|null;companyName:string}[]}|{kind:'unavailable'}>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
@@ -43,11 +45,17 @@ export async function readProfileModuleActionChoices(supplied:SessionContext){
   return {kind:'choices' as const,employments};
  });}catch{return {kind:'unavailable' as const};}
 }
+/** Current eligible OWN metadata only; no list locks, preparation calls or private review content. */
+export async function readPerformanceModuleActionChoices(supplied:SessionContext):Promise<PerformanceActionChoices>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'performance');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');const result=await ownPerformanceAcknowledgementChoicesTx(tx,fresh,25);return PerformanceActionChoices.parse({kind:'choices',items:result.items,truncated:result.truncated});});}catch{return{kind:'unavailable'};}
+}
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  performance:{list:(session,action)=>action===MODULE_REVIEW_ACK_ACTION?listReviewModuleActionReviews(session.ctx):listOnehrModuleActionReviews(session.ctx),prepare:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?prepareReviewModuleActionReview(session.ctx,input):prepareOnehrModuleActionReview(session.ctx,input),reopen:(session,action,id)=>action===MODULE_REVIEW_ACK_ACTION?reopenReviewModuleActionReview(session.ctx,id):reopenOnehrModuleActionReview(session.ctx,id),confirm:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?confirmReviewModuleActionReview(session.ctx,input):confirmOnehrModuleActionReview(session.ctx,input),discard:(session,input)=>input.action===MODULE_REVIEW_ACK_ACTION?discardReviewModuleActionReview(session.ctx,input):discardOnehrModuleActionReview(session.ctx,input)},
   profile:{list:session=>listProfileModuleActionReviews(session.ctx),prepare:(session,input)=>prepareProfileModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenProfileModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmProfileModuleActionReview(session.ctx,input),discard:(session,input)=>discardProfileModuleActionReview(session.ctx,input)},
   list:session=>listModuleActionReviews(session.ctx),
   prepare:async(session,input)=>prepareModuleActionReview(session.ctx,input,await resolveOwnNotificationServerIdentity()),

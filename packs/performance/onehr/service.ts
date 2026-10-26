@@ -1300,6 +1300,26 @@ export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
  */
 export type OwnPerformanceWorkStatus=Readonly<{framework:'standard'|'onehr';artifact:'review'|'plan';reviewId:string;planId:string|null;
  cycleName:string;periodEnd:string;status:string;released:boolean|null}>;
+/** Choice metadata ONLY, never source preparations or list-row locks. Eligibility mirrors the
+ * two distinct native acknowledgement owners; no ratings, notes, KPI/plan narratives are selected. */
+export async function ownPerformanceAcknowledgementChoicesTx(tx:Tx,supplied:SessionContext,limit=25){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};if(!Number.isInteger(limit)||limit<1||limit>25)throw Error('Performance choices unavailable.');
+ await assertAiPrincipalTx(tx,ctx);assertModuleEnabled({...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},'performance');if(!ctx.personId)return {items:[],truncated:false};
+ const own=and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.is_self_person(${employment.personId})`);
+ const reviews=await tx.select({sourceId:performanceReview.id,employmentId:performanceReview.employmentId,cycleName:reviewCycle.name,periodStart:reviewCycle.periodStart,periodEnd:reviewCycle.periodEnd})
+  .from(performanceReview).innerJoin(reviewCycle,and(eq(reviewCycle.id,performanceReview.cycleId),eq(reviewCycle.tenantId,performanceReview.tenantId))).innerJoin(employment,and(eq(employment.id,performanceReview.employmentId),eq(employment.tenantId,performanceReview.tenantId)))
+  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),eq(performanceReview.status,'submitted'),sql`${reviewCycle.releasedAt} is not null`,sql`not exists(select 1 from performance_onehr_cycle configured where configured.cycle_id=${performanceReview.cycleId} and configured.tenant_id=${performanceReview.tenantId})`))
+  .orderBy(desc(reviewCycle.periodEnd),asc(performanceReview.id)).limit(limit+1);
+ const plans=await tx.select({sourceId:onehrPlan.id,employmentId:onehrPlan.employmentId,reviewId:onehrPlan.reviewId,planYear:onehrPlan.planYear,conversationHeldOn:onehrPlan.conversationHeldOn})
+  .from(onehrPlan).innerJoin(employment,and(eq(employment.id,onehrPlan.employmentId),eq(employment.tenantId,onehrPlan.tenantId)))
+  .where(and(own,eq(onehrPlan.tenantId,ctx.tenantId),eq(onehrPlan.status,'closed'),isNull(onehrPlan.acknowledgedAt)))
+  .orderBy(desc(onehrPlan.planYear),asc(onehrPlan.id)).limit(limit+1);
+ const items=[...reviews.map(row=>({action:'performance.review.acknowledge' as const,...row})),...plans.map(row=>({action:'performance.onehr.plan.acknowledge' as const,...row}))];
+ // Stable interleaving prevents one engine being silently omitted whenever the other fills its list.
+ const ordered:typeof items=[];for(let n=0;n<Math.max(reviews.length,plans.length);n++){if(reviews[n])ordered.push({action:'performance.review.acknowledge',...reviews[n]});if(plans[n])ordered.push({action:'performance.onehr.plan.acknowledge',...plans[n]});}
+ return {items:ordered.slice(0,limit),truncated:items.length>limit};
+}
+
 export async function ownPerformanceWorkStatusesTx(tx:Tx,supplied:SessionContext,limit=25):Promise<{rows:OwnPerformanceWorkStatus[];truncated:boolean}>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!Number.isInteger(limit)||limit<1||limit>25)throw Error('Performance work is unavailable.');
