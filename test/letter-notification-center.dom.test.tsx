@@ -18,3 +18,8 @@ it('preserves legacy notification text when a projected item has no kind',()=>{
  render(<NextIntlClientProvider locale="en" messages={en}><NotificationCenter unread={1} items={[{id:'legacy',title:'Existing notification',body:'Existing message',linkPath:null,severity:'info',readAt:null,createdAt:new Date()}]}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:'Notifications, 1 waiting: 1 unread and 0 open tasks'}));expect(screen.getByText('Existing notification')).toBeTruthy();expect(screen.getByText('Existing message')).toBeTruthy();
 });
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('renders a returned-letter task in %s through the existing bell',locale=>{
+ const messages=catalogues[locale],t=createTranslator({locale,messages,namespace:'notifications'});render(<NextIntlClientProvider locale={locale} messages={messages}><NotificationCenter unread={0} items={[]} taskCount={1} taskNotifications={[{id:'creator-fixture',kind:'letter.returned',title:'letters.notifications.returned',body:'letters.notifications.body',linkPath:'/letters/generate/fixture',severity:'action',readAt:null,createdAt:new Date()}]}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:t('ariaBell',{total:1,unread:0,tasks:1})}));fireEvent.click(screen.getByRole('button',{name:name=>name.startsWith(messages.notifications.tabTasks)}));expect(screen.getByText(messages.letters.notifications.returned)).toBeTruthy();expect(screen.queryByText('letters.notifications.returned')).toBeNull();
+});

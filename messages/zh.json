@@ -23939,6 +23939,9 @@
   },
   "letters": {
     "notifications": {
+      "returned": "信函已退回修改",
+      "rejected": "信函被拒绝",
+      "approved": "信函已批准",
       "approval": "有信函待审批",
       "approvalReminder": "信函审批提醒",
       "escalation": "信函审批已逾期",
@@ -24272,6 +24275,8 @@
     },
     "generate": {
       "page": {
+        "reviewerReason": "审核人说明",
+        "decisionHistory": "查看审批记录",
         "title": "生成信函",
         "intro": "从已启用的获批模板创建并检查草稿批次。",
         "activeTemplates": "可用模板",

@@ -38,3 +38,8 @@ it('keeps a replacement draft fixed to the original recipient and names the fres
  mocks.detail.mockResolvedValue({record:{id:letterId,companyId,employmentId:employeeId,state:'void',reference:'ORIGINAL/0001'},employee:{name:'Original fictional employee',code:'0007'}});
  render(await NewPage({searchParams:Promise.resolve({versionId,reissueOf:letterId})}));expect(screen.getByText('Original fictional employee · 0007')).toBeTruthy();expect(screen.getByText('Replacement for ORIGINAL/0001. This creates a new draft and requires fresh approval.')).toBeTruthy();expect(screen.queryByRole('button',{name:'Find'})).toBeNull();expect(screen.queryByRole('button',{name:/Remove:/})).toBeNull();expect(document.querySelector('input[name="employmentId"]')).toHaveProperty('value',employeeId);expect(document.querySelector('input[name="reissueOf"]')).toHaveProperty('value',letterId);
 });
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('shows the reviewer reason and decision history beside the correction controls in %s',async locale=>{
+ mocks.locale=locale;const data=batch(),reason='Correct the effective date <script>literal reason</script>';mocks.batch.mockResolvedValue({...data,ready:0,needsCorrection:1,rows:[{...data.rows[0],record:{...data.rows[0].record,state:'returned'},ready:false,correctionReason:reason}]});render(await BatchPage({params:Promise.resolve({batchId}),searchParams:Promise.resolve({})}));const copy=catalogues[locale].letters.generate.page;
+ expect(screen.getByText(copy.reviewerReason)).toBeTruthy();expect(screen.getByText(reason)).toBeTruthy();expect(screen.getByRole('link',{name:copy.decisionHistory}).getAttribute('href')).toBe('/letters/approval/'+letterId);expect(document.querySelector('script')).toBeNull();
+});

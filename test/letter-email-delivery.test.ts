@@ -1,12 +1,12 @@
 /** Actual database/nonces and an isolated mail role; SMTP/provider ports are injected, not human delivery proof. */
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
-import {afterAll,beforeAll,beforeEach,it,expect,vi} from 'vitest';
+import {afterAll,beforeAll,beforeEach,it,expect,vi,type Mock} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,submitLetterBatch,getLetterGenerationBatch,saveLetterPermission} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,submitLetterBatch,getLetterGenerationBatch,saveLetterPermission,decideLetter,withdrawLetterDraft} from '../core/letters';
 import {saveLetterEmailPreferences} from '../core/letter-email-preferences';
 import {saveNotificationEmailPolicy,readNotificationEmailDeliveries,retryNotificationEmail} from '../core/notification-email';
 import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
@@ -29,8 +29,9 @@ function policy():LetterPolicy{return {version:1,stages:[{key:'signatory',label:
 async function draft(){const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employmentId],operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);return (await getLetterGenerationBatch(ctx,made.batchId))!.rows[0].record.id;}
 const jobs=()=>owner.db.select().from(s.notificationDelivery).where(and(eq(s.notificationDelivery.tenantId,b.tenantId),eq(s.notificationDelivery.category,'letters'))).orderBy(s.notificationDelivery.id);
 async function target(id:string,token:string){return raw.begin(async tx=>{await tx.unsafe('SET LOCAL ROLE "'+role+'"');const [scope]=await tx`select current_setting('app.user_id',true) as principal`;expect(scope.principal??'').toBe('');const rows=await tx`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${issuer})`;return rows.length===1?rows[0] as WorkflowMailTarget:null;});}
-function sender(options:{beforeTarget?:()=>Promise<void>;loseCommit?:boolean;send?:ReturnType<typeof vi.fn>}={}){
- const send=options.send??vi.fn(async(_target:WorkflowMailTarget,_mail:WorkflowMail)=>{});
+type LetterSend=(target:WorkflowMailTarget,mail:WorkflowMail)=>Promise<void>;
+function sender(options:{beforeTarget?:()=>Promise<void>;loseCommit?:boolean;send?:Mock<LetterSend>}={}){
+ const send=options.send??vi.fn<LetterSend>(async()=>{});
  const service=createNotificationEmailService({origin:'https://hr.fixture.test',ready:async()=>true,lettersReady:async()=>true,
   target:async(id,token)=>{await options.beforeTarget?.();return await target(id,token) as WorkflowMailTarget|null;},verifyRecipient:async()=> 'verified',
   assessmentTasks:async(id,token)=>raw.begin(async tx=>{await tx.unsafe('SET LOCAL ROLE "'+role+'"');const rows=await tx`select * from identity_email.delivery_summary(${id}::uuid,${token}::uuid,${issuer})`;return rows.length===1&&!rows[0].required?undefined:rows[0]?.summary??null;}),
@@ -54,6 +55,12 @@ it('sends one brief email to an account without employment while keeping email-o
  const {send,transport}=sender();const results=await Promise.all([deliverLetterEmailsFromSweep(system(),owner,transport),deliverLetterEmailsFromSweep(system(),owner,transport)]);expect(results.reduce((sum,result)=>sum+result.attempted,0)).toBe(1);expect(results.every(result=>result.failed===0)).toBe(true);expect(send).toHaveBeenCalledOnce();const [recipient,mail]=send.mock.calls[0] as unknown as [WorkflowMailTarget,WorkflowMail];expect(recipient.email).toBe(email);expect(mail).toMatchObject({category:'letters',locale:'ms',link:'https://hr.fixture.test/letters/approval/'+letterId});expect(workflowEmailMessage(mail).text).not.toContain(canary);expect(workflowEmailMessage(mail).text).not.toContain('Fictional mail employee');expect(Object.keys(mail).sort()).toEqual(['action','category','link','locale','messageId']);
  expect((await jobs())[0]).toMatchObject({status:'sent',attempts:1,lastError:null});expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:0});expect(send).toHaveBeenCalledOnce();
 });
+it.each(['return','reject','approve'] as const)('routes %s email to the actual creator without putting reviewer comments in mail',async action=>{
+ const [old]=await owner.db.select().from(s.letterRecord).where(eq(s.letterRecord.id,letterId));await withdrawLetterDraft(ctx,{letterId,expectedLockVersion:old.lockVersion,reason:'Close the unrelated fixture draft'});
+ const [creatorPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional letter creator',primaryEmail:'letter-creator@fixture.test'}).returning(),creatorId=await createAppUser(b.tenantId,creatorPerson.id,'hr_admin'),creator={...ctx,userId:creatorId,personId:creatorPerson.id},creatorSubject=randomUUID();await owner.db.insert(s.appExternalIdentity).values({issuer,subject:creatorSubject,appUserId:creatorId});await saveLetterEmailPreferences(creator,{enabled:true,locale:'ta'},{issuer,subject:creatorSubject,email:creatorPerson.primaryEmail,emailVerified:true});
+ const made=await createLetterDraftBatch(creator,{companyId:b.companyId,templateVersionId,employmentIds:[employmentId],operationKey:randomUUID()});await submitLetterBatch(creator,made.batchId);const row=(await getLetterGenerationBatch(creator,made.batchId))!.rows[0],reason='PRIVATE REVIEW REASON 8762';await decideLetter(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action,comment:reason,confirmSignature:action==='approve'}});
+ expect(await projectLetterNotificationsFromSweep(system(),owner)).toMatchObject({created:0,failed:0});expect(await jobs()).toHaveLength(1);const {send,transport}=sender();expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:1,failed:0});expect(send).toHaveBeenCalledOnce();const [recipient,mail]=send.mock.calls[0] as unknown as [WorkflowMailTarget,WorkflowMail];expect(recipient.user_id).toBe(creatorId);expect(recipient.email).toBe(creatorPerson.primaryEmail);expect(mail).toMatchObject({category:'letters',locale:'ta',link:'https://hr.fixture.test/letters/generate/'+made.batchId,action:action!=='approve'});expect(workflowEmailMessage(mail).text).not.toContain(reason);expect(workflowEmailMessage(mail).text).not.toContain(canary);expect((await jobs())[0].status).toBe('sent');
+});
 it('does not replay an old source after withdrawal and re-consent',async()=>{
  await saveLetterEmailPreferences(reviewer,{enabled:false,locale:'en'},null);expect(await projectLetterNotificationsFromSweep(system(),owner)).toMatchObject({failed:0});expect(await jobs()).toHaveLength(0);
  await saveLetterEmailPreferences(reviewer,{enabled:true,locale:'en'},identity());const [notice]=await owner.db.select().from(s.notification).where(eq(s.notification.recipientUserId,reviewer.userId!));const [result]=await owner.withTenant(system(),tx=>tx.execute<{added:boolean}>(sql`select app.letter_email_enqueue(${notice.id}::uuid) as added`));expect(result.added).toBe(false);expect(await jobs()).toHaveLength(0);
@@ -73,7 +80,7 @@ it('records missing transport once and retries only the administrator-selected f
  const log=await readNotificationEmailDeliveries(ctx);expect(log).toHaveLength(1);expect(JSON.stringify(log)).not.toContain(email);await retryNotificationEmail(ctx,job.id,true);expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:1,failed:0});expect(send).toHaveBeenCalledOnce();expect((await jobs())[0].status).toBe('sent');
 });
 it('honors a definitive temporary rejection and its retry deadline across concurrent sweeps',async()=>{
- await projectLetterNotificationsFromSweep(system(),owner);const send=vi.fn().mockRejectedValueOnce({responseCode:451}).mockResolvedValue(undefined),{transport}=sender({send});const results=await Promise.all([deliverLetterEmailsFromSweep(system(),owner,transport),deliverLetterEmailsFromSweep(system(),owner,transport)]);expect(results.reduce((sum,result)=>sum+result.attempted,0)).toBe(1);const [job]=await jobs();expect(job).toMatchObject({status:'pending',attempts:1,lastError:'smtpTemporary',startedAt:null});expect(send).toHaveBeenCalledOnce();expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:0});
+ await projectLetterNotificationsFromSweep(system(),owner);const send=vi.fn<LetterSend>().mockRejectedValueOnce({responseCode:451}).mockResolvedValue(undefined),{transport}=sender({send});const results=await Promise.all([deliverLetterEmailsFromSweep(system(),owner,transport),deliverLetterEmailsFromSweep(system(),owner,transport)]);expect(results.reduce((sum,result)=>sum+result.attempted,0)).toBe(1);const [job]=await jobs();expect(job).toMatchObject({status:'pending',attempts:1,lastError:'smtpTemporary',startedAt:null});expect(send).toHaveBeenCalledOnce();expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:0});
  await owner.db.update(s.notificationDelivery).set({nextAttemptAt:sql`now()`}).where(eq(s.notificationDelivery.id,job.id));expect(await deliverLetterEmailsFromSweep(system(),owner,transport)).toMatchObject({attempted:1,failed:0});expect(send).toHaveBeenCalledTimes(2);expect((await jobs())[0]).toMatchObject({status:'sent',attempts:2,lastError:null});
 });
 it('holds a send with a lost durable result as uncertain instead of blindly resending',async()=>{

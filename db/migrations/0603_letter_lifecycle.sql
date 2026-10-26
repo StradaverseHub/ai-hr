@@ -639,6 +639,21 @@ REVOKE ALL ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) FROM PUBL
 GRANT EXECUTE ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) TO ai_hr_app;
 
 --> statement-breakpoint
+CREATE FUNCTION app.letter_creator_eligible_at(wanted_tenant uuid,subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.letter_permission_for_user_at(wanted_tenant,subject,co,'read') AND app.letter_permission_for_user_at(wanted_tenant,subject,co,'generate')
+ AND (NOT confidential OR app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)) FROM public.role_assignment r WHERE r.tenant_id=wanted_tenant AND r.app_user_id=subject),co))
+$$;
+REVOKE ALL ON FUNCTION app.letter_creator_eligible_at(uuid,uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.letter_creator_eligible(subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.principal_snapshot_current() AND (app.letter_permission(co,'generate') OR app.letter_permission(co,'approve') OR app.letter_permission(co,'issue'))
+ AND app.letter_creator_eligible_at(app.current_tenant_id(),subject,co,confidential)
+$$;
+REVOKE ALL ON FUNCTION app.letter_creator_eligible(uuid,uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_creator_eligible(uuid,uuid,boolean) TO ai_hr_app;
+
+--> statement-breakpoint
 -- A letter reviewer can see the subject's label without receiving directory access or contact data.
 CREATE FUNCTION app.letter_staff_identity(subject uuid) RETURNS TABLE(employee_name text,employee_code text,company_name text,title text,category text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
@@ -793,7 +808,7 @@ $$;
 REVOKE ALL ON FUNCTION app.letter_notification_storage_owner() FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.guard_letter_notification() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
-DECLARE j public.letter_job%ROWTYPE;e public.domain_event%ROWTYPE;target_path text;expected_kind text;portal boolean;
+DECLARE j public.letter_job%ROWTYPE;e public.domain_event%ROWTYPE;target_path text;expected_kind text;portal boolean;batch uuid;
 BEGIN
  IF TG_OP='DELETE' THEN
   IF OLD.recipient_user_id IS NOT NULL THEN RAISE EXCEPTION 'Letter notification history is immutable' USING ERRCODE='42501';END IF;RETURN OLD;
@@ -807,13 +822,13 @@ BEGIN
  IF NOT app.letter_notification_storage_owner() THEN RAISE EXCEPTION 'Letter projection requires its maintenance connection' USING ERRCODE='42501';END IF;
  SELECT * INTO j FROM public.letter_job WHERE id=NEW.letter_job_id AND tenant_id=NEW.tenant_id;
  SELECT * INTO e FROM public.domain_event WHERE id=j.source_event_id AND tenant_id=j.tenant_id AND aggregate_type='letter' AND aggregate_id=j.letter_id;
- SELECT coalesce((p.policy->>'portalNotifications')::boolean,false) INTO portal FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=b.tenant_id WHERE l.id=j.letter_id AND l.tenant_id=j.tenant_id;
- expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
- target_path:=CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END||j.letter_id::text;
+ SELECT coalesce((p.policy->>'portalNotifications')::boolean,false),l.batch_id INTO portal,batch FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=b.tenant_id WHERE l.id=j.letter_id AND l.tenant_id=j.tenant_id;
+ expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload->>'purpose'='creatorDecision' THEN CASE j.payload->>'outcome' WHEN 'returned' THEN 'returned' WHEN 'rejected' THEN 'rejected' WHEN 'approved' THEN 'approved' ELSE NULL END WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
+ target_path:=CASE WHEN j.payload->>'purpose'='creatorDecision' THEN '/letters/generate/'||batch::text ELSE (CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END)||j.letter_id::text END;
  IF j.id IS NULL OR e.id IS NULL OR j.recipient_user_id IS DISTINCT FROM NEW.recipient_user_id
   OR NEW.portal_visible IS DISTINCT FROM portal OR NEW.company_id IS DISTINCT FROM j.company_id OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
   OR expected_kind IS NULL OR NEW.kind IS DISTINCT FROM expected_kind
-  OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind='letter.issued' THEN 'info' ELSE 'action' END)
+  OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind IN ('letter.issued','letter.approved') THEN 'info' ELSE 'action' END)
   OR NEW.title IS DISTINCT FROM 'letters.notifications.'||substring(NEW.kind FROM 8)
   OR NEW.body IS DISTINCT FROM 'letters.notifications.body' OR NEW.read_at IS NOT NULL
  THEN RAISE EXCEPTION 'Letter notification identity is invalid' USING ERRCODE='42501';END IF;
@@ -904,6 +919,15 @@ BEGIN
  SELECT * INTO l FROM public.letter_record WHERE id=j.letter_id AND tenant_id=j.tenant_id AND company_id=j.company_id;IF NOT FOUND THEN RETURN false;END IF;
  SELECT config.policy INTO p FROM public.letter_generation_batch b JOIN public.letter_policy_version config ON config.id=b.policy_version_id AND config.tenant_id=b.tenant_id WHERE b.id=l.batch_id AND b.tenant_id=l.tenant_id;
  IF p IS NULL OR (p->>'emailNotifications')::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=j.recipient_user_id AND u.tenant_id=j.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
+ IF j.payload->>'purpose'='creatorDecision' THEN
+  IF j.kind<>'notification' OR j.recipient_user_id<>l.created_by OR l.state NOT IN ('returned','rejected','approved') OR j.payload->>'outcome' IS DISTINCT FROM l.state OR j.payload->>'revisionId' IS DISTINCT FROM l.current_revision_id::text THEN RETURN false;END IF;
+  IF j.dedupe_key<>l.id::text||':'||l.current_revision_id::text||':creator:'||(j.payload->>'decisionId') OR NOT EXISTS(
+   SELECT 1 FROM public.letter_approval_decision d JOIN public.domain_event e ON e.id=j.source_event_id AND e.tenant_id=d.tenant_id AND e.aggregate_type='letter' AND e.aggregate_id=d.letter_id
+   WHERE d.id::text=j.payload->>'decisionId' AND d.tenant_id=l.tenant_id AND d.letter_id=l.id AND d.revision_id=l.current_revision_id
+   AND d.action=(CASE l.state WHEN 'returned' THEN 'return' WHEN 'rejected' THEN 'reject' ELSE 'approve' END)
+   AND e.event_type='letter.approval.'||d.action AND e.payload->>'decisionId'=d.id::text AND e.payload->>'revisionId'=d.revision_id::text) THEN RETURN false;END IF;
+  RETURN app.letter_creator_eligible_at(wanted_tenant,j.recipient_user_id,l.company_id,l.confidential);
+ END IF;
  IF j.payload ? 'artifactId' THEN
   IF l.state<>'issued' OR j.kind NOT IN ('notification','acknowledgementReminder') OR NOT EXISTS(
    SELECT 1 FROM public.letter_artifact a JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id

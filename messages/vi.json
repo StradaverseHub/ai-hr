@@ -23939,6 +23939,9 @@
   },
   "letters": {
     "notifications": {
+      "returned": "Thư được trả lại để chỉnh sửa",
+      "rejected": "Thư bị từ chối",
+      "approved": "Thư đã được phê duyệt",
       "approval": "Cần phê duyệt thư",
       "approvalReminder": "Nhắc phê duyệt thư",
       "escalation": "Phê duyệt thư đã quá hạn",
@@ -24272,6 +24275,8 @@
     },
     "generate": {
       "page": {
+        "reviewerReason": "Lý do của người xét duyệt",
+        "decisionHistory": "Xem lịch sử quyết định",
         "title": "Tạo thư",
         "intro": "Tạo và kiểm tra lô nháp từ mẫu được duyệt đang có hiệu lực.",
         "activeTemplates": "Mẫu đang hoạt động",

@@ -23939,6 +23939,9 @@
   },
   "letters": {
     "notifications": {
+      "returned": "Surat dipulangkan untuk pembetulan",
+      "rejected": "Surat ditolak",
+      "approved": "Surat diluluskan",
       "approval": "Kelulusan surat diperlukan",
       "approvalReminder": "Peringatan kelulusan surat",
       "escalation": "Kelulusan surat tertunggak",
@@ -24272,6 +24275,8 @@
     },
     "generate": {
       "page": {
+        "reviewerReason": "Alasan penyemak",
+        "decisionHistory": "Lihat sejarah keputusan",
         "title": "Jana surat",
         "intro": "Cipta dan semak kelompok draf daripada templat aktif yang diluluskan.",
         "activeTemplates": "Templat aktif",

@@ -302,7 +302,8 @@ export function getLetterGenerationBatch(ctx:SessionContext,id:string,input:{cur
   if(index>=start&&index<end)rows.push({record,revision:revision??null,issue,sourceChanged,ready:eligible});
  }
  const identities=await readWorkforcePickRowsTx(ctx,tx,rows.map(row=>row.record.employmentId)),people=new Map(identities.map(row=>[row.employmentId,{name:row.name,code:row.employeeCode}]));
- return {batch,rows:rows.map(row=>({...row,employee:people.get(row.record.employmentId)??null})),templateActive:template.active,ready,needsCorrection,total:records.length,selected:records.length-(states.withdrawn??0),states,nextCursor:end<records.length?records[end-1].id:null};
+ const correctionIds=rows.filter(row=>row.record.state==='returned'||row.record.state==='rejected').map(row=>row.record.id),decisions=correctionIds.length?await tx.selectDistinctOn([letterApprovalDecision.letterId],{letterId:letterApprovalDecision.letterId,reason:letterApprovalDecision.comment}).from(letterApprovalDecision).innerJoin(letterRecord,and(eq(letterRecord.id,letterApprovalDecision.letterId),eq(letterRecord.currentRevisionId,letterApprovalDecision.revisionId))).where(and(eq(letterRecord.batchId,batch.id),inArray(letterApprovalDecision.letterId,correctionIds),inArray(letterApprovalDecision.action,['return','reject']))).orderBy(asc(letterApprovalDecision.letterId),desc(letterApprovalDecision.createdAt),desc(letterApprovalDecision.id)):[],reasons=new Map(decisions.map(decision=>[decision.letterId,decision.reason]));
+ return {batch,rows:rows.map(row=>({...row,employee:people.get(row.record.employmentId)??null,correctionReason:reasons.get(row.record.id)??null})),templateActive:template.active,ready,needsCorrection,total:records.length,selected:records.length-(states.withdrawn??0),states,nextCursor:end<records.length?records[end-1].id:null};
 });}
 export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'generate');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
@@ -334,6 +335,11 @@ async function queueLetterStage(tx:Tx,ctx:SessionContext,record:typeof letterRec
   const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_approver_eligible(${policy.escalationUserId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);
   if(eligible?.ok)await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,kind:'escalation',recipientUserId:policy.escalationUserId,dedupeKey:`${record.id}:${revisionId}:${stageIndex}:escalation${delegation?':delegation:'+delegation.decisionId:''}`,payload:{revisionId,stageIndex,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`${enteredAt}+${policy.approvalDueHours}*interval '1 hour'`}).onConflictDoNothing();
  }
+}
+async function queueLetterCreator(tx:Tx,ctx:SessionContext,record:typeof letterRecord.$inferSelect,policy:ReturnType<typeof validateLetterPolicy>,revisionId:string,decisionId:string,outcome:'returned'|'rejected'|'approved',sourceEventId:string){
+ if(!policy.portalNotifications&&!policy.emailNotifications)return;
+ const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_creator_eligible(${record.createdBy}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);if(!eligible?.ok)return;
+ await tx.insert(letterJob).values({tenantId:ctx.tenantId,companyId:record.companyId,letterId:record.id,sourceEventId,recipientUserId:record.createdBy,kind:'notification',dedupeKey:`${record.id}:${revisionId}:creator:${decisionId}`,payload:{purpose:'creatorDecision',outcome,revisionId,decisionId,portal:policy.portalNotifications,email:policy.emailNotifications},dueAt:sql`now()`}).onConflictDoNothing();
 }
 export function submitLetterBatch(ctx:SessionContext,id:string){return letters(ctx,true,async tx=>{
  const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch)throw new LetterWorkflowError('permission');await permission(tx,batch.companyId,'generate');
@@ -382,6 +388,7 @@ async function decideLetterTx(ctx:SessionContext,tx:Tx,input:LetterDecisionInput
  await tx.update(letterRecord).set({state:next.state,stageIndex:next.stageIndex,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
  const sourceEventId=await event(tx,ctx,record.id,'approval.'+input.decision.action,{revisionId:revision.id,stageIndex:record.stageIndex,decisionId:decision.id,artifactId,contentHash:revision.contentHash});
  if(next.state==='submitted')await queueLetterStage(tx,ctx,record,policy,revision.id,next.stageIndex,sourceEventId);
+ if(next.state==='returned'||next.state==='rejected'||next.state==='approved')await queueLetterCreator(tx,ctx,record,policy,revision.id,decision.id,next.state,sourceEventId);
 return {letterId:record.id,state:next.state,lockVersion:record.lockVersion+1,artifactId};
 }
 

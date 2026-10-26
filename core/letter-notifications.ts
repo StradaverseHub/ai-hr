@@ -33,8 +33,15 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
  if(!configuration)return cancel();const policy=validateLetterPolicy(configuration.policy);
  if(!policy.portalNotifications&&!policy.emailNotifications)return cancel();
  const sourcePayload=source.payload as Record<string,unknown>|null;
- let kind:'approval'|'approvalReminder'|'escalation'|'issued'|'acknowledgementReminder',dueAt:Date|null=null,waiting=false;
- if(job.payload.artifactId){
+ let kind:'approval'|'approvalReminder'|'escalation'|'issued'|'acknowledgementReminder'|'returned'|'rejected'|'approved',dueAt:Date|null=null,waiting=false;
+ if(job.payload.purpose==='creatorDecision'){
+  const outcome=job.payload.outcome;if(outcome!=='returned'&&outcome!=='rejected'&&outcome!=='approved')return cancel();
+  const action=outcome==='returned'?'return':outcome==='rejected'?'reject':'approve';
+  if(job.kind!=='notification'||job.recipientUserId!==record.createdBy||record.state!==outcome||job.payload.revisionId!==record.currentRevisionId||source.eventType!=='letter.approval.'+action||sourcePayload?.decisionId!==job.payload.decisionId||sourcePayload?.revisionId!==record.currentRevisionId)return cancel();
+  const [decision]=await tx.select({id:letterApprovalDecision.id}).from(letterApprovalDecision).where(and(eq(letterApprovalDecision.letterId,record.id),eq(letterApprovalDecision.revisionId,record.currentRevisionId!),eq(letterApprovalDecision.action,action),sql`${letterApprovalDecision.id}::text=${String(job.payload.decisionId)}`));
+  if(!decision||job.dedupeKey!==`${record.id}:${record.currentRevisionId}:creator:${decision.id}`)return cancel();
+  const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.letter_creator_eligible_at(${ctx.tenantId}::uuid,${job.recipientUserId}::uuid,${record.companyId}::uuid,${record.confidential}) as ok`);if(!eligible?.ok)return cancel();kind=outcome;
+ }else if(job.payload.artifactId){
   if(!['notification','acknowledgementReminder'].includes(job.kind)||record.state!=='issued'||source.eventType!=='letter.issued'||sourcePayload?.artifactId!==job.payload.artifactId)return cancel();
   const [artifact]=await tx.select().from(letterArtifact).where(and(eq(letterArtifact.id,String(job.payload.artifactId)),eq(letterArtifact.letterId,record.id),eq(letterArtifact.revisionId,record.currentRevisionId!)));
   const [recipient]=await tx.select({id:appUser.id}).from(appUser).innerJoin(employment,and(eq(employment.personId,appUser.personId),eq(employment.tenantId,appUser.tenantId))).where(and(eq(appUser.id,job.recipientUserId),eq(appUser.tenantId,ctx.tenantId),eq(employment.id,record.employmentId),sql`${appUser.archivedAt} is null and not app.login_blocked(${appUser.id})`));
@@ -68,7 +75,7 @@ async function projectJob(tx:Tx,ctx:SessionContext,id:string){
  }
  if(dueAt){if(waiting){await tx.update(letterJob).set({dueAt,lastError:null}).where(eq(letterJob.id,id));return {created:0,cancelled:0,deferredEmail:0};}}
  else if(['approvalReminder','escalation','acknowledgementReminder'].includes(kind))return cancel();
- const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,companyId:record.companyId,portalVisible:policy.portalNotifications,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});
+ const rows=await tx.insert(notification).values({tenantId:ctx.tenantId,recipientUserId:job.recipientUserId,letterJobId:job.id,companyId:record.companyId,portalVisible:policy.portalNotifications,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',sourceEventId:source.id,linkPath:job.payload.purpose==='creatorDecision'?'/letters/generate/'+record.batchId:(kind==='issued'||kind==='acknowledgementReminder'?'/me/letters/':'/letters/approval/')+record.id,severity:kind==='issued'||kind==='approved'?'info':'action'}).onConflictDoNothing().returning({id:notification.id});
  const created=policy.portalNotifications?rows.length:0;
  if(policy.emailNotifications){const [existing]=rows.length?rows:await tx.select({id:notification.id}).from(notification).where(and(eq(notification.tenantId,ctx.tenantId),eq(notification.letterJobId,job.id)));if(existing)await tx.execute(sql`select app.letter_email_enqueue(${existing.id}::uuid)`);}
  // Completion means the channel projections committed. Only the private email outbox owns SMTP outcomes.

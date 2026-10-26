@@ -23939,6 +23939,9 @@
   },
   "letters": {
     "notifications": {
+      "returned": "Letter returned for correction",
+      "rejected": "Letter rejected",
+      "approved": "Letter approved",
       "approval": "Letter approval required",
       "approvalReminder": "Letter approval reminder",
       "escalation": "Overdue letter approval",
@@ -24272,6 +24275,8 @@
     },
     "generate": {
       "page": {
+        "reviewerReason": "Reviewer’s reason",
+        "decisionHistory": "View decision history",
         "title": "Generate letters",
         "intro": "Create and review draft batches from active approved templates.",
         "activeTemplates": "Active templates",
