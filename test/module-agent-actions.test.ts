@@ -135,3 +135,10 @@ it('connects human equipment acknowledgement without granting lifecycle provisio
  for(const extra of [{caseId:'posted'},{serialNumber:'invented'},{acknowledged:true},{employmentId:'other'},{allocateAsset:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'lifecycle',action:'lifecycle.acknowledgement.submit',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'lifecycle',action:'lifecycle.acknowledgement.submit',phase:'confirm'})).toThrow();
 });
+
+it('connects the TOIL human request without treating submission as earned credit, cash or approval',()=>{
+ expect(getModuleAgentAction('toil','toil.replacement.request')).toMatchObject({owner:'leave',publicBoundary:'packs/leave/service.ts#submitReplacementLeaveRequest',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_toil_request_review_v1'},confirm:{status:'implemented',inputSchema:'ToilRequestReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'toil',action:'toil.replacement.request',phase:'prepare'})).toEqual({kind:'prepare',module:'toil',action:'toil.replacement.request',adapter:'module_toil_request_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{employmentId:'other'},{rows:[]},{reason:'invented work'},{firstScheduleConsent:true},{approved:true},{creditDays:10}])expect(()=>parseModuleAgentActionNomination({module:'toil',action:'toil.replacement.request',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'toil',action:'toil.replacement.request',phase:'confirm'})).toThrow();
+});

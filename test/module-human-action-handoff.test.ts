@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle'];
+  const connected=['leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
@@ -47,4 +47,9 @@ it('hands Knowledge Base publication to a fixed human page without carrying gene
 it('offers equipment acknowledgement only as a human Lifecycle page with no device/consent/provider content',()=>{
  const actions=moduleHumanActionHandoffs('lifecycle');expect(actions).toEqual([{module:'lifecycle',action:'lifecycle.acknowledgement.submit',route:'/assistant/lifecycle',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{caseId:'posted'},{serialNumber:'model device'},{acknowledged:true},{receiptEmail:'model@example.test'},{route:'/assistant/lifecycle?caseId=other'}])expect(()=>checkedModuleHumanHandoffs('lifecycle',actions.map(row=>({...row,...extra})))).toThrow();
+});
+
+it('hands TOIL to human worked-date review without generating work, consent, credit or approval',()=>{
+ const actions=moduleHumanActionHandoffs('toil');expect(actions).toEqual([{module:'toil',action:'toil.replacement.request',route:'/assistant/toil',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ for(const extra of [{rows:[]},{workedDate:'2026-01-01'},{firstScheduleConsent:true},{creditId:'invented'},{approved:true},{route:'/assistant/toil?employmentId=other'}])expect(()=>checkedModuleHumanHandoffs('toil',actions.map(row=>({...row,...extra})))).toThrow();
 });
