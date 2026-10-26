@@ -3529,6 +3529,13 @@
       "when": 1793054626620,
       "tag": "0622_mobile_integrity_challenges",
       "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1793055753390,
+      "tag": "0623_mobile_integrity_keys",
+      "breakpoints": true
     }
   ]
 }

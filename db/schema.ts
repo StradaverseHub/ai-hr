@@ -616,6 +616,19 @@ export const mobileIntegrityChallenge=pgTable('mobile_integrity_challenge',{
  uniqueIndex('mobile_integrity_challenge_nonce_uq').on(t.nonce),
  index('mobile_integrity_challenge_pending_idx').on(t.tenantId,t.actorId,t.expiresAt).where(sql`${t.consumedAt} IS NULL`)]);
 
+export const mobileIntegrityKey=pgTable('mobile_integrity_key',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ appInstallationId:uuid('app_installation_id').notNull(),installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
+ originChallengeId:uuid('origin_challenge_id').notNull().references(()=>mobileIntegrityChallenge.id),
+ enrolledForEmploymentId:uuid('enrolled_for_employment_id').notNull().references(()=>employment.id),
+ platform:text('platform').notNull().$type<'ios'>(),appId:text('app_id').notNull(),environment:text('environment').notNull().$type<'production'|'development'>(),
+ vendorKeyId:text('vendor_key_id').notNull(),fingerprint:text('fingerprint').notNull(),publicKeySpki:bytea('public_key_spki').notNull(),
+ proofDigest:text('proof_digest').notNull(),proofKind:text('proof_kind').notNull().$type<'apple_key_proof'|'apple_app_metadata'>(),
+ metadata:jsonb('metadata').$type<{validationCategory:number;bundleVersion:string}|null>(),receiptCiphertext:text('receipt_ciphertext').notNull(),
+ assertionCounter:bigint('assertion_counter',{mode:'number'}).notNull().default(0),createdAt:createdAt(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+},t=>[uniqueIndex('mobile_integrity_key_fingerprint_uq').on(t.fingerprint),uniqueIndex('mobile_integrity_key_origin_uq').on(t.originChallengeId),
+ uniqueIndex('mobile_integrity_key_active_install_uq').on(t.tenantId,t.actorId,t.appInstallationId,t.platform).where(sql`${t.revokedAt} IS NULL`)]);
+
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
 export const appExternalIdentity = pgTable('app_external_identity', {
   issuer: text('issuer').notNull(), subject: text('subject').notNull(),
