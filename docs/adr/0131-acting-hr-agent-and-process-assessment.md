@@ -2764,3 +2764,30 @@ Employee master import is the human-selected first process assessment. Original 
 Feedback selections attach at most ten explicitly chosen, verified own-job signals to immutable candidates. Missing provenance remains unknown, while verified empty provenance can report zero. Ratings are candidate inputs, not quality truth. Promoted human-question planning additionally requires independent fixed multilingual question holdouts alongside the existing routing suite, then explicit review of the proposed module labels before canonical reads. Those finite suites evaluate routing within the closed module contract, not general HR reasoning or financial accuracy.
 
 Trusted gateway lifecycle hooks correlate the actual admitted run inside admission and actual terminal accounting inside settlement; copied configurations, posted run IDs and model payloads cannot acquire the hook. Missing/conflicting usage and account charge remain NULL with a bounded observation status. OpenRouter account credits are distinct from upstream provider cost or an inferred currency. Expired private proposal, job, feedback, provenance and import custody require bounded physical-owner cleanup, explicit expired-only RLS and actual role/rollback/capacity verification. Source implementation and authored tests do not establish current runtime, erasure, security, experience or production-readiness acceptance; all three stages still precede the single combined final gate and verified deployment.
+
+### Saved-review recovery and private commitments
+
+A current authenticated login may list minimal metadata and retire its own noncompleted saved
+reviews after losing an action grant, module access or a person association. Cleanup must not reopen
+private content or recover action authority. Its source-specific closed SQL helper binds actual
+login/tenant/principal, captures original privacy associations, refuses completed retirement and
+atomically removes ciphertext and pending digest. Review and confirmation keep their fresh native
+source, current authority and exact human-content gates; login-only cleanup is not an effect path.
+The browser preserves a known uncertain action identity for reopening or retirement and does not
+replace that uncertainty with a second prepare or confirmation.
+
+Public review commitments that include private native fingerprints use a fresh secret32-byte nonce
+inside the existing encrypted body. The public digest alone must not permit enumeration of hidden
+source values. Nonces never appear in public contracts, metadata, receipts, provider packets or
+feedback; body retirement also retires the stored nonce. Pending reopen reuses that stored nonce,
+and an old nonconforming pending body refuses rather than silently acquiring a new commitment.
+Own-leave's separately defined digest remains limited to displayed fields and keeps its private
+balance comparison outside the public digest. This does not promise heap erasure or replace native
+freshness, authorization, transaction ownership or human confirmation.
+
+Assigned Leave decision review is an Approvals specialist handoff to the canonical Leave owner.
+The orchestrator may offer only the fixed human selection page. It cannot supply a request or step,
+approval/rejection, reason, consent or digest. Native assigned authority and current source state
+remain required; a recorded intermediate decision may leave the request pending. These source
+changes and authored regression cases require their actual migration, security, concurrency,
+erasure and browser verification before release.
