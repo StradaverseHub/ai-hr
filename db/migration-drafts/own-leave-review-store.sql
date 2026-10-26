@@ -1312,7 +1312,7 @@ GRANT EXECUTE ON FUNCTION app.assistant_knowledge_article_review_complete(uuid,t
 --> statement-breakpoint
 -- Login-only metadata/discard after module/grant/author revocation or person relinking. No article
 -- references, title, audience or human content are projected; completed effects cannot be discarded.
-CREATE FUNCTION app.assistant_knowledge_article_review_discard(p_id uuid,p_reviewed_digest text) RETURNS jsonb
+CREATE FUNCTION app.assistant_knowledge_article_review_discard(p_id uuid) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
 BEGIN
@@ -1320,15 +1320,14 @@ BEGIN
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='knowledge_base.article.create' FOR UPDATE NOWAIT;
  IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Article review unavailable' USING ERRCODE='42501';END IF;
  IF r.state='awaiting_confirmation' THEN
-  IF r.reviewed_digest IS DISTINCT FROM p_reviewed_digest THEN RAISE EXCEPTION 'Article review unavailable' USING ERRCODE='42501';END IF;
   UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;
  END IF;
  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
  RETURN jsonb_build_object('action','knowledge_base.article.create','contractVersion',1,'actionId',r.id,'state',r.state);
 END $$;
-REVOKE ALL ON FUNCTION app.assistant_knowledge_article_review_discard(uuid,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.assistant_knowledge_article_review_discard(uuid,text) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.assistant_knowledge_article_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_knowledge_article_review_discard(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.assistant_knowledge_article_reviews_index()
  RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)

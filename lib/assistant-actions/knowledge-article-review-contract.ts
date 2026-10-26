@@ -3,6 +3,8 @@ import {z} from 'zod';
 import {KNOWLEDGE_ARTICLE_ACTION,KnowledgeArticleHumanContent,KnowledgeArticleSourceReceipt} from './knowledge-article-contract';
 const base={action:z.literal(KNOWLEDGE_ARTICLE_ACTION),contractVersion:z.literal(1)},digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const KnowledgeArticleReviewPrepare=KnowledgeArticleHumanContent;
+/** Retirement is owner-login privacy cleanup, not effect confirmation; lost responses need no digest. */
+export const KnowledgeArticleReviewRetirement=z.object({...base,actionId:z.uuid()}).strict();
 export const KnowledgeArticleReviewConfirmation=z.object({...base,actionId:z.uuid(),reviewedDigest:digest}).strict();
 export const KnowledgeArticlePreparedReview=z.object({...base,actionId:z.uuid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:KnowledgeArticleHumanContent,consequence:z.literal('publish_to_selected_audience')}).strict();
 export const KnowledgeArticleCompletedReview=z.object({...base,actionId:z.uuid(),state:z.literal('completed'),receipt:KnowledgeArticleSourceReceipt}).strict();
