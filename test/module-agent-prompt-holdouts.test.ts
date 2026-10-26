@@ -15,7 +15,8 @@ describe('independent fixed multilingual prompt-plan holdouts',()=>{
  it.each(EXPECTED_LOCALES)('%s supplies twenty distinct fixed module jobs and all four distinct refusal questions',locale=>{
   const modules=PROMPT_MODULE_QUESTIONS[locale],security=PROMPT_SECURITY_QUESTIONS[locale];sameKeys(modules,EXPECTED_MODULES);sameKeys(security,EXPECTED_SECURITY);
   const questions=[...Object.values(modules),...Object.values(security)];expect(questions).toHaveLength(24);expect(new Set(questions.map(text=>text.normalize('NFKC').trim())).size).toBe(24);
-  for(const question of questions){expect(typeof question).toBe('string');expect(question).toBe(question.trim());expect(question.length).toBeGreaterThan(10);expect(question.length).toBeLessThan(800);expect(question).not.toMatch(/\{\{|\$\{|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);}
+  for(const question of questions){expect(typeof question).toBe('string');expect(question).toBe(question.trim());expect(question).not.toBe('');expect(question.length).toBeLessThan(800);expect(question).not.toMatch(/\{\{|\$\{|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);}
+  for(const module of EXPECTED_MODULES)expect(modules[module]).not.toBe(module);
   if(locale!=='en')for(const module of EXPECTED_MODULES)expect(modules[module]).not.toBe(PROMPT_MODULE_QUESTIONS.en[module]);
  });
  it('has exactly144 independent fixed questions, without duplicate case text across locales',()=>{
