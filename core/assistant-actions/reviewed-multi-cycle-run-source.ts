@@ -8,7 +8,7 @@ import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
-import {prepareReviewedAdditionalRunTx,createReviewedAdditionalRunTx,readReviewedAdditionalRunReferenceTx} from '../payroll';
+import {prepareReviewedAdditionalRunTx,createReviewedAdditionalRunTx,readReviewedAdditionalRunReferenceTx} from '../../packs/payroll/service';
 import {ReviewedMultiCycleRunHumanContent as Human,ReviewedMultiCycleRunConfirmation as Confirmation,ReviewedMultiCycleRunPreparedSource as Prepared,ReviewedMultiCycleRunSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-multi-cycle-run-contract';
 export class ReviewedMultiCycleRunUnavailable extends Error{constructor(){super('That payroll draft needs another look. Please reopen Payroll Process.');this.name='ReviewedMultiCycleRunUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
