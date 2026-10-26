@@ -3,7 +3,7 @@
 -- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
- action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close')),
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close','country-my.statutory.update')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
@@ -15,6 +15,7 @@ CREATE TABLE app.assistant_own_leave_review (
  CHECK(CASE WHEN action_kind='system_testing.execution.save' THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NOT NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind IN ('knowledge_base.article.create','typed_pay_components.create') THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
+  WHEN action_kind='country-my.statutory.update' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind IN ('rewards.post','payroll.close') THEN employment_id IS NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='approvals.leave.decide' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
@@ -43,6 +44,10 @@ CREATE TABLE app.assistant_own_leave_review (
  CHECK(CASE WHEN action_kind='payroll.close' THEN payroll_close_batch_id IS NOT NULL AND payroll_close_period_id IS NOT NULL AND ((state='completed')=(payroll_closed_event_id IS NOT NULL))
   ELSE payroll_close_batch_id IS NULL AND payroll_close_period_id IS NULL AND payroll_closed_event_id IS NULL AND payroll_review_person_ids IS NULL END),
  CHECK(payroll_review_person_ids IS NULL OR array_position(payroll_review_person_ids,NULL) IS NULL),
+ -- Actual selected employment and shared target PERSON differ from the nullable actor PERSON.
+ country_statutory_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,country_statutory_id uuid,country_statutory_event_id uuid UNIQUE,
+ CHECK(CASE WHEN action_kind='country-my.statutory.update' THEN country_statutory_person_id IS NOT NULL AND country_statutory_id IS NOT NULL AND ((state='completed')=(country_statutory_event_id IS NOT NULL))
+  ELSE country_statutory_person_id IS NULL AND country_statutory_id IS NULL AND country_statutory_event_id IS NULL END),
  pay_component_id uuid UNIQUE,pay_component_created_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='typed_pay_components.create' THEN ((state='completed')=(pay_component_id IS NOT NULL AND pay_component_created_event_id IS NOT NULL)) ELSE pay_component_id IS NULL AND pay_component_created_event_id IS NULL END),
  CHECK((pay_component_id IS NULL)=(pay_component_created_event_id IS NULL)),
@@ -85,7 +90,7 @@ CREATE TABLE app.assistant_own_leave_review (
   WHEN action_kind='toil.replacement.request' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='knowledge_base.article.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
-  WHEN action_kind IN ('rewards.post','payroll.close') THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
+  WHEN action_kind IN ('rewards.post','payroll.close','country-my.statutory.update') THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='typed_pay_components.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='claims.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
@@ -143,6 +148,15 @@ REVOKE ALL ON TABLE app.assistant_review_erasure_intent FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- The access/privacy writer barrier precedes action row locks. Read Committed takes the post-lock
 -- identity snapshot. This verifies custody ownership, not leave eligibility, Assistant grants or pauses.
+-- Internal audited-erasure association only: no decrypt, content, public receipt or app grant.
+CREATE FUNCTION app._assistant_country_statutory_review_person(p_employment uuid,p_statutory uuid,p_person uuid,p_tenant uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_tenant=app.current_tenant_id() AND (
+  EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=p_tenant AND e.person_id=p_person)
+  OR EXISTS(SELECT 1 FROM public.employee_statutory_my s WHERE s.id=p_statutory AND s.tenant_id=p_tenant AND s.person_id=p_person));
+$$;
+REVOKE ALL ON FUNCTION app._assistant_country_statutory_review_person(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app._assistant_own_leave_review_identity(p_person uuid,p_employment uuid,p_company uuid) RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
@@ -378,7 +392,7 @@ BEGIN
   RAISE EXCEPTION 'Review erasure already prepared' USING ERRCODE='40001';END IF;
  -- Capture every current actor/subject/pending manager association before clearing pointers.
  SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO ids FROM app.assistant_own_leave_review r
-  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id
+  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id
    OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id);
  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
  GET DIAGNOSTICS total=ROW_COUNT;
@@ -400,7 +414,7 @@ BEGIN
   AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND person_id=NEW.aggregate_id;
  IF NOT FOUND THEN
   IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR NEW.aggregate_id=ANY(r.rewards_review_person_ids) OR NEW.aggregate_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=NEW.aggregate_id OR r.decision_applicant_person_id=NEW.aggregate_id OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
+   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.country_statutory_person_id=NEW.aggregate_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,NEW.aggregate_id,NEW.tenant_id)) OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR NEW.aggregate_id=ANY(r.rewards_review_person_ids) OR NEW.aggregate_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=NEW.aggregate_id OR r.decision_applicant_person_id=NEW.aggregate_id OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
    OR coalesce(NEW.payload->'erasedFields' ? 'assistantPreparedReviews',false) THEN
    RAISE EXCEPTION 'Review erasure admission unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
@@ -436,7 +450,7 @@ BEGIN
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND (id=ANY(i.review_ids) OR person_id=i.person_id OR lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(rewards_review_person_ids) OR i.person_id=ANY(payroll_review_person_ids) OR decision_subject_person_id=i.person_id OR decision_applicant_person_id=i.person_id OR org_subject_person_id=i.person_id OR org_manager_person_id=i.person_id OR org_previous_manager_person_id=i.person_id)
    AND (intent_digest IS NOT NULL OR reviewed_digest IS NOT NULL))
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
+   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.country_statutory_person_id=i.person_id OR (r.action_kind='country-my.statutory.update' AND app._assistant_country_statutory_review_person(r.employment_id,r.country_statutory_id,i.person_id,i.tenant_id)) OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR i.person_id=ANY(r.rewards_review_person_ids) OR i.person_id=ANY(r.payroll_review_person_ids) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
   RAISE EXCEPTION 'Review erasure incomplete' USING ERRCODE='42501';END IF;
  -- Do not remove the current-xact barrier here: SET CONSTRAINTS IMMEDIATE must not permit a later
  -- preparation in the same transaction. A later authorized custody call prunes the completed marker.
@@ -2536,3 +2550,149 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_payroll_close_body_retired() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER assistant_payroll_close_body_retired AFTER DELETE ON app.assistant_own_leave_review_content FOR EACH ROW EXECUTE FUNCTION app.assistant_payroll_close_body_retired();
+
+--> statement-breakpoint
+-- Closed existing Personnel EPF/SOCSO custody. No Identity/Tax/Bank/TP3/Zakat write authority.
+CREATE FUNCTION app._assistant_country_statutory_review_identity(p_person uuid,p_bind boolean DEFAULT true,p_write boolean DEFAULT true) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR current_setting('transaction_isolation')<>'read committed' OR (p_write AND current_setting('transaction_read_only')<>'off') THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id() AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND (p_bind IS NOT TRUE OR a.person_id IS NOT DISTINCT FROM p_person) AND (a.person_id IS NULL OR EXISTS(SELECT 1 FROM public.person actual WHERE actual.id=a.person_id AND actual.tenant_id=a.tenant_id))) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_country_statutory_review_identity(uuid,boolean,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_country_statutory_review_source(p_actor_person uuid,p_employment uuid,p_company uuid,p_subject_person uuid,p_statutory uuid) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(p_actor_person);
+ IF NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id JOIN public.person actual ON actual.id=e.person_id AND actual.tenant_id=e.tenant_id JOIN public.employee_statutory_my s ON s.person_id=e.person_id AND s.tenant_id=e.tenant_id
+  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND e.company_id=p_company AND c.country='MY' AND e.person_id=p_subject_person AND s.id=p_statutory
+  AND app.is_admin() AND app.can_see_person(e.person_id) AND app.is_admin_for(c.id) AND app.can_admin_payroll_employment(e.id) AND app.access_workforce_employment(e.id,'workforce.maintain')) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ -- This checks narrow custody/source identity, not module/grant/pause/granular field disclosure.
+ -- The trusted TS source repeats those native owners BEFORE private body access and owns row locks.
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_country_statutory_review_source(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_country_statutory_review_json(p_id uuid) RETURNS jsonb
+ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',jsonb_build_object('actionId',r.id,'action',r.action_kind,'contractVersion',1,
+ 'binding',jsonb_build_object('tenantId',r.tenant_id,'userId',r.user_id,'personId',r.person_id,'employmentId',r.employment_id,'companyId',r.company_id,'subjectPersonId',r.country_statutory_person_id,'statutoryId',r.country_statutory_id,'country','MY'),
+ 'intentDigest',r.intent_digest,'reviewedDigest',r.reviewed_digest,'state',r.state,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+ 'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object('formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
+ 'eventId',r.country_statutory_event_id)
+ FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id WHERE r.id=p_id AND r.action_kind='country-my.statutory.update';
+$$;
+REVOKE ALL ON FUNCTION app._assistant_country_statutory_review_json(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_prepare(p_id uuid,p_actor_person uuid,p_employment uuid,p_company uuid,p_subject_person uuid,p_statutory uuid,p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();at_time timestamptz;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_source(p_actor_person,p_employment,p_company,p_subject_person,p_statutory);
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=p_actor_person OR i.person_id=p_subject_person)) OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=p_actor_person OR i.person_id=p_subject_person)) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$' OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$' OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512 OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND state='awaiting_confirmation' AND expires_at>at_time)>=5 OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND created_at>at_time-interval '10 minutes')>=20 THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,country_statutory_person_id,country_statutory_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES('country-my.statutory.update',p_id,t,u,p_actor_person,p_employment,p_company,p_subject_person,p_statutory,p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);
+ RETURN app._assistant_country_statutory_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_subject(p_id uuid) RETURNS uuid
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='country-my.statutory.update';
+ IF NOT FOUND THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_country_statutory_review_identity(r.person_id);RETURN r.employment_id;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_subject(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_subject(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_peek(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='country-my.statutory.update';
+ IF NOT FOUND THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_country_statutory_review_source(r.person_id,r.employment_id,r.company_id,r.country_statutory_person_id,r.country_statutory_id);
+ IF r.state='awaiting_confirmation' AND NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('review',app._assistant_country_statutory_review_json(r.id),'pendingExpired',r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_peek(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_peek(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_read(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='country-my.statutory.update' FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_country_statutory_review_source(r.person_id,r.employment_id,r.company_id,r.country_statutory_person_id,r.country_statutory_id);
+ IF r.state='awaiting_confirmation' AND NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at THEN UPDATE app.assistant_own_leave_review SET state='expired',intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a WHERE c.action_id=a.id AND a.id=r.id AND a.state<>'awaiting_confirmation';
+ RETURN app._assistant_country_statutory_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_complete(p_id uuid,p_reviewed_digest text,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='country-my.statutory.update' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR p_event IS NULL THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_country_statutory_review_source(r.person_id,r.employment_id,r.company_id,r.country_statutory_person_id,r.country_statutory_id);
+ IF r.state='completed' THEN
+  IF r.country_statutory_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF r.reviewed_digest IS DISTINCT FROM p_reviewed_digest OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.employee_statutory_my s JOIN public.domain_event d ON d.tenant_id=s.tenant_id AND d.aggregate_id=s.id
+   WHERE s.id=r.country_statutory_id AND s.tenant_id=t AND s.person_id=r.country_statutory_person_id AND s.xmin=pg_current_xact_id()::xid
+   AND d.id=p_event AND d.xmin=pg_current_xact_id()::xid AND d.aggregate_type='employee-statutory-my' AND d.event_type='statutory.my.updated' AND d.actor_type='user' AND d.actor_id=u
+   AND (d.payload->>'personId')::uuid=r.country_statutory_person_id
+   AND (d.subject_employment_id IS NULL OR EXISTS(SELECT 1 FROM public.employment e WHERE e.id=d.subject_employment_id AND e.tenant_id=t AND e.person_id=r.country_statutory_person_id))
+   AND d.payload ?& ARRAY['epfElection','statutoryControls']::text[]) THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+  -- Exact current top-level native row/event refs do not prove arbitrary SQL used the engine.
+  -- Trusted source owns field admission, pass-through equality and canonical event provenance.
+  UPDATE app.assistant_own_leave_review SET state='completed',intent_digest=NULL,reviewed_digest=NULL,country_statutory_event_id=p_event WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_country_statutory_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_complete(uuid,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_complete(uuid,text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='country-my.statutory.update' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','country-my.statutory.update','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_country_statutory_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.action_kind='country-my.statutory.update' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_reviews_index() TO ai_hr_app;
