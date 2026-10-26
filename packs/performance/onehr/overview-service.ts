@@ -18,7 +18,7 @@ export async function getAssessmentOverview(ctx:SessionContext,cycleId?:string){
      jsonb_array_length(r.kpis)>0 as has_kpis,
      (r.results_submitted_at is not null or jsonb_array_length(r.kpis)>0 and not exists(select 1 from jsonb_array_elements(r.kpis) k where coalesce((k->>'hrOwned')::boolean,false)=false or coalesce((k->>'locked')::boolean,false)=false)) as submitted,
      jsonb_array_length(r.kpis)>0 and not exists(select 1 from jsonb_array_elements(r.kpis) k where k->'checkIn' is null or k->'checkIn'='null'::jsonb) as checked_in
-    from performance_onehr_review r join employment e on e.id=r.employment_id and e.tenant_id=r.tenant_id
+    from performance_onehr_review r join app.onehr_employment e on e.id=r.employment_id and e.tenant_id=r.tenant_id
     join company c on c.id=r.company_id and c.tenant_id=r.tenant_id left join company bg on bg.id=c.parent_company_id and bg.tenant_id=c.tenant_id
     where r.cycle_id=${id}::uuid and r.tenant_id=app.current_tenant_id() and app.onehr_admin(r.company_id) and app.onehr_admin(e.company_id)
      and app.assessment_review_participates(r.review_id) and (e.terminated_on is null or e.terminated_on>${todayInKualaLumpur()}::date)

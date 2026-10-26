@@ -76,14 +76,14 @@ async function main(){
  const senderProbe=postgres(senderDb.toString(),{max:1,connect_timeout:5});
  try{const [role]=await senderProbe`select r.rolname from pg_roles r where r.rolname=current_user and r.rolname='aihr_identity_email' and not r.rolsuper and not r.rolbypassrls and not r.rolcreaterole and not r.rolcreatedb and not r.rolreplication and not exists(select 1 from pg_auth_members m where m.member=r.oid) and not exists(select 1 from pg_class c where c.relowner=r.oid) and not exists(select 1 from pg_namespace n where n.nspowner=r.oid) and not exists(select 1 from pg_database d where d.datdba=r.oid)`;if(!role)throw new Error('Sender role is privileged.');}finally{await senderProbe.end();}
  const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
- const requiredNames=['internal-report-schedule.cjs','internal-report-tick','internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py','aihr-report-auth.socket','aihr-report-auth@.service','aihr-internal-report.socket','aihr-internal-report.service','aihr-report-renderer.socket','aihr-report-renderer@.service','aihrmanagedmail.slice','aihrmanagedmail-dispatch.slice'];
+ const requiredNames=['smtp-token-peer.py','aihr-smtp-token.socket','aihr-smtp-token@.service','internal-report-schedule.cjs','internal-report-tick','internal-report-agent.cjs','report-auth-broker.cjs','report-renderer.cjs','report-auth-peer.py','renderer-peer.py','verify-internal-report-isolation.py','aihr-report-auth.socket','aihr-report-auth@.service','aihr-internal-report.socket','aihr-internal-report.service','aihr-report-renderer.socket','aihr-report-renderer@.service','aihrmanagedmail.slice','aihrmanagedmail-dispatch.slice'];
  if(JSON.stringify(Object.keys(INTERNAL_REPORT_FILES).sort())!==JSON.stringify(requiredNames.sort()))throw new Error('Incomplete reviewed internal installation bundle.');
  const changes:[string,Uint8Array|string,number][]=[];
  for(const [name,record]of Object.entries(INTERNAL_REPORT_FILES)){
   if(!/^[-a-zA-Z0-9_.@]+$/.test(name))throw new Error('Invalid reviewed bundle name.');
   let bytes=Buffer.from(record.base64,'base64');if(hash(bytes)!==record.sha256||![0o644,0o755].includes(record.mode))throw new Error('Reviewed bundle mismatch.');
   const isUnit=name.endsWith('.service')||name.endsWith('.socket')||name.endsWith('.slice');
-  if(isUnit)bytes=Buffer.from(bytes.toString().replaceAll('@WEB_USER@',principal.user).replaceAll('@WEB_GROUP@',principal.group));
+  if(isUnit)bytes=Buffer.from(bytes.toString().replaceAll('@WEB_USER@',principal.user).replaceAll('@WEB_GROUP@',principal.group).replaceAll('@WEB_UID@',String(principal.uid)));
   changes.push([(isUnit?units:runtime)+'/'+name,bytes,record.mode]);
  }
  changes.push([runtime+'/internal-node',await readFile(node),0o755]);
@@ -102,8 +102,8 @@ async function main(){
  const oldSchemaUsage=(await owner.unsafe("select has_schema_privilege('aihr_identity_email','identity_email','USAGE') as allowed"))[0]?.allowed===true;
  const listedUnits=new Set(systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]));
  const stopWorkers=()=>stopInternalReportWorkers(systemctl);
- const oldActive=new Map<string,boolean>(),oldEnabled=new Map<string,boolean>();for(const socket of ['aihr-internal-report.socket','aihr-report-auth.socket','aihr-report-renderer.socket']){oldActive.set(socket,listedUnits.has(socket)&&systemctl('show',socket,'--property=ActiveState','--value').trim()==='active');let enabled=false;try{enabled=systemctl('is-enabled',socket).trim()==='enabled';}catch{}oldEnabled.set(socket,enabled);}
- if(systemctl('list-units','--state=active','--plain','--no-legend','aihr-report-auth@*.service','aihr-report-renderer@*.service').trim())throw new Error('Report requests are active; install only in an idle maintenance window.');
+ const oldActive=new Map<string,boolean>(),oldEnabled=new Map<string,boolean>();for(const socket of ['aihr-smtp-token.socket','aihr-internal-report.socket','aihr-report-auth.socket','aihr-report-renderer.socket']){oldActive.set(socket,listedUnits.has(socket)&&systemctl('show',socket,'--property=ActiveState','--value').trim()==='active');let enabled=false;try{enabled=systemctl('is-enabled',socket).trim()==='enabled';}catch{}oldEnabled.set(socket,enabled);}
+ if(systemctl('list-units','--state=active','--plain','--no-legend','aihr-smtp-token@*.service','aihr-report-auth@*.service','aihr-report-renderer@*.service').trim())throw new Error('Report requests are active; install only in an idle maintenance window.');
  oldActive.set('aihr-internal-report.service',listedUnits.has('aihr-internal-report.service')&&systemctl('show','aihr-internal-report.service','--property=ActiveState','--value').trim()==='active');
  try{
   // Direct revocation cannot remove inherited/PUBLIC authority. Refuse it rather than silently
@@ -113,7 +113,7 @@ async function main(){
   const tableAccess=await owner.unsafe("select c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind in ('r','p','v','m','f') and (has_table_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or has_any_column_privilege('aihr_identity_email',c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))");if(tableAccess.length)throw new Error('Sender retained HR/Auth table authority.');
   stopWorkers();
   for(const [path,value,mode]of changes)await atomic(path,value,mode);
-  systemctl('daemon-reload');systemctl('enable','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');systemctl('start','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');
+  systemctl('daemon-reload');systemctl('enable','aihr-smtp-token.socket','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');systemctl('start','aihr-smtp-token.socket','aihr-report-renderer.socket','aihr-report-auth.socket','aihr-internal-report.socket');
   command('runuser',['-u','aihr-identity-email','--','/usr/bin/python3','-I','-c',health]);
  }catch(error){
   try{stopWorkers();}catch{}

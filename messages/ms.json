@@ -10192,7 +10192,8 @@
         "super_admin": "super admin",
         "payroll_partner": "Rakan Penggajian",
         "performance_comp_partner": "Rakan Prestasi & Pampasan",
-        "operator": "Operator"
+        "operator": "Operator",
+        "performance_partner": "Rakan Prestasi"
       },
       "scope": {
         "accessConfiguration": "Hanya dibuka dengan kebenaran Urus keselamatan dan kebenaran yang berkuat kuasa. Peranan sahaja tidak memberikan akses.",
@@ -10226,7 +10227,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
-        "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "performance": "Pengurus dan ke atas, serta Rakan Prestasi untuk kitaran OneHR syarikat mereka sahaja; apa yang dipaparkan mengikut garis pelaporan dan skop sebenar anda.",
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
@@ -15343,7 +15344,8 @@
       "super_admin": "Pentadbir Super",
       "payroll_partner": "Rakan Gaji",
       "performance_comp_partner": "Rakan Prestasi/Pampasan",
-      "operator": "Operator"
+      "operator": "Operator",
+      "performance_partner": "Rakan Prestasi"
     }
   },
   "commandBar": {
@@ -17900,7 +17902,14 @@
     "activeTitle": "Geganti aktif",
     "activeSummary": "{host}:{port} · {from}",
     "notConfigured": "Tiada geganti yang disokong aktif. Jemputan dan pemulihan kata laluan belum tersedia.",
-    "tlsHelp": "Gunakan TLS tersirat (biasanya port 465) dengan sijil dipercayai. STARTTLS pada port 587 tidak disokong di sini.",
+    "tlsHelp": "TLS diperlukan: TLS terus (biasanya port 465) atau STARTTLS wajib (biasanya port 587). Sijil pelayan disahkan. Microsoft 365 menggunakan STARTTLS pada port 587.",
+    "microsoft365Authentication": "Microsoft 365 — OAuth2 aplikasi",
+    "tenantId": "ID direktori (penyewa)",
+    "clientId": "ID aplikasi (klien)",
+    "clientSecret": "Rahsia klien",
+    "clientSecretKept": "Biarkan kosong untuk mengekalkan rahsia bagi penyewa, aplikasi dan peti mel yang sama.",
+    "clientSecretNeeded": "Masukkan nilai rahsia klien, bukan ID rahsia.",
+    "microsoft365Help": "Pentadbir Microsoft 365 mesti memberikan SMTP.SendAsApp dan persetujuan pentadbir, mendaftarkan aplikasi dalam Exchange serta mengehadkan akses kepada peti mel penghantar. Nama pengguna ialah peti mel tersebut. AI HR memperoleh token jangka pendek secara automatik. Peti mel From yang lain turut memerlukan kebenaran Send As.",
     "draftTitle": "Draf geganti",
     "host": "Hos SMTP",
     "port": "Port",

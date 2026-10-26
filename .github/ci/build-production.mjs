@@ -10,7 +10,7 @@ const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const SHA=/^[a-f0-9]{40}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=message=>{throw Error('Production build producer refused: '+message);};
-export const STAGING_BUILD_RUNTIME=Object.freeze({node:'20.20.2',abi:'115',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'});
+export const STAGING_BUILD_RUNTIME=Object.freeze({node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'});
 
 export function assertBuildRuntime(runtime,environment){
  if(!isDeepStrictEqual(runtime,STAGING_BUILD_RUNTIME))fail('target runtime mismatch');

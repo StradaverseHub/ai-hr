@@ -10192,7 +10192,8 @@
         "super_admin": "超级管理员",
         "payroll_partner": "薪资合作伙伴",
         "performance_comp_partner": "绩效与薪酬合作伙伴",
-        "operator": "运营方"
+        "operator": "运营方",
+        "performance_partner": "绩效合作伙伴"
       },
       "scope": {
         "accessConfiguration": "仅限当前拥有“管理安全与权限”有效授权的用户。仅凭角色不能访问此页面。",
@@ -10226,7 +10227,7 @@
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
-        "performance": "经理及以上；显示内容取决于你实际的汇报线。",
+        "performance": "经理及以上，以及绩效合作伙伴（仅限其公司的 OneHR 周期）；显示内容取决于你实际的汇报线和权限范围。",
         "profileChanges": "查看在当前人事权限范围内分配给您的资料变更申请。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
@@ -15343,7 +15344,8 @@
       "super_admin": "超级管理员",
       "payroll_partner": "薪资合作伙伴",
       "performance_comp_partner": "绩效/薪酬合作伙伴",
-      "operator": "运营方"
+      "operator": "运营方",
+      "performance_partner": "绩效合作伙伴"
     }
   },
   "commandBar": {
@@ -17900,7 +17902,14 @@
     "activeTitle": "当前中继",
     "activeSummary": "{host}:{port} · {from}",
     "notConfigured": "尚无受支持的中继生效。账户邀请和密码恢复暂不可用。",
-    "tlsHelp": "请使用受信任证书的隐式 TLS（通常为端口 465）。此页面不支持端口 587 的 STARTTLS。",
+    "tlsHelp": "必须使用 TLS：隐式 TLS（通常为 465 端口）或强制 STARTTLS（通常为 587 端口）。系统会验证服务器证书。Microsoft 365 使用 587 端口的 STARTTLS。",
+    "microsoft365Authentication": "Microsoft 365 — 应用程序 OAuth2",
+    "tenantId": "目录（租户）ID",
+    "clientId": "应用程序（客户端）ID",
+    "clientSecret": "客户端密钥",
+    "clientSecretKept": "留空可保留同一租户、应用程序和邮箱的现有密钥。",
+    "clientSecretNeeded": "请输入客户端密钥的值，而非密钥 ID。",
+    "microsoft365Help": "Microsoft 365 管理员必须授予 SMTP.SendAsApp 和管理员同意，在 Exchange 中注册应用程序，并将访问权限限制为发件邮箱。用户名即该邮箱。AI HR 自动获取短期令牌。使用其他 From 邮箱还需要 Send As 权限。",
     "draftTitle": "中继草稿",
     "host": "SMTP 主机",
     "port": "端口",

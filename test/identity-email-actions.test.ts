@@ -1,4 +1,4 @@
-import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({guard:vi.fn(),ipc:vi.fn(),revalidate:vi.fn()}));
 vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:mocks.guard}));
 vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:mocks.ipc}));
@@ -7,6 +7,7 @@ vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRE
 import {saveEmailDraft,testEmailDraft,activateEmailDraft} from '../app/admin/settings/email/actions';
 const actor={issuer:'https://hr.test',subject:'server-derived',userId:'22222222-2222-4222-8222-222222222222',tenantId:'11111111-1111-4111-8111-111111111111'};
 beforeEach(()=>{vi.clearAllMocks();mocks.guard.mockResolvedValue({actor});mocks.ipc.mockResolvedValue({});});
+afterEach(()=>vi.unstubAllEnvs());
 describe('SMTP server action authentication boundary',()=>{
  it.each([saveEmailDraft,testEmailDraft,activateEmailDraft])('checks identity authority before any IPC operation',async action=>{
   mocks.guard.mockRejectedValue(new Error('denied'));await expect(action(new FormData())).rejects.toThrow('denied');expect(mocks.ipc).not.toHaveBeenCalled();
@@ -18,5 +19,12 @@ describe('SMTP server action authentication boundary',()=>{
  it('does not reflect a credential-bearing provider error into the redirect',async()=>{
   mocks.ipc.mockRejectedValue(new Error('AUTH very-secret'));const form=new FormData();form.set('draftId',crypto.randomUUID());
   await expect(testEmailDraft(form)).rejects.toThrow('error=unavailable');
+ });
+ it('saves application identity and required STARTTLS through the canonical owner action',async()=>{
+  vi.stubEnv('AUTH_PROVIDER','internal');const tenantId=crypto.randomUUID(),clientId=crypto.randomUUID(),form=new FormData();
+  for(const [key,value] of Object.entries({revision:'initial',host:'smtp.office365.com',port:'587',security:'starttls',auth:'microsoft365',tenantId,clientId,user:'sender@example.test',from:'sender@example.test',fromName:'HR',replyTo:'',password:'fictional-secret'}))form.set(key,value);
+  await expect(saveEmailDraft(form)).rejects.toThrow('success=save');expect(mocks.ipc).toHaveBeenCalledWith({op:'save',actor,revision:'initial',password:'fictional-secret',config:{host:'smtp.office365.com',port:587,security:'starttls',auth:true,authentication:'microsoft365',oauth2:{tenantId,clientId},user:'sender@example.test',from:'sender@example.test',fromName:'HR',replyTo:''}});
+  mocks.ipc.mockClear();form.set('security','tls');await expect(saveEmailDraft(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();
+  form.set('security','starttls');vi.stubEnv('AUTH_PROVIDER','keycloak');await expect(saveEmailDraft(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();
  });
 });

@@ -1,0 +1,238 @@
+{
+ "purpose": "Re-derivation of AI-HR's OneHR golden fixtures against OneHR 6e0a14e (Phase 3a EP-02, PD-PLAN-01)",
+ "method": "Python AST only. app.py never imported or started. Four pure functions and their literal dependencies compiled one definition at a time into an isolated namespace with a minimal builtins table; all other named functions compared by normalized AST fingerprint (no line numbers).",
+ "sources": {
+  "a644fd6": {
+   "appPySha256": "f0201b7df23a1a56e696671a8e13eab81cef412913351c58d9cb57e55dc776a4"
+  },
+  "6e0a14e": {
+   "appPySha256": "b166bc6be9cd7b82368c23bbe54524ca1f1d50c7f6c591f2edf113bbff6d7705"
+  },
+  "goldenInput": {
+   "file": "test/fixtures/onehr/source-golden.json",
+   "sha256": "32aacdcb4f7c0bc7cb7a1bd56238a65fadf520236df75f4a5404f16e61986eb9"
+  }
+ },
+ "executedFunctions": [
+  "pm_rating_mechanism_a",
+  "pm_pct_mechanism_b_base",
+  "pm_pct_mechanism_b_excellence",
+  "talent_category"
+ ],
+ "isolatedDependencies": {
+  "compiled": [
+   "TALENT_BOX_CATEGORIES",
+   "TALENT_PIP",
+   "pm_pct_mechanism_b_base",
+   "pm_pct_mechanism_b_excellence",
+   "pm_rating_mechanism_a",
+   "talent_category"
+  ],
+  "stubbedFunctions": [
+   "potential_band"
+  ]
+ },
+ "rerun": {
+  "scoring": {
+   "cases": 156,
+   "mismatches": []
+  },
+  "talent": {
+   "cases": 15,
+   "mismatches": []
+  }
+ },
+ "ratingExportHeader": {
+  "columns6e0a14e": 44,
+  "sameAsGolden": false
+ },
+ "functionDrift": [
+  {
+   "fixture": "source-golden.json",
+   "name": "pm_rating_mechanism_a",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 13318,
+    "astSha256": "5461e88b3b90e06239395103b86516d97b4985cb90c59de7d17bf7603c545ad3"
+   },
+   "6e0a14e": {
+    "line": 22450,
+    "astSha256": "5461e88b3b90e06239395103b86516d97b4985cb90c59de7d17bf7603c545ad3"
+   }
+  },
+  {
+   "fixture": "source-golden.json",
+   "name": "pm_pct_mechanism_b_base",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 13339,
+    "astSha256": "bd56f9e7939c762b1a8c91b3d4782e22891a9c5c8454f6141abe3e00413dc5fe"
+   },
+   "6e0a14e": {
+    "line": 22471,
+    "astSha256": "bd56f9e7939c762b1a8c91b3d4782e22891a9c5c8454f6141abe3e00413dc5fe"
+   }
+  },
+  {
+   "fixture": "source-golden.json",
+   "name": "pm_pct_mechanism_b_excellence",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 13360,
+    "astSha256": "8b0d10de7abd8e4bb6951f9ac28b947ba517f5c76fcd442d43d5e82dde711b2e"
+   },
+   "6e0a14e": {
+    "line": 22492,
+    "astSha256": "8b0d10de7abd8e4bb6951f9ac28b947ba517f5c76fcd442d43d5e82dde711b2e"
+   }
+  },
+  {
+   "fixture": "source-golden.json",
+   "name": "talent_category",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 14192,
+    "astSha256": "f16e808531eedb15be878194c59fd4d4ea78fb646be3440965e19da1794df040"
+   },
+   "6e0a14e": {
+    "line": 23329,
+    "astSha256": "f16e808531eedb15be878194c59fd4d4ea78fb646be3440965e19da1794df040"
+   }
+  },
+  {
+   "fixture": "source-golden.json",
+   "name": "_RR_EXPORT_HEADER",
+   "status": "changed",
+   "a644fd6": {
+    "line": 57021,
+    "astSha256": "a2cb057543d5f21014e137f2351b9c1d2b7672e3ad378a959f26a15066132d75"
+   },
+   "6e0a14e": {
+    "line": 81236,
+    "astSha256": "9a0d173ec9a469bd6c06dc15d68cd20d3840cfc337e8285f240104a5a47a807b"
+   }
+  },
+  {
+   "fixture": "career-grade-golden.json",
+   "name": "_jg_rank",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 6706,
+    "astSha256": "a6cbcd32ca8d5712c97b2d08d4f7d816510490a4742c6b819415828e2bd1ec4f"
+   },
+   "6e0a14e": {
+    "line": 11393,
+    "astSha256": "a6cbcd32ca8d5712c97b2d08d4f7d816510490a4742c6b819415828e2bd1ec4f"
+   }
+  },
+  {
+   "fixture": "career-grade-golden.json",
+   "name": "_career_cap_grades",
+   "status": "changed",
+   "a644fd6": {
+    "line": 25096,
+    "astSha256": "6245f225ba283e4bfe743aa1db965e265170f52bc170ac76494ddb9d5500aa71"
+   },
+   "6e0a14e": {
+    "line": 38338,
+    "astSha256": "a2b88962e546aacef9c05744cf77d043579dfe277643115d1c3b68ce6531046d"
+   }
+  },
+  {
+   "fixture": "development-suggestion-golden.json",
+   "name": "_pm_parse_idp_goals",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 39362,
+    "astSha256": "b71a5c4897f82b7a34f481d308a90bf1b808b69ff40e9db328d7e3c47b680dbe"
+   },
+   "6e0a14e": {
+    "line": 55377,
+    "astSha256": "b71a5c4897f82b7a34f481d308a90bf1b808b69ff40e9db328d7e3c47b680dbe"
+   }
+  },
+  {
+   "fixture": "final-band-golden.json",
+   "name": "calib_suggest",
+   "status": "changed",
+   "a644fd6": {
+    "line": 44086,
+    "astSha256": "b49e03a89fb48a3ee969770c491dcbef5c0ae847c79462c5663a29be03e58e7b"
+   },
+   "6e0a14e": {
+    "line": 60538,
+    "astSha256": "52f112e34320a3ce4d4a89db327532de235174496f5fb90e76f7e460867ad4ff"
+   }
+  },
+  {
+   "fixture": "reminder-golden.json",
+   "name": "reminder_reasons",
+   "status": "changed",
+   "a644fd6": {
+    "line": 57786,
+    "astSha256": "8047b21e86808a28906bb2dd7a5f6052deb9cc14b2b2cab20559b10cdf6e399c"
+   },
+   "6e0a14e": {
+    "line": 83352,
+    "astSha256": "21f25daf7a11c0e648ee1eb6e1eb80433527ff50fdb0ddbf906d249300f3cde3"
+   }
+  },
+  {
+   "fixture": "reminder-golden.json",
+   "name": "_lc_first",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 57818,
+    "astSha256": "5a82963dc7dde01569171929ee5b3beaaf8739334a3d7644ed91060f6afb7856"
+   },
+   "6e0a14e": {
+    "line": 83402,
+    "astSha256": "5a82963dc7dde01569171929ee5b3beaaf8739334a3d7644ed91060f6afb7856"
+   }
+  },
+  {
+   "fixture": "rewrite-golden.json",
+   "name": "_rewrite_grounding_error",
+   "status": "unchanged",
+   "a644fd6": {
+    "line": 25986,
+    "astSha256": "98506c4a61a253a676d2ad2ef82707143bcb61a91166d0fd8f614f17b62a5987"
+   },
+   "6e0a14e": {
+    "line": 39462,
+    "astSha256": "98506c4a61a253a676d2ad2ef82707143bcb61a91166d0fd8f614f17b62a5987"
+   }
+  },
+  {
+   "fixture": "talent-trail-golden.json",
+   "name": "_tb_band_trails",
+   "status": "changed",
+   "a644fd6": {
+    "line": 19657,
+    "astSha256": "a60499dd0e7bfcb5911b7bc0bc1f4b27ba29d0b879bd5aeace7214b7123bd4e6"
+   },
+   "6e0a14e": {
+    "line": 32409,
+    "astSha256": "7c7d7fc10a40df197554632cda6916666fd9305ec99f736d259d89217db5a92e"
+   }
+  }
+ ],
+ "unrecordedProvenance": "Fixtures whose metadata does not name their source function cannot be re-verified mechanically; see the README for the list.",
+ "characterization": {
+  "_RR_EXPORT_HEADER": "6e0a14e adds one column, 'Potential band after super admin', after 'Potential band after calibration group' (43 -> 44). Native export keeps 43 until the rating-record delta is approved (ADR-0140 M16).",
+  "_career_cap_grades": "6e0a14e also returns roles marked next_step above the current grade beyond the span limit. Career-route delta; business confirmation pending.",
+  "calib_suggest": "6e0a14e adds an optional band order so the Group blend also serves potential (Low/Mid/High). Default (performance) order and arithmetic unchanged; existing final-band cases remain valid for performance.",
+  "reminder_reasons": "6e0a14e reduces the function to a delegate (30 -> 5 lines); behaviour was not re-derived here and stays UNVERIFIED for 6e0a14e.",
+  "_tb_band_trails": "6e0a14e keys the BU-CEO trail by bu_scope_key (calibration groups and joined units, deferred by ORG-D-06) instead of the company name."
+ },
+ "unchangedVerified": [
+  "pm_rating_mechanism_a",
+  "pm_pct_mechanism_b_base",
+  "pm_pct_mechanism_b_excellence",
+  "talent_category",
+  "_jg_rank",
+  "_pm_parse_idp_goals",
+  "_lc_first",
+  "_rewrite_grounding_error"
+ ]
+}

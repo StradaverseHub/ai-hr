@@ -11,7 +11,7 @@ export function buildPacketFixture(expected={}){
  const manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n'),observationBytes=Buffer.from(JSON.stringify(observation)+'\n');
  const lockBytes=Buffer.from('synthetic-lock'),packageBytes=Buffer.from('synthetic-package');
  const provenance={format:1,kind:'ci-system-testing-build-candidate',source,controller,repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId,runAttempt:1,
- workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+branch,runtime:{node:'20.20.2',abi:'115',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'},
+ workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+branch,runtime:{node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'},
  buildRecordId:prepared.identity.buildRecordId,nextBuildId:manifest.nextBuildId,buildSourcePath:'/home/runner/work/ai-hr/ai-hr/source',releaseAuthorized:false,
  lockSha256:fixtureHash(lockBytes),packageSha256:fixtureHash(packageBytes),preparedSha256:fixtureHash(preparedBytes),successfulObservationSha256:fixtureHash(observationBytes),
  manifestSha256:fixtureHash(manifestBytes),archiveSha256:manifest.archiveSha256,archiveBytes:archive.length};

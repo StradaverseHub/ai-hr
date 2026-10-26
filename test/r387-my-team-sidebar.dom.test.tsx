@@ -46,7 +46,7 @@ describe('My Team keeps its exact role boundary inside People',()=>{
     expect(within(leave).queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
   });
 
-  it.each(['employee','payroll_partner','performance_comp_partner'])('%s retains the calendar but cannot acquire My Team through the broader admin rail',role=>{
+  it.each(['employee','payroll_partner','performance_comp_partner','performance_partner'])('%s retains the calendar but cannot acquire My Team through the broader admin rail',role=>{
     rail([role]);
     const peopleTrigger=screen.queryByRole('button',{name:messages.nav.modulePeople});
     if(peopleTrigger) {

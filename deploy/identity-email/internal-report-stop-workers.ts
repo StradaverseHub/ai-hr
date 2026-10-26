@@ -1,6 +1,6 @@
 /** Stop only the internal report installation's owned unit names. */
 export function stopInternalReportWorkers(systemctl:(...args:string[])=>string){
- const owned=systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]).filter(unit=>['aihr-internal-report.socket','aihr-internal-report.service','aihr-report-auth.socket','aihr-report-renderer.socket'].includes(unit)||((unit.startsWith('aihr-report-auth@')||unit.startsWith('aihr-report-renderer@'))&&unit.endsWith('.service')));
+ const owned=systemctl('list-units','--all','--plain','--no-legend').split('\n').map(line=>line.trim().split(/\s+/)[0]).filter(unit=>['aihr-smtp-token.socket','aihr-internal-report.socket','aihr-internal-report.service','aihr-report-auth.socket','aihr-report-renderer.socket'].includes(unit)||((unit.startsWith('aihr-smtp-token@')||unit.startsWith('aihr-report-auth@')||unit.startsWith('aihr-report-renderer@'))&&unit.endsWith('.service')));
  const existing=owned.filter(unit=>{
   const state:Record<string,string>={};
   for(const row of systemctl('show',unit,'--property=LoadState','--property=ActiveState','--property=MainPID').trim().split('\n')){

@@ -127,6 +127,43 @@
       "scope": "Both unchanged unclocked/attested financial files: original32cases, scheduling hints only; other68not rerun",
       "artifactId": 12633607689,
       "sha256": "61aaba4bd307a1a150f2f28c0fbecc5c135be535f2b7a0da55e7ad36bee1ecdc"
+    },
+    {
+      "runId": 40345479694,
+      "candidate": "e136a9e24aa5c6686ca435276d23321a56cd2996",
+      "controller": "e136a9e24aa5c6686ca435276d23321a56cd2996",
+      "conclusion": "success",
+      "scope": "Focused file timings only; no release authority",
+      "files": [
+        "test/attendance-policy-storage-attested-financial.test.ts",
+        "test/attendance-policy-storage-attested-toil.test.ts"
+      ],
+      "artifacts": [
+        {
+          "artifactId": 12661865612,
+          "name": "focused-development-evidence",
+          "sha256": "1527bc1a2916721b250572402db52b281e90df8d3cfd6b82ed57f80bc0cfa270"
+        }
+      ]
+    },
+    {
+      "runId": 40347954154,
+      "candidate": "c706b67dafe79d7becfd307041e2863577173c25",
+      "controller": "c706b67dafe79d7becfd307041e2863577173c25",
+      "conclusion": "success",
+      "scope": "Focused file timings only; no release authority",
+      "files": [
+        "test/r395-write-path-equivalence.test.ts",
+        "test/r395-write-contexts-secondary.test.ts",
+        "test/r395-write-contexts-tertiary.test.ts"
+      ],
+      "artifacts": [
+        {
+          "artifactId": 12663270688,
+          "name": "focused-development-evidence",
+          "sha256": "9f6939737993d1035dc70eca193057dbc2fca5cb89f8b876d6949085e4317773"
+        }
+      ]
     }
   ],
   "durationsMs": {
@@ -958,7 +995,7 @@
     "test/r394-with-tenant-one-round-trip.test.ts": 69,
     "test/r395-policy-visibility-guard.test.ts": 294,
     "test/r395-visibility-equivalence.test.ts": 272152,
-    "test/r395-write-path-equivalence.test.ts": 166230,
+    "test/r395-write-path-equivalence.test.ts": 131338,
     "test/r397-my-leave-equivalence.test.ts": 19190,
     "test/r400-monolith-primitives.test.ts": 115,
     "test/r404-leave-details.test.ts": 26916,
@@ -1117,8 +1154,10 @@
     "test/zakat-in-total-deductions-3a092cf0.test.ts": 4919,
     "test/zakat-loans-employee-first.test.ts": 21881,
     "test/zakat.test.ts": 16519,
-    "test/r395-write-contexts-secondary.test.ts": 168863,
-    "test/attendance-policy-storage-attested-financial.test.ts": 211895
+    "test/r395-write-contexts-secondary.test.ts": 142578,
+    "test/attendance-policy-storage-attested-financial.test.ts": 119312,
+    "test/attendance-policy-storage-attested-toil.test.ts": 121011,
+    "test/r395-write-contexts-tertiary.test.ts": 107714
   },
   "limits": [
     "File intervals overlap workers and include setup/hooks; they are estimates, not CPU cost or a completion bound.",
