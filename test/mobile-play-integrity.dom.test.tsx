@@ -28,7 +28,7 @@ describe('bounded Google Play standard-token verification boundary',()=>{
     expect(result).toEqual({status:'evidence',vendorVerification:'google_api',evidence:{appRecognition:'PLAY_RECOGNIZED',licensing:'LICENSED',deviceLabels:['MEETS_DEVICE_INTEGRITY'],unknownDeviceLabels:false,requestedAt:now}});
     expect(f.accessToken).toHaveBeenCalledExactlyOnceWith('https://www.googleapis.com/auth/playintegrity',expect.any(AbortSignal));
     expect(f.transport).toHaveBeenCalledExactlyOnceWith(`https://playintegrity.googleapis.com/v1/${pkg}:decodeIntegrityToken`,expect.objectContaining({
-      method:'POST',redirect:'error',cache:'no-store',headers:expect.objectContaining({authorization:'Bearer synthetic-access-token'}),body:JSON.stringify({integrity_token:'synthetic-integrity-token'})}));
+      method:'POST',redirect:'error',cache:'no-store',headers:expect.objectContaining({authorization:'Bearer synthetic-access-token'}),body:JSON.stringify({integrityToken:'synthetic-integrity-token'})}));
   });
   it('does not contact a provider for missing configuration, bad token, wrong platform or unsupported build',async()=>{
     const f=fixture();
@@ -106,5 +106,14 @@ describe('bounded Google Play standard-token verification boundary',()=>{
     const bad=createPlayIntegrityVerifier({...f.config,packageName:pkg+'\n'},f.accessToken,{transport:f.transport});
     expect(await bad('token',f.request)).toMatchObject({status:'unavailable',reason:'not_configured'});
     expect(f.transport).toHaveBeenCalledOnce();
+  });
+  it('refuses malformed version/digest configuration without throwing or reading credentials',async()=>{
+    const f=fixture();
+    for(const change of [{versionCodes:['not-an-integer']},{versionCodes:['9223372036854775808']},{versionCodes:['1\n']},
+      {certificateDigests:[certificate+'\n']},{certificateDigests:['short']}]){
+      const verify=createPlayIntegrityVerifier({...f.config,...change},f.accessToken,{transport:f.transport});
+      expect(await verify('token',f.request)).toEqual({status:'unavailable',reason:'not_configured'});
+    }
+    expect(f.accessToken).not.toHaveBeenCalled();expect(f.transport).not.toHaveBeenCalled();
   });
 });

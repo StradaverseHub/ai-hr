@@ -6,7 +6,7 @@ import {OnlineClockIntegrityData} from '../mobile-clock-integrity';
 import {onlineClockClientDataHash} from './clock-integrity';
 
 const digest=z.string().max(44).regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]=?$/).refine(value=>value.trim()===value).transform(value=>value.replace(/=$/,''));
-const version=z.string().max(19).regex(/^[1-9][0-9]*$/).refine(value=>value.trim()===value&&BigInt(value)<=BigInt('9223372036854775807'));
+const version=z.string().max(19).regex(/^[1-9][0-9]*$/).refine(value=>value.trim()===value&&/^[1-9][0-9]{0,18}$/.test(value)&&BigInt(value)<=BigInt('9223372036854775807'));
 const configuration=z.object({packageName:z.string().max(255).regex(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/).refine(value=>value.trim()===value),
   certificateDigests:z.array(digest).min(1).max(8),versionCodes:z.array(version).min(1).max(20)}).strict();
 const payload=z.object({tokenPayloadExternal:z.object({
@@ -41,9 +41,9 @@ export function createPlayIntegrityVerifier(config:unknown,accessToken:PlayAcces
       !Number.isSafeInteger(started)||!Number.isSafeInteger(request.challengeIssuedAt)||request.challengeIssuedAt<1||
       command.data.evidence.platform!=='android'||command.data.evidence.appId!==settings.packageName||
       !settings.versionCodes.includes(command.data.evidence.buildVersion))return {status:'invalid',reason:'invalid_input'};
-    const expires=command.data.challenge.expiresAt;
+    const boundCommand=command.data,expires=boundCommand.challenge.expiresAt;
     if(request.challengeIssuedAt>started||request.challengeIssuedAt>=expires||started>expires)return {status:'invalid',reason:'expired_challenge'};
-    const expectedHash=onlineClockClientDataHash(command.data).toString('base64url');
+    const expectedHash=onlineClockClientDataHash(boundCommand).toString('base64url');
     const controller=new AbortController(),cancelled=Symbol('play-integrity-cancelled');
     let stopped:'timeout'|'aborted'|undefined,timer:ReturnType<typeof setTimeout>|undefined,abort:()=>void=()=>{};
     const interrupted=new Promise<never>((_,reject)=>{
@@ -58,7 +58,7 @@ export function createPlayIntegrityVerifier(config:unknown,accessToken:PlayAcces
       if(typeof bearer!=='string'||bearer.length<1||bearer.length>16384||bearer.trim()!==bearer||!/^[A-Za-z0-9._~+/-]+=*$/.test(bearer))return {status:'unavailable',reason:'provider_configuration'};
       const response=await transport(`https://playintegrity.googleapis.com/v1/${settings.packageName}:decodeIntegrityToken`,{
         method:'POST',headers:{authorization:`Bearer ${bearer}`,'content-type':'application/json',accept:'application/json'},
-        body:JSON.stringify({integrity_token:token}),cache:'no-store',redirect:'error',signal:controller.signal,
+        body:JSON.stringify({integrityToken:token}),cache:'no-store',redirect:'error',signal:controller.signal,
       });
       if(response.status!==200){
         void response.body?.cancel().catch(()=>{});
@@ -79,7 +79,7 @@ export function createPlayIntegrityVerifier(config:unknown,accessToken:PlayAcces
       const app=value.appIntegrity;
       // Google clears reused standard tokens. Missing evaluation is never a passing cached verdict.
       if(app.appRecognitionVerdict==='UNEVALUATED')return {status:'unavailable',reason:'not_evaluated'};
-      if(app.packageName!==settings.packageName||app.versionCode!==command.data.evidence.buildVersion||!settings.versionCodes.includes(app.versionCode)||
+      if(app.packageName!==settings.packageName||app.versionCode!==boundCommand.evidence.buildVersion||!settings.versionCodes.includes(app.versionCode)||
         !app.certificateSha256Digest?.length||app.certificateSha256Digest.some(item=>!settings.certificateDigests.includes(item)))return {status:'invalid',reason:'app_mismatch'};
       const labels=value.deviceIntegrity.deviceRecognitionVerdict??[];
       return {status:'evidence',vendorVerification:'google_api',evidence:{appRecognition:app.appRecognitionVerdict,
