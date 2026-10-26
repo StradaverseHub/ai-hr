@@ -1914,3 +1914,48 @@ mutation. ALL UNRUN; AST syntax/diff review only. This does not cover every earl
 roster derivation: template-generation source reads, fixed/dated shifts, schedule
 assignment/bulk controls and other config/Attendance/TOIL writers remain pending.
 No universal barrier, latency, concurrency or security readiness is established.
+
+
+OpenRouter bounded transport source preparation — UNREGISTERED / UNRUN
+
+The human reaffirmed completing all three stages before one combined final gate
+and one deployment, retaining valid development passes. Mobile currently owns the
+local runtime window; source preparation does not consume it.
+
+Fresh primary references checked on 26 October 2026:
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/guides/routing/provider-selection
+https://openrouter.ai/docs/guides/features/tool-calling
+The current API field reference marks `max_tokens` deprecated in favor of
+`max_completion_tokens`, although its introductory examples still use the former.
+The new unregistered boundary uses the explicit current field. Routing uses the
+existing approved-provider policy; policy filters are not a compliance guarantee.
+
+`buildOpenRouterRequest` emits a fixed non-streaming text/tool protocol with
+bounded messages/tools/token request and UTF-8 wire size, strict advertised local
+tool schemas, and exact pending call/result ID/name correlation. It rejects duplicate,
+unknown, orphaned or unfinished calls instead of silently repairing them. Routing,
+key, plugins, user/session identifiers, cache hints and opaque provider continuation
+state cannot enter through a generic input spread. Routing comes only from separate
+server configuration, with the existing privacy/filter constraints retained.
+
+`createOpenRouterTransport` takes only a server/test fetch dependency; it retains
+no key or tenant configuration at factory scope. Each invocation serializes before
+awaits and makes one POST to the fixed official endpoint, with redirect/error,
+no-store, no retries, per-round deadline and caller cancellation across headers and
+body reads. JSON response reading has byte/read-fragment limits, strict UTF-8 and
+content-type checks; raw provider/network failures are bounded generic errors without
+causes. The existing response and accounting readers return completion plus honest
+nullable account-credit/usage metadata and observed round-trip elapsed time. None of
+this establishes current calling-user authorization/redaction, provider capability,
+cost settlement, measured performance or permission to transfer an HR field.
+
+Authored mocked-only cases cover protocol/privacy fields, malformed tool histories,
+UTF-8 request bounds, prohibited endpoint/plugins/automatic model routing, exact one
+POST, explicit-zero versus unknown accounting, generic HTTP/body/network errors,
+oversized/non-JSON responses, pre-cancel, ignored-signal timeout, stalled body cancel
+and excessive empty fragments. ALL UNRUN; syntax AST/diff only. No credentials,
+provider API calls, registry/config/tenant enablement or HR data transfer occurred.
+Actual adapter registration, secure tenant routing/key configuration, pre-provider
+fresh permission/minimal-field enforcement, usage settlement, privacy/security tests,
+model/capability evaluation and workspace integration remain required before release.
