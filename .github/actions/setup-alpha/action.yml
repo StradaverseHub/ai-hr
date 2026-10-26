@@ -7,11 +7,23 @@ inputs:
   path:
     description: Candidate checkout
     default: source
+  mobile:
+    description: Install native SDK dependencies; keep enabled for all test/compiler jobs
+    default: 'true'
+  capacity_profile:
+    description: Legacy cleanup or reviewed bounded compiler/build/suite capacity
+    default: legacy
 runs:
   using: composite
   steps:
     - shell: bash
-      run: bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh"
+      run: |
+        if [[ "${{ inputs.capacity_profile }}" == bounded-suite-setup ]]; then
+          bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh" | tee -a "$RUNNER_TEMP/suite-capacity-preparation.log"
+        else
+          bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh"
+        fi
+      env: {AIHR_CI_CAPACITY_PROFILE: '${{ inputs.capacity_profile }}'}
     - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
       with:
         version: 10.33.2
@@ -20,9 +32,26 @@ runs:
         node-version: ${{ inputs.node }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.path }}/pnpm-lock.yaml
-    - shell: bash
-      working-directory: ${{ inputs.path }}
+    - name: Validate dependency scope
+      shell: bash
+      env: {INSTALL_MOBILE: '${{ inputs.mobile }}'}
       run: |
-        pnpm install --frozen-lockfile
-        npm ci --prefix mobile --no-audit --no-fund
-        cp .env.example .env.local
+        case "$INSTALL_MOBILE" in true|false) ;; *) echo 'Invalid mobile installation scope' >&2; exit 2 ;; esac
+    - name: Install web and tooling dependencies
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: pnpm install --frozen-lockfile
+    - name: Install native SDK dependencies
+      if: ${{ inputs.mobile == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: npm ci --prefix mobile --no-audit --no-fund
+    - name: Prepare disposable environment
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: cp .env.example .env.local
+    - name: Enforce post-dependency suite capacity
+      if: ${{ inputs.capacity_profile == 'bounded-suite-setup' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/../../ci/prepare-runner.sh" | tee -a "$RUNNER_TEMP/suite-capacity-preparation.log"
+      env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}

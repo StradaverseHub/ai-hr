@@ -364,12 +364,16 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
   **zero AssertionErrors**, including a pure-JSON locale test, which can only time out and never genuinely
   miss a key. So during a gate agents read, write and commit; they do not run `tsc`, `vitest`,
   `next build`, `db:seed` or a dev server.
-  **Make the lock enforce it rather than asking agents to police it — hold BOTH slots by nesting:**
-  `bash ~/.aihr-gate-state/testlock.sh gate-a -- bash ~/.aihr-gate-state/testlock.sh gate-b -- <gate>`.
-  Nesting also **self-sequences**: it blocks until a builder's in-flight `tsc` releases its slot, so no
-  process has to be killed. `devdb-lock.sh` has ONE holder and
-  **does not reap dead holders**: if you are killed holding it, everyone blocks.
-- Worked workflow scripts: `scripts/improve/*.workflow.js`.
+  **Acquire the whole gate resource set in one call.** The repository gate helper now reserves
+  both test slots plus the database atomically. Call `bash scripts/gate.sh …` directly. Do not
+  nest individual test locks around it: partial outer reservations refuse with exit 78 rather
+  than waiting while holding a resource. For a coordinated multi-phase wrapper use
+  `python3 scripts/local-resource-lock.py --test-slots 2 --database NAME -- COMMAND …`.
+  Already complete ancestor reservations remain compatible. The launcher preserves all foreign,
+  uncertain and extra-capacity legacy leases and waits holding none. It does not replace shared
+  host scripts or recover existing stuck owners. Read `docs/LOCAL-RESOURCE-LOCKS.md` before
+  adopting it into a frozen command. Focused non-gate jobs still use their appropriate host locks.
+
 
 ## 11. The code graph
 

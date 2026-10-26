@@ -35,18 +35,25 @@ gate_slots_held_by_ancestors() {
   echo "$n"
 }
 
-# Hold BOTH test-lock slots for the rest of this script (CLAUDE.md §10): a gate rebuilds the cluster,
-# which destroys every concurrent vitest's databases whatever its TEST_DB_NAMESPACE. Re-execs the script
-# under the nested lock unless an ancestor already holds both. Usage: gate_hold_both_slots "$SCRIPT" "$@"
+# Gate entry points reserve the complete memory+database set before starting.
+# Already complete legacy callers remain compatible; partial upgrades refuse instead
+# of holding one resource while waiting for another. No shared host script is replaced.
 gate_hold_both_slots() {
-  local lock="${AIHR_TESTLOCK:-$HOME/.aihr-gate-state/testlock.sh}" held
+  local lock="${AIHR_TESTLOCK:-$HOME/.aihr-gate-state/testlock.sh}" held database launcher
   if [ ! -f "$lock" ]; then
     echo "▸ WARNING: no test lock at $lock — running unlocked (not this machine's normal setup)"
     return 0
   fi
-  held=$(gate_slots_held_by_ancestors)
-  [ "$held" -ge 2 ] && { echo "▸ test lock: both slots held"; return 0; }
-  echo "▸ test lock: acquiring $((2 - held)) more slot(s) — blocks until running vitest/tsc/gates release them"
-  if [ "$held" = "1" ]; then exec bash "$lock" gate-b -- bash "$@"; fi
-  exec bash "$lock" gate-a -- bash "$lock" gate-b -- bash "$@"
+  held=$(AIHR_LOCK_DIR="$HOME/.aihr-gate-state/locks" gate_slots_held_by_ancestors)
+  database=$(AIHR_LOCK_DIR="$HOME/.aihr-gate-state/devdb-locks" gate_slots_held_by_ancestors)
+  if [ "$held" -ge 2 ] && [ "$database" -ge 1 ]; then
+    echo "▸ gate resources: complete ancestor reservation held"
+    return 0
+  fi
+  if [ "$held" -gt 0 ] || [ "$database" -gt 0 ]; then
+    echo "Gate resource upgrade refused: release partial outer leases and call this entry directly, or reserve both test slots and the database atomically." >&2
+    exit 78
+  fi
+  launcher="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/local-resource-lock.py"
+  exec python3 "$launcher" --test-slots 2 --database final-gate -- bash "$@"
 }
