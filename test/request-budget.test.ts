@@ -44,7 +44,15 @@ describe('request boundaries',()=>{
     const req=new Request('https://hr.test',{headers:{'x-forwarded-for':'198.51.100.8','x-aihr-request-source':'198.51.100.9'}});
     vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE','0');expect(trustedRequestSource(req)).toBeNull();
     vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE','1');expect(trustedRequestSource(req)).toBe('198.51.100.9');
-    expect(trustedRequestSource(new Request('https://hr.test',{headers:{'x-aihr-request-source':'198.51.100.9, 198.51.100.8'}}))).toBeNull();
+    expect(()=>trustedRequestSource(new Request('https://hr.test',{headers:{'x-aihr-request-source':'198.51.100.9, 198.51.100.8'}}))).toThrow('Trusted request source unavailable');
+    expect(()=>trustedRequestSource(new Request('https://hr.test'))).toThrow('Trusted request source unavailable');
+    expect(trustedRequestSource(new Request('https://hr.test',{headers:{'x-aihr-request-source':'2001:db8::1'}}))).toBe('2001:db8::1');
+  });
+  it('refuses missing trusted ingress identity before session resolution or endpoint work',async()=>{
+    vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE','1');
+    const resolve=vi.fn(async()=>({tenantId:'tenant',userId:'actor'})),execute=vi.fn(async()=>({ok:true})),budget=vi.fn();
+    const response=await mobileRoute(z.object({ok:z.boolean()}),execute,resolve,budget)(new Request('https://hr.test/api/mobile/v1/me'));
+    expect(response.status).toBe(503);expect(resolve).not.toHaveBeenCalled();expect(budget).not.toHaveBeenCalled();expect(execute).not.toHaveBeenCalled();
   });
   it('bounds outstanding work and releases admission exactly once',()=>{
     const admit=createRequestAdmission(1),release=admit();expect(()=>admit()).toThrow(RequestBudgetExceeded);release();release();const second=admit();expect(()=>admit()).toThrow(RequestBudgetExceeded);second();

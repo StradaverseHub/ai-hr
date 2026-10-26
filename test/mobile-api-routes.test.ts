@@ -109,6 +109,7 @@ describe('GET /me', () => {
     const { res, text, body } = await call(getMe, 'me');
     expect(res.status).toBe(200);
     expect(body.apiVersion).toBe('v1');
+    expect(body.actorId).toBe(a.ctx.userId);
     expect(body.employments).toEqual([
       expect.objectContaining({ employmentId: a.employmentId, company: 'Acme Sdn Bhd' }),
     ]);

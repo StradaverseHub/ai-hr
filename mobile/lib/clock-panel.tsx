@@ -13,6 +13,8 @@ import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-draf
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
 import { t,appLocale } from './i18n';
+import { useSubmissionRecovery } from './submission-recovery';
+import { ClockCommand } from '../../lib/mobile-api/contract';
 import { Button,Card,LoadState,Muted,Row } from './ui';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
@@ -26,16 +28,15 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const current=clock.data?.state;
   const action=draft?.action??(current?.clockedIn?'out':'in');
   const identity=clock.data?.employmentId;
+  const recovery=useSubmissionRecovery('clock',identity??undefined,({command,file})=>{
+    const parsed=ClockCommand.parse(JSON.parse(command));
+    putClock({action:parsed.action,requestId:parsed.requestId,geo:{lat:parsed.lat,lng:parsed.lng,accuracy:parsed.accuracy,sampledAt:parsed.sampledAt},deviceToken:parsed.deviceToken,photo:file,phase:'uncertain',message:t('clockUncertain')});
+  });
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
   const label=action==='in'?t('clockIn'):t('clockOut');
-  useEffect(()=>{
-    if(draft?.phase!=='uncertain'||!current)return;
-    const receipt=current.captures.find(c=>c.requestId===draft.requestId);
-    if(receipt){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:receipt.recordedAt,message:undefined});}
-  },[current,draft?.requestId]);
   function errorMessage(e:unknown){return e instanceof Error?e.message:t('genericError');}
   async function prepare(){
-    if(flight.current||!identity||!current||pending)return;
+    if(flight.current||!identity||!current||pending||!recovery.ready)return;
     flight.current=true;
     const owner=authGeneration();
     let photo=draft?.photo;
@@ -68,15 +69,24 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     if(draft.phase!=='uncertain'&&Date.now()-draft.geo.sampledAt>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
     if(current.deviceRequired&&!draft.deviceToken)return;
     flight.current=true;const owner=authGeneration();
+    let sent=false;
     putClock({...draft,phase:'submitting',message:undefined});
-    const form=new FormData();
-    form.append('command',JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}));
-    if(draft.photo)appendAttachment(form,'photo',draft.photo);
-    try{const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
+    try{
+      const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
+      if(!putClock({...draft,photo:staged.file,phase:'submitting'},draft.requestId))return;
+      const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
+      sent=true;const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
+      await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
       if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});}
       else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t(refusals[result.code])});}
       clock.reload();
-    }catch(e){if(e instanceof RequestRejectedError){removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t('genericError')});}else putClock({...draft,phase:'uncertain',message:t('clockUncertain')});if(e instanceof SignInRequiredError)void signOut();}
+    }catch(e){
+      let refused=false;
+      if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.requestId);refused=true;}catch{}
+      if(refused){removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t('genericError')},draft.requestId);}
+      else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':'submissionSaveFailed')},draft.requestId);
+      if(e instanceof SignInRequiredError)void signOut();
+    }
     finally{flight.current=false;}
   }
   async function recover(){
@@ -85,6 +95,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     try{
       const result=await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
       if(result.kind==='clock'&&result.receipt){
+        await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
         if(putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},draft.requestId))removeLocalFile(draft.photo);
         clock.reload();
       }else putClock({...draft,message:t('clockUncertain')},draft.requestId);
@@ -95,6 +106,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
     <LoadState loading={clock.loading&&!current} error={clock.error} onRetry={clock.reload}/>
+    {!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}
     {current&&<>
       <View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
         <Text style={{color:palette.muted,fontSize:14}}>{current.date} · {current.shift.code??t('workday')}</Text>
@@ -116,7 +128,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
           {current.attendancePhotoSetting==='optional'&&draft.phase==='review'&&<Button title={draft.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
           {current.deviceRequired&&!draft.deviceToken&&<><Muted>{t('registrationNotice')}</Muted><Button title={t('registerDevice')} onPress={()=>void register()}/></>}
         </Card>}
-        {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} onPress={()=>void submit()}/></>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/></>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||!recovery.ready||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
         <Muted>{t('onlineClockOnly')}</Muted>
       </>}

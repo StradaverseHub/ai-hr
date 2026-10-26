@@ -53,6 +53,8 @@ Never infer this setting from an incoming header. For a tunnel/proxy, configure 
 restoration only for its verified source networks; `$remote_addr` otherwise remains the immediate
 peer and may group all users together. Do not trust arbitrary X-Forwarded-For or enable trust merely
 to avoid that grouping. Keep the application listener private/loopback.
+With trust enabled, a missing, malformed or multi-address source header refuses admission with 503;
+it cannot silently disable the source budget.
 
 With verified source admission, shared budgets allow 60 session operations per source/minute and
 12 invitation/recovery starts per source/minute; mobile ingress allows 180 per source/minute.

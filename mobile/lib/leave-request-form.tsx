@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Pressable,TextInput,View } from 'react-native';
+import { AppState,Pressable,TextInput,View } from 'react-native';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
@@ -9,6 +9,8 @@ import { authGeneration,assertAuthGeneration } from './auth';
 import { appendAttachment } from './capture';
 import { useTenantDesign } from './design';
 import { SignInRequiredError,RequestRejectedError } from './errors';
+import { LeaveCommand as LeaveCommandSchema } from '../../lib/mobile-api/contract';
+import { useSubmissionRecovery } from './submission-recovery';
 import { t,type MessageKey } from './i18n';
 import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment } from './journey-drafts';
 import { useSession } from './session';
@@ -17,6 +19,9 @@ const durationLabels:Record<LeaveCommand['durationType'],MessageKey>={full_day:'
 export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptionsResponse;today:string;onSubmitted:()=>void}){
   const {palette,design}=useTenantDesign();const {signOut}=useSession();
   const {leave:draft,putLeave}=useJourneyDrafts();const flight=useRef(false);
+  const recovery=useSubmissionRecovery('leave',options.employmentId??undefined,({command,file})=>{
+    putLeave({command:LeaveCommandSchema.parse(JSON.parse(command)),document:file,phase:'uncertain',message:t('leaveUncertain')});
+  });
   const selected=options.items.find(o=>o.id===draft?.command.leaveTypeId);
   const pending=draft?.phase==='submitting'||draft?.phase==='previewing';
   const disabled=pending||draft?.phase==='uncertain';
@@ -46,18 +51,30 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
     catch(e){putLeave({...draft,phase:'edit',message:t('genericError')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
   }
   async function submit(){
-    if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
-    putLeave({...draft,phase:'submitting',message:undefined});const form=new FormData();form.append('command',JSON.stringify(draft.command));if(draft.document)appendAttachment(form,'document',draft.document);
-    try{const result=await apiPost('leave-requests',form,{employmentId:options.employmentId});assertAuthGeneration(owner);
+    if(!draft||!options.employmentId||flight.current||!recovery.ready||AppState.currentState!=='active')return;flight.current=true;const owner=authGeneration();
+    let sent=false;
+    putLeave({...draft,phase:'submitting',message:undefined});
+    try{
+      const staged=await recovery.stage(JSON.stringify(draft.command),draft.document);assertAuthGeneration(owner);
+      if(!putLeave({...draft,document:staged.file,phase:'submitting'},draft.command.requestId))return;
+      const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'document',staged.file);
+      sent=true;const result=await apiPost('leave-requests',form,{employmentId:options.employmentId});assertAuthGeneration(owner);
+      await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);
       if(result.outcome==='accepted'){removeLocalFile(draft.document);putLeave({...draft,phase:'done',document:undefined,message:result.holidayWarning||result.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId);onSubmitted();}
       else putLeave({...draft,phase:'edit',message:result.message,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}},draft.command.requestId);
-    }catch(e){putLeave(e instanceof RequestRejectedError?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
+    }catch(e){
+      let refused=false;
+      if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.command.requestId);refused=true;}catch{}
+      putLeave(refused?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t(sent?'leaveUncertain':'submissionSaveFailed')},draft.command.requestId);
+      if(e instanceof SignInRequiredError)void signOut();
+    }finally{flight.current=false;}
   }
   async function recover(){
     if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
     try{
       const result=await apiGet('submission-receipt',{kind:'leave',requestId:draft.command.requestId,employmentId:options.employmentId});assertAuthGeneration(owner);
       if(result.kind==='leave'&&result.receipt){
+        await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);
         if(putLeave({...draft,phase:'done',document:undefined,message:result.receipt.holidayWarning||result.receipt.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId)){
           removeLocalFile(draft.document);onSubmitted();
         }
@@ -65,6 +82,7 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
     }catch(e){putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
+  if(!recovery.ready)return <View>{!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}{!recovery.error&&<Muted>{t('loading')}</Muted>}</View>;
   if(!draft)return <View style={{gap:10}}><Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('requestLeave')}</Text>{options.items.map(o=><Button key={o.id} title={o.name} kind="quiet" onPress={()=>begin(o.id)}/>)}</View>;
   if(draft.phase==='done')return <Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'600'}}>{t('requestRecorded')}</Text>{draft.message&&<Muted>{draft.message}</Muted>}<Button title={t('viewHistory')} onPress={()=>putLeave(null)}/></Card>;
   const reviewMode=draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting';

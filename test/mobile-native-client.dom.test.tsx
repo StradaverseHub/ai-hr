@@ -13,6 +13,7 @@ import { SessionChangedError, SignInRequiredError, UnavailableError, RequestReje
 const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
 function clientFixture() {
   let generation = 0;
+  const appState={currentState:'active'};
   const config = { apiUrl: 'https://hr.example.com' };
   const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => Response.json(new URL(url).pathname.endsWith('/clock') ? {outcome:'refused',code:'clock_conflict'} : employee('Employment one')));
   const auth = { authGeneration: () => generation,
@@ -24,6 +25,7 @@ function clientFixture() {
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'react') return React;
+      if (id === 'react-native') return {AppState:appState};
       if (id === 'expo/fetch') return {fetch:response};
       if (id === '../../lib/bounded-body') return {readBoundedBody};
       if (id === '../../lib/mobile-api/contract') return contract;
@@ -33,11 +35,20 @@ function clientFixture() {
       if (id === './i18n') return { appLocale: () => 'en' };
       throw new Error(`Unexpected native client dependency: ${id}`);
     } });
-  return { api: output.exports, config, response, auth, changeSession() { generation += 1; } };
+  return { api: output.exports, config, response, auth, appState, changeSession() { generation += 1; } };
 }
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it('never starts a write in the background, including after a delayed token refresh',async()=>{
+    const f=clientFixture();f.appState.currentState='background';
+    await expect(f.api.apiPost('clock',new FormData())).rejects.toBeInstanceOf(UnavailableError);
+    expect(f.response).not.toHaveBeenCalled();f.appState.currentState='active';
+    f.response.mockResolvedValueOnce(new Response('',{status:401}));
+    f.auth.refresh.mockImplementationOnce(async()=>{f.appState.currentState='background';return 'rotated-token';});
+    await expect(f.api.apiPost('clock',new FormData())).rejects.toBeInstanceOf(UnavailableError);
+    expect(f.response).toHaveBeenCalledTimes(1);
+  });
   it('preserves the exact multipart command across the single 401 refresh and leaves Content-Type to fetch',async()=>{
     const f=clientFixture();const body=new FormData();body.append('command',JSON.stringify({requestId:'same-command'}));
     f.response.mockResolvedValueOnce(new Response('',{status:401}));await f.api.apiPost('clock',body,{employmentId:'own'});

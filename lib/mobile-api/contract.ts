@@ -33,6 +33,8 @@ export const MeEmployment = z.object({
 
 export const MeResponse = z.object({
   apiVersion: z.literal(MOBILE_API_VERSION),
+  /** Stable authenticated actor for encrypted local claim ownership; older v1 servers may omit it. */
+  actorId: z.string().uuid().optional(),
   person: z.object({ name: z.string().nullable(), email: z.string().nullable() }),
   /** Active employments only (as the web's /me). More than one ⇒ the app shows the employment picker. */
   employments: z.array(MeEmployment),

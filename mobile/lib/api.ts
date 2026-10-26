@@ -1,12 +1,13 @@
 /**
  * The mobile API client (ADR-0088 §2). Response types are imported TYPE-ONLY from the server's contract
- * (lib/mobile-api/contract.ts at the repo root), so the shape has one owner and nothing server-side is
- * bundled into the app.
+ * (lib/mobile-api/contract.ts at the repo root). Public runtime schemas validate responses; database
+ * and server authentication services are never bundled into the app.
  *
  * Failure mapping mirrors the server's: 401 ⇒ refresh once and retry, then SignInRequiredError; a network
  * failure or 5xx ⇒ UnavailableError and the session is KEPT.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 import {
@@ -56,6 +57,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
   const send = async (token: string) => {
     assertAuthGeneration(owner);
+    if(request&&AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
     if(configProblem())throw new UnavailableError('The approved company connection is no longer valid.');
     const controller = new AbortController();
     const abort = () => controller.abort();

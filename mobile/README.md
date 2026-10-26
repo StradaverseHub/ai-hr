@@ -147,9 +147,9 @@ never counted as approved absence. No caller-provided team or employment selecto
 
 In-progress journey state (entered fields, review previews and receipt metadata) remains in memory across the OS camera/document activity and subsequent
 privacy lock. Private routes, API caches and tenant design still unmount behind the privacy gate.
-Changing employment, changing account or signing out discards drafts. Selected documents/photos use
+Changing employment, changing account or signing out discards editable drafts. Selected documents/photos use
 app-private temporary cache; cancellation/completion/scope change deletes owned files and cold launch
-purges remaining journey/picker caches. Drafts are not persisted or submitted in the background.
+purges remaining journey/picker caches. Editable drafts are not persisted or submitted in the background.
 An uncertain network result preserves the exact command reference and evidence for an explicit retry;
 it never reports success without a server receipt. English/Malay copy ships in this foundation;
 four other native locales remain deferred.
@@ -325,5 +325,24 @@ reference and own active employment. Both reads also require the original authen
 Clock lookup reads the retained capture, independent of the current attendance-day projection;
 leave lookup reads the original transactional event receipt, independent of the latest history page.
 The existing Check receipt controls now use this endpoint. An unknown reference stays uncertain and
-never authorizes a new command or reports success. This read-only lookup is one part of recovery:
-the encrypted restart journal and cold-offline presentation remain separate implementation work.
+never authorizes a new command or reports success.
+
+Before transmission, clock and leave save the exact command string, digest and owned attachment in
+an AES-256-GCM journal. Metadata and evidence bind the authenticated actor, active employment and
+installation namespace through authenticated encryption. The master key lives only in device-bound,
+unlocked SecureStore. An encrypted inactive metadata slot is written before the SecureStore commit
+pointer advances; a missing/corrupt committed slot refuses instead of falling back to an empty state.
+Resolution commits removal before attachment cleanup. App sandbox installation reset rotates the key
+and ignores surviving old Keychain pointers; restoring files without the device key quarantines them.
+
+After an online `/me` verifies the same actor and employment, the screens restore a pending command
+as uncertain and offer Check receipt or an explicit identical retry. They never replay automatically.
+Another account cannot open/transmit the claim. Logout preserves encrypted unresolved claims for the
+original authorized actor; decrypted temporary files and editable drafts are still cleared. A failure
+to save prevents transmission and says nothing was sent. Attachments are capped at 2 MiB for clock
+and 10 MiB for leave; only one unresolved command of each kind is admitted per scope.
+
+Pending claims are not accepted attendance or approved leave. This implementation does not enable
+offline punch capture or cold-offline identity restoration. Real-device kill/upload/relaunch,
+OS-protected key and backup/restore acceptance, bounded retention/cleanup and pending-aware voluntary
+logout remain release work; model/adapter tests do not replace those checks.

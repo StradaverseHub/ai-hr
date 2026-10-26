@@ -1,0 +1,84 @@
+/** Encrypted local claims. Opening this store never sends a request or grants server authority. */
+import { Directory, File, Paths } from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
+import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, CryptoDigestAlgorithm, digest, digestStringAsync, randomUUID } from 'expo-crypto';
+import { createSubmissionJournal, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
+import { createSubmissionStorage } from './submission-storage';
+
+const KEY='aihr.submissions.key.v1';
+const OPTIONS={keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY};
+let keyWork:Promise<unknown>=Promise.resolve();
+function serializedKey<T>(run:()=>Promise<T>){const next=keyWork.then(run);keyWork=next.then(()=>undefined,()=>undefined);return next;}
+const root=()=>new Directory(Paths.document,'aihr-submissions-v1');
+const hex=(value:ArrayBuffer)=>Array.from(new Uint8Array(value),b=>b.toString(16).padStart(2,'0')).join('');
+const hash=(value:string|Uint8Array)=>typeof value==='string'?digestStringAsync(CryptoDigestAlgorithm.SHA256,value):digest(CryptoDigestAlgorithm.SHA256,new Uint8Array(value)).then(hex);
+
+/** Called only when the app sandbox's installation marker is absent, before any session is restored. */
+export function resetSubmissionInstallation(){return serializedKey(async()=>{
+  await SecureStore.deleteItemAsync(KEY,OPTIONS);
+  const directory=root();if(directory.exists)directory.delete();
+});}
+
+export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCurrent:()=>void){
+  assertCurrent();
+  const scopeId=await hash(JSON.stringify([scope.namespace,scope.actorId,scope.employmentId]));assertCurrent();
+  const key=await serializedKey(async()=>{
+    assertCurrent();const encoded=await SecureStore.getItemAsync(KEY,OPTIONS);assertCurrent();
+    if(encoded)return AESEncryptionKey.import(encoded,'base64');
+    // A restored filesystem without its device-bound key is quarantined, never treated as empty.
+    if(root().exists)throw new SubmissionJournalUnavailable('Submission encryption key is unavailable');
+    const generated=await AESEncryptionKey.generate(256);assertCurrent();
+    await SecureStore.setItemAsync(KEY,await generated.encoded('base64'),OPTIONS);assertCurrent();return generated;
+  });assertCurrent();
+  // Keychain can survive reinstall. A new master key must never inherit an old commit pointer.
+  const keyId=await hash(await key.encoded('base64'));assertCurrent();
+  const pointerKey=`aihr.submissions.${keyId.slice(0,16)}.${scopeId}`;
+  const directory=new Directory(root(),scopeId);
+  if(!directory.exists)directory.create({intermediates:true});
+  const aad=(name:string)=>new TextEncoder().encode(`aihr-submissions-v1:${scopeId}:${name}`);
+  async function seal(value:Uint8Array,name:string){
+    assertCurrent();const result=await aesEncryptAsync(value,key,{additionalData:aad(name)});assertCurrent();return result.combined();
+  }
+  async function open(value:Uint8Array,name:string){
+    assertCurrent();const result=await aesDecryptAsync(AESSealedData.fromCombined(value),key,{additionalData:aad(name)});assertCurrent();return result;
+  }
+  async function read(name:string,limit:number){
+    assertCurrent();const file=new File(directory,name);if(!file.exists)return null;
+    if(file.size<1||file.size>limit)throw new SubmissionJournalUnavailable('Invalid encrypted submission');
+    const bytes=await file.bytes();assertCurrent();if(bytes.byteLength>limit)throw new SubmissionJournalUnavailable('Invalid encrypted submission');return bytes;
+  }
+  function evidenceName(reference:string){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.sealed$/i.test(reference))throw new SubmissionJournalUnavailable('Invalid evidence reference');
+    return reference;
+  }
+  const storage=createSubmissionStorage(scope,{
+    assertCurrent,
+    readPointer:()=>SecureStore.getItemAsync(pointerKey,OPTIONS),
+    writePointer:value=>SecureStore.setItemAsync(pointerKey,value,OPTIONS),
+    readSlot:slot=>read(`journal-${slot}.sealed`,65536+64),
+    async writeSlot(slot,bytes){assertCurrent();new File(directory,`journal-${slot}.sealed`).write(bytes);},
+    seal:bytes=>seal(bytes,'journal'),open:bytes=>open(bytes,'journal'),
+  });
+  return createSubmissionJournal(scope,{
+    assertCurrent,...storage,digest:hash,
+    async readEvidence(file){
+      assertCurrent();const native=new File(file.uri);
+      if(!native.exists||native.size!==file.size)throw new SubmissionJournalUnavailable('Pending evidence changed');
+      const bytes=await native.bytes();assertCurrent();return bytes;
+    },
+    async storeEvidence(_kind,_id,bytes){
+      const name=`${randomUUID()}.sealed`,encrypted=await seal(bytes,name);assertCurrent();
+      new File(directory,name).write(encrypted);return name;
+    },
+    async restoreEvidence(reference,metadata){
+      const name=evidenceName(reference),encrypted=await read(name,metadata.size+64);
+      if(!encrypted)throw new SubmissionJournalUnavailable('Pending evidence is missing');
+      const bytes=await open(encrypted,name);assertCurrent();
+      if(bytes.byteLength!==metadata.size)throw new SubmissionJournalUnavailable('Pending evidence changed');
+      const cache=new Directory(Paths.cache,'aihr-journeys');if(!cache.exists)cache.create({intermediates:true});
+      const restored=new File(cache,randomUUID());restored.write(bytes);
+      return {uri:restored.uri,name:metadata.name,mimeType:metadata.mimeType,size:metadata.size};
+    },
+    async deleteEvidence(reference){assertCurrent();const file=new File(directory,evidenceName(reference));if(file.exists)file.delete();},
+  });
+}

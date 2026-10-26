@@ -11,7 +11,8 @@ export class RequestBudgetExceeded extends Error {
 export function trustedRequestSource(request: Request): string | null {
   if (process.env.AIHR_TRUST_REQUEST_SOURCE !== '1') return null;
   const address = request.headers.get('x-aihr-request-source')?.trim();
-  return address && isIP(address) ? address : null;
+  if(!address||!isIP(address))throw new Error('Trusted request source unavailable');
+  return address;
 }
 
 export async function takeRequestBudget(scope: readonly string[], capacity: number, windowSeconds: number) {

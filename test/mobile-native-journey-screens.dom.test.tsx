@@ -8,6 +8,7 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
+import * as contract from '../lib/mobile-api/contract';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(){
   let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
@@ -20,15 +21,21 @@ function fixture(){
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
-  const shared={...base,'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:post,useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  const stage=vi.fn(async(command:string,file?:unknown)=>({command,file})),resolve=vi.fn(async()=>{});
+  const shared={...base,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:post,useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,get,capture,reload,teamState,drafts:()=>drafts};
+  return {App,post,get,capture,reload,stage,resolve,teamState,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
+  it('never sends a clock command when its durable save fails',async()=>{
+    const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    f.stage.mockRejectedValueOnce(new Error('Disk full'));fireEvent.click(screen.getByText('slideRecord'));
+    await screen.findByText('checkReceipt');expect(f.post).not.toHaveBeenCalled();expect(f.resolve).not.toHaveBeenCalled();
+  });
   it('prepares and reviews without recording; timeout preserves one immutable command for explicit retry',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);expect(f.post).not.toHaveBeenCalled();fireEvent.click(screen.getByText('slidePrepare'));
     await screen.findByText('slideRecord');expect(f.capture).toHaveBeenCalledTimes(1);expect(f.post).not.toHaveBeenCalled();
@@ -42,6 +49,12 @@ describe('native clock job',()=>{
   });
 });
 describe('native leave job',()=>{
+  it('does not send a leave command if its durable save fails after preview',async()=>{
+    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));
+    f.post.mockResolvedValueOnce({days:1,overrides:[]});fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');
+    f.stage.mockRejectedValueOnce(new Error('Disk full'));fireEvent.click(screen.getByText('submitRequest'));
+    await screen.findByText('checkReceipt');expect(f.post).toHaveBeenCalledTimes(1);expect(f.post.mock.calls[0][0]).toBe('leave-preview');
+  });
   it('requires a server preview and each material consent before submitting; timeout retry preserves reference',async()=>{
     const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));expect(f.post).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole('textbox',{name:'reason'}),{target:{value:'Personal travel'}});
