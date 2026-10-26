@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox]
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -127,7 +127,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   browser-image:
-    if: ${{ inputs.probe_scope == 'browser-image' }}
+    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -144,7 +144,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [chromium, firefox, webkit]
+        engine: ${{ fromJSON(inputs.probe_scope == 'browser-image-firefox' && '["firefox"]' || '["chromium","firefox","webkit"]') }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
@@ -167,6 +167,7 @@ jobs:
           node -e 'const assert=require("node:assert/strict"),fs=require("node:fs");const version=require("playwright/package.json").version;assert.equal(version,"1.62.1");fs.writeFileSync(process.env.RUNNER_TEMP+"/browser-image/image-binding.json",JSON.stringify({kind:"PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS",image:"mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e",playwrightVersion:version,nodeVersion:process.versions.node,candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,releaseAuthorized:false},null,2))'
       - name: Native browser launch and multilingual raster with preinstalled dependencies
         run: node ../automation/.github/ci/browser-tooling-probe.mjs "$ENGINE" "$RUNNER_TEMP/browser-image"
+        env: {HOME: /root}
       - name: Retain container package and filesystem facts
         if: always()
         run: |

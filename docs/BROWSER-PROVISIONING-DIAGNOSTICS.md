@@ -87,3 +87,13 @@ dependencies, so the diagnostic performs no APT installation. This tests a diffe
 method; it does not claim application/browser-suite equivalence or release authority. A successful
 tooling result still requires complete original browser coverage and resource/cleanup evidence
 before normal adoption. See [official image guidance](https://playwright.dev/docs/docker).
+
+Initial image run40334233921 queued from13:51:08 until resolve started14:00:58, a590second
+admission wait. The container initialization steps then took26–28seconds; unchanged web/mobile
+dependency installation took22–23seconds. Chromium and WebKit native/raster probes passed.
+Firefox refused because GitHub supplies `HOME=/github/home`, owned by `pwuser`, while the job
+executes as root. The failure explicitly identifies the supported `HOME=/root` workaround.
+Only the native launch step receives that corrected home; no browser sandbox flag, assertion or
+user-namespace guard is disabled. `probe_scope=browser-image-firefox` reruns only that failed
+engine. The original failure and two passing engine records remain intact. Queue time is retained
+in the end-to-end evidence, and no sub-ten-minute claim follows from fast container initialization.
