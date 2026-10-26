@@ -2601,6 +2601,37 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string,ex
 
 /** What an employee may set on a draft. Same shape as a submit, minus the receipt flag (a draft's receipt
  *  is attached separately and is not required until submit). */
+/** Minimal current own draft choices in the actual guarded transaction. No policy money,
+ * balances, attachment bytes, preparation calls, list-row locks or saved private answers. */
+export async function ownClaimDraftChoicesTx(tx:Tx,supplied:SessionContext){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'claims');
+ const subjects=await myOwnEmploymentSubjectsTx(tx,fresh,{profileEdit:true});if(subjects.length>16)throw new ClaimError('Own draft choices unavailable');
+ const employments=subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,companyName:row.company}));
+ const catalogue=await tx.select({id:claimType.id,code:claimType.code,name:claimType.name,isMileage:claimType.isMileage,requiresReceipt:claimType.requiresReceipt}).from(claimType).where(and(eq(claimType.tenantId,fresh.tenantId),isNull(claimType.archivedAt))).orderBy(claimType.code,claimType.id).limit(33);
+ if(catalogue.length>32)throw new ClaimError('Own draft choices unavailable');
+ const types=[];for(const type of catalogue){const items=await activeItemsFor(tx,type.id),fields=await activeFormFieldsFor(tx,type.id);if(items.length>128||fields.length>128)throw new ClaimError('Own draft choices unavailable');types.push({...type,items,fields:fields.map(({id,fieldKey,label,kind,required,options,sortOrder})=>({id,fieldKey,label,kind,required,options,sortOrder}))});}
+ const subjectsIds=subjects.map(row=>row.employmentId);
+ const rows=subjectsIds.length?await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,claimTypeId:claimRequest.claimTypeId,incurredOn:claimRequest.incurredOn}).from(claimRequest).where(and(eq(claimRequest.tenantId,fresh.tenantId),inArray(claimRequest.employmentId,subjectsIds),eq(claimRequest.status,'draft'))).orderBy(desc(claimRequest.createdAt),claimRequest.id).limit(26):[];
+ const drafts=[];for(const row of rows.slice(0,25)){const receipts=await tx.select({id:claimAttachment.id}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,fresh.tenantId),eq(claimAttachment.claimRequestId,row.id),eq(claimAttachment.employmentId,row.employmentId))).orderBy(claimAttachment.id).limit(26);if(receipts.length>25)throw new ClaimError('Own draft choices unavailable');drafts.push({...row,retainedAttachmentIds:receipts.map(receipt=>receipt.id)});}
+ return{employments,types,drafts,truncated:rows.length>25};
+}
+
+/** Explicit selected OWN draft edit read, never all-drafts answers. Active form keys only;
+ * unknown/archived stored answers are not exposed. No attachment bytes or financial policy. */
+export async function readOwnClaimDraftEditableTx(tx:Tx,supplied:SessionContext,selection:{employmentId:string;draftId:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};selection={...selection};
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'claims');
+ const own=(await myOwnEmploymentSubjectsTx(tx,fresh,{profileEdit:true})).find(row=>row.employmentId===selection.employmentId);if(!own)throw new ClaimError('Own draft unavailable');
+ const [row]=await tx.select({draftId:claimRequest.id,employmentId:claimRequest.employmentId,claimTypeId:claimRequest.claimTypeId,claimItemId:claimRequest.claimItemId,enteredAmount:claimRequest.amount,quantityKm:claimRequest.quantityKm,incurredOn:claimRequest.incurredOn,description:claimRequest.description,fieldValues:claimRequest.fieldValues,draftRevision:sql<string>`${claimRequest}.xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,fresh.tenantId),eq(claimRequest.id,selection.draftId),eq(claimRequest.employmentId,own.employmentId),eq(claimRequest.status,'draft'))).limit(1);
+ if(!row)throw new ClaimError('Own draft unavailable');
+ const [type]=await tx.select({id:claimType.id,code:claimType.code,name:claimType.name,isMileage:claimType.isMileage,requiresReceipt:claimType.requiresReceipt}).from(claimType).where(and(eq(claimType.id,row.claimTypeId),eq(claimType.tenantId,fresh.tenantId),isNull(claimType.archivedAt))).limit(1);if(!type)throw new ClaimError('Own draft unavailable');
+ const fields=await activeFormFieldsFor(tx,type.id),keys=new Set(fields.map(field=>field.fieldKey)),answers=Object.fromEntries(Object.entries(row.fieldValues??{}).filter(([key])=>keys.has(key)));
+ const receipts=await tx.select({id:claimAttachment.id,fileName:claimAttachment.fileName,mimeType:claimAttachment.mimeType,sizeBytes:claimAttachment.sizeBytes}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,fresh.tenantId),eq(claimAttachment.claimRequestId,row.draftId),eq(claimAttachment.employmentId,own.employmentId))).orderBy(claimAttachment.id).limit(26);if(receipts.length>25)throw new ClaimError('Own draft unavailable');
+ const items=await activeItemsFor(tx,type.id);if(fields.length>128||items.length>128)throw new ClaimError('Own draft unavailable');
+ return{...row,type:{...type,items,fields:fields.map(({id,fieldKey,label,kind,required,options,sortOrder})=>({id,fieldKey,label,kind,required,options,sortOrder}))},enteredAmount:Number(row.enteredAmount),quantityKm:row.quantityKm===null?null:Number(row.quantityKm),fieldValues:answers,receipts};
+}
+
 export type DraftClaimInput = {
   employmentId: string;
   claimTypeId: string;
@@ -2647,7 +2678,8 @@ async function assertDraftOwner(tx: Tx, ctx: SessionContext, employmentId: strin
  * draft may omit an item the type will eventually require, because "I haven't chosen yet" is the point of
  * a draft. Submit refuses it.
  */
-type ClaimDraftInput=DraftClaimInput & {id?:string};
+/** expectedDraftRevision is a reviewed-source refusal-only baseline; ordinary save has no version fence. */
+type ClaimDraftInput=DraftClaimInput & {id?:string;expectedDraftRevision?:string};
 async function prepareClaimDraftValuesTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput){
     await assertDraftOwner(tx, ctx, p.employmentId);
     const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
@@ -2767,10 +2799,10 @@ async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDr
  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId,gradeId:employment.gradeId,revision:sql<string>`${employment}.xmin::text`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,fresh.personId))).limit(1);
  if(!subject||subject.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
  const {type,policies,items,fields}=await lockReviewedClaimCatalogueTx(tx,ctx,p);
- let draft:{id:string;revision:string}|null=null,attachments:{id:string;revision:string}[]=[];
+ let draft:{id:string;revision:string;storedAnswers:DraftClaimInput['fieldValues']}|null=null,attachments:{id:string;revision:string}[]=[];
  if(p.id){
-  const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id),eq(claimRequest.employmentId,p.employmentId))).limit(1).for('update',{noWait:true});
-  if(!row||row.employmentId!==p.employmentId||row.status!=='draft')throw new ClaimError('The own draft source is unavailable');draft={id:row.id,revision:row.revision};
+  const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,fieldValues:claimRequest.fieldValues,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id),eq(claimRequest.employmentId,p.employmentId))).limit(1).for('update',{noWait:true});
+  if(!row||row.employmentId!==p.employmentId||row.status!=='draft')throw new ClaimError('The own draft source is unavailable');if(p.expectedDraftRevision!==undefined&&row.revision!==p.expectedDraftRevision)throw new ClaimError('The own draft source changed');draft={id:row.id,revision:row.revision,storedAnswers:row.fieldValues};
   const rows=await tx.select({id:claimAttachment.id,employmentId:claimAttachment.employmentId,revision:sql<string>`xmin::text`}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,ctx.tenantId),eq(claimAttachment.claimRequestId,p.id))).orderBy(claimAttachment.id).limit(26).for('share',{noWait:true});
   if(rows.length>25||rows.some(row=>row.employmentId!==p.employmentId))throw new ClaimError('The own draft source is unavailable');attachments=rows.map(({id,revision})=>({id,revision}));
  }
@@ -2781,8 +2813,14 @@ export type ReviewedOwnClaimDraft={employmentId:string;claimTypeId:string;claimI
 async function prepareReviewedClaimDraftTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[]){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn))throw new ClaimError('Incurred date must be YYYY-MM-DD');
  const facts=await reviewedClaimDraftFactsTx(tx,ctx,p,retainedAttachmentIds),native=await prepareClaimDraftValuesTx(tx,facts.ctx,p);
- const projection={employmentId:p.employmentId,claimTypeId:native.values.claimTypeId,claimItemId:native.values.claimItemId,draftId:p.id??null,provisionalAmount:native.values.amount,provisionalTaxable:native.values.taxable,provisionalQuantityKm:native.values.quantityKm,incurredOn:native.values.incurredOn,description:native.values.description,fieldValues:native.values.fieldValues,retainedAttachmentIds:[...retainedAttachmentIds].sort()};
- const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-claim-draft:v1',{tenantId:facts.ctx.tenantId,userId:facts.ctx.userId,personId:facts.ctx.personId},p,projection,facts.versions])).digest('hex');
+ // Only registered current edits may be exposed; unchanged archived answers stay internal under
+ // the same native row lock. Their exact merged effect participates in the private fingerprint.
+ const activeFields=await activeFormFieldsFor(tx,p.claimTypeId),activeKeys=new Set(activeFields.map(field=>field.fieldKey));
+ if(Object.keys(p.fieldValues??{}).some(key=>!activeKeys.has(key)))throw new ClaimError('The own draft fields changed');
+ if(facts.versions.draft){const preserved=Object.fromEntries(Object.entries(facts.versions.draft.storedAnswers??{}).filter(([key])=>!activeKeys.has(key)));native.values.fieldValues={...preserved,...p.fieldValues??{}};}
+
+ const projection={employmentId:p.employmentId,claimTypeId:native.values.claimTypeId,claimItemId:native.values.claimItemId,draftId:p.id??null,provisionalAmount:native.values.amount,provisionalTaxable:native.values.taxable,provisionalQuantityKm:native.values.quantityKm,incurredOn:native.values.incurredOn,description:native.values.description,fieldValues:p.fieldValues??null,retainedAttachmentIds:[...retainedAttachmentIds].sort()};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-claim-draft:v1',{tenantId:facts.ctx.tenantId,userId:facts.ctx.userId,personId:facts.ctx.personId},p,projection,native.values,facts.versions])).digest('hex');
  return{ctx:facts.ctx,native,review:{...projection,reviewedDigest} satisfies ReviewedOwnClaimDraft};
 }
 /** Native draft preview/normalization only. It is provisional and does not run submit limits,
