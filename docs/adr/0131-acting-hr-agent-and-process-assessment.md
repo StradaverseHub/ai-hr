@@ -2807,3 +2807,24 @@ access is revoked. The route-completeness check follows the actual awaited layou
 so a new Assistant page or a removed layout guard cannot silently disappear from the reference.
 These source changes require their authored authentication, reference-grid and experience checks;
 static route/JSON/syntax inspection is not runtime authentication proof.
+
+### Orchestrator and specialist improvement acceptance
+
+The user-facing entry point is one Assistant/orchestrator. The twenty internal module specialists
+retain separate canonical capabilities, domain contracts and evaluation scope; own-leave belongs to
+the Leave specialist. Routing never unions privileges or supplies human action selections. Native
+readers, business engines and current calling-user authorization remain authoritative.
+
+Routing permutation and module-label holdouts evaluate orchestration only. They cannot establish
+specialist business quality, even when all twenty module labels occur. Each promoted specialist
+candidate must execute its actual supported behavior against independent domain expectations,
+preserve canonical facts and current visibility, and carry evaluation, bounded promotion and
+monitoring/rollback evidence for that same module, source and candidate. Human feedback proposes
+improvements; neither feedback ratings nor a model's self-rating establishes correctness. Concrete
+business regression suites remain necessary alongside the promotion harness. Missing module
+evaluation or unsupported behavior must remain explicitly unverified, without broadening authority.
+
+All three stages precede one combined final candidate gate and one verified staging deployment.
+Source completeness, focused development checks, migration installation, runtime security and the
+actual human experience are separate claims. An integrated catalogue or source manifest proves
+neither the latter claims nor readiness to release.
