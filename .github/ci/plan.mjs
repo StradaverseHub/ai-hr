@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {CI_POLICY} from './policy-version.mjs';
+import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
@@ -13,7 +14,12 @@ export function createPlan(cwd = process.cwd()) {
   const tracked = git('ls-files', 'test').split('\n');
   const suite = tracked.filter(f => /\.test\.ts$|\.dom\.test\.tsx$/.test(f)).sort();
   if (!suite.length) throw Error('Empty test inventory');
-  const classified = execFileSync(process.execPath, ['--import', 'tsx', 'scripts/gate-db-classify.ts', 'explain'], {
+  const classifierRuntime=process.env.AIHR_CI_CLASSIFIER_RUNTIME??'tsx';
+  if(!['tsx','native'].includes(classifierRuntime))throw Error('Unknown classifier runtime');
+  const [major,minor]=process.versions.node.split('.').map(Number);
+  if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
+  const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
+  const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
     cwd, input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
@@ -23,8 +29,9 @@ export function createPlan(cwd = process.cwd()) {
   }
   if (JSON.stringify([...groups.db, ...groups.nodb].sort()) !== JSON.stringify(suite)) throw Error('Classifier does not partition the suite exactly');
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
+  const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
-  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, suite, units};
+  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, suite, units};
   return {...body, fingerprint: hash(body)};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));

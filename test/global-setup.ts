@@ -1,3 +1,4 @@
+import {profileTestPhase} from './profile';
 /**
  * Vitest globalSetup — build ONE migrated template database, then hand every worker its own copy.
  *
@@ -190,7 +191,11 @@ async function grantAppRole(adminUrl: string, dbName: string): Promise<void> {
   });
 }
 
-export default async function setup({ provide }: { provide?: (k: string, v: unknown) => void } = {}) {
+export default async function setup(options: { provide?: (k: string, v: unknown) => void } = {}) {
+  return profileTestPhase('template-setup', () => setupImpl(options));
+}
+
+async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => void } = {}) {
   try {
     process.loadEnvFile('.env.local');
   } catch {
@@ -252,7 +257,7 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
   const templateUrl = withDatabase(migrationUrl, templateName);
   const migrator = postgres(templateUrl, { max: 1 });
   try {
-    await migrate(drizzle(migrator), { migrationsFolder: 'db/migrations' });
+    await profileTestPhase('template-migrate', () => migrate(drizzle(migrator), { migrationsFolder: 'db/migrations' }));
     // ADR-0077 C11: the module + setting catalogs are code-seeded (migrations are pure SQL and cannot
     // read packs/catalog.ts), and every worker DB is CLONED from this template — so the rows must land
     // here, before the clone, or all 299 seedBase importers hit a foreign-key violation the moment
@@ -285,7 +290,7 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
          WHERE datname = '${dbName}' AND pid <> pg_backend_pid()`,
       );
       await sql.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
-      await sql.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${templateName}"`);
+      await profileTestPhase('worker-clone', () => sql.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${templateName}"`));
     });
     await grantAppRole(adminUrl, dbName);
   }
