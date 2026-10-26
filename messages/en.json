@@ -10279,7 +10279,8 @@
         "letterReports": "Current letter report permission and letter data scope are checked for every read and export.",
         "letterFields": "Field definitions require current template or read permission. Confidential mappings also require the canonical financial permission.",
         "letterTemplates": "Current company scope and Letters read/template permissions. Confidential mappings also require financial access.",
-        "letterGenerate": "Current company context, Letters generate/read permissions and current Workforce and financial access."
+        "letterGenerate": "Current company context, Letters generate/read permissions and current Workforce and financial access.",
+        "letterApproval": "Current company context, Letters read/approve access and the assigned current approval stage."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -24304,6 +24305,40 @@
         "state": "This letter or batch has changed state. Refresh before trying again.",
         "reasonRequired": "Enter a reason for removal."
       }
+    },
+    "approval": {
+      "title": "Letter Approval",
+      "intro": "Review letters assigned to your current approval stage.",
+      "empty": "No letters are awaiting your approval.",
+      "noAccess": "You do not have approval access in this company context.",
+      "review": "Review letter",
+      "due": "Due",
+      "overdue": "Overdue",
+      "stage": "Approval stage",
+      "comment": "Comments or reason",
+      "approve": "Approve",
+      "reject": "Reject",
+      "return": "Return for correction",
+      "delegate": "Delegate approval",
+      "delegateTo": "Delegate to",
+      "delegateHelp": "Choose an eligible approver and explain the delegation.",
+      "signature": "I approve the reviewed content and authorize my signature or stamp on the final PDF.",
+      "bulk": "Approve selected letters",
+      "selected": "Selected letters",
+      "working": "Applying…",
+      "decided": "Your decision was recorded.",
+      "delegated": "Approval was delegated.",
+      "completed": "The selected letters were approved.",
+      "history": "Approval history",
+      "moreHistory": "Next decisions",
+      "readonly": "This revision is frozen. Return it to its creator if corrections are needed.",
+      "unavailable": "Unavailable",
+      "viewQueue": "Approval queue",
+      "selectionHelp": "Open and review each selected letter before approving. All selected revisions must still be eligible.",
+      "finalStage": "Final signatory stage",
+      "signatureRequired": "Confirm authorization to apply your signature or stamp.",
+      "decision": "Decision",
+      "first": "First page"
     }
   }
 }

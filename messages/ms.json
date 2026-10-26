@@ -10279,7 +10279,8 @@
         "letterReports": "Kebenaran laporan surat semasa dan skop data surat disemak pada setiap bacaan dan eksport.",
         "letterFields": "Takrif medan memerlukan kebenaran templat atau bacaan semasa. Pemetaan sulit turut memerlukan kebenaran kewangan yang berkuat kuasa.",
         "letterTemplates": "Skop syarikat semasa dan kebenaran baca/templat Surat. Pemetaan sulit turut memerlukan akses kewangan.",
-        "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa."
+        "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa.",
+        "letterApproval": "Konteks syarikat semasa, akses baca/lulus Surat dan peringkat kelulusan semasa yang ditugaskan."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -24304,6 +24305,40 @@
         "state": "Surat atau kelompok ini telah berubah status. Muat semula sebelum mencuba lagi.",
         "reasonRequired": "Masukkan sebab pembuangan."
       }
+    },
+    "approval": {
+      "title": "Kelulusan Surat",
+      "intro": "Semak surat yang diberikan kepada anda pada peringkat kelulusan semasa.",
+      "empty": "Tiada surat menunggu kelulusan anda.",
+      "noAccess": "Anda tiada akses kelulusan dalam konteks syarikat ini.",
+      "review": "Semak surat",
+      "due": "Tarikh akhir",
+      "overdue": "Lewat",
+      "stage": "Peringkat kelulusan",
+      "comment": "Ulasan atau sebab",
+      "approve": "Luluskan",
+      "reject": "Tolak",
+      "return": "Kembalikan untuk pembetulan",
+      "delegate": "Wakilkan kelulusan",
+      "delegateTo": "Wakilkan kepada",
+      "delegateHelp": "Pilih pelulus yang layak dan jelaskan sebab perwakilan.",
+      "signature": "Saya meluluskan kandungan yang disemak dan membenarkan tandatangan atau cop saya pada PDF akhir.",
+      "bulk": "Luluskan surat terpilih",
+      "selected": "Surat terpilih",
+      "working": "Sedang memproses…",
+      "decided": "Keputusan anda telah direkodkan.",
+      "delegated": "Kelulusan telah diwakilkan.",
+      "completed": "Surat terpilih telah diluluskan.",
+      "history": "Sejarah kelulusan",
+      "moreHistory": "Keputusan seterusnya",
+      "readonly": "Semakan ini dikunci. Kembalikan kepada penciptanya jika pembetulan diperlukan.",
+      "unavailable": "Tidak tersedia",
+      "viewQueue": "Baris gilir kelulusan",
+      "selectionHelp": "Buka dan semak setiap surat terpilih sebelum meluluskan. Semua semakan terpilih mesti masih layak.",
+      "finalStage": "Peringkat penandatangan akhir",
+      "signatureRequired": "Sahkan kebenaran untuk menggunakan tandatangan atau cop anda.",
+      "decision": "Keputusan",
+      "first": "Halaman pertama"
     }
   }
 }

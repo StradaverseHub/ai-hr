@@ -10279,7 +10279,8 @@
         "letterReports": "每次读取及导出均检查当前信函报表权限和信函数据范围。",
         "letterFields": "字段定义需要当前模板或读取权限。保密映射还需要相应的财务权限。",
         "letterTemplates": "依据当前公司范围及信函读取或模板权限。机密映射还须具备财务访问权限。",
-        "letterGenerate": "依据当前公司范围、信函生成与读取权限，以及当前员工资料和财务访问权限。"
+        "letterGenerate": "依据当前公司范围、信函生成与读取权限，以及当前员工资料和财务访问权限。",
+        "letterApproval": "当前公司范围、信函读取及审批权限，以及当前分配的审批阶段。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -24304,6 +24305,40 @@
         "state": "此信函或批次的状态已更改，请刷新后重试。",
         "reasonRequired": "请输入移除原因。"
       }
+    },
+    "approval": {
+      "title": "信函审批",
+      "intro": "审核当前审批阶段分配给您的信函。",
+      "empty": "没有等待您审批的信函。",
+      "noAccess": "您在当前公司范围内没有审批权限。",
+      "review": "审核信函",
+      "due": "截止时间",
+      "overdue": "已逾期",
+      "stage": "审批阶段",
+      "comment": "意见或原因",
+      "approve": "批准",
+      "reject": "拒绝",
+      "return": "退回修改",
+      "delegate": "委派审批",
+      "delegateTo": "委派给",
+      "delegateHelp": "选择符合条件的审批人并说明委派原因。",
+      "signature": "我批准已审核的内容，并授权在最终 PDF 上使用我的签名或印章。",
+      "bulk": "批准所选信函",
+      "selected": "已选信函",
+      "working": "正在处理…",
+      "decided": "您的决定已记录。",
+      "delegated": "审批已委派。",
+      "completed": "所选信函已获批准。",
+      "history": "审批历史",
+      "moreHistory": "后续决定",
+      "readonly": "此版本已冻结。如需修改，请退回创建人。",
+      "unavailable": "不可用",
+      "viewQueue": "审批队列",
+      "selectionHelp": "批准前请打开并审核每封所选信函。所有所选版本必须仍符合审批条件。",
+      "finalStage": "最终签署阶段",
+      "signatureRequired": "请确认授权使用您的签名或印章。",
+      "decision": "审批决定",
+      "first": "首页"
     }
   }
 }

@@ -634,9 +634,12 @@ GRANT EXECUTE ON FUNCTION app.letter_approver_eligible(uuid,uuid,boolean) TO ai_
 
 --> statement-breakpoint
 -- A letter reviewer can see the subject's label without receiving directory access or contact data.
-CREATE FUNCTION app.letter_staff_identity(subject uuid) RETURNS TABLE(employee_name text,employee_code text)
+CREATE FUNCTION app.letter_staff_identity(subject uuid) RETURNS TABLE(employee_name text,employee_code text,company_name text,title text,category text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT p.full_name,e.employee_code FROM public.letter_record l
+ SELECT p.full_name,e.employee_code,c.legal_name,v.name,v.category FROM public.letter_record l
+ JOIN public.company c ON c.id=l.company_id AND c.tenant_id=l.tenant_id
+ JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+ JOIN public.letter_template_version v ON v.id=b.template_version_id AND v.tenant_id=l.tenant_id
  JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id AND e.company_id=l.company_id
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=l.tenant_id
  WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND app.letter_permission(l.company_id,'read') AND app.letter_can_read(l.id)
@@ -662,3 +665,14 @@ RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search
 $$;
 REVOKE ALL ON FUNCTION app.letter_delegate_choices(uuid,uuid,text,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_delegate_choices(uuid,uuid,text,integer) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.letter_approval_actor_label(subject uuid,actor uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT p.full_name FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.id=actor AND u.tenant_id=app.current_tenant_id() AND app.letter_can_read(subject)
+ AND EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=u.tenant_id AND app.letter_permission(l.company_id,'read'))
+ AND EXISTS(SELECT 1 FROM public.letter_approval_decision d WHERE d.letter_id=subject AND d.tenant_id=u.tenant_id AND d.actor_id=actor)
+$$;
+REVOKE ALL ON FUNCTION app.letter_approval_actor_label(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_approval_actor_label(uuid,uuid) TO ai_hr_app;

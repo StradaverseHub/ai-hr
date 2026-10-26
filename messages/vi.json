@@ -10279,7 +10279,8 @@
         "letterReports": "Quyền báo cáo thư hiện tại và phạm vi dữ liệu thư được kiểm tra mỗi lần đọc và xuất.",
         "letterFields": "Định nghĩa trường yêu cầu quyền mẫu hoặc đọc hiện tại. Ánh xạ bảo mật còn yêu cầu quyền tài chính tương ứng.",
         "letterTemplates": "Theo phạm vi công ty hiện tại và quyền đọc/mẫu Thư. Ánh xạ bảo mật còn yêu cầu quyền truy cập tài chính.",
-        "letterGenerate": "Theo ngữ cảnh công ty hiện tại, quyền tạo/đọc Thư và quyền truy cập Nhân sự và tài chính hiện tại."
+        "letterGenerate": "Theo ngữ cảnh công ty hiện tại, quyền tạo/đọc Thư và quyền truy cập Nhân sự và tài chính hiện tại.",
+        "letterApproval": "Phạm vi công ty hiện tại, quyền đọc/phê duyệt thư và bước phê duyệt hiện tại được giao."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -24304,6 +24305,40 @@
         "state": "Trạng thái thư hoặc lô đã thay đổi. Tải lại trước khi thử tiếp.",
         "reasonRequired": "Nhập lý do loại bỏ."
       }
+    },
+    "approval": {
+      "title": "Phê duyệt thư",
+      "intro": "Xem xét các thư được giao cho bạn ở bước phê duyệt hiện tại.",
+      "empty": "Không có thư đang chờ bạn phê duyệt.",
+      "noAccess": "Bạn không có quyền phê duyệt trong phạm vi công ty này.",
+      "review": "Xem xét thư",
+      "due": "Hạn xử lý",
+      "overdue": "Quá hạn",
+      "stage": "Bước phê duyệt",
+      "comment": "Nhận xét hoặc lý do",
+      "approve": "Phê duyệt",
+      "reject": "Từ chối",
+      "return": "Trả lại để sửa",
+      "delegate": "Ủy quyền phê duyệt",
+      "delegateTo": "Ủy quyền cho",
+      "delegateHelp": "Chọn người phê duyệt đủ điều kiện và giải thích lý do ủy quyền.",
+      "signature": "Tôi phê duyệt nội dung đã xem xét và cho phép áp dụng chữ ký hoặc con dấu của tôi trên PDF cuối cùng.",
+      "bulk": "Phê duyệt thư đã chọn",
+      "selected": "Thư đã chọn",
+      "working": "Đang xử lý…",
+      "decided": "Quyết định của bạn đã được ghi nhận.",
+      "delegated": "Đã ủy quyền phê duyệt.",
+      "completed": "Các thư đã chọn đã được phê duyệt.",
+      "history": "Lịch sử phê duyệt",
+      "moreHistory": "Các quyết định tiếp theo",
+      "readonly": "Phiên bản này đã bị khóa. Trả lại người tạo nếu cần chỉnh sửa.",
+      "unavailable": "Không khả dụng",
+      "viewQueue": "Hàng đợi phê duyệt",
+      "selectionHelp": "Mở và xem xét từng thư đã chọn trước khi phê duyệt. Tất cả phiên bản đã chọn phải còn đủ điều kiện.",
+      "finalStage": "Bước ký duyệt cuối cùng",
+      "signatureRequired": "Xác nhận cho phép áp dụng chữ ký hoặc con dấu của bạn.",
+      "decision": "Quyết định",
+      "first": "Trang đầu"
     }
   }
 }

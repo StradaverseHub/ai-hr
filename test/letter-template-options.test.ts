@@ -1,9 +1,9 @@
 import {beforeEach,it,expect,vi} from 'vitest';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {LetterWorkflowError} from '../lib/letter-workflow';
-const mocks=vi.hoisted(()=>({session:vi.fn(),fields:vi.fn(),heads:vi.fn(),signers:vi.fn(),employees:vi.fn()}));
+const mocks=vi.hoisted(()=>({session:vi.fn(),fields:vi.fn(),heads:vi.fn(),signers:vi.fn(),employees:vi.fn(),delegates:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
-vi.mock('../core/letters',()=>({listLetterFields:mocks.fields,listLetterTemplateHeads:mocks.heads,listLetterSignatories:mocks.signers,listLetterEmployeeChoices:mocks.employees}));
+vi.mock('../core/letters',()=>({listLetterFields:mocks.fields,listLetterTemplateHeads:mocks.heads,listLetterSignatories:mocks.signers,listLetterEmployeeChoices:mocks.employees,listLetterDelegates:mocks.delegates}));
 import {GET} from '../app/letters/templates/options/route';
 const companyId='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 const request=(kind='field',extra='')=>new Request(`https://fixture.test/letters/templates/options?companyId=${companyId}&kind=${kind}${extra}`);
@@ -24,4 +24,10 @@ it('refuses malformed identities and closed kinds before reaching any owner',asy
 it('keeps permission and expired-session failures private',async()=>{
  mocks.session.mockRejectedValue(new AuthRequiredError());expect((await GET(request())).status).toBe(401);mocks.session.mockResolvedValue(ctx);
  for(const [error,status,code]of [[new LetterWorkflowError('permission'),403,'permission'],[new Error('PRIVATE SQL DETAIL'),503,'unavailable']] as const){mocks.fields.mockRejectedValue(error);const response=await GET(request());expect(response.status).toBe(status);expect(await response.json()).toEqual({error:code});}
+});
+
+it('binds delegation choices to one authorized letter and strips private candidate columns',async()=>{
+ mocks.delegates.mockResolvedValue({rows:[{id,name:'Eligible reviewer',email:'PRIVATE CONTACT'}],nextCursor:null});const response=await GET(request('delegate','&letterId='+id+'&q=review'));
+ expect(await response.json()).toEqual({rows:[{id,label:'Eligible reviewer'}],nextCursor:null});expect(mocks.delegates).toHaveBeenCalledExactlyOnceWith(ctx,{letterId:id,search:'review',cursor:undefined,limit:25});
+ mocks.delegates.mockClear();expect((await GET(request('delegate'))).status).toBe(400);expect(mocks.delegates).not.toHaveBeenCalled();
 });

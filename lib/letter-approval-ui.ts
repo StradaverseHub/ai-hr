@@ -1,0 +1,3 @@
+export const LETTER_APPROVAL_LABEL_KEYS=['first','decision','title','intro','empty','noAccess','review','due','overdue','stage','comment','approve','reject','return','delegate','delegateTo','delegateHelp','signature','bulk','selected','working','decided','delegated','completed','history','moreHistory','readonly','unavailable','viewQueue','selectionHelp','finalStage','signatureRequired'] as const;
+export type LetterApprovalLabels=Record<typeof LETTER_APPROVAL_LABEL_KEYS[number],string>;
+export type LetterApprovalQueueRow={id:string;revisionId:string;lockVersion:number;reference:string;employee:string;title:string;stage:string;due:string;overdue:boolean;final:boolean};
