@@ -1703,3 +1703,21 @@ then applies the canonical 12-to-14 delta after release and proves a second proj
 It and affected projection/Movement/cohort consumers remain UNRUN. Annual opening, earned/A2C sweeps,
 expiry, other ledger owners and remaining configuration participants still require completion. No
 universal fence, money computation by a model, performance claim or runtime proof is established.
+
+
+### Year-open, earned, expiry and A2C cohort calculations own their complete sets (unrun)
+
+The actual year-open, earned-accrual and carry-expiry transactions now acquire Access/shared source
+configuration and their complete ordered RLS-visible employment set before any business calculation.
+A nomination-only query respects company/grade/employee restrictions and is rechecked after ownership;
+all existing type/template/ledger computations run afterward. A2C's caller-transaction correction joins
+the same entry boundary. Read-only dry runs retain shared configuration but skip employee-exclusive
+ownership. Historical empty-scope meanings are preserved: explicit empty earned scope means nobody,
+while empty year-open/A2C scope retains their existing unscoped behavior. Source arrays/carriers are
+captured before awaiting. Employee request edit and own cancellation also join the request interval.
+
+No engine arithmetic, deliberate skips, row writes or canonical events were replaced. The existing
+opening, earned, expiry, A2C, cohort, same-Tx and scope acceptance suites are required and UNRUN; source
+syntax is not a runtime/concurrency/performance result. Ordered advisory sets are not a global table
+lock. Other organization/calendar/roster, old import, credit, raw storage and authority writers still
+need integration and actual security proof before universal protection or Assistant effects.

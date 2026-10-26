@@ -5903,6 +5903,28 @@ async function decideCurrentChainStep<S extends ChainStepRow>(
   return { outcome: 'final', current };
 }
 
+/** A cohort writer owns its complete ordered subject set before any calculation. These are
+ * nomination-only IDs; business facts are read afterward by the unchanged canonical engine.
+ * Read-only previews do not acquire employment-exclusive ownership. */
+async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
+  employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
+}, writes = true): Promise<void> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  if (!writes) return;
+  const ids = scope.employmentIds?.slice(), companies = scope.companyIds?.slice(), grades = scope.gradeIds?.slice();
+  const read = () => tx.select({ id: employment.id }).from(employment).where(and(
+    ids !== undefined ? (ids.length ? inArray(employment.id, [...ids]) : sql`false`) : undefined,
+    companies?.length ? inArray(employment.companyId, [...companies]) : undefined,
+    grades?.length ? inArray(employment.gradeId, [...grades]) : undefined,
+  )).orderBy(employment.id);
+  const nominated = await read();
+  if (!nominated.length) return;
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, nominated.map(row => row.id));
+  const current = await read();
+  if (JSON.stringify(nominated) !== JSON.stringify(current)) throw new LeaveDependencyUnavailable();
+}
+
 /** Actual request mutation interval. Resolve only the RLS-visible subject before ownership, then
  * reread that binding before the canonical owner takes its existing request/cancellation row locks. */
 async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
@@ -7383,12 +7405,12 @@ export async function adminCancelLeave(
   p: { leaveRequestId: string; reason?: string; cancelledByEmploymentId?: string },
 ): Promise<{ previousStatus: 'pending' | 'approved'; restoredDays: number }> {
   return withTenant(ctx, async (tx) => {
-    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
     if (!isAdmin(ctx)) {
       throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee', 'admin_only');
     }
     const isSuper = ctx.roles?.includes('super_admin') ?? false;
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
 
     // r301 hand-fix — locked, in the same order as the employee's cancellation paths (leave row, then any
     // cancellation on it), so an HR cancellation and an employee's automatic one cannot both act on a stale row.
@@ -7593,6 +7615,7 @@ export async function editLeaveRequest(
   },
 ): Promise<{ leaveRequestId: string; days: number }> {
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
 
@@ -7957,6 +7980,7 @@ export async function cancelOwnLeave(
   p: { leaveRequestId: string },
 ): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
 
@@ -8549,7 +8573,10 @@ export async function openLeaveYear(
   const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
   const scopeEmpIds = (p.employmentIds ?? []).filter(Boolean);
   const dryRun = p.dryRun === true;
+  p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
     const yearStart = `${p.year}-01-01`;
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
     const yearEnd = `${p.year}-12-31`;
@@ -9827,7 +9854,10 @@ export async function accrueEarnedLeave(
   const scopeEmpIds: string[] | null = p.employmentIds === undefined ? null : p.employmentIds.filter(Boolean);
   const dryRun = p.dryRun === true;
   const accrualPeriod = Number(p.asOf.slice(0, 4));
+  p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -10795,6 +10825,11 @@ export async function reprojectA2cEntitlement(
     changeEffectiveOn?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
+  p = { ...p, employmentIds: p.employmentIds?.slice(), ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  // Preserve this owner's historical empty-scope meaning: [] is unscoped here, unlike earned accrual.
+  const protectedIds = (p.employmentIds ?? []).filter(Boolean);
+  await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: protectedIds.length ? protectedIds : undefined });
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
   const [type] = await tx
@@ -11630,7 +11665,10 @@ export function resolveCarryBreakdown(p: {
  * DomainEvent is appended below.
  */
 export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, {});
     const todayYear = Number(p.today.slice(0, 4));
     const annualTypes = await tx
       // 9816a5ad step 2: the type's own carry-forward rules drive both the sweepable-year boundary and the
