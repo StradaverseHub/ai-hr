@@ -18,6 +18,19 @@ import {
 } from '../db/schema';
 import { PAYROLL_FREQUENCIES } from './payroll-policy-config';
 import { isCurrencyCode } from '../lib/currencies';
+import {lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx} from './leave-dependency-lock';
+
+/** The existing compensation WITH CHECK authority precedes subject resource ownership; this adds
+ * no Workforce/Payroll role. Access→configuration→employment is held before any pay/history facts.
+ * A busy/partial interval must roll back the WHOLE supplied transaction. */
+async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id))) as allowed`);
+ if(row?.allowed!==true)throw new Error('Salary record or permission is unavailable');
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
+}
+
 
 const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed(2) : String(n));
 
@@ -300,7 +313,10 @@ export async function setCompensation(
    *  transaction (e.g. the performance pay-seam enact) so it commits/rolls back atomically. */
   outerTx?: Tx,
 ) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={...p,...(p.movement?{movement:{...p.movement}}:{})};
   const run = async (tx: Tx) => {
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
     const [cur] = await tx
       .select()
       .from(compensation)
@@ -456,7 +472,10 @@ export async function updateCompensation(
     validFrom?: string;
   },
 ) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={...p};
   return withTenant(ctx, async (tx) => {
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
     const [row] = await tx
       .select()
       .from(compensation)
@@ -634,7 +653,10 @@ export async function supersedeCompensation(
    *  Movement rollback removes the pay leg atomically with the assignment / grade / reporting-line legs. */
   outerTx?: Tx,
 ) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={...p};
   const run = async (tx: Tx) => {
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
     const [row] = await tx
       .select()
       .from(compensation)

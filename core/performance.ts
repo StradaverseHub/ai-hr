@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
@@ -1122,7 +1123,12 @@ export async function enactCompAction(
   ctx: SessionContext,
   p: { reviewId: string; meritEffectiveFrom?: string; bonusBatchId?: string },
 ) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p={...p};
   return withTenant(ctx, async (tx) => {
+    // A merit enact reads compensation before the leaf write; own the full interval before review,
+    // source/Payroll rows. Exclusive configuration also preserves transitive bonus/grade ordering.
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review } = await loadReview(tx, p.reviewId);
