@@ -28,6 +28,7 @@ async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): 
  * and a fresh source read before any write. This phase alone never protects employment balances. */
 export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
   if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
+  tenantId=tenantId.toLowerCase();
   await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, true);
 }
 
@@ -36,6 +37,7 @@ export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: s
  * This helper intentionally supplies no claim that a caller already owns those prerequisites. */
 export async function lockLeaveDependencyConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
   if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
+  tenantId=tenantId.toLowerCase();
   await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, false);
 }
 
@@ -45,7 +47,10 @@ export async function lockLeaveDependencyConfigurationTx(tx: Tx, tenantId: strin
 export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employmentIds: readonly string[]): Promise<void> {
   if (!uuid.safeParse(tenantId).success || employmentIds.length === 0
     || employmentIds.some(id => !uuid.safeParse(id).success)) throw new LeaveDependencyUnavailable();
-  const subjects = [...new Set(employmentIds)].sort();
+  // UUID equality in PostgreSQL ignores letter case. Capture canonical keys BEFORE dedupe/order
+  // so an accepted uppercase UUID cannot own a different key for the same physical subject.
+  tenantId=tenantId.toLowerCase();
+  const subjects = [...new Set(employmentIds.map(id=>id.toLowerCase()))].sort();
   await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, true);
   for (const id of subjects) await acquire(tx, tenantId, `leave-dependency-employment:${tenantId}:${id}`, false);
 }
