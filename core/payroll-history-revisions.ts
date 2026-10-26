@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {and,asc,desc,eq,gte,inArray,isNull,like,ne,or,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,getTableColumns,gte,inArray,isNull,like,ne,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employment,payrollCycle,payrollBatch,payPeriod,payslip,statutoryReport,
  payrollHistoryImportAttempt as attempt,payrollHistoryImportRecord as record,payrollHistoryImportSnapshot as snapshot,
@@ -93,6 +93,15 @@ async function dependencies(tx:Tx,row:Pick<HistoryRevisionRow,'companyId'|'emplo
  }
  return reasons;
 }
+function emptyBatchTotals(){return {gross:BigInt(0),net:BigInt(0),epfEmployee:BigInt(0),epfEmployer:BigInt(0),socsoEmployee:BigInt(0),socsoEmployer:BigInt(0),eisEmployee:BigInt(0),eisEmployer:BigInt(0),pcb:BigInt(0)};}
+type BatchTotals=ReturnType<typeof emptyBatchTotals>;
+/** Match the existing batch accumulator in both preview and commit, with integer cents. */
+function addBatchTotals(totals:BatchTotals,values:ImportedPayrollValues){
+ const cents=(amount:unknown)=>BigInt(Number(amount).toFixed(2).replace('.',''));
+ totals.gross+=cents(values.grossPay);totals.net+=cents(values.netPay);
+ for(const name of Object.keys(totals) as (keyof BatchTotals)[])if(name!=='gross'&&name!=='net')totals[name]+=cents(values.statutory[name]??0);
+}
+const batchTotalsOverflow=(totals:BatchTotals)=>Object.values(totals).some(value=>value>BigInt(999999999999)||value< -BigInt(999999999999));
 async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string):Promise<HistoryRevisionPlan>{
  const plan=emptyPlan(sourceHash);
  if(!records.length){plan.issues.push({rowNum:1,reason:'The source file has no data rows.'});plan.counts.invalid=1;return seal(plan);}
@@ -153,6 +162,17 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
    if(row.reasons.length||!values)row.operation='invalid';
    plan.rows.push(row);
   }
+ }
+ // A valid individual record can still overflow its company/period/cycle batch.
+ // Exclude unchanged rows exactly as commit does; they produce no new batch money.
+ const batchGroups=new Map<string,HistoryRevisionRow[]>();
+ for(const row of plan.rows)if(row.operation==='create'||row.operation==='replace'){
+  const identity=[row.companyId,row.period,row.cycleId].join(':'),rows=batchGroups.get(identity)??[];rows.push(row);batchGroups.set(identity,rows);
+ }
+ for(const rows of batchGroups.values()){
+  const totals=emptyBatchTotals();let overflow=false;
+  for(const row of rows){addBatchTotals(totals,row.values!);overflow=overflow||batchTotalsOverflow(totals);}
+  if(overflow)for(const row of rows){row.operation='invalid';row.reasons.push('An accumulated batch total exceeds the supported range. Split the source file.');}
  }
  plan.rows.sort((a,b)=>(a.rowNums[0]??0)-(b.rowNums[0]??0));
  plan.companyIds=[...new Set(plan.rows.filter(row=>row.companyId).map(row=>row.companyId))].sort();
@@ -218,8 +238,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
    const [max]=await tx.select({seq:sql<number>`coalesce(max(${payrollBatch.runSeq}),0)::integer`}).from(payrollBatch).where(eq(payrollBatch.payPeriodId,parentId));
    const [batch]=await tx.insert(payrollBatch).values({tenantId:ctx.tenantId,companyId:first.companyId,payPeriodId:parentId,payPeriod:first.period,runType:'adjustment',runSeq:Number(max?.seq??0)+1,status:'draft',batchDate:todayInKualaLumpur(),payrollCycleId:first.cycleId,remarks:'Imported payroll history',historyImportAttemptId:source.id,historyImportCycleName:first.cycleName}).returning({id:payrollBatch.id});
    const pending:{row:HistoryRevisionRow;recordId:string;slipId:string;previous:typeof revision.$inferSelect|undefined}[]=[];
-   const totals:Record<string,bigint>={gross:BigInt(0),net:BigInt(0),epfEmployee:BigInt(0),epfEmployer:BigInt(0),socsoEmployee:BigInt(0),socsoEmployer:BigInt(0),eisEmployee:BigInt(0),eisEmployer:BigInt(0),pcb:BigInt(0)};
-   const cents=(amount:string|unknown)=>BigInt(Number(amount).toFixed(2).replace('.',''));
+   const totals=emptyBatchTotals();
    for(const row of rows){
     if(!row.values||!row.valueHash||row.operation==='invalid')fail('The file contains an invalid record.');
     let recordId=row.recordId;
@@ -227,9 +246,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
     const [current]=await tx.select().from(revision).where(eq(revision.recordId,recordId)).orderBy(desc(revision.ordinal)).limit(1);
     if((current?.id??null)!==row.expectedRevisionId)fail('A target revision changed. Validate a new attempt.');
     const [slip]=await tx.insert(payslip).values({tenantId:ctx.tenantId,batchId:batch.id,employmentId:row.employmentId,...row.values}).returning({id:payslip.id});
-    totals.gross+=cents(row.values.grossPay);totals.net+=cents(row.values.netPay);
-    for(const name of Object.keys(totals).filter(name=>name!=='gross'&&name!=='net'))totals[name]+=cents(row.values.statutory[name]??0);
-    if(Object.values(totals).some(value=>value>BigInt(999999999999)||value< -BigInt(999999999999)))fail('An accumulated batch total exceeds the supported range. Split the source file.');
+    addBatchTotals(totals,row.values);
+    if(batchTotalsOverflow(totals))fail('An accumulated batch total exceeds the supported range. Split the source file.');
     pending.push({row,recordId,slipId:slip.id,previous:current});
    }
    await tx.update(payrollBatch).set({employeeCount:rows.length,totals:Object.fromEntries(Object.entries(totals).map(([name,value])=>[name,Number(value)/100])),status:'closed'}).where(eq(payrollBatch.id,batch.id));
@@ -285,10 +303,10 @@ export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,ex
 export async function listPayrollHistoryAttempts(ctx:SessionContext,options:{before?:string;limit?:number}={}){
  assertModuleGate(ctx,'payroll');if(options.before&&!uuid.test(options.before))fail('Import cursor unavailable.');return withTenant(ctx,async tx=>{
   await principal(tx,ctx);const limit=Math.min(100,Math.max(1,options.limit??25));
-  const rows=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt)
+  const rows=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdByName:sql<string|null>`app.payroll_history_actor_label(${attempt.id},${attempt.createdBy})`,createdAt:attempt.createdAt}).from(attempt)
    .where(options.before?sql`(${attempt.createdAt},${attempt.id}) < (select created_at,id from payroll_history_import_attempt where id=${options.before}::uuid)`:undefined)
    .orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(limit+1);
-  const chosen=rows.slice(0,limit),events=chosen.length?await tx.select().from(historyEvent).where(inArray(historyEvent.attemptId,chosen.map(row=>row.id))).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id)):[];
+  const chosen=rows.slice(0,limit),events=chosen.length?await tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.payroll_history_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,chosen.map(row=>row.id))).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id)):[];
   return {items:chosen.map(row=>({...row,events:events.filter(event=>event.attemptId===row.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
  });
 }
@@ -302,9 +320,9 @@ export async function getPayrollHistoryAttempt(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
   await principal(tx,ctx);
-  const [source]=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt}).from(attempt).where(eq(attempt.id,id));
+  const [source]=await tx.select({id:attempt.id,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdByName:sql<string|null>`app.payroll_history_actor_label(${attempt.id},${attempt.createdBy})`,createdAt:attempt.createdAt}).from(attempt).where(eq(attempt.id,id));
   if(!source)return null;
-  const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+  const events=await tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.payroll_history_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
   return {...source,events};
  });
 }

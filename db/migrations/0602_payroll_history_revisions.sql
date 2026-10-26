@@ -48,6 +48,17 @@ $$;
 REVOKE ALL ON FUNCTION app.payroll_history_attempt_access(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_history_attempt_access(uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- Only names of actors already recorded in an accessible attempt; no personnel directory access.
+CREATE FUNCTION app.payroll_history_actor_label(subject uuid,actor uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT nullif(btrim(p.full_name),'') FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.id=actor AND u.tenant_id=app.current_tenant_id() AND app.payroll_history_attempt_access(subject)
+ AND (EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a WHERE a.id=subject AND a.tenant_id=u.tenant_id AND a.created_by=u.id)
+  OR EXISTS(SELECT 1 FROM public.payroll_history_import_event e WHERE e.attempt_id=subject AND e.tenant_id=u.tenant_id AND e.actor_id=u.id))
+$$;
+REVOKE ALL ON FUNCTION app.payroll_history_actor_label(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_history_actor_label(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
 ALTER TABLE payroll_history_import_attempt ENABLE ROW LEVEL SECURITY;
 -- Inline the new row for INSERT RETURNING. A STABLE function looking up this table cannot
 -- observe a row inserted by its own command; the helper remains appropriate for child rows.

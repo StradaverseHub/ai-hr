@@ -1,9 +1,9 @@
 import {afterAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,payrollHistorySource} from '../core/payroll-history-revisions';
+import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,getPayrollHistoryAttempt,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
@@ -84,6 +84,12 @@ describe('immutable payroll history correction and recovery',()=>{
   const repeated=await previewPayrollHistoryUpload(ctx,{name:'same-file.csv',content});expect(repeated.plan.counts).toEqual({created:0,replaced:0,unchanged:2,invalid:0});await confirm(repeated);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
   const recovery=await previewPayrollHistoryRevert(ctx,preview.attemptId);expect(recovery.count).toBe(2);await revertPayrollHistoryUpload(ctx,preview.attemptId,recovery.previewHash);expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
  });
+ it('refuses accumulated batch overflow during preview before any payroll writes',async()=>{
+  await hireEmployee(ctx,{person:{fullName:'Second overflow fixture'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0008',hiredOn:`${year-1}-01-01`});
+  const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('6000000000.00'),...rows('6000000000.00','000AC','0008')]));
+  const preview=await previewPayrollHistoryUpload(ctx,{name:'overflow.csv',content});expect(preview.plan.counts.invalid).toBe(2);expect(preview.plan.rows.every(row=>row.reasons.some(reason=>reason.includes('batch total')))).toBe(true);
+  await expect(confirm(preview)).rejects.toThrow(/Correct the file/);expect(await owner.db.select().from(schema.payslip)).toEqual([]);expect(await owner.db.select().from(schema.payrollBatch)).toEqual([]);
+ });
  it('validates an entire multi-company file before writing any payroll result',async()=>{
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(),...rows('100.00','UNKNOWN','0008')]));
   const preview=await previewPayrollHistoryUpload(ctx,{name:'mixed.csv',content});expect(preview.plan.counts.invalid).toBeGreaterThan(0);
@@ -119,6 +125,15 @@ describe('immutable payroll history correction and recovery',()=>{
   await expect(previewPayrollHistoryRevert(foreign,first.attemptId)).rejects.toThrow(/unavailable/);
   await expect(revertPayrollHistoryUpload(foreign,first.attemptId,recovery.previewHash)).rejects.toThrow(/unavailable/);expect(await effective()).toEqual(money);
   await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/already been reverted/);
+ });
+ it('labels recorded audit actors without granting a personnel directory or foreign attempt lookup',async()=>{
+  await owner.db.update(schema.person).set({fullName:'Payroll audit owner'}).where(eq(schema.person.id,ctx.personId!));
+  const first=await upload();await confirm(first);const detail=await getPayrollHistoryAttempt(ctx,first.attemptId);
+  expect(detail?.createdByName).toBe('Payroll audit owner');expect(detail?.events).toMatchObject([{actorId:ctx.userId,actorName:'Payroll audit owner'}]);expect((await listPayrollHistoryAttempts(ctx)).items[0].createdByName).toBe('Payroll audit owner');
+  const unrelated=await createAppUser(b.tenantId,employeePersonId,'employee');
+  const [hidden]=await withTenant(ctx,tx=>tx.execute<{name:string|null}>(sql`select app.payroll_history_actor_label(${first.attemptId}::uuid,${unrelated}::uuid) as name`));expect(hidden.name).toBeNull();
+  const other=await seedBase();await setModule(other.tenantId,'payroll','active');
+  const [foreign]=await withTenant(await entitledCtx(other),tx=>tx.execute<{name:string|null}>(sql`select app.payroll_history_actor_label(${first.attemptId}::uuid,${ctx.userId}::uuid) as name`));expect(foreign.name).toBeNull();
  });
  it('keeps source files private across tenants and retains failed validation attempts',async()=>{
   const invalid=await previewPayrollHistoryUpload(ctx,{name:'invalid.csv',content:Buffer.from('Repeated,Repeated\n1,2')});
