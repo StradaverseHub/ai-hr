@@ -501,3 +501,55 @@ describe('participating encashment override ownership — authored, unrun accept
     expect(after.events).toHaveLength(before.events.length + 1);
   });
 });
+
+
+describe('participating resignation acceptance and freeze — authored, unrun acceptance', () => {
+  it.each(['employee-interval', 'request-row'] as const)('refuses a held %s without termination/freeze effects, then accepts once', async heldKind => {
+    const ctx = adminCtx(b), employeeId = await hire('FictionalResignationOwnership');
+    const today = todayInKualaLumpur(), lastDay = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+    await grantAnnual(employeeId, '5', `${today.slice(0, 4)}-01-01`); await enablePolicy();
+    const [employee] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment)
+      .where(eq(schema.employment.id, employeeId));
+    const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+    const asEmployee: SessionContext = { tenantId: b.tenantId, userId, roles: ['employee'],
+      personId: employee.personId, entitlements: harnessSnapshot(b.tenantId) };
+    const requested = await submitResignation(asEmployee, { employmentId: employeeId, lastWorkingDay: lastDay });
+    const state = async () => ({
+      employment: await owner.db.select().from(schema.employment).where(eq(schema.employment.id, employeeId)),
+      assignments: await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, employeeId)).orderBy(schema.assignment.id),
+      requests: await owner.db.select().from(schema.resignationRequest).where(eq(schema.resignationRequest.id, requested.requestId)),
+      snapshots: await owner.db.select().from(schema.leaveEncashmentSnapshot).where(eq(schema.leaveEncashmentSnapshot.employmentId, employeeId)).orderBy(schema.leaveEncashmentSnapshot.id),
+      events: await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    expect(before.requests[0].status).toBe('pending'); expect(before.employment[0].terminatedOn).toBeNull();
+    expect(before.snapshots).toHaveLength(0);
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned resignation handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      if (heldKind === 'employee-interval') await lockLeaveDependenciesTx(tx, b.tenantId, [employeeId]);
+      else {
+        const held = await tx.select({ id: schema.resignationRequest.id }).from(schema.resignationRequest)
+          .where(eq(schema.resignationRequest.id, requested.requestId)).for('update');
+        expect(held).toHaveLength(1);
+      }
+      ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      await expect(approveResignation(requested.requestId)).rejects.toThrow(heldKind === 'employee-interval'
+        ? 'Leave source is unavailable' : 'That resignation is busy');
+      expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await approveResignation(requested.requestId);
+    const accepted = await state();
+    expect(accepted.requests[0].status).toBe('accepted'); expect(accepted.employment[0].terminatedOn).toBe(lastDay);
+    expect(accepted.snapshots).toHaveLength(1); expect(Number(accepted.snapshots[0].balanceDays)).toBe(5);
+    expect(accepted.snapshots[0].status).toBe('frozen');
+    await expect(approveResignation(requested.requestId)).rejects.toThrow('already accepted');
+    expect(await state()).toEqual(accepted);
+  });
+});

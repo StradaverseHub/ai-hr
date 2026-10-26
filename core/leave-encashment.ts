@@ -154,6 +154,8 @@ export async function freezeOnResignationApprovalTx(
   ctx: SessionContext,
   p: { employmentId: string; companyId: string; resignationRequestId: string; asOf: string },
 ): Promise<{ snapshotId: string } | null> {
+  p = { ...p };
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const [policy] = await tx
     .select()
     .from(leaveEncashmentPolicy)
@@ -163,6 +165,8 @@ export async function freezeOnResignationApprovalTx(
 
   const annualId = await annualLeaveTypeId(tx, ctx.tenantId);
   if (!annualId) return null; // documented skip: tenant has no ANNUAL type
+
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
 
   // Idempotent: a retry (or a second call for the same resignation) returns the existing snapshot.
   const [existing] = await tx

@@ -1567,3 +1567,27 @@ as do policy, resignation, snapshot, ledger-trigger, Payroll and authorization c
 CREATION and its parent offboarding/termination transaction are deliberately still pending dependency
 integration: this checkpoint does not fence the freeze writer or establish a universal barrier.
 No app-role, concurrency, erasure or security guarantee follows from static source checks; no release.
+
+
+### Resignation acceptance owns the dependency interval before termination (unrun)
+
+Acceptance now acquires the existing Access workforce-write lock before exclusive leave configuration
+ownership, because its termination changes assignment/reporting dependencies as well as the subject's
+leave state. It nominates the visible request's employment, takes that employment barrier, then rereads
+the request `FOR UPDATE NOWAIT` and repeats the canonical decision checks. Changed subjects or busy
+rows refuse rather than acquiring a new subject late. The existing SQL fixed-consequence intent,
+termination owner, snapshot creation, accepted status and immutable events remain in one transaction.
+The request-row ownership also covers rejection; no new permission or maintenance bypass is added.
+
+The freeze helper itself now shares configuration before policy/type reads, retains its documented
+policy-off/no-annual silent skip, and takes employment ownership before existing-snapshot/balance reads.
+Within resignation acceptance those locks are already owned. Other callers must still establish their
+own earlier dependency/Access interval; direct termination and all other organization writers remain
+pending, so no universal organization or leave barrier is claimed.
+
+Two authored real-employee two-connection cases hold either a participating employee interval or the
+actual resignation row. They require identical employment/assignment/request/snapshot/event state on
+refusal, then acceptance after release with one frozen snapshot and a repeated-decision refusal that
+leaves state unchanged. Dates derive from the real business clock; no fake clock or guard relaxation.
+These and all changed offboarding/termination/Access/snapshot/leave consumers remain UNRUN. Static
+syntax/source review is not authorization, app-role, lock-order or effect-completion runtime proof.
