@@ -29,7 +29,7 @@ beforeEach(async()=>{
 describe('letter generation snapshots and complete-batch readiness',()=>{
  it('lets the configured escalation reviewer inspect the frozen letter without deciding an unassigned stage',async()=>{
   const [existing]=await owner.db.select().from(s.letterPolicyVersion);
-  const [escalationPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional escalation reviewer'}).returning(),escalationId=await createAppUser(b.tenantId,escalationPerson.id,'employee'),escalation={...await entitledCtx(b,['employee']),userId:escalationId,personId:escalationPerson.id};
+  const [escalationPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional escalation reviewer',primaryEmail:'escalation-reviewer@fixture.test'}).returning(),escalationId=await createAppUser(b.tenantId,escalationPerson.id,'employee'),escalation={...await entitledCtx(b,['employee']),userId:escalationId,personId:escalationPerson.id};
   for(const capability of ['read','approve'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'employee',allowed:true});
   const unrelated=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[1]],customValues:custom([employees[1]]),operationKey:randomUUID()});
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,escalationUserId:escalationId}});
@@ -43,7 +43,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
  it('moves pending stage jobs to the delegated reviewer without restarting the deadline and cancels obsolete work',async()=>{
   const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   const [delegatePerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional reminder delegate',primaryEmail:'reminder-delegate@fixture.test'}).returning(),delegateId=await createAppUser(b.tenantId,delegatePerson.id,'hr_admin'),delegate={...ctx,userId:delegateId,personId:delegatePerson.id};
-  const [blockedPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional unavailable reviewer'}).returning(),blockedId=await createAppUser(b.tenantId,blockedPerson.id,'hr_admin');
+  const [blockedPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional unavailable reviewer',primaryEmail:'unavailable-reviewer@fixture.test'}).returning(),blockedId=await createAppUser(b.tenantId,blockedPerson.id,'hr_admin');
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!,ctx.userId!,blockedId],allowDelegation:true},...existing.policy.stages]}});
   const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()});
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,blockedId));
