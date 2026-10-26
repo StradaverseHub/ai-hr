@@ -6,6 +6,7 @@ import {z} from 'zod';
 import {MODULE_CATALOG} from '../../packs/catalog';
 import {MODULE_AGENT_CAPABILITIES,isAgentModuleCode,type AgentModuleCode,type AgentCapability} from './module-agents';
 import {OWN_LEAVE_ACTION,OWN_LEAVE_CONTRACT_VERSION} from '../assistant-actions/own-leave-contract';
+import {MODULE_NOTIFICATION_ACTION} from '../assistant-actions/module-action-review-contract';
 export const MODULE_AGENT_ACTION_CONTRACT_VERSION=1 as const;
 export type ModuleActionPhase='read'|'explain'|'prepare'|'confirm';
 export type ModuleActionStatus='implemented'|'read_context_only'|'human_workflow_only'|'pending_adapter'|'unavailable';
@@ -13,7 +14,7 @@ type ReadCapability<M extends AgentModuleCode>=Extract<typeof MODULE_AGENT_CAPAB
 type EffectIds={employees:'employees.import';org:'org.reporting.change';leave:typeof OWN_LEAVE_ACTION;ess:'ess.profile.request';approvals:'approvals.leave.decide';knowledge_base:'knowledge_base.article.create';payroll:'payroll.close';attendance:'attendance.correction.request';claims:'claims.submit';performance:'performance.review.acknowledge';rewards:'rewards.post';lifecycle:'lifecycle.acknowledgement.submit';toil:'toil.replacement.request';multi_cycle_payroll:'multi_cycle_payroll.create_run';typed_pay_components:'typed_pay_components.create';'country-my':'country-my.statutory.update';notifications:'notifications.email_preferences.save';system_explorer:never;assistant:never;system_testing:'system_testing.execution.save'};
 export type ModuleEffectActionId=EffectIds[AgentModuleCode];
 type CanonicalOwner='personnel'|'organization'|'leave'|'profile'|'knowledge_base'|'payroll'|'attendance'|'claims'|'performance'|'rewards'|'lifecycle'|'country_pack_my'|'notifications'|'schema_inventory'|'assistant_orchestration'|'system_testing';
-type PhaseBoundary=Readonly<{status:ModuleActionStatus;adapter:'leave_own_review_v1'|null;inputSchema:string|null;outputSchema:string|null}>;
+type PhaseBoundary=Readonly<{status:ModuleActionStatus;adapter:'leave_own_review_v1'|'module_notification_review_v1'|null;inputSchema:string|null;outputSchema:string|null}>;
 type Action<M extends AgentModuleCode>=Readonly<{id:EffectIds[M];owner:CanonicalOwner;publicBoundary:string;publicMember?:'statutory.set';observations?:'human_actual_only';contractVersion:number;prepare:PhaseBoundary;confirm:PhaseBoundary;human:'canonical_workflow_required';outcome:'canonical_receipt_required'|'submitted_not_approved'}>;
 type Declaration<M extends AgentModuleCode>=Readonly<{module:M;owner:CanonicalOwner;publicBoundary:string;publicMember?:'statutory.set';source:string;coverage:'partial_actions'|'read_only'|'orchestration_only';money:'stored_kernel_amounts_only'|'canonical_engine_only'|'not_exposed';phases:Readonly<Record<ModuleActionPhase,ModuleActionStatus>>;read:Readonly<{id:ReadCapability<M>;status:'implemented';adapter:'canonical_module_read_v1';inputSchema:'AgentModuleCode';outputSchema:'createModuleAgentReaders.moduleWork:return'}>;actions:readonly Action<M>[]} >;
 export type ModuleAgentActionDeclaration={[M in AgentModuleCode]:Declaration<M>}[AgentModuleCode];
@@ -25,6 +26,11 @@ function pending<M extends AgentModuleCode>(id:EffectIds[M],owner:CanonicalOwner
 const leaveApply:Action<'leave'>=Object.freeze({id:OWN_LEAVE_ACTION,owner:'leave',publicBoundary:'packs/leave/service.ts#requestLeave',contractVersion:OWN_LEAVE_CONTRACT_VERSION,
  prepare:Object.freeze({status:'implemented',adapter:'leave_own_review_v1',inputSchema:'OwnLeaveHumanSelection+OwnLeaveHumanText',outputSchema:'OwnLeavePreparedReview'}),
  confirm:Object.freeze({status:'implemented',adapter:'leave_own_review_v1',inputSchema:'OwnLeaveConfirmation',outputSchema:'OwnLeaveFinalReceipt'}),human:'canonical_workflow_required',outcome:'submitted_not_approved'});
+/** The full human route is connected in source. This status grants neither provider execution nor
+ * runtime acceptance; a model may nominate only opening a human selection, never intent/confirmation. */
+const notificationSave:Action<'notifications'>=Object.freeze({id:MODULE_NOTIFICATION_ACTION,owner:'notifications',publicBoundary:'core/notification-email.ts#saveNotificationEmailPreferences',contractVersion:1,
+ prepare:Object.freeze({status:'implemented',adapter:'module_notification_review_v1',inputSchema:'ModuleActionPrepare',outputSchema:'ModuleActionPreparedReview'}),
+ confirm:Object.freeze({status:'implemented',adapter:'module_notification_review_v1',inputSchema:'ModuleActionConfirmation',outputSchema:'ModuleActionCompletedReceipt'}),human:'canonical_workflow_required',outcome:'canonical_receipt_required'});
 function declaration<M extends AgentModuleCode>(module:M,owner:CanonicalOwner,publicBoundary:string,source:string,actions:readonly Action<M>[]=[],money:Declaration<M>['money']='not_exposed',coverage:Declaration<M>['coverage']='partial_actions'):Declaration<M>{
  const read=MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module);if(!read)throw Error('Module action declaration unavailable.');
  return Object.freeze({module,owner,publicBoundary,source,coverage,money,phases:Object.freeze({read:'implemented',explain:'read_context_only',prepare:actions[0]?.prepare.status??'unavailable',confirm:actions[0]?.confirm.status??'unavailable'}),read:Object.freeze({id:read[1] as ReadCapability<M>,status:'implemented',adapter:'canonical_module_read_v1',inputSchema:'AgentModuleCode',outputSchema:'createModuleAgentReaders.moduleWork:return'}),actions:Object.freeze([...actions])});
@@ -49,7 +55,7 @@ export const MODULE_AGENT_ACTIONS=Object.freeze({
  multi_cycle_payroll:declaration('multi_cycle_payroll','payroll','packs/payroll/service.ts#createAdditionalRun','core/read.ts#myReleasedPayslipRuns',[pending<'multi_cycle_payroll'>('multi_cycle_payroll.create_run','payroll','packs/payroll/service.ts#createAdditionalRun')],'stored_kernel_amounts_only'),
  typed_pay_components:declaration('typed_pay_components','payroll','packs/payroll/service.ts#createPayComponent','core/payslip-earning-lines.ts#storedComponentLines',[pending<'typed_pay_components'>('typed_pay_components.create','payroll','packs/payroll/service.ts#createPayComponent')],'stored_kernel_amounts_only'),
  'country-my':Object.freeze({...declaration('country-my','country_pack_my','localization/registry.ts#requirePackFor','localization/my/statutory.ts#setStatutoryProfileMY',[Object.freeze({...pending<'country-my'>('country-my.statutory.update','country_pack_my','localization/registry.ts#requirePackFor'),publicMember:'statutory.set' as const})],'canonical_engine_only'),publicMember:'statutory.set' as const}),
- notifications:declaration('notifications','notifications','core/notification-email.ts#saveNotificationEmailPreferences','core/notifications.ts#listNotifications',[pending<'notifications'>('notifications.email_preferences.save','notifications','core/notification-email.ts#saveNotificationEmailPreferences')]),
+ notifications:declaration('notifications','notifications','core/notification-email.ts#saveNotificationEmailPreferences','core/assistant-actions/module-action-review-store.ts#prepareModuleActionReview+confirmModuleActionReview',[notificationSave]),
  system_explorer:declaration('system_explorer','schema_inventory','core/schema-explorer.ts#listSchemaTables','core/module-agent-readers.ts#createModuleAgentReaders',[],'not_exposed','read_only'),
  assistant:declaration('assistant','assistant_orchestration','core/module-agent-readers.ts#createModuleAgentReaders','core/module-agent-readers.ts#createModuleAgentReaders',[],'not_exposed','orchestration_only'),
  system_testing:declaration('system_testing','system_testing','core/system-testing-workspace.ts#saveTestingExecution','core/system-testing-workspace.ts#listTestingAssignments',[Object.freeze({...pending<'system_testing'>('system_testing.execution.save','system_testing','core/system-testing-workspace.ts#saveTestingExecution'),observations:'human_actual_only' as const})]),
@@ -58,7 +64,7 @@ const declarations:readonly ModuleAgentActionDeclaration[]=Object.freeze(Object.
 /** Static metadata only. This never checks a user's access or resolves a callable function. */
 export function getModuleAgentAction(module:unknown,action:unknown){if(!isAgentModuleCode(module)||typeof action!=='string')return null;return declarations.find(row=>row.module===module)?.actions.find(row=>row.id===action)??null;}
 const Nomination=z.object({module:z.string().max(80),action:z.string().max(120),phase:z.enum(['read','explain','prepare','confirm'])}).strict();
-export type ModuleAgentActionNomination=Readonly<{kind:'read';module:AgentModuleCode;capability:AgentCapability;adapter:'canonical_module_read_v1'}>|Readonly<{kind:'prepare';module:'leave';action:'leave.apply';adapter:'leave_own_review_v1';requiresHumanSelection:true;effect:'none'}>;
+export type ModuleAgentActionNomination=Readonly<{kind:'read';module:AgentModuleCode;capability:AgentCapability;adapter:'canonical_module_read_v1'}>|Readonly<{kind:'prepare';module:'leave';action:'leave.apply';adapter:'leave_own_review_v1';requiresHumanSelection:true;effect:'none'}>|Readonly<{kind:'prepare';module:'notifications';action:typeof MODULE_NOTIFICATION_ACTION;adapter:'module_notification_review_v1';requiresHumanSelection:true;effect:'none'}>;
 /** Only a static server switch may consume the returned code. Model nominations cannot confirm a
  * human review, supply an actor/scope/employee, call services, compute money or gain module access. */
 export function parseModuleAgentActionNomination(value:unknown):ModuleAgentActionNomination{
@@ -66,6 +72,7 @@ export function parseModuleAgentActionNomination(value:unknown):ModuleAgentActio
  if(p.phase==='read'&&p.action===row.read.id)return Object.freeze({kind:'read',module:p.module,capability:row.read.id,adapter:'canonical_module_read_v1'});
  const declared=getModuleAgentAction(p.module,p.action);
  if(p.module==='leave'&&p.action===OWN_LEAVE_ACTION&&p.action==='leave.apply'&&p.phase==='prepare'&&OWN_LEAVE_CONTRACT_VERSION===1&&declared?.contractVersion===1&&declared.prepare.status==='implemented'&&declared.prepare.adapter==='leave_own_review_v1')return Object.freeze({kind:'prepare',module:'leave',action:'leave.apply',adapter:'leave_own_review_v1',requiresHumanSelection:true,effect:'none'});
+ if(p.module==='notifications'&&p.action===MODULE_NOTIFICATION_ACTION&&p.phase==='prepare'&&declared?.contractVersion===1&&declared.prepare.status==='implemented'&&declared.prepare.adapter==='module_notification_review_v1')return Object.freeze({kind:'prepare',module:'notifications',action:MODULE_NOTIFICATION_ACTION,adapter:'module_notification_review_v1',requiresHumanSelection:true,effect:'none'});
  throw Error('This module action is not available.');
 }
 const samePhase=(actual:PhaseBoundary|undefined,expected:PhaseBoundary)=>!!actual&&actual.status===expected.status&&actual.adapter===expected.adapter&&actual.inputSchema===expected.inputSchema&&actual.outputSchema===expected.outputSchema;
