@@ -22401,7 +22401,7 @@
   "myPayslip": {
     "title": "My Payslip",
     "intro": "Your released payslips",
-    "cycle": "Pay Cycle (Run Type)",
+    "cycle": "Pay Cycle",
     "unavailableChoice": "Unavailable selection",
     "releasedHelp": "Choices come from your own final, released payslips.",
     "unavailable": "No released payslip is available for this selection.",

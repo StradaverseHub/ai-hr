@@ -22401,7 +22401,7 @@
   "myPayslip": {
     "title": "Slip Gaji Saya",
     "intro": "Slip gaji anda yang telah dikeluarkan",
-    "cycle": "Kitaran Gaji (Jenis Larian)",
+    "cycle": "Kitaran Gaji",
     "unavailableChoice": "Pilihan tidak tersedia",
     "releasedHelp": "Pilihan berdasarkan slip gaji akhir anda yang telah dikeluarkan.",
     "unavailable": "Tiada slip gaji yang telah dikeluarkan tersedia untuk pilihan ini.",

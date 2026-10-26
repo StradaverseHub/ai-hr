@@ -826,7 +826,7 @@ export function Sidebar({
   usePublishNavIndex(navEntries, activeEntry);
 
   const openNode = openKey && !monolith
-    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
   // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
@@ -1023,13 +1023,12 @@ export function Sidebar({
       if (children.length === 0) return null;
       const active = item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
-      const expanded = inlineOpen[item.labelKey] ?? active;
+      const expanded = openNode?.labelKey === item.labelKey;
       const Icon = item.icon;
       const label = t(item.labelKey);
-      const kidsId = `atelier-kids-${item.labelKey}`;
-      const currentHref = children.filter((c) => isRowActive(c))
-        .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
-      const flip = () => setInlineOpen((old) => ({ ...old, [item.labelKey]: !expanded }));
+      const kidsId = `atelier-flyout-${item.labelKey}`;
+      const flip = () => setOpenKey(expanded ? null : item.labelKey);
+      const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
       return (
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
           {item.defaultHref ? (
@@ -1037,38 +1036,23 @@ export function Sidebar({
               <Link href={item.defaultHref} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
                 className="atelier-row w-auto px-1.5">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className="atelier-row">
+            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
               <Icon aria-hidden /><span className="truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
-          )}
-          {expanded && (
-            <nav id={kidsId} aria-label={label} className="atelier-kids">
-              {children.map((child, index) => {
-                const heading = sectionLabel(child.href);
-                return <Fragment key={child.href}>
-                  {heading && heading !== sectionLabel(children[index - 1]?.href ?? '') &&
-                    <h3 className="atelier-subheading">{t(heading)}</h3>}
-                  <Link href={child.navigationHref ?? child.href} data-tour={child.tour}
-                    aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
-                    {childCaption(child)}
-                  </Link>
-                </Fragment>;
-              })}
-            </nav>
           )}
         </div>
       );
     };
     const initials = (viewerName ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
     return (
-      <div className="relative hidden h-full shrink-0 sm:block">
+      <div className={cn('atelier-navigation-shell relative hidden h-full shrink-0 sm:flex', openNode && 'atelier-flyout-open z-50')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
@@ -1124,6 +1108,10 @@ export function Sidebar({
             </div>
           )}
         </aside>
+        {openNode && <NavFlyoutPanel key={openNode.labelKey} layout="atelier" labelKey={openNode.labelKey}
+          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
+          isActive={href=>href===activeChildHref} rowBase="atelier-row" panelId={`atelier-flyout-${openNode.labelKey}`}
+          onClose={()=>setOpenKey(null)} onEscape={()=>{setOpenKey(null);triggerRefs.current[openNode.labelKey]?.focus();}}/>}
       </div>
     );
   }

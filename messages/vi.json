@@ -22401,7 +22401,7 @@
   "myPayslip": {
     "title": "Phiếu lương của tôi",
     "intro": "Các phiếu lương đã phát hành của bạn",
-    "cycle": "Chu kỳ lương (Loại kỳ chạy)",
+    "cycle": "Chu kỳ lương",
     "unavailableChoice": "Lựa chọn không khả dụng",
     "releasedHelp": "Các lựa chọn lấy từ phiếu lương cuối cùng đã phát hành của chính bạn.",
     "unavailable": "Không có phiếu lương đã phát hành cho lựa chọn này.",

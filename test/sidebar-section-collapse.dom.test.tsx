@@ -32,7 +32,7 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
     expect(heading.tagName).toBe('H3');expect(heading).toHaveClass('atelier-subheading');
     expect(heading.closest('a,button')).toBeNull();
   }
-  if(theme==='classic'){fireEvent.keyDown(document,{key:'Escape'});expect(people).toHaveFocus();}
+  if(theme==='classic'||theme==='atelier'){fireEvent.keyDown(document,{key:'Escape'});expect(people).toHaveFocus();}
   else{people.focus();await user.keyboard(' ');}
   expect(people).toHaveAttribute('aria-expanded','false');
   expect(screen.queryByRole('navigation',{name:messages.nav.modulePeople})).toBeNull();

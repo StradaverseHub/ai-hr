@@ -22401,7 +22401,7 @@
   "myPayslip": {
     "title": "我的工资单",
     "intro": "您已发布的工资单",
-    "cycle": "薪资周期（运行类型）",
+    "cycle": "薪资周期",
     "unavailableChoice": "所选项目不可用",
     "releasedHelp": "选项仅来自您已最终确认并发布的工资单。",
     "unavailable": "此选项暂无已发布的工资单。",

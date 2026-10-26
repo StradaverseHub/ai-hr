@@ -31,7 +31,6 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   return <div className="w-full space-y-6">
     {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
     <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${t(`stages.${unit.status}`)}`} />
-    <Link href={`/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('openReview')}</Link>
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}
     {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span>}</p>}

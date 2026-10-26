@@ -161,6 +161,15 @@
     background: var(--sidebar); border-right: 1px solid var(--sidebar-border); color: var(--sidebar-foreground);
     font-size: .84375rem;
   }
+  :root[data-ui-theme='atelier'] .atelier-flyout {
+    width: 15.5rem; flex: none; border-inline-end: 1px solid var(--sidebar-border);
+  }
+  :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { position: relative; z-index: 50; }
+  :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row { min-height: 2.5rem; height: auto; padding-block: .5rem; }
+  :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row > span { white-space: normal; overflow: visible; }
+  @media (min-width: 640px) and (max-width: 1023px) {
+    :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { display: none; }
+  }
   :root[data-ui-theme='atelier'] .atelier-workspace {
     display: flex; align-items: center; gap: .625rem; padding: .75rem .75rem .5rem .875rem;
     color: var(--foreground); font-weight: 600; font-size: .875rem; text-decoration: none;
