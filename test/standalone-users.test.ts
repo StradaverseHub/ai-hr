@@ -65,7 +65,7 @@ describe('named users without employment', () => {
   });
   it('reproduces the previous employment-only refusal and proves the same request succeeds with the new admission rule',async()=>{
     const oldSql=readFileSync(new URL('../db/migrations/0526_manual_identity_enrollment.sql',import.meta.url),'utf8');
-    const newSql=readFileSync(new URL('../db/migrations/0601_standalone_user_enrollment.sql',import.meta.url),'utf8');
+    const newSql=readFileSync(new URL('../db/migrations/0612_standalone_user_enrollment.sql',import.meta.url),'utf8');
     function target(source:string,marker:string){
       const start=source.indexOf(marker),end=source.indexOf('--> statement-breakpoint',start);
       expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);expect(end-start).toBeGreaterThan(1000);
