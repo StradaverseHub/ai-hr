@@ -107,8 +107,40 @@ callback or claiming that a submitted replacement assertion was checked. The bus
 its original receipt before deciding the user-facing result. A proof-check event records references and
 counter, not signature bytes, coordinates, photo or vendor receipt.
 
-This remains an internal seam: the current attendance writer owns its own transaction, so it must be
-refactored to join this one before a supported API version can use the service. Existing v1 routes do
-not invoke it. It adds no new migration, integrity tier, location/attendance policy, offline acceptance
-or deployed security guarantee. Real vendor/device evidence, metadata/modern assertion support,
-registered-device policy integration and complete release verification remain required.
+This remains an internal seam. Existing v1 routes do not invoke it. It adds no new migration, integrity
+tier, location/attendance policy, offline acceptance or deployed security guarantee. Real vendor/device
+evidence, metadata/modern assertion support and complete release verification remain required.
+
+## Joining online attendance acceptance
+
+The signed Apple carrier now invokes the existing capture writer inside the proof transaction. The
+writer's existing web/native entry points retain their transaction ownership; its narrow joined native
+entry point uses the parent's transaction and repeats own-employment selection there. It preserves
+registered-device, photo, location freshness, uncertainty containment, ordering, corrected-day and
+server-ordered abandonment rules. It stamps accepted attendance with server time, rather than promoting
+the signed claimed sample time to an attendance timestamp. No vendor network request occurs inside
+the joined transaction. After the employment advisory lock, the joined writer repeats salary-free
+own-profile eligibility. After tentative business writes, the proof owner repeats eligibility and
+database expiry once more before commit. Waiting for a subject/day lock cannot extend a proof grant;
+an expired grant rolls those tentative writes back.
+
+The immutable challenge binding additionally includes a digest of the exact registered-device bearer
+credential, when supplied. Its nonce therefore commits to that credential without publishing it in
+client data or audit. Changing credentials after issuance changes the binding and refuses. This
+preserves the legacy registration gate; it does not create a hardware association between that bearer
+credential and the attested key. A valid key never silently exempts the employee from the configured
+registered-device policy.
+
+The joined writer requires a new capture. A reference already accepted through another carrier cannot
+be retroactively upgraded with integrity evidence. Successful capture, punch, proof-to-capture link,
+counter advance and challenge consumption commit together. A duplicate completion recovers only the
+original actor/capture/request linked to that exact challenge, without re-running acceptance. Revoking
+the key after acceptance does not erase its receipt. Independent native receipt lookup remains the
+recovery path when deployment configuration changes. Invalid proof or refused attendance leaves the
+challenge and counter unchanged. Outside-geofence audit is appended only after rollback, through the
+existing separate blocked-attempt owner, and never creates an accepted punch.
+
+The link records key/challenge references, counter and historical enrollment proof kind. It records no
+signature, photo, coordinates, vendor receipt or bearer credential. The ordinary public clock receipt
+gains no trust tier or verified-presence claim. A supported API/configuration boundary, native durable
+orchestration and signed-device acceptance still precede activation; current public routes are unchanged.

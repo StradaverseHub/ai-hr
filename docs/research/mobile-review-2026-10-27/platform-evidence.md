@@ -216,6 +216,48 @@ attendance. Historical enrollment metadata and signed source/version claims do n
 running build or physical presence. Modern metadata/assertion fixtures, registered-device policy,
 signed-device runs and full frozen-candidate verification remain required.
 
+The joined attendance carrier at `4002e0e6a` passed all 201 cases across eleven affected database
+suites, including eighteen proof/real-writer cases, legacy web/native clocking, registered devices,
+geofence containment, corrected days, clock origins, home state and module gates. Root TypeScript
+exited 0. The first integration checkpoint `875651a5b` passed 63 of 65 cases and its compiler; two new
+assertions incorrectly expected custom Error.name strings from classes that retain the default name.
+They now assert the actual error classes. Those original failed observations are retained separately.
+
+The internal signed carrier now uses the real existing attendance writer in the proof transaction.
+Concurrent completions return one original actor receipt with one punch and one proof link. It refuses
+to upgrade a reference previously accepted through the unsigned carrier, and preserves current photo,
+registered-device, geofence, freshness, correction, ordering and abandonment rules. The challenge also
+binds the exact registered-device credential digest; a token cannot be substituted after issuance.
+This preserves the bearer gate without asserting a hardware relationship between the token and key.
+Only key/challenge references, counter and historical proof kind enter the link audit.
+
+The tests force both an actual punch insertion failure and a later integrity-link audit failure.
+Both roll back attendance, capture, counter, challenge and their tentative audit; the same original
+proof can succeed after the owned fixture failure is removed. The late audit failure explicitly occurs
+after the writer returned its tentative receipt. Separate deterministic subject-lock tests observe the
+request waiting, then expire its short-lived fixture or remove employment eligibility before release.
+The proof owner rechecks eligibility and database expiry after tentative business writes, so this later
+wait cannot extend the grant. Production lifetimes are unchanged.
+
+Three controlled integration mutations at `4002e0e6a` each caused the selected case to fail: removing
+the new-capture guard returned an unsigned capture as checked, changing the joined writer back to a
+separate transaction left a capture committed after integrity-link failure, and removing the credential
+digest accepted a substituted registered-device token. Each exact restoration passed (one selected,
+seventeen skipped per run); all harness results were `mutation=1 restored=0 exact=True`. The atomicity
+failure specifically observed a persisted capture, rather than merely a timeout or unrelated refusal.
+
+Final `8ef714776` passed all nineteen assertion/real-writer cases and root TypeScript. Its added
+required-photo case signs a real PNG's exact bytes, changes the caller's original buffer immediately
+after completion starts, and still accepts the retained snapshot through the actual decoder. The
+stored original-byte digest matches the signed digest, while the stored image is the normalized JPEG.
+The ten other suites' unchanged passing regression evidence above remains applicable; this follow-up
+does not relabel the original failed attempt or claim a complete gate.
+
+No new migration, public API/configuration loader, native orchestration or deployment was introduced.
+Existing public routes still use their established carrier; this local internal integration does not
+establish production enforcement or physical presence. Hardware/vendor acceptance, supported-version
+rollout policy and complete frozen-candidate verification remain open.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
