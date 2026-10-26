@@ -6,14 +6,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { setPersonComplianceFields } from '../core/profile';
 import { lockLeaveDependenciesTx, INELIGIBLE_GRANT_REVERSAL_REASON } from '../packs/leave/service';
 import { runIneligibleGrantRepair } from '../scripts/reverse-ineligible-leave-grants';
 import { runDuplicateReplacementArchive } from '../scripts/archive-duplicate-replacement-leave-type';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b:Base;const url=process.env.TEST_MIGRATION_DATABASE_URL!;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
-async function subject(base=b){return hireEmployee(adminCtx(base),{person:{fullName:'Fictional Operator Repair Subject',primaryEmail:randomUUID()+'@fixture.test',gender:'male'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});}
-async function grant(base=b){const employee=await subject(base);await owner.db.update(s.leaveType).set({eligibility:{gender:'female'}}).where(eq(s.leaveType.id,base.annualLeaveTypeId));await owner.db.insert(s.leaveLedger).values({tenantId:base.tenantId,employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'5',effectiveOn:'2026-01-01'});return employee;}
+async function subject(base=b){return hireEmployee(adminCtx(base),{person:{fullName:'Fictional Operator Repair Subject',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});}
+async function grant(base=b){const employee=await subject(base);
+ // hireEmployee deliberately accepts only identity/contact fields; unknown gender was ignored at
+ // runtime. Use the real HR compliance owner and prove the positive recorded fact. The repair's
+ // missing-attribute='allow' rule must keep protecting genuinely unrecorded employee attributes.
+ await setPersonComplianceFields(adminCtx(base),{employmentId:employee.employmentId,gender:'male'});
+ const [person]=await owner.db.select({gender:s.person.gender}).from(s.person).where(eq(s.person.id,employee.personId));expect(person?.gender).toBe('male');
+await owner.db.update(s.leaveType).set({eligibility:{gender:'female'}}).where(eq(s.leaveType.id,base.annualLeaveTypeId));await owner.db.insert(s.leaveLedger).values({tenantId:base.tenantId,employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'5',effectiveOn:'2026-01-01'});return employee;}
 async function duplicate(){const [keep]=await owner.db.insert(s.leaveType).values({tenantId:b.tenantId,code:'RL',name:'Fictional role owner',country:'MY',role:'replacement',paid:true}).returning({id:s.leaveType.id});const [extra]=await owner.db.insert(s.leaveType).values({tenantId:b.tenantId,code:'REPLACEMENT',name:'Fictional empty duplicate',country:'MY',paid:true}).returning({id:s.leaveType.id});return{keep:keep.id,extra:extra.id};}
 async function state(base=b){return{
  types:await owner.db.select().from(s.leaveType).where(eq(s.leaveType.tenantId,base.tenantId)).orderBy(s.leaveType.id),
