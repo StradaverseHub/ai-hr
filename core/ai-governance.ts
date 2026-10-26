@@ -1,4 +1,4 @@
-import {createAiRunAccounting} from '../lib/ai/run-accounting';
+import {createAiRunAccounting,type AiRunAccounting} from '../lib/ai/run-accounting';
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { AiGatewayError,AiAllowanceError,type AiUsage,type AiRunObservation,type ResolvedAiConfig } from '../lib/ai/types';
@@ -35,10 +35,14 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  * The exact current provider/principal is checked first; admission/settlement remain canonical.
  */
 type AiAdmissionCheck = (tx: Tx, request: Readonly<AiAdmission>) => Promise<void>;
-const issuedConfigurations = new WeakMap<object, { ctx: SessionContext; snapshot: AiProviderSnapshot; feature: AiFeatureId; check?: AiAdmissionCheck }>();
+export type AiAdmissionLifecycle=Readonly<{
+ admitted?:(tx:Tx,event:Readonly<{runId:string;request:Readonly<AiAdmission>}>)=>Promise<void>;
+ settled?:(tx:Tx,event:Readonly<{runId:string;succeeded:boolean;actualTokens:number|null;accounting:AiRunAccounting}>)=>Promise<void>;
+}>;
+const issuedConfigurations = new WeakMap<object, { ctx: SessionContext; snapshot: AiProviderSnapshot; feature: AiFeatureId; check?: AiAdmissionCheck;lifecycle?:AiAdmissionLifecycle }>();
 
 /** Opaque server-only provider/principal binding, not HR disclosure or effect authorization. */
-function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId,check?:AiAdmissionCheck):ResolvedAiConfig{
+function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,feature:AiFeatureId,check?:AiAdmissionCheck,lifecycle?:AiAdmissionLifecycle):ResolvedAiConfig{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  assertAiProviderSnapshot(snapshot,ctx);
  assertAiProviderSnapshotFeature(snapshot,feature);
@@ -58,7 +62,9 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    assertAiProviderSnapshot(snapshot,ctx);
    assertAiProviderSnapshotFeature(snapshot,feature);
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
-   return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
+   const rows=await tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
+   if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
+   return rows;
   });
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
@@ -72,13 +78,14 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   try{const result=await call(record,accounting.observe);succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
-   try { const observed=accounting.snapshot(actual);await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
+   try { const observed=accounting.snapshot(actual);await withTenant(ctx,async tx=>{await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
-    ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`)); }
+    ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);
+    if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
   }
  }})});
- issuedConfigurations.set(resolved,{ctx,snapshot,feature,check});
+ issuedConfigurations.set(resolved,{ctx,snapshot,feature,check,lifecycle});
  return resolved;
 }
 
@@ -95,5 +102,19 @@ export function withAiAdmissionCheck(configuration:ResolvedAiConfig,feature:AiFe
  const issued=issuedConfigurations.get(configuration);
  if(!issued||issued.feature!==feature||typeof check!=='function')throw new AiGatewayError('The prepared AI request could not be confirmed.');
  const combined:AiAdmissionCheck=issued.check?async(tx,request)=>{await issued.check!(tx,request);await check(tx,request);}:check;
- return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,combined);
+ return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,combined,issued.lifecycle);
+}
+
+/** Server-only durable correlation. Hooks run in admission/settlement transactions; failures roll back
+ * their canonical writes. No hook or run identity enters the provider request. Config copies refuse. */
+export function withAiAdmissionLifecycle(configuration:ResolvedAiConfig,feature:AiFeatureId,hooks:AiAdmissionLifecycle):ResolvedAiConfig{
+ const issued=issuedConfigurations.get(configuration);
+ if(!issued||issued.feature!==feature||!hooks||Object.keys(hooks).some(key=>key!=='admitted'&&key!=='settled')||
+  (hooks.admitted!==undefined&&typeof hooks.admitted!=='function')||(hooks.settled!==undefined&&typeof hooks.settled!=='function'))throw new AiGatewayError('The prepared AI request could not be confirmed.');
+ const captured=Object.freeze({admitted:hooks.admitted,settled:hooks.settled}),previous=issued.lifecycle;
+ const composed:AiAdmissionLifecycle=Object.freeze({
+  async admitted(tx,event){if(previous?.admitted)await previous.admitted(tx,event);if(captured.admitted)await captured.admitted(tx,event);},
+  async settled(tx,event){if(previous?.settled)await previous.settled(tx,event);if(captured.settled)await captured.settled(tx,event);}
+ });
+ return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,issued.check,composed);
 }
