@@ -2,6 +2,12 @@
 
 Repository and branch policy: [Repository and environments](REPOSITORY-AND-ENVIRONMENTS.md).
 
+## Efficiency review and free runner policy — 26 October MYT
+
+Use only standard GitHub-hosted public-repository Actions; the owner explicitly forbids paid larger runners and spending-limit increases. The public ubuntu-24.04 standard size is four CPUs/16GB RAM. The earlier private included-minute holds are superseded; storage allowances remain separate. See [repository capacity policy](REPOSITORY-AND-ENVIRONMENTS.md#public-repository-actions-capacity).
+
+The efficiency review branch's version8 execution completed all23test units and28,005cases in40290170108, but the workflow failed one controller import-path test and its dependent verifier. Its narrowly scoped repair passed in40292314938 while retaining valid unit evidence. That is not a complete CI release receipt, deployment arrival or under-ten-minute result. The complete attempt took701.09s before deployment. These review-branch improvements have not been promoted into the default main/alpha controller. [Current evidence and remaining work](RELEASE-PERFORMANCE.md).
+
 ## Current rollout
 
 `alpha-staging-ci` runs on GitHub-hosted Ubuntu runners. The workflow/controller is published on default `main`; it checks out the requested candidate separately, at an exact SHA, without modifying that candidate's tracked files. This allows the Board 3 pilot to run while `alpha` remains pinned to its verified deployed release. CI on `main` does **not** deploy main.
@@ -34,7 +40,7 @@ Ready same-repository PRs targeting `alpha` and pushes to `alpha` are also decla
 - Existing browser suites run in Chromium, Firefox and WebKit. Runner-generated ignored config selects the actual engine while preserving candidate source.
 - A final verifier refuses absent, duplicate, foreign-commit, skipped, failed or zero-test evidence, and checks every expected file and assertion count. Artifacts identify both candidate and controller commits. Matrix jobs do not stop the other jobs on failure.
 
-`gate-evidence` remains a distinct **CI receipt** under `aihr-staging-ci/v3`. The operator verifier authenticates the successful run, all required jobs and all artifact digests, recomputes source classification and validates every executed report before accepting it. No `.gate-receipt.json` is manufactured, and partial runs cannot be combined into a PASS. Version 3 authenticates one optional bounded compiler graph artifact without changing mandatory test coverage; that artifact never supplies test-unit or gate authority. A diagnostic-only success is not release evidence. Policy or controller repairs require a fresh whole run on the final controller commit.
+`gate-evidence` remains a distinct **CI receipt** under the review implementation’s `aihr-staging-ci/v8`. The operator verifier authenticates the successful run, all required jobs and all artifact digests, recomputes source classification and validates every executed report before accepting it. No `.gate-receipt.json` is manufactured, and partial runs cannot be combined into a PASS. Version8 retains complete coverage and authenticated compiler/build packet boundaries with duration-balanced database groups and within-project ordering; optional graph artifacts never supply test-unit or gate authority. A diagnostic-only success is not release evidence. Policy or controller repairs require a fresh whole run on the final controller commit.
 
 Node/DOM unit artifacts are retained for 14 days; the final CI receipt for 30 days. Staging secrets are absent from every verification job. Read actual workflow conclusions and artifact totals; a workflow being installed or dispatched is not a passing pilot.
 
