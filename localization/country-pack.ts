@@ -385,6 +385,8 @@ export interface CountryPack {
    */
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
+    /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
+    withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
     reviewed?:{prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];

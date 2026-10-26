@@ -1,3 +1,4 @@
+import {captureStatutorySourceContext,lockStatutorySourceTx} from './statutory-source-lock';
 /**
  * LHDN TP3 (1/2026) — the PREVIOUS-EMPLOYMENT record (item df35d60d; item 1bb09a73 joined it to PCB).
  *
@@ -817,7 +818,9 @@ export async function resyncTp3Projections(
   ctx: SessionContext,
   opts: { dryRun?: boolean } = {},
 ): Promise<{ personId: string; assessmentYear: number; before: number | null; after: number; outcome: Tp3SeedOutcome }[]> {
+  ctx=captureStatutorySourceContext(ctx);opts=structuredClone(opts);
   return withTenant(ctx, async (tx) => {
+    if(!opts.dryRun)await lockStatutorySourceTx(tx,ctx);
     const forms = await tx
       .select({ personId: employeeTp3.personId, assessmentYear: employeeTp3.assessmentYear, payload: employeeTp3.payload })
       .from(employeeTp3)
@@ -1083,8 +1086,9 @@ function prepareTp3(p:Tp3WriteInput) {
 }
 type MyTp3Storage = {draftId:string;revision:number};
 export async function saveTp3(ctx: SessionContext,p:Tp3WriteInput):Promise<{id:string;seed:Tp3SeedOutcome}> {
+  ctx=captureStatutorySourceContext(ctx);p=structuredClone(p);
   const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
-  return withTenant(ctx,tx=>savePreparedTp3Tx(tx,ctx,personId,p,prepared));
+  return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx);return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
 }
 async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage):Promise<{id:string;seed:Tp3SeedOutcome}> {
   const {assessmentYear,deductionMonth,previousEmployers,payload,remarks}=prepared;
@@ -1208,9 +1212,11 @@ async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3W
  * balance for a DIFFERENT year is untouched, and the before-image is on the event either way.
  */
 export async function deleteTp3(ctx: SessionContext, p: { personId: string; assessmentYear: number }): Promise<void> {
+  ctx=captureStatutorySourceContext(ctx);p=structuredClone(p);
   const personId = requireAdminTarget(ctx, p.personId);
   const assessmentYear = validateYear(p.assessmentYear);
   await withTenant(ctx, async (tx) => {
+    await lockStatutorySourceTx(tx,ctx);
     const [existing] = await tx
       .select()
       .from(employeeTp3)
@@ -1275,6 +1281,7 @@ export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
 }
 export type MyTp3WriteInput=Omit<Tp3WriteInput,'personId'|'remarks'> & {employmentId:string;expectedRevision:number};
 async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit:boolean) {
+  ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);await lockStatutorySourceTx(tx,ctx);
   if(!ctx.personId||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw new Tp3Error('Reload this TP3 draft before saving.');
   const [actual]=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid) for share`) as unknown as {id:string}[];
   if(!actual?.id)throw new Tp3Error('This account is not linked to this employee profile.');
@@ -1287,5 +1294,5 @@ async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit
   const result=await savePreparedTp3Tx(tx,ctx,ctx.personId,{...input,personId:ctx.personId},prepared,{draftId:draft.id,revision:input.expectedRevision+1});
   return {...result,revision:input.expectedRevision+2};
 }
-export function saveMyTp3Draft(ctx:SessionContext,input:MyTp3WriteInput) {return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,false));}
-export function submitMyTp3(ctx:SessionContext,input:MyTp3WriteInput) {return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,true));}
+export function saveMyTp3Draft(ctx:SessionContext,input:MyTp3WriteInput) {ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,false));}
+export function submitMyTp3(ctx:SessionContext,input:MyTp3WriteInput) {ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);return withTenant(ctx,tx=>saveMyTp3Tx(tx,ctx,input,true));}

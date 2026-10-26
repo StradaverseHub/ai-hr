@@ -1,4 +1,4 @@
-import {captureStatutoryContext,statutoryWriteIntervalMYTx} from './statutory-write-lock';
+import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx} from '../../core/statutory-source-lock';
 import {savedTaxCircumstance} from './tax-circumstance';
 /** The Income Tax Resident field owns the scoped scheme; legacy approvals are conversion evidence only. */
 import {and,eq,isNull,sql} from 'drizzle-orm';
