@@ -6,7 +6,7 @@ import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {getModuleAgentAction,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 describe('the shared Assistant hands actions to humans rather than executing them',()=>{
  it('offers only actual connected specialist pages and no pending or read-only module effects',()=>{
-  const connected=['leave','ess','notifications','performance','claims','system_testing','org'];
+  const connected=['leave','ess','notifications','performance','claims','system_testing','org','knowledge_base'];
   for(const module of AGENT_MODULE_CODES){const rows=moduleHumanActionHandoffs(module);expect(Object.isFrozen(rows)).toBe(true);expect(rows.length>0).toBe(connected.includes(module));
    for(const row of rows){expect(Object.isFrozen(row)).toBe(true);expect(row).toMatchObject({module,effect:'none',requiresHumanSelection:true,authority:'rechecked_on_review_page'});expect(Object.keys(row).sort()).toEqual(['module','action','route','requiresHumanSelection','effect','authority'].sort());expect(getModuleAgentAction(module,row.action)?.prepare.status).toBe('implemented');expect(parseModuleAgentActionNomination({module,action:row.action,phase:'prepare'}).kind).toBe('prepare');expect(()=>parseModuleAgentActionNomination({module,action:row.action,phase:'confirm'})).toThrow();}
   }
@@ -36,4 +36,10 @@ it('keeps draft saving and explicit submission on one Claims specialist page wit
  const result=presentGroundedToolOutcome('my_module_work',{ok:true,module:'claims',data:{claims:[],hasEmployment:true,truncated:false},humanActions:actions});expect(result?.cards).toEqual([{title:{kind:'module',module:'claims'},facts:[],href:'/assistant/claims',linkPurpose:'human_review'}]);
  expect(()=>presentGroundedToolOutcome('my_module_work',{ok:true,module:'claims',data:{claims:[],truncated:false},humanActions:actions})).toThrow('Canonical claim scope unavailable.');
  expect(()=>checkedModuleHumanHandoffs('claims',actions.slice(0,1))).toThrow();expect(()=>checkedModuleHumanHandoffs('claims',actions.map(row=>({...row,route:'/assistant/claims?flow=submit&draftId=posted'})))).toThrow();
+});
+
+it('hands Knowledge Base publication to a fixed human page without carrying generated content or audience',()=>{
+ const actions=moduleHumanActionHandoffs('knowledge_base');expect(actions).toEqual([{module:'knowledge_base',action:'knowledge_base.article.create',route:'/assistant/knowledge-base',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ const result=presentGroundedToolOutcome('my_module_work',{ok:true,module:'knowledge_base',data:{rows:[],truncated:false},humanActions:actions});expect(result?.cards).toEqual([{title:{kind:'module',module:'knowledge_base'},facts:[],href:'/assistant/knowledge-base',linkPurpose:'human_review'}]);
+ for(const extra of [{title:'model publication'},{body:'model policy'},{audience:'all'},{route:'/assistant/knowledge-base?audience=all'}])expect(()=>checkedModuleHumanHandoffs('knowledge_base',actions.map(row=>({...row,...extra})))).toThrow();
 });

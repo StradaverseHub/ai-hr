@@ -1,5 +1,5 @@
-/** UNMOUNTED Knowledge Base publication source. Shared locked custody and a human POST must own
- * top-level completion/retry before exposure: calling create again is NOT idempotent. No provider
+/** Human Knowledge Base publication source. The connected shared custody command and human POST own
+ * top-level completion/retry: calling create again is NOT idempotent. Source wiring is not runtime proof. No provider
  * drafts, generated policies, upload bytes, arbitrary audience grants or copied HR facts. */
 import {createHash} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';

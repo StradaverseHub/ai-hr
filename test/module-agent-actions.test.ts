@@ -121,3 +121,10 @@ it('offers Org only a human reporting selection without model-picked employees, 
  for(const extra of [{subordinateEmploymentId:'posted'},{managerEmploymentId:'other'},{lineType:'delegate'},{validFrom:'2026-01-01'},{movement:{type:'promotion'}},{roles:['hr_admin']},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'org',action:'org.reporting.change',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'org',action:'org.reporting.change',phase:'confirm'})).toThrow();
 });
+
+it('offers only the connected human Knowledge Base review page, never model-authored content or publication',()=>{
+ expect(getModuleAgentAction('knowledge_base','knowledge_base.article.create')).toMatchObject({owner:'knowledge_base',publicBoundary:'core/knowledge-base.ts#createArticle',prepare:{status:'implemented',inputSchema:'KnowledgeArticleReviewPrepare'},confirm:{status:'implemented',inputSchema:'KnowledgeArticleReviewConfirmation'}});
+ expect(parseModuleAgentActionNomination({module:'knowledge_base',action:'knowledge_base.article.create',phase:'prepare'})).toEqual({kind:'prepare',module:'knowledge_base',action:'knowledge_base.article.create',adapter:'module_knowledge_article_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{title:'generated policy'},{body:'model HR claims'},{audience:'all'},{authorId:'posted'},{upload:'bytes'},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'knowledge_base',action:'knowledge_base.article.create',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'knowledge_base',action:'knowledge_base.article.create',phase:'confirm'})).toThrow();
+});
