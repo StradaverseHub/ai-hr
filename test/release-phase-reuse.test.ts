@@ -141,3 +141,26 @@ describe('the actual finalization CLI',()=>{
   }finally{for(const [name,bytes]of fresh)put(archive,'fresh-'+name,bytes);}
  });
 });
+
+// This fixture exercises the Operator repair contract; its synthetic commits/logs are never
+// application coverage. The production validator additionally requires OPERATOR_BASE identity.
+describe('bounded Operator historical assertion repair',()=>{
+ it('accepts exact assertion bytes and refuses runtime, SQL, journal, helpers and weakened assertions',async()=>{
+  const {validateOperatorRepairDelta,OPERATOR_REPAIR}=await import('../scripts/gate-phase-reuse-evidence');
+  const root=mkdtempSync(join(tmpdir(),'aihr-operator-proof-'));
+  const g=(args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const save=()=>{g(['add','.']);g(['-c','user.name=Proof','-c','user.email=proof@example.invalid','commit','-qm','fixture']);return g(['rev-parse','HEAD']);};
+  try{
+   g(['init','-q']);
+   put(root,OPERATOR_REPAIR.path,execFileSync('git',['show','10d24c2a8e11e52aa0f114426d438277ae611ada:'+OPERATOR_REPAIR.path],{cwd:owner,encoding:'utf8'}));
+   for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml'])put(root,p,'original');
+   put(root,'CLAUDE.md','original');const original=save();
+   put(root,OPERATOR_REPAIR.path,readFileSync(join(owner,OPERATOR_REPAIR.path),'utf8'));put(root,'CLAUDE.md','owner full-gate rule');const repaired=save();
+   expect(validateOperatorRepairDelta(original,repaired,root)).toEqual(['CLAUDE.md',OPERATOR_REPAIR.path].sort());
+   for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml']){
+    put(root,p,'unauthorized');const bad=save();expect(()=>validateOperatorRepairDelta(original,bad,root)).toThrow(/unapproved/);g(['reset','--hard',repaired]);
+   }
+   put(root,OPERATOR_REPAIR.path,'// weakened assertion');const bad=save();expect(()=>validateOperatorRepairDelta(original,bad,root)).toThrow(/reviewed repair/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+ });
+});
