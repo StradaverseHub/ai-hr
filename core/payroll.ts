@@ -1,3 +1,6 @@
+import {isDeepStrictEqual} from 'node:util';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockPayrollPeriodsTx,lockPayrollBatchPeriodTx} from './payroll-period-lock';
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
@@ -17,7 +20,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // `resolveBatchCutOffWindow`, `daysInMonth`) are NOT gated, deliberately: core/attendance-recompute.ts,
 // core/claims.ts, core/read.ts and core/reporting.ts call them and none of those is payroll-only.
 // See core/module-gate.ts.
-import { withPayrollTenant as withTenant } from './module-gate';
+import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -1941,6 +1944,26 @@ async function refuseIfPeriodFiled(
  *
  * ⚠️ The regular run NO LONGER has to exist first (ADR-0085 step 5, item 23e7dac3) — see the body.
  */
+export type AdditionalRunInput = {
+    companyId: string;
+    payPeriod: string;
+    runType: 'off_cycle' | 'bonus' | 'adjustment';
+    /** Payroll Process wizard (1b): optional payment date (validated, else '<period>-28' default). */
+    paymentDate?: string;
+    /** Payroll Process wizard (1b): a cycle label for off-cycle presets, e.g. 'Advance Salary' / 'Mid-Month'. */
+    remarks?: string;
+    /** Payroll Process wizard (1b): optional subset — generatePayslips already resolves batch.scope for
+     *  every runType, so an additional run can legitimately be scoped the same way the regular run is. */
+    scope?: BatchScope;
+    /**
+     * c11e81aa — the CONFIGURED cycle this run is opened under (payroll_cycle.id). On a NON-regular run
+     * this is load-bearing rather than informational: it is the ONLY thing that tells an "Advance Salary"
+     * run apart from a "Mid-Month" one, both of which are run_type 'off_cycle', and it is what decides
+     * which period-keyed transactions the run collects. Omitted ⇒ the run names no cycle and collects no
+     * period-keyed rows at all, which is exactly what every non-regular run did before this change.
+     */
+    payrollCycleId?: string | null;
+  };
 export async function createAdditionalRun(
   ctx: SessionContext,
   p: {
@@ -1970,7 +1993,19 @@ export async function createAdditionalRun(
     // ModuleNotEnabledError so a caller can distinguish "not entitled" from any other failure.
     throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, async tx=>{const result=await createAdditionalRunTx(tx,ctx,p);return {batchId:result.batchId};});
+}
+/** Native normalization/sequence owner shared by ordinary creation and no-effect reviewed preflight. */
+function additionalRunConfiguration(p:AdditionalRunInput,runs:readonly {runSeq:number}[]){
+ const nextSeq=runs.length?Math.max(...runs.map(r=>r.runSeq))+1:1;
+ const batchDate=validPaymentDate(p.paymentDate)??`${p.payPeriod}-28`;
+ const scope=normalizeScope(p.scope);return{nextSeq,batchDate,scope};
+}
+/** Supplied-Tx native owner. The actual caller must roll back the WHOLE Tx on any failure. */
+export async function createAdditionalRunTx(tx:Tx,supplied:SessionContext,input:AdditionalRunInput,options:{returnCreatedEventId?:boolean}={}){
+ const p=structuredClone(input),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};options={...options};assertModuleGate(ctx,'payroll');
+ if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
+
     await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
     const [existingPeriod] = await tx
       .select({ id: payPeriod.id, status: payPeriod.status })
@@ -2028,9 +2063,7 @@ export async function createAdditionalRun(
       .where(eq(payrollBatch.payPeriodId, periodId));
     // `Math.max()` of an empty list is -Infinity, which would write a nonsense sequence rather than
     // fail — the month's first run takes seq 1 explicitly.
-    const nextSeq = runs.length ? Math.max(...runs.map((r) => r.runSeq)) + 1 : 1;
-    const batchDate = validPaymentDate(p.paymentDate) ?? `${p.payPeriod}-28`;
-    const scope = normalizeScope(p.scope);
+    const {nextSeq,batchDate,scope}=additionalRunConfiguration(p,runs);
     const [row] = await tx
       .insert(payrollBatch)
       .values({
@@ -2047,7 +2080,7 @@ export async function createAdditionalRun(
         payrollCycleId: p.payrollCycleId || null,
       })
       .returning({ id: payrollBatch.id });
-    await appendEvent(tx, {
+    const createdEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: row.id,
@@ -2065,9 +2098,60 @@ export async function createAdditionalRun(
         // c11e81aa — which cycle opened this run; on a non-regular run it is what routes the money.
         payrollCycleId: p.payrollCycleId || null,
       },
-    });
-    return { batchId: row.id };
-  });
+    },{returnId:options.returnCreatedEventId===true});
+    return options.returnCreatedEventId?{batchId:row.id,createdEventId}:{batchId:row.id};
+}
+
+/** No-effect canonical metadata preflight for human additional-run creation. The existing native
+ * period/company permission is authority, never a role union or invented Workforce write grant.
+ * Selected-cycle row SHARE is NOWAIT: cycle writers do not acquire period locks (their delete
+ * guards only read references), and no blocking cycle→period inversion is introduced here. */
+export async function prepareReviewedAdditionalRunTx(tx:Tx,supplied:SessionContext,input:AdditionalRunInput&{payrollCycleId:string}){
+ const p=structuredClone(input),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};assertModuleGate(ctx,'payroll');
+ if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
+ await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}],true);
+ // Native filed-period truth requires actual app.is_admin_for(company), even when the
+ // period owner accepts a Payroll partner. Reuse that exact guard BEFORE source labels.
+ await refuseIfPeriodFiled(tx,{companyId:p.companyId,payPeriod:p.payPeriod,what:'Adding another payroll run'});
+ // Same native createRunAction/getActivePayrollCycle rule, in this actual Tx before metadata.
+ const [cycle]=await tx.select({id:payrollCycle.id,companyId:payrollCycle.companyId,name:payrollCycle.name,code:payrollCycle.code,runType:payrollCycle.runType,remarks:payrollCycle.remarks,archivedAt:payrollCycle.archivedAt,version:sql<string>`${payrollCycle}.xmin::text`}).from(payrollCycle).where(and(eq(payrollCycle.id,p.payrollCycleId),eq(payrollCycle.tenantId,ctx.tenantId),eq(payrollCycle.companyId,p.companyId))).for('share',{noWait:true});
+ if(!cycle||cycle.archivedAt!==null||cycle.runType==='regular'||cycle.runType!==p.runType||(p.remarks||null)!==(cycle.remarks||null))throw new Error('The selected additional payroll cycle changed.');
+ const [co]=await tx.select({id:company.id,name:company.legalName,country:company.country,version:sql<string>`${company}.xmin::text`}).from(company).where(and(eq(company.id,p.companyId),eq(company.tenantId,ctx.tenantId)));if(!co)throw new Error('Payroll company unavailable.');
+ const [period]=await tx.select({id:payPeriod.id,status:payPeriod.status,statutoryVersion:payPeriod.statutoryVersion,version:sql<string>`${payPeriod}.xmin::text`}).from(payPeriod).where(and(eq(payPeriod.companyId,p.companyId),eq(payPeriod.period,p.payPeriod))).limit(1);
+ if(period?.status==='closed')throw new Error('This pay period is closed.');
+ const runs=period?await tx.select({id:payrollBatch.id,runSeq:payrollBatch.runSeq,runType:payrollBatch.runType,version:sql<string>`${payrollBatch}.xmin::text`}).from(payrollBatch).where(eq(payrollBatch.payPeriodId,period.id)).orderBy(payrollBatch.id):[];
+ const configured=additionalRunConfiguration(p,runs),scope=configured.scope;
+ // Scope is the native future-processing restriction, not a salary snapshot. Only current
+ // RLS-visible references are admitted; a stale/foreign ID refuses, never silently widens to all.
+ const employeeIds=scope?.employmentIds??[],departmentIds=scope?.departmentIds??[];
+ const employees=employeeIds.length?await tx.select({id:employment.id,version:sql<string>`${employment}.xmin::text`}).from(employment).where(and(inArray(employment.id,employeeIds),eq(employment.companyId,p.companyId))).orderBy(employment.id):[];
+ const departments=departmentIds.length?await tx.select({id:department.id,version:sql<string>`${department}.xmin::text`}).from(department).where(and(inArray(department.id,departmentIds),or(eq(department.companyId,p.companyId),eq(department.isGlobal,true)))).orderBy(department.id):[];
+ if(new Set(employees.map(row=>row.id)).size!==new Set(employeeIds).size||new Set(departments.map(row=>row.id)).size!==new Set(departmentIds).size)throw new Error('The selected payroll scope changed.');
+ const openingVersion=period?.statutoryVersion??(period?null:await openingStatutoryVersion(tx,p.companyId,p.payPeriod));
+ const review={companyId:co.id,companyName:co.name,payPeriod:p.payPeriod,runType:p.runType,payrollCycleId:cycle.id,cycleName:cycle.name,cycleCode:cycle.code,paymentDate:configured.batchDate,remarks:p.remarks||null,scope,runSeq:configured.nextSeq,periodWillOpen:!period,selection:scope?'selected_scope_native_at_processing' as const:'whole_company_dynamic_at_processing' as const,consequence:'draft_additional_run_only_no_calculation_payment_or_payslip' as const};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-additional-run:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},p,review,co,cycle,period??null,runs,employees,departments,openingVersion])).digest('hex');
+ return {review,reviewedDigest,openingVersion};
+}
+/** Refusal-only review match BEFORE the native effect. There is no separate execution ledger;
+ * future custody must serialize NEW creation and own this actual top-level transaction. */
+export async function createReviewedAdditionalRunTx(tx:Tx,supplied:SessionContext,input:AdditionalRunInput&{payrollCycleId:string},expectedDigest:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},captured=structuredClone(input),prepared=await prepareReviewedAdditionalRunTx(tx,ctx,captured);if(prepared.reviewedDigest!==expectedDigest)throw new Error('The additional payroll run source changed.');
+ const native=await createAdditionalRunTx(tx,ctx,captured,{returnCreatedEventId:true});if(!native.createdEventId)throw new Error('Native run creation event unavailable.');
+ const receipt=await readReviewedAdditionalRunReferenceTx(tx,ctx,{batchId:native.batchId,createdEventId:native.createdEventId});
+ const [actual]=await tx.select({scope:payrollBatch.scope,remarks:payrollBatch.remarks,paymentDate:payrollBatch.batchDate,cycleId:payrollBatch.payrollCycleId,statutoryVersion:payPeriod.statutoryVersion}).from(payrollBatch).innerJoin(payPeriod,eq(payPeriod.id,payrollBatch.payPeriodId)).where(eq(payrollBatch.id,native.batchId));
+ if(!receipt||!actual||receipt.runSeq!==prepared.review.runSeq||receipt.currentStatus!=='draft'||!isDeepStrictEqual(actual.scope,prepared.review.scope)||actual.remarks!==prepared.review.remarks||actual.paymentDate!==prepared.review.paymentDate||actual.cycleId!==prepared.review.payrollCycleId||actual.statutoryVersion!==prepared.openingVersion)throw new Error('Native run creation did not match the reviewed source.');
+ return receipt;
+}
+/** Exact original native run-added event, current company permission, and minimal CURRENT run
+ * metadata only. Reopening never invokes native create; later processing/closing is not this action. */
+export async function readReviewedAdditionalRunReferenceTx(tx:Tx,supplied:SessionContext,reference:{batchId:string;createdEventId:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...reference};await lockPayrollBatchPeriodTx(tx,ctx,p.batchId,true);
+ const [row]=await tx.execute<{batchId:string;createdEventId:string;companyId:string;payPeriodId:string;payPeriod:string;runSeq:number;runType:'off_cycle'|'bonus'|'adjustment';createdPayrollCycleId:string;createdPaymentDate:string;currentStatus:'draft'|'processed'|'closed'}>(sql`select b.id as "batchId",d.id as "createdEventId",b.company_id as "companyId",b.pay_period_id as "payPeriodId",b.pay_period as "payPeriod",b.run_seq as "runSeq",b.run_type as "runType",(d.payload->>'payrollCycleId')::uuid::text as "createdPayrollCycleId",d.payload->>'paymentDate' as "createdPaymentDate",b.status as "currentStatus"
+ from public.payroll_batch b join public.domain_event d on d.tenant_id=b.tenant_id and d.aggregate_id=b.id
+ where b.id=${p.batchId}::uuid and b.tenant_id=${ctx.tenantId}::uuid and d.id=${p.createdEventId}::uuid and d.aggregate_type='payroll-batch' and d.event_type='payroll-batch.run-added' and d.actor_type='user' and d.actor_id=${ctx.userId??null}::uuid and d.subject_employment_id is null
+ and b.run_type in ('off_cycle','bonus','adjustment') and (d.payload->>'companyId')::uuid=b.company_id and d.payload->>'payPeriod'=b.pay_period and (d.payload->>'payPeriodId')::uuid=b.pay_period_id and (d.payload->>'runSeq')::integer=b.run_seq and d.payload->>'runType'=b.run_type::text`);
+ return row??null;
 }
 
 /**
