@@ -6,8 +6,9 @@ export const AppleEnrollmentTarget=z.object({platform:z.literal('ios'),appId:z.s
   requiredMetadata:z.object({validationCategory:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.literal(5),z.literal(6),z.literal(10)]),
     bundleVersions:z.array(z.string().min(1).max(64)).min(1).max(20).transform(values=>[...new Set(values)].sort())}).strict().nullable(),
 }).strict();
-export const KeyEnrollmentContext=z.object({version:z.literal(1),purpose:z.literal('device.key.enrollment'),
-  apiOrigin:z.string().max(300).refine(value=>{try{return new URL(value).protocol==='https:'&&new URL(value).origin===value;}catch{return false;}}),
+const apiOrigin=z.string().max(300).refine(value=>{try{return new URL(value).protocol==='https:'&&new URL(value).origin===value;}catch{return false;}});
+export const AppleEnrollmentSettings=z.object({apiOrigin,target:AppleEnrollmentTarget}).strict();
+export const KeyEnrollmentContext=z.object({version:z.literal(1),purpose:z.literal('device.key.enrollment'),apiOrigin,
   installationId:uuid,tenantId:uuid,actorId:uuid,employmentId:uuid,appInstallationId:uuid,
   requestId:uuid,challengeId:uuid,nonce:z.string().length(43).regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/),
   issuedAt:z.number().int().positive().max(8640000000000000),expiresAt:z.number().int().positive().max(8640000000000000),
