@@ -67,8 +67,8 @@ export async function saveTestInstructionDraft(ctx: SessionContext, p: { caseId:
     return { caseId: c.id, caseNo: c.caseNo, revision: c.draftRevision + 1 };
   });
 }
-async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, payload: Record<string, unknown>) {
-  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'test_case', aggregateId: caseId, eventType: type, actor: actorOf(ctx), payload });
+async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, payload: Record<string, unknown>,returnId=false) {
+  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'test_case', aggregateId: caseId, eventType: type, actor: actorOf(ctx), payload },{returnId});
 }
 /** Shared publication owner used by manual publication and exact-hash catalogue confirmation. */
 export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
@@ -131,23 +131,44 @@ export async function beginTestingExecution(ctx: SessionContext, p: { assignment
     return { executionId: row.id, revision: 0, versionId: a.targetVersionId };
   });
 }
-export async function saveTestingExecution(ctx: SessionContext, raw: ExecutionInput): Promise<{ runId: string; revision: number }> {
-  const actor = participant(ctx), p = executionInputSchema.parse(raw);
-  return withTenant(ctx, async tx => {
-    const { a } = await ownAssignmentLock(tx, ctx, p.assignmentId);
+export type TestingExecutionSourceReference=Pick<ExecutionInput,'executionId'|'assignmentId'|'versionId'|'expectedRevision'>;
+async function ownTestingExecutionSaveStateTx(tx:Tx,ctx:SessionContext,p:TestingExecutionSourceReference){
+ const actor=participant(ctx);testingUuid.parse(p.executionId);testingUuid.parse(p.assignmentId);testingUuid.parse(p.versionId);if(!Number.isInteger(p.expectedRevision)||p.expectedRevision<0)throw new TestingRefusal('invalid');
+    const { a,c } = await ownAssignmentLock(tx, ctx, p.assignmentId);
     const [e] = await tx.select().from(testExecution).where(and(eq(testExecution.id, p.executionId), eq(testExecution.assignmentId, a.id), eq(testExecution.testerUserId, actor))).for('update');
     if (!e) throw new TestingRefusal('not_found');
     if (e.versionId !== p.versionId || a.targetVersionId !== p.versionId) throw new TestingRefusal('stale_instructions');
     if (e.revision !== p.expectedRevision) throw new TestingRefusal('stale_execution');
     const [later]=await tx.select({id:testExecution.id}).from(testExecution).where(and(eq(testExecution.assignmentId,a.id),eq(testExecution.versionId,e.versionId),sql`${testExecution.attemptNo}>${e.attemptNo}`)).limit(1);
     if(later)throw new TestingRefusal('stale_execution');
+    const [version]=await tx.select({id:testCaseVersion.id,ordinal:testCaseVersion.ordinal,contentHash:testCaseVersion.contentHash,sourceRef:testCaseVersion.sourceRef,sourceContentHash:testCaseVersion.sourceContentHash,catalogueHash:testCaseVersion.catalogueHash,guideSourceHash:testCaseVersion.guideSourceHash})
+      .from(testCaseVersion).where(and(eq(testCaseVersion.id,e.versionId),eq(testCaseVersion.testCaseId,a.testCaseId),eq(testCaseVersion.tenantId,ctx.tenantId))).limit(1);
+    if(!version)throw new TestingRefusal('not_found');
+    return {actor,a,e,source:{caseId:a.testCaseId,caseNo:c.caseNo,assignmentId:a.id,assignmentRevision:a.revision,executionId:e.id,executionRevision:e.revision,attemptNo:e.attemptNo,currentRunId:e.currentRunId,published:version}};
+}
+/** Same own-case→assignment helper, same current version/latest attempt/revision checks. No draft,
+ * instruction narrative or another user's observations enter this minimal source projection. */
+export async function readOwnTestingExecutionSourceTx(tx:Tx,ctx:SessionContext,reference:TestingExecutionSourceReference){return (await ownTestingExecutionSaveStateTx(tx,ctx,{...reference})).source;}
+export async function prepareTestingExecutionSaveTx(tx:Tx,ctx:SessionContext,raw:ExecutionInput){
+ const p=executionInputSchema.parse(raw),source=await readOwnTestingExecutionSourceTx(tx,ctx,p);return {input:p,source};
+}
+export function testingExecutionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareTestingExecutionSaveTx>>){return testingDigest({version:1,tenantId:ctx.tenantId,userId:ctx.userId,prepared});}
+/** Supplied-Tx canonical owner. A reviewed digest only refuses stale human input/source; it never
+ * supplies observations, privileges, an independent test verdict or an evaluation/promotion proof. */
+export async function saveTestingExecutionTx(tx:Tx,ctx:SessionContext,raw:ExecutionInput,reviewed?:{expectedDigest:string}){
+ const p=executionInputSchema.parse(raw),expected=reviewed?.expectedDigest,{actor,a,e,source}=await ownTestingExecutionSaveStateTx(tx,ctx,p);
+ if(reviewed&&(typeof expected!=='string'||testingExecutionPreparedDigest(ctx,{input:p,source})!==expected))throw new TestingRefusal('stale_execution');
     // Shares the existing case run-number owner lock; the immutable run remains the one observation log.
     const [n] = await tx.execute(sql`select app.testing_next_run_no(${a.testCaseId}::uuid) AS next`) as unknown as { next: number }[];
     const [run] = await tx.insert(testRun).values({ tenantId: ctx.tenantId, testCaseId: a.testCaseId, runNo: Number(n.next), outcome: legacyOutcomeFor(p.status), actualResult: p.actualResult.trim() || null, runByUserId: actor, versionId: p.versionId, executionId: e.id, executionRevision: e.revision + 1, executionStatus: p.status, comments: p.comments.trim() || null, defectNotes: p.defectNotes.trim() || null, improvementNotes: p.improvementNotes.trim() || null }).returning({ id: testRun.id });
-    await event(tx, ctx, a.testCaseId, 'test_execution.observation_saved', { executionId: e.id, runId: run.id, versionId: e.versionId, revision: e.revision + 1, status: p.status, testerUserId: actor });
-    return { runId: run.id, revision: e.revision + 1 };
-  });
+    const eventId=await event(tx, ctx, a.testCaseId, 'test_execution.observation_saved', { executionId: e.id, runId: run.id, versionId: e.versionId, revision: e.revision + 1, status: p.status, testerUserId: actor },true);if(!eventId)throw new TestingRefusal('not_found');
+    return { runId: run.id, revision: e.revision + 1,eventId,executionId:e.id,assignmentId:a.id,caseId:a.testCaseId,versionId:e.versionId };
 }
+export async function saveTestingExecution(ctx: SessionContext, raw: ExecutionInput): Promise<{ runId: string; revision: number }> {
+  participant(ctx);const p=executionInputSchema.parse(raw);
+  return withTenant(ctx,async tx=>{const result=await saveTestingExecutionTx(tx,ctx,p);return {runId:result.runId,revision:result.revision};});
+}
+
 type AssignmentReadFilter = { moduleCode?: string; functionKey?: string; category?: string; priority?: string };
 function assignmentRowsSql(ctx: SessionContext,p: AssignmentReadFilter,tester: string|null) {
   return sql`WITH rows AS (SELECT a.id AS assignment_id,c.id AS case_id,c.case_no,v.definition->>'title' AS title,v.definition->>'moduleCode' AS module_code,v.id AS version_id,v.ordinal,v.definition,v.definition->>'functionKey' AS function_key,coalesce(v.definition->>'category',v.definition->>'testType') AS category,v.definition->>'priority' AS priority,a.tester_user_id,p.full_name AS tester_name,a.revision AS assignment_revision,a.active,e.id AS execution_id,e.revision AS execution_revision,
