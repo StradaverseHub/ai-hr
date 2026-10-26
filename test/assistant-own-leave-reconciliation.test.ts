@@ -9,7 +9,7 @@ const afterExpiry = new Date(expires.getTime() + 1);
 const actionId = id(6);
 const confirmation = { actionId, contractVersion: 1, reviewedDigest: 'a'.repeat(64) };
 const metadata = { actionId, action: 'leave.apply', contractVersion: 1, binding,
-  intentDigest: 'b'.repeat(64), reviewedDigest: confirmation.reviewedDigest, state: 'completed',
+  intentDigest: null, reviewedDigest: null, state: 'completed',
   createdAt: now.toISOString(), expiresAt: expires.toISOString() };
 const receipt = { actionId, contractVersion: 1, state: 'completed', leaveRequestId: id(7), submissionEventId: id(8) };
 const sourceEvidence = {
@@ -27,6 +27,15 @@ describe('own-leave uncertain transport reconciliation', () => {
     expect(outcome).toEqual({ status: 'submission_recorded', actionId, leaveRequestId: id(7) });
     expect(outcome).not.toHaveProperty('approved');
     expect(outcome).not.toHaveProperty('submissionEventId');
+  });
+
+  it('reconciles terminal custody with no retained digest while a substituted pending digest still refuses', () => {
+    expect(reconcileOwnLeaveConfirmation(metadata, receipt, {...confirmation,reviewedDigest:'f'.repeat(64)}, binding, now, sourceEvidence))
+      .toEqual({status:'submission_recorded',actionId,leaveRequestId:id(7)});
+    expect(reconcileOwnLeaveConfirmation({...metadata,state:'awaiting_confirmation',intentDigest:'b'.repeat(64),reviewedDigest:confirmation.reviewedDigest},
+      receipt,{...confirmation,reviewedDigest:'f'.repeat(64)},binding,now,sourceEvidence)).toEqual({status:'refused',actionId,code:'review_changed'});
+    expect(reconcileOwnLeaveConfirmation({...metadata,intentDigest:'b'.repeat(64),reviewedDigest:confirmation.reviewedDigest},receipt,confirmation,binding,now,sourceEvidence))
+      .toEqual({status:'refused',actionId,code:'unavailable'});
   });
 
   it('does not name a submitted request from a completion receipt without canonical source evidence', () => {
@@ -70,7 +79,7 @@ describe('own-leave uncertain transport reconciliation', () => {
   });
 
   it('cannot promote an awaiting action using a detached completion receipt', () => {
-    expect(reconcileOwnLeaveConfirmation({ ...metadata, state: 'awaiting_confirmation' },
+    expect(reconcileOwnLeaveConfirmation({ ...metadata, state: 'awaiting_confirmation', intentDigest: 'b'.repeat(64), reviewedDigest: confirmation.reviewedDigest },
       receipt, confirmation, binding, now)).toEqual(checking);
   });
 
@@ -82,7 +91,7 @@ describe('own-leave uncertain transport reconciliation', () => {
   );
 
   it('refuses a changed review and does not echo malformed confirmation input', () => {
-    expect(reconcileOwnLeaveConfirmation(metadata, receipt,
+    expect(reconcileOwnLeaveConfirmation({ ...metadata, state: 'awaiting_confirmation', intentDigest: 'b'.repeat(64), reviewedDigest: confirmation.reviewedDigest }, receipt,
       { ...confirmation, reviewedDigest: 'c'.repeat(64) }, binding, now))
       .toEqual({ status: 'refused', actionId, code: 'review_changed' });
     expect(reconcileOwnLeaveConfirmation(metadata, receipt,

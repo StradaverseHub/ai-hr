@@ -91,6 +91,22 @@ export async function resolveDevPrincipal(
   );
 }
 
+/** Explicit dev/demo selection for a human effect command. Unknown/missing selections do NOT
+ * self-heal to DEV_USER_ID; blocked users do not fall through. All outward failures are bounded.
+ * The selected ID is resolved and checked by the same canonical principal owner as ordinary pages.
+ */
+export async function resolveCommandDevPrincipal(
+  lookup: (id: string) => Promise<PrincipalRow[]>, cookieUser: string | undefined,
+  blocked: (id: string) => Promise<boolean>,
+): Promise<SessionContext> {
+  try {
+    if (!cookieUser || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(cookieUser)) throw Error();
+    const session = await resolveDevPrincipal(lookup, cookieUser, undefined, blocked);
+    if (session.userId !== cookieUser) throw Error();
+    return session;
+  } catch { throw new AuthRequiredError('No selected browser session.'); }
+}
+
 /**
  * Resolve a verified WorkOS subject to a SessionContext via app.principal_by_subject(). Pure +
  * injectable (`lookup`) so the offboarded-subject path is unit-testable without a live WorkOS. Puts
@@ -215,7 +231,17 @@ export async function withEntitlements(session: SessionContext): Promise<Session
  */
 export const getSession = cache(resolveSession);
 
+/** Human browser commands reuse real web authentication, but never the convenience dev fallback.
+ * Production still resolves the existing internal/Keycloak/WorkOS cookie session in the same order.
+ * This is authentication only; command owners must recheck current authority in their actual Tx.
+ */
+export const getBrowserCommandSession = cache(() => resolveWebSession(true));
+
 async function resolveSession(): Promise<SessionContext> {
+  return resolveWebSession(false);
+}
+
+async function resolveWebSession(requireSelectedDevCookie: boolean): Promise<SessionContext> {
   if (internalSelected()) {
     const identity = await (await import('./internal-auth/web-session')).currentInternalIdentity();
     if (!identity) throw new AuthRequiredError('No active session.');
@@ -260,7 +286,9 @@ async function resolveSession(): Promise<SessionContext> {
       const [row] = await client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`;
       return Boolean(row?.blocked);
     };
-    return withEntitlements(await resolveDevPrincipal(lookup, cookieUser, fallback, blocked));
+    return withEntitlements(requireSelectedDevCookie
+      ? await resolveCommandDevPrincipal(lookup, cookieUser, blocked)
+      : await resolveDevPrincipal(lookup, cookieUser, fallback, blocked));
   }
 
   // Production: WorkOS is the auth. Imported lazily so the dev/test path never loads the WorkOS SDK.

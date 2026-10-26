@@ -9,9 +9,11 @@ CREATE TABLE app.assistant_own_leave_review (
  person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
  employment_id uuid NOT NULL REFERENCES public.employment(id) ON DELETE CASCADE,
  company_id uuid NOT NULL REFERENCES public.company(id),
- intent_digest text NOT NULL CHECK(intent_digest ~ '^[a-f0-9]{64}$'),
- reviewed_digest text NOT NULL CHECK(reviewed_digest ~ '^[a-f0-9]{64}$'),
+ intent_digest text CHECK(intent_digest ~ '^[a-f0-9]{64}$'),
+ reviewed_digest text CHECK(reviewed_digest ~ '^[a-f0-9]{64}$'),
  state text NOT NULL CHECK(state IN ('awaiting_confirmation','discarded','expired','refused','completed')),
+ CHECK(CASE WHEN state='awaiting_confirmation' THEN intent_digest IS NOT NULL AND reviewed_digest IS NOT NULL
+  ELSE intent_digest IS NULL AND reviewed_digest IS NULL END),
  leave_request_id uuid UNIQUE,submission_event_id uuid UNIQUE,
  CHECK((state='completed')=(leave_request_id IS NOT NULL AND submission_event_id IS NOT NULL)),
  CHECK((leave_request_id IS NULL)=(submission_event_id IS NULL)),
@@ -148,13 +150,13 @@ BEGIN
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
- IF p_discard IS TRUE AND p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN
+ IF p_discard IS TRUE AND r.state='awaiting_confirmation' AND p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  IF r.state='awaiting_confirmation' THEN
   IF clock_timestamp()>=r.expires_at THEN
-   UPDATE app.assistant_own_leave_review SET state='expired' WHERE id=r.id;
+   UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='expired' WHERE id=r.id;
   ELSIF p_discard IS TRUE THEN
-   UPDATE app.assistant_own_leave_review SET state='discarded' WHERE id=r.id;
+   UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='discarded' WHERE id=r.id;
   END IF;
  END IF;
  DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a
@@ -183,13 +185,15 @@ BEGIN
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_own_leave_review_identity(r.person_id,r.employment_id,r.company_id);
- IF p_reviewed_digest IS DISTINCT FROM r.reviewed_digest OR p_request IS NULL OR p_event IS NULL THEN
+ IF p_request IS NULL OR p_event IS NULL THEN
   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  -- A repeat delivery may reconcile the same completed reference, never attach another submission.
  IF r.state='completed' THEN
   IF r.leave_request_id IS DISTINCT FROM p_request OR r.submission_event_id IS DISTINCT FROM p_event THEN
    RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
  ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF p_reviewed_digest IS DISTINCT FROM r.reviewed_digest THEN
+   RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
   IF NOT EXISTS(SELECT 1 FROM public.leave_request q JOIN public.employment e ON e.id=q.employment_id
    JOIN public.domain_event d ON d.id=p_event AND d.tenant_id=q.tenant_id
     AND d.aggregate_type='leave-request' AND d.aggregate_id=q.id AND d.event_type='leave-request.submitted'
@@ -198,7 +202,7 @@ BEGIN
     AND e.tenant_id=t AND e.person_id=r.person_id AND e.company_id=r.company_id
     AND q.xmin=pg_current_xact_id()::xid AND d.xmin=pg_current_xact_id()::xid) THEN
    RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
-  UPDATE app.assistant_own_leave_review SET state='completed',leave_request_id=p_request,submission_event_id=p_event WHERE id=r.id;
+  UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',leave_request_id=p_request,submission_event_id=p_event WHERE id=r.id;
   DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
  ELSE RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';
  END IF;
@@ -217,17 +221,43 @@ BEGIN
   OR current_setting('transaction_read_only')<>'off' OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
   RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
- IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR NOT EXISTS(
+  SELECT 1 FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=t
+   AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)) THEN
   RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(array_agg(d.id),'{}') INTO ids FROM (
   SELECT id FROM app.assistant_own_leave_review WHERE tenant_id=t AND state='awaiting_confirmation'
    AND expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT p_limit FOR UPDATE) d;
- UPDATE app.assistant_own_leave_review SET state='expired' WHERE id=ANY(ids) AND tenant_id=t;
+ UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='expired' WHERE id=ANY(ids) AND tenant_id=t;
  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
  RETURN cardinality(ids);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_expire(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_expire(integer) TO ai_hr_app;
+--> statement-breakpoint
+-- Actual-login cleanup is distinct from administrative cleanup: it can retire only this login's
+-- expired review bodies, even after Assistant grant/pause changes or person relinking. It returns
+-- a bounded count, never an action identity or private content. No user/tenant selector is accepted.
+CREATE FUNCTION app.assistant_own_leave_reviews_expire_own(p_limit integer DEFAULT 100) RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();ids uuid[];
+BEGIN
+ IF t IS NULL OR u IS NULL OR current_setting('transaction_isolation')<>'read committed'
+  OR current_setting('transaction_read_only')<>'off' OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
+  RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(
+  SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)) THEN
+  RAISE EXCEPTION 'Review cleanup unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(array_agg(d.id),'{}') INTO ids FROM (
+  SELECT id FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND state='awaiting_confirmation'
+   AND expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT p_limit FOR UPDATE) d;
+ UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='expired' WHERE id=ANY(ids) AND tenant_id=t AND user_id=u;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
+ RETURN cardinality(ids);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_expire_own(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_expire_own(integer) TO ai_hr_app;
 --> statement-breakpoint
 -- Untyped private review content follows the canonical person's erasure, across every employment.
 -- The existing erasure owner admits/locks the person and requires its real audit at commit.
@@ -247,8 +277,9 @@ BEGIN
  DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review r
   WHERE c.action_id=r.id AND r.tenant_id=i.tenant_id AND r.person_id=i.person_id;
  GET DIAGNOSTICS total=ROW_COUNT;
- UPDATE app.assistant_own_leave_review SET state='refused'
-  WHERE tenant_id=i.tenant_id AND person_id=i.person_id AND state='awaiting_confirmation';
+ UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,
+  state=CASE WHEN state='awaiting_confirmation' THEN 'refused' ELSE state END
+  WHERE tenant_id=i.tenant_id AND person_id=i.person_id;
  INSERT INTO app.assistant_review_erasure_intent VALUES(i.xact_id,i.tenant_id,i.user_id,i.person_id,i.employment_id,total,NULL);
  RETURN total;
 END $$;
@@ -297,6 +328,8 @@ BEGIN
  IF NOT FOUND OR i.event_id IS NULL OR i.xact_id IS DISTINCT FROM pg_current_xact_id()
   OR i.tenant_id IS DISTINCT FROM app.current_tenant_id() OR i.user_id IS DISTINCT FROM app.current_user_id()
   OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(i.employment_id) IS NOT TRUE
+  OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND person_id=i.person_id
+   AND (intent_digest IS NOT NULL OR reviewed_digest IS NOT NULL))
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
    WHERE r.tenant_id=i.tenant_id AND r.person_id=i.person_id) THEN
   RAISE EXCEPTION 'Review erasure incomplete' USING ERRCODE='42501';END IF;

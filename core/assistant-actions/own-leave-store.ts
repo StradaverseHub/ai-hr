@@ -14,13 +14,13 @@ import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
 import { readOwnLeaveActorTx } from './own-leave-actor';
 import { readOwnLeaveCandidateTx, type OwnLeaveCandidateResult } from './own-leave-candidate';
 import { OwnLeaveContentUnavailable, OwnLeaveSealedReview, sealOwnLeaveReview, unsealOwnLeaveReview } from './own-leave-content';
-import { OwnLeavePreparedMetadata } from './own-leave-review';
+import { OwnLeavePreparedMetadata, OwnLeaveCustodyMetadata } from './own-leave-review';
 import { ownLeaveReviewedDigest } from './own-leave-review-digest';
 import { readOwnLeaveSubmissionReferenceTx } from '../read';
-import { reconcileOwnLeaveConfirmation } from './own-leave-reconciliation';
+import { reconcileRecordedOwnLeaveReceipt } from './own-leave-reconciliation';
 
 const StoredReview = z.object({
-  metadata: OwnLeavePreparedMetadata,
+  metadata: OwnLeaveCustodyMetadata,
   sealed: OwnLeaveSealedReview.nullable(),
   receipt: OwnLeaveFinalReceipt.nullable(),
 }).strict().refine(value => (value.metadata.state === 'awaiting_confirmation') === (value.sealed !== null))
@@ -78,10 +78,7 @@ async function completed(tx: Tx, actor: SessionContext, stored: StoredReview): P
   const receipt = stored.receipt;
   if (stored.metadata.state !== 'completed' || receipt?.state !== 'completed') throw new OwnLeaveContentUnavailable();
   const source = await readOwnLeaveSubmissionReferenceTx(tx, actor, receipt.leaveRequestId, receipt.submissionEventId);
-  const outcome = reconcileOwnLeaveConfirmation(stored.metadata, receipt, {
-    actionId: stored.metadata.actionId, contractVersion: stored.metadata.contractVersion,
-    reviewedDigest: stored.metadata.reviewedDigest,
-  }, stored.metadata.binding, new Date(), source);
+  const outcome = reconcileRecordedOwnLeaveReceipt(stored.metadata, receipt, stored.metadata.binding, source);
   if (outcome.status !== 'submission_recorded') throw new OwnLeaveContentUnavailable();
   return { kind: 'completed', receipt };
 }
@@ -129,25 +126,50 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
 
 /** Discard is private-content retirement, not an HR effect. It remains available when AI is paused
  * or its grant was removed. SQL still requires current same-login/person/source custody, a fresh
- * principal and the exact reviewed digest. It can never return private content or execute leave. */
+ * principal and, while pending, the exact reviewed digest. Terminal retirement reconciles only
+ * custody/state after digest deletion. It can never return private content or execute leave. */
 export async function discardOwnLeaveReviewTx(tx: Tx, confirmationValue: unknown): Promise<RetiredResult> {
   const confirmation = OwnLeaveConfirmation.safeParse(confirmationValue);
   if (!confirmation.success) throw new OwnLeaveContentUnavailable();
   const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(
     ${confirmation.data.actionId}::uuid,true,${confirmation.data.reviewedDigest}) as review`);
-  if (stored.metadata.actionId !== confirmation.data.actionId
-    || stored.metadata.reviewedDigest !== confirmation.data.reviewedDigest) throw new OwnLeaveContentUnavailable();
+  if (stored.metadata.actionId !== confirmation.data.actionId) throw new OwnLeaveContentUnavailable();
   return retired(stored);
 }
 
-/** Bounded administrative retention primitive; no scheduled caller is wired yet. It retires only
- * expired pending reviews and returns a count, never employee identities or protected content. */
-export async function expireOwnLeaveReviewsTx(tx: Tx, limit = 100): Promise<number> {
+/** Cleanup is privacy-only. Both SQL owners validate their actual current carrier/principal;
+ * query failures never propagate encrypted parameters or raw driver diagnostics. */
+async function expireReviewsTx(tx: Tx, limit: number, own: boolean): Promise<number> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new OwnLeaveContentUnavailable();
-  const [row] = await tx.execute<{ expired: number }>(sql`select app.assistant_own_leave_reviews_expire(${limit}) as expired`);
-  if (!row || !Number.isSafeInteger(row.expired) || row.expired < 0 || row.expired > limit)
-    throw new OwnLeaveContentUnavailable();
-  return row.expired;
+  try {
+    const [row] = await tx.execute<{ expired: number }>(own
+      ? sql`select app.assistant_own_leave_reviews_expire_own(${limit}) as expired`
+      : sql`select app.assistant_own_leave_reviews_expire(${limit}) as expired`);
+    if (!row || !Number.isSafeInteger(row.expired) || row.expired < 0 || row.expired > limit)
+      throw new OwnLeaveContentUnavailable();
+    return row.expired;
+  } catch { throw new OwnLeaveContentUnavailable(); }
+}
+
+/** Existing group-admin primitive; no synthetic system actor or anonymous maintenance grant. */
+export function expireOwnLeaveReviewsTx(tx: Tx, limit = 100): Promise<number> {
+  return expireReviewsTx(tx, limit, false);
+}
+
+/** Exact-login private retention; available without an Assistant grant, never another user's rows. */
+export function expireOwnLeaveReviewsForCallerTx(tx: Tx, limit = 100): Promise<number> {
+  return expireReviewsTx(tx, limit, true);
+}
+
+/** One bounded, committed maintenance batch for an already authenticated group administrator.
+ * A full batch reports that more MAY remain, rather than claiming complete retention coverage.
+ * Scheduling/credentials are not inferred here. No request or canonical event is created/deleted. */
+export async function runOwnLeaveReviewRetention(supplied: SessionContext, limit = 100) {
+  const ctx = captureContext(supplied);
+  try {
+    const expired = await withTenant(ctx, tx => expireOwnLeaveReviewsTx(tx, limit));
+    return Object.freeze({ expired, limit, mayHaveMore: expired === limit });
+  } catch { throw new OwnLeaveContentUnavailable(); }
 }
 
 /** UNMOUNTED human-confirmation owner. It owns the top-level transaction: a caught error outside
@@ -173,12 +195,13 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
       await lockLeaveDependenciesTx(tx, actor.tenantId, [subject.data]);
       const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(${confirmation.actionId}::uuid) as review`);
       const m = stored.metadata;
-      if (m.actionId !== confirmation.actionId || m.reviewedDigest !== confirmation.reviewedDigest
+      if (m.actionId !== confirmation.actionId
         || m.binding.tenantId !== actor.tenantId || m.binding.userId !== actor.userId
         || m.binding.personId !== actor.personId || m.binding.employmentId !== subject.data)
         throw new OwnLeaveContentUnavailable();
       if (m.state === 'completed') return completed(tx, actor, stored);
       if (m.state !== 'awaiting_confirmation') return retired(stored);
+      if (m.reviewedDigest !== confirmation.reviewedDigest || m.intentDigest === null) throw new OwnLeaveContentUnavailable();
       const saved = unsealOwnLeaveReview(m, stored.sealed), intent = saved.review.nomination;
       const fresh = await readOwnLeaveCandidateTx(tx, actor, intent,
         { employmentId: m.binding.employmentId, leaveTypeId: intent.leaveTypeId }, saved.review.humanText, locale);

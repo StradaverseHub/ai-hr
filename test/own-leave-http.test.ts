@@ -36,6 +36,12 @@ describe('own-leave browser transport owner', () => {
     const f=fixture(), response=await f.run(request({operation:'confirm',confirmation},headers));
     expect(response.status).toBe(403); expect(f.owners.authenticate).not.toHaveBeenCalled(); expect(f.owners.confirm).not.toHaveBeenCalled();
   });
+  it('is cookie-browser-only and refuses bearer authorization before identity lookup', async () => {
+    const f=fixture();
+    const response=await f.run(request({operation:'confirm',confirmation},{authorization:'Bearer fictional-not-used'}));
+    expect(response.status).toBe(403);expect(f.owners.authenticate).not.toHaveBeenCalled();expect(f.owners.confirm).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual({error:'unavailable'});
+  });
   it('refuses missing Origin rather than relying on a cookie or forwarded host', async () => {
     const f=fixture(), req=request({operation:'confirm',confirmation});req.headers.delete('origin');
     expect((await f.run(req)).status).toBe(403);expect(f.owners.authenticate).not.toHaveBeenCalled();

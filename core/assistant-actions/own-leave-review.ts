@@ -32,6 +32,18 @@ export const OwnLeavePreparedMetadata = z.object({
   expiresAt: z.string().datetime(),
 }).strict().refine(value => Date.parse(value.expiresAt) > Date.parse(value.createdAt));
 
+/** Storage retires text-derived integrity hashes together with its encrypted body/key. A null
+ * terminal digest is explicitly absent proof, never a fabricated original integrity digest. */
+export const OwnLeaveCustodyMetadata = z.union([
+  OwnLeavePreparedMetadata.refine(value => value.state === 'awaiting_confirmation'),
+  z.object({ actionId: z.string().uuid(), action: z.literal(OWN_LEAVE_ACTION),
+    contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION), binding: OwnLeaveBinding,
+    intentDigest: z.null(), reviewedDigest: z.null(),
+    state: OwnLeaveState.exclude(['awaiting_confirmation']),
+    createdAt: z.string().datetime(), expiresAt: z.string().datetime(),
+  }).strict().refine(value => Date.parse(value.expiresAt) > Date.parse(value.createdAt)),
+]);
+
 /** Fixed ordering and domain separation make field ordering irrelevant and identity part of intent.
  * This is an integrity digest, NOT encryption or a protected-storage/retention implementation. */
 export function ownLeaveIntentDigest(bindingValue: unknown, nominationValue: unknown, humanTextValue: unknown): string {
@@ -57,7 +69,7 @@ type ConfirmationPreflight =
 export function checkOwnLeaveConfirmation(
   metadataValue: unknown, confirmationValue: unknown, currentBindingValue: unknown, now: Date,
 ): ConfirmationPreflight {
-  const metadata = OwnLeavePreparedMetadata.safeParse(metadataValue);
+  const metadata = OwnLeaveCustodyMetadata.safeParse(metadataValue);
   const confirmation = OwnLeaveConfirmation.safeParse(confirmationValue);
   const binding = OwnLeaveBinding.safeParse(currentBindingValue);
   if (!metadata.success || !confirmation.success || !binding.success || !Number.isFinite(now.getTime())) {
@@ -69,11 +81,11 @@ export function checkOwnLeaveConfirmation(
   if (!sameOwner || record.actionId !== confirmation.data.actionId) {
     return { kind: 'refused', code: 'unavailable' };
   }
+  // Terminal custody cannot authorize an effect and contains no text-derived integrity hash.
+  if (record.state !== 'awaiting_confirmation') return { kind: 'reconcile', state: record.state };
   if (record.reviewedDigest !== confirmation.data.reviewedDigest) {
     return { kind: 'refused', code: 'review_changed' };
   }
-  // Final records reconcile even after the preparation expires. They must never execute again.
-  if (record.state !== 'awaiting_confirmation') return { kind: 'reconcile', state: record.state };
   if (now.getTime() < Date.parse(record.createdAt)) return { kind: 'refused', code: 'unavailable' };
   if (now.getTime() >= Date.parse(record.expiresAt)) return { kind: 'refused', code: 'expired' };
   return { kind: 'revalidate' };

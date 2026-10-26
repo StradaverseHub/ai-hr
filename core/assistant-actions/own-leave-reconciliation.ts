@@ -4,7 +4,7 @@ import {
   OwnLeaveConfirmation, OwnLeaveFinalReceipt, type OwnLeaveClientOutcome,
 } from '../../lib/assistant-actions/own-leave-contract';
 import { z } from 'zod';
-import { checkOwnLeaveConfirmation, OwnLeaveBinding } from './own-leave-review';
+import { checkOwnLeaveConfirmation, OwnLeaveBinding, OwnLeaveCustodyMetadata } from './own-leave-review';
 
 /** Minimal server-only projections, not a posted capability or a replacement authorization policy.
  * The eventual read owner must obtain these from the current canonical leave reader and actual
@@ -45,17 +45,7 @@ export function reconcileOwnLeaveConfirmation(
       // UUID-shaped references in a detached receipt do not establish that the request is still
       // readable or that its submitted event belongs to this actor/subject. Fail closed when the
       // future read owner omits, substitutes or cannot obtain the canonical source projections.
-      const source = SubmissionReadEvidence.safeParse(sourceEvidenceValue);
-      const current = OwnLeaveBinding.safeParse(binding);
-      if (!source.success || !current.success) return { status: 'checking_submission', actionId };
-      const {request, event} = source.data, owner = current.data;
-      if (request.id !== receipt.data.leaveRequestId || request.tenantId !== owner.tenantId
-        || request.employmentId !== owner.employmentId || request.personId !== owner.personId
-        || request.companyId !== owner.companyId || event.id !== receipt.data.submissionEventId
-        || event.tenantId !== owner.tenantId || event.aggregateId !== request.id
-        || event.actorId !== owner.userId || event.subjectEmploymentId !== owner.employmentId)
-        return { status: 'checking_submission', actionId };
-      return { status: 'submission_recorded', actionId, leaveRequestId: receipt.data.leaveRequestId };
+      return reconcileRecordedOwnLeaveReceipt(metadata, receipt.data, binding, sourceEvidenceValue);
     }
     case 'refused':
       return { status: 'refused', actionId, code: receipt.data.code };
@@ -64,4 +54,27 @@ export function reconcileOwnLeaveConfirmation(
     case 'expired':
       return { status: 'refused', actionId, code: 'expired' };
   }
+}
+
+/** Terminal replay requires fresh canonical evidence, never a retained hash of erased human text.
+ * Metadata/receipt must be read together under current custody before calling this pure reader. */
+export function reconcileRecordedOwnLeaveReceipt(metadata: unknown, receiptValue: unknown,
+  binding: unknown, sourceEvidenceValue: unknown): OwnLeaveClientOutcome | { status: 'unavailable' } {
+  const record = OwnLeaveCustodyMetadata.safeParse(metadata);
+  const receipt = OwnLeaveFinalReceipt.safeParse(receiptValue);
+  const current = OwnLeaveBinding.safeParse(binding);
+  const source = SubmissionReadEvidence.safeParse(sourceEvidenceValue);
+  if (!record.success || record.data.state !== 'completed' || !receipt.success || receipt.data.state !== 'completed'
+    || !current.success || record.data.actionId !== receipt.data.actionId
+    || Object.keys(record.data.binding).some(key => record.data.binding[key as keyof typeof record.data.binding]
+      !== current.data[key as keyof typeof current.data])) return { status: 'unavailable' };
+  if (!source.success) return { status: 'checking_submission', actionId: record.data.actionId };
+  const { request, event } = source.data, owner = current.data;
+  if (request.id !== receipt.data.leaveRequestId || request.tenantId !== owner.tenantId
+    || request.employmentId !== owner.employmentId || request.personId !== owner.personId
+    || request.companyId !== owner.companyId || event.id !== receipt.data.submissionEventId
+    || event.tenantId !== owner.tenantId || event.aggregateId !== request.id
+    || event.actorId !== owner.userId || event.subjectEmploymentId !== owner.employmentId)
+    return { status: 'checking_submission', actionId: record.data.actionId };
+  return { status: 'submission_recorded', actionId: record.data.actionId, leaveRequestId: receipt.data.leaveRequestId };
 }

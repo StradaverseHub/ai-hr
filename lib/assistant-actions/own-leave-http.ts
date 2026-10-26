@@ -71,7 +71,7 @@ export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwn
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') return Response.json({ error: 'unavailable' }, { status: 405, headers: { ...headers, Allow: 'POST' } });
     const site = request.headers.get('sec-fetch-site');
-    if (new URL(request.url).search || !isSameOriginBrowserRequest(request) || (site !== null && site !== 'same-origin')) return failure(403);
+    if (request.headers.has('authorization') || new URL(request.url).search || !isSameOriginBrowserRequest(request) || (site !== null && site !== 'same-origin')) return failure(403);
     if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return failure(415);
     let packet: Packet;
     try { packet = await readPacket(request); } catch { return failure(400); }

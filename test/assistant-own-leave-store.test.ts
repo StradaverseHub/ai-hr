@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import { appendEvent } from '../db/events';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { setAiAllowance } from '../core/ai-management';
-import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx, confirmOwnLeaveReview } from '../core/assistant-actions/own-leave-store';
+import { prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx, discardOwnLeaveReviewTx, expireOwnLeaveReviewsTx, expireOwnLeaveReviewsForCallerTx, runOwnLeaveReviewRetention, confirmOwnLeaveReview } from '../core/assistant-actions/own-leave-store';
 import { OwnLeaveContentUnavailable } from '../core/assistant-actions/own-leave-content';
 import { hireEmployee } from '../core/org';
 import { requestLeave } from '../core/leave';
@@ -170,8 +170,8 @@ describe('pending own-leave review custody', () => {
     // Historical, already retired fixtures exhaust only the creation budget. No ciphertext or
     // pending row exists, so a refusal cannot accidentally pin only the outstanding-review cap.
     await owner.db.execute(sql`insert into app.assistant_own_leave_review
-      select gen_random_uuid(),tenant_id,user_id,person_id,employment_id,company_id,intent_digest,
-       reviewed_digest,'discarded',created_at,expires_at
+      select gen_random_uuid(),tenant_id,user_id,person_id,employment_id,company_id,NULL,
+       NULL,'discarded',created_at,expires_at
       from app.assistant_own_leave_review cross join generate_series(1,19)
       where id=${review.actionId}::uuid`);
     const before = await counts();
@@ -239,6 +239,81 @@ describe('pending own-leave review custody', () => {
       .toEqual({ kind: 'prepared', review: fresh });
   });
 
+  it('retires only the actual login expired reviews after Assistant revocation, preserving foreign and fresh bodies', async () => {
+    const mine = await prepare(), fresh = await prepare();
+    const other = await hireEmployee(adminCtx(base), { person: { fullName: 'Fictional Other Review Owner', primaryEmail: randomUUID()+'@fixture.test' },
+      companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: todayInKualaLumpur() });
+    const uid = await createAppUser(base.tenantId, other.personId, 'employee');
+    await grantAssistant(adminCtx(base), { appUserId: uid }); await credit(other.employmentId);
+    const otherCtx: SessionContext = { ...await entitledCtx(base,['employee']), userId: uid, personId: other.personId,
+      grants: [{ role: 'employee', companyId: null }] };
+    const foreign = await prepare(otherCtx, other.employmentId);
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute'
+      where id in (${mine.actionId}::uuid,${foreign.actionId}::uuid)`);
+    await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
+    vi.stubEnv('AI_CONFIG_SECRET',''); // Retirement requires no private decryption or model capability.
+    expect(await withTenant(ctx, tx=>expireOwnLeaveReviewsForCallerTx(tx,1))).toBe(1);
+    expect(await counts()).toMatchObject({bodies:2,pending:2,requests:0,model_runs:0});
+    const states=await owner.db.execute<{id:string;state:string}>(sql`select id,state from app.assistant_own_leave_review where tenant_id=${base.tenantId}::uuid`);
+    expect(states.find(row=>row.id===mine.actionId)?.state).toBe('expired');
+    expect(states.find(row=>row.id===foreign.actionId)?.state).toBe('awaiting_confirmation');
+    expect(states.find(row=>row.id===fresh.actionId)?.state).toBe('awaiting_confirmation');
+    expect(await withTenant(adminCtx(base),tx=>expireOwnLeaveReviewsForCallerTx(tx,100))).toBe(0); // Own-only even for HR.
+  });
+
+  it('keeps own cleanup bounded and atomic with the supplied transaction', async () => {
+    const review=await prepare();
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${review.actionId}::uuid`);
+    const before=await counts(), failure=Error('controlled cleanup rollback');
+    await expect(withTenant(ctx,async tx=>{expect(await expireOwnLeaveReviewsForCallerTx(tx,1)).toBe(1);throw failure;})).rejects.toBe(failure);
+    expect(await counts()).toEqual(before);
+    for(const limit of [0,1001,1.5,NaN])await expect(withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx,limit))).rejects.toThrow('private review unavailable');
+    expect(await counts()).toEqual(before);
+    expect(await withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx,1))).toBe(1);
+    expect(await counts()).toMatchObject({bodies:0,pending:0,requests:0,model_runs:0});
+  });
+
+  it('refuses stale/archived cleanup principals before touching their expired content', async () => {
+    const review=await prepare();
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${review.actionId}::uuid`);
+    const before=await counts();
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,ctx.userId!));
+    await expect(withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx,1))).rejects.toThrow('private review unavailable');
+    expect(await counts()).toEqual(before);
+    await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,ctx.userId!));
+    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
+    await expect(withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx,1))).rejects.toThrow('private review unavailable');
+    expect(await counts()).toEqual(before);
+    expect(await runOwnLeaveReviewRetention(adminCtx(base),1)).toEqual({expired:1,limit:1,mayHaveMore:true});
+  });
+
+  it('retires text-derived digests on discard/expiry/completion and never re-executes terminal retries', async () => {
+    const discarded=await prepare(), done=await prepare(), expired=await prepare(), pending=await prepare();
+    await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,confirmation(discarded)));
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${expired.actionId}::uuid`);
+    await withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx));
+    const result=await confirmOwnLeaveReview(ctx,confirmation(done),'en');expect(result.kind).toBe('completed');
+    const rows=await owner.db.execute<{intent_digest:string|null;reviewed_digest:string|null}>(sql`select intent_digest,reviewed_digest from app.assistant_own_leave_review`);
+    expect(rows).toHaveLength(4);expect(rows.filter(row=>row.intent_digest===null)).toHaveLength(3);for(const row of rows.filter(row=>row.intent_digest===null))expect(row).toEqual({intent_digest:null,reviewed_digest:null});
+    const stale={...confirmation(done),reviewedDigest:'f'.repeat(64)};
+    expect(await confirmOwnLeaveReview(ctx,stale,'en')).toEqual(result); // Current canonical receipt only.
+    expect((await confirmOwnLeaveReview(ctx,{...stale,actionId:discarded.actionId},'en')).kind).toBe('retired');
+    await expect(confirmOwnLeaveReview(ctx,{...stale,actionId:pending.actionId},'en')).rejects.toThrow('private review unavailable');
+    expect(await counts()).toMatchObject({requests:1,pending:1,bodies:1,model_runs:0});
+  });
+
+  it('reports bounded administrative progress honestly and leaves completed canonical receipts intact', async () => {
+    const completedReview=await prepare(), old=await prepare();
+    const completedResult=await confirmOwnLeaveReview(ctx,confirmation(completedReview),'en');
+    expect(completedResult.kind).toBe('completed');
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${old.actionId}::uuid`);
+    await expect(runOwnLeaveReviewRetention(ctx,1)).rejects.toThrow('private review unavailable');
+    expect(await runOwnLeaveReviewRetention(adminCtx(base),1)).toEqual({expired:1,limit:1,mayHaveMore:true});
+    expect(await runOwnLeaveReviewRetention(adminCtx(base),1)).toEqual({expired:0,limit:1,mayHaveMore:false});
+    expect(await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,completedReview.actionId))).toEqual(completedResult);
+    expect(await counts()).toMatchObject({requests:1,bodies:0,pending:0,model_runs:0});
+  });
+
   it('rolls back preparation when the enclosing caller transaction fails', async () => {
     const before = await counts();
     await expect(withTenant(ctx, async tx => {
@@ -271,8 +346,23 @@ describe('pending own-leave review custody', () => {
       .where(eq(schema.person.id, subject.personId));
     expect(person.phone).toBeNull();
     expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
+    const digests=await owner.db.execute<{intent_digest:string|null;reviewed_digest:string|null}>(sql`select intent_digest,reviewed_digest from app.assistant_own_leave_review where person_id=${subject.personId}::uuid`);
+    expect(digests).toHaveLength(2);for(const row of digests)expect(row).toEqual({intent_digest:null,reviewed_digest:null});
     for (const review of [a, b]) expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toMatchObject({ kind: 'retired', receipt: { actionId: review.actionId, state: 'refused', code: 'unavailable' } });
+  });
+
+  it('preserves exact canonical completed references through person erasure without retaining text hashes', async () => {
+    const review=await prepare(), receipt=await confirmOwnLeaveReview(ctx,confirmation(review),'en');
+    const before=await counts();
+    await owner.db.update(schema.person).set({phone:'FICTIONAL-ERASE-COMPLETED-REVIEW'}).where(eq(schema.person.id,subject.personId));
+    await erasePersonPii(adminCtx(base),{subjectEmploymentId:subject.employmentId,scope:'contact',requestRef:'FICTIONAL-COMPLETED-REVIEW-ERASURE',reason:'Fictional terminal privacy cleanup'});
+    const [row]=await owner.db.execute<{intent_digest:string|null;reviewed_digest:string|null;leave_request_id:string;submission_event_id:string}>(sql`select intent_digest,reviewed_digest,leave_request_id,submission_event_id from app.assistant_own_leave_review where id=${review.actionId}::uuid`);
+    expect(row.intent_digest).toBeNull();expect(row.reviewed_digest).toBeNull();
+    if(receipt.kind!=='completed')throw Error('Fictional submission did not complete');
+    expect(row.leave_request_id).toBe(receipt.receipt.leaveRequestId);expect(row.submission_event_id).toBe(receipt.receipt.submissionEventId);
+    expect(await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId))).toEqual(receipt);
+    expect(await counts()).toEqual(before);
   });
 
   it('keeps ordinary contact erasure working without inventing a review-erasure effect', async () => {

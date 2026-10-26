@@ -73,9 +73,9 @@ describe('confirmation preflight does not claim execution', () => {
       .toEqual({ kind: 'refused', code: 'unavailable' });
   });
   it.each(['completed', 'refused', 'discarded', 'expired'])('reconciles final state %s without another effect', state => {
-    expect(checkOwnLeaveConfirmation({ ...record, state }, confirmation, binding, later)).toEqual({ kind: 'reconcile', state });
+    expect(checkOwnLeaveConfirmation({ ...record, state, intentDigest: null, reviewedDigest: null }, confirmation, binding, later)).toEqual({ kind: 'reconcile', state });
   });
-  it.each([null, {}, { ...record, state: 'executing' }, { ...record, reason: 'private text' },
+  it.each([null, {}, { ...record, intentDigest: null, reviewedDigest: null }, { ...record, state: 'executing' }, { ...record, reason: 'private text' },
     { ...record, expiresAt: record.createdAt }])('fails closed on malformed metadata', value => {
     expect(checkOwnLeaveConfirmation(value, confirmation, binding, now)).toEqual({ kind: 'refused', code: 'unavailable' });
   });
