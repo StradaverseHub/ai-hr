@@ -3,7 +3,7 @@
 -- Preserve actual human journal prerequisites; final index/when allocated centrally at source freeze.
 -- Refresh canonical prefix and actual staging watermark before release-owner journal/application.
 CREATE TABLE app.assistant_own_leave_review (
- action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request')),
+ action_kind text NOT NULL DEFAULT 'leave.apply' CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide')),
  id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
  person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
@@ -15,6 +15,7 @@ CREATE TABLE app.assistant_own_leave_review (
  CHECK(CASE WHEN action_kind='system_testing.execution.save' THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NOT NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='knowledge_base.article.create' THEN employment_id IS NULL AND company_id IS NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
+  WHEN action_kind='approvals.leave.decide' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   WHEN action_kind='org.reporting.change' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL
   ELSE person_id IS NOT NULL AND employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL END),
  CHECK((testing_run_id IS NULL)=(testing_event_id IS NULL)),
@@ -33,6 +34,10 @@ CREATE TABLE app.assistant_own_leave_review (
  toil_request_id uuid UNIQUE,toil_submitted_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='toil.replacement.request' THEN ((state='completed')=(toil_request_id IS NOT NULL AND toil_submitted_event_id IS NOT NULL)) ELSE toil_request_id IS NULL AND toil_submitted_event_id IS NULL END),
  CHECK((toil_request_id IS NULL)=(toil_submitted_event_id IS NULL)),
+ -- Nominal native refs deliberately do not block ordinary request/chain replacement or erasure.
+ decision_request_id uuid,decision_step_id uuid,decision_event_id uuid UNIQUE,
+ decision_subject_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,decision_applicant_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
+ CHECK(CASE WHEN action_kind='approvals.leave.decide' THEN decision_request_id IS NOT NULL AND decision_subject_person_id IS NOT NULL AND ((state='completed')=(decision_event_id IS NOT NULL)) ELSE decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_subject_person_id IS NULL AND decision_applicant_person_id IS NULL END),
  lifecycle_case_id uuid,lifecycle_case_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,lifecycle_submitted_event_id uuid UNIQUE,
  CHECK(CASE WHEN action_kind='lifecycle.acknowledgement.submit' THEN lifecycle_case_id IS NOT NULL AND ((state='completed')=(lifecycle_submitted_event_id IS NOT NULL)) ELSE lifecycle_case_id IS NULL AND lifecycle_case_person_id IS NULL AND lifecycle_submitted_event_id IS NULL END),
  CHECK(CASE WHEN action_kind='knowledge_base.article.create' THEN ((state='completed')=(knowledge_article_id IS NOT NULL AND knowledge_created_event_id IS NOT NULL)) ELSE knowledge_article_id IS NULL AND knowledge_created_event_id IS NULL END),
@@ -57,6 +62,7 @@ CREATE TABLE app.assistant_own_leave_review (
    AND ((state='completed')=(profile_request_id IS NOT NULL AND profile_requested_event_id IS NOT NULL))
   WHEN action_kind='claims.draft.save' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL
    AND ((state='completed')=(claim_draft_id IS NOT NULL AND claim_saved_event_id IS NOT NULL))
+  WHEN action_kind='approvals.leave.decide' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='toil.replacement.request' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='lifecycle.acknowledgement.submit' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
   WHEN action_kind='knowledge_base.article.create' THEN performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL
@@ -351,7 +357,7 @@ BEGIN
   RAISE EXCEPTION 'Review erasure already prepared' USING ERRCODE='40001';END IF;
  -- Capture every current actor/subject/pending manager association before clearing pointers.
  SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO ids FROM app.assistant_own_leave_review r
-  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR r.org_subject_person_id=i.person_id
+  WHERE r.tenant_id=i.tenant_id AND (r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id
    OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id);
  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=ANY(ids);
  GET DIAGNOSTICS total=ROW_COUNT;
@@ -373,7 +379,7 @@ BEGIN
   AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND person_id=NEW.aggregate_id;
  IF NOT FOUND THEN
   IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
+   WHERE r.tenant_id=NEW.tenant_id AND (r.person_id=NEW.aggregate_id OR r.lifecycle_case_person_id=NEW.aggregate_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,NEW.aggregate_id,NEW.tenant_id) OR r.decision_subject_person_id=NEW.aggregate_id OR r.decision_applicant_person_id=NEW.aggregate_id OR r.org_subject_person_id=NEW.aggregate_id OR r.org_manager_person_id=NEW.aggregate_id OR r.org_previous_manager_person_id=NEW.aggregate_id))
    OR coalesce(NEW.payload->'erasedFields' ? 'assistantPreparedReviews',false) THEN
    RAISE EXCEPTION 'Review erasure admission unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
@@ -406,10 +412,10 @@ BEGIN
  IF NOT FOUND OR i.event_id IS NULL OR i.xact_id IS DISTINCT FROM pg_current_xact_id()
   OR i.tenant_id IS DISTINCT FROM app.current_tenant_id() OR i.user_id IS DISTINCT FROM app.current_user_id()
   OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(i.employment_id) IS NOT TRUE
-  OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND (id=ANY(i.review_ids) OR person_id=i.person_id OR lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(lifecycle_case_id,i.person_id,i.tenant_id) OR org_subject_person_id=i.person_id OR org_manager_person_id=i.person_id OR org_previous_manager_person_id=i.person_id)
+  OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE tenant_id=i.tenant_id AND (id=ANY(i.review_ids) OR person_id=i.person_id OR lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(lifecycle_case_id,i.person_id,i.tenant_id) OR decision_subject_person_id=i.person_id OR decision_applicant_person_id=i.person_id OR org_subject_person_id=i.person_id OR org_manager_person_id=i.person_id OR org_previous_manager_person_id=i.person_id)
    AND (intent_digest IS NOT NULL OR reviewed_digest IS NOT NULL))
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c JOIN app.assistant_own_leave_review r ON r.id=c.action_id
-   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
+   WHERE r.tenant_id=i.tenant_id AND (r.id=ANY(i.review_ids) OR r.person_id=i.person_id OR r.lifecycle_case_person_id=i.person_id OR app._assistant_lifecycle_review_person(r.lifecycle_case_id,i.person_id,i.tenant_id) OR r.decision_subject_person_id=i.person_id OR r.decision_applicant_person_id=i.person_id OR r.org_subject_person_id=i.person_id OR r.org_manager_person_id=i.person_id OR r.org_previous_manager_person_id=i.person_id)) THEN
   RAISE EXCEPTION 'Review erasure incomplete' USING ERRCODE='42501';END IF;
  -- Do not remove the current-xact barrier here: SET CONSTRAINTS IMMEDIATE must not permit a later
  -- preparation in the same transaction. A later authorized custody call prunes the completed marker.
@@ -1660,3 +1666,163 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_toil_request_reviews_index() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_toil_request_reviews_index() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Assigned Leave decision custody. Native TypeScript owns named/alternate/delegated decision authority.
+-- Sealed body contains only this decider human input and a private digest, never applicant text.
+CREATE FUNCTION app._assistant_leave_decision_login(p_person uuid DEFAULT NULL,p_bind boolean DEFAULT false) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (p_bind IS NOT TRUE OR u.person_id IS NOT DISTINCT FROM p_person)) THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_leave_decision_login(uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_leave_decision_binding(p_person uuid,p_employment uuid,p_company uuid,p_subject uuid,p_request uuid,p_step uuid) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_leave_decision_login(p_person,true);
+ IF NOT EXISTS(SELECT 1 FROM public.leave_request q JOIN public.employment e ON e.id=q.employment_id AND e.tenant_id=q.tenant_id
+ WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND e.id=p_employment AND e.person_id=p_subject AND e.company_id=p_company
+ AND ((p_step IS NULL AND NOT EXISTS(SELECT 1 FROM public.leave_approval_step z WHERE z.leave_request_id=q.id)) OR EXISTS(SELECT 1 FROM public.leave_approval_step z WHERE z.id=p_step AND z.leave_request_id=q.id AND z.tenant_id=q.tenant_id))) THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_leave_decision_binding(uuid,uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_leave_decision_review_json(p_id uuid) RETURNS jsonb
+ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',jsonb_build_object('actionId',r.id,'action',r.action_kind,'contractVersion',1,
+ 'binding',jsonb_build_object('tenantId',r.tenant_id,'userId',r.user_id,'personId',r.person_id,'employmentId',r.employment_id,'companyId',r.company_id,'subjectPersonId',r.decision_subject_person_id),
+ 'intentDigest',r.intent_digest,'reviewedDigest',r.reviewed_digest,'state',r.state,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(r.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+ 'sealed',CASE WHEN r.state='awaiting_confirmation' AND c.action_id IS NOT NULL THEN jsonb_build_object('formatVersion',1,'kid',c.kid,'wrappedDek',c.wrapped_dek,'ciphertext',c.ciphertext) ELSE NULL END,
+ 'leaveRequestId',r.decision_request_id,'stepId',r.decision_step_id,'eventId',r.decision_event_id)
+ FROM app.assistant_own_leave_review r LEFT JOIN app.assistant_own_leave_review_content c ON c.action_id=r.id WHERE r.id=p_id AND r.action_kind='approvals.leave.decide';
+$$;
+REVOKE ALL ON FUNCTION app._assistant_leave_decision_review_json(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_leave_decision_review_prepare(p_id uuid,p_person uuid,p_employment uuid,p_company uuid,p_subject uuid,p_request uuid,p_step uuid,
+ p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE applicant uuid;at_time timestamptz;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_leave_decision_binding(p_person,p_employment,p_company,p_subject,p_request,p_step);
+ SELECT a.person_id INTO applicant FROM public.domain_event d JOIN public.app_user a ON a.id=d.actor_id AND a.tenant_id=d.tenant_id WHERE d.tenant_id=t AND d.aggregate_id=p_request AND d.aggregate_type='leave-request' AND d.event_type='leave-request.submitted' AND d.actor_type='user' ORDER BY d.occurred_at,d.id LIMIT 1;
+ -- A preparation in the same privacy-erasure transaction must not create new uncaptured private text.
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+  AND i.tenant_id=t AND i.person_id=ANY(ARRAY[p_person,p_subject,applicant]))
+  OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
+   AND i.tenant_id=t AND i.person_id=ANY(ARRAY[p_person,p_subject,applicant])) THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$'
+  OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$'
+  OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512
+  OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ -- Private review admission is separate from model quota. The identity owner already holds the
+ -- tenant Access lock, serializing competing preparations and privacy/custody transitions. Bounds
+ -- apply to this login only: at most five unexpired pending reviews and twenty preparations per
+ -- rolling ten minutes. Discard/expiry cannot reset the creation-rate budget. SQL owns every time.
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND state='awaiting_confirmation' AND expires_at>at_time)>=5
+  OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u
+   AND created_at>at_time-interval '10 minutes')>=20 THEN
+  RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review
+  (action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,decision_subject_person_id,decision_applicant_person_id,decision_request_id,decision_step_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES('approvals.leave.decide',p_id,t,u,p_person,p_employment,p_company,p_subject,applicant,p_request,p_step,
+  p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own-leave review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);
+ RETURN app._assistant_leave_decision_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Nomination only. Trusted command owns native config→employee→request/step BEFORE custody row read.
+CREATE FUNCTION app.assistant_leave_decision_review_subject(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='approvals.leave.decide';
+ IF NOT FOUND THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_leave_decision_login(r.person_id,true);RETURN jsonb_build_object('leaveRequestId',r.decision_request_id,'currentStepId',r.decision_step_id,'mode',CASE WHEN r.state='completed' THEN 'recorded' ELSE 'pending' END);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_subject(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_subject(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_leave_decision_review_read(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='approvals.leave.decide' FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_leave_decision_binding(r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.decision_request_id,r.decision_step_id);
+ IF r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at THEN UPDATE app.assistant_own_leave_review SET state='expired',intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review a WHERE c.action_id=a.id AND a.id=r.id AND a.state<>'awaiting_confirmation';
+ RETURN app._assistant_leave_decision_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_leave_decision_review_complete(p_id uuid,p_reviewed_digest text,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='approvals.leave.decide' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR p_event IS NULL THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_leave_decision_binding(r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.decision_request_id,r.decision_step_id);
+ IF r.state='completed' THEN
+  IF r.decision_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF r.reviewed_digest IS DISTINCT FROM p_reviewed_digest THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.leave_request q JOIN public.domain_event d ON d.aggregate_id=q.id AND d.tenant_id=q.tenant_id
+   LEFT JOIN public.leave_approval_step z ON z.id=r.decision_step_id AND z.leave_request_id=q.id AND z.tenant_id=q.tenant_id
+   WHERE q.id=r.decision_request_id AND q.tenant_id=t AND q.employment_id=r.employment_id AND d.id=p_event
+   AND d.aggregate_type='leave-request' AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id=q.employment_id
+   AND d.event_type IN ('leave-request.approved','leave-request.rejected','leave-request.step.approved')
+   AND d.xmin=pg_current_xact_id()::xid AND d.occurred_at=coalesce(z.decided_at,q.decided_at)
+   AND (r.decision_step_id IS NULL OR z.xmin=pg_current_xact_id()::xid)
+   AND (z.id IS NULL OR z.status=CASE WHEN d.event_type='leave-request.rejected' THEN 'rejected'::public.leave_request_status ELSE 'approved'::public.leave_request_status END)
+   AND (d.event_type NOT IN ('leave-request.step.approved','leave-request.rejected') OR z.id IS NULL OR (d.payload->>'step')::integer=z.step_index)
+   AND ((d.event_type='leave-request.step.approved' AND q.status='pending' AND EXISTS(SELECT 1 FROM public.leave_approval_step later WHERE later.leave_request_id=q.id AND later.step_index>z.step_index AND later.status='pending'))
+    OR (d.event_type IN ('leave-request.approved','leave-request.rejected') AND q.xmin=pg_current_xact_id()::xid AND q.status=CASE WHEN d.event_type='leave-request.rejected' THEN 'rejected'::public.leave_request_status ELSE 'approved'::public.leave_request_status END))
+   AND (d.event_type<>'leave-request.approved' OR EXISTS(SELECT 1 FROM public.leave_ledger l WHERE l.source_request_id=q.id AND l.tenant_id=t AND l.employment_id=q.employment_id AND l.entry_type='debit' AND l.xmin=pg_current_xact_id()::xid))
+   AND (d.event_type<>'leave-request.approved' OR z.id IS NULL OR NOT EXISTS(SELECT 1 FROM public.leave_approval_step later WHERE later.leave_request_id=q.id AND later.step_index>z.step_index))) THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+  -- Intermediate approval deliberately leaves the existing request header untouched. The native
+  -- finalizer owns request/ledger/Payroll effects atomically; xmin is NOT canonical provenance alone.
+  UPDATE app.assistant_own_leave_review SET state='completed',intent_digest=NULL,reviewed_digest=NULL,decision_event_id=p_event WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ ELSE RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_leave_decision_review_json(r.id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_complete(uuid,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_complete(uuid,text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_leave_decision_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='approvals.leave.decide' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','approvals.leave.decide','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_leave_decision_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.action_kind='approvals.leave.decide' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_reviews_index() TO ai_hr_app;

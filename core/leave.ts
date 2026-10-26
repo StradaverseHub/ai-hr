@@ -6039,7 +6039,7 @@ export type ReviewedLeaveDecisionSelection = { leaveRequestId: string; currentSt
  decision: 'approved' | 'rejected'; rejectReason: string | null };
 const captureLeaveDecisionContext = (ctx: SessionContext): SessionContext => ({ ...ctx,
  roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) });
-async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext, selection: ReviewedLeaveDecisionSelection) {
+export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: SessionContext, selection: {leaveRequestId:string;currentStepId:string|null}, mode:'pending'|'recorded') {
  const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(selection);
  await lockAccessConfigurationTx(tx, ctx.tenantId);
  await assertAssignedWorkPrincipalTx(tx, ctx);
@@ -6047,10 +6047,10 @@ async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext
  const nominate = async () => {
   const [row] = await tx.select({ id: leaveRequest.id, employmentId: leaveRequest.employmentId, status: leaveRequest.status })
    .from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
-  if (!row || row.status !== 'pending') throw new Error('Leave decision source unavailable');
+  if (!row || mode==='pending' && row.status !== 'pending') throw new Error('Leave decision source unavailable');
   const steps = await tx.select({ id: leaveApprovalStep.id, status: leaveApprovalStep.status, stepIndex: leaveApprovalStep.stepIndex, approverKind: leaveApprovalStep.approverKind, approverEmploymentId: leaveApprovalStep.approverEmploymentId, approverAlternates: leaveApprovalStep.approverAlternates }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
-  const current = steps.find(step => step.status === 'pending');
-  if (steps.length && !current || (current?.id ?? null) !== p.currentStepId) throw new Error('Leave decision source changed');
+  const current = mode==='pending'?steps.find(step => step.status === 'pending'):steps.find(step=>step.id===p.currentStepId);
+  if (steps.length && !current || (current?.id ?? null) !== p.currentStepId || mode==='recorded' && current?.status==='pending') throw new Error('Leave decision source changed');
   if (current) await assertCanDecideLeaveStep(tx, ctx, row.employmentId, current.approverKind, 'leave request', current.approverEmploymentId, current.approverAlternates);
   else await assertCanDecide(tx, ctx, row.employmentId, 'leave request', scopeOf('leave.application'));
   const permittedSteps = await tx.select().from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
@@ -6064,6 +6064,12 @@ async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext
  await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id)).for('update', { noWait: true });
  const after = await nominate();
  if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Leave decision source changed');
+ const [subject]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ if(!subject)throw new Error('Leave decision subject unavailable');
+ return {ctx,req,steps:after.steps,subject};
+}
+async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext, selection: ReviewedLeaveDecisionSelection) {
+ const p=structuredClone(selection),owned=await lockReviewedLeaveDecisionSourceTx(tx,supplied,p,'pending'),{ctx,req}=owned,after={steps:owned.steps};
  if (p.decision === 'rejected' && !p.rejectReason?.trim() || p.decision === 'approved' && p.rejectReason !== null) throw new MissingRejectReasonError();
  const [type] = await tx.select({ id: leaveType.id, name: leaveType.name, balanceSourceTypeId: leaveType.balanceSourceTypeId }).from(leaveType).where(eq(leaveType.id, req.leaveTypeId)).limit(1);
  if (!type) throw new Error('Leave decision type unavailable');
@@ -6100,16 +6106,8 @@ export async function decideReviewedLeaveTx(tx: Tx, ctx: SessionContext, p: Revi
  * Historical step snapshot authorizes its own recorded decision, not the next person's task. */
 export async function readReviewedLeaveDecisionReferenceTx(tx: Tx, supplied: SessionContext,
  reference: { leaveRequestId: string; decisionEventId: string; decisionStepId: string | null }) {
- const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(reference);
- await lockAccessConfigurationTx(tx, ctx.tenantId); await assertAssignedWorkPrincipalTx(tx, ctx);
- await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
- const [row] = await tx.select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status }).from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
- if (!row) return null;
- const steps = await tx.select().from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, p.leaveRequestId)).orderBy(asc(leaveApprovalStep.stepIndex));
- const step = steps.find(s => s.id === p.decisionStepId);
- if (steps.length && !step || !steps.length && p.decisionStepId !== null) return null;
- if (step) await assertCanDecideLeaveStep(tx, ctx, row.employmentId, step.approverKind, 'leave request', step.approverEmploymentId, step.approverAlternates);
- else await assertCanDecide(tx, ctx, row.employmentId, 'leave request', scopeOf('leave.application'));
+ const p=structuredClone(reference),owned=await lockReviewedLeaveDecisionSourceTx(tx,supplied,{leaveRequestId:p.leaveRequestId,currentStepId:p.decisionStepId},'recorded'),{ctx,steps}=owned,row={employmentId:owned.req.employmentId,status:owned.req.status};
+ const step=steps.find(s=>s.id===p.decisionStepId);
  const [event] = await tx.execute<{ eventType: string }>(sql`select d.event_type as "eventType" from public.domain_event d
   join public.leave_request q on q.id=d.aggregate_id and q.tenant_id=d.tenant_id
   left join public.leave_approval_step s on s.id=${p.decisionStepId}::uuid and s.leave_request_id=q.id
