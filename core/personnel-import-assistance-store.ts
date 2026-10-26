@@ -56,7 +56,7 @@ export async function claimPersonnelImportAssistanceTx(tx:Tx,ctx:SessionContext,
  ctx=capture(ctx);const p=binding(input);if(!uuid(runId))return fail();const row=await rowTx(tx,ctx,p);if(row.state!=='ready'||row.mode!=='ai')return fail();
  const changed=await tx.execute<{id:string}>(sql`update public.personnel_import_assistance_attempt a set state='dispatched',ai_run_id=${runId}::uuid,dispatched_at=now()
   where a.id=${row.id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.user_id=${ctx.userId}::uuid and a.state='ready'
-   and exists(select 1 from public.ai_model_run r where r.id=${runId}::uuid and r.tenant_id=a.tenant_id and r.user_id=a.user_id and r.feature='personnel_import_mapping' and r.state='pending') returning a.id`);
+   and exists(select 1 from public.ai_model_run r where r.id=${runId}::uuid and r.tenant_id=a.tenant_id and r.user_id=a.user_id and r.feature_id='personnel_import_mapping' and r.state='pending') returning a.id`);
  if(changed.length!==1)return fail();
 }
 export async function completePersonnelImportAssistanceTx(tx:Tx,ctx:SessionContext,input:PersonnelImportAssistanceBinding,value:PersonnelImportHeaderProposal){
@@ -65,7 +65,7 @@ export async function completePersonnelImportAssistanceTx(tx:Tx,ctx:SessionConte
  if(checked.sourceRevision!==p.sourceRevision||checked.registryDigest!==p.registryDigest)return fail();
  if(row.state==='completed'){if(JSON.stringify(proposal(row,ctx))!==JSON.stringify(checked))return fail();return;}
  if(row.state!=='dispatched'&&!(row.state==='ready'&&row.mode==='deterministic'))return fail();
- if(row.mode==='ai'){const [settled]=await tx.execute<{confirmed:boolean}>(sql`select exists(select 1 from public.ai_model_run where id=${row.ai_run_id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and feature='personnel_import_mapping' and state='completed') as confirmed`);if(settled?.confirmed!==true)return fail();}
+ if(row.mode==='ai'){const [settled]=await tx.execute<{confirmed:boolean}>(sql`select exists(select 1 from public.ai_model_run where id=${row.ai_run_id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and feature_id='personnel_import_mapping' and state='completed') as confirmed`);if(settled?.confirmed!==true)return fail();}
  await tx.execute(sql`update public.personnel_import_assistance_attempt set state='completed',receipt=${encryptSecret(JSON.stringify(checked),aad(ctx,row.id))},completed_at=now()
   where id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);
 }

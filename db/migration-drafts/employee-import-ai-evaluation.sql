@@ -49,7 +49,7 @@ CREATE POLICY personnel_import_assistance_own_update ON public.personnel_import_
  AND app.access_workforce_company(company_id,'workforce.view') AND app.access_workforce_company(company_id,'workforce.maintain')) WITH CHECK(
  tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND expires_at>now() AND app.principal_snapshot_current()
  AND app.access_workforce_company(company_id,'workforce.view') AND app.access_workforce_company(company_id,'workforce.maintain')
- AND (ai_run_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_model_run r WHERE r.id=ai_run_id AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.feature='personnel_import_mapping')));
+ AND (ai_run_id IS NULL OR EXISTS(SELECT 1 FROM public.ai_model_run r WHERE r.id=ai_run_id AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.feature_id='personnel_import_mapping')));
 --> statement-breakpoint
 -- Revocation must not prevent a login erasing its own assistance metadata.
 CREATE POLICY personnel_import_assistance_own_delete ON public.personnel_import_assistance_attempt FOR DELETE TO ai_hr_app USING(
