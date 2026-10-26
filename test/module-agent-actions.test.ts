@@ -53,7 +53,8 @@ it('closes every declared canonical public boundary and source anchor against ac
 it('rejects deliberately disabled legacy testing owners even when their export still exists and declares the versioned human-observation workflow',()=>{
  const row=MODULE_AGENT_ACTIONS.system_testing;
  expect(row.publicBoundary).toBe('core/system-testing-workspace.ts#saveTestingExecution');
- expect(row.source).toBe('core/system-testing-workspace.ts#listTestingAssignments');
+ expect(row.source).toBe('core/system-testing-workspace.ts#ownTestingWorkStatusesTx');
+ expect(publicExport(resolve(root,'core/system-testing-workspace.ts'),'ownTestingWorkStatusesTx')).toBe(true);
  expect(row.actions[0]).toMatchObject({id:'system_testing.execution.save',observations:'human_actual_only',prepare:{status:'pending_adapter'},confirm:{status:'pending_adapter'}});
  const forbidden='core/system-testing.ts#recordTestRun';
  for(const declaration of Object.values(MODULE_AGENT_ACTIONS))expect([declaration.publicBoundary,declaration.source,...declaration.actions.map(action=>action.publicBoundary)]).not.toContain(forbidden);
