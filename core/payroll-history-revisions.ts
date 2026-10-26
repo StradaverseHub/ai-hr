@@ -247,30 +247,38 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
  });}catch(error){await failureEvent(ctx,input.attemptId,'failed',error);throw error;}
 }
 
-export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string){
- assertModuleGate(ctx,'payroll');if(!uuid.test(id))fail('Import attempt unavailable.');
+type RevertSource=Pick<typeof attempt.$inferSelect,'id'|'companyIds'>;
+async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock:boolean){
+ for(const companyId of source.companyIds)await permission(tx,ctx,companyId,'revert');
+ const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,source.id));
+ if(events.some(event=>event.kind==='reverted'))fail('This import has already been reverted.');const confirmed=events.find(event=>event.kind==='confirmed');if(!confirmed?.changes.length)fail('This attempt has no imported changes to revert.');
+ const targets:{change:HistoryRevisionChange;identity:typeof record.$inferSelect;current:typeof revision.$inferSelect;previous:typeof revision.$inferSelect|undefined}[]=[];
+ for(const change of confirmed.changes){
+  const query=tx.select().from(record).where(eq(record.id,change.recordId)),[identity]=lock?await query.for('update'):await query;if(!identity)fail('An imported record is unavailable.');
+  const [current]=await tx.select().from(revision).where(eq(revision.recordId,identity.id)).orderBy(desc(revision.ordinal)).limit(1);if(current?.id!==change.revisionId)fail('A later correction or revert changed this record. Revert is no longer safe.');
+  const blocked=await dependencies(tx,{companyId:identity.companyId,employmentId:identity.employmentId,period:identity.period,expectedSnapshotId:current.snapshotId});if(blocked.length)fail(blocked.join(' '));
+  const [previous]=change.previousRevisionId?await tx.select().from(revision).where(and(eq(revision.id,change.previousRevisionId),eq(revision.recordId,identity.id))):[];if(change.previousRevisionId&&!previous)fail('The prior revision is unavailable.');targets.push({change,identity,current,previous});
+ }
+ const previewHash=hash(canonical({attemptId:source.id,actorId:ctx.userId,eventId:confirmed.id,targets:targets.map(target=>({recordId:target.identity.id,currentRevisionId:target.current.id,restoreSnapshotId:target.previous?.snapshotId??null})).sort((a,b)=>a.recordId.localeCompare(b.recordId))}));
+ return {targets,previewHash};
+}
+/** User-requested read-only eligibility review. No recovery event or money changes occur here. */
+export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
+ assertModuleGate(ctx,'payroll');if(!uuid.test(id))fail('Import attempt unavailable.');return withTenant(ctx,async tx=>{
+  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
+  const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id));if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,false);
+  return {attemptId:id,count:plan.targets.length,previewHash:plan.previewHash};
+ });
+}
+export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,expectedPreviewHash:string){
+ assertModuleGate(ctx,'payroll');if(!uuid.test(id)||typeof expectedPreviewHash!=='string'||!/^([0-9a-f]{64})$/.test(expectedPreviewHash))fail('Review the current revert eligibility before confirming.');
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
-  const [source]=await tx.select().from(attempt).where(eq(attempt.id,id)).for('update');if(!source)fail('Import attempt unavailable.');
-  for(const companyId of source.companyIds)await permission(tx,ctx,companyId,'revert');
-  const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,id));
-  if(events.some(event=>event.kind==='reverted'))fail('This import has already been reverted.');
-  const confirmed=events.find(event=>event.kind==='confirmed');if(!confirmed?.changes.length)fail('This attempt has no imported changes to revert.');
-  const changes:HistoryRevisionChange[]=[];
-  for(const change of confirmed.changes){
-   const [identity]=await tx.select().from(record).where(eq(record.id,change.recordId)).for('update');if(!identity)fail('An imported record is unavailable.');
-   const [current]=await tx.select().from(revision).where(eq(revision.recordId,identity.id)).orderBy(desc(revision.ordinal)).limit(1);
-   if(current?.id!==change.revisionId)fail('A later correction or revert changed this record. Revert is no longer safe.');
-   const blocked=await dependencies(tx,{companyId:identity.companyId,employmentId:identity.employmentId,period:identity.period,expectedSnapshotId:current.snapshotId});
-   if(blocked.length)fail(blocked.join(' '));
-   const [previous]=change.previousRevisionId?await tx.select().from(revision).where(and(eq(revision.id,change.previousRevisionId),eq(revision.recordId,identity.id))):[];
-   if(change.previousRevisionId&&!previous)fail('The prior revision is unavailable.');
-   const [compensation]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId:identity.id,ordinal:current.ordinal+1,attemptId:id,snapshotId:previous?.snapshotId??null,previousRevisionId:current.id,kind:'revert',cycleName:previous?.cycleName??current.cycleName}).returning({id:revision.id});
-   changes.push({recordId:identity.id,revisionId:compensation.id,previousRevisionId:current.id,snapshotId:previous?.snapshotId??null});
+  const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id)).for('update');if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,true);if(plan.previewHash!==expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
+  const changes:HistoryRevisionChange[]=[];for(const {identity,current,previous}of plan.targets){
+   const [compensation]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId:identity.id,ordinal:current.ordinal+1,attemptId:id,snapshotId:previous?.snapshotId??null,previousRevisionId:current.id,kind:'revert',cycleName:previous?.cycleName??current.cycleName}).returning({id:revision.id});changes.push({recordId:identity.id,revisionId:compensation.id,previousRevisionId:current.id,snapshotId:previous?.snapshotId??null});
   }
-  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:id,kind:'reverted',actorId:ctx.userId!,changes,detail:{restored:changes.length}});
-  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:id,eventType:'payroll-history-import.reverted',actor:actorOf(ctx),payload:{changes}});
-  return {attemptId:id,restored:changes.length};
+  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:id,kind:'reverted',actorId:ctx.userId!,changes,detail:{restored:changes.length}});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:id,eventType:'payroll-history-import.reverted',actor:actorOf(ctx),payload:{changes}});return {attemptId:id,restored:changes.length};
  });}catch(error){await failureEvent(ctx,id,'revert_failed',error);throw error;}
 }
 

@@ -3,7 +3,7 @@ import {and,eq} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,revertPayrollHistoryUpload,listPayrollHistoryAttempts,payrollHistorySource} from '../core/payroll-history-revisions';
+import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
@@ -46,24 +46,25 @@ describe('immutable payroll history correction and recovery',()=>{
   expect(await listBatches(ctx,[b.companyId])).toMatchObject([{historyImportCycleName:'Monthly',employeeCount:1,batchDate:null}]);
   expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
   const dashboard=await dashboardStats(ctx,[b.companyId]);expect(Number(dashboard.latestPayroll?.net)).toBe(6000);
-  await revertPayrollHistoryUpload(ctx,correction.attemptId);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
+  const recovery=await previewPayrollHistoryRevert(ctx,correction.attemptId);expect(recovery).toMatchObject({attemptId:correction.attemptId,count:1,previewHash:expect.stringMatching(/^[0-9a-f]{64}$/)});
+  await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
   const [unchanged]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id));expect(unchanged).toEqual(original);
-  await expect(revertPayrollHistoryUpload(ctx,correction.attemptId)).rejects.toThrow(/already been reverted/);
+  await expect(revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash)).rejects.toThrow(/already been reverted/);
   await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/immutable/)}});
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id)))[0]).toEqual(original);
  });
  it('retires a newly created effective entry without erasing its physical snapshot or audit',async()=>{
-  const first=await upload();await confirm(first);await revertPayrollHistoryUpload(ctx,first.attemptId);
+  const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
   expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
   expect(await listBatches(ctx,[b.companyId])).toEqual([]);expect((await dashboardStats(ctx,[b.companyId])).latestPayroll).toBeNull();
   const logs=await listPayrollHistoryAttempts(ctx);expect(logs.items[0].events.map(event=>event.kind)).toEqual(['confirmed','reverted']);
   expect((await payrollHistorySource(ctx,first.attemptId))?.content.toString()).toContain('0007');
  });
  it('refuses a stale confirmation and a revert after a later correction',async()=>{
-  const first=await upload();await confirm(first);
+  const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);
   const a=await upload('6000.00'),b=await upload('7000.00');await confirm(a);
   await expect(confirm(b)).rejects.toThrow(/changed/);
-  await expect(revertPayrollHistoryUpload(ctx,first.attemptId)).rejects.toThrow(/later correction/);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/later correction/);
   expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
  });
  it('serializes concurrent confirmations with the same expected revision',async()=>{
@@ -81,7 +82,7 @@ describe('immutable payroll history correction and recovery',()=>{
   await confirm(preview);expect(new Set((await effective()).map(row=>row.employmentId))).toEqual(new Set([employeeId,second.employmentId]));
   expect(Number((await dashboardStats(ctx,[b.companyId])).latestPayroll?.net)).toBe(5000);expect(Number((await dashboardStats(ctx,[other.id])).latestPayroll?.net)).toBe(7000);
   const repeated=await previewPayrollHistoryUpload(ctx,{name:'same-file.csv',content});expect(repeated.plan.counts).toEqual({created:0,replaced:0,unchanged:2,invalid:0});await confirm(repeated);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
-  await revertPayrollHistoryUpload(ctx,preview.attemptId);expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
+  const recovery=await previewPayrollHistoryRevert(ctx,preview.attemptId);expect(recovery.count).toBe(2);await revertPayrollHistoryUpload(ctx,preview.attemptId,recovery.previewHash);expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
  });
  it('validates an entire multi-company file before writing any payroll result',async()=>{
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(),...rows('100.00','UNKNOWN','0008')]));
@@ -101,10 +102,23 @@ describe('immutable payroll history correction and recovery',()=>{
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ordinary.batchId));expect(batch.status).toBe('draft');
  });
  it('refuses recovery after a generated statutory artifact and keeps the original effective basis',async()=>{
-  const first=await upload();await confirm(first);
+  const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);
   await owner.db.insert(schema.statutoryReport).values({tenantId:b.tenantId,companyId:b.companyId,jurisdiction:'MY',reportType:'my.contributions',periodKind:'month',periodKey:period,status:'draft',generatedBy:ctx.userId});
-  await expect(revertPayrollHistoryUpload(ctx,first.attemptId)).rejects.toThrow(/statutory/);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/statutory/);
   expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
+ });
+ it('reviews recovery without changing money or audit and binds confirmation to the exact preview',async()=>{
+  const first=await upload();await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/no imported changes/);await confirm(first);
+  const revisions=await owner.db.select().from(schema.payrollHistoryImportRevision),events=await owner.db.select().from(schema.payrollHistoryImportEvent),money=await effective();
+  const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);expect(await previewPayrollHistoryRevert(ctx,first.attemptId)).toEqual(recovery);
+  expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(revisions);expect(await owner.db.select().from(schema.payrollHistoryImportEvent)).toEqual(events);expect(await effective()).toEqual(money);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,'0'.repeat(64))).rejects.toThrow(/preview changed/);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,'not-a-preview')).rejects.toThrow(/Review the current/);
+  expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(revisions);expect(await effective()).toEqual(money);
+  const other=await seedBase();await setModule(other.tenantId,'payroll','active');const foreign=await entitledCtx(other);
+  await expect(previewPayrollHistoryRevert(foreign,first.attemptId)).rejects.toThrow(/unavailable/);
+  await expect(revertPayrollHistoryUpload(foreign,first.attemptId,recovery.previewHash)).rejects.toThrow(/unavailable/);expect(await effective()).toEqual(money);
+  await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/already been reverted/);
  });
  it('keeps source files private across tenants and retains failed validation attempts',async()=>{
   const invalid=await previewPayrollHistoryUpload(ctx,{name:'invalid.csv',content:Buffer.from('Repeated,Repeated\n1,2')});

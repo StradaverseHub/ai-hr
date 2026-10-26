@@ -8763,6 +8763,7 @@
       "figuresLink": "Open the figures table (and record this generation)"
     },
     "historyRevisions": {
+      "revertChanged": "The affected records changed. Refresh this log and review revert eligibility again.",
       "created": "Created",
       "replaced": "Replaced",
       "unchanged": "Unchanged",

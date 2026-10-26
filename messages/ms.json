@@ -8763,6 +8763,7 @@
       "figuresLink": "Buka jadual angka (dan rekodkan penjanaan ini)"
     },
     "historyRevisions": {
+      "revertChanged": "Rekod terjejas telah berubah. Muat semula log ini dan semak kelayakan pengembalian semula.",
       "created": "Dicipta",
       "replaced": "Diganti",
       "unchanged": "Tidak berubah",

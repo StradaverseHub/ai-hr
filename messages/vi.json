@@ -8763,6 +8763,7 @@
       "figuresLink": "Mở bảng số liệu (và ghi nhận lần tạo này)"
     },
     "historyRevisions": {
+      "revertChanged": "Các bản ghi bị ảnh hưởng đã thay đổi. Hãy tải lại nhật ký và kiểm tra điều kiện hoàn tác.",
       "created": "Đã tạo",
       "replaced": "Đã thay thế",
       "unchanged": "Không đổi",
