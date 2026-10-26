@@ -30,3 +30,9 @@ describe('the shared Assistant hands actions to humans rather than executing the
   expect(()=>presentGroundedToolOutcome('my_module_work',{ok:true,module:'leave',data,humanActions:[{...moduleHumanActionHandoffs('leave')[0],route:'/assistant/profile'}]})).toThrow();
  });
 });
+
+it('keeps draft saving and explicit submission on one Claims specialist page without auto-selecting a draft or causing an effect',()=>{
+ const actions=moduleHumanActionHandoffs('claims');expect(actions.map(row=>row.action)).toEqual(['claims.draft.save','claims.submit']);expect(actions.every(row=>row.route==='/assistant/claims'&&row.effect==='none')).toBe(true);
+ const result=presentGroundedToolOutcome('my_module_work',{ok:true,module:'claims',data:{rows:[],truncated:false},humanActions:actions});expect(result?.cards).toEqual([{title:{kind:'module',module:'claims'},facts:[],href:'/assistant/claims',linkPurpose:'human_review'}]);
+ expect(()=>checkedModuleHumanHandoffs('claims',actions.slice(0,1))).toThrow();expect(()=>checkedModuleHumanHandoffs('claims',actions.map(row=>({...row,route:'/assistant/claims?flow=submit&draftId=posted'})))).toThrow();
+});

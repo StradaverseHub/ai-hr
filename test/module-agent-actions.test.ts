@@ -88,8 +88,8 @@ it('keeps ESS human selection distinct from requests for approval and refuses mo
  expect(parseModuleAgentActionNomination({module:'ess',action,phase:'prepare'})).toEqual({kind:'prepare',module:'ess',action,adapter:'module_profile_review_v1',requiresHumanSelection:true,effect:'none'});
  for(const extra of [{proposal:{v:2,fields:[],registers:[]}},{employmentId:'other'},{roles:['hr_admin']},{reviewedDigest:'a'.repeat(64)},{actionId:'posted'}])expect(()=>parseModuleAgentActionNomination({module:'ess',action,phase:'prepare',...extra})).toThrow();expect(()=>parseModuleAgentActionNomination({module:'ess',action,phase:'confirm'})).toThrow();
 });
-it('keeps Claims submission pending separately from draft saving and declares the modern Performance acknowledgement separately',()=>{
- expect(MODULE_AGENT_ACTIONS.claims.actions.map(row=>row.id)).toEqual(['claims.submit','claims.draft.save']);expect(getModuleAgentAction('claims','claims.submit')?.prepare.status).toBe('pending_adapter');
+it('keeps explicit Claims submission distinct from draft saving and declares the modern Performance acknowledgement separately',()=>{
+ expect(MODULE_AGENT_ACTIONS.claims.actions.map(row=>row.id)).toEqual(['claims.submit','claims.draft.save']);expect(getModuleAgentAction('claims','claims.submit')).toMatchObject({publicBoundary:'packs/claims/service.ts#submitDraftClaims',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_claim_submission_review_v1'}});expect(MODULE_AGENT_ACTIONS.claims.money).toBe('canonical_engine_only');
  expect(MODULE_AGENT_ACTIONS.performance.actions.map(row=>row.id)).toEqual(['performance.review.acknowledge','performance.onehr.plan.acknowledge']);
  expect(parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare'})).toEqual({kind:'prepare',module:'claims',action:'claims.draft.save',adapter:'module_claim_draft_review_v1',requiresHumanSelection:true,effect:'none'});
  for(const extra of [{enteredAmount:100},{draftId:'posted'},{expectedDraftRevision:'1'},{fieldValues:{private:'posted'}},{confirm:true}])expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare',...extra})).toThrow();
@@ -108,4 +108,10 @@ it('offers Testing only a human selection handoff and refuses model-written obse
  expect(parseModuleAgentActionNomination({module:'system_testing',action:'system_testing.execution.save',phase:'prepare'})).toEqual({kind:'prepare',module:'system_testing',action:'system_testing.execution.save',adapter:'module_testing_execution_review_v1',requiresHumanSelection:true,effect:'none'});
  for(const extra of [{status:'passed'},{observation:{status:'passed'}},{executionId:'posted'},{humanObserved:true},{reviewedDigest:'a'.repeat(64)},{roles:['hr_admin']}])expect(()=>parseModuleAgentActionNomination({module:'system_testing',action:'system_testing.execution.save',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'system_testing',action:'system_testing.execution.save',phase:'confirm'})).toThrow();
+});
+
+it('routes Claims submission only to a human selection, never model values, receipts or a submit confirmation',()=>{
+ expect(parseModuleAgentActionNomination({module:'claims',action:'claims.submit',phase:'prepare'})).toEqual({kind:'prepare',module:'claims',action:'claims.submit',adapter:'module_claim_submission_review_v1',requiresHumanSelection:true,effect:'none'});
+ for(const extra of [{draftId:'posted'},{employmentId:'other'},{amount:1},{receiptIds:['invented']},{submitForApproval:true},{reviewedDigest:'a'.repeat(64)},{confirm:true}])expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.submit',phase:'prepare',...extra})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.submit',phase:'confirm'})).toThrow();
 });
