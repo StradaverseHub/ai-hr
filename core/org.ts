@@ -11,7 +11,7 @@ import { isCalendarDate } from '../lib/calendar-date';
  * (one transaction, RLS scoped to the session) and appends a domain event before returning.
  * Effective-dated changes CLOSE + INSERT; we never overwrite history.
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
@@ -48,6 +48,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 import { PAYMENT_METHODS, bankTransferLacksBank, type PaymentMethod } from '../lib/payment-methods';
 import {
+  domainEvent,
   person,
   employment,
   assignment,
@@ -1129,6 +1130,84 @@ export async function editDelegation(
   });
 }
 
+type NativeReportingLineInput=Parameters<typeof setReportingLine>[1];
+async function reportingLinePreflightTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,noWait=false){
+    // Delegation retains its independent relationship/decision owner. Structural edges do not.
+    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+    if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
+    // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
+    // line type but is the load-bearing guard for a delegation window.
+    if (p.validTo != null && p.validTo < p.validFrom) {
+      throw new DelegationError('The end date must be on or after the start date');
+    }
+    // Serialize even an empty structural edge set with all canonical/import writers.
+    const subjectQuery=tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.subordinateEmploymentId),eq(employment.tenantId,ctx.tenantId)));
+    const [subordinate]=await(noWait?subjectQuery.for('update',{noWait:true}):subjectQuery.for('update'));
+    if(!subordinate)throw new Error('Employment not found');
+    if (p.lineType === 'administrative') {
+      if (await wouldCreateAdminCycle(tx, p.subordinateEmploymentId, p.managerEmploymentId, p.validFrom)) {
+        throw new ReportingCycleError();
+      }
+    }
+}
+async function prepareStructuralReportingLineTx(tx:Tx,p:NativeReportingLineInput){
+    // A subordinate has at most one *active* line per type (one admin manager, one functional, …).
+    // There is no DB exclusion constraint, so adding a second of the same type would silently leave
+    // two open edges — the org chart would then draw two parents. Supersede the prior active line of
+    // this type (CLOSE + INSERT, the same bitemporal pattern as transfer) so the new manager replaces
+    // the old one cleanly. validTo can't precede the prior line's own validFrom, so clamp it.
+    const [prior] = await tx
+      .select({ id: reportingLine.id, validFrom: reportingLine.validFrom })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
+          eq(reportingLine.lineType, p.lineType),
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .limit(1);
+    return{prior,closeAt:prior?(prior.validFrom>p.validFrom?prior.validFrom:p.validFrom):null};
+}
+async function writeStructuralReportingLineTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,prepared:Awaited<ReturnType<typeof prepareStructuralReportingLineTx>>,reviewed=false){
+ const {prior}=prepared;
+    if (prior) {
+      const closeAt = prepared.closeAt!;
+      await tx.update(reportingLine).set({ validTo: closeAt }).where(eq(reportingLine.id, prior.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: prior.id,
+        eventType: 'reporting-line.superseded',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.subordinateEmploymentId,
+        payload: { endDate: closeAt, supersededBy: { lineType: p.lineType, managerEmploymentId: p.managerEmploymentId } },
+      });
+    }
+    const [row] = await tx
+      .insert(reportingLine)
+      .values({
+        tenantId: ctx.tenantId,
+        subordinateEmploymentId: p.subordinateEmploymentId,
+        managerEmploymentId: p.managerEmploymentId,
+        lineType: p.lineType,
+        validFrom: p.validFrom,
+        validTo: null,
+      })
+      .returning({ id: reportingLine.id });
+    const setEventId=await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'reporting-line',
+      aggregateId: row.id,
+      eventType: 'reporting-line.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.subordinateEmploymentId,
+      payload: { ...p },
+    },{returnId:reviewed});
+    return { reportingLineId: row.id,setEventId };
+}
+
 export async function setReportingLine(
   ctx: SessionContext,
   p: {
@@ -1153,28 +1232,13 @@ export async function setReportingLine(
   /** 08913328 — optional caller transaction, so a Direct Superior change submitted as one leg of a
    *  movement commits atomically with the assignment / grade / pay legs. */
   outerTx?: Tx,
-) {
+):Promise<{reportingLineId:string}> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    // Delegation retains its independent relationship/decision owner. Structural edges do not.
-    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
-    if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
-    // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
-    // line type but is the load-bearing guard for a delegation window.
-    if (p.validTo != null && p.validTo < p.validFrom) {
-      throw new DelegationError('The end date must be on or after the start date');
-    }
-    // Serialize even an empty structural edge set with all canonical/import writers.
-    const [subordinate]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.subordinateEmploymentId),eq(employment.tenantId,ctx.tenantId))).for('update');
-    if(!subordinate)throw new Error('Employment not found');
-    if (p.lineType === 'administrative') {
-      if (await wouldCreateAdminCycle(tx, p.subordinateEmploymentId, p.managerEmploymentId, p.validFrom)) {
-        throw new ReportingCycleError();
-      }
-    }
+    await reportingLinePreflightTx(tx,ctx,p);
     if (p.lineType === 'delegate') {
       return insertDelegateLineTx(tx, ctx, {
         subordinateEmploymentId: p.subordinateEmploymentId,
@@ -1186,59 +1250,55 @@ export async function setReportingLine(
         orgScope: p.orgScope ?? null,
       });
     }
-    // A subordinate has at most one *active* line per type (one admin manager, one functional, …).
-    // There is no DB exclusion constraint, so adding a second of the same type would silently leave
-    // two open edges — the org chart would then draw two parents. Supersede the prior active line of
-    // this type (CLOSE + INSERT, the same bitemporal pattern as transfer) so the new manager replaces
-    // the old one cleanly. validTo can't precede the prior line's own validFrom, so clamp it.
-    const [prior] = await tx
-      .select({ id: reportingLine.id, validFrom: reportingLine.validFrom })
-      .from(reportingLine)
-      .where(
-        and(
-          eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
-          eq(reportingLine.lineType, p.lineType),
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-        ),
-      )
-      .limit(1);
-    if (prior) {
-      const closeAt = prior.validFrom > p.validFrom ? prior.validFrom : p.validFrom;
-      await tx.update(reportingLine).set({ validTo: closeAt }).where(eq(reportingLine.id, prior.id));
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'reporting-line',
-        aggregateId: prior.id,
-        eventType: 'reporting-line.superseded',
-        actor: actorOf(ctx),
-        subjectEmploymentId: p.subordinateEmploymentId,
-        payload: { endDate: closeAt, supersededBy: { lineType: p.lineType, managerEmploymentId: p.managerEmploymentId } },
-      });
-    }
-    const [row] = await tx
-      .insert(reportingLine)
-      .values({
-        tenantId: ctx.tenantId,
-        subordinateEmploymentId: p.subordinateEmploymentId,
-        managerEmploymentId: p.managerEmploymentId,
-        lineType: p.lineType,
-        validFrom: p.validFrom,
-        validTo: null,
-      })
-      .returning({ id: reportingLine.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'reporting-line',
-      aggregateId: row.id,
-      eventType: 'reporting-line.set',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.subordinateEmploymentId,
-      payload: { ...p },
-    });
-    return { reportingLineId: row.id };
+    const prepared=await prepareStructuralReportingLineTx(tx,p);
+    const effect=await writeStructuralReportingLineTx(tx,ctx,p,prepared);
+    return{reportingLineId:effect.reportingLineId};
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+/** Reviewed structural reporting only. The calling principal remains the HR user, never the target
+ * employee. No delegation hand-over, Movement classification or close-date proposal is accepted. */
+export type ReviewedReportingLineSelection={subordinateEmploymentId:string;managerEmploymentId:string;lineType:'administrative'|'functional';validFrom:string};
+async function prepareReviewedReportingLineSourceTx(tx:Tx,supplied:SessionContext,input:ReviewedReportingLineSelection){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={subordinateEmploymentId:input.subordinateEmploymentId,managerEmploymentId:input.managerEmploymentId,lineType:input.lineType,validFrom:input.validFrom};
+ if(!['administrative','functional'].includes(p.lineType)||!isCalendarDate(p.validFrom))throw new Error('The reporting change source is unavailable');
+ // Authorize the requested relationships before reading subject/manager facts or taking their rows.
+ await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');await assertWorkforceEmploymentTx(tx,ctx,p.managerEmploymentId,'view');await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await reportingLinePreflightTx(tx,ctx,p,true);
+ const prepared=await prepareStructuralReportingLineTx(tx,p);
+ const open=await tx.select({id:reportingLine.id,managerEmploymentId:reportingLine.managerEmploymentId}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,p.subordinateEmploymentId),eq(reportingLine.lineType,p.lineType),isNull(reportingLine.validTo),isNull(reportingLine.supersededAt))).orderBy(reportingLine.id).limit(2);
+ if(open.length>1||((prepared.prior?.id??null)!==(open[0]?.id??null)))throw new Error('The reporting change source is inconsistent');
+ let previousManager:{id:string;companyId:string;revision:string}|null=null;
+ if(open[0]){await assertWorkforceEmploymentTx(tx,ctx,open[0].managerEmploymentId,'view');const [row]=await tx.select({id:employment.id,companyId:employment.companyId,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,open[0].managerEmploymentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!row)throw new Error('The reporting change source is unavailable');previousManager=row;}
+ const [subordinate]=await tx.select({id:employment.id,companyId:employment.companyId,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.subordinateEmploymentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ const [manager]=await tx.select({id:employment.id,companyId:employment.companyId,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.managerEmploymentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('key share',{noWait:true});
+ if(!subordinate||!manager)throw new Error('The reporting change source is unavailable');
+ let prior:{id:string;managerEmploymentId:string;validFrom:string;validTo:string|null;revision:string}|null=null;
+ if(prepared.prior){const [row]=await tx.select({id:reportingLine.id,managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,revision:sql<string>`xmin::text`}).from(reportingLine).where(and(eq(reportingLine.id,prepared.prior.id),eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,p.subordinateEmploymentId),eq(reportingLine.lineType,p.lineType),isNull(reportingLine.validTo),isNull(reportingLine.supersededAt))).limit(1).for('update',{noWait:true});if(!row||row.managerEmploymentId!==open[0]?.managerEmploymentId||row.validFrom!==prepared.prior.validFrom)throw new Error('The reporting change source changed');prior=row;}
+ const review={subordinateEmploymentId:p.subordinateEmploymentId,lineType:p.lineType,before:prior?{reportingLineId:prior.id,managerEmploymentId:prior.managerEmploymentId,validFrom:prior.validFrom,validTo:prior.validTo,willCloseAt:prepared.closeAt}:null,after:{managerEmploymentId:p.managerEmploymentId,validFrom:p.validFrom,validTo:null}};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-reporting-line:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},p,subordinate,manager,previousManager,prior,review,{administrativeCycleChecked:p.lineType==='administrative'}])).digest('hex');
+ return{ctx,p,prepared,review:{...review,reviewedDigest}};
+}
+export async function prepareReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:ReviewedReportingLineSelection){return(await prepareReviewedReportingLineSourceTx(tx,ctx,p)).review;}
+/** Refusal-only source digest precedes the same structural close/insert/native-event owner. */
+export async function setReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:ReviewedReportingLineSelection,expectedReviewedDigest:string){
+ const expected=expectedReviewedDigest,prepared=await prepareReviewedReportingLineSourceTx(tx,ctx,p);if(!/^[a-f0-9]{64}$/.test(expected)||prepared.review.reviewedDigest!==expected)throw new Error('The reviewed reporting change source changed');
+ // Match the Direct Superior source-owned Employment History classification. A caller/model
+ // never chooses or supplies this tag; it is generated only after the reviewed comparison passes.
+ const effectInput={...prepared.p,movement:{type:'reportingLineChange' as const,groupId:randomUUID()}};
+ const effect=await writeStructuralReportingLineTx(tx,prepared.ctx,effectInput,prepared.prepared,true);if(!effect.setEventId)throw new Error('The reporting event source is unavailable');
+ const reference=await readReviewedReportingLineReferenceTx(tx,prepared.ctx,{reportingLineId:effect.reportingLineId,setEventId:effect.setEventId,subordinateEmploymentId:prepared.p.subordinateEmploymentId});if(!reference)throw new Error('The reporting event source is unavailable');return reference;
+}
+/** Recorded original-actor event and current version of THAT record; not a claim that this remains
+ * the latest manager or grants delegation/approval authority. Reconciliation never writes an edge. */
+export async function readReviewedReportingLineReferenceTx(tx:Tx,supplied:SessionContext,reference:{reportingLineId:string;setEventId:string;subordinateEmploymentId:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...reference};if(!ctx.userId)return null;await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.select({id:reportingLine.id,subordinateEmploymentId:reportingLine.subordinateEmploymentId,managerEmploymentId:reportingLine.managerEmploymentId,lineType:reportingLine.lineType,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,supersededAt:reportingLine.supersededAt}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.id,p.reportingLineId),eq(reportingLine.subordinateEmploymentId,p.subordinateEmploymentId))).limit(1);
+ if(!row||!['administrative','functional'].includes(row.lineType))return null;await assertWorkforceEmploymentTx(tx,ctx,row.managerEmploymentId,'view');
+ const [event]=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,p.setEventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'reporting-line'),eq(domainEvent.aggregateId,row.id),eq(domainEvent.eventType,'reporting-line.set'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),eq(domainEvent.subjectEmploymentId,row.subordinateEmploymentId))).limit(1);
+ const payload=event?.payload as {subordinateEmploymentId?:unknown;managerEmploymentId?:unknown;lineType?:unknown;validFrom?:unknown}|null;if(!event||payload?.subordinateEmploymentId!==row.subordinateEmploymentId||payload.managerEmploymentId!==row.managerEmploymentId||payload.lineType!==row.lineType||payload.validFrom!==row.validFrom)return null;
+ return{reportingLineId:row.id,setEventId:event.id,subordinateEmploymentId:row.subordinateEmploymentId,managerEmploymentId:row.managerEmploymentId,lineType:row.lineType as 'administrative'|'functional',validFrom:row.validFrom,validTo:row.validTo,superseded:row.supersededAt!==null};
 }
 
 /** Bounded dated assignment facts for caller-held report snapshots. Uses the same exclusive end and

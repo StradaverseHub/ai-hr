@@ -42,3 +42,10 @@ export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof
   return writeComplianceFields(ctx,p,tx);
  },outerTx);
 }
+
+/** Assistant reviewed structural source uses the same public Workforce owner. No fake HR role or
+ * target-person session is constructed; source callers must supply the actual transaction principal. */
+import {assertAiPrincipalTx} from './ai-principal';
+export async function prepareReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:org.ReviewedReportingLineSelection){ctx=captureCommandContext(ctx);p=structuredClone(p);await assertAiPrincipalTx(tx,ctx);return org.prepareReviewedReportingLineTx(tx,ctx,p);}
+export async function setReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:org.ReviewedReportingLineSelection,expectedReviewedDigest:string){ctx=captureCommandContext(ctx);p=structuredClone(p);const expected=expectedReviewedDigest;await assertAiPrincipalTx(tx,ctx);return org.setReviewedReportingLineTx(tx,ctx,p,expected);}
+export async function readReviewedReportingLineReferenceTx(tx:Tx,ctx:SessionContext,p:{reportingLineId:string;setEventId:string;subordinateEmploymentId:string}){ctx=captureCommandContext(ctx);p={...p};await assertAiPrincipalTx(tx,ctx);return org.readReviewedReportingLineReferenceTx(tx,ctx,p);}
