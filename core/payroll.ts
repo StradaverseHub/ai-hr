@@ -8163,6 +8163,7 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
     if (evaluated) {
       circuitProof=await evaluateCircuitBreakerForCloseTx(tx,ctx.tenantId,p.batchId);
       const swing=circuitProof.verdict;
+      if(swing.tripped&&circuitProof.source.completeInputsVisible===false)throw new Error('This payroll run needs an authorized payroll review before it can close.');
       if (swing.tripped) throw new BatchSwingTooLargeError(swing.movementPct ?? 0, swing.thresholdPct);
     }
 

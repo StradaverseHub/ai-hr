@@ -51,8 +51,9 @@ GRANT EXECUTE ON FUNCTION app.payroll_close_anomaly_gate(uuid) TO ai_hr_app;
 -- INTERNAL canonical CLOSE inputs only. Exact native SUM(...net_pay)::float8 and prior-month DESC
 -- LIMIT 1 selection (ties intentionally unspecified). No threshold/verdict/financial rule duplicated.
 -- Actual current company decides scope; caller cannot supply a prior run or another company.
+-- Private visibility flag mirrors CURRENT0492 payslip admin-or-self policy, never manager can_see.
 CREATE FUNCTION app.payroll_close_circuit_inputs(p_batch uuid)
- RETURNS TABLE(batch_id uuid,company_id uuid,prior_batch_id uuid,current_net float8,prior_net float8,source_version text)
+ RETURNS TABLE(batch_id uuid,company_id uuid,prior_batch_id uuid,current_net float8,prior_net float8,source_version text,inputs_visible boolean)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH target AS (
   SELECT b.id,b.company_id,b.pay_period,b.xmin::text AS version FROM public.payroll_batch b
@@ -69,7 +70,10 @@ CREATE FUNCTION app.payroll_close_circuit_inputs(p_batch uuid)
   (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.id),
   (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.prior_id),
   md5(s.version||':'||coalesce(s.prior_version,'')||':'||coalesce(s.prior_id::text,'')||':'||
-   coalesce((SELECT string_agg(p.id::text||':'||p.xmin::text,',' ORDER BY p.id) FROM public.payslip p WHERE p.batch_id=s.id OR p.batch_id=s.prior_id),''))
+   coalesce((SELECT string_agg(p.id::text||':'||p.xmin::text,',' ORDER BY p.id) FROM public.payslip p WHERE p.batch_id=s.id OR p.batch_id=s.prior_id),'')),
+  NOT EXISTS(SELECT 1 FROM public.payslip p WHERE (p.batch_id=s.id OR p.batch_id=s.prior_id)
+   AND (app.can_admin_payroll_employment(p.employment_id) OR EXISTS(SELECT 1 FROM public.employment e
+     WHERE e.id=p.employment_id AND app.is_self_person(e.person_id))) IS NOT TRUE)
  FROM selected s
 $$;
 REVOKE ALL ON FUNCTION app.payroll_close_circuit_inputs(uuid) FROM PUBLIC;

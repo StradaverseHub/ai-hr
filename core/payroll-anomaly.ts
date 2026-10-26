@@ -909,8 +909,8 @@ async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:stri
     num((cfg?.params as Record<string, unknown>)?.batchSwingPct) ||
     num(UNTUNED_DEFAULT_PARAMS[CIRCUIT_BREAKER_ID]?.batchSwingPct);
 
-  let priorBatchId:string|null=null,completeSourceVersion:string|null=null;
-  const observed=(verdict:CircuitBreakerVerdict)=>({verdict,source:{priorBatchId,configId:cfg?.id??null,completeSourceVersion}});
+  let priorBatchId:string|null=null,completeSourceVersion:string|null=null,completeInputsVisible:boolean|null=null;
+  const observed=(verdict:CircuitBreakerVerdict)=>({verdict,source:{priorBatchId,configId:cfg?.id??null,completeSourceVersion,completeInputsVisible}});
   const blank: CircuitBreakerVerdict = {
     tripped: false,
     movementPct: null,
@@ -932,9 +932,9 @@ async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:stri
 
   let currentNet:number,priorNet:number;
   if(completeClose){
-    const [inputs]=await tx.execute<{batch_id:string;company_id:string;prior_batch_id:string|null;current_net:number;prior_net:number;source_version:string}>(sql`select * from app.payroll_close_circuit_inputs(${batchId}::uuid)`);
-    if(!inputs||inputs.batch_id!==batchId.toLowerCase()||inputs.company_id!==batch.companyId)throw new Error('Payroll circuit source unavailable.');
-    priorBatchId=inputs.prior_batch_id;completeSourceVersion=inputs.source_version;
+    const [inputs]=await tx.execute<{batch_id:string;company_id:string;prior_batch_id:string|null;current_net:number;prior_net:number;source_version:string;inputs_visible:boolean}>(sql`select * from app.payroll_close_circuit_inputs(${batchId}::uuid)`);
+    if(!inputs||inputs.batch_id!==batchId.toLowerCase()||inputs.company_id!==batch.companyId||typeof inputs.inputs_visible!=='boolean')throw new Error('Payroll circuit source unavailable.');
+    priorBatchId=inputs.prior_batch_id;completeSourceVersion=inputs.source_version;completeInputsVisible=inputs.inputs_visible;
     if(priorBatchId===null)return observed({...blank,skippedReason:'no prior cycle to compare against'});
     currentNet=num(inputs.current_net);priorNet=num(inputs.prior_net);
   }else{
