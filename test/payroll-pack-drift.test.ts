@@ -65,6 +65,8 @@ const BOUNDARIES = [
   'core/payroll-view',
   'core/payroll-readiness',
   'core/payroll-history-import',
+  // Immutable import/correction owner: guard its external callers as well as its sibling imports.
+  'core/payroll-history-revisions',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-rule',
@@ -95,6 +97,7 @@ const ALWAYS_ALLOWED = [
   'core/payroll-view.ts',
   'core/payroll-readiness.ts',
   'core/payroll-history-import.ts',
+  'core/payroll-history-revisions.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-rule.ts',

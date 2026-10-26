@@ -150,6 +150,8 @@ const WIDENED_LATER = [
   // EA, Borang A and Borang 8A"), and Form E / CP8D gained one. Both left / never entered CAP_SURVIVORS.
   'app/payroll/cp39/preview/page.tsx',
   'app/payroll/cp8d/preview/page.tsx',
+  // Approved multi-company history preview and recovery workflow now spans the full page.
+  'app/payroll/history-import/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -284,7 +286,6 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     // none of them a grid the reporter asked to widen. Untouched by any width round, and named so.
     'app/payroll/[batchId]/anomalies/page.tsx',
     'app/payroll/process/result/page.tsx',
-    'app/payroll/history-import/page.tsx',
     'app/payroll/pcb-detail/page.tsx',
     // 6b4ca488 — the Statutory Explanation, capped for the SAME reason its PCB sibling above is and with
     // the same `mx-auto max-w-5xl`: it is one payslip's working read top to bottom, six short blocks of
