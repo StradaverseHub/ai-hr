@@ -2,6 +2,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import {Children,isValidElement,type ReactNode} from 'react';
+import {UsersDirectory} from '../app/admin/users/users-directory';
 const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), manual: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace?: string) => {
   const t = (key: string) => `${namespace ? namespace + '.' : ''}${key}`.split('.').reduce((v: any, k) => v?.[k], en) ?? key;
@@ -92,6 +94,18 @@ describe('employee activation actions and lifecycle display', () => {
     expect(d.getByText('External admin')).toBeTruthy();expect(d.getByText('No employee record')).toBeTruthy();
     fireEvent.click(d.getByRole('button',{name:'Manage access'}));
     expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
+  });
+  it('sends display fields to the client directory without full provider identity subjects',async()=>{
+    const subject='provider-private-subject-abcdef123456';
+    m.users.mockResolvedValue({users:[{id:'named',personId:'named-person',name:'Named account',email:'named@example.test',workosUserId:subject,roles:[]}],hiddenCount:0});m.candidates.mockResolvedValue([]);
+    const tree=await UsersPage({searchParams:Promise.resolve({})});
+    function find(node:ReactNode):Record<string,unknown>|undefined{
+      if(!isValidElement<{children?:ReactNode}>(node))return;
+      if(node.type===UsersDirectory)return node.props as Record<string,unknown>;
+      for(const child of Children.toArray(node.props.children)){const found=find(child);if(found)return found;}
+    }
+    const props=find(tree);expect(props).toBeDefined();expect(JSON.stringify(props)).not.toContain(subject);
+    expect(props?.rows).toEqual([expect.objectContaining({name:'Named account',loginSuffix:null})]);
   });
   it('delegated admins receive no pending roster or activation controls', async () => {
     m.group.mockReturnValue(false); await show();

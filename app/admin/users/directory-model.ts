@@ -5,7 +5,7 @@ export type UserDirectoryRow = {
   name: string | null;
   email: string | null;
   appUserId: string | null;
-  workosUserId: string | null;
+  loginSuffix: string | null;
   roles: { id: string; role: string; companyId: string | null; company: string | null }[];
   invitationId: string | null;
   invitedRole: string | null;

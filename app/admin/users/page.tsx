@@ -87,7 +87,7 @@ export default async function UsersPage({
     name: u.name,
     email: u.email,
     appUserId: u.id,
-    workosUserId: u.workosUserId,
+    loginSuffix: u.name ? null : (u.workosUserId ?? '').slice(-6),
     roles: u.roles,
     invitationId: null,
     invitedRole: null,
@@ -111,7 +111,7 @@ export default async function UsersPage({
       name: activationCandidates.find(p => p.id === inv.personId)?.name ?? null,
       email: inv.email,
       appUserId: null,
-      workosUserId: null,
+      loginSuffix: null,
       roles: [],
       invitationId: inv.id,
       invitedRole: inv.role,
@@ -124,7 +124,7 @@ export default async function UsersPage({
   for (const p of activationCandidates) {
     if (peopleWithLogin.has(p.id) || invitationPeople.has(p.id)) continue;
     rows.push({ key: `person:${p.id}`, personId: p.id, status: setupPeople.has(p.id) ? 'preparing' : 'pending',
-      name: p.name, email: p.email, appUserId: null, workosUserId: null, roles: [],
+      name: p.name, email: p.email, appUserId: null, loginSuffix: null, roles: [],
       invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false, hasEmployment: p.hasEmployment });
   }
 

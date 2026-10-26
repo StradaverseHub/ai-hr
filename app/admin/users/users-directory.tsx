@@ -31,7 +31,7 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
   const [expanded, setExpanded] = useState<string | null>(null), [collapsed, setCollapsed] = useState<string[]>([]);
   const pageSize = 20;
   const companyName = (id: string | null) => id ? companies.find(c => c.id === id)?.name ?? d('unknownCompany') : t('groupWide');
-  const name = (u: UserDirectoryRow) => u.name ?? (u.appUserId ? t('unlinkedLogin', { id: (u.workosUserId ?? '').slice(-6) }) : u.email ?? d('unnamed'));
+  const name = (u: UserDirectoryRow) => u.name ?? (u.appUserId ? t('unlinkedLogin', { id: u.loginSuffix ?? '' }) : u.email ?? d('unnamed'));
   const availableRoles = [...new Set(rows.flatMap(u => directoryGrants(u).map(g => g.role)))].sort((a,b) => t(`role.${a}`).localeCompare(t(`role.${b}`),locale));
   const filtered = useMemo(() => rows.filter(u => {
     const grants = directoryGrants(u), query = search.trim().toLocaleLowerCase(locale);
