@@ -1,5 +1,5 @@
-/** UNMOUNTED human full-input country statutory source. No country import, model arithmetic,
- * default-country routing, bank/TP3 clearing by a partial card, or automatic payroll calculation. */
+/** UNMOUNTED human Personnel EPF/SOCSO section source. No country import, model arithmetic,
+ * default-country routing, direct Identity/Tax/Bank/TP3/Zakat edits, or automatic payroll calculation. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';

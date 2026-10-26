@@ -1,4 +1,4 @@
-/** Human literal country input only. Country is resolved from the actual company, never posted.
+/** Human literal Personnel EPF/SOCSO section input only. Country is resolved from the actual company, never posted.
  * This is an UNMOUNTED private source protocol; private source fingerprints need nonce custody. */
 import {z} from 'zod';
 export const REVIEWED_COUNTRY_STATUTORY_ACTION='country-my.statutory.update' as const;
@@ -6,6 +6,6 @@ const base={action:z.literal(REVIEWED_COUNTRY_STATUTORY_ACTION),contractVersion:
 export const ReviewedCountryStatutoryNomination=z.object({...base,employmentId:id}).strict();
 export const ReviewedCountryStatutoryHumanContent=z.object({...base,employmentId:id,input:z.record(z.string(),z.json()),confirmSharedPersonWrite:z.literal(true)}).strict().refine(value=>new TextEncoder().encode(JSON.stringify(value)).length<=24576);
 export const ReviewedCountryStatutoryConfirmation=z.object({...base,reviewedDigest:digest}).strict();
-export const ReviewedCountryStatutoryReview=z.object({employmentId:id,personId:id,companyId:id,country:z.literal('MY'),scope:z.literal('shared_person_across_employments'),operation:z.literal('full_native_write_set'),after:z.record(z.string(),z.json()),omittedInput:z.literal('native_defaults_and_clears_are_shown_in_after'),untouched:z.literal('columns_outside_native_write_set_remain_unchanged')}).strict();
+export const ReviewedCountryStatutoryReview=z.object({employmentId:id,personId:id,companyId:id,country:z.literal('MY'),scope:z.literal('shared_person_across_employments'),operation:z.literal('personnel_epf_socso_section'),after:z.record(z.string(),z.json()),omittedInput:z.literal('native_defaults_for_editable_fields_shown_in_after'),preserved:z.literal('ic_tax_bank_tp3_zakat_from_locked_current_record'),untouched:z.literal('columns_outside_native_write_set_remain_unchanged')}).strict();
 export const ReviewedCountryStatutoryPreparedSource=z.object({kind:z.literal('prepared_source'),content:ReviewedCountryStatutoryHumanContent,review:ReviewedCountryStatutoryReview,reviewedDigest:digest,consequence:z.literal('person_statutory_profile_saved_not_payroll_recalculated_or_paid')}).strict();
 export const ReviewedCountryStatutorySourceReceipt=z.object({kind:z.literal('saved'),employmentId:id,personId:id,companyId:id,country:z.literal('MY'),statutoryId:id,eventId:id,eventType:z.enum(['statutory.my.created','statutory.my.updated']),currentRecordPresent:z.literal(true),proof:z.literal('historical_native_event_current_person_record'),scope:z.literal('shared_person_across_employments'),semantics:z.literal('profile_saved_not_payroll_recalculated_or_paid'),replayed:z.boolean()}).strict();

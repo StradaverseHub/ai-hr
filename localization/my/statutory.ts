@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx} from '../../core/statutory-source-lock';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
@@ -132,6 +133,7 @@ export { isMalaysianNationality };
 // 35b7af0a group 7 — MOVED to ./socso-eis, a db-free leaf, so the shared SOCSO/EIS field group can
 // apply the same default on the CLIENT wizard as this screen applies server-side. Re-exported here so
 // every existing server caller (setStatutoryAction, the Personnel RSC page) is unchanged.
+import {defaultSocsoEisNumber} from './socso-eis';
 export { defaultSocsoEisNumber } from './socso-eis';
 
 // SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control on
@@ -1418,42 +1420,58 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
-/** UNMOUNTED full-row literal reviewed source. Ordinary partial card owners remain independent.
- * A person row lock protects absent-row INSERT/FK ownership; existing full/partial UPDATE writers
- * contend on the actual statutory tuple. No claim that their earlier read-before-write semantics change.
- * Remaining ordinary writer Access/config participation is release-blocking; these physical locks
- * alone are NOT universal dependency/authority protection. */
+/** UNMOUNTED existing Personnel EPF/SOCSO section only. The ordinary full setter below the
+ * pack API remains full-width; this human source cannot acquire the dedicated Identity/Tax/Bank/
+ * TP3/Zakat owners' policies merely because that legacy setter has their columns in its write-set.
+ * Source facts are protected by actual canonical participants plus physical tuple ownership;
+ * installed SQL, whole-transaction interleaving and authority proof remain release-blocking. */
 export const reviewedStatutoryInputSchemaMY=z.object({
- personId:z.uuid().transform(id=>id.toLowerCase()),icNumber:z.string().max(512).nullable(),epfNumber:z.string().max(512).optional(),socsoNumber:z.string().max(512).optional(),taxNumber:z.string().max(512).optional(),
- taxCategory:z.number().finite().optional(),expectedApplicabilityEpoch:z.number().int().nonnegative().optional(),taxCircumstance:z.string().max(512).nullable().optional(),numChildren:z.number().finite().optional(),
- eisEligible:z.boolean().optional(),socsoCategory:z.string().max(512).nullable().optional(),eisCategory:z.string().max(512).nullable().optional(),subjectToSocso:z.boolean().optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),isResident:z.boolean().optional(),
+ personId:z.uuid().transform(id=>id.toLowerCase()),epfNumber:z.string().max(512).optional(),socsoNumber:z.string().max(512).optional(),
+ socsoCategory:z.enum(['auto','first','second','none']).optional(),eisCategory:z.enum(['auto','none']).optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),
  epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
- bankName:z.string().max(512).optional(),bankAccountNo:z.string().max(512).optional(),tp3Year:z.number().int().nullable().optional(),tp3NetRemuneration:z.number().finite().nullable().optional(),tp3EpfClaimed:z.number().finite().nullable().optional(),tp3PcbPaid:z.number().finite().nullable().optional(),tp3ZakatPaid:z.number().finite().nullable().optional(),
- zakatActive:z.boolean().optional(),zakatState:z.string().max(512).nullable().optional(),zakatMethod:z.enum(['percent_of_pcb','fixed']).nullable().optional(),zakatPercent:z.number().finite().nullable().optional(),zakatFixed:z.number().finite().nullable().optional(),zakatEffectiveFrom:z.string().max(512).nullable().optional(),zakatEffectiveTo:z.string().max(512).nullable().optional(),
 }).strict();
 async function lockReviewedStatutoryPersonMYTx(tx:Tx,ctx:SessionContext,personId:string){
  if(!ctx.userId)throw new Error('Statutory review unavailable');
  await statutoryWriteIntervalMYTx(tx,ctx);
  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.is_admin() and app.can_see_person(${personId}::uuid) and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' as ok`);
  if(allowed?.ok!==true)throw new Error('Statutory review unavailable');
- const [subject]=await tx.select({id:person.id}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ const [subject]=await tx.select({id:person.id,nationality:person.nationality}).from(person).where(and(eq(person.id,personId),eq(person.tenantId,ctx.tenantId))).for('update',{noWait:true});
  if(!subject)throw new Error('Statutory review unavailable');
  const [snapshot]=await tx.select({profile:employeeStatutoryMy,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('update',{noWait:true});
- return snapshot??null;
+ return snapshot?{...snapshot,nationality:subject.nationality}:null;
 }
-export async function prepareReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown){
- ctx=captureStatutoryContext(ctx);
+/** Same stored pass-through as the actual Personnel statutory section, resolved under its
+ * protected current-person/profile interval. No caller can post or clear these preserved values. */
+function composeReviewedStatutorySectionMY(input:z.infer<typeof reviewedStatutoryInputSchemaMY>,snapshot:NonNullable<Awaited<ReturnType<typeof lockReviewedStatutoryPersonMYTx>>>):StatutoryInput{
+ const current=snapshot.profile;
+ return {...input,icNumber:current.icNumber,
+  socsoNumber:defaultSocsoEisNumber({socsoNumber:input.socsoNumber??null,icNumber:current.icNumber,nationality:snapshot.nationality}),
+  taxNumber:current.taxNumber??undefined,taxCategory:current.taxCategory??1,numChildren:current.numChildren??0,isResident:current.isResident??true,
+  bankName:current.bankName??undefined,bankAccountNo:current.bankAccountNo??undefined,tp3Year:current.tp3Year??null,
+  tp3NetRemuneration:current.tp3NetRemuneration==null?null:Number(current.tp3NetRemuneration),tp3EpfClaimed:current.tp3EpfClaimed==null?null:Number(current.tp3EpfClaimed),tp3PcbPaid:current.tp3PcbPaid==null?null:Number(current.tp3PcbPaid),tp3ZakatPaid:current.tp3ZakatPaid==null?null:Number(current.tp3ZakatPaid),
+  zakatActive:current.zakatActive??false,zakatState:current.zakatState??null,zakatMethod:current.zakatMethod??null,zakatPercent:current.zakatPercent==null?null:Number(current.zakatPercent),zakatFixed:current.zakatFixed==null?null:Number(current.zakatFixed),zakatEffectiveFrom:current.zakatEffectiveFrom??null,zakatEffectiveTo:current.zakatEffectiveTo??null};
+}
+async function prepareReviewedStatutorySectionMYTx(tx:Tx,ctx:SessionContext,value:unknown){
  const input=reviewedStatutoryInputSchemaMY.parse(structuredClone(value));if(Buffer.byteLength(JSON.stringify(input))>24576)throw new Error('Statutory review unavailable');
- const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,input.personId),prepared=await prepareStatutoryProfileMYTx(tx,input);
- const review={personId:input.personId,scope:'shared_person_across_employments' as const,operation:'full_native_write_set' as const,after:prepared.values,omittedInput:'native_defaults_and_clears_are_shown_in_after' as const,untouched:'columns_outside_native_write_set_remain_unchanged' as const};
- const reviewedDigest=createHash('sha256').update(JSON.stringify(['country-statutory:MY:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},input,snapshot,review])).digest('hex');
- return {input,review,reviewedDigest};
+ const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,input.personId);if(!snapshot)throw new NoStatutoryProfileError();
+ const fullInput=composeReviewedStatutorySectionMY(input,snapshot),prepared=await prepareStatutoryProfileMYTx(tx,fullInput),v=prepared.values;
+ // Only directly changing EPF/SOCSO controls leave the pack; preserved private values never become
+ // public review context. Their private source versions still invalidate a stale confirmation.
+ const after={epfNumber:v.epfNumber,socsoNumber:v.socsoNumber,socsoCategory:v.socsoCategory,eisCategory:v.eisCategory,subjectToSocso:v.subjectToSocso,eisEligible:v.eisEligible,subjectToSkbbk:v.subjectToSkbbk,employerBearsSocso:v.employerBearsSocso,employerBearsEis:v.employerBearsEis,employerBearsSkbbk:v.employerBearsSkbbk,employerBearsEpf:v.employerBearsEpf,epfCitizenship:v.epfCitizenship,epfMode:v.epfMode,epfEmployeeRate:v.epfEmployeeRate,epfEmployerRate:v.epfEmployerRate,epfEmployeeAmount:v.epfEmployeeAmount,epfEmployerAmount:v.epfEmployerAmount,epfManualReason:v.epfManualReason};
+ // Fail closed if a legacy inconsistent protected value would be silently normalized/repaired by
+ // the full native setter. Only the explicit section controls above may change; another owner must
+ // review a correction to any preserved value. New future native fields are protected by default.
+ for(const [field,value] of Object.entries(v))if(!Object.prototype.hasOwnProperty.call(after,field)&&!isDeepStrictEqual(value,snapshot.profile[field as keyof typeof snapshot.profile]))throw new Error('Statutory review unavailable');
+ const review={personId:input.personId,scope:'shared_person_across_employments' as const,operation:'personnel_epf_socso_section' as const,after,omittedInput:'native_defaults_for_editable_fields_shown_in_after' as const,preserved:'ic_tax_bank_tp3_zakat_from_locked_current_record' as const,untouched:'columns_outside_native_write_set_remain_unchanged' as const};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['country-statutory:MY:personnel-section:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},input,snapshot,review])).digest('hex');
+ return {source:{input,review,reviewedDigest},fullInput,prepared};
 }
+export async function prepareReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown){ctx=captureStatutoryContext(ctx);return (await prepareReviewedStatutorySectionMYTx(tx,ctx,value)).source;}
 export async function confirmReviewedStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,value:unknown,expectedDigest:string){
  ctx=captureStatutoryContext(ctx);
- const source=await prepareReviewedStatutoryProfileMYTx(tx,ctx,value);if(!/^[a-f0-9]{64}$/.test(expectedDigest)||source.reviewedDigest!==expectedDigest)throw new Error('Statutory review unavailable');
- const prepared=await prepareStatutoryProfileMYTx(tx,source.input),native=await writeStatutoryProfileMYTx(tx,ctx,source.input,prepared);
- return {statutoryId:native.id,eventId:native.eventId,personId:source.input.personId,eventType:prepared.existing?'statutory.my.updated' as const:'statutory.my.created' as const};
+ const {source,fullInput,prepared}=await prepareReviewedStatutorySectionMYTx(tx,ctx,value);if(!/^[a-f0-9]{64}$/.test(expectedDigest)||source.reviewedDigest!==expectedDigest)throw new Error('Statutory review unavailable');
+ const native=await writeStatutoryProfileMYTx(tx,ctx,fullInput,prepared);
+ return {statutoryId:native.id,eventId:native.eventId,personId:source.input.personId,eventType:'statutory.my.updated' as const};
 }
 /** Historical human native event plus CURRENT same-person record, not original values/latest event. */
 export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;statutoryId:string;eventId:string}){
