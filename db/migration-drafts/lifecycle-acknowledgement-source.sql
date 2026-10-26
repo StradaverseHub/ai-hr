@@ -58,10 +58,12 @@ END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.lc_my_daa_reference(p_case uuid,p_event uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_object('caseId',c.id,'caseNumber',c.number,'submittedEventId',e.id,'submittedAt',c.daa_submitted_at,'currentStatus',c.status)
+ SELECT jsonb_build_object('caseId',c.id,'caseNumber',c.number,'submittedEventId',e.id,'submittedAt',to_char(c.daa_submitted_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'currentStatus',c.status)
  FROM public.lc_case c JOIN public.domain_event e ON e.tenant_id=c.tenant_id AND e.aggregate_id=c.id
  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND c.id=app.lc_my_case_id() AND c.daa_submitted_at IS NOT NULL
  AND e.id=p_event AND e.aggregate_type='lifecycle-case' AND e.event_type='lifecycle-case.daa-submitted' AND e.actor_type='user' AND e.actor_id=app.current_user_id()
+ -- Both native writes use the SAME top-level SQL transaction clock (not the human JSON timestamp).
+ AND e.occurred_at=c.daa_submitted_at AND e.subject_employment_id IS NULL AND e.payload='{"action":"daa.submitted"}'::jsonb
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.lc_my_daa_submit_reviewed(jsonb,uuid,text,text),app.lc_my_daa_review_source(),app.lc_my_daa_reference(uuid,uuid) FROM PUBLIC;
