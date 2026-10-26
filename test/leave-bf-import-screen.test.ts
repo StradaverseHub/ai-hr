@@ -136,9 +136,10 @@ describe('db55d08a — the entry type, pinned in the source as well as in the da
     // idx 240 is dated 1781862219000 — ten seconds EARLIER despite the higher number. Both were applied
     // long ago so the watermark has passed them and it is inert, but it is real, and it is why this
     // case checks the neighbourhood of one entry rather than the whole file.
-    // …and `entries.length` is NOT the allocator: the two have diverged by dozens, and a number taken
-    // from the length would be a low number, which is a silent skip.
-    expect(journal.entries.length).not.toBe(mine!.idx);
+    // Pin allocation against the entries that existed before this watermark. The journal's CURRENT
+    // length keeps growing and can legitimately equal this historical idx years after allocation.
+    const allocatedBefore = journal.entries.filter((e) => e.when < mine!.when);
+    expect(mine!.idx).toBe(Math.max(...allocatedBefore.map((e) => e.idx)) + 1);
   });
 });
 

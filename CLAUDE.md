@@ -130,6 +130,14 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
 
 ## 4. The gate
 
+**Owner full-gate rule — 26 October 2026.** Let every planned full-gate chunk finish, even when an
+earlier part reports failures. Keep the candidate frozen and collect the complete results; do not
+interrupt the full run to repair early findings. After all chunks finish, repair the failures and
+rerun only the failed parts, retaining valid evidence for the unaffected passing parts. Preserve the
+original failed attempt and the repair evidence. Once the combined required checks pass, proceed to
+deployment through the release workflow. This owner instruction supersedes guidance that would
+restart unaffected passing parts or stop the full gate on its first test failure.
+
 Use the deterministic impact gate ([ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md)).
 Complete the outcome walkthrough before the final gate. During development, run focused checks for the
 changed behavior and its consumers. Reuse valid evidence; a new commit calls for impact reassessment.

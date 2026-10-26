@@ -156,8 +156,9 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     const src = read('app/layout.tsx');
     // The JSX elements, not comment mentions of <html>: each opens with `<html` + newline + `lang={locale}`.
     const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
-    expect(htmlTags.length).toBe(2);
-    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(2);
+    // Auth, installation operator and customer shells all retain the selected theme.
+    expect(htmlTags.length).toBe(3);
+    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(3);
     // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch
     // on the theme (Dashboard, My Profile) all call; the read itself is the same resolveUiTheme(cookie) it was.
     expect(src).toMatch(/const uiTheme = await currentUiTheme\(\);/);
