@@ -3,12 +3,12 @@ import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql,ilike,getTableColumns,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {company,appUser,roleEnum,letterCapabilityGrant,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,employeeDocument,letterRecipientEvent,letterAccessToken} from '../db/schema';
+import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersion,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,employeeDocument,letterRecipientEvent,letterAccessToken} from '../db/schema';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isModuleEnabled} from './entitlements';
-import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
+import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,parseLetterValue,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
 import {LETTER_CAPABILITIES,validateLetterPolicy,validateLetterTemplatePresentation,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
 import {letterStageEnteredAt} from './letter-stage-clock';
@@ -19,7 +19,7 @@ import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verif
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
-import {assertWorkforceEmploymentTx} from './workforce-access';
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {listWorkforcePickPageTx,readWorkforcePickRowsTx} from './read';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
@@ -195,6 +195,38 @@ async function generationTemplate(tx:Tx,co:string,id:string,requireActive=true,r
  const fields=await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,id)).orderBy(asc(letterMergeFieldVersion.key));
  validateLetterDocument(version.letter_template_version.document,fields.map(row=>row.definition));return {version:version.letter_template_version,fields,active:!version.letter_template.deactivated&&version.letter_template_version.effectiveFrom<=todayInKualaLumpur()};
 }
+export const LETTER_AUTOMATION_TRIGGERS=['probation_due','confirmation_applied','promotion_applied'] as const;
+export type LetterAutomationTrigger=typeof LETTER_AUTOMATION_TRIGGERS[number];
+/** Rules delegate draft creation only. Each immutable save records its accountable owner
+ * and receives a database-stamped event watermark, so enabling never requests replay. */
+export function saveLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger;expectedOrdinal:number;enabled:boolean;startOn?:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,true,async tx=>{
+ await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);uuid(input.templateId);
+ if(!LETTER_AUTOMATION_TRIGGERS.includes(input.trigger)||typeof input.enabled!=='boolean'||!Number.isInteger(input.expectedOrdinal)||input.expectedOrdinal<0)throw new LetterWorkflowError('invalid','automation');
+ const [root]=await tx.select().from(letterTemplate).where(and(eq(letterTemplate.id,input.templateId),eq(letterTemplate.companyId,input.companyId))).for('update');if(!root)throw new LetterWorkflowError('permission');
+ const [previous]=await tx.select().from(letterAutomationRuleVersion).where(and(eq(letterAutomationRuleVersion.companyId,input.companyId),eq(letterAutomationRuleVersion.templateId,input.templateId),eq(letterAutomationRuleVersion.trigger,input.trigger),sql`${letterAutomationRuleVersion.id}=app.letter_automation_latest_version(${input.companyId}::uuid,${input.templateId}::uuid,${input.trigger})`)).limit(1);
+ if((previous?.ordinal??0)!==input.expectedOrdinal)throw new LetterWorkflowError('stale','automation');
+ const startOn=input.startOn??(input.enabled?todayInKualaLumpur():previous?.startOn??todayInKualaLumpur());if(!isCalendarDate(startOn)||input.enabled&&startOn<todayInKualaLumpur())throw new LetterWorkflowError('invalid','startOn');
+ if(input.enabled){await permission(tx,input.companyId,'generate');await assertWorkforceCompanyTx(tx,ctx,input.companyId,'view');}
+ if(!input.enabled){
+  if(!previous)throw new LetterWorkflowError('state','automation');
+  const [saved]=await tx.insert(letterAutomationRuleVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:input.expectedOrdinal+1,enabled:false,startOn,customValues:previous.customValues,confidential:previous.confidential,createdBy:ctx.userId!}).returning();
+  await event(tx,ctx,saved.id,'automation.versioned',{companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:saved.ordinal,enabled:false,startOn,afterSequence:saved.afterSequence});return saved;
+ }
+ const [version]=await tx.select({id:letterTemplateVersion.id}).from(letterTemplateVersion).where(and(eq(letterTemplateVersion.templateId,input.templateId),eq(letterTemplateVersion.status,'approved'),input.enabled?lte(letterTemplateVersion.effectiveFrom,todayInKualaLumpur()):undefined)).orderBy(desc(letterTemplateVersion.ordinal)).limit(1);if(!version)throw new LetterWorkflowError('configuration','activeTemplate');
+ const template=await generationTemplate(tx,input.companyId,version.id,input.enabled,input.enabled),fields=template.fields.map(field=>field.definition),supplied=input.customValues??previous?.customValues??{};
+ if(!supplied||typeof supplied!=='object'||Array.isArray(supplied)||Object.keys(supplied).length>200)throw new LetterWorkflowError('invalid','customValues');
+ const customValues:Record<string,LetterValue|null>={};for(const [key,value]of Object.entries(supplied)){const field=fields.find(field=>field.key===key&&field.source.startsWith('custom.'));if(!field)throw new LetterWorkflowError('invalid','customValues');const parsed=value===null?null:parseLetterValue(value,key);if(parsed&&parsed.kind!==field.kind)throw new LetterWorkflowError('invalid','customValues');customValues[key]=parsed;}
+ if(Buffer.byteLength(canonical(customValues),'utf8')>262144)throw new LetterWorkflowError('invalid','customValues');
+ const confidential=fields.some(field=>field.sensitive);if(confidential){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${input.companyId}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}
+ if(input.enabled){const [configured]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,template.version.category))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);if(!configured?.enabled)throw new LetterWorkflowError('configuration','policy');const policy=validateLetterPolicy(configured.policy);if(template.version.presentation&&template.version.presentation.signatoryUserId!==policy.signatoryUserId)throw new LetterWorkflowError('configuration','templateSignatory');await assertLetterChain(tx,input.companyId,policy,ctx.userId!,confidential);}
+ const [saved]=await tx.insert(letterAutomationRuleVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:input.expectedOrdinal+1,enabled:input.enabled,startOn,customValues,confidential,createdBy:ctx.userId!}).returning();
+ await event(tx,ctx,saved.id,'automation.versioned',{companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:saved.ordinal,enabled:input.enabled,startOn,afterSequence:saved.afterSequence});return saved;
+});}
+export function listLetterAutomationRules(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number;history?:boolean}){return letters(ctx,false,async tx=>{
+ await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);if(input.history!==undefined&&typeof input.history!=='boolean')throw new LetterWorkflowError('invalid','history');
+ const rows=await tx.select().from(letterAutomationRuleVersion).where(and(eq(letterAutomationRuleVersion.companyId,input.companyId),input.cursor?gt(letterAutomationRuleVersion.id,input.cursor):undefined,input.history?undefined:sql`${letterAutomationRuleVersion.id}=app.letter_automation_latest_version(${input.companyId}::uuid,${letterAutomationRuleVersion.templateId},${letterAutomationRuleVersion.trigger})`)).orderBy(asc(letterAutomationRuleVersion.id)).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
 /** Source dates and compensation selection use the canonical owners. No reader fabricates missing data. */
 async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:string,fields:LetterField[],custom:Record<string,LetterValue|null>,referenceDate:string){
  await assertWorkforceEmploymentTx(tx,ctx,uuid(employmentId),'view');

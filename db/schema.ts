@@ -10945,6 +10945,13 @@ export const letterTemplateVersion=pgTable('letter_template_version',{
 export const letterTemplateField=pgTable('letter_template_field',{
  tenantId:tenantId(),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),fieldVersionId:uuid('field_version_id').notNull().references(()=>letterMergeFieldVersion.id),
 },t=>[primaryKey({columns:[t.templateVersionId,t.fieldVersionId]})]);
+/** Immutable, explicitly configured event rules. Saving a version binds its accountable draft owner. */
+export const letterAutomationRuleVersion=pgTable('letter_automation_rule_version',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),
+ trigger:text('trigger').notNull().$type<'probation_due'|'confirmation_applied'|'promotion_applied'>(),ordinal:integer('ordinal').notNull(),enabled:boolean('enabled').notNull(),startOn:date('start_on').notNull(),afterSequence:bigint('after_sequence',{mode:'number'}).notNull().default(0),
+ customValues:jsonb('custom_values').notNull().$type<Record<string,import('../lib/letter-model').LetterValue|null>>(),confidential:boolean('confidential').notNull().default(false),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_automation_rule_version_uq').on(t.tenantId,t.companyId,t.templateId,t.trigger,t.ordinal)]);
 export const letterGenerationBatch=pgTable('letter_generation_batch',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),policyVersionId:uuid('policy_version_id').notNull().references(()=>letterPolicyVersion.id),
  selection:jsonb('selection').notNull().$type<{employmentIds:string[];customValues:Record<string,Record<string,import('../lib/letter-model').LetterValue|null>>;sourceAsOfDate:string}>(),inputHash:text('input_hash').notNull(),

@@ -1050,3 +1050,63 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.internal_auth_letter_mail_ready() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.internal_auth_letter_mail_ready() TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE letter_automation_rule_version (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),template_id uuid NOT NULL REFERENCES letter_template(id),
+ trigger text NOT NULL CHECK(trigger IN ('probation_due','confirmation_applied','promotion_applied')),ordinal integer NOT NULL CHECK(ordinal>0),enabled boolean NOT NULL,start_on date NOT NULL,after_sequence bigint NOT NULL DEFAULT 0 CHECK(after_sequence>=0),
+ custom_values jsonb NOT NULL CHECK(jsonb_typeof(custom_values)='object' AND octet_length(custom_values::text)<=262144),confidential boolean NOT NULL DEFAULT false,
+ created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_automation_rule_version_uq UNIQUE(tenant_id,company_id,template_id,trigger,ordinal)
+);
+ALTER TABLE letter_automation_rule_version ENABLE ROW LEVEL SECURITY;
+CREATE POLICY letter_automation_rule_read ON letter_automation_rule_version FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.letter_permission(company_id,'read') AND app.letter_permission(company_id,'settings') AND (NOT confidential OR app.can_admin_payroll_for(company_id)));
+CREATE POLICY letter_automation_rule_insert ON letter_automation_rule_version FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.letter_permission(company_id,'read') AND app.letter_permission(company_id,'settings') AND (NOT enabled OR app.letter_permission(company_id,'generate') AND app.access_workforce_company(company_id,'workforce.view')) AND (NOT confidential OR app.can_admin_payroll_for(company_id)));
+GRANT SELECT,INSERT ON letter_automation_rule_version TO ai_hr_app;
+CREATE TRIGGER letter_automation_rule_immutable BEFORE UPDATE OR DELETE ON letter_automation_rule_version FOR EACH ROW EXECUTE FUNCTION app.letter_immutable();
+--> statement-breakpoint
+CREATE FUNCTION app.letter_automation_rule_bind() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE next_ordinal integer;current_version uuid;previous_rule public.letter_automation_rule_version%ROWTYPE;
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()
+  OR NOT app.letter_permission(NEW.company_id,'settings') OR NOT app.letter_permission(NEW.company_id,'read')
+  OR (NEW.enabled AND (NOT app.letter_permission(NEW.company_id,'generate') OR NOT app.access_workforce_company(NEW.company_id,'workforce.view')))
+ THEN RAISE EXCEPTION 'Letter automation configuration permission unavailable' USING ERRCODE='insufficient_privilege';END IF;
+ PERFORM 1 FROM public.letter_template t JOIN public.company co ON co.id=t.company_id AND co.tenant_id=t.tenant_id
+  WHERE t.id=NEW.template_id AND t.tenant_id=NEW.tenant_id AND t.company_id=NEW.company_id AND co.archived_at IS NULL FOR UPDATE OF t;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Letter automation template scope mismatch' USING ERRCODE='check_violation';END IF;
+ SELECT r.* INTO previous_rule FROM public.letter_automation_rule_version r WHERE r.tenant_id=NEW.tenant_id AND r.company_id=NEW.company_id AND r.template_id=NEW.template_id AND r.trigger=NEW.trigger ORDER BY r.ordinal DESC LIMIT 1;
+ next_ordinal:=coalesce(previous_rule.ordinal,0)+1;
+ IF NEW.ordinal<>next_ordinal THEN RAISE EXCEPTION 'Create the next letter automation version' USING ERRCODE='check_violation';END IF;
+ IF NEW.enabled AND NEW.start_on<(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RAISE EXCEPTION 'Letter automation activation cannot backfill past dates' USING ERRCODE='check_violation';END IF;
+ IF NEW.enabled THEN
+ SELECT v.id INTO current_version FROM public.letter_template_version v JOIN public.letter_template t ON t.id=v.template_id AND t.tenant_id=v.tenant_id
+  WHERE v.template_id=NEW.template_id AND v.tenant_id=NEW.tenant_id AND v.company_id=NEW.company_id AND v.status='approved'
+   AND (NOT NEW.enabled OR NOT t.deactivated AND v.effective_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY v.ordinal DESC LIMIT 1;
+ IF current_version IS NULL THEN RAISE EXCEPTION 'Letter automation requires an approved template' USING ERRCODE='check_violation';END IF;
+ IF (SELECT count(*) FROM jsonb_object_keys(NEW.custom_values))>200 OR EXISTS(
+  SELECT 1 FROM jsonb_each(NEW.custom_values) input WHERE NOT EXISTS(
+   SELECT 1 FROM public.letter_template_field binding JOIN public.letter_merge_field_version field ON field.id=binding.field_version_id AND field.tenant_id=binding.tenant_id
+    WHERE binding.tenant_id=NEW.tenant_id AND binding.template_version_id=current_version AND field.key=input.key AND field.definition->>'source' LIKE 'custom.%')
+ ) THEN RAISE EXCEPTION 'Letter automation values must bind custom template fields' USING ERRCODE='check_violation';END IF;
+ SELECT EXISTS(SELECT 1 FROM public.letter_template_field binding JOIN public.letter_merge_field_version field ON field.id=binding.field_version_id AND field.tenant_id=binding.tenant_id
+  WHERE binding.tenant_id=NEW.tenant_id AND binding.template_version_id=current_version AND coalesce((field.definition->>'sensitive')::boolean,true)) INTO NEW.confidential;
+ ELSE
+  IF previous_rule.id IS NULL THEN RAISE EXCEPTION 'No configured letter automation to disable' USING ERRCODE='check_violation';END IF;
+  NEW.custom_values:=previous_rule.custom_values;NEW.confidential:=previous_rule.confidential;
+ END IF;
+ IF NEW.confidential AND NOT app.can_admin_payroll_for(NEW.company_id) THEN RAISE EXCEPTION 'Confidential letter automation permission unavailable' USING ERRCODE='insufficient_privilege';END IF;
+ -- The database stamps the tenant's committed event watermark; a client cannot request history replay.
+ SELECT coalesce(max(sequence),0) INTO NEW.after_sequence FROM public.domain_event WHERE tenant_id=NEW.tenant_id;
+ NEW.created_at:=now();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.letter_automation_rule_bind() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER letter_automation_rule_bind BEFORE INSERT ON letter_automation_rule_version FOR EACH ROW EXECUTE FUNCTION app.letter_automation_rule_bind();
+--> statement-breakpoint
+-- Resolve latest identity before confidential row filtering; hidden versions never revive an older rule.
+CREATE FUNCTION app.letter_automation_latest_version(co uuid,root uuid,kind text) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT r.id FROM public.letter_automation_rule_version r WHERE r.tenant_id=app.current_tenant_id() AND r.company_id=co AND r.template_id=root AND r.trigger=kind
+  AND app.letter_permission(co,'read') AND app.letter_permission(co,'settings') ORDER BY r.ordinal DESC LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION app.letter_automation_latest_version(uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_automation_latest_version(uuid,uuid,text) TO ai_hr_app;
