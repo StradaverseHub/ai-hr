@@ -64,6 +64,7 @@ const ALL_TABLES = [
   // and the symptom would be a movement that "disappeared" from Employment History with no obvious cause.
   'movement_event_type',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
+  'payroll_history_import_event','payroll_history_import_revision','payroll_history_import_snapshot','payroll_history_import_record','payroll_history_import_attempt',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_leave_exception', 'employment_holiday_calendar',
   'payroll_policy',

@@ -6,7 +6,8 @@ import {explainPcb} from '../../core/pcb-explain';
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
 import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { type SessionContext } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   assignment,
   company,

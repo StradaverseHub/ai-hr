@@ -1,3 +1,4 @@
+import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 import {workforceEmploymentPredicate} from './workforce-access';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
@@ -162,6 +163,7 @@ import {
   reportingLineTypeEnum,
   toilAccrual,
 } from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
 import { ALL_ROW_CEILING } from '../lib/pagination';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
@@ -5548,6 +5550,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
  *  the dashboard is switcher-scoped ON PURPOSE and stays that way. */
 export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     const one = sql<number>`count(*)::int`;
     const scopeIds = companyIds && companyIds.length ? companyIds : null;
     const scope = (col: AnyColumn) => (scopeIds ? inArray(col, scopeIds) : sql`true`);
@@ -5631,7 +5634,7 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
             status: payrollBatch.status,
             totals: payrollBatch.totals,
           })
-          .from(payrollBatch)
+          .from(payrollHistoryEffectiveBatch)
           .where(scope(payrollBatch.companyId))
           .orderBy(desc(payrollBatch.payPeriod))
       : [];
@@ -6287,6 +6290,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 /** The current principal's payslips (RLS already restricts to own employment). */
 export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if (employmentIds.length === 0) return [];
     const rows = await tx
       .select({
@@ -6304,6 +6308,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
         // the admin-only company_payroll_config which the employee session cannot read).
         releasedAt: payrollBatch.releasedAt,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -6317,7 +6322,8 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
     const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: payrollPublicationState(r,now)==='published',
+      released: r.historyImportAttemptId == null && payrollPublicationState(r,now)==='published',
+      historyImported: r.historyImportAttemptId != null,
     }));
   });
 }
@@ -6332,6 +6338,7 @@ export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
 export function myReleasedPayslipRuns(ctx:SessionContext) {
   assertModuleGate(ctx,'payroll');
   return withTenant(ctx,async tx=>{
+    await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if(!ctx.personId)return [];
     return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
       companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
@@ -6339,7 +6346,7 @@ export function myReleasedPayslipRuns(ctx:SessionContext) {
       .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
       .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
       .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-      .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .where(and(isNull(payrollBatch.historyImportAttemptId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
       .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
   });
 }

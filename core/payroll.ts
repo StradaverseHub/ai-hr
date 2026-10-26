@@ -3,6 +3,7 @@ import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendanc
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
 /**
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
@@ -9863,7 +9864,7 @@ export function listBatches(
         // only for the two off_cycle presets that happen to carry a label, and by string comparison.
         payrollCycleId: payrollBatch.payrollCycleId,
       })
-      .from(payrollBatch)
+      .from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(
         and(
@@ -10827,7 +10828,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(payslip.id, payslipId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .where(and(eq(payslip.id, payslipId),isNull(payrollBatch.historyImportAttemptId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
       .limit(1);
     if (!row) return null;
     // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS

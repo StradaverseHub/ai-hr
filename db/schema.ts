@@ -23,12 +23,14 @@ import type {EmployeeHomeConfiguration} from '../lib/employee-home';
  *    deliberate hardening follow-up (tracked), not silently skipped — RLS already blocks
  *    cross-tenant *reads*; composite FKs would also block cross-tenant *references*.
  */
-import { sql } from 'drizzle-orm';
+import { getTableColumns, sql } from 'drizzle-orm';
 // TYPE-ONLY, and the only core/ import in this file. core/attendance-trace.ts is a deliberate LEAF with
 // no imports of its own, so this cannot close a cycle; `import type` is erased at runtime regardless.
 import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/attendance-trace';
 import {
   pgTable,
+  pgView,
+  alias,
   foreignKey,
   pgEnum,
   uuid,
@@ -6458,6 +6460,8 @@ export const payrollBatch = pgTable(
     // whole company (today's behaviour). Generation narrows the active-employee set to this scope.
     scope: jsonb('scope'),
     remarks: text('remarks'),
+    historyImportAttemptId: uuid('history_import_attempt_id').references(()=>payrollHistoryImportAttempt.id),
+    historyImportCycleName: text('history_import_cycle_name'),
     // Step 6 (f3148da1) — when closeBatch finalized this run. NULL for legacy batches. Audit field.
     closedAt: timestamp('closed_at', { withTimezone: true }),
     // Step 6 (f3148da1) — the instant this batch's payslips become visible to employees in ESS, COMPUTED AT
@@ -10862,3 +10866,36 @@ export const loginPresentation = pgTable('login_presentation', {
   revision: integer('revision').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Approved payroll-history correction graph: attempts and revisions are append-only; a record's
+// latest ordinal is its effective snapshot. No closed payslip is updated or deleted for a correction.
+export const payrollHistoryImportAttempt=pgTable('payroll_history_import_attempt',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),
+ sourceName:text('source_name').notNull(),mimeType:text('mime_type').notNull(),sourceHash:text('source_hash').notNull(),
+ sourceContent:bytea('source_content').notNull(),companyIds:uuid('company_ids').array().notNull(),
+ plan:jsonb('plan').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionPlan>(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_attempt_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),index('payroll_history_attempt_created_idx').on(t.tenantId,t.createdAt)]);
+export const payrollHistoryImportRecord=pgTable('payroll_history_import_record',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ period:text('period').notNull(),cycleId:uuid('cycle_id').notNull().references(()=>payrollCycle.id),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_record_identity_uq').on(t.tenantId,t.companyId,t.employmentId,t.period,t.cycleId)]);
+export const payrollHistoryImportSnapshot=pgTable('payroll_history_import_snapshot',{
+ id:uuid('id').primaryKey().references(()=>payslip.id),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),
+ valueHash:text('value_hash').notNull(),values:jsonb('values').notNull().$type<import('../lib/payroll-history-revisions').ImportedPayrollValues>(),createdAt:createdAt(),
+});
+export const payrollHistoryImportRevision=pgTable('payroll_history_import_revision',{
+ id:id(),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),ordinal:integer('ordinal').notNull(),
+ attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),snapshotId:uuid('snapshot_id').references(()=>payrollHistoryImportSnapshot.id),
+ previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'>(),cycleName:text('cycle_name').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_revision_ordinal_uq').on(t.recordId,t.ordinal),index('payroll_history_revision_attempt_idx').on(t.tenantId,t.attemptId)]);
+export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
+ id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),
+ kind:text('kind').notNull().$type<'confirmed'|'failed'|'reverted'|'revert_failed'>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ changes:jsonb('changes').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionChange[]>(),detail:jsonb('detail').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('payroll_history_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
+/** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
+export const payrollHistoryEffectiveBatch=alias(pgView('payroll_history_effective_batch').as(qb=>qb.select({
+ ...getTableColumns(payrollBatch),
+ totals:sql<unknown>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.totals} ELSE app.payroll_history_batch_totals(${payrollBatch.id}) END`.as('totals'),
+ employeeCount:sql<number>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.employeeCount} ELSE (app.payroll_history_batch_totals(${payrollBatch.id})->>'employeeCount')::integer END`.as('employee_count'),
+}).from(payrollBatch)),'payroll_batch');

@@ -66,7 +66,7 @@
  * single shared tx aborts on first failed insert).
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company,
   employeeStatutoryMy,
@@ -244,8 +244,8 @@ const issue = (
  * Later layers win. An alias resolves ONE hop; an alias whose target is itself an alias, or unknown, is
  * dropped rather than chased, so a bad catalog row can never loop or silently retarget.
  */
-export async function resolveImportCodes(ctx: SessionContext): Promise<Map<string, ImportCodeEntry>> {
-  const { components, catalog } = await withTenant(ctx, async (tx) => {
+export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx): Promise<Map<string, ImportCodeEntry>> {
+  const read = async (tx: Tx) => {
     const components = await tx
       .select({
         code: payComponent.code,
@@ -258,7 +258,8 @@ export async function resolveImportCodes(ctx: SessionContext): Promise<Map<strin
       .from(payComponent);
     const catalog = await tx.select().from(payrollImportCode);
     return { components, catalog };
-  });
+  };
+  const { components, catalog } = await (transaction ? read(transaction) : withTenant(ctx, read));
 
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
@@ -329,11 +330,12 @@ async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: PayrollHistoryRecord[],
+  options: { transaction?: Tx; prepareRevision?: boolean } = {},
 ): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const codes = await resolveImportCodes(ctx);
+  const codes = await resolveImportCodes(ctx, options.transaction);
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await withTenant(
-    ctx,
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
     async (tx) => {
       const companies = await tx
         .select({
@@ -378,6 +380,7 @@ async function analyze(
 
       const cycles = await tx
         .select({
+          id: payrollCycle.id,
           name: payrollCycle.name,
           code: payrollCycle.code,
           archivedAt: payrollCycle.archivedAt,
@@ -404,12 +407,12 @@ async function analyze(
 
   // ── Cycle lookup: the short code the reporter's file carries, OR the friendly name (a customer who has
   // not filled in the codes yet can still write "Monthly"). Archived cycles are not accepted.
-  const cycleKeys = new Map<string, number>();
+  const cycleKeys = new Map<string, Set<string>>();
   for (const c of cycles) {
     if (c.archivedAt != null) continue;
     for (const k of [c.code, c.name]) {
       const kk = up(k ?? '');
-      if (kk) cycleKeys.set(kk, (cycleKeys.get(kk) ?? 0) + 1);
+      if (kk) { const ids = cycleKeys.get(kk) ?? new Set<string>(); ids.add(c.id); cycleKeys.set(kk, ids); }
     }
   }
 
@@ -512,7 +515,7 @@ async function analyze(
 
     // Payroll Cycle.
     if (cycle) {
-      const hits = cycleKeys.get(up(cycle)) ?? 0;
+      const hits = cycleKeys.get(up(cycle))?.size ?? 0;
       if (hits === 0) {
         issues.push(
           issue(ref, 'Invalid Payroll Cycle', `No active payroll cycle has the code or name “${cycle}” — add it under Admin → Payroll Cycle`),
@@ -630,7 +633,7 @@ async function analyze(
 
   // ── Which periods are already occupied. Read once for every period the file mentions.
   const periods = [...new Set([...buckets.values()].map((b) => b.period))];
-  const occupiedPeriods = await withTenant(ctx, async (tx) => {
+  const occupiedPeriods = await read(async (tx) => {
     if (periods.length === 0) return new Set<string>();
     const rows = await tx
       .select({ period: payrollBatch.payPeriod })
@@ -763,7 +766,7 @@ async function analyze(
     }
 
     // The double-count guard. NOTHING is written for an occupied period, whatever Override? said.
-    const existing = occupiedPeriods.has(b.period);
+    const existing = !options.prepareRevision && occupiedPeriods.has(b.period);
     if (existing) {
       existingMonths += 1;
       for (const l of b.lines) {
@@ -881,6 +884,12 @@ async function analyze(
     missingColumns,
   };
   return { preview, months, statutoryVersion };
+}
+
+/** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
+ * identities, inside this same transaction. This helper grants no write or replacement authority. */
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[]) {
+  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true});
 }
 
 /** Dry run: validate the file against the company's master data; writes nothing. */

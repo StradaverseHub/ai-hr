@@ -3480,6 +3480,13 @@
       "when": 1792941214168,
       "tag": "0601_operator_customer_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 609,
+      "version": "7",
+      "when": 1793012932208,
+      "tag": "0602_payroll_history_revisions",
+      "breakpoints": true
     }
   ]
 }

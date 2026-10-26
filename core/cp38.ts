@@ -15,7 +15,8 @@
  * carries references + dates only — never the cleartext CP38 amount, which lives on the aggregate row.
  */
 import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeCp38, payrollBatch, payslip } from '../db/schema';
 
