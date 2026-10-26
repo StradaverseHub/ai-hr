@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Claims module (ADR-0021) — claim-type catalog + effective-dated budget policy. Admin-managed (RLS
@@ -14,6 +15,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withClaimsTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
+  domainEvent,
   claimAttachment,
   claimFormField,
   claimItem,
@@ -2645,16 +2647,8 @@ async function assertDraftOwner(tx: Tx, ctx: SessionContext, employmentId: strin
  * draft may omit an item the type will eventually require, because "I haven't chosen yet" is the point of
  * a draft. Submit refuses it.
  */
-export async function saveClaimDraft(
-  ctx: SessionContext,
-  p: DraftClaimInput & { id?: string },
-  attachment: { fileName: string; mimeType: string; content: Buffer } | null = null,
-): Promise<{ id: string }> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
-  // Validated before the tx opens, exactly as submitClaimWithAttachment does, so a bad file never starts a
-  // draft write it will then have to roll back.
-  if (attachment) assertValidAttachment(attachment.mimeType, attachment.content);
-  return withTenant(ctx, async (tx) => {
+type ClaimDraftInput=DraftClaimInput & {id?:string};
+async function prepareClaimDraftValuesTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput){
     await assertDraftOwner(tx, ctx, p.employmentId);
     const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
     if (!ct) throw new ClaimError('Unknown or archived claim type');
@@ -2687,6 +2681,10 @@ export async function saveClaimDraft(
       fieldValues: p.fieldValues ?? null,
     };
 
+ return{values,claimItemId};
+}
+async function saveClaimDraftOwnerTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,attachment:{fileName:string;mimeType:string;content:Buffer}|null,reviewed=false,prepared?:Awaited<ReturnType<typeof prepareClaimDraftValuesTx>>){
+ const{values,claimItemId}=prepared??await prepareClaimDraftValuesTx(tx,ctx,p);
     if (p.id) {
       // Row lock before the status read: an edit racing this draft's own submit must not overwrite a claim
       // that has already become pending (which would let an employee change a filed claim's amount).
@@ -2704,7 +2702,7 @@ export async function saveClaimDraft(
       if (attachment) {
         await insertClaimAttachmentTx(tx, ctx, { claimRequestId: p.id, employmentId: p.employmentId, status: 'draft', ...attachment });
       }
-      await appendEvent(tx, {
+      const savedEventId=await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: p.id,
@@ -2713,8 +2711,8 @@ export async function saveClaimDraft(
         subjectEmploymentId: p.employmentId,
         // ADR-0030 Layer 0: no amount in the log — it lives on claim_request[aggregateId].
         payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn },
-      });
-      return { id: p.id };
+      },{returnId:reviewed});
+      return { id: p.id,savedEventId };
     }
 
     const [row] = await tx
@@ -2724,7 +2722,7 @@ export async function saveClaimDraft(
     if (attachment) {
       await insertClaimAttachmentTx(tx, ctx, { claimRequestId: row.id, employmentId: p.employmentId, status: 'draft', ...attachment });
     }
-    await appendEvent(tx, {
+    const savedEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'claim-request',
       aggregateId: row.id,
@@ -2732,9 +2730,80 @@ export async function saveClaimDraft(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn },
-    });
-    return { id: row.id };
-  });
+    },{returnId:reviewed});
+    return { id: row.id,savedEventId };
+}
+export async function saveClaimDraft(ctx:SessionContext,p:ClaimDraftInput,attachment:{fileName:string;mimeType:string;content:Buffer}|null=null):Promise<{id:string}>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ attachment=attachment?{...attachment,content:Buffer.from(attachment.content)}:null;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn))throw new ClaimError('Incurred date must be YYYY-MM-DD');
+ if(attachment)assertValidAttachment(attachment.mimeType,attachment.content);
+ return withTenant(ctx,async tx=>{const result=await saveClaimDraftOwnerTx(tx,ctx,p,attachment);return{id:result.id};});
+}
+
+/** Source-specific reviewed draft ownership. This is not a global catalog lock: actual selected
+ * rows are locked before the native preflight; NOWAIT refuses inverse-order contention. A catalog
+ * child INSERT still needs its existing FK key-share on the owned claim-type parent. All existing
+ * child rows (including archived/future generations) are owned, so reactivation is not a phantom.
+ * App-role acceptance and every dependency interleaving remain UNRUN before Assistant exposure. */
+async function reviewedClaimDraftFactsTx(tx:Tx,supplied:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[]){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'claims');
+ if(!fresh.personId||!fresh.userId)throw new ClaimError('The own draft source is unavailable');
+ const subjects=await myOwnEmploymentSubjectsTx(tx,fresh,{profileEdit:true}),own=subjects.find(row=>row.employmentId===p.employmentId);
+ if(!own||!own.companyProof.companyId||own.companyProof.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
+ const [subject]=await tx.select({id:employment.id,companyId:employment.companyId,gradeId:employment.gradeId,revision:sql<string>`${employment}.xmin::text`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,fresh.personId))).limit(1).for('update',{noWait:true});
+ if(!subject||subject.companyId!==own.currentCompanyId)throw new ClaimError('The own draft source is unavailable');
+ const [type]=await tx.select({id:claimType.id,revision:sql<string>`xmin::text`}).from(claimType).where(and(eq(claimType.tenantId,ctx.tenantId),eq(claimType.id,p.claimTypeId))).limit(1).for('update',{noWait:true});
+ if(!type)throw new ClaimError('The own draft source is unavailable');
+ const policies=await tx.select({id:claimPolicy.id,revision:sql<string>`xmin::text`}).from(claimPolicy).where(and(eq(claimPolicy.tenantId,ctx.tenantId),eq(claimPolicy.claimTypeId,p.claimTypeId))).orderBy(claimPolicy.id).limit(501).for('share',{noWait:true});
+ const items=await tx.select({id:claimItem.id,revision:sql<string>`xmin::text`}).from(claimItem).where(and(eq(claimItem.tenantId,ctx.tenantId),eq(claimItem.claimTypeId,p.claimTypeId))).orderBy(claimItem.id).limit(501).for('share',{noWait:true});
+ const fields=await tx.select({id:claimFormField.id,revision:sql<string>`xmin::text`}).from(claimFormField).where(and(eq(claimFormField.tenantId,ctx.tenantId),eq(claimFormField.claimTypeId,p.claimTypeId))).orderBy(claimFormField.id).limit(501).for('share',{noWait:true});
+ if([policies,items,fields].some(rows=>rows.length>500))throw new ClaimError('The own draft source is unavailable');
+ let draft:{id:string;revision:string}|null=null,attachments:{id:string;revision:string}[]=[];
+ if(p.id){
+  const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status,revision:sql<string>`xmin::text`}).from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,p.id))).limit(1).for('update',{noWait:true});
+  if(!row||row.employmentId!==p.employmentId||row.status!=='draft')throw new ClaimError('The own draft source is unavailable');draft={id:row.id,revision:row.revision};
+  const rows=await tx.select({id:claimAttachment.id,employmentId:claimAttachment.employmentId,revision:sql<string>`xmin::text`}).from(claimAttachment).where(and(eq(claimAttachment.tenantId,ctx.tenantId),eq(claimAttachment.claimRequestId,p.id))).orderBy(claimAttachment.id).limit(26).for('share',{noWait:true});
+  if(rows.length>25||rows.some(row=>row.employmentId!==p.employmentId))throw new ClaimError('The own draft source is unavailable');attachments=rows.map(({id,revision})=>({id,revision}));
+ }
+ const suppliedIds=[...retainedAttachmentIds].sort();if(new Set(suppliedIds).size!==suppliedIds.length||JSON.stringify(suppliedIds)!==JSON.stringify(attachments.map(row=>row.id)))throw new ClaimError('The own draft receipt source changed');
+ return{ctx:fresh,versions:{subject,type,policies,items,fields,draft,attachments}};
+}
+export type ReviewedOwnClaimDraft={employmentId:string;claimTypeId:string;claimItemId:string|null;draftId:string|null;provisionalAmount:string;provisionalTaxable:boolean;provisionalQuantityKm:string|null;incurredOn:string;description:string|null;fieldValues:DraftClaimInput['fieldValues'];retainedAttachmentIds:string[];reviewedDigest:string};
+async function prepareReviewedClaimDraftTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[]){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn))throw new ClaimError('Incurred date must be YYYY-MM-DD');
+ const facts=await reviewedClaimDraftFactsTx(tx,ctx,p,retainedAttachmentIds),native=await prepareClaimDraftValuesTx(tx,facts.ctx,p);
+ const projection={employmentId:p.employmentId,claimTypeId:native.values.claimTypeId,claimItemId:native.values.claimItemId,draftId:p.id??null,provisionalAmount:native.values.amount,provisionalTaxable:native.values.taxable,provisionalQuantityKm:native.values.quantityKm,incurredOn:native.values.incurredOn,description:native.values.description,fieldValues:native.values.fieldValues,retainedAttachmentIds:[...retainedAttachmentIds].sort()};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-claim-draft:v1',{tenantId:facts.ctx.tenantId,userId:facts.ctx.userId,personId:facts.ctx.personId},p,projection,facts.versions])).digest('hex');
+ return{ctx:facts.ctx,native,review:{...projection,reviewedDigest} satisfies ReviewedOwnClaimDraft};
+}
+/** Native draft preview/normalization only. It is provisional and does not run submit limits,
+ * reserve a budget, notify an approver, reimburse, read attachment bytes or create a draft/event. */
+export async function prepareOwnClaimDraftReviewTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[]):Promise<ReviewedOwnClaimDraft>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};retainedAttachmentIds=[...retainedAttachmentIds];
+ return(await prepareReviewedClaimDraftTx(tx,ctx,p,retainedAttachmentIds)).review;
+}
+/** SAME native draft save/event, in the enclosing command Tx. NEW draft creation is deliberately
+ * not natively idempotent: the future shared locked custody row/completed receipt MUST prevent a
+ * second create before exposure. Reopen uses readOwnClaimDraftSavedReferenceTx, never this function. */
+export async function saveReviewedOwnClaimDraftTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,retainedAttachmentIds:readonly string[],expectedReviewedDigest:string){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};retainedAttachmentIds=[...retainedAttachmentIds];
+ const prepared=await prepareReviewedClaimDraftTx(tx,ctx,p,retainedAttachmentIds);
+ if(!/^[a-f0-9]{64}$/.test(expectedReviewedDigest)||prepared.review.reviewedDigest!==expectedReviewedDigest)throw new ClaimError('The reviewed draft source changed');
+ const result=await saveClaimDraftOwnerTx(tx,prepared.ctx,p,null,true,prepared.native);
+ if(!result.savedEventId)throw new ClaimError('The native draft event reference is unavailable');
+ const reference=await readOwnClaimDraftSavedReferenceTx(tx,prepared.ctx,result.id,result.savedEventId);
+ if(!reference)throw new ClaimError('The native draft event reference is unavailable');return reference;
+}
+export type OwnClaimDraftSavedReference={draftId:string;savedEventId:string;employmentId:string;status:typeof claimRequest.$inferSelect['status']};
+/** Minimal current-own request + ORIGINAL actor native event reference, never receipt bytes,
+ * monetary values or a second execution. Later native submission/decision stays its own fact. */
+export async function readOwnClaimDraftSavedReferenceTx(tx:Tx,supplied:SessionContext,draftId:string,savedEventId:string):Promise<OwnClaimDraftSavedReference|null>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};await assertAiPrincipalTx(tx,ctx);assertModuleEnabled({...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},'claims');if(!ctx.personId||!ctx.userId)return null;
+ const [row]=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,status:claimRequest.status}).from(claimRequest).innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId))).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.id,draftId),eq(employment.personId,ctx.personId))).limit(1);if(!row)return null;
+ const [event]=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.id,savedEventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'claim-request'),eq(domainEvent.aggregateId,row.id),eq(domainEvent.eventType,'claim-request.draft-saved'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId),eq(domainEvent.subjectEmploymentId,row.employmentId))).limit(1);if(!event)return null;
+ return{draftId:row.id,savedEventId:event.id,employmentId:row.employmentId,status:row.status};
 }
 
 /** Delete a draft the caller owns, with any receipt already attached to it. Hard delete, not a status
