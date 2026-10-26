@@ -128,6 +128,23 @@ never writes attendance. VoiceOver/TalkBack users have a labelled two-step tap c
 motion disables the rail's return animation. Both clock directions remain available; the attendance
 kernel decides the result, including corrected-day refusals, photo rules and geofences.
 
+Preparation now asks the server for an own-employment location-quality preview through a bounded JSON
+POST; coordinates are not URL parameters. The review shows the assigned site, measured distance,
+radius and reported uncertainty when available. A preview never records attendance and never authorizes
+the later command. Every enforced web/native punch requires distance plus reported uncertainty to fit
+within an active assigned site open to the employment's current company. An optional company maximum
+uncertainty is configured in Attendance company policy settings; blank adds no extra cap. Missing,
+negative or invalid uncertainty cannot substitute for zero. Non-geofenced employees and manual HR
+entries retain their established behavior.
+
+Enforced native preparation requests precise permission and distinguishes blocked/approximate access,
+services disabled, mock flags, invalid fixes and stale/future samples. Settings recovery is explicit.
+Services discovery and one position request share a 20-second deadline; no automatic GPS retry follows
+a timeout. A late services response cannot start a new position query. These checks validate reported
+quality, not provider authenticity. Real indoor-site measurements, signed-device permission behavior
+and hardware attestation remain acceptance requirements before broader rollout. Failed preparation
+attempts do not yet survive process termination; the durable journal begins at command staging.
+
 Native commands enforce registered-device policy. The registration token is stored in device-only
 unlocked SecureStore, is scoped to employment, and is deleted on logout/reinstall. This registration
 is **not device attestation**. One registration is retained locally; switching employment may require

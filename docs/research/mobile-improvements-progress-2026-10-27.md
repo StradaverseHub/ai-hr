@@ -114,3 +114,38 @@ screen or sign-out side effects. Writes retain the existing explicit immutable-c
 Focused validation passed 43 cases across five files, plus native TypeScript. Final language-change
 coverage then passed all 30 cases in the affected transport, coordinator and load-state files. These
 targeted results do not substitute for a complete frozen-candidate gate or signed-device acceptance.
+
+## M03 reported uncertainty and own-employment preview
+
+The isolated follow-up implements shared `distance + reported accuracy <= site radius` containment
+for every enforced punch path and its own-employment preview. Company policy may supply an additional
+positive uncertainty cap; migration 0621 adds a nullable column without selecting a universal default.
+An older policy writer preserves the configured cap, while explicit null removes it. The existing
+settings editor and six catalogs expose the option. Assignments still require an active site open to
+the employment's current company; manual/non-geofenced paths keep their prior behavior.
+
+The bounded, authenticated preview POST keeps coordinates out of URLs, writes no attendance, and
+returns typed quality reasons. Native review shows available site, distance, radius, uncertainty and
+company cap. Permission/service/fix failures remain distinct, with an explicit Settings recovery path.
+Services discovery and one fix share a 20-second deadline; late discovery cannot initiate another fix.
+The command rechecks current policy and includes an additive typed location-refusal reason while
+preserving existing v1 outcome codes. Neither reported accuracy nor a negative mock flag proves presence.
+
+At `79867f209`, six database/API/migration files passed 127 of 128 cases. The one new fixture first
+lacked its entitlement snapshot and then its existing account-bound clock context. Those production
+guards stayed intact. At `e44a797d3`, the corrected fixture passed separately. The original failed
+attempt and both fixture repair logs remain separate. Five native consumer files passed 49 cases;
+native TypeScript and both Hermes exports passed. Export maps contain 1,327 iOS and 1,458 Android
+sources, with no database client, server auth service, node-forge or nested Zod 3 modules.
+
+The deliberate temporary containment mutation accepted an otherwise refused punch and made the
+database test fail. Restoring the exact committed helper made that same test pass. The initial root
+compiler exhausted its default 4 GiB heap; the 8 GiB retry passed without relaxing type checking.
+The final 8 GiB repository compiler check then passed, along with all 20 cases in the six-locale
+coverage and attendance-settings consumer files. These are focused checks, not a complete gate.
+
+The staging-shaped shadow rehearsal could not establish its SSH connection from this isolated
+checkout and remains failed/unverified. A clean-database migration-chain pass is not a substitute for
+that live-baseline check. No staging source, runtime or database was changed. Real indoor-device
+measurements, signed-build acceptance, durable failed-preparation attempts, M04 attestation and M05
+offline adjudication remain open; no offline punch acceptance has been enabled.
