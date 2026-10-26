@@ -7,6 +7,7 @@ import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission } from '../lib/ai/governance';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
 async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
@@ -78,7 +79,10 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   try{const result=await call(record,accounting.observe);succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
-   try { const observed=accounting.snapshot(actual);await withTenant(ctx,async tx=>{await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
+   try { const observed=accounting.snapshot(actual);await withTenant(ctx,async tx=>{
+    // Same order as admission. This is ownership only: role revocation must not erase actual usage.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
     ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }

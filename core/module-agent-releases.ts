@@ -11,7 +11,7 @@ import { MODULE_AGENT_SOURCE_DIGEST } from '../lib/ai/module-agent-source-manife
 import { applyTypedRouteCandidate, captureTypedModulePlan, captureTypedRouteCandidate,
   ROUTING_ENGINE_DIGEST, ROUTING_POLICY_DIGEST, ROUTING_INPUT_DIGEST, ROUTING_SUITE_DIGEST, ROUTING_POLICY,
   routingDigest, type TypedRouteCandidate } from '../lib/ai/module-agent-routing';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx } from './entitlements';
@@ -699,7 +699,8 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
     },
     settled:async(carrier,event)=>{
      // Settlement remains honest even if authority was revoked after admission or personal custody erased.
-     await assertAiPrincipalTx(carrier,current);await proposalNonceTx(carrier,current,nonce);
+     if(!await isAiPrincipalCurrentTx(carrier,current))return;
+     await proposalNonceTx(carrier,current,nonce);
      const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row)return;
      const proof=open('human-plan',current.tenantId,row.id,row.receipt);if(proof.userId!==current.userId||proof.nonce!==nonce||proof.runId!==event.runId||row.state!=='reserved')return fail();
      await carrier.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,row.id,{...proof,tokens:event.actualTokens,cost:event.accounting.openrouterAccountCostCredits,costUnit:event.accounting.openrouterAccountCostCredits===null?null:'openrouter-account-credit',accounting:event.accounting,settled:event.succeeded})} where id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
