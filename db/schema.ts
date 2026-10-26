@@ -600,6 +600,22 @@ export const appUser = pgTable(
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],
 );
 
+// Installation identity is read only through a private function; it grants no tenant authority.
+export const mobileIntegrityInstallation=pgTable('mobile_integrity_installation',{
+ singleton:boolean('singleton').primaryKey().default(true),installationId:uuid('installation_id').notNull().defaultRandom(),
+},t=>[uniqueIndex('mobile_integrity_installation_id_uq').on(t.installationId)]);
+export const mobileIntegrityChallenge=pgTable('mobile_integrity_challenge',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
+ appInstallationId:uuid('app_installation_id').notNull(),requestId:uuid('request_id').notNull(),
+ purpose:text('purpose').notNull().$type<'device.enrollment'|'clock.online'>(),bindingHash:text('binding_hash').notNull(),nonce:text('nonce').notNull(),
+ issuedAt:timestamp('issued_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+ consumedAt:timestamp('consumed_at',{withTimezone:true}),
+},t=>[uniqueIndex('mobile_integrity_challenge_intent_uq').on(t.tenantId,t.actorId,t.requestId),
+ uniqueIndex('mobile_integrity_challenge_nonce_uq').on(t.nonce),
+ index('mobile_integrity_challenge_pending_idx').on(t.tenantId,t.actorId,t.expiresAt).where(sql`${t.consumedAt} IS NULL`)]);
+
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
 export const appExternalIdentity = pgTable('app_external_identity', {
   issuer: text('issuer').notNull(), subject: text('subject').notNull(),

@@ -17,6 +17,7 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'mobile_integrity_challenge', // Tenant claims reset; migration-owned installation identity remains stable.
   'app_request_budget', // Shared admission state has no tenant FK; reset explicitly between cases.
   'login_presentation',
   'employment_cost_allocation_row','employment_cost_allocation_set','employment_cost_allocation_head',

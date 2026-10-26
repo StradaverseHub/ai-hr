@@ -3522,6 +3522,13 @@
       "when": 1793047796775,
       "tag": "0621_geofence_reported_uncertainty",
       "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793054626620,
+      "tag": "0622_mobile_integrity_challenges",
+      "breakpoints": true
     }
   ]
 }
