@@ -13,7 +13,7 @@ import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {createMovementEvent,reverseMovementEvent} from '../core/movement';
 import {readLetterAutomationSourcesTx} from '../core/letter-automation-sources';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import type {LetterPolicy} from '../lib/letter-workflow';
+import {LetterWorkflowError,type LetterPolicy} from '../lib/letter-workflow';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,reviewer:SessionContext,templateId:string,templateVersionId:string,templateRevision:number,employees:string[];
 const today=()=>todayInKualaLumpur();
@@ -46,6 +46,9 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   await expect(withTenant(ctx,tx=>tx.execute(sq`select app.letter_automation_owner_eligible_at(${b.tenantId}::uuid,${ctx.userId}::uuid,${b.companyId}::uuid,false)`))).rejects.toThrow();await saveLetterPermission(ctx,{companyId:b.companyId,capability:'generate',role:'hr_admin',allowed:false});await expect(owner.withTenant(system,tx=>readLetterAutomationSourcesTx(tx,system,rule.id))).rejects.toMatchObject({code:'permission'});
  });
 
+ it('lets an authorized Settings owner configure automation without template editing permission',async()=>{
+  await saveLetterPermission(ctx,{companyId:b.companyId,capability:'template',role:'hr_admin',allowed:false});expect(await saveLetterAutomationRule(ctx,{companyId:b.companyId,templateId,trigger:'confirmation_applied',expectedOrdinal:0,enabled:true})).toMatchObject({enabled:true,createdBy:ctx.userId});
+ });
  it('versions configured event drafts with a database-stamped cutoff, immutable history, and compare-and-swap',async()=>{
   const [latest]=await owner.db.select({sequence:s.domainEvent.sequence}).from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(sq`${s.domainEvent.sequence} desc`).limit(1),input={companyId:b.companyId,templateId,trigger:'promotion_applied' as const,expectedOrdinal:0,enabled:true,startOn:today(),customValues:{effectiveDate:{kind:'date' as const,value:today()}}};
   const first=await saveLetterAutomationRule(ctx,input);expect(first).toMatchObject({ordinal:1,afterSequence:latest.sequence,createdBy:ctx.userId,enabled:true,templateId});expect((await listLetterAutomationRules(ctx,{companyId:b.companyId})).rows).toEqual([first]);
@@ -58,7 +61,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   const input={companyId:b.companyId,templateId,trigger:'promotion_applied' as const,expectedOrdinal:0,enabled:true};await saveLetterAutomationRule(ctx,input);
   const [readerPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional configuration reader',primaryEmail:'configuration-reader@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,readerPerson.id,'manager'),reader={...await entitledCtx(b,['manager']),userId,personId:readerPerson.id};for(const capability of ['read','settings'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'manager',allowed:true});expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(1);
   const amount=await saveLetterField(ctx,{companyId:b.companyId,definition:{key:'amount',label:'Amount',description:'Explicit monetary default',kind:'currency',source:'custom.currency',required:false,editable:true,sensitive:true},active:true}),version=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:'GENERATION',name:'Fictional financial template',category:'confirmation',effectiveFrom:today(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'amount'}]}]},fieldVersionIds:[amount.id]});await decideLetterTemplate(ctx,{versionId:version.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:version.versionId,expectedStatus:'submitted',action:'approve'});
-  const latest=await saveLetterAutomationRule(ctx,{...input,expectedOrdinal:1,customValues:{amount:{kind:'currency',currency:'MYR',value:'123.00'}}});expect(latest.confidential).toBe(true);expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(0);expect((await listLetterAutomationRules(reader,{companyId:b.companyId,history:true})).rows).toHaveLength(1);await expect(saveLetterAutomationRule(reader,{...input,expectedOrdinal:1,enabled:false})).rejects.toMatchObject({code:'permission'});
+  const latest=await saveLetterAutomationRule(ctx,{...input,expectedOrdinal:1,customValues:{amount:{kind:'currency',currency:'MYR',value:'123.00'}}});expect(latest.confidential).toBe(true);expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(0);expect((await listLetterAutomationRules(reader,{companyId:b.companyId,history:true})).rows).toHaveLength(1);await expect(saveLetterAutomationRule(reader,{...input,expectedOrdinal:1,enabled:false})).rejects.toBeInstanceOf(LetterWorkflowError);expect((await listLetterAutomationRules(ctx,{companyId:b.companyId})).rows).toEqual([latest]);
  });
  it('refuses backdated automation, inactive templates, master-field defaults and mismatched typed values atomically',async()=>{
   const input={companyId:b.companyId,templateId,trigger:'probation_due' as const,expectedOrdinal:0,enabled:true};

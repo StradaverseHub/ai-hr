@@ -202,7 +202,9 @@ export type LetterAutomationTrigger=typeof LETTER_AUTOMATION_TRIGGERS[number];
 export function saveLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger;expectedOrdinal:number;enabled:boolean;startOn?:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);uuid(input.templateId);
  if(!LETTER_AUTOMATION_TRIGGERS.includes(input.trigger)||typeof input.enabled!=='boolean'||!Number.isInteger(input.expectedOrdinal)||input.expectedOrdinal<0)throw new LetterWorkflowError('invalid','automation');
- const [root]=await tx.select().from(letterTemplate).where(and(eq(letterTemplate.id,input.templateId),eq(letterTemplate.companyId,input.companyId))).for('update');if(!root)throw new LetterWorkflowError('permission');
+ // The shared Letters lock serializes service edits; the insert binding locks and rechecks the root.
+ // A Settings author need not also receive permission to edit template wording.
+ const [root]=await tx.select().from(letterTemplate).where(and(eq(letterTemplate.id,input.templateId),eq(letterTemplate.companyId,input.companyId)));if(!root)throw new LetterWorkflowError('permission');
  const [previous]=await tx.select().from(letterAutomationRuleVersion).where(and(eq(letterAutomationRuleVersion.companyId,input.companyId),eq(letterAutomationRuleVersion.templateId,input.templateId),eq(letterAutomationRuleVersion.trigger,input.trigger),sql`${letterAutomationRuleVersion.id}=app.letter_automation_latest_version(${input.companyId}::uuid,${input.templateId}::uuid,${input.trigger})`)).limit(1);
  if((previous?.ordinal??0)!==input.expectedOrdinal)throw new LetterWorkflowError('stale','automation');
  const startOn=input.startOn??(input.enabled?todayInKualaLumpur():previous?.startOn??todayInKualaLumpur());if(!isCalendarDate(startOn)||input.enabled&&startOn<todayInKualaLumpur())throw new LetterWorkflowError('invalid','startOn');
