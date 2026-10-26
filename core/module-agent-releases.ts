@@ -425,6 +425,23 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
  }catch{return fail();}
 }
 
+type PromptEvaluationProgress=Readonly<{completedCases:number;totalCases:number;state:'complete'|'incomplete';retainedFailures:number;knownFailures:number}>;
+/** Current evaluator progress only. Authentication and current source/provider binding precede counts. */
+async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,providerFingerprint:string):Promise<PromptEvaluationProgress|null>{
+ try{const candidate=await candidateTx(tx,ctx,id);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===ctx.userId)return null;
+  const [row]=await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select id,evaluator_user_id,suite_digest,receipt from public.ai_agent_evaluation
+   where tenant_id=${ctx.tenantId}::uuid and candidate_id=${id}::uuid and evaluator_user_id=${ctx.userId}::uuid and suite_digest=${PROMPT_SUITE_DIGEST}
+   order by completed_at desc,id desc limit 1`);if(!row)return null;
+  const report=authenticatedPromptReport(row,candidate,ctx.tenantId,providerFingerprint);
+  if(report.cases.some(row=>row.state!=='unavailable'&&(!row.outputDigest||!/^[a-f0-9]{64}$/.test(row.outputDigest))))return null;
+  const completedCases=report.cases.filter(row=>row.state==='passed'||row.state==='failed').length;
+  const knownFailures=report.cases.filter(row=>row.state==='failed').length,retainedFailures=report.cases.filter(row=>row.state==='failed'&&row.retained===true).length;
+  const state=completedCases===PROMPT_HOLDOUTS.length&&!report.cases.some(row=>row.state==='unavailable')?'complete' as const:'incomplete' as const;
+  if(report.completedCases!==completedCases||report.state!==state||report.retainedFailures!==retainedFailures)return null;
+  return Object.freeze({completedCases,totalCases:PROMPT_HOLDOUTS.length,state,retainedFailures,knownFailures});
+ }catch{return null;}
+}
+
 /** Minimal management metadata in the caller's already-owned workspace read carrier. */
 export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
  await assertAiPrincipalTx(tx,ctx);if(!isGroupAdmin(ctx))return null;
@@ -432,6 +449,8 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
  const rows=await tx.execute<{id:string;version:number;kind:string;own:boolean;attempts:number}>(sql`select c.id,c.version,c.kind,c.owner_user_id=app.current_user_id() as own,
   (select count(*)::int from public.ai_agent_evaluation e where e.candidate_id=c.id and e.tenant_id=c.tenant_id) as attempts
   from public.ai_agent_candidate c where c.tenant_id=${ctx.tenantId}::uuid order by c.created_at desc,c.id desc limit 20`);
+ let providerFingerprint:string|null=null;try{providerFingerprint=(await resolveAiProviderSnapshotTx(tx,ctx))?.fingerprint??null;}catch{/* No current issued provider means progress is unknown, never0. */}
+ const progress=new Map<string,PromptEvaluationProgress|null>();for(const row of rows){progress.set(row.id,row.kind==='read_plan_prompt_v1'&&!row.own&&providerFingerprint?await promptEvaluationProgressTx(tx,ctx,row.id,providerFingerprint):null);}
  const promotions=await tx.execute<{id:string;version:number;kind:string;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,c.version,c.kind,
   p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) as retired
   from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id
@@ -449,6 +468,6 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   lastTrial={state:proof.stage==='reserved'?'pending':proof.stage==='completed'?'completed':proof.stage==='refused'?'refused':'unavailable',fixtureId:String(proof.fixtureId)};
  }catch{lastTrial={state:'unavailable',fixtureId:null};}}
  return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,
-  candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts})),
+  candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
 }
