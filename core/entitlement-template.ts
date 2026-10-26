@@ -89,6 +89,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // importing anything that touches `db/client`. Type-only: nothing at runtime crosses back.
 import type { EligibilityNotice, EligibilityRuleNotice, EligibilityVerdict } from '../lib/entitlement-status';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf } from '../db/events';
 import {
   assignment,
@@ -253,6 +254,9 @@ export async function createEntitlementTemplate(
   // a wrong day count with nothing on screen to say so.
   validateServiceBands(p.serviceBands);
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [row] = await tx
       .insert(entitlementTemplate)
       .values({
@@ -363,6 +367,9 @@ export async function updateEntitlementTemplate(
   const name = p.name !== undefined ? cleanName(p.name) : undefined;
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // EVERY version of the lineage, not just the running one: an in-place start-date change has to be
     // checked against the superseded siblings' windows before anything is written.
     const versions = await tx
@@ -508,6 +515,9 @@ export async function createEligibilityRule(
 ): Promise<EligibilityRuleRow> {
   const name = cleanName(p.name);
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     await assertTemplateLineageExists(tx, p.templateLineageId);
     const [row] = await tx
       .insert(entitlementEligibilityRule)
@@ -557,6 +567,9 @@ export async function updateEligibilityRule(
   const name = p.name !== undefined ? cleanName(p.name) : undefined;
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     if (p.templateLineageId !== undefined) await assertTemplateLineageExists(tx, p.templateLineageId);
     const versions = await tx
       .select()
@@ -670,6 +683,9 @@ export async function retireEntitlementTemplate(
   p: { lineageId: string; validTo: string },
 ): Promise<void> {
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [open] = await tx
       .select()
       .from(entitlementTemplate)
@@ -700,6 +716,9 @@ export async function retireEligibilityRule(
   p: { lineageId: string; validTo: string },
 ): Promise<void> {
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [open] = await tx
       .select()
       .from(entitlementEligibilityRule)
@@ -941,6 +960,9 @@ export async function deleteEntitlementTemplate(
   p: { lineageId: string },
 ): Promise<{ deletedVersions: number }> {
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const versions = await tx
       .select()
       .from(entitlementTemplate)
@@ -1020,6 +1042,9 @@ export async function deleteEligibilityRule(
   p: { lineageId: string },
 ): Promise<{ deletedVersions: number }> {
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const versions = await tx
       .select()
       .from(entitlementEligibilityRule)
@@ -2256,6 +2281,9 @@ export async function setLeaveTypeDefaultTemplate(
 ): Promise<{ leaveTypeId: string; defaultTemplateLineageId: string | null }> {
   const lineageId = (p.templateLineageId ?? '').trim() || null;
   return withTenant(ctx, async (tx) => {
+    // Mutate the dependency graph only outside participating leave-command intervals.
+    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [type] = await tx
       .select({ id: leaveType.id, current: leaveType.defaultEntitlementTemplateLineageId })
       .from(leaveType)

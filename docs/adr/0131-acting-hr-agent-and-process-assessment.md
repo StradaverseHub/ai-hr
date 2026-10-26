@@ -1530,3 +1530,21 @@ UNRUN. Static source comparison only proves the bounded edit, not lock order und
 permissions or security. Other direct catalogue writers, templates, policies, tenant module state,
 Access, assignments, calendar/roster, snapshot and request owners still need integration. No universal
 barrier, provider/Assistant activation, migration or deployment is established by this checkpoint.
+
+
+### Entitlement lineage and default writers join exclusively (unrun)
+
+The nine mutation entry points in core/entitlement-template.ts now take exclusive configuration
+ownership as their first transaction operation: template and eligibility-rule create/update/retire/
+delete, plus the leave-type default-table pointer. Lineage, usage and authority reads run afterward,
+followed by the existing canonical versioning, deletion guards, writes and event. The module's read
+and resolver paths do not acquire an exclusive lock. Existing business bodies are otherwise unchanged.
+
+Nine authored two-connection cases hold a real employee's participating interval, require each
+canonical command to refuse with identical template/rule/type/event state, release the interval and
+verify its original operation succeeds with exactly one event. The fixture uses future unused custom
+tables so deletion/versioning rules are exercised without manufacturing historical grants. All cases
+and affected entitlement, deletion, configuration and authorization consumers remain UNRUN; static
+source review proves neither actual app-role behavior nor lock-order/security guarantees. Remaining
+direct writers, policy/module/Access, organization, calendar, snapshot and request owners still need
+participation before a universal barrier or Assistant effect can be claimed. No migration or release.
