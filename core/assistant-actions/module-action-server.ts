@@ -2,7 +2,7 @@
 import 'server-only';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
 import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
@@ -20,6 +20,9 @@ import {prepareClaimModuleActionReview,confirmClaimModuleActionReview,reopenClai
 import {ownTestingWorkStatusesTx,readOwnTestingExecutionEditableTx} from '../system-testing-workspace';
 import {prepareTestingModuleActionReview,confirmTestingModuleActionReview,reopenTestingModuleActionReview,discardTestingModuleActionReview,listTestingModuleActionReviews} from './module-action-review-store';
 import {prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview,reopenClaimSubmissionModuleActionReview,discardClaimSubmissionModuleActionReview,listClaimSubmissionModuleActionReviews} from './module-action-review-store';
+import {assertKnowledgeArticleActorTx} from './knowledge-article-source';
+import {visibleAudiencesFor} from '../knowledge-base';
+import {prepareKnowledgeArticleReview,confirmKnowledgeArticleReview,reopenKnowledgeArticleReview,discardKnowledgeArticleReview,listKnowledgeArticleReviews} from './knowledge-article-review-store';
 import {prepareOrgActionReview,confirmOrgActionReview,reopenOrgActionReview,discardOrgActionReview,listOrgActionReviews} from './org-action-review-store';
 import {searchReviewedReportingLineChoicesTx,reviewedReportingLineLabelsTx} from '../workforce-commands';
 import {z} from 'zod';
@@ -74,6 +77,8 @@ export async function readTestingModuleActionChoices(supplied:SessionContext):Pr
 export async function readTestingModuleActionExecution(supplied:SessionContext,id:string){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};return withTenant(ctx,async tx=>({kind:'testing_execution_edit' as const,source:await readOwnTestingExecutionEditableTx(tx,ctx,id)}));
 }
+/** Form availability never reads a private article or creates a prepared review. */
+export async function readKnowledgeModuleActionAvailability(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{const fresh=await assertKnowledgeArticleActorTx(tx,ctx);return KnowledgeActionAvailability.parse({kind:'available',audiences:visibleAudiencesFor(fresh)});});}catch{return{kind:'unavailable' as const};}}
 /** Every Org choice/label read repeats current real HR admission. No own-employment prerequisite. */
 async function orgActor(tx:Parameters<typeof assertAiPrincipalTx>[0],ctx:SessionContext){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'org');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
 export async function readOrgModuleActionAvailability(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{await orgActor(tx,ctx);return{kind:'available' as const};});}catch{return{kind:'unavailable' as const};}}
@@ -87,6 +92,7 @@ async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typ
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  knowledge:{list:session=>listKnowledgeArticleReviews(session.ctx),prepare:(session,input)=>prepareKnowledgeArticleReview(session.ctx,input),reopen:(session,id)=>reopenKnowledgeArticleReview(session.ctx,id),confirm:(session,input)=>confirmKnowledgeArticleReview(session.ctx,input),discard:(session,input)=>discardKnowledgeArticleReview(session.ctx,input)},
   org:{choices:(session,selection)=>readOrgModuleActionChoices(session.ctx,selection),list:session=>listOrgActionReviews(session.ctx),prepare:async(session,input)=>presentOrgResult(session.ctx,await prepareOrgActionReview(session.ctx,input)),reopen:async(session,id)=>presentOrgResult(session.ctx,await reopenOrgActionReview(session.ctx,id)),confirm:async(session,input)=>presentOrgResult(session.ctx,await confirmOrgActionReview(session.ctx,input)),discard:(session,input)=>discardOrgActionReview(session.ctx,input)},
   testing:{list:session=>listTestingModuleActionReviews(session.ctx),readExecution:(session,id)=>readTestingModuleActionExecution(session.ctx,id),prepare:(session,input)=>prepareTestingModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenTestingModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmTestingModuleActionReview(session.ctx,input),discard:(session,input)=>discardTestingModuleActionReview(session.ctx,input)},
   claimSubmission:{list:session=>listClaimSubmissionModuleActionReviews(session.ctx),prepare:(session,input)=>prepareClaimSubmissionModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenClaimSubmissionModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmClaimSubmissionModuleActionReview(session.ctx,input),discard:(session,input)=>discardClaimSubmissionModuleActionReview(session.ctx,input)},
