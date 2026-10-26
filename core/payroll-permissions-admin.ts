@@ -1,10 +1,12 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {assertAiPrincipalTx} from './ai-principal';
 /**
  * Granular payroll permission-grant administration (feedback 9bc442bc, reporter expected_function:
  * "configurable per company/tenant"). CRUD over the `payroll_permission_grant` override table that the
  * kernel resolver (resolvePayrollPermission in core/payroll.ts) reads. Every write appends a DomainEvent
  * (substrate discipline). Admin-scoped via RLS (the grant table's write policy is is_admin()).
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { payrollPermissionGrant } from '../db/schema';
@@ -35,7 +37,12 @@ export async function setPayrollPermissionGrant(
   if (!isPayrollPermissionKey(p.permissionKey)) throw new Error('Unknown payroll permission key.');
   if (!VALID_ROLES.has(p.role)) throw new Error('Unknown role.');
   const companyId = p.companyId || null;
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertAiPrincipalTx(tx,ctx);
+    const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+    if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
     const [existing] = await tx
       .select({ id: payrollPermissionGrant.id })
       .from(payrollPermissionGrant)
@@ -74,7 +81,12 @@ export async function setPayrollPermissionGrant(
 }
 
 export async function deletePayrollPermissionGrant(ctx: SessionContext, p: { id: string }) {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertAiPrincipalTx(tx,ctx);
+    const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+    if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
     const [row] = await tx
       .delete(payrollPermissionGrant)
       .where(eq(payrollPermissionGrant.id, p.id))

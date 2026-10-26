@@ -8698,11 +8698,6 @@ export class UnlockReasonRequiredError extends Error {
   }
 }
 
-const callerRolesOf = (ctx: SessionContext): string[] => [
-  ...(ctx.roles ?? []),
-  ...(ctx.grants ?? []).map((g) => g.role),
-];
-
 /**
  * Resolve a granular payroll permission for the caller (reporter req.: payroll.rollback / unlock /
  * reprocess.selective / close, configurable per company/tenant). Company-scoped override rows win over
@@ -8715,6 +8710,22 @@ export async function resolvePayrollPermission(
   key: PayrollPermissionKey,
   companyId?: string | null,
 ): Promise<boolean> {
+  // A caller may deliberately narrow its carrier for a field/report. Never re-union ctx.roles or
+  // reload a broader principal into that carrier. Absence alone retains the legacy roles-only shim;
+  // an explicit empty or foreign-company grant list supplies NO role at this company.
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const candidates=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+  if(!ctx.userId)return false;
+  const [principal]=await tx.execute<{current:boolean}>(sql`select exists(select 1 from public.app_user u
+    where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id()
+     and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id)
+     and app.principal_snapshot_current()) as current`);
+  if(principal?.current!==true)return false;
+  const effective=await tx.execute<{role:string}>(sql`select distinct candidate.role
+    from jsonb_to_recordset(${JSON.stringify(candidates)}::jsonb) as candidate(role text,"companyId" uuid)
+    where (candidate."companyId" is null or candidate."companyId"=${companyId??null}::uuid
+      or app.is_company_descendant(${companyId??null}::uuid,candidate."companyId"))
+     and app.has_role_for(candidate.role,${companyId??null}::uuid) order by candidate.role`);
   const rows = await tx
     .select({ role: payrollPermissionGrant.role, allowed: payrollPermissionGrant.allowed, companyId: payrollPermissionGrant.companyId })
     .from(payrollPermissionGrant)
@@ -8729,7 +8740,7 @@ export async function resolvePayrollPermission(
     );
   return decidePayrollPermission({
     key,
-    callerRoles: callerRolesOf(ctx),
+    callerRoles: effective.map(row=>row.role),
     overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
   });
 }
