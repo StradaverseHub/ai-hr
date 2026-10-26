@@ -577,16 +577,18 @@ export function letterPolicyHistory(ctx:SessionContext,input:{companyId:string;c
  const rows=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)),input.cursor?sql`${letterPolicyVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterPolicyVersion.ordinal)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}
 
-export type LetterReportFilter={companyId?:string;departmentId?:string;from:string;to:string;cursor?:string;limit?:number;exportAll?:boolean;expectedDataHash?:string};
-export function letterReportDepartments(ctx:SessionContext,companyId?:string){return letters(ctx,false,async tx=>{
+export type LetterReportFilter={companyIds?:string[];companyId?:string;departmentId?:string;from:string;to:string;cursor?:string;limit?:number;exportAll?:boolean;expectedDataHash?:string};
+export function letterReportDepartments(ctx:SessionContext,companyId?:string,companyIds?:string[]){return letters(ctx,false,async tx=>{
+ if(companyIds!==undefined){if(!Array.isArray(companyIds))throw new LetterWorkflowError('invalid','scope');companyIds.forEach(uuid);if(companyId&&!companyIds.includes(companyId))throw new LetterWorkflowError('permission');}
  if(companyId){await permission(tx,companyId,'read');await permission(tx,companyId,'report');}
- return tx.select({id:department.id,companyId:department.companyId,name:sql<string>`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`}).from(department).where(and(companyId?eq(department.companyId,companyId):undefined,sql`app.letter_permission(${department.companyId},'read') and app.letter_permission(${department.companyId},'report')`)).orderBy(asc(department.name),asc(department.id));
+ return tx.select({id:department.id,companyId:department.companyId,name:sql<string>`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`}).from(department).where(and(companyIds!==undefined?inArray(department.companyId,companyIds):undefined,companyId?eq(department.companyId,companyId):undefined,sql`app.letter_permission(${department.companyId},'read') and app.letter_permission(${department.companyId},'report')`)).orderBy(asc(department.name),asc(department.id));
 });}
 export type LetterReportRow={id:string;reference:string;state:string;company_id:string;company_name:string;employment_id:string;employee_name:string;employee_code:string|null;department_id:string|null;department_name:string|null;organisation_ambiguous:boolean;category:string;title:string;created_at:string;submitted_at:string|null;approved_at:string|null;issued_at:string|null;voided_at:string|null;stage_entered_at:string|null;approval_due_at:string|null;acknowledgement_due_at:string|null;viewed_at:string|null;acknowledged_at:string|null;pending_acknowledgement:boolean;approval_overdue:boolean;acknowledgement_overdue:boolean;approval_hours:number|null;issue_hours:number|null;acknowledgement_hours:number|null};
 export type LetterReportSummary={total:number;issued:number;void:number;historicalIssued:number;pendingApproval:number;pendingAcknowledgement:number;approvalOverdue:number;acknowledgementOverdue:number;meanApprovalHours:number|null;meanIssueHours:number|null;meanAcknowledgementHours:number|null};
 export type LetterReport={rows:LetterReportRow[];summary:LetterReportSummary;dataHash:string;generatedAt:string;generatedBy:string;timezone:'Asia/Kuala_Lumpur';period:{from:string;to:string};nextCursor:string|null};
 /** One SQL statement owns the complete scoped cohort, aggregates, page and fingerprint. Reads emit nothing. */
 export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Promise<LetterReport>{return letters(ctx,false,async tx=>{
+ if(input.companyIds!==undefined){if(!Array.isArray(input.companyIds))throw new LetterWorkflowError('invalid','scope');input.companyIds.forEach(uuid);if(input.companyId&&!input.companyIds.includes(input.companyId))throw new LetterWorkflowError('permission');}
  if(!isCalendarDate(input.from)||!isCalendarDate(input.to)||input.from>input.to||(Date.parse(input.to)-Date.parse(input.from))/86400000>365)throw new LetterWorkflowError('invalid','period');
  for(const id of [input.companyId,input.departmentId,input.cursor])if(id)uuid(id);if(input.expectedDataHash&&!/^[0-9a-f]{64}$/.test(input.expectedDataHash))throw new LetterWorkflowError('invalid','reportHash');
  if(input.companyId){await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'report');}
@@ -612,6 +614,7 @@ export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Pr
    from assignment a where a.employment_id=l.employment_id and a.tenant_id=l.tenant_id and a.valid_from<=b.source_as_of_date::date and (a.valid_to is null or a.valid_to>b.source_as_of_date::date)) org on true
   left join department d on d.id=org.department_id and d.tenant_id=l.tenant_id
   where app.letter_permission(l.company_id,'report') and app.letter_permission(l.company_id,'read')
+   and ${input.companyIds===undefined?sql`true`:input.companyIds.length?sql`l.company_id in (${sql.join(input.companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`:sql`false`}
    and (l.created_at at time zone 'Asia/Kuala_Lumpur')::date between ${input.from}::date and ${input.to}::date
    and (${input.companyId??null}::uuid is null or l.company_id=${input.companyId??null}::uuid)
    and (${input.departmentId??null}::uuid is null or org.department_id=${input.departmentId??null}::uuid)

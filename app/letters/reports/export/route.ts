@@ -1,5 +1,5 @@
 import {getLocale} from 'next-intl/server';
-import {getSession} from '@/lib/session';
+import {scopedSession} from '@/lib/scope';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {readLetterReport} from '@/core/letters';
 import {LetterWorkflowError} from '@/lib/letter-workflow';
@@ -12,7 +12,7 @@ const headers={'cache-control':'private, no-store','referrer-policy':'no-referre
 export async function GET(request:Request){
  try{
   const params=new URL(request.url).searchParams,format=params.get('format'),hash=params.get('hash');if(!['xlsx','pdf'].includes(format??'')||!hash||!/^[0-9a-f]{64}$/.test(hash))return Response.json({error:'invalid'},{status:400,headers});
-  const ctx=await getSession(),filter=letterReportFilter(params),report=await readLetterReport(ctx,{...filter,exportAll:true,expectedDataHash:hash}),labels=await reportLabels(),locale=await getLocale();
+  const {s:ctx,scopeIds}=await scopedSession(),filter=letterReportFilter(params),report=await readLetterReport(ctx,{...filter,companyIds:scopeIds,exportAll:true,expectedDataHash:hash}),labels=await reportLabels(),locale=await getLocale();
   if(!(LETTER_LANGUAGES as readonly string[]).includes(locale))throw new LetterWorkflowError('configuration','language');
   const content=format==='xlsx'?new Uint8Array(letterReportWorkbook(report,labels)):(await letterReportPdf(report,labels,locale as typeof LETTER_LANGUAGES[number])).bytes;
   return new Response(new Uint8Array(content),{headers:{...headers,'content-type':format==='xlsx'?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'application/pdf','content-disposition':`attachment; filename="letters-${filter.from}-${filter.to}.${format}"`,'content-length':String(content.byteLength)}});

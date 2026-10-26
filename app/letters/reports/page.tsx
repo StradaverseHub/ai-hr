@@ -10,13 +10,14 @@ import {LetterReportDownloads} from '@/components/letters/report-downloads';
 import {reportLabels} from './labels';
 export const dynamic='force-dynamic';
 export default async function LetterReportsPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- await requireModule('employees');const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('letters.reports'),labels=await reportLabels(),locale=await getLocale();
- const companies=(await letterCompanyAccess(s)).filter(company=>company.read&&company.report);
+ await requireModule('employees');const {s,scopeIds}=await scopedSession(),sp=await searchParams,t=await getTranslations('letters.reports'),labels=await reportLabels(),locale=await getLocale();
+ const companies=(await letterCompanyAccess(s)).filter(company=>scopeIds.includes(company.id)&&company.read&&company.report);
  if(!companies.length)return <div className={pageWideCls}><PageHeader title={t('title')}/><Card className="p-5 text-sm">{t('noAccess')}</Card></div>;
  const params=new URLSearchParams();for(const [key,value]of Object.entries(sp))if(typeof value==='string')params.set(key,value);
  let error:string|null=null;let filter:ReturnType<typeof letterReportFilter>;try{filter=letterReportFilter(params);}catch{filter=letterReportFilter(new URLSearchParams());error=t('errors.invalid');}
  if(filter.companyId&&!companies.some(company=>company.id===filter.companyId))return <div className={pageWideCls}><PageHeader title={t('title')}/><p role="alert">{t('errors.permission')}</p><Link href="/letters/reports" className="inline-flex min-h-11 items-center text-primary underline">{t('reset')}</Link></div>;
- const departments=await letterReportDepartments(s,filter.companyId);if(filter.departmentId&&!departments.some(department=>department.id===filter.departmentId)){filter.departmentId=undefined;error=t('errors.invalid');}
+ filter.companyIds=companies.map(company=>company.id);
+ const departments=await letterReportDepartments(s,filter.companyId,filter.companyIds);if(filter.departmentId&&!departments.some(department=>department.id===filter.departmentId)){filter.departmentId=undefined;error=t('errors.invalid');}
  const report=await readLetterReport(s,filter).catch(reason=>{if(reason instanceof LetterWorkflowError){error=reason.code==='permission'?t('errors.permission'):t('errors.invalid');return null;}throw reason;});
  const base=letterReportQuery(filter),exportQuery=new URLSearchParams(base);if(report)exportQuery.set('hash',report.dataHash);
  const date=(value:string|null)=>value?new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(value)):labels.unknown,number=(value:number|null)=>value===null?labels.unknown:new Intl.NumberFormat(locale,{maximumFractionDigits:2}).format(value);
