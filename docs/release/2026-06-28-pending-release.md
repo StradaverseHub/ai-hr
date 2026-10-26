@@ -1,7 +1,7 @@
 # Pending release — waves 1+2 + audit remediation + holidays (2026-06-28)
 
 **Status: built, committed, NOT deployed.** `main` at `088c87d`; full suite green (~1070 tests), tsc clean.
-Deferred by the operator to when back on the demo network/VPN (the server `10.20.30.20:8288` is a private IP).
+Deferred by the operator to when back on the demo network/VPN (the server `192.0.2.10:2222` is a private IP).
 
 ## What ships — migrations 0105–0126 (one deploy, all additive / backfill-safe)
 Last actually-deployed = feedback-v2 (mig 0104). Everything from 0105 onward is pending:
@@ -16,7 +16,7 @@ Last actually-deployed = feedback-v2 (mig 0104). Everything from 0105 onward is 
 
 ## Pre-flight (on the VPN) — confirm the live boundary
 ```bash
-ssh -p 8288 -o BatchMode=yes -o ConnectTimeout=12 ubuntu@10.20.30.20 'cd /opt/ai-hr && set -a && . ./.env.production 2>/dev/null && set +a && DBURL="${MIGRATION_DATABASE_URL:-$DATABASE_URL}" && psql "$DBURL" -tAc "
+ssh -p 2222 -o BatchMode=yes -o ConnectTimeout=12 operator@192.0.2.10 'cd /opt/ai-hr && set -a && . ./.env.production 2>/dev/null && set +a && DBURL="${MIGRATION_DATABASE_URL:-$DATABASE_URL}" && psql "$DBURL" -tAc "
 select '\''feedback_v2_0104='\''  || exists(select 1 from information_schema.columns where table_name='\''feedback_request'\'' and column_name='\''reopened_count'\'');
 select '\''wave1_review_0110='\'' || (to_regclass('\''public.employment_review'\'') is not null);
 select '\''wave2_loan_0120='\''   || (to_regclass('\''public.employee_loan'\'') is not null);
@@ -31,12 +31,12 @@ Expected before deploy: `feedback_v2_0104=t`, the rest `=f`. (If 0104 also reads
 cd ~/Projects/ai-hr
 git status   # confirm clean, on main @ 088c87d
 # 1) push the tree (excludes secrets, build artefacts, loop internals)
-rsync -az --delete -e 'ssh -p 8288 -o BatchMode=yes -o ConnectTimeout=12' \
+rsync -az --delete -e 'ssh -p 2222 -o BatchMode=yes -o ConnectTimeout=12' \
   --exclude node_modules --exclude .next --exclude .git --exclude '.env*' \
   --exclude .turbo --exclude coverage --exclude .claude --exclude .improve \
-  ./ ubuntu@10.20.30.20:/opt/ai-hr/
+  ./ operator@192.0.2.10:/opt/ai-hr/
 # 2) build + migrate on the server (deploy.sh declines the restart via sudo -n by design)
-ssh -p 8288 -o BatchMode=yes ubuntu@10.20.30.20 'cd /opt/ai-hr && ./deploy/deploy.sh'
+ssh -p 2222 -o BatchMode=yes operator@192.0.2.10 'cd /opt/ai-hr && ./deploy/deploy.sh'
 ```
 Then **operator runs** on the server: `sudo systemctl restart aihr`.
 Healthy = the app returns **HTTP 401** (the SHARE_PASSWORD gate is up).

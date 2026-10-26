@@ -5,10 +5,10 @@ import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {verifyCi,revalidateCi,cleanHead,controllerRoot} from './release-ci.mjs';
-export const STAGING=Object.freeze({host:'203.142.6.241',port:'8288',user:'ubuntu',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
+export const STAGING=Object.freeze({host:'aihr-staging',port:'',user:'',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
 export function bindStaging(env){
  const values={IMPROVE_SSH_HOST:STAGING.host,IMPROVE_SSH_PORT:STAGING.port,IMPROVE_SSH_USER:STAGING.user,IMPROVE_REMOTE_DIR:STAGING.directory,AIHR_DEPLOY_STATE_DIR:STAGING.stateDirectory};
- for(const [key,value] of Object.entries(values)){if(env[key]&&env[key]!==value)throw Error('Staging target mismatch: '+key);env[key]=value;}
+ for(const [key,value] of Object.entries(values)){if(env[key]!==undefined&&env[key]!==value)throw Error('Staging target mismatch: '+key);env[key]=value;}
  return values;
 }
 export function followStagingDeployment(official,ssh,observation={}){

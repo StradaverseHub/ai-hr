@@ -9,11 +9,13 @@ deployed app:  capture feedback + reporter review ONLY
 operator loop: pull → refine → push   |   pull-approved → build → preview → [HUMAN] release → deployed
 ```
 
-## Config (env, defaults match the gated demo)
+## Config
 
-`IMPROVE_SSH_HOST` (10.20.30.20) · `IMPROVE_SSH_PORT` (8288) · `IMPROVE_SSH_USER` (ubuntu) ·
-`IMPROVE_REMOTE_DIR` (/opt/ai-hr). psql runs **on the server** sourcing its own `.env.production`, so DB
-credentials never leave the box — only SQL goes up, JSON/rows come back, over key-based SSH.
+Follow [Operator access](../../deploy/OPERATOR-ACCESS.md). The default SSH destination is the private
+`aihr-staging` alias; OpenSSH supplies its actual address, username, port and key. Optional
+`IMPROVE_SSH_HOST`, `IMPROVE_SSH_PORT`, `IMPROVE_SSH_USER` and `IMPROVE_REMOTE_DIR` overrides remain
+available. The default remote application directory is /opt/ai-hr. Database credentials remain on
+the server; only SQL and results travel over SSH.
 
 ## Phase A — plan (proven)
 
