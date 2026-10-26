@@ -10092,7 +10092,7 @@
         "off": "ปิด",
         "close": "ปิด",
         "activate": "เปิดใช้งาน",
-        "manage": "จัดการสิทธิ์",
+        "manage": "จัดการ",
         "range": "{from}–{to} จาก {count} รายการ",
         "previous": "ก่อนหน้า",
         "page": "หน้า {page} จาก {pages}",

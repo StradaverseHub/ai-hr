@@ -16,7 +16,7 @@ describe('Users directory desktop/mobile experience',()=>{
  for(const width of [390,1280])for(const [locale,messages]of [['en',en],['ta',ta]]as const){
   it(`${locale} at ${width}px shows readable users and working grouped access controls`,async()=>{
    await page.viewport(width,1100);document.documentElement.setAttribute('data-ui-theme','atelier');
-   render(<NextIntlClientProvider locale={locale} messages={messages}><main className="mx-auto max-w-5xl p-4"><UsersDirectory rows={rows} groupAdmin includeArchived={false} companies={[{id:'acme',name:'Acme Sdn Bhd'}]} roleOptions={['employee','hr_admin']} assistantGrantedIds={['user-aisyah']}/></main></NextIntlClientProvider>);
+   render(<NextIntlClientProvider locale={locale} messages={messages}><main className="mx-auto max-w-5xl p-4"><UsersDirectory rows={rows} groupAdmin includeArchived={false} companies={[{id:'acme',name:'Acme Sdn Bhd'}]} roleOptions={['employee','hr_admin']} assistantGrantedIds={['user-aisyah']}/><table aria-hidden="true" className="pointer-events-none invisible absolute w-72 text-sm"><tbody><tr data-standard-row><td className="px-3 py-2">Reference user</td><td><button className="underline">Edit</button></td></tr></tbody></table></main></NextIntlClientProvider>);
    const d=messages.admin.users.directory;
    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
    const email=screen.getByText('alexandra.christina.consultant@external-company.example.test');
@@ -29,7 +29,14 @@ describe('Users directory desktop/mobile experience',()=>{
     const assistantCell=first.querySelectorAll('td')[2] as HTMLElement;
     expect(accessCell.getBoundingClientRect().bottom).toBeLessThanOrEqual(assistantCell.getBoundingClientRect().top);
    }
-   for(const control of first.querySelectorAll('button'))expect(control.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+   for(const control of first.querySelectorAll('button'))expect(control.getBoundingClientRect().height).toBeGreaterThanOrEqual(width<768?44:24);
+   if(width>=768){
+    const standard=document.querySelector('[data-standard-row]')!.getBoundingClientRect();
+    const ordinary=[...document.querySelectorAll('[data-directory-row]')].find(row=>row.textContent?.includes('Arjun Kumar'))!;
+    expect(Math.abs(ordinary.getBoundingClientRect().height-standard.height)).toBeLessThanOrEqual(1);
+    console.info('Desktop table density:',{ordinary:ordinary.getBoundingClientRect().height,standard:standard.height,multiRole:first.getBoundingClientRect().height});
+    expect(first.getBoundingClientRect().height).toBeLessThanOrEqual(standard.height+20);
+   }
    await page.getByRole('button',{name:d.manage}).first().click();
    const panel=screen.getByRole('region',{name:d.accessFor.replace('{name}','Aisyah Rahman')});
    expect(panel.getBoundingClientRect().bottom).toBeLessThanOrEqual(panel.closest('td')!.getBoundingClientRect().bottom);

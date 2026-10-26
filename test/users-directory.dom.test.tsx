@@ -40,7 +40,7 @@ describe('user directory filtering, grouping and focused access editing',()=>{
  it('keeps mutations out of the collapsed rows and targets only the expanded user',()=>{
   show();expect(screen.queryByRole('button',{name:'Archive'})).toBeNull();
   const row=[...document.querySelectorAll('[data-directory-row]')].find(el=>el.textContent?.includes('Aisyah'))!;
-  fireEvent.click(within(row as HTMLElement).getByRole('button',{name:'Manage access'}));
+  fireEvent.click(within(row as HTMLElement).getByRole('button',{name:'Manage'}));
   const panel=screen.getByRole('region',{name:'Access for Aisyah'});
   expect(within(panel).getByRole('button',{name:'Remove assistant'})).toBeTruthy();
   expect(within(panel).getByRole('button',{name:'Archive'})).toBeTruthy();
@@ -51,13 +51,13 @@ describe('user directory filtering, grouping and focused access editing',()=>{
  });
  it('retains delegated-administrator boundaries and archived/termination restore behavior',()=>{
   show([user('Scoped',{roles:[{id:'scoped-role',role:'hr_admin',companyId:'acme',company:'Acme'}]})],false);
-  fireEvent.click(screen.getByRole('button',{name:'Manage access'}));
+  fireEvent.click(screen.getByRole('button',{name:'Manage'}));
   expect(screen.queryByRole('button',{name:'Archive'})).toBeNull();expect(screen.queryByRole('button',{name:'Allow assistant'})).toBeNull();
   expect(screen.getByRole('combobox',{name:'Role'}).querySelectorAll('option')).toHaveLength(2);
   cleanup();show([user('Terminated',{status:'archived'}),user('Manual archive',{status:'archived',manuallyArchived:true})]);select('Status','archived');
   const rows=[...document.querySelectorAll('[data-directory-row]')];
-  const terminated=rows.find(el=>el.textContent?.includes('Terminated'))!;fireEvent.click(within(terminated as HTMLElement).getByRole('button',{name:'Manage access'}));expect(screen.queryByRole('button',{name:'Restore'})).toBeNull();
-  const archived=rows.find(el=>el.textContent?.includes('Manual archive'))!;fireEvent.click(within(archived as HTMLElement).getByRole('button',{name:'Manage access'}));expect(screen.getByRole('button',{name:'Restore'})).toBeTruthy();
+  const terminated=rows.find(el=>el.textContent?.includes('Terminated'))!;fireEvent.click(within(terminated as HTMLElement).getByRole('button',{name:'Manage'}));expect(screen.queryByRole('button',{name:'Restore'})).toBeNull();
+  const archived=rows.find(el=>el.textContent?.includes('Manual archive'))!;fireEvent.click(within(archived as HTMLElement).getByRole('button',{name:'Manage'}));expect(screen.getByRole('button',{name:'Restore'})).toBeTruthy();
  });
  it('paginates and resets to the first page when a filter changes',()=>{
   show(Array.from({length:45},(_,i)=>user(`Person ${String(i).padStart(2,'0')}`)));

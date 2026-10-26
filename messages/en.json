@@ -10092,7 +10092,7 @@
         "off": "Off",
         "close": "Close",
         "activate": "Activate",
-        "manage": "Manage access",
+        "manage": "Manage",
         "range": "{from}–{to} of {count} entries",
         "previous": "Previous",
         "page": "Page {page} of {pages}",
