@@ -34,6 +34,7 @@ import { createDb } from '../db/client';
 import { appendEvent } from '../db/events';
 import { tenant, tenantSuspensionWindow } from '../db/schema';
 import { replayPlan, suspendedDaysWithin, type SkippedSweep } from '../core/tenant-lifecycle';
+import { lockOwnerTenantLifecycleTx } from './tenant-lifecycle-ownership';
 
 const argOf = (flag: string): string | null => {
   const i = process.argv.indexOf(flag);
@@ -55,30 +56,36 @@ async function main() {
     console.error('MIGRATION_DATABASE_URL (or DATABASE_URL) must be set — tenant is owner-writable only.');
     process.exit(2);
   }
+  await runReactivation(url, { tenantId, apply, today });
+}
+
+export async function runReactivation(url: string, supplied: { tenantId: string; apply: boolean; today?: string }): Promise<void> {
+  const { tenantId, apply } = { ...supplied }, today = supplied.today ?? todayIso();
   const owner = createDb(url);
-  {
-    const [t] = await owner.db
+  const applied = await owner.db.transaction(async tx => {
+    if (apply) await lockOwnerTenantLifecycleTx(tx, tenantId);
+    const [t] = await tx
       .select({ id: tenant.id, name: tenant.name, status: tenant.status })
       .from(tenant)
       .where(eq(tenant.id, tenantId))
       .limit(1);
     if (!t) {
       console.error(`no such tenant: ${tenantId}`);
-      process.exit(1);
+      throw new Error('Tenant reinstatement unavailable.');
     }
 
     // NEVER reinstate a CLOSED tenant. Closure is dual-controlled and starts a retention clock; undoing
     // it is not a reinstatement, it is a new decision that has to go back through the same two people.
     if (t.status === 'closed') {
       console.error(`tenant ${t.name} is CLOSED — reinstatement is not the reverse of closure. Refusing.`);
-      process.exit(1);
+      throw new Error('Tenant reinstatement unavailable.');
     }
     if (t.status !== 'suspended') {
       console.log(`tenant ${t.name} is '${t.status}', not suspended — nothing to reinstate.`);
       return;
     }
 
-    const [open] = await owner.db
+    const [open] = await tx
       .select({ id: tenantSuspensionWindow.id, suspendedAt: tenantSuspensionWindow.suspendedAt })
       .from(tenantSuspensionWindow)
       .where(and(eq(tenantSuspensionWindow.tenantId, tenantId), isNull(tenantSuspensionWindow.resumedAt)))
@@ -118,28 +125,27 @@ async function main() {
       return;
     }
 
-    await owner.db.transaction(async (tx) => {
-      if (open) {
-        await tx
-          .update(tenantSuspensionWindow)
-          .set({ resumedAt: today })
-          .where(eq(tenantSuspensionWindow.id, open.id));
-      }
-      await tx.update(tenant).set({ status: 'active', suspendedAt: null }).where(eq(tenant.id, tenantId));
-      await appendEvent(tx as never, {
-        tenantId,
-        aggregateType: 'tenant',
-        aggregateId: tenantId,
-        eventType: 'tenant.reinstated',
-        actor: { type: 'system' },
-        payload: { suspendedAt: open?.suspendedAt ?? null, resumedAt: today, frozenDays, replay: plan },
-      });
+    if (open) {
+      await tx
+        .update(tenantSuspensionWindow)
+        .set({ resumedAt: today })
+        .where(eq(tenantSuspensionWindow.id, open.id));
+    }
+    await tx.update(tenant).set({ status: 'active', suspendedAt: null }).where(eq(tenant.id, tenantId));
+    await appendEvent(tx as never, {
+      tenantId,
+      aggregateType: 'tenant',
+      aggregateId: tenantId,
+      eventType: 'tenant.reinstated',
+      actor: { type: 'system' },
+      payload: { suspendedAt: open?.suspendedAt ?? null, resumedAt: today, frozenDays, replay: plan },
     });
-    console.log(`\nreinstated. Window closed at ${today}. Run the replay steps above.`);
-  }
+    return true;
+  });
+  if (applied) console.log(`\nreinstated. Window closed at ${today}. Run the replay steps above.`);
 }
 
-main().catch((e) => {
+if (process.argv[1]?.endsWith('reactivate-tenant.ts')) main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

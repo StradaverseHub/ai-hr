@@ -27,6 +27,7 @@ import { appendEvent } from '../db/events';
 import { subscription, tenant, tenantSuspensionWindow } from '../db/schema';
 import { dunningDecision, DEFAULT_GRACE_DAYS } from '../core/dunning';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { lockOwnerTenantLifecycleTx } from './tenant-lifecycle-ownership';
 
 function loadEnv() {
   try {
@@ -51,6 +52,7 @@ export async function runDunning(
   url: string,
   opts: { apply: boolean; today?: string; graceDays?: number },
 ): Promise<DunningOutcome[]> {
+  opts = { ...opts };
   const owner = createDb(url);
   const today = opts.today ?? todayInKualaLumpur();
 
@@ -69,19 +71,24 @@ export async function runDunning(
 
   const out: DunningOutcome[] = [];
   for (const r of rows) {
-    const decision = dunningDecision({
-      subscriptionStatus: r.subscriptionStatus,
-      periodEnd: r.periodEnd,
-      tenantStatus: r.tenantStatus,
-      today,
-      graceDays: opts.graceDays,
-    });
-    out.push({ tenantId: r.tenantId, tenantName: r.tenantName, action: decision.action, reason: decision.reason });
-
-    if (decision.action !== 'suspend' || !opts.apply) continue;
-
+    if (!opts.apply) {
+      const decision = dunningDecision({ subscriptionStatus: r.subscriptionStatus, periodEnd: r.periodEnd,
+        tenantStatus: r.tenantStatus, today, graceDays: opts.graceDays });
+      out.push({ tenantId: r.tenantId, tenantName: r.tenantName, action: decision.action, reason: decision.reason });
+      continue;
+    }
     await owner.db.transaction(async (tx) => {
-      await owner.db.update(tenant).set({ status: 'suspended', suspendedAt: new Date() }).where(eq(tenant.id, r.tenantId));
+      await lockOwnerTenantLifecycleTx(tx, r.tenantId);
+      const [fresh] = await tx.select({ tenantId: tenant.id, tenantName: tenant.name, tenantStatus: tenant.status,
+        subscriptionStatus: subscription.status, periodEnd: subscription.periodEnd }).from(subscription)
+        .innerJoin(tenant, eq(tenant.id, subscription.tenantId)).where(eq(tenant.id, r.tenantId))
+        .for('update', { noWait: true });
+      if (!fresh) return;
+      const decision = dunningDecision({ subscriptionStatus: fresh.subscriptionStatus, periodEnd: fresh.periodEnd,
+        tenantStatus: fresh.tenantStatus, today, graceDays: opts.graceDays });
+      out.push({ tenantId: fresh.tenantId, tenantName: fresh.tenantName, action: decision.action, reason: decision.reason });
+      if (decision.action !== 'suspend') return;
+      await tx.update(tenant).set({ status: 'suspended', suspendedAt: new Date() }).where(eq(tenant.id, fresh.tenantId));
       // ADR-0077 slice 9 (0350) — OPEN THE SUSPENSION WINDOW, in the same transaction as the status.
       //
       // This is what reactivation reads. r108 established that a plain re-run of the expiry sweeps after
@@ -96,20 +103,20 @@ export async function runDunning(
       // short-circuits on 'already suspended', so this is the belt to that braces.
       await tx
         .insert(tenantSuspensionWindow)
-        .values({ tenantId: r.tenantId, suspendedAt: today, reason: decision.reason })
+        .values({ tenantId: fresh.tenantId, suspendedAt: today, reason: decision.reason })
         .onConflictDoNothing();
       // The event is the record of WHY a customer lost write access. Without it, the only evidence is a
       // status column and an operator's memory.
       await appendEvent(tx as never, {
-        tenantId: r.tenantId,
+        tenantId: fresh.tenantId,
         aggregateType: 'tenant',
-        aggregateId: r.tenantId,
+        aggregateId: fresh.tenantId,
         eventType: 'tenant.suspended',
         actor: { type: 'system' },
         payload: {
           reason: decision.reason,
-          subscriptionStatus: r.subscriptionStatus,
-          periodEnd: r.periodEnd,
+          subscriptionStatus: fresh.subscriptionStatus,
+          periodEnd: fresh.periodEnd,
           graceDays: opts.graceDays ?? DEFAULT_GRACE_DAYS,
           appliedOn: today,
         },
