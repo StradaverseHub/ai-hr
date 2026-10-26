@@ -64,13 +64,14 @@ it('rejects deliberately disabled legacy testing owners even when their export s
 });
 it('declares the public country factory and typed statutory.set member separately from its internal MY implementation',()=>{
  const row=MODULE_AGENT_ACTIONS['country-my'];
- expect(row).toMatchObject({publicBoundary:'localization/registry.ts#requirePackFor',publicMember:'statutory.set',source:'localization/my/statutory.ts#setStatutoryProfileMY'});
- expect(row.actions[0]).toMatchObject({publicBoundary:'localization/registry.ts#requirePackFor',publicMember:'statutory.set',prepare:{status:'pending_adapter'}});
+ expect(row).toMatchObject({publicBoundary:'localization/registry.ts#requirePackFor',publicMember:'statutory.set',source:'core/assistant-actions/country-statutory-review-store.ts#prepareCountryStatutoryReview+confirmCountryStatutoryReview'});
+ expect(row.actions[0]).toMatchObject({publicBoundary:'localization/registry.ts#requirePackFor',publicMember:'statutory.set',prepare:{status:'implemented',adapter:'module_country_statutory_review_v1'}});
  const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
  const ast=ts.createSourceFile('my/index.ts',readFileSync(resolve(root,'localization/my/index.ts'),'utf8'),ts.ScriptTarget.Latest,true);
  let memberBound=false;function visit(node:ts.Node){if(ts.isPropertyAssignment(node)&&node.name.getText(ast)==='statutory'&&ts.isObjectLiteralExpression(node.initializer))memberBound=node.initializer.properties.some(member=>ts.isPropertyAssignment(member)&&member.name.getText(ast)==='set'&&ts.isIdentifier(member.initializer)&&member.initializer.text==='setStatutoryProfileMY');ts.forEachChild(node,visit);}visit(ast);
  expect(memberBound).toBe(true);
- expect(()=>parseModuleAgentActionNomination({module:'country-my',action:'country-my.statutory.update',phase:'prepare'})).toThrow();
+ expect(parseModuleAgentActionNomination({module:'country-my',action:'country-my.statutory.update',phase:'prepare'})).toMatchObject({kind:'prepare',requiresHumanSelection:true,effect:'none'});
+ expect(()=>parseModuleAgentActionNomination({module:'country-my',action:'country-my.statutory.update',phase:'confirm'})).toThrow();
 });
 
 it('connects Notifications to its closed human review lifecycle without admitting model preferences, identity or confirmation',()=>{
@@ -176,4 +177,9 @@ it('routes Payroll close only to human processed-run review and refuses model fi
  expect(parseModuleAgentActionNomination({module:'payroll',action:'payroll.close',phase:'prepare'})).toEqual({kind:'prepare',module:'payroll',action:'payroll.close',adapter:'module_payroll_close_review_v1',requiresHumanSelection:true,effect:'none'});
  for(const extra of [{batchId:'other'},{salary:100},{totalNet:100},{releaseTiming:{}},{processed:true},{override:true},{confirmCloseProcessedRun:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.close',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.close',phase:'confirm'})).toThrow();
+});
+
+it('keeps the Country specialist a literal human statutory-section handoff without model identity, country, rates or protected fields',()=>{
+ expect(getModuleAgentAction('country-my','country-my.statutory.update')).toMatchObject({owner:'country_pack_my',prepare:{status:'implemented'},confirm:{status:'implemented',inputSchema:'CountryStatutoryReviewConfirmation'}});
+ for(const extra of [{employmentId:'other'},{personId:'other'},{country:'MY'},{input:{}},{epfEmployeeRate:13},{bankAccountNo:'private'},{taxNumber:'private'},{confirmSharedPersonWrite:true},{reviewedDigest:'a'.repeat(64)}])expect(()=>parseModuleAgentActionNomination({module:'country-my',action:'country-my.statutory.update',phase:'prepare',...extra})).toThrow();
 });
