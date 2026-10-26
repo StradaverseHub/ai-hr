@@ -11,6 +11,7 @@ import {
   setActiveProvider,
   testConnection,
 } from '@/core/ai-config';
+import { evaluateProviderCandidate } from '@/core/ai-provider-readiness';
 import { SecretConfigError } from '@/lib/ai';
 import { getTranslations } from 'next-intl/server';
 import { ASSESSMENT_AI_FEATURES, setAssessmentAiSwitch, type AssessmentAiFeature } from '@/packs/performance/service';
@@ -71,7 +72,7 @@ export async function saveAiProviderConfigAction(formData: FormData) {
 export async function setActiveProviderAction(formData: FormData) {
   const s = await getSession();
   try {
-    await setActiveProvider(s, { provider: String(formData.get('provider')) });
+    await setActiveProvider(s, { provider: String(formData.get('provider')), evaluationReceipt: str(formData.get('evaluationReceipt')) });
   } catch (e) {
     back(safeError(e));
   }
@@ -111,4 +112,18 @@ export async function testConnectionAction(input: {
   const s = await getSession();
   try{return await testConnection(s, { provider: input.provider, model: input.model, apiKey: input.apiKey?.trim() || undefined, providerOptions:input.providerOptions });}
   catch{return {ok:false,error:(await getTranslations('admin.ai'))('testFail')};}
+}
+
+/** Explicit synthetic evaluation only: never accepts client prompts, model outputs or readiness flags. */
+export async function evaluateProviderCandidateAction(input: { accountReview: boolean; consent: boolean }): Promise<
+  { ok: true; receipt: string; expiresAt: string } | { ok: false }> {
+  const reviewed = input?.accountReview === true, consent = input?.consent === true;
+  const s = await getSession();
+  try {
+    if (!reviewed || !consent) return { ok: false };
+    const result = await evaluateProviderCandidate(s, { provider: 'openrouter', review: {
+      version: 1, accountDefaultsReviewed: true, externalProcessingReviewed: true,
+    }, syntheticProbeConsent: true });
+    return { ok: true, receipt: result.receipt, expiresAt: result.expiresAt };
+  } catch { return { ok: false }; }
 }

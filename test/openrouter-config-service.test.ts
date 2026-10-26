@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { getAiConfigView, resolveActiveAiConfig, saveAiProviderConfig, setActiveProvider } from '../core/ai-config';
+import { activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b:Base;
@@ -17,13 +18,16 @@ describe('tenant OpenRouter configuration ownership',()=>{
   const ctx=adminCtx(b);await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model',apiKey:key,providerOptions:options()});
   const view=await getAiConfigView(ctx), row=view.providers.find(p=>p.provider==='openrouter');
   expect(row).toMatchObject({configured:true,isActive:false,keyLast4:'XYZ9',providerOptions:options()});expect(JSON.stringify(view)).not.toContain(key);
-  await setActiveProvider(ctx,{provider:'openrouter'});
+  await expect(setActiveProvider(ctx,{provider:'openrouter'})).rejects.toThrow();
+  await activateSyntheticCandidate(ctx);
   const resolved=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx));expect(resolved?.provider).toBe('openrouter');expect(resolved?.apiKey).toBe(key);expect(resolved?.providerOptions).toEqual(options());
   const other=await seedBase();const foreign=await withTenant(adminCtx(other),tx=>tx.execute(sql`select provider from app.ai_active_provider_config_v2()`));expect(foreign).toHaveLength(0);
  });
  it('preserves the existing key/routes on model-only saves and refuses malformed routing without a write/event',async()=>{
-  const ctx=adminCtx(b);await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model',apiKey:key,providerOptions:options(),makeActive:true});
+  const ctx=adminCtx(b);await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model',apiKey:key,providerOptions:options()});
+  await activateSyntheticCandidate(ctx);
   await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/new-model'});
+  await activateSyntheticCandidate(ctx);
   const before=await getAiConfigView(ctx), events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id);
   await expect(saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/new-model',providerOptions:{version:2,routing:options().routing}})).rejects.toThrow();
   await expect(saveAiProviderConfig(ctx,{provider:'openrouter',model:'openrouter/auto'})).rejects.toThrow();

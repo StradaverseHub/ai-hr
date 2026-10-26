@@ -7,7 +7,7 @@
  * plaintext key is sent to a server action that encrypts it before it touches the DB and is never
  * echoed back. "Test" returns only ok/generic-reason.
  */
-import { useState, useTransition, useId } from 'react';
+import { useState, useTransition, useId, useRef } from 'react';
 import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/providers/openrouter-configuration';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { CheckCircle2, Loader2, PlugZap, Trash2 } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import type { AiConfigView, AiProviderView } from '@/core/ai-config';
 import {
+  evaluateProviderCandidateAction,
   disableAiAction,
   removeAiProviderConfigAction,
   saveAiProviderConfigAction,
@@ -35,7 +36,7 @@ export function AiConfigForm({ config }: { config: AiConfigView }) {
         </form>
       )}
       {config.providers.map((p) => (
-        <ProviderCard key={p.provider} p={p} storable={config.storable} />
+        <ProviderCard key={p.provider+':'+(p.candidateVersion??'live')} p={p} storable={config.storable} />
       ))}
     </div>
   );
@@ -46,6 +47,14 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   const [model, setModel] = useState(p.model);
   const [key, setKey] = useState('');
   const [testing, startTest] = useTransition();
+  const [evaluating, startEvaluation] = useTransition();
+  const [accountReview, setAccountReview] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string } | null>(null);
+  const [evaluationFailed, setEvaluationFailed] = useState(false);
+  const evaluationSequence = useRef(0);
+  function invalidateEvaluation() { evaluationSequence.current++; setEvaluation(null); setEvaluationFailed(false); }
+
   const router=p.provider==='openrouter', routeId=useId();
   const [routes,setRoutes]=useState(p.providerOptions?.routing.allowedProviders.join('\n')??'');
   const [fallbacks,setFallbacks]=useState(p.providerOptions?.routing.allowFallbacks??false);
@@ -63,8 +72,22 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     });
   }
 
+  const savedCandidateUnchanged = p.candidateSaved && key === '' && model === p.model && Boolean(options) &&
+    JSON.stringify(options) === JSON.stringify(p.providerOptions);
+  const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Date.now() && savedCandidateUnchanged && accountReview && consent;
+  function onEvaluate() {
+    if (!savedCandidateUnchanged || !accountReview || !consent) return;
+    const sequence = ++evaluationSequence.current;
+    setEvaluation(null); setEvaluationFailed(false);
+    startEvaluation(async () => {
+      const result = await evaluateProviderCandidateAction({ accountReview: true, consent: true });
+      if (sequence !== evaluationSequence.current) return;
+      if (result.ok) setEvaluation({ receipt: result.receipt, expiresAt: result.expiresAt });
+      else setEvaluationFailed(true);
+    });
+  }
   const canSave = (storable || p.configured) && (!router || Boolean(options&&model.trim())); // need the secret set to store a NEW key
-  const canTest = !testing && (Boolean(key) || p.isActive) && (!router || Boolean(options&&model.trim())); // typed key, or test the active stored key
+  const canTest = !testing && (Boolean(key) || p.isActive || router && p.candidateSaved) && (!router || Boolean(options&&model.trim())); // typed key, or test the active stored key
 
   return (
     <Card className="p-5">
@@ -82,11 +105,12 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         </div>
       </div>
 
-      <form action={saveAiProviderConfigAction} className="mt-3 space-y-3">
+      {router && p.activeModel && <p className="mt-2 text-xs text-muted-foreground">{t('candidateLiveModel', { model: p.activeModel })}</p>}
+      <form onSubmit={invalidateEvaluation} action={saveAiProviderConfigAction} className="mt-3 space-y-3">
         <input type="hidden" name="provider" value={p.provider} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('model')}>
-            {router?<input name="model" required value={model} onChange={e=>setModel(e.target.value)}
+            {router?<input name="model" required value={model} onChange={e=>{invalidateEvaluation();setModel(e.target.value);}}
               autoComplete="off" spellCheck={false} className={inputCls+' min-h-11'} aria-describedby={routeId+'-model-help'}/>:<select name="model" value={model} onChange={(e) => setModel(e.target.value)} className={inputCls}>
               {p.models.map((m) => (
                 <option key={m} value={m}>
@@ -103,7 +127,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
               type="password"
               autoComplete="off"
               value={key}
-              onChange={(e) => setKey(e.target.value)}
+              onChange={(e) => {invalidateEvaluation();setKey(e.target.value);}}
               placeholder={p.configured ? `•••• ${p.keyLast4}` : t('apiKeyPlaceholder')}
               className={inputCls}
             />
@@ -113,14 +137,14 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           <legend className="px-1 text-sm font-medium">{t('routingTitle')}</legend>
           <input type="hidden" name="providerOptions" value={options?JSON.stringify(options):''}/>
           <label htmlFor={routeId+'-providers'} className="block text-sm font-medium">{t('approvedProviders')}</label>
-          <textarea id={routeId+'-providers'} value={routes} onChange={e=>setRoutes(e.target.value)} onBlur={()=>setRouteTouched(true)}
+          <textarea id={routeId+'-providers'} value={routes} onChange={e=>{invalidateEvaluation();setRoutes(e.target.value);}} onBlur={()=>setRouteTouched(true)}
             required rows={3} maxLength={8192} autoComplete="off" spellCheck={false} className={inputCls}
             aria-invalid={routeTouched&&!options} aria-describedby={routeId+'-route-help'+(routeTouched&&!options?' '+routeId+'-route-error':'')}/>
           <p id={routeId+'-route-help'} className="text-xs text-muted-foreground">{t('approvedProvidersHelp')}</p>
           {routeTouched&&!options&&<p id={routeId+'-route-error'} role="alert" className="text-sm text-destructive">{t('routingInvalid')}</p>}
           <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={fallbacks}
-            onChange={e=>setFallbacks(e.target.checked)} className="size-4"/>{t('boundedFallbacks')}</label>
-          <Field label={t('routingPreference')}><select value={sort} onChange={e=>setSort(e.target.value as 'price'|'latency')} className={inputCls+' min-h-11'}>
+            onChange={e=>{invalidateEvaluation();setFallbacks(e.target.checked);}} className="size-4"/>{t('boundedFallbacks')}</label>
+          <Field label={t('routingPreference')}><select value={sort} onChange={e=>{invalidateEvaluation();setSort(e.target.value as 'price'|'latency');}} className={inputCls+' min-h-11'}>
             <option value="latency">{t('preferLatency')}</option><option value="price">{t('preferPrice')}</option>
           </select></Field>
           <p className="text-xs text-muted-foreground">{t('routingPrivacy')}</p>
@@ -128,10 +152,10 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           <p className="text-xs text-muted-foreground">{t('accountPluginsReview')}</p>
         </fieldset>}
         {!storable && <p className="text-xs text-amber-600 dark:text-amber-400">{t('notStorable')}</p>}
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" name="makeActive" defaultChecked={!router&&!p.isActive} className="size-4" />
+        {router ? <p className="text-xs text-muted-foreground">{t('candidateSaveNote')}</p> : <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" name="makeActive" defaultChecked={!p.isActive} className="size-4" />
           {t('makeActive')}
-        </label>
+        </label>}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={!canSave} className={router?'min-h-11':undefined}>
             {t('save')}
@@ -143,9 +167,29 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         </div>
       </form>
 
+      {router && p.candidateSaved && <section className="mt-4 space-y-3 rounded-md border border-border p-3" aria-labelledby={routeId+'-evaluation'}>
+        <h4 id={routeId+'-evaluation'} className="text-sm font-medium">{t('evaluationTitle')}</h4>
+        <p className="text-xs text-muted-foreground">{t('evaluationExplanation')}</p>
+        {!savedCandidateUnchanged && <p className="text-sm">{t('evaluationSaveFirst')}</p>}
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={accountReview}
+          onChange={e=>{invalidateEvaluation();setAccountReview(e.target.checked);}} className="size-4"/>{t('evaluationAccountReview')}</label>
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={consent}
+          onChange={e=>{invalidateEvaluation();setConsent(e.target.checked);}} className="size-4"/>{t('evaluationConsent')}</label>
+        <Button type="button" variant="secondary" disabled={evaluating || !savedCandidateUnchanged || !accountReview || !consent} onClick={onEvaluate} className="min-h-11">
+          {evaluating && <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none"/>}{t(evaluating?'evaluationRunning':'evaluationRun')}
+        </Button>
+        <div role="status" aria-live="polite" className="text-sm">
+          {evaluationFailed ? t('evaluationFailed') : evaluation ? t(receiptCurrent?'evaluationVerified':'evaluationExpired') : null}
+        </div>
+        <form action={setActiveProviderAction}>
+          <input type="hidden" name="provider" value="openrouter"/>
+          <input type="hidden" name="evaluationReceipt" value={receiptCurrent && evaluation ? evaluation.receipt : ''}/>
+          <Button type="submit" disabled={!receiptCurrent || evaluating} className="min-h-11">{t('evaluationActivate')}</Button>
+        </form>
+      </section>}
       {p.configured && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          {!p.isActive && (
+          {!router && !p.isActive && (
             <form action={setActiveProviderAction}>
               <input type="hidden" name="provider" value={p.provider} />
               <Button type="submit" variant="ghost" size="sm">
@@ -154,7 +198,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
               </Button>
             </form>
           )}
-          <form action={removeAiProviderConfigAction}>
+          <form action={removeAiProviderConfigAction} onSubmit={invalidateEvaluation}>
             <input type="hidden" name="provider" value={p.provider} />
             <Button type="submit" variant="ghost" size="sm">
               <Trash2 className="size-3.5" />

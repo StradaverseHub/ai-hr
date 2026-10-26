@@ -8,11 +8,14 @@ import { envFallbackConfig, isProvider } from '../lib/ai/registry';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
 import { assertAiPrincipalTx } from './ai-principal';
+import { currentAiProviderAdminTx } from './ai-provider-authority';
 
 const issued = new WeakSet<object>();
 export const AI_PROVIDER_SNAPSHOT_MAX_AGE_MS = 300_000;
 export type AiProviderSnapshot = Readonly<{
   configuration: ResolvedAiConfig;
+  purpose: 'active' | 'provider_evaluation';
+  candidate?: Readonly<{ id: string; version: string }>;
   fingerprint: string;
   principal: string;
   preparedAt: number;
@@ -56,9 +59,39 @@ export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): 
     configuration = Object.freeze({ ...fallback });
     fingerprint = digest(['environment-v1', ctx.tenantId, parameters(configuration)]);
   }
-  const snapshot = Object.freeze({ configuration, fingerprint, principal: principal(ctx), preparedAt: Date.now() });
+  const snapshot = Object.freeze({ configuration, purpose: 'active' as const, fingerprint, principal: principal(ctx), preparedAt: Date.now() });
   issued.add(snapshot);
   return snapshot;
+}
+
+/** Explicit candidate preparation is group-admin-only even if the selected provider is already active.
+ * The restricted resolver exposes no key to ordinary SELECT and never changes provider activation.
+ */
+export async function resolveAiProviderCandidateSnapshotTx(tx: Tx, ctx: SessionContext, provider: 'openrouter'): Promise<AiProviderSnapshot> {
+  if (!(await currentAiProviderAdminTx(tx, ctx))) return refuse();
+  let rows: { id: string; version_token: string; provider: string; model: string; api_key_ciphertext: string; provider_options: unknown }[];
+  try {
+    rows = await tx.execute(sql`select id, version_token, provider, model, api_key_ciphertext, provider_options from app.ai_provider_evaluation_candidate_v1(${provider})`) as unknown as typeof rows;
+  } catch { return refuse(); }
+  if (rows.length !== 1 || rows[0].provider !== provider) return refuse();
+  const row = rows[0];
+  let configuration: ResolvedAiConfig, fingerprint: string;
+  try {
+    const providerOptions = readOpenRouterOptions(row.provider_options), apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
+    if (!OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions.routing }).success) return refuse();
+    configuration = Object.freeze({ provider, model: row.model, apiKey, providerOptions });
+    fingerprint = digest(['candidate-v1', ctx.tenantId, row.id, row.version_token, row.provider, row.model, row.api_key_ciphertext, providerOptions]);
+  } catch { return refuse(); }
+  const snapshot = Object.freeze({ configuration, purpose: 'provider_evaluation' as const, candidate: Object.freeze({ id: row.id, version: row.version_token }), fingerprint, principal: principal(ctx), preparedAt: Date.now() });
+  issued.add(snapshot);
+  return snapshot;
+}
+
+/** A candidate snapshot cannot be repurposed for HR generation; evaluation cannot use an ordinary
+ * active/environment snapshot as a substitute for the explicitly reviewed stored candidate.
+ */
+export function assertAiProviderSnapshotFeature(snapshot: AiProviderSnapshot, feature: string): void {
+  if (!issued.has(snapshot) || (snapshot.purpose === 'provider_evaluation') !== (feature === 'provider_evaluation')) return refuse();
 }
 
 /** A structural lookalike, serialized copy, changed principal or expired request is not a snapshot. */
@@ -77,7 +110,9 @@ export async function assertCurrentAiProviderSnapshotTx(tx: Tx, ctx: SessionCont
   if (!Object.isFrozen(outgoing)) return refuse();
   try { if (!same(parameters(prepared.configuration), parameters(outgoing))) return refuse(); }
   catch { return refuse(); }
-  const current = await resolveAiProviderSnapshotTx(tx, ctx);
+  const current = prepared.purpose === 'provider_evaluation'
+    ? await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter')
+    : await resolveAiProviderSnapshotTx(tx, ctx);
   // Access ownership may have waited. Recheck request lifetime after that wait, too.
   assertAiProviderSnapshot(prepared, ctx);
   if (!current || !same(prepared.fingerprint, current.fingerprint)) return refuse();

@@ -1,25 +1,25 @@
 /** @vitest-environment jsdom */
 /** Authored settings interaction controls, UNRUN; no network/database/provider. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { AiConfigForm } from '../components/ai-config-form';
 import type { AiConfigView } from '../core/ai-config';
-import { testConnectionAction } from '../app/admin/ai/actions';
+import { evaluateProviderCandidateAction, testConnectionAction, setActiveProviderAction, saveAiProviderConfigAction } from '../app/admin/ai/actions';
 vi.mock('../app/admin/ai/actions',()=>({disableAiAction:vi.fn(),removeAiProviderConfigAction:vi.fn(),
- saveAiProviderConfigAction:vi.fn(),setActiveProviderAction:vi.fn(),testConnectionAction:vi.fn(async()=>({ok:true}))}));
+ saveAiProviderConfigAction:vi.fn(),setActiveProviderAction:vi.fn(),testConnectionAction:vi.fn(async()=>({ok:true})),evaluateProviderCandidateAction:vi.fn()}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const config:AiConfigView={storable:true,envFallback:null,usingEnvFallback:false,providers:[{
  provider:'openrouter',label:'OpenRouter',models:[],defaultModel:'',model:'',configured:false,keyLast4:null,
- isActive:false,envKeyPresent:false,providerOptions:null}]};
+ isActive:false,envKeyPresent:false,providerOptions:null,candidateSaved:false,candidateVersion:null,activeModel:null}]};
 const t=messages.admin.ai;
-function show(){return render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={config}/></NextIntlClientProvider>);}
+function show(value=config){return render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={value}/></NextIntlClientProvider>);}
 describe('OpenRouter admin settings form',()=>{
- it('requires labeled explicit model/routes and leaves live activation unchecked',()=>{
+ it('requires labeled explicit model/routes and offers no direct activation bypass',()=>{
   const view=show(),save=screen.getByRole('button',{name:t.save}) as HTMLButtonElement;
-  expect(save.disabled).toBe(true);expect((screen.getByLabelText(t.makeActive) as HTMLInputElement).checked).toBe(false);
+  expect(save.disabled).toBe(true);expect(screen.queryByLabelText(t.makeActive)).toBeNull();
   fireEvent.change(screen.getByLabelText(new RegExp('^'+t.model)),{target:{value:'fictional/model'}});
   fireEvent.change(screen.getByLabelText(t.approvedProviders),{target:{value:'approved-a\napproved-b'}});
   expect(save.disabled).toBe(false);
@@ -45,6 +45,38 @@ describe('OpenRouter admin settings form',()=>{
   await waitFor(()=>expect(testConnectionAction).toHaveBeenCalledTimes(1));
   expect(testConnectionAction).toHaveBeenCalledWith({provider:'openrouter',model:'fictional/model',apiKey:'fixture-key',
    providerOptions:{version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}}});
-  expect((screen.getByLabelText(t.makeActive) as HTMLInputElement).checked).toBe(false);
+  expect(screen.queryByLabelText(t.makeActive)).toBeNull();
+ });
+});
+
+const saved: AiConfigView = { ...config, providers: [{ ...config.providers[0], configured:true,candidateSaved:true,candidateVersion:'fixture-version',
+ model:'fictional/model',keyLast4:'key4',providerOptions:{version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}} }] };
+// Translation keys come from the coordinated six-locale management change, never hardcoded output.
+describe('explicit synthetic evaluation interaction',()=>{
+ it('runs no evaluation automatically and requires both account review and processing consent',async()=>{
+  show(saved);expect(evaluateProviderCandidateAction).not.toHaveBeenCalled();
+  const run=screen.getByRole('button',{name:t.evaluationRun}) as HTMLButtonElement;
+  const activate=screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement;
+  expect(run.disabled).toBe(true);expect(activate.disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));expect(run.disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText(t.evaluationConsent));expect(run.disabled).toBe(false);
+  vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,receipt:'opaque-fixture-receipt',expiresAt:new Date(Date.now()+60000).toISOString()});
+  fireEvent.click(run);await waitFor(()=>expect(activate.disabled).toBe(false));
+  expect(evaluateProviderCandidateAction).toHaveBeenCalledWith({accountReview:true,consent:true});
+  expect(setActiveProviderAction).not.toHaveBeenCalled();expect(saveAiProviderConfigAction).not.toHaveBeenCalled();
+  expect(screen.getByRole('status').textContent).toBe(t.evaluationVerified);
+  fireEvent.change(screen.getByLabelText(t.approvedProviders),{target:{value:'approved-b'}});
+  expect(activate.disabled).toBe(true);
+ });
+ it('ignores a stale in-flight result after any candidate edit',async()=>{
+  const view=show(saved);let finish!:(value:{ok:true;receipt:string;expiresAt:string})=>void;
+  vi.mocked(evaluateProviderCandidateAction).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));
+  fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));
+  await waitFor(()=>expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1));
+  fireEvent.change(screen.getByLabelText(t.apiKey),{target:{value:'changed-fixture-key'}});
+  await act(async()=>finish({ok:true,receipt:'stale-opaque-receipt',expiresAt:new Date(Date.now()+60000).toISOString()}));
+  expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(true);
+  expect(view.container.querySelector('input[name="evaluationReceipt"]')?.getAttribute('value')).toBe('');
  });
 });

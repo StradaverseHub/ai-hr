@@ -11,6 +11,7 @@ import { generateDraft, converse } from '../lib/ai';
 import { defaultModelFor } from '../lib/ai/registry';
 import { openrouterAdapter } from '../lib/ai/providers/openrouter';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);
@@ -22,7 +23,16 @@ beforeEach(async () => {
 });
 afterAll(async () => { await closeAll(); vi.unstubAllEnvs(); });
 const routes = (provider = 'approved-a') => readOpenRouterOptions({ version: 1, routing: { allowedProviders: [provider], allowFallbacks: false, sort: 'latency' } });
-const rows = () => owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId, base.tenantId));
+const allRows = () => owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId, base.tenantId));
+const rows = async () => (await allRows()).filter(row => row.featureId !== 'provider_evaluation');
+async function evaluatedActivation() {
+  const prior = (await allRows()).filter(row => row.featureId === 'provider_evaluation').length;
+  await activateSyntheticCandidate(adminCtx(base));
+  const evaluations = (await allRows()).filter(row => row.featureId === 'provider_evaluation');
+  expect(evaluations.length).toBe(prior + 3);
+  expect(evaluations.every(row => row.state === 'completed' && row.actualTokens === 0)).toBe(true);
+}
+
 async function prepared() {
   const ctx = adminCtx(base);
   const cfg = await withTenant(ctx, tx => resolveActiveAiConfig(tx, ctx, 'pay_rule_draft'));
@@ -30,7 +40,8 @@ async function prepared() {
   return cfg;
 }
 async function configure() {
-  await saveAiProviderConfig(adminCtx(base), { provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-tenant-key', providerOptions: routes(), makeActive: true });
+  await saveAiProviderConfig(adminCtx(base), { provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-tenant-key', providerOptions: routes() });
+  await evaluatedActivation();
   return prepared();
 }
 const run = (cfg: Awaited<ReturnType<typeof prepared>>, invoked: () => void) => cfg.governance!.run({ operation: 'draft', reservedTokens: 10 }, async record => {
@@ -51,6 +62,7 @@ describe('prepared provider configuration binding', () => {
     if (change === 'model') await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/new-model' });
     if (change === 'key') await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-rotated-key' });
     if (change === 'routes') await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/model', providerOptions: routes('approved-b') });
+    if (['model','key','routes'].includes(change)) await evaluatedActivation();
     if (change === 'provider') await saveAiProviderConfig(ctx, { provider: 'openai', model: 'fictional-direct-model', apiKey: 'fixture-other-key', makeActive: true });
     if (change === 'disabled') await disableAi(ctx);
     const callback = vi.fn();
