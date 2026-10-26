@@ -26,12 +26,16 @@ _Avoid_: Dummy employee, fake employee, unlinked identity
 An employee's specific clock or leave request whose accepted or refused outcome has not yet been confirmed.
 _Avoid_: Recorded attendance, approved leave
 
-**Reported location uncertainty**: The device provider's estimate of the distance by which a reported
+**Reported location uncertainty**:
+The device provider's estimate of the distance by which a reported
 position may differ from the physical position. It describes location quality and does not prove
 where the person or device is.
+_Avoid_: Verified location, proof of presence
 
-**Geofence containment**: A reported position qualifies for an assigned workplace only when its
+**Geofence containment**:
+A reported position qualifies for an assigned workplace only when its
 distance from the workplace plus its reported uncertainty fits within that workplace's radius.
+_Avoid_: Radius expansion, spoof-proof location
 
 **Submission abandonment**:
 An employee's decision to prevent an unaccepted pending submission from being recorded. An already

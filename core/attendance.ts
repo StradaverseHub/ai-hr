@@ -262,6 +262,7 @@ type GeofenceCheck =
       clockingLocationId: string | null;
       distanceM: number | null;
       radiusM: number;
+      assessment:GeofenceAssessment;
     };
 
 /**
@@ -269,7 +270,9 @@ type GeofenceCheck =
  * join or computes a distance (ADR-0070 §8 — keeps the non-enforced hot path lean); stamps raw
  * coordinates only. When ON: loads the employment's active assigned sites and either returns the passing
  * match or THROWS OutsideGeofenceError (zero sites or outside every radius — fail-closed). Missing
- * coordinates while enforced THROWS GeolocationRequiredError before any query.
+ * coordinates or uncertainty while enforced THROWS GeolocationRequiredError.
+ * M03: every spatial comparison below includes reported uncertainty; an optional company cap is an
+ * additional restriction, never an enlargement of a site's radius. Provider authenticity is separate.
  *
  * ── 1fff489c: PER-SITE RADII. THIS IS A BEHAVIOUR CHANGE, NOT A COLUMN MOVE. ──────────────────────────
  *
@@ -282,7 +285,7 @@ type GeofenceCheck =
  *
  * The old logic would have picked A (nearest), compared 300 m against the employee radius, and refused a
  * punch that site B plainly authorises. The rule is therefore now "pass if ANY assigned active site has
- * distance ≤ its effective radius", and the nearest is computed ONLY to populate the refusal payload —
+ * distance + reported uncertainty ≤ its effective radius", and the nearest is computed ONLY to populate the refusal payload —
  * "you are 850 m from the nearest approved site" is still the most useful thing to tell somebody who has
  * been refused, even though nearness no longer decides anything.
  *
@@ -364,6 +367,7 @@ export async function resolveGeofence(
     clockingLocationId: assessment.siteId!,
     distanceM: Math.round(assessment.distanceM!),
     radiusM: assessment.radiusM!,
+    assessment,
   };
 }
 

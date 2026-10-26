@@ -30,3 +30,7 @@ export class SessionChangedError extends Error {
 export class RequestRejectedError extends Error {
   constructor(public readonly status: number) { super(`HTTP ${status}`); this.name='RequestRejectedError'; }
 }
+export type LocationCaptureIssue='permission_denied'|'permission_blocked'|'approximate_permission'|'services_disabled'|'stale_fix'|'future_fix'|'invalid_fix'|'mock_location'|'unavailable';
+export class LocationCaptureError extends Error{
+  constructor(readonly issue:LocationCaptureIssue,message:string){super(message);this.name='LocationCaptureError';}
+}

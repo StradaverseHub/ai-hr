@@ -5,11 +5,35 @@ import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrecti
 import type { SessionContext, Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import { clockScheduleForTx, resolveGeofence } from './attendance';
+import { clockScheduleForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 
 type ClockGeo={lat:number;lng:number;accuracy:number};
+
+/** Explanatory only: the authoritative writer rechecks live policy and never trusts this result. */
+export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploymentId:string,geo:ClockGeo&{sampledAt:number}){
+  const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);
+  if(!me)throw new OwnClockEmploymentUnavailableError();
+  const base={siteId:null,siteName:null,distanceM:null,radiusM:null,accuracyM:geo.accuracy,maximumAccuracyM:null};
+  if(!Number.isFinite(geo.sampledAt)||Math.abs(Date.now()-geo.sampledAt)>120000)
+    return {...base,outcome:geo.sampledAt>Date.now()?'future_fix' as const:'stale_fix' as const};
+  return withTenant(ctx,async tx=>{
+    try{
+      const result=await resolveGeofence(tx,{employmentId:me.employmentId,date:todayInKualaLumpur(),time:'00:00',...geo,punch:'in'});
+      if(!result.enforced)return {...base,outcome:'not_enforced' as const};
+      const [site]=await tx.select({name:clockingLocation.name}).from(clockingLocation).where(eq(clockingLocation.id,result.clockingLocationId!)).limit(1);
+      return {...result.assessment,siteName:site?.name??null};
+    }catch(error){
+      if(error instanceof GeofenceQualityError)return {...error.assessment,siteName:null};
+      if(error instanceof OutsideGeofenceError){
+        const [site]=error.info.nearestLocationId?await tx.select({name:clockingLocation.name}).from(clockingLocation).where(eq(clockingLocation.id,error.info.nearestLocationId)).limit(1):[];
+        return {...base,outcome:error.info.reason??'outside_site',siteId:error.info.nearestLocationId,siteName:site?.name??null,distanceM:error.info.distanceM,radiusM:error.info.radiusM};
+      }
+      throw error;
+    }
+  });
+}
 /** Shared live punch calculation; neither reader creates a capture or payable figure. */
 async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     const now = new Date();

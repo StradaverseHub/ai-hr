@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {LocationCaptureError} from '../mobile/lib/errors';
 import {runInNewContext} from 'node:vm';
 import {ModuleKind,transpileModule} from 'typescript';
 import {expect,it} from 'vitest';
@@ -13,7 +14,7 @@ it('the installed Expo multipart encoder consumes actual file bytes and preserve
  class NativeFormData{_parts:unknown[]=[];}
  const {installFormDataPatch}=load('mobile/node_modules/expo/src/winter/FormData.ts',{});
  installFormDataPatch(NativeFormData);
- const {appendAttachment}=load('mobile/lib/capture.ts',{'expo-location':{},'expo-image-picker':{},'expo-image-manipulator':{},'expo-file-system':{File:class{async bytes(){return bytes;}}},'expo-crypto':{},'react-native':{},'./i18n':{t:()=>''}});
+ const {appendAttachment}=load('mobile/lib/capture.ts',{'expo-location':{},'expo-image-picker':{},'expo-image-manipulator':{},'expo-file-system':{File:class{async bytes(){return bytes;}}},'expo-crypto':{},'react-native':{},'./i18n':{t:()=>''},'./errors':{LocationCaptureError}});
  const {convertFormDataAsync}=load('mobile/node_modules/expo/src/winter/fetch/convertFormData.ts',{'../../utils/blobUtils':{blobToArrayBufferAsync:(blob:Blob)=>blob.arrayBuffer()}});
  const form=new NativeFormData() as unknown as FormData;
  form.append('command','{"requestId":"immutable"}');

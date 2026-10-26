@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback,useEffect,useRef } from 'react';
-import { AppState,Image,Platform,Pressable,View } from 'react-native';
+import { AppState,Image,Platform,Pressable,View,Linking } from 'react-native';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
 import { apiGet,apiPost,useApi } from './api';
@@ -8,7 +8,7 @@ import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
 import { useTenantDesign } from './design';
-import { SignInRequiredError,RequestRejectedError } from './errors';
+import { SignInRequiredError,RequestRejectedError,LocationCaptureError } from './errors';
 import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-drafts';
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
@@ -18,6 +18,7 @@ import { ClockCommand } from '../../lib/mobile-api/contract';
 import {SubmissionJournalFull} from './submission-journal';
 import { Button,Card,LoadState,Muted,Row } from './ui';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
+const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const {employmentId,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
@@ -44,12 +45,17 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     const next:ClockDraft={employmentId:identity,action,phase:'preparing'};
     putClock(next);
     try{
-      const geo=await capturePosition();assertAuthGeneration(owner);
+      const geo=await capturePosition(current.geofencingRequired);assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
+      const locationAssessment=await apiPost('clock-location',geo,{employmentId:identity});assertAuthGeneration(owner);
+      if(locationAssessment.outcome!=='pass'&&locationAssessment.outcome!=='not_enforced'){
+        removeLocalFile(photo);
+        putClock({...next,phase:'idle',geo,locationAssessment,message:t(locationRefusals[locationAssessment.outcome])});return;
+      }
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto()??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
-      if(!putClock({...next,phase:'review',geo,photo,deviceToken,requestId:randomUUID()}))removeLocalFile(photo);
-    }catch(e){removeLocalFile(photo);putClock({action,phase:'idle',message:errorMessage(e)});if(e instanceof SignInRequiredError)void signOut();}
+      if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken,requestId:randomUUID()}))removeLocalFile(photo);
+    }catch(e){removeLocalFile(photo);putClock({employmentId:identity,action,phase:'idle',message:errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
   async function takePhoto(){
@@ -67,7 +73,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   }
   async function submit(){
     if(flight.current||!identity||!draft?.geo||!draft.requestId||!current||AppState.currentState!=='active')return;
-    if(draft.phase!=='uncertain'&&Date.now()-draft.geo.sampledAt>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
+    if(draft.phase!=='uncertain'&&Math.abs(Date.now()-draft.geo.sampledAt)>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
     if(current.deviceRequired&&!draft.deviceToken)return;
     flight.current=true;const owner=authGeneration();
     let sent=false;
@@ -81,7 +87,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       sent=true;const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
       await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
       if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});}
-      else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t(refusals[result.code])});}
+      else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({employmentId:identity,action,phase:'idle',message:t(result.locationReason?locationRefusals[result.locationReason]:refusals[result.code])});}
       clock.reload();
     }catch(e){
       let refused=false;
@@ -126,6 +132,14 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:48,justifyContent:'center',borderBottomWidth:2,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.accent:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
+        {draft?.locationIssue&&['permission_blocked','approximate_permission','services_disabled'].includes(draft.locationIssue)&&<Button title={t('openLocationSettings')} kind="quiet" onPress={()=>{void Linking.openSettings().catch(()=>{});}}/>}
+        {draft?.locationAssessment&&<Card>
+          {draft.locationAssessment.siteName&&<Row label={t('assignedLocation')} value={draft.locationAssessment.siteName}/>}
+          {draft.locationAssessment.distanceM!=null&&<Row label={t('locationDistance')} value={`${Math.round(draft.locationAssessment.distanceM)} m`}/>}
+          {draft.locationAssessment.radiusM!=null&&<Row label={t('locationRadius')} value={`${draft.locationAssessment.radiusM} m`}/>}
+          {draft.locationAssessment.accuracyM!=null&&<Row label={t('locationAccuracy')} value={`± ${Math.round(draft.locationAssessment.accuracyM)} m`}/>}
+          {draft.locationAssessment.maximumAccuracyM!=null&&<Row label={t('locationMaximumAccuracy')} value={`${draft.locationAssessment.maximumAccuracyM} m`}/>}
+        </Card>}
         {draft?.geo&&(draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting')&&<Card>
           <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{label}</Text>
           <Row label={t('locationAccuracy')} value={`± ${Math.round(draft.geo.accuracy)} m`}/>

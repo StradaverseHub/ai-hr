@@ -156,9 +156,16 @@ export const ClockResponse = z.object({
 });
 export type ClockResponse = z.infer<typeof ClockResponse>;
 export const ClockCommand = z.object({action:z.enum(['in','out']),requestId:z.string().uuid(),lat:z.number().finite().min(-90).max(90),lng:z.number().finite().min(-180).max(180),accuracy:z.number().finite().nonnegative(),sampledAt:z.number().finite().int().positive(),deviceToken:z.string().uuid().optional()}).strict();
+export const ClockLocationCommand=ClockCommand.pick({lat:true,lng:true,accuracy:true,sampledAt:true});
+export const ClockLocationResponse=z.object({
+  outcome:z.enum(['pass','not_enforced','location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site','stale_fix','future_fix']),
+  siteId:z.string().uuid().nullable(),siteName:z.string().nullable(),distanceM:z.number().finite().nonnegative().nullable(),
+  radiusM:z.number().finite().nonnegative().nullable(),accuracyM:z.number().finite().nonnegative().nullable(),maximumAccuracyM:z.number().positive().nullable(),
+});
+export type ClockLocationResponse=z.infer<typeof ClockLocationResponse>;
 export const ClockResult = z.discriminatedUnion('outcome', [
   z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}),
-  z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location'])}),
+  z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location']),locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()}),
 ]);
 export type ClockResult = z.infer<typeof ClockResult>;
 export const DeviceCommand=z.object({label:z.string().trim().min(1).max(80)}).strict();

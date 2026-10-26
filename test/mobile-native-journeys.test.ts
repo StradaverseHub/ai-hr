@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import * as schema from '../db/schema';
 import type {SessionContext} from '../db/client';
 import { hireEmployee,setReportingLine } from '../core/org';
-import { setAttendancePolicy,setAttendancePhotoSetting } from '../packs/attendance/service';
+import { setAttendancePolicy,setAttendancePhotoSetting,createClockingLocation,setClockingControl } from '../packs/attendance/service';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base } from './harness';
@@ -21,6 +21,7 @@ const preview=await import('../app/api/mobile/v1/leave-preview/route');
 const team=await import('../app/api/mobile/v1/team/route');
 const receipts=await import('../app/api/mobile/v1/submission-receipt/route');
 const abandonment=await import('../app/api/mobile/v1/submission-abandon/route');
+const clockLocation=await import('../app/api/mobile/v1/clock-location/route');
 let base:Base;
 const today=()=>todayInKualaLumpur();
 function nextMonday(){const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+((8-d.getUTCDay())%7||7));return d.toISOString().slice(0,10);}
@@ -119,6 +120,31 @@ describe('server-ordered pending submission abandonment',()=>{
 });
 
 describe('native online attendance',()=>{
+  it('previews own location without writes and rechecks containment and company policy at submit',async()=>{
+    const a=await hire('Native Quality');caller=a.ctx;
+    const admin=adminCtx(base),site=await createClockingLocation(admin,{companyIds:[base.companyId],name:'Own office',lat:3,lng:101,radiusM:50});
+    await setClockingControl(admin,{employmentId:a.employmentId,enabled:true,clockingLocationIds:[site.id]});
+    const assess=async(accuracy:number)=>{
+      const response=await clockLocation.POST(new Request('https://hr.example.com/api/mobile/v1/clock-location',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lat:3,lng:101,accuracy,sampledAt:Date.now()})}));
+      expect(response.headers.get('cache-control')).toBe('no-store');return {status:response.status,body:await response.json()};
+    };
+    expect((await assess(5000)).body).toMatchObject({outcome:'outside_site',siteName:'Own office',radiusM:50,accuracyM:5000});
+    expect((await call(clock.POST,'clock',{...intent(),accuracy:5000})).body).toMatchObject({outcome:'refused',code:'outside_geofence'});
+    expect((await assess(5)).body.outcome).toBe('pass');
+    await setAttendancePolicy(admin,{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5],geofenceMaximumAccuracyM:1});
+    expect((await call(clock.POST,'clock',intent())).body).toMatchObject({outcome:'refused',code:'location_required'});
+    expect((await assess(5)).body).toMatchObject({outcome:'poor_accuracy',maximumAccuracyM:1});
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);
+  });
+  it('refuses foreign employment, forged preview fields and revoked preview sessions',async()=>{
+    const a=await hire('Own Preview'),peer=await hire('Foreign Preview');caller=a.ctx;
+    const assess=async(selector:string,extra:Record<string,unknown>={})=>clockLocation.POST(new Request('https://hr.example.com/api/mobile/v1/clock-location'+selector,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lat:3,lng:101,accuracy:5,sampledAt:Date.now(),...extra})}));
+    expect((await assess('?employmentId='+peer.employmentId)).status).toBe(400);
+    expect((await assess('',{employmentId:peer.employmentId})).status).toBe(400);
+    expect((await(await assess('')).json()).outcome).toBe('not_enforced');
+    blocked=true;expect((await assess('')).status).toBe(401);
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+  });
   it('enforces device policy, stores device attribution and refuses a revoked-device replay',async()=>{
     const a=await hire('Native Clock');caller=a.ctx;
     await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:05',halfDayBefore:'13:00',workingDays:[1,2,3,4,5],requireRegisteredDevice:true});

@@ -7,15 +7,29 @@ import { randomUUID } from 'expo-crypto';
 import { AppState } from 'react-native';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
-export async function capturePosition(){
+import {LocationCaptureError} from './errors';
+export async function capturePosition(requirePrecise=false){
   const permission=await Location.requestForegroundPermissionsAsync();
-  if(permission.status!=='granted')throw new Error(t('locationPermission'));
+  if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
+  if(requirePrecise&&(permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'))
+    throw new LocationCaptureError('approximate_permission',t('locationApproximate'));
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
   let timeout:ReturnType<typeof setTimeout>|undefined;
-  const fix=await Promise.race([Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High}),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error(t('locationTimeout'))),20000);})]).finally(()=>clearTimeout(timeout));
-  if(fix.mocked)throw new Error(t('mockLocation'));
+  let ended=false;
+  const fix=await Promise.race([(async()=>{
+    if(!await Location.hasServicesEnabledAsync())throw new LocationCaptureError('services_disabled',t('locationServicesDisabled'));
+    if(ended)throw new LocationCaptureError('unavailable',t('locationTimeout'));
+    if(AppState.currentState!=='active')throw new LocationCaptureError('unavailable',t('unlockContinue'));
+    return Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});
+  })(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new LocationCaptureError('unavailable',t('locationTimeout'))),20000);})])
+    .catch(error=>{throw error instanceof LocationCaptureError?error:new LocationCaptureError('unavailable',t('locationTimeout'));})
+    .finally(()=>{ended=true;clearTimeout(timeout);});
+  if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
+  if(fix.mocked)throw new LocationCaptureError('mock_location',t('mockLocation'));
   const {latitude:lat,longitude:lng,accuracy}=fix.coords;
-  if(accuracy==null||![lat,lng,accuracy].every(Number.isFinite)||Date.now()-fix.timestamp>120000)throw new Error(t('locationTimeout'));
+  if(accuracy==null||![lat,lng,accuracy,fix.timestamp].every(Number.isFinite)||Math.abs(lat)>90||Math.abs(lng)>180||accuracy<0||fix.timestamp<=0)
+    throw new LocationCaptureError('invalid_fix',t('locationInvalid'));
+  if(Math.abs(Date.now()-fix.timestamp)>120000)throw new LocationCaptureError(fix.timestamp>Date.now()?'future_fix':'stale_fix',t(fix.timestamp>Date.now()?'locationFuture':'locationExpired'));
   return {lat,lng,accuracy,sampledAt:fix.timestamp};
 }
 export async function capturePhoto():Promise<LocalAttachment|null>{

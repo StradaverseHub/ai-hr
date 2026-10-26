@@ -13,6 +13,7 @@ import * as journal from '../mobile/lib/submission-journal';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(){
   let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
+  const preview=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({outcome:'not_enforced',siteId:null,siteName:null,distanceM:null,radiusM:null,accuracyM:5,maximumAccuracyM:null}));
   const session={employmentId:'own',status:'signedIn',signOut:vi.fn()};
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
@@ -23,15 +24,21 @@ function fixture(){
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   const stage=vi.fn(async(command:string,file?:unknown)=>({command,file})),resolve=vi.fn(async()=>{});
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:post,useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,get,capture,reload,stage,resolve,remove,teamState,drafts:()=>drafts};
+  return {App,post,preview,get,capture,reload,stage,resolve,remove,teamState,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
+  it('shows the assigned-site quality refusal without staging or sending attendance',async()=>{
+    const f=fixture();f.preview.mockResolvedValueOnce({outcome:'outside_site',siteId:'assigned',siteName:'Main office',distanceM:20,radiusM:30,accuracyM:15,maximumAccuracyM:null});
+    render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('locationOutsideSite');
+    expect(screen.getByText('assignedLocation: Main office')).toBeTruthy();expect(screen.getByText('locationDistance: 20 m')).toBeTruthy();
+    expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();expect(f.drafts().clock.phase).toBe('idle');
+  });
   it('cleans the decrypted upload copy after an uncertain response while retaining the original review evidence',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
     const original={uri:'original-photo',name:'photo.jpg',mimeType:'image/jpeg',size:3},upload={...original,uri:'upload-copy'};
