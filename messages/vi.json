@@ -435,7 +435,7 @@
     "onboardingModuleAccess": "Quyền truy cập mô-đun",
     "controlTowerOpportunities": "Cơ hội",
     "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
+    "workspaceStrata": "Strat",
     "workspaceSwitch": "Không gian điều hướng",
     "modulePeople": "Nhân sự",
     "moduleOnboarding": "Hội nhập & IT",
@@ -462,7 +462,8 @@
     "myTp3": "Mẫu TP3 của tôi",
     "jobDescriptions": "Mô tả công việc",
     "rewardsAccess": "Quyền truy cập đãi ngộ",
-    "peopleGeneral": "Chung"
+    "peopleGeneral": "Chung",
+    "loginPresentation": "Giao diện đăng nhập & trình duyệt"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -10158,7 +10159,8 @@
         "profileChanges": "Xem yêu cầu thay đổi hồ sơ được giao cho bạn trong phạm vi quyền HR hiện tại.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
-        "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt."
+        "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
+        "loginPresentation": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -16380,7 +16382,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
-      "runFailed": "Lần tự động hóa gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
+      "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy mở chi tiết lần chạy bên dưới.",
       "navigation": "Điều hướng trung tâm điều hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",
@@ -16411,7 +16413,31 @@
       "shown": "Hiển thị {shown} trên {total} vấn đề.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
       "quality": "Chất lượng bảng lương và AI",
-      "opportunities": "Cơ hội"
+      "opportunities": "Cơ hội",
+      "runDetails": {
+        "incomplete": "Một số chi tiết thực thi chưa được ghi nhận hoặc không đọc được.",
+        "receiptNote": "Những lần chạy không ghi nhận được kết quả có thể không xuất hiện trong lịch sử này.",
+        "steps": {
+          "readiness": "Nhắc bổ sung thông tin",
+          "claims": "Sàng lọc yêu cầu hoàn phí",
+          "observe": "Kiểm tra hồ sơ nguồn",
+          "verify": "Kiểm tra lại hồ sơ nguồn"
+        },
+        "recorded": "Đã ghi nhận: {date}",
+        "outcomes": {
+          "succeeded": "Đã hoàn thành",
+          "unknown": "Chưa xác nhận hoàn thành",
+          "failed": "Thất bại"
+        },
+        "title": "Lần tự động hóa được ghi nhận gần nhất",
+        "evidenceNote": "Bước kết thúc bình thường có thể đã bị tắt hoặc không có việc cần làm. Kết quả nhân sự cần bằng chứng từ hồ sơ nguồn.",
+        "states": {
+          "succeeded": "Kết thúc bình thường",
+          "unknown": "Chưa ghi nhận",
+          "failed": "Thất bại"
+        },
+        "version": "Bộ điều phối: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Hoàn thiện hồ sơ của bạn",
@@ -23651,6 +23677,50 @@
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
     }
+  },
+  "loginPresentation": {
+    "headline": "Con người. Công việc. Cùng một nơi.",
+    "description": "Nhân sự, nghỉ phép, chấm công và tiền lương — trong AIHR.",
+    "people": "Nhân sự & tổ chức",
+    "work": "Nghỉ phép & chấm công",
+    "growth": "Hiệu suất & phát triển",
+    "topicsLabel": "Không gian nhân sự",
+    "footer": "AIHR · Không gian làm việc cho nhân sự",
+    "welcome": "Chào mừng trở lại",
+    "signInSubtitle": "Đăng nhập AIHR",
+    "mediaAlt": "Nội dung chào mừng AIHR",
+    "pauseMedia": "Tạm dừng",
+    "playMedia": "Phát video",
+    "playAnimation": "Phát ảnh động",
+    "showPassword": "Hiện mật khẩu",
+    "hidePassword": "Ẩn mật khẩu",
+    "firstTime": "Đăng nhập lần đầu?",
+    "firstTimeHelp": "Mở thư mời trong email để kích hoạt tài khoản. Nếu chưa nhận được, hãy liên hệ quản trị viên nhân sự.",
+    "getHelp": "Gặp khó khăn khi đăng nhập? Nhận trợ giúp",
+    "getHelpBody": "Liên hệ quản trị viên nhân sự để lấy mã tổ chức và tên đăng nhập. Dùng “Quên mật khẩu?” để khôi phục tài khoản.",
+    "settingsTitle": "Giao diện đăng nhập & trình duyệt",
+    "settingsDescription": "Chọn hình ảnh, GIF hoặc video hiển thị bên trái trang đăng nhập.",
+    "mediaType": "Nội dung chào mừng",
+    "none": "Chào mừng mặc định",
+    "image": "Hình ảnh",
+    "gif": "GIF động",
+    "video": "Video",
+    "mediaUrl": "URL nội dung công khai",
+    "urlHelp": "Dùng liên kết HTTPS trực tiếp tới ảnh, GIF, MP4 hoặc WebM. Nội dung hiển thị trước khi đăng nhập. Video và ảnh động chỉ phát khi khách chọn.",
+    "altLabel": "Mô tả nội dung",
+    "save": "Lưu giao diện",
+    "saving": "Đang lưu…",
+    "activeOrganization": "Tổ chức này cung cấp nội dung chào mừng cho hệ thống. Thay đổi xuất hiện trong lần truy cập trang đăng nhập tiếp theo.",
+    "otherOrganization": "Cài đặt thuộc tổ chức của bạn. Quản trị viên hệ thống cần chọn tổ chức này làm mặc định trước khi nội dung xuất hiện công khai.",
+    "result": {
+      "saved": "Đã lưu giao diện đăng nhập.",
+      "invalid": "Chọn loại nội dung, URL HTTPS hợp lệ và mô tả.",
+      "conflict": "Cài đặt đã thay đổi. Tải lại trang trước khi lưu.",
+      "forbidden": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập.",
+      "unavailable": "Không thể lưu. Vui lòng thử lại."
+    },
+    "iconUrl": "URL biểu tượng trình duyệt",
+    "iconHelp": "Dùng liên kết HTTPS trực tiếp tới PNG hoặc ICO vuông, nên là 32×32 hoặc 48×48 pixel. Để trống để dùng biểu tượng AIHR. Có thể cần tải lại trang để cập nhật biểu tượng đã lưu."
   },
   "operatorWorkspace": {
     "workspace": "Không gian vận hành",

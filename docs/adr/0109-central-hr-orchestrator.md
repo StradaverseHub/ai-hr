@@ -89,11 +89,45 @@ party, next action, explicit refresh and recorded observation time. Retain payro
 metrics in an expandable section. Keep agent configuration and approval actions in their existing
 governed screens. Show a visible count when the overview is limited to 50 issues.
 
+The work queue also projects the latest matching `orchestrator.pass-finished` receipt into expandable
+step details: source observation, readiness reminders, claims triage and source recheck, with its
+recorded time and harness version. This reads the existing event; it creates no second execution
+ledger. The existing administrative scope digest and tenant RLS constrain the read. Tied timestamps
+use event sequence as the deterministic tiebreaker. Only normalized statuses and a bounded version
+label reach the screen, never arbitrary event payloads or exception text.
+
+Correction guidance is loaded only for employees in the displayed 50-case sample. Scoped open,
+verified and inactive totals still cover the entire case set; the display limit is not a work limit.
+
+Cases, check time, permitted next actions and pass receipt are read through the existing read-only
+repeatable-read snapshot option, so a concurrent pass cannot make one response combine different
+committed versions. The screen says "latest recorded" rather than "latest attempted": a later attempt
+whose trace could not commit has no receipt here, and an older successful receipt is not a live-health
+guarantee. The scheduled job's existing execution history remains a separate owner of job outcomes.
+
+A recorded failure wins over a contradictory success flag. Missing, invalid or legacy partial
+metadata does not establish completion. Completion requires the explicitly supported current harness
+version; a well-formed older or future version label alone does not establish a compatible receipt
+contract. Bounded unfamiliar version labels remain visible for diagnosis. A normally returned step
+may have been switched off or had no work; the screen must explain that execution status does not
+prove an HR outcome. The existing source-observation queue remains authoritative for verified
+closures. This is observability of the current deterministic harness, not the held action registry
+or durable acting-agent runtime.
+
 ## Harness engineering
 
 `core/orchestrator-harness.ts` versions the initial coordination policy. Deterministic replay scenarios
 and database integration tests must cover unknown observations, termination, reopens, overlapping
 runs, unavailable telemetry, switched-off agents, and cross-company/cross-tenant access.
+
+`runOrchestrationPass` is the shared production/replay sequence for the existing `readiness-v2`
+policy. Its provider-independent replay matrix covers all 32 combinations of observe, readiness,
+claims, verify and trace-write success/failure. Each step is attempted once, later steps continue
+after failure, and the pass waits for verification and its trace receipt. Trace payloads contain
+statuses, not source values or exception text; a trace-write failure fails the returned run even
+when every specialist succeeded. This is coverage of the existing coordinator, not the future
+versioned prompt/action/model bundle. Database integration remains necessary evidence for service
+authorization, source outcomes, switches and persisted events.
 
 The enhancement cycle is: capture failure/outcome → build a redacted replay case → change one
 versioned policy/tool/prompt → compare against the previous version → run security and regression

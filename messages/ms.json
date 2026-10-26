@@ -435,7 +435,7 @@
     "onboardingModuleAccess": "Akses modul",
     "controlTowerOpportunities": "Peluang",
     "workspaceOps": "Ops",
-    "workspaceStrata": "Strata",
+    "workspaceStrata": "Strat",
     "workspaceSwitch": "Ruang navigasi",
     "modulePeople": "Kakitangan",
     "moduleOnboarding": "Penyertaan & IT",
@@ -462,7 +462,8 @@
     "myTp3": "Borang TP3 Saya",
     "jobDescriptions": "Huraian Kerja",
     "rewardsAccess": "Akses Ganjaran",
-    "peopleGeneral": "Umum"
+    "peopleGeneral": "Umum",
+    "loginPresentation": "Paparan log masuk & pelayar"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -10158,7 +10159,8 @@
         "profileChanges": "Semak perubahan profil yang ditugaskan kepada anda dalam kuasa HR semasa.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
-        "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan."
+        "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
+        "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -16380,7 +16382,7 @@
     "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
     "orchestrator": {
       "checking": "Menyemak rekod…",
-      "runFailed": "Pelaksanaan automasi terakhir memerlukan perhatian. Semak sejarah pelaksanaan.",
+      "runFailed": "Pelaksanaan automasi terkini yang direkodkan memerlukan perhatian. Buka butiran pelaksanaan di bawah.",
       "navigation": "Navigasi Menara Kawalan",
       "overview": "Gambaran keseluruhan",
       "readiness": "Data pekerja",
@@ -16411,7 +16413,31 @@
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI",
-      "opportunities": "Peluang"
+      "opportunities": "Peluang",
+      "runDetails": {
+        "incomplete": "Sesetengah butiran pelaksanaan tidak direkodkan atau tidak dapat dibaca.",
+        "receiptNote": "Percubaan yang keputusannya tidak dapat direkodkan mungkin tidak ditunjukkan dalam sejarah ini.",
+        "steps": {
+          "readiness": "Peringatan kelengkapan",
+          "claims": "Saringan tuntutan",
+          "observe": "Semak rekod sumber",
+          "verify": "Semak semula rekod sumber"
+        },
+        "recorded": "Direkodkan: {date}",
+        "outcomes": {
+          "succeeded": "Selesai",
+          "unknown": "Penyelesaian belum disahkan",
+          "failed": "Gagal"
+        },
+        "title": "Pelaksanaan automasi terkini yang direkodkan",
+        "evidenceNote": "Langkah yang selesai tanpa ralat mungkin telah dimatikan atau tiada kerja untuk dilakukan. Hasil HR memerlukan bukti daripada sumber.",
+        "states": {
+          "succeeded": "Selesai tanpa ralat",
+          "unknown": "Tidak direkodkan",
+          "failed": "Gagal"
+        },
+        "version": "Harnes: {version}"
+      }
     },
     "corrections": {
       "employeeTitle": "Lengkapkan rekod anda",
@@ -23651,6 +23677,50 @@
       "processed": "Diproses",
       "closed": "Ditutup"
     }
+  },
+  "loginPresentation": {
+    "headline": "Warga anda. Kerja anda. Satu tempat.",
+    "description": "Kakitangan, cuti, kehadiran dan gaji — bersama dalam AIHR.",
+    "people": "Kakitangan & organisasi",
+    "work": "Cuti & kehadiran",
+    "growth": "Prestasi & pembangunan",
+    "topicsLabel": "Ruang kerja HR anda",
+    "footer": "AIHR · Ruang kerja untuk warga anda",
+    "welcome": "Selamat kembali",
+    "signInSubtitle": "Log masuk ke AIHR",
+    "mediaAlt": "Media alu-aluan AIHR",
+    "pauseMedia": "Jeda media",
+    "playMedia": "Mainkan video",
+    "playAnimation": "Mainkan animasi",
+    "showPassword": "Tunjukkan kata laluan",
+    "hidePassword": "Sembunyikan kata laluan",
+    "firstTime": "Pertama kali log masuk?",
+    "firstTimeHelp": "Buka jemputan dalam e-mel untuk mengaktifkan akaun. Jika belum menerimanya, hubungi pentadbir HR anda.",
+    "getHelp": "Masalah log masuk? Dapatkan bantuan",
+    "getHelpBody": "Hubungi pentadbir HR untuk kod organisasi dan nama pengguna. Gunakan “Terlupa kata laluan?” untuk memulihkan akaun sedia ada.",
+    "settingsTitle": "Paparan log masuk & pelayar",
+    "settingsDescription": "Pilih imej, GIF atau video untuk bahagian kiri halaman log masuk.",
+    "mediaType": "Media alu-aluan",
+    "none": "Alu-aluan lalai",
+    "image": "Imej",
+    "gif": "GIF animasi",
+    "video": "Video",
+    "mediaUrl": "URL media awam",
+    "urlHelp": "Gunakan pautan HTTPS terus ke fail imej, GIF, MP4 atau WebM. Media ini kelihatan sebelum log masuk. Pelawat memilih bila video dan animasi dimainkan.",
+    "altLabel": "Penerangan media",
+    "save": "Simpan paparan",
+    "saving": "Menyimpan…",
+    "activeOrganization": "Organisasi ini membekalkan media alu-aluan pemasangan ini. Perubahan muncul pada lawatan seterusnya ke halaman log masuk.",
+    "otherOrganization": "Tetapan ini milik organisasi anda. Pentadbir pemasangan mesti memilih organisasi ini sebagai organisasi log masuk lalai sebelum medianya dipaparkan.",
+    "result": {
+      "saved": "Paparan log masuk disimpan.",
+      "invalid": "Pilih jenis media, URL HTTPS yang sah dan penerangan.",
+      "conflict": "Tetapan telah berubah. Muat semula halaman sebelum menyimpan.",
+      "forbidden": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk.",
+      "unavailable": "Tetapan tidak dapat disimpan. Cuba lagi."
+    },
+    "iconUrl": "URL ikon pelayar",
+    "iconHelp": "Gunakan pautan HTTPS terus ke PNG atau ICO segi empat sama, sebaiknya 32×32 atau 48×48 piksel. Kosongkan untuk ikon AIHR. Muat semula halaman untuk mengemas kini ikon yang dicache."
   },
   "operatorWorkspace": {
     "workspace": "Ruang kerja operator",

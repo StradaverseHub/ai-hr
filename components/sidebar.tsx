@@ -79,6 +79,7 @@ type Item = { navigationHref?: string; href: string; labelKey: string; icon: Luc
 type ChildItem = Item & {
   adminOnly?: boolean;
   identityEmailOnly?: boolean;
+  loginPresentationOnly?: boolean;
   managerUp?: boolean;
   // 388e53c2 — highlighting only, never a gate. See NavChildDescriptor in packs/registry.ts.
   exactHref?: boolean;
@@ -350,6 +351,7 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // collision with UserRoundPlus (Hiring Defaults).
     { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
+    { href: '/admin/settings/login', labelKey: 'loginPresentation', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
     // 3f44a539 / 4a8a4fff — existing destinations, relocated from the flat Administration menu.
     // Explicit child admin gates preserve their previous group-level audience: the installation email
@@ -543,6 +545,7 @@ export const SIDEBAR_AUDIENCE_INVENTORY: readonly Group[] = GROUPS;
 export function Sidebar({
   isAdmin,
   canConfigureIdentityEmail = false,
+  canConfigureLoginPresentation = false,
   canPreviewIdentityEmail = false,
   canApprove = false,
   hasAssignedAttendanceApproval = false,
@@ -563,6 +566,7 @@ export function Sidebar({
 }: {
   isAdmin: boolean;
   canConfigureIdentityEmail?: boolean;
+  canConfigureLoginPresentation?: boolean;
   /** Actual HR administrator access, independent of the broader partner administration rail. */
   canPreviewIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
@@ -670,7 +674,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -733,11 +737,12 @@ export function Sidebar({
     ...(systemRows.length ? [{items:[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:systemRows} satisfies CollapsibleGroupItem]}] : []),
   ];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
+  const compactWorkspace = collapsed && !atelier && !monolith;
   const workspaceSwitch = () => availableWorkspaces.length > 1 ? <div role="group" aria-label={t('workspaceSwitch')}
-    className={cn('flex gap-1 rounded-lg border border-border p-1',collapsed&&'flex-col')}>
+    className={cn('flex gap-1 rounded-lg border border-border p-1',compactWorkspace&&'flex-col')}>
     {availableWorkspaces.map(workspace=><button key={workspace} type="button" aria-pressed={selectedWorkspace===workspace}
       onClick={()=>{setWorkspaceChoice(workspace);setOpenKey(null);setInlineOpen({});setRailKids({});}}
-      className={cn('min-h-11 flex-1 rounded-md font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',collapsed?'px-1 text-xs':'px-2 text-sm',selectedWorkspace===workspace?'bg-accent text-accent-foreground':'text-muted-foreground hover:bg-accent/60')}>
+      className={cn('min-h-11 flex-1 rounded-md font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',compactWorkspace?'px-1 text-xs':'px-2 text-sm',selectedWorkspace===workspace?'bg-accent text-accent-foreground':'text-muted-foreground hover:bg-accent/60')}>
       {t(workspace==='ops'?'workspaceOps':'workspaceStrata')}
     </button>)}
   </div> : null;
@@ -1049,7 +1054,7 @@ export function Sidebar({
                 const heading = sectionLabel(child.href);
                 return <Fragment key={child.href}>
                   {heading && heading !== sectionLabel(children[index - 1]?.href ?? '') &&
-                    <p className="m-0 mt-2 px-2 text-xs font-medium text-muted-foreground">{t(heading)}</p>}
+                    <h3 className="atelier-subheading">{t(heading)}</h3>}
                   <Link href={child.navigationHref ?? child.href} data-tour={child.tour}
                     aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
                     {childCaption(child)}

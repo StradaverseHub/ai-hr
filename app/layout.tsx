@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
 import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
@@ -6,6 +7,7 @@ import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
+import './login/login.css';
 import './onboarding-workspace.css';
 // Atelier is loaded HERE, not as an `@import` in globals.css. On the box a warm Turbopack build cache kept the
 // old @import graph of globals.css and shipped a stylesheet without one Atelier rule (round atelier-shell-r1,
@@ -31,7 +33,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isOperator } from '@/lib/authz';
+import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
@@ -78,13 +80,13 @@ const schibsted = localFont({
 const dmMono = DM_Mono({ variable: '--font-dm-mono', subsets: ['latin'], weight: ['400', '500'] });
 const fontVariables = `${jakarta.variable} ${geistMono.variable} ${schibsted.variable} ${dmMono.variable}`;
 
-// A literal, not common.appName: `metadata` is evaluated outside the request/locale scope, so there is
-// no translator here. The brand name is the same string in all six locales anyway — it is a name, not
-// copy — so the sidebar reading it from `common.appName` and this reading it from source stay in step.
-export const metadata: Metadata = {
-  title: 'AIHR',
-  description: 'AI-native HR platform',
-};
+// Public appearance uses the same installation-selected projection as the login page.
+// Keep the fallback in public/: a file-convention app/favicon.ico would take precedence over this setting.
+export async function generateMetadata(): Promise<Metadata> {
+  const presentation = await publicLoginPresentation();
+  return { title: 'AIHR', description: 'AI-native HR platform',
+    icons: { icon: presentation.iconUrl || '/login/favicon.svg' } };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Auth routes (ADR-0072) render WITHOUT the app shell and WITHOUT the getSession gate — otherwise
@@ -94,7 +96,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const isAuthRoute = isAuthRoutePath(pathname);
   const locale = await getLocale();
   // r396 — the UI theme, from the `ui_theme` cookie, written onto <html> so the FIRST paint is already in
-  // the chosen theme (no flash). Absent or unknown → Monolith (lib/ui-theme.ts). Read before the auth
+  // the chosen theme (no flash). Absent or unknown → Atelier (lib/ui-theme.ts). Read before the auth
   // branch so /login is themed too. Light/dark is a separate axis (next-themes' `.dark` class).
   // r401 — read through lib/ui-theme-server.ts, the ONE reader, so a page that branches on the theme (the
   // Dashboard, My Profile) gets the very value written here.
@@ -235,6 +237,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <NavIndexProvider>
           <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
             <Sidebar
+              canConfigureLoginPresentation={isGroupAdmin(session)}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
