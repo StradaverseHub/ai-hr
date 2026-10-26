@@ -9,7 +9,9 @@ import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} f
 import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
 import {dispatchNotifications,listNotifications,unreadNotificationCount,markNotificationRead} from '../core/notifications';
 import {client,withTenant} from '../db/client';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,setEmploymentInfo} from '../core/org';
+import {createMovementEvent,reverseMovementEvent} from '../core/movement';
+import {readLetterAutomationSourcesTx} from '../core/letter-automation-sources';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -29,6 +31,21 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('discovers only effective configured probation dates and makes a changed date unavailable without applying employment changes',async()=>{
+  const rule=await saveLetterAutomationRule(ctx,{companyId:b.companyId,templateId,trigger:'probation_due',expectedOrdinal:0,enabled:true}),system={tenantId:b.tenantId,roles:[]},read=()=>owner.withTenant(system,tx=>readLetterAutomationSourcesTx(tx,system,rule.id));await setEmploymentInfo(ctx,{employmentId:employees[0],confirmationDate:today()});
+  const first=await read();expect(first.rows).toHaveLength(1);expect(first.rows[0]).toMatchObject({employmentId:employees[0],sourceKey:'probation:'+employees[0]+':'+today(),sourceEventId:null,sourceSequence:null,sourceAsOfDate:today()});expect(first.rows[0].sourceFingerprint).toMatch(/^[0-9a-f]{64}$/);expect(await read()).toEqual(first);
+  const future=new Date(Date.parse(today()+'T00:00:00Z')+86400000).toISOString().slice(0,10);await setEmploymentInfo(ctx,{employmentId:employees[0],confirmationDate:future});expect((await read()).rows).toHaveLength(0);expect(await owner.db.select().from(s.letterGenerationBatch)).toHaveLength(0);
+ });
+ it('discovers new effective promotion facts after activation and removes a reversed source',async()=>{
+  await createMovementEvent(ctx,{employmentId:employees[0],kind:'promotion',effectiveDate:today(),orgDivision:'Before activation'});const rule=await saveLetterAutomationRule(ctx,{companyId:b.companyId,templateId,trigger:'promotion_applied',expectedOrdinal:0,enabled:true}),system={tenantId:b.tenantId,roles:[]},read=()=>owner.withTenant(system,tx=>readLetterAutomationSourcesTx(tx,system,rule.id));expect((await read()).rows).toHaveLength(0);
+  await createMovementEvent(ctx,{employmentId:employees[0],kind:'promotion',effectiveDate:today(),orgDivision:'After activation'});const sources=(await read()).rows;expect(sources).toHaveLength(1);expect(sources[0].sourceSequence).toBeGreaterThan(rule.afterSequence);expect(sources[0]).toMatchObject({employmentId:employees[0],sourceAsOfDate:today()});await reverseMovementEvent(ctx,{employmentId:employees[0],movementId:sources[0].sourceKey.slice('movement:'.length),reason:'Fictional source reversal'});expect((await read()).rows).toHaveLength(0);
+ });
+ it('keeps discovery maintenance-only and rechecks the actual configured owner before reading employee facts',async()=>{
+  const rule=await saveLetterAutomationRule(ctx,{companyId:b.companyId,templateId,trigger:'probation_due',expectedOrdinal:0,enabled:true}),system={tenantId:b.tenantId,roles:[]};
+  await expect(withTenant(system,tx=>readLetterAutomationSourcesTx(tx,system,rule.id))).rejects.toThrow();await expect(owner.withTenant(ctx,tx=>readLetterAutomationSourcesTx(tx,system,rule.id))).rejects.toMatchObject({code:'permission'});await expect(owner.withTenant(system,tx=>readLetterAutomationSourcesTx(tx,ctx,rule.id))).rejects.toThrow();
+  await expect(withTenant(ctx,tx=>tx.execute(sq`select app.letter_automation_owner_eligible_at(${b.tenantId}::uuid,${ctx.userId}::uuid,${b.companyId}::uuid,false)`))).rejects.toThrow();await saveLetterPermission(ctx,{companyId:b.companyId,capability:'generate',role:'hr_admin',allowed:false});await expect(owner.withTenant(system,tx=>readLetterAutomationSourcesTx(tx,system,rule.id))).rejects.toMatchObject({code:'permission'});
+ });
+
  it('versions configured event drafts with a database-stamped cutoff, immutable history, and compare-and-swap',async()=>{
   const [latest]=await owner.db.select({sequence:s.domainEvent.sequence}).from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(sq`${s.domainEvent.sequence} desc`).limit(1),input={companyId:b.companyId,templateId,trigger:'promotion_applied' as const,expectedOrdinal:0,enabled:true,startOn:today(),customValues:{effectiveDate:{kind:'date' as const,value:today()}}};
   const first=await saveLetterAutomationRule(ctx,input);expect(first).toMatchObject({ordinal:1,afterSequence:latest.sequence,createdBy:ctx.userId,enabled:true,templateId});expect((await listLetterAutomationRules(ctx,{companyId:b.companyId})).rows).toEqual([first]);
@@ -41,7 +58,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   const input={companyId:b.companyId,templateId,trigger:'promotion_applied' as const,expectedOrdinal:0,enabled:true};await saveLetterAutomationRule(ctx,input);
   const [readerPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional configuration reader',primaryEmail:'configuration-reader@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,readerPerson.id,'manager'),reader={...await entitledCtx(b,['manager']),userId,personId:readerPerson.id};for(const capability of ['read','settings'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,capability,role:'manager',allowed:true});expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(1);
   const amount=await saveLetterField(ctx,{companyId:b.companyId,definition:{key:'amount',label:'Amount',description:'Explicit monetary default',kind:'currency',source:'custom.currency',required:false,editable:true,sensitive:true},active:true}),version=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:'GENERATION',name:'Fictional financial template',category:'confirmation',effectiveFrom:today(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'amount'}]}]},fieldVersionIds:[amount.id]});await decideLetterTemplate(ctx,{versionId:version.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:version.versionId,expectedStatus:'submitted',action:'approve'});
-  const latest=await saveLetterAutomationRule(ctx,{...input,expectedOrdinal:1,customValues:{amount:{kind:'currency',currency:'MYR',value:'123.00'}}});expect(latest.confidential).toBe(true);expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(0);expect((await listLetterAutomationRules(reader,{companyId:b.companyId,history:true})).rows).toHaveLength(1);await expect(saveLetterAutomationRule(reader,{...input,expectedOrdinal:1,enabled:false})).rejects.toMatchObject({code:'stale'});
+  const latest=await saveLetterAutomationRule(ctx,{...input,expectedOrdinal:1,customValues:{amount:{kind:'currency',currency:'MYR',value:'123.00'}}});expect(latest.confidential).toBe(true);expect((await listLetterAutomationRules(reader,{companyId:b.companyId})).rows).toHaveLength(0);expect((await listLetterAutomationRules(reader,{companyId:b.companyId,history:true})).rows).toHaveLength(1);await expect(saveLetterAutomationRule(reader,{...input,expectedOrdinal:1,enabled:false})).rejects.toMatchObject({code:'permission'});
  });
  it('refuses backdated automation, inactive templates, master-field defaults and mismatched typed values atomically',async()=>{
   const input={companyId:b.companyId,templateId,trigger:'probation_due' as const,expectedOrdinal:0,enabled:true};

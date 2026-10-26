@@ -1110,3 +1110,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.letter_automation_latest_version(uuid,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_automation_latest_version(uuid,uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Prospective automation authority is derived from persisted grants. This private predicate
+-- does not adopt the rule author's identity or widen a deliberately narrowed web session.
+CREATE FUNCTION app.letter_automation_owner_eligible_at(wanted_tenant uuid,subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_creator_eligible_at(wanted_tenant,subject,co,confidential) AND EXISTS(
+  SELECT 1 FROM public.role_assignment r JOIN public.access_capability c ON c.id='workforce.view'
+   WHERE r.tenant_id=wanted_tenant AND r.app_user_id=subject AND r.role::text IN ('hr_admin','super_admin') AND app.access_scope_covers(r.company_id,co,wanted_tenant)
+    AND (NOT c.supported OR app.access_allowed_for_tenant(wanted_tenant,subject,c.id,co)))
+$$;
+REVOKE ALL ON FUNCTION app.letter_automation_owner_eligible_at(uuid,uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
