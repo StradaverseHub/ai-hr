@@ -44,3 +44,41 @@ reference and purpose, never nonce bytes. Retention/reclamation needs its own ap
 change introduces no silent evidence deletion. Stored keys, canonical enrollment context, vendor-proof
 assembly, atomic business receipts, supported-version routes and native orchestration remain required.
 In particular, do not wire these generic issue/consume functions directly to caller-provided hashes.
+
+## Apple enrollment custody
+
+The local enrollment owner now assembles the canonical challenge context itself from authenticated
+scope, stored challenge and server configuration. Its positional UTF-8 bytes bind API origin, server
+installation, tenant, actor, original employment, app installation, request, challenge nonce/lifetime,
+Apple application/environment and required metadata. UUID case and metadata version-set order are
+normalized; unknown properties and unsupported domains are refused. A client app-installation UUID
+still grants no device assurance. No public endpoint currently exposes this owner.
+
+An enrolled key belongs to a tenant/login actor/app installation. Its enrollment employment remains
+historical provenance, rather than permanently preventing use by another own active employment.
+Enrollment and receipt recovery nevertheless require the original active own employment. Public-key
+fingerprints remain globally reserved after revocation, preventing transfer or resurrection. The
+application cannot rewrite key material, reopen revocation, decrease counters or delete keys. An
+installation's active key is never silently replaced; the actor has at most five active keys.
+
+Verification occurs before the short consume transaction. The transaction serializes actor capacity,
+consumes the original challenge, inserts the key and writes audit together. A conflicting insert or
+write veto rolls back all changes. Repeated completion recovers only the original exact proof digest
+and intent, before attempting vendor verification again. This preserves receipt recovery after a lost
+response, certificate expiry or encryption-master outage; a revoked receipt stays revoked. Recovery
+does not confer new verification or attendance acceptance.
+
+Opaque Apple receipts are encrypted through the existing secret-store AES-GCM mechanism, with AAD
+binding tenant, actor, key and challenge. Public receipts and audit omit vendor receipt bytes, key
+material and trust tiers. This uses the existing installation-wide secret master; it does not provide
+per-person crypto-shredding. Retention, lawful erasure, master rotation, vendor receipt/fraud checks
+and revocation checking require explicit lifecycle work before activation. The key-proof result keeps
+those vendor checks marked unchecked. Metadata requirements are server configuration: missing modern
+metadata cannot be promoted to metadata assurance, and a synthetic metadata fixture is not platform
+acceptance evidence.
+
+Migration names/indices for the local integrity additions are provisional pending reconciliation with
+the central migration coordinator. Only disposable local test databases have applied them. No shared
+database may apply or renumber these drafts until the allocation is resolved. Android key custody,
+assertion verification against stored counters inside command acceptance, versioned API/native
+orchestration and real-device acceptance remain required.

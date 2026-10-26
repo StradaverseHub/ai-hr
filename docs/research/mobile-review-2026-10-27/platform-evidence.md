@@ -156,6 +156,37 @@ transaction safety, not vendor/key ownership or attendance acceptance. Stored ke
 assembly, proof-to-challenge binding, revocation, versioned APIs/native integration and full release/device
 verification remain unfinished; the generic challenge functions are not exposed as public routes.
 
+Apple enrollment custody at `1dd2a4027`: four affected database suites passed 57 tests and root
+TypeScript exited 0. These checks use real disposable databases, RLS, transactions and receipt
+encryption; vendor proof success is a synthetic integration port. The real default verifier refuses
+malformed proof without consuming the challenge. No modern metadata-complete signed positive fixture
+or hardware enrollment was added. Earlier `0331ed42f` failed test loading/type parsing because of a
+missing function brace; no tests ran in that attempt. The repaired two-suite run passed 20 tests before
+the expanded 57-test run. Logs are retained separately.
+
+The owner now derives proof context from authenticated scope and the stored challenge, seals opaque
+receipts with tenant/actor/key/challenge AAD, and commits key custody with challenge/audit atomically.
+Checks cover duplicate completion, exact-proof receipt recovery before re-verification, revoked receipt
+recovery, permanent fingerprint ownership, refusal to replace active installation keys, the five-key
+capacity, active-first listings, metadata requirements, encryption-master outage, peer/admin isolation
+and offboarding. Stored public material/counters/revocation are guarded against rewrites, and vendor
+receipt material is absent from public receipts and audit. Secret-master encryption is not per-person
+crypto-shredding; retention, erasure and rotation remain unfinished release requirements.
+
+At `fbc10ef77`, three portable enrollment tests passed an independent expected-byte vector, object-order
+and UUID normalization, strict domain/shape/lifetime refusals, and synthetic signature tampering across
+each scope/challenge/target field. Synthetic signatures prove byte binding only. A controlled deletion
+of the stored proof-digest receipt guard failed the changed-proof reconciliation test; exact restoration
+passed (one selected case, seven skipped). The harness reported `mutation=1 restored=0 exact=True`.
+Root TypeScript also exited 0 after adding the independent binding tests. No full CI or release
+acceptance is claimed for these local additions.
+
+Migration `0623_mobile_integrity_keys`, alongside `0621` and `0622`, is a local draft allocation subject
+to a reported central filename collision. Do not apply or blindly renumber it. These migrations have
+only been exercised on disposable local databases here; no staging/shared database was migrated.
+No public route or native flow invokes enrollment yet. Android enrolled-key attestation, atomic stored
+assertion counters in command acceptance, vendor receipt/fraud checks and device acceptance remain open.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
