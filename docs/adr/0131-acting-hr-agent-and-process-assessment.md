@@ -2016,3 +2016,30 @@ app, tests, database, build, provider call or release. Other direct rule/week/ro
 writers, generator earlier source planning and remaining authority/configuration
 owners still require integration. This is partial source coverage, not proof of a
 universal barrier, canonical app-role behavior, security or production readiness.
+
+
+### Versioned provider options storage boundary (26 October 2026; source only)
+
+OpenRouter preparation now has one strict version-1 persisted-options reader with
+an explicit ordered approved provider list, conservative defaults and deeply frozen
+normalized output. It reuses the routing policy's canonical schema; unknown versions,
+fields, endpoint/plugins/key extensions and privacy overrides refuse. No inferred
+provider allowlist/model is created. Save and resolution owners must both validate
+through it before key use when integration is implemented.
+A THIRD unallocated draft, `db/migration-drafts/openrouter-provider-options.sql`, adds
+the enum value, nonsecret JSON options, normalized SQL shape checks, column-scoped
+options SELECT and a v2 active resolver retaining the existing ciphertext boundary,
+tenant filter and old resolver compatibility. Existing direct providers require empty
+options. No default route/key/active configuration is seeded. This draft is NOT
+journaled, applied or SQL-runtime checked; migration allocation remains coordinated,
+not guessed. SQL guards are structural, not provider-compliance or user-authorization
+proof. Four-file AST syntax/diff only. Pure malformed/options/immutability cases and
+three actual SQL shape/constraint/tenant/column-grant groups are authored UNRUN.
+Official API/provider-routing/key endpoint references were refreshed on 26 October:
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/guides/routing/provider-selection
+https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key
+The key metadata endpoint does not prove model/routing/tools capability; no credential
+probe or provider call was made. Registry/adapter/gateway/admin configuration and
+calling-user/minimal-field admission remain incomplete and unexposed. No production
+HR transfer/provider activation, accounting settlement or performance proof follows.

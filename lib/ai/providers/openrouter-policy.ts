@@ -5,7 +5,7 @@
 import { z } from 'zod';
 
 const providerSlug = z.string().min(1).max(128).regex(/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/);
-const Configuration = z.object({
+export const OpenRouterRoutingConfiguration = z.object({
   allowedProviders: z.array(providerSlug).min(1).max(32)
     .refine(values => new Set(values).size === values.length),
   allowFallbacks: z.boolean().default(false),
@@ -16,7 +16,7 @@ const Configuration = z.object({
  * is a preference; `only` is the allowlist. Never silently relax privacy or parameter support to
  * recover availability. `latency` is a routing preference, not an end-to-end deadline guarantee. */
 export function buildOpenRouterRoutingPolicy(configuration: unknown) {
-  const parsed = Configuration.safeParse(configuration);
+  const parsed = OpenRouterRoutingConfiguration.safeParse(configuration);
   if (!parsed.success) throw new Error('OpenRouter routing configuration unavailable');
   const providers = Object.freeze([...parsed.data.allowedProviders]);
   return Object.freeze({
