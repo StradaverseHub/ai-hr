@@ -29,6 +29,20 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('delivers issued-letter portal links only to their employee and cancels acknowledged or void reminder work',async()=>{
+  await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});
+  const selves=new Map<string,SessionContext>();for(const employmentId of employees){const [subject]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,employmentId)),userId=await createAppUser(b.tenantId,subject.personId,'employee');selves.set(employmentId,{...await entitledCtx(b,['employee']),userId,personId:subject.personId});}
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()});await submitLetterBatch(ctx,made.batchId);const rows=(await getLetterGenerationBatch(ctx,made.batchId))!.rows;
+  await bulkDecideLetters(reviewer,{letters:rows.map(row=>({letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion})),decision:{action:'approve',comment:'Reviewed each frozen letter',confirmSignature:true}});
+  const first=rows[0],second=rows[1],firstSelf=selves.get(first.record.employmentId)!,secondSelf=selves.get(second.record.employmentId)!;await issueLetter(ctx,{letterId:first.record.id,expectedRevisionId:first.revision!.id,expectedLockVersion:first.record.lockVersion+1});
+  const system={tenantId:b.tenantId,roles:[]};expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:1,failed:0});const own=await listNotifications(firstSelf);expect(own).toHaveLength(1);expect(own[0]).toMatchObject({kind:'letter.issued',linkPath:'/me/letters/'+first.record.id});expect(await listNotifications(secondSelf)).toHaveLength(0);
+  const mine=await getMyLetter(firstSelf,first.record.id);await acknowledgeMyLetter(firstSelf,{letterId:first.record.id,expectedArtifactHash:mine.artifact.contentHash,action:'acknowledge',intent:'I acknowledge this exact issued letter'});
+  await owner.db.update(s.letterJob).set({dueAt:sq`now()`}).where(and(eq(s.letterJob.letterId,first.record.id),eq(s.letterJob.kind,'acknowledgementReminder')));expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,cancelled:1,failed:0});
+  await issueLetter(ctx,{letterId:second.record.id,expectedRevisionId:second.revision!.id,expectedLockVersion:second.record.lockVersion+1});await voidLetter(ctx,{letterId:second.record.id,expectedLockVersion:second.record.lockVersion+2,reason:'Withdraw the incorrect issued letter before delivery'});
+  expect((await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,second.record.id))).every(job=>job.status==='cancelled')).toBe(true);expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});expect(await listNotifications(secondSelf)).toHaveLength(0);
+ });
+
  it('projects durable portal work to an approver account without employment and rejects forged bell rows',async()=>{
   await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});

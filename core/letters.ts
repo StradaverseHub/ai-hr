@@ -424,6 +424,7 @@ export function issueLetter(ctx:SessionContext,input:{letterId:string;expectedRe
 });}
 export function voidLetter(ctx:SessionContext,input:{letterId:string;expectedLockVersion:number;reason:string}){return letters(ctx,true,async tx=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId))).for('update');if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'issue');const reason=text(input.reason,2000);if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(record.state!=='issued')throw new LetterWorkflowError('state');
+ await tx.update(letterJob).set({status:'cancelled',leaseToken:null,leaseUntil:null,lastError:null}).where(and(eq(letterJob.letterId,record.id),inArray(letterJob.status,['queued','failed'])));
  await tx.update(letterRecord).set({state:'void',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'voided',{revisionId:record.currentRevisionId,reason});return {letterId:record.id,state:'void' as const};
 });}
 
