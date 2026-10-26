@@ -1,10 +1,25 @@
 # Performance-service test split
 
-## Runtime checkpoint on 26 October MYT
+## Complete hosted split verified — 26 October MYT
 
-The original 167-case monolith passed all cases in a paired original-suite baseline on owned PostgreSQL 16 with two workers (reported file duration 257.97 seconds). The accompanying original attendance suite failed 19 cases, so the comparison stopped before any optimized split run. All four new files together remain runtime-unverified; no speedup is established. Whole-repository TypeScript passed at `d08aa22c5`, before the later weekday-only attendance fixture change. Raw failed comparison and exact restored source bytes remain in `scratchpad/r395-savepoint-20261025/split-comparison-probe/`.
+[Run40272783633](https://github.com/StradaverseHub/ai-hr/actions/runs/40272783633) passed all four files and **167/167 cases**, with0 failures, skips or pending, on exact source/controller `13983754d88e6847125655bcdf51b832a31072d5`. Root independently authenticated the first-attempt API/job/artifact identities, ZIP digest and raw reports, compared every expanded case name against the original167-case baseline, and rechecked the five split/helper hashes against the original callback/hook preservation proof. No assertion, case or fixture reset was removed.
 
-This is a source-verified candidate, not a runtime pass, measured speedup or release receipt. Reconcile the actually released alpha before adopting it; do not change Board 3's frozen release.
+Actual Vitest printed229.55 s; the DB phase including container setup, migration and tests was257.226 s. Complete submission-to-last-job elapsed459.812963 s (7m40s) and occupied job time453 s (7.55 runner-minutes), not authoritative billing. This focused workflow retained the old unconditional SDK cleanup117.263 s; it did not use the newly measured capacity-aware normal suite setup. Separate-run times do not establish a paired speedup or complete release result.
+
+| Split file | Cases passed | Reported file interval |
+| --- | ---: | ---: |
+| onehr-service.test.ts |42 |78.192 s |
+| onehr-service-written-evidence.test.ts |42 |136.956 s |
+| onehr-service-calibration.test.ts |42 |119.817 s |
+| onehr-service-moderation-reminders.test.ts |41 |96.900 s |
+
+These file intervals overlap workers. PostgreSQL16.15/JIT on peaked at1,559,334,912 bytes under its2 GiB cap, with0 OOM events/kills. Both the focused runner's owned-container stop and the always-run cleanup step completed successfully. The tracked source stayed clean at the frozen commit. No Mac/shared database, compiler, application build, staging mutation or release receipt was involved.
+
+The authenticated artifact12628199438 is27,035 bytes, ZIP SHA256 `732a5e2484355324a3192473af038fb39889219d2ebe0ed51be9c44140022f1c`. Original API/log/archive/raw report/identity comparison evidence is retained in ignored `scratchpad/onehr-hosted-20261026/`.
+
+Fixture profiling recorded167 successful resets (94.467 inclusive seconds, median0.548 s, p950.702 s),177 seeds (6.869 inclusive seconds), one template migration2.324 s and two worker clones0.596 s total. These overlapping totals cannot be subtracted from wall time or treated as a causal saving. They show that template/database creation is a small component; the actual workflows and SQL remain material. This hosted disk-backed database success does not prove Mac SSD-versus-RAM-disk performance.
+
+The earlier original167-case monolith passed on the Mac in257.97 reported file seconds, while its accompanying attendance suite failed and stopped that old comparison before the split phase. Those observations remain separate. Whole-repository TypeScript previously passed atd08; no new whole compiler or paired performance comparison is claimed by this run. Reconcile the current alpha and complete required integrated validation before adopting the optimized source.
 
 ## Purpose and preserved coverage
 
@@ -38,4 +53,4 @@ The five helpers read nine live per-file bindings through getters. This retains 
 - A separate mock helper check replaced fixture/administrator/manager/review bindings and verified that `hire` and `view` read the new values, rather than an early snapshot.
 - Source syntax and diff checks passed. Private evidence is retained in the owning worktree's ignored `scratchpad/onehr-split-20261025/`.
 
-All 167 split database cases, their Vitest mock/loader behavior, comparable timing and PostgreSQL/host resource peaks remain unverified. Complete TypeScript passed at the d08 checkpoint described above. A focused comparison must explicitly include **all four files** and count 167 cases; testing only the original filename now covers 42. Preserve the original baseline and comparable execution settings, then complete the required full candidate verification before adoption. No ten-minute release or runner-minute saving is claimed.
+All167 split database cases, actual mock/loader behavior and owned PostgreSQL resource evidence are now verified by the hosted run above. A paired original-versus-split timing comparison remains unproved. Any future applicable check must explicitly include **all four files** and count167; the original filename covers only42. Preserve authentic passing evidence, reassess changed scope and complete required integrated candidate verification before adoption. No complete ten-minute release or runner-minute saving is claimed.

@@ -1,4 +1,4 @@
-# Canonical CI build packet — version 5 source integration
+# Canonical CI build packet — current version7 source contract
 
 Status: prepared in the isolated performance review branch. Pure/private integrity and typed-helper probes have run; this revised normal workflow has not run a complete release gate, promoted an artifact, or established a new release baseline. Main/live deployment stays disabled.
 
@@ -20,7 +20,7 @@ A build-only invocation can compile review dispatches and same-repository PR che
 
 ## Authenticated operator boundary
 
-Policy aihr-staging-ci/v5 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with a280MiB compressed ZIP limit and256MiB inner archive limit. The optional whole-compiler-state and next-application-state-v1 packets cannot replace either the build or any required test report. Version5 adds the second fixed optional namespace; it does not weaken required coverage.
+Policy aihr-staging-ci/v7 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with a280MiB compressed ZIP limit and256MiB inner archive limit. The optional whole-compiler-state and next-application-state-v1 packets cannot replace either the build or any required test report. Version5 adds the second fixed optional namespace; it does not weaken required coverage.
 
 The operator authenticates the repository/run/controller/job/artifact through GitHub APIs, checks downloaded ZIP length and digest, and uses the existing exact-inventory bounded binary extractor. It then verifies source/controller/runtime/build UUID/BUILD_ID, original successful observation times inside the producing job, every bound record/manifest digest, and the actual archive length/digest. It independently regenerates the canonical System Testing preparation from the unchanged candidate and checks exact preparation bytes plus package/lock hashes. Immediately before any existing operator transfer, fresh API revalidation also reopens local packet bytes and rechecks canonical source.
 
@@ -30,7 +30,7 @@ A resumable source assessment checks any present binary packet's provenance, byt
 
 ## What remains before build-once deployment
 
-This change does not install build bytes on staging. The existing operator still uses the remote canonical build path, so duplicate compilation remains until the promotion spine is implemented and verified. Archive member safety, recipient dependency/package-tree equality, compiled five-value System Testing identity, current staging runtime/environment, and native/runtime compatibility must be checked at installation.
+The isolated operator now has a version6-derived build-once installation route, retained by version7. It preserves the original authenticated CI build UUID/observation, uses a fresh private installation grant, validates source/runtime/environment/package/compiled/native inputs, and integrates the existing migration/catalog spine, atomic owned activation, fresh PID/health, full source checksum and ordered migration ledger, with owned cleanup. This source and its private controls have not been executed as a real staging installation. Actual runtime/native/ISR behavior, complete normal CI witness, owner-exclusive window and verified handback remain required. See the current [installation contract](STAGING-ARTIFACT-ACTIVATION.md); do not treat old remote-rebuild notes as the present implementation.
 
 Preserve audit/auth preflights, migrations, catalog and backfill work, knowledge seeding, restart, health, source checksum and migration-ledger arrival checks. The [CI staging transport](STAGING-ARTIFACT-ACTIVATION.md) now requires an actually written pending marker; the legacy generic helper keeps its bootstrap fallback. Exclusive target ownership and full operator validation remain required. Do not enable the prototype operator on this source revision without its required full validation and the actual runtime owner's handback.
 

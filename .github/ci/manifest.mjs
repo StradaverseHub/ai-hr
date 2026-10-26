@@ -1,6 +1,7 @@
 /** Coverage topology is deterministic; scheduler concurrency never changes batch membership. */
 import {createHash} from 'node:crypto';
-export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'}};
+import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
+export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'},scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=64;
 export const NODB_BATCH_FILES=256;
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];
@@ -16,10 +17,8 @@ export function buildUnits(suite,groups,browserFiles){
  const units=[];
  for(const kind of ['nodb','db']){
   const files=groups[kind].slice().sort(),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
-  for(let offset=0;offset<files.length;offset+=size){
-   const batch=files.slice(offset,offset+size);
-   units.push({id:`${kind}-${hash(batch).slice(0,16)}`,kind,files:batch});
-  }
+  const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(files.length/size)},(_,i)=>files.slice(i*size,(i+1)*size));
+  for(const batch of batches)units.push({id:`${kind}-${hash(batch).slice(0,16)}`,kind,files:batch});
  }
  for(const engine of BROWSER_ENGINES)units.push({id:`browser-${engine}`,kind:'browser',engine,files:browser.slice()});
  if(new Set(units.map(u=>u.id)).size!==units.length||units.length>256)throw Error('Invalid or excessive batch identity inventory');

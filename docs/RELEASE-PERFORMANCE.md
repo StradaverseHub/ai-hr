@@ -6,6 +6,12 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
+## Performance-service runtime complete; balanced DB grouping prepared — 26 October MYT
+
+The previously unexecuted four-file service split now has a genuine included-runner pass: [40272783633](https://github.com/StradaverseHub/ai-hr/actions/runs/40272783633), exact13983754d88e6847125655bcdf51b832a31072d5, all167 original cases/identities preserved, no failures/pending/skips. Vitest229.55 s; full selected workflow459.812963 s, including old117.263 s SDK cleanup. No compiler/build/deployment, no paired speedup claim. [Scope and authenticated evidence](TEST-OPTIMIZATION-ONEHR.md).
+
+Version7 source now balances complete DB file groups using advisory recorded durations, while retaining the same ceil(N/64) jobs, maximum64 files, two workers,2 GiB PostgreSQL/JIT on and every classified file. No-DB/browser membership and required coverage remain unchanged. The profile binds independently rehashed old observations plus actual attendance/service split results; unknown files receive a positive default. The exact algorithm/dataset digest joins execution metadata and the plan fingerprint. Historical failure-run durations convey no PASS authority. Actual new grouping/runtime and the complete under600-second release still require verification; controller-only diagnostics reconstruct the current source plan without application dependencies or Mac slots.
+
 ## Current hosted setup result and budget — 26 October MYT
 
 The owner reaffirmed that this efficiency chat runs/tests with `gh`-dispatched GitHub-hosted Actions and does not wait for Mac slots. Mobile retains its local runtime and staging release window. The separate local optimization requirement remains open.
