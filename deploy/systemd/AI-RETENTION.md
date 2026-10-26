@@ -20,6 +20,11 @@ Root owns the separate
 `/etc/aihr/retention.env` file with mode0600. It contains only the approved maintenance connection;
 never copy the web application's environment or put connection values in Git, arguments or logs.
 The runner refuses app-role connections and has no credential fallback or privilege self-grant.
+Its actual physical table-owner connection must also be able to execute the single guarded policy
+helper `app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/function owner already
+has that privilege. A separately provisioned table owner needs only explicit EXECUTE on this helper;
+never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT or BYPASSRLS. The runner
+checks this function privilege before processing custody and grants itself nothing.
 
 The runner emits only aggregate counts, whether expired work remains, and the oldest expired age in
 seconds. It prints no tenant/user IDs, review text, feedback text or connection identity. An invalid

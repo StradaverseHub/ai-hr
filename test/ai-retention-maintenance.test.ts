@@ -119,6 +119,7 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`create role ${role} nologin nosuperuser nobypassrls`);
       await tx.execute(sql`grant usage on schema app,public to ${role}`);
       await tx.execute(sql`grant execute on function app.current_tenant_id(),app.is_group_admin(),app.principal_snapshot_current() to ${role}`);
+      await tx.execute(sql`grant execute on function app.agent_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
       await tx.execute(sql`alter table app.assistant_own_leave_review owner to ${role}`);
       await tx.execute(sql`alter table app.assistant_own_leave_review_content owner to ${role}`);
       await tx.execute(sql`alter table public.ai_agent_feedback owner to ${role}`);

@@ -32,6 +32,7 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
     const [role] = await tx.execute<{ allowed: boolean }>(sql`select current_user=session_user and current_user<>'ai_hr_app'
       and current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='off'
+      and has_function_privilege(current_user,'app.agent_signal_custody_visible(text,uuid,uuid,uuid)','EXECUTE')
       and (select count(*)=8 and bool_and(r.rolsuper or c.relowner=r.oid)
         from pg_catalog.pg_roles r cross join pg_catalog.pg_class c where r.rolname=current_user
         and c.oid in ('app.assistant_own_leave_review'::regclass,
