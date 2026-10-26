@@ -54,15 +54,15 @@ describe('out-of-band expired AI custody maintenance', () => {
   it('retires expired private bytes and opinions only, leaves active custody and HR facts unchanged, then is idempotent', async () => {
     const expired = await review(true), active = await review(false), expiredFeedback = await feedback(true), activeFeedback = await feedback(false);
     const before = await state(), result = await runAiRetentionTick(owner);
-    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1 });
-    expect(Object.values(result).every(value => typeof value === 'number')).toBe(true);
+    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1, backlog: false, oldestExpiredAgeSeconds: null });
+    for (const id of [expired, active, expiredFeedback, activeFeedback, base.tenantId]) expect(JSON.stringify(result)).not.toContain(id);
     const after = await state();
     expect(after.reviews.find(row => row.id === expired)).toMatchObject({ state: 'expired', intent_digest: null, reviewed_digest: null, ciphertext: null });
     expect(after.reviews.find(row => row.id === active)).toEqual(before.reviews.find(row => row.id === active));
     expect(after.feedback.some(row => row.id === expiredFeedback)).toBe(false);
     expect(after.feedback.find(row => row.id === activeFeedback)).toEqual(before.feedback.find(row => row.id === activeFeedback));
     expect(after.requests).toEqual(before.requests); expect(after.ledger).toEqual(before.ledger); expect(after.events).toEqual(before.events);
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0 });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0, backlog: false, oldestExpiredAgeSeconds: null });
   });
   it('rejects an app-role carrier despite administrator claims, without any mutation', async () => {
     await review(true); await feedback(true); const before = await state();
@@ -91,9 +91,25 @@ describe('out-of-band expired AI custody maintenance', () => {
     const watchdog = setTimeout(() => { fail(Error('owned retention handshake timed out')); release(); }, 10_000);
     const holder = withTenant(adminCtx(base), async tx => { await lockAccessConfigurationTx(tx, base.tenantId); ready(); await finish; });
     void holder.catch(fail);
-    try { await started; expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 1, reviews: 0, feedback: 0 }); expect(await state()).toEqual(before); }
+    try {
+      await started; const result = await runAiRetentionTick(owner);
+      expect(result).toMatchObject({ tenants: 1, busy: 1, reviews: 0, feedback: 0, backlog: true });
+      expect(result.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1); expect(await state()).toEqual(before);
+    }
     finally { release(); clearTimeout(watchdog); await holder; }
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1 });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1, backlog: false, oldestExpiredAgeSeconds: null });
+  });
+  it('reports real remaining expired custody after the100-row bound, then clears it in a separate pass', async () => {
+    const ids: string[] = [];
+    for (let index=0; index<101; index++) ids.push(await review(true));
+    const first = await runAiRetentionTick(owner);
+    expect(first).toMatchObject({ tenants: 1, busy: 0, reviews: 100, feedback: 0, backlog: true });
+    expect(first.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(first)).not.toContain(base.tenantId);
+    for (const id of ids) expect(JSON.stringify(first)).not.toContain(id);
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 0, backlog: false, oldestExpiredAgeSeconds: null });
+    const after=await state();expect(after.reviews).toHaveLength(101);
+    expect(after.reviews.every(row=>row.state==='expired'&&row.ciphertext===null&&row.intent_digest===null&&row.reviewed_digest===null)).toBe(true);
   });
   it('supports a real nonsuperuser table-owner identity under FORCE RLS, without seeing nonexpired opinions', async () => {
     await review(true); await feedback(true); await feedback(false);

@@ -1,0 +1,27 @@
+# Source template only. Install after migration/role/erasure proof and operator review; never auto-enabled.
+[Unit]
+Description=AI HR expired review and feedback custody maintenance
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+# Dedicated existing operator-provisioned OS identity; never the web application's user.
+User=aihr-retention
+Group=aihr-retention
+WorkingDirectory=/opt/ai-hr
+# Root-owned0600 file, containing only the operator-approved MIGRATION_DATABASE_URL.
+# Do not load the application's environment, AI keys or browser/auth credentials.
+EnvironmentFile=/etc/aihr/retention.env
+Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=/opt/node20/bin/node --import tsx /opt/ai-hr/scripts/ai-retention-runner.ts
+TimeoutStartSec=120
+TimeoutStopSec=10
+KillMode=control-group
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
